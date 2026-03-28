@@ -1,0 +1,172 @@
+use serde::Serialize;
+
+// ── ItemFilter ────────────────────────────────────────────────────────────────
+
+/// Mirrors the TypeScript `ItemFilter` type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ItemFilter {
+    /// Everything except upcoming items (published_at > now). Default.
+    #[default]
+    All,
+    /// Items with no saved `.md` body.
+    Unread,
+    /// Only items listed in `bookmarks.html`.
+    Bookmarked,
+    /// Items whose published_at > now, sorted oldest-first.
+    Upcoming,
+}
+
+impl std::str::FromStr for ItemFilter {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "all" => Ok(Self::All),
+            "unread" => Ok(Self::Unread),
+            "bookmarked" => Ok(Self::Bookmarked),
+            "upcoming" => Ok(Self::Upcoming),
+            other => Err(format!("unknown item filter: {other}")),
+        }
+    }
+}
+
+// ── Traits ────────────────────────────────────────────────────────────────────
+
+/// Minimal display contract shared by every item (articles, notes, …).
+/// Sufficient for list views, sorting, and mixed-type collections.
+pub trait Item {
+    fn id(&self) -> &str;
+    fn title(&self) -> &str;
+    fn created_at(&self) -> &str;
+    fn updated_at(&self) -> Option<&str>;
+    /// The canonical URL this item was fetched from.
+    /// `None` for authored items (topics, notes) — they are treated as already read
+    /// and are not bookmarkable.
+    fn url(&self) -> Option<&str> { None }
+    /// ISO-8601 publish date, if known. `None` excludes the item from `Upcoming`
+    /// and includes it in `All`.
+    fn published_at(&self) -> Option<&str> { None }
+}
+
+// ── Entry ─────────────────────────────────────────────────────────────────────
+
+/// Metadata for a feed entry. Mirrors the TypeScript `Entry` type.
+///
+/// Used as the list-view representation of a feed entry, and embedded
+/// (via `#[serde(flatten)]`) inside `Article`.
+#[derive(Debug, Serialize)]
+pub struct Entry {
+    pub id: String,
+    pub url: String,
+    pub title: String,
+    pub created_at: String,
+    pub published_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub summary: Option<String>,
+    pub is_unread: bool,
+}
+
+impl Item for Entry {
+    fn id(&self) -> &str { &self.id }
+    fn title(&self) -> &str { &self.title }
+    fn created_at(&self) -> &str { &self.created_at }
+    fn updated_at(&self) -> Option<&str> { self.updated_at.as_deref() }
+    fn url(&self) -> Option<&str> { Some(&self.url) }
+    fn published_at(&self) -> Option<&str> { self.published_at.as_deref() }
+}
+
+// ── EmbeddedEntry ─────────────────────────────────────────────────────────────
+
+/// An `Entry` returned from an embedding similarity query, carrying its score.
+/// Mirrors the TypeScript `EmbeddedEntry` type (= `Entry & Embedded`).
+#[derive(Debug, Serialize)]
+pub struct EmbeddedEntry {
+    #[serde(flatten)]
+    pub entry: Entry,
+    pub similarity: f32,
+}
+
+impl Item for EmbeddedEntry {
+    fn id(&self) -> &str { self.entry.id() }
+    fn title(&self) -> &str { self.entry.title() }
+    fn created_at(&self) -> &str { self.entry.created_at() }
+    fn updated_at(&self) -> Option<&str> { self.entry.updated_at() }
+    fn url(&self) -> Option<&str> { self.entry.url() }
+    fn published_at(&self) -> Option<&str> { self.entry.published_at() }
+}
+
+impl std::ops::Deref for EmbeddedEntry {
+    type Target = Entry;
+    fn deref(&self) -> &Entry { &self.entry }
+}
+
+impl std::ops::DerefMut for EmbeddedEntry {
+    fn deref_mut(&mut self) -> &mut Entry { &mut self.entry }
+}
+
+// ── Article ───────────────────────────────────────────────────────────────────
+
+/// A fully loaded saved entry, including markdown content.
+/// Mirrors the TypeScript `Article` type (= `Entry & Document`).
+#[derive(Debug, Serialize)]
+pub struct Article {
+    #[serde(flatten)]
+    pub meta: Entry,
+    pub content: String,
+}
+
+impl Item for Article {
+    fn id(&self) -> &str { self.meta.id() }
+    fn title(&self) -> &str { self.meta.title() }
+    fn created_at(&self) -> &str { self.meta.created_at() }
+    fn updated_at(&self) -> Option<&str> { self.meta.updated_at() }
+}
+
+// ── Document ──────────────────────────────────────────────────────────────────
+
+/// A user-authored document with full content.
+/// Mirrors the TypeScript `Document` type (= `Item & { content: string }`).
+#[derive(Debug, Serialize)]
+pub struct Document {
+    pub id: String,
+    pub title: String,
+    pub created_at: String,
+    pub updated_at: Option<String>,
+    pub content: String,
+}
+
+impl Item for Document {
+    fn id(&self) -> &str { &self.id }
+    fn title(&self) -> &str { &self.title }
+    fn created_at(&self) -> &str { &self.created_at }
+    fn updated_at(&self) -> Option<&str> { self.updated_at.as_deref() }
+}
+
+// ── Topic ─────────────────────────────────────────────────────────────────────
+
+/// Mirrors the TypeScript `Topic` type (= `Document`).
+pub type Topic = Document;
+
+// ── Note ─────────────────────────────────────────────────────────────────────
+
+/// Mirrors the TypeScript `Note` type (= `Document`).
+pub type Note = Document;
+
+// ── Feed ──────────────────────────────────────────────────────────────────────
+
+/// A subscribed RSS/Atom feed. Mirrors the TypeScript `Feed` type.
+#[derive(Debug, Serialize)]
+pub struct Feed {
+    pub id: String,
+    pub url: String,
+    pub title: String,
+    pub entry_count: usize,
+    pub created_at: String,
+    pub updated_at: Option<String>,
+}
+
+impl Item for Feed {
+    fn id(&self) -> &str { &self.id }
+    fn title(&self) -> &str { &self.title }
+    fn created_at(&self) -> &str { &self.created_at }
+    fn updated_at(&self) -> Option<&str> { self.updated_at.as_deref() }
+}

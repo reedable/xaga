@@ -1,0 +1,385 @@
+mod article_loader;
+mod commands;
+mod file_watchers;
+
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, RwLock};
+
+use serde::{Deserialize, Serialize};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
+use tauri::{Emitter, Manager, Runtime};
+use xaga_core::embeddings::EmbeddingService;
+
+pub(crate) struct AppState {
+    pub(crate) library: Arc<RwLock<PathBuf>>,
+    pub(crate) theme: Arc<RwLock<String>>,
+    pub(crate) embedding_service: Arc<Mutex<Option<EmbeddingService>>>,
+    pub(crate) http_client: reqwest::Client,
+}
+
+pub(crate) fn feeds_dir(library: &Path) -> PathBuf {
+    library.join("feeds")
+}
+
+// ── Settings helpers ───────────────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Default, Clone)]
+pub(crate) struct UserSettings {
+    pub(crate) library: Option<String>,
+    pub(crate) theme: Option<String>,
+}
+
+pub(crate) fn load_settings(path: &Path) -> UserSettings {
+    (|| -> Option<UserSettings> {
+        let raw = std::fs::read_to_string(path).ok()?;
+        serde_json::from_str(&raw).ok()
+    })()
+    .unwrap_or_default()
+}
+
+pub(crate) fn save_settings(path: &Path, settings: &UserSettings) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, serde_json::to_string_pretty(settings).unwrap())
+}
+
+// ── Menu helpers ───────────────────────────────────────────────────────────────
+
+/// Move the checkmark to `selected` ("auto" | "light" | "dark").
+fn update_theme_checkmarks<R: Runtime>(app: &tauri::AppHandle<R>, selected: &str) {
+    let Some(menu) = app.menu() else { return };
+    // The theme items live inside the "view_menu" submenu, one level down.
+    let view = menu
+        .items()
+        .unwrap_or_default()
+        .into_iter()
+        .find_map(|item| match item {
+            MenuItemKind::Submenu(sub) if sub.id().as_ref() == "view_menu" => Some(sub),
+            _ => None,
+        });
+
+    let Some(view) = view else { return };
+
+    for (item_id, value) in [
+        ("theme_auto", "auto"),
+        ("theme_light", "light"),
+        ("theme_dark", "dark"),
+    ] {
+        if let Some(MenuItemKind::Check(item)) = view.get(item_id) {
+            item.set_checked(value == selected).ok();
+        }
+    }
+}
+
+// ── Entry point ────────────────────────────────────────────────────────────────
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let http_client = reqwest::Client::new();
+
+    // Pre-created Arcs shared between .manage() and the .setup() closure.
+    let library: Arc<RwLock<PathBuf>> = Arc::new(RwLock::new(PathBuf::new()));
+    let theme: Arc<RwLock<String>> = Arc::new(RwLock::new("auto".to_string()));
+    let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
+    let setup_library = Arc::clone(&library);
+    let setup_theme = Arc::clone(&theme);
+    let setup_svc = Arc::clone(&embedding_service);
+
+    let app = tauri::Builder::default()
+        .manage(AppState {
+            library,
+            theme: theme.clone(),
+            embedding_service: embedding_service.clone(),
+            http_client,
+        })
+        .manage(article_loader::PendingRequests::default())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        .menu(|app| {
+            // Default to "auto" checked; setup() corrects this once settings are loaded.
+            let initial_theme = "auto";
+
+            let app_menu = Submenu::with_items(
+                app,
+                "Xaga",
+                true,
+                &[
+                    &PredefinedMenuItem::about(app, None, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &MenuItem::with_id(app, "open_settings", "Settings...", true, Some("cmd+,"))?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::services(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::hide(app, None)?,
+                    &PredefinedMenuItem::hide_others(app, None)?,
+                    &PredefinedMenuItem::show_all(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &MenuItem::with_id(app, "quit", "Quit Xaga", true, Some("cmd+q"))?,
+                ],
+            )?;
+            let file_menu = Submenu::with_items(
+                app,
+                "File",
+                true,
+                &[&MenuItem::with_id(
+                    app,
+                    "open_library",
+                    "Open Library",
+                    true,
+                    None::<&str>,
+                )?],
+            )?;
+            let edit_menu = Submenu::with_items(
+                app,
+                "Edit",
+                true,
+                &[
+                    &PredefinedMenuItem::undo(app, None)?,
+                    &PredefinedMenuItem::redo(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::cut(app, None)?,
+                    &PredefinedMenuItem::copy(app, None)?,
+                    &PredefinedMenuItem::paste(app, None)?,
+                    &PredefinedMenuItem::select_all(app, None)?,
+                ],
+            )?;
+            let view_menu = Submenu::with_id_and_items(
+                app,
+                "view_menu",
+                "View",
+                true,
+                &[
+                    &CheckMenuItem::with_id(
+                        app,
+                        "theme_auto",
+                        "Auto (System)",
+                        true,
+                        initial_theme == "auto",
+                        None::<&str>,
+                    )?,
+                    &CheckMenuItem::with_id(
+                        app,
+                        "theme_light",
+                        "Light",
+                        true,
+                        initial_theme == "light",
+                        None::<&str>,
+                    )?,
+                    &CheckMenuItem::with_id(
+                        app,
+                        "theme_dark",
+                        "Dark",
+                        true,
+                        initial_theme == "dark",
+                        None::<&str>,
+                    )?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &CheckMenuItem::with_id(
+                        app,
+                        "show_article_summary",
+                        "Show Article Summary",
+                        true,
+                        false,
+                        None::<&str>,
+                    )?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::fullscreen(app, Some("Enter Full Screen"))?,
+                ],
+            )?;
+            let window_menu = Submenu::with_items(
+                app,
+                "Window",
+                true,
+                &[
+                    &PredefinedMenuItem::minimize(app, None)?,
+                    &PredefinedMenuItem::maximize(app, None)?,
+                ],
+            )?;
+            Menu::with_items(
+                app,
+                &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu],
+            )
+        })
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "open_library" => {
+                app.emit("menu:open-library", ()).ok();
+            }
+            "open_settings" => {
+                app.emit("menu:open-settings", ()).ok();
+            }
+            id @ ("theme_auto" | "theme_light" | "theme_dark") => {
+                let theme = match id {
+                    "theme_auto" => "auto",
+                    "theme_light" => "light",
+                    _ => "dark",
+                };
+                update_theme_checkmarks(app, theme);
+                app.emit("menu:set-theme", theme).ok();
+            }
+            "show_article_summary" => {
+                let checked = app
+                    .menu()
+                    .and_then(|menu| {
+                        menu.items().ok()?.into_iter().find_map(|item| match item {
+                            MenuItemKind::Submenu(sub) if sub.id().as_ref() == "view_menu" => {
+                                Some(sub)
+                            }
+                            _ => None,
+                        })
+                    })
+                    .and_then(|view| view.get("show_article_summary"))
+                    .and_then(|item| match item {
+                        MenuItemKind::Check(c) => c.is_checked().ok(),
+                        _ => None,
+                    })
+                    .unwrap_or(false);
+                app.emit("menu:show-article-summary", checked).ok();
+            }
+            "quit" => {
+                app.exit(0);
+            }
+            _ => {}
+        })
+        .setup(move |app| {
+            // Resolve settings: persisted settings.json or defaults.
+            let settings_path = app.path().app_config_dir()?.join("settings.json");
+            let default_library = app.path().app_data_dir()?;
+            let settings = load_settings(&settings_path);
+            let lib_path = settings
+                .library
+                .map(PathBuf::from)
+                .unwrap_or(default_library);
+            let theme = settings.theme.unwrap_or_else(|| "auto".to_string());
+            *setup_library.write().unwrap() = lib_path.clone();
+            *setup_theme.write().unwrap() = theme.clone();
+
+            // Correct the theme checkmarks now that we know the persisted value.
+            update_theme_checkmarks(app.handle(), &theme);
+
+            // Start the EmbeddingService; file watcher + recovery fire inside it.
+            tauri::async_runtime::spawn(async move {
+                match EmbeddingService::start(lib_path.clone()).await {
+                    Ok(svc) => {
+                        file_watchers::watch(
+                            lib_path.clone(),
+                            svc.priority_sender(),
+                            svc.background_sender(),
+                        );
+                        svc.trigger_recovery(lib_path.clone());
+                        *setup_svc.lock().unwrap() = Some(svc);
+                    }
+                    Err(e) => log::error!("startup: embedding service failed: {e}"),
+                }
+            });
+
+            if cfg!(debug_assertions) {
+                app.handle().plugin(
+                    tauri_plugin_log::Builder::default()
+                        .level(log::LevelFilter::Info)
+                        .level_for("xaga_lib", log::LevelFilter::Debug)
+                        .level_for("xaga_core", log::LevelFilter::Debug)
+                        .build(),
+                )?;
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::articles::receive_html,
+            commands::articles::load_article,
+            commands::articles::save_article,
+            commands::articles::find_article,
+            commands::articles::read_article,
+            commands::articles::create_article,
+            commands::entries::mark_entry_read,
+            commands::entries::mark_entry_unread,
+            commands::entries::list_all_articles,
+            commands::library::get_library,
+            commands::library::set_library,
+            commands::settings::get_theme,
+            commands::settings::set_theme,
+            commands::feeds::list_feeds,
+            commands::feeds::add_feed,
+            commands::feeds::refresh_feed,
+            commands::feeds::rename_feed,
+            commands::feeds::remove_feed,
+            commands::feeds::list_entries,
+            commands::bookmarks::add_bookmark,
+            commands::bookmarks::remove_bookmark,
+            commands::bookmarks::list_bookmarks,
+            commands::topics::create_topic,
+            commands::topics::save_topic,
+            commands::topics::list_topics,
+            commands::topics::read_topic,
+            commands::topics::delete_topic,
+            commands::embeddings::query_by_item,
+            commands::embeddings::query_by_bookmarks,
+            commands::embeddings::query_by_topics,
+            commands::embeddings::reset_embeddings,
+        ])
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    install_signal_handler(Arc::clone(&embedding_service), app.handle().clone());
+
+    app.run(|app, event| match event {
+        tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::CloseRequested { api, .. },
+            ..
+        } if label == "main" => {
+            if let Some(svc) = take_service(app) {
+                api.prevent_close();
+                if let Some(w) = app.get_webview_window("main") {
+                    w.hide().ok();
+                }
+                tauri::async_runtime::spawn(async move {
+                    svc.shutdown().await;
+                    std::process::exit(0);
+                });
+            }
+        }
+        tauri::RunEvent::ExitRequested { api, .. } => {
+            if let Some(svc) = take_service(app) {
+                api.prevent_exit();
+                shutdown_with_overlay(app, svc);
+            }
+        }
+        _ => {}
+    });
+}
+
+fn take_service(app: &tauri::AppHandle) -> Option<EmbeddingService> {
+    app.state::<AppState>()
+        .embedding_service
+        .lock()
+        .unwrap()
+        .take()
+}
+
+fn shutdown_with_overlay(app: &tauri::AppHandle, svc: EmbeddingService) {
+    log::info!("shutdown: waiting for embedding service to drain");
+    app.emit("embedding:shutdown", ()).ok();
+    tauri::async_runtime::spawn(async move {
+        svc.shutdown().await;
+        std::process::exit(0);
+    });
+}
+
+/// Installs a SIGINT/SIGTERM handler that drains the embedding service before exit.
+fn install_signal_handler(
+    embedding_service: Arc<Mutex<Option<EmbeddingService>>>,
+    app_handle: tauri::AppHandle,
+) {
+    ctrlc::set_handler(move || {
+        let svc = embedding_service.lock().unwrap().take();
+        if let Some(svc) = svc {
+            log::info!("signal: waiting for embedding service to drain");
+            app_handle.emit("embedding:shutdown", ()).ok();
+            tauri::async_runtime::block_on(svc.shutdown());
+        }
+        std::process::exit(0);
+    })
+    .expect("failed to install signal handler");
+}

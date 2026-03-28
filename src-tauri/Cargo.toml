@@ -1,0 +1,28 @@
+[package]
+name = "xaga"
+version = "0.1.0"
+description = "Privacy-Focused Personal Knowledge Management"
+edition = "2024"
+
+[lib]
+name = "xaga_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+xaga-core        = { path = "../crates/xaga-core" }
+tauri            = { version = "2", features = [] }
+tauri-plugin-log = "2"
+serde            = { version = "1", features = ["derive"] }
+serde_json       = "1"
+log              = "0.4"
+tokio            = { version = "1", features = ["sync", "time"] }
+notify-debouncer-full = "0.3"
+flume            = "0.11"
+tauri-plugin-dialog = "2.6.0"
+tauri-plugin-opener = "2"
+tauri-plugin-window-state = "2"
+reqwest             = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+ctrlc               = { version = "3", features = ["termination"] }

@@ -1,0 +1,31 @@
+[package]
+name = "xaga-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+reqwest           = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+feed-rs           = "1"
+atom_syndication  = "0.12"
+sha2              = "0.10"
+hex               = "0.4"
+chrono            = { version = "0.4", features = ["serde"] }
+tokio             = { version = "1", features = ["rt", "fs"] }
+flume             = "0.11"
+dirs              = "5"
+serde             = { version = "1", features = ["derive"] }
+serde_json        = "1"
+serde_yaml        = "0.9"
+url               = "2"
+uuid              = { version = "1", features = ["v4"] }
+thiserror         = "2"
+log               = "0.4"
+scraper           = "0.22"
+futures           = "0.3"
+
+# Embeddings pipeline
+fastembed           = "=3.14.1"
+ort-sys             = { version = "=2.0.0-rc.4", default-features = false, features = ["download-binaries"] }
+lancedb             = "0.27"
+arrow-array         = "57"
+arrow-schema        = "57"

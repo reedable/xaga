@@ -1,0 +1,61 @@
+.Sidebar {
+  --width: 240px;
+
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  flex: 0;
+  height: 100vh;
+  justify-content: flex-start;
+  min-width: var(--width);
+  width: var(--width);
+
+  .Shortcut {
+    flex: 0;
+
+    .Icon {
+      font-size: 18;
+    }
+  }
+
+  .ExpanderHeader {
+    background-color: var(--background-color);
+    border: 0;
+    border-radius: 0;
+    border-top: var(--border);
+    color: var(--gray);
+    flex: 0;
+    justify-content: flex-start;
+    letter-spacing: 0.1em;
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    width: 100%;
+    z-index: 9;
+
+    .Label {
+      margin-left: 0.5rem;
+    }
+
+    .ChevronIcon {
+      transition: transform 200ms ease-in-out;
+    }
+
+    &[aria-pressed="true"] {
+      background-color: var(--background-color);
+
+      .ChevronIcon {
+        transform: rotate(90deg);
+        transition: transform 200ms ease-in-out;
+      }
+    }
+  }
+
+  .ExpanderContent {
+    flex: 0;
+
+    &.Expanded {
+      flex: 1;
+      overflow-y: auto;
+    }
+  }
+}

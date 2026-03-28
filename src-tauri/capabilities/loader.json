@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "loader",
+  "description": "Off-screen loader windows for fetching remote article content.",
+  "windows": ["loader-*"],
+  "permissions": [
+    "core:default"
+  ]
+}

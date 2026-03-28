@@ -1,0 +1,82 @@
+.ItemList {
+  --width: 320px;
+
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: 100%;
+  width: var(--width);
+
+  .Placeholder {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .Header {
+    padding: 0.75rem 1rem;
+
+    .FilterButtonGroup {
+      gap: 0.25rem;
+      margin: 0.25rem 0 0 0;
+
+      button {
+        border: var(--border);
+        border-radius: 1.5em;
+        font-size: 0.8125rem;
+        line-height: 1.5;
+        padding: 2px 8px;
+        text-transform: none;
+      }
+    }
+  }
+
+  .List {
+    flex: 1;
+
+    .ListItem {
+      border-bottom: var(--border);
+
+      .ListItemButton {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 0.75rem 1rem;
+
+        .Primary {
+          -webkit-box-orient: vertical;
+          -webkit-line-clamp: 2;
+          display: -webkit-box;
+          flex: 1;
+          font-size: 0.875rem;
+          line-clamp: 2;
+          line-height: 1.625;
+          overflow: hidden;
+        }
+
+        .Secondary {
+          align-items: center;
+          display: flex;
+          flex-direction: row;
+          font-size: 0.825rem;
+          gap: 0.25rem;
+          margin-top: 0.5rem;
+
+          svg {
+            font-size: 0.875em;
+
+            &.UnreadIcon {
+              font-size: 0.75em;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  .Toolbar {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0.5rem;
+  }
+}
