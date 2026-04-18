@@ -1,10 +1,21 @@
-import { Add, Bookmark, Circle, Settings, Star } from "@mui/icons-material";
+import {
+  Add,
+  Bookmark,
+  Circle,
+  Feed as FeedIcon,
+  Settings,
+  Star,
+} from "@mui/icons-material";
 import { IconButton } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import { useTopics } from "../../hooks/useTopics";
-import { BOOKMARKED_ITEMS, RECOMMENDED_ITEMS, UNREAD_ITEMS } from "../../Items";
+import {
+  BOOKMARKED_ITEMS,
+  RECOMMENDED_ITEMS,
+  UNREAD_ITEMS,
+} from "../../Shortcuts";
 import { usePlatform } from "../../platform/Platform";
 import { isShortcut, type Feed, type Item, type Topic } from "../../types";
 import cx from "../../utils/cx";
@@ -230,6 +241,7 @@ export function Sidebar({
       >
         {topics.map((item) => (
           <ExpanderItem
+            icon={FeedIcon}
             item={item}
             loading={!!loadingSet?.size}
             selected={selectedList?.id === item.id}

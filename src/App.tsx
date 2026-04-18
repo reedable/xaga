@@ -4,7 +4,7 @@ import { ItemView } from "./components/content/ItemView";
 import { ItemList } from "./components/list/ItemList";
 import { Settings } from "./components/settings/Settings";
 import { Sidebar } from "./components/sidebar/Sidebar";
-import { ALL_ITEMS } from "./Items";
+import { ALL_ITEMS } from "./Shortcuts";
 import { usePlatform } from "./platform/Platform";
 import { BookmarksProvider } from "./providers/BookmarksProvider";
 import FeedsProvider from "./providers/FeedsProvider";

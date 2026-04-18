@@ -17,7 +17,7 @@ import { useBookmarks } from "../../hooks/useBookmarks";
 import useEntries from "../../hooks/useEntries";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRelatedItems from "../../hooks/useRelatedItems";
-import { ALL_ITEMS, RECOMMENDED_ITEMS } from "../../Items";
+import { ALL_ITEMS, RECOMMENDED_ITEMS } from "../../Shortcuts";
 import {
   isEntry,
   isFeed,
@@ -147,8 +147,7 @@ export function ItemList({
     });
 
     await Promise.all(promises);
-    await refreshList(selectedList);
-  }, [items, markEntryRead, refreshList, selectedList]);
+  }, [items, markEntryRead]);
 
   useEffect(() => {
     (async () => setFilter(selectedFilter ?? "all"))();
