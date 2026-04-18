@@ -207,3 +207,43 @@ pub async fn remove_bookmark(data_dir: &Path, id: &str) -> Result<Option<String>
 pub async fn list_bookmarks(data_dir: &Path) -> Result<Vec<Entry>, BookmarksError> {
     read_all(data_dir).await
 }
+
+/// Parses `html` as a Netscape bookmark file and merges every entry into the
+/// library.  Returns `(added, failed)` counts.
+///
+/// Duplicate URLs within the imported file are skipped after the first
+/// occurrence.  Entries already in the library are upserted (updated in-place).
+pub async fn import_bookmarks(
+    data_dir: &Path,
+    html: &str,
+) -> Result<(Vec<Entry>, Vec<String>, Vec<String>), BookmarksError> {
+    let entries = parse(html);
+    // `parse` already normalizes URLs, so `entry.url` is the canonical form.
+    let mut seen = std::collections::HashSet::new();
+    let mut added: Vec<Entry> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
+    for entry in entries {
+        if !seen.insert(entry.url.clone()) {
+            skipped.push(entry.url);
+            continue;
+        }
+        match add_bookmark(data_dir, &entry).await {
+            Ok(stored) => added.push(stored),
+            Err(_) => failed.push(entry.url),
+        }
+    }
+    Ok((added, skipped, failed))
+}
+
+/// Copies the library's `bookmarks.html` to `dest_path`.  If no bookmarks
+/// file exists yet, writes an empty Netscape bookmark document instead.
+pub async fn export_bookmarks(data_dir: &Path, dest_path: &Path) -> Result<(), BookmarksError> {
+    let src = bookmarks_path(data_dir);
+    if tokio::fs::try_exists(&src).await? {
+        tokio::fs::copy(&src, dest_path).await?;
+    } else {
+        tokio::fs::write(dest_path, render(&[]).as_bytes()).await?;
+    }
+    Ok(())
+}

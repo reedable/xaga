@@ -56,6 +56,37 @@ export function BookmarksProvider({ children }: { children: ReactNode }) {
     [bookmarkMap, error, loading],
   );
 
+  const handleImportBookmarks = useCallback(async () => {
+    const signal = abortControllerRef.current.signal;
+    try {
+      const result = await platform.importBookmarks(signal);
+      if (result !== null && result !== undefined) {
+        await listBookmarks();
+      }
+    } catch (e) {
+      setError(e);
+    }
+  }, [abortControllerRef, platform, listBookmarks, setError]);
+
+  const handleExportBookmarks = useCallback(async () => {
+    const signal = abortControllerRef.current.signal;
+    try {
+      await platform.exportBookmarks(signal);
+    } catch (e) {
+      setError(e);
+    }
+  }, [abortControllerRef, platform, setError]);
+
+  useEffect(() => {
+    const unlisten = platform.onImportBookmarks(handleImportBookmarks);
+    return () => { unlisten.then((fn) => fn()); };
+  }, [platform, handleImportBookmarks]);
+
+  useEffect(() => {
+    const unlisten = platform.onExportBookmarks(handleExportBookmarks);
+    return () => { unlisten.then((fn) => fn()); };
+  }, [platform, handleExportBookmarks]);
+
   useEffect(() => {
     abort();
 

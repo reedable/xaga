@@ -1,10 +1,9 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 
-use tauri::{AppHandle, Manager, State};
-use xaga_core::embeddings::EmbeddingService;
+use tauri::{AppHandle, Emitter, Manager, State};
+use xaga_core::embeddings::ShutdownReason;
 
-use crate::{AppState, file_watchers, load_settings, save_settings};
+use crate::{AppState, load_settings, restart_process, save_settings};
 use super::require_main_window;
 
 #[tauri::command]
@@ -34,24 +33,21 @@ pub async fn set_library(
     settings.library = Some(new_path.to_string_lossy().to_string());
     save_settings(&settings_path, &settings).map_err(|e| e.to_string())?;
 
-    *state.library.write().unwrap() = new_path.clone();
-
-    // Start a new EmbeddingService. Replacing the stored instance drops the old
-    // one, closing its channels → loop exits.
-    let library = new_path.clone();
-    let svc_store = Arc::clone(&state.embedding_service);
-
-    tauri::async_runtime::spawn(async move {
-        match EmbeddingService::start(library.clone()).await {
-            Ok(svc) => {
-                file_watchers::watch(library.clone(), svc.priority_sender(), svc.background_sender());
-                svc.trigger_recovery(library.clone());
-                *svc_store.lock().unwrap() = Some(svc);
+    // The new library path is now persisted.  Signal the embedding service to
+    // restart, wait for the run loop to finish its current in-flight LanceDB
+    // write and exit cleanly, then spawn a fresh process which boots against
+    // the updated settings.json.  We do not update state.library here — the
+    // new process will read it from disk on startup.
+    if let Some(svc) = state.embedding_service.lock().unwrap().take() {
+        svc.request_restart();
+        app.emit("embedding:shutdown", ()).ok();
+        tauri::async_runtime::spawn(async move {
+            match svc.shutdown().await {
+                ShutdownReason::Restart => restart_process(),
+                ShutdownReason::Exit => std::process::exit(0),
             }
-
-            Err(e) => log::error!("set_library: embedding service failed: {e}"),
-        }
-    });
+        });
+    }
 
     Ok(new_path.to_string_lossy().to_string())
 }

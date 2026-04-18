@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager, Runtime};
-use xaga_core::embeddings::EmbeddingService;
+use xaga_core::embeddings::{EmbeddingService, ShutdownReason};
 
 pub(crate) const DEFAULT_LOADER_TIMEOUT_SECS: u64 = 10;
 
@@ -150,6 +150,21 @@ pub fn run() {
                         true,
                         None::<&str>,
                     )?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &MenuItem::with_id(
+                        app,
+                        "import_bookmarks",
+                        "Import Bookmarks\u{2026}",
+                        true,
+                        None::<&str>,
+                    )?,
+                    &MenuItem::with_id(
+                        app,
+                        "export_bookmarks",
+                        "Export Bookmarks\u{2026}",
+                        true,
+                        None::<&str>,
+                    )?,
                 ],
             )?;
             let edit_menu = Submenu::with_items(
@@ -232,6 +247,12 @@ pub fn run() {
             }
             "export_feeds" => {
                 app.emit("menu:export-feeds", ()).ok();
+            }
+            "import_bookmarks" => {
+                app.emit("menu:import-bookmarks", ()).ok();
+            }
+            "export_bookmarks" => {
+                app.emit("menu:export-bookmarks", ()).ok();
             }
             "open_settings" => {
                 app.emit("menu:open-settings", ()).ok();
@@ -341,6 +362,8 @@ pub fn run() {
             commands::bookmarks::add_bookmark,
             commands::bookmarks::remove_bookmark,
             commands::bookmarks::list_bookmarks,
+            commands::bookmarks::import_bookmarks,
+            commands::bookmarks::export_bookmarks,
             commands::topics::create_topic,
             commands::topics::save_topic,
             commands::topics::list_topics,
@@ -368,8 +391,10 @@ pub fn run() {
                     w.hide().ok();
                 }
                 tauri::async_runtime::spawn(async move {
-                    svc.shutdown().await;
-                    std::process::exit(0);
+                    match svc.shutdown().await {
+                        ShutdownReason::Restart => restart_process(),
+                        ShutdownReason::Exit => std::process::exit(0),
+                    }
                 });
             }
         }
@@ -381,6 +406,21 @@ pub fn run() {
         }
         _ => {}
     });
+}
+
+
+/// Spawns a fresh copy of the current executable then exits the current
+/// process.  The new process boots against the already-updated settings.json.
+///
+/// NOTE: this does not work under `tauri dev` because the Vite dev server is
+/// managed by the tauri-cli watcher and dies with the binary.  Dev-mode restart
+/// will be handled separately; for now callers fall through to a clean exit in
+/// that environment.
+pub(crate) fn restart_process() {
+    if let Ok(exe) = std::env::current_exe() {
+        let _ = std::process::Command::new(exe).spawn();
+    }
+    std::process::exit(0);
 }
 
 fn take_service(app: &tauri::AppHandle) -> Option<EmbeddingService> {
@@ -395,8 +435,10 @@ fn shutdown_with_overlay(app: &tauri::AppHandle, svc: EmbeddingService) {
     log::info!("shutdown: waiting for embedding service to drain");
     app.emit("embedding:shutdown", ()).ok();
     tauri::async_runtime::spawn(async move {
-        svc.shutdown().await;
-        std::process::exit(0);
+        match svc.shutdown().await {
+            ShutdownReason::Restart => restart_process(),
+            ShutdownReason::Exit => std::process::exit(0),
+        }
     });
 }
 
@@ -411,6 +453,7 @@ fn install_signal_handler(
             log::info!("signal: waiting for embedding service to drain");
             app_handle.emit("embedding:shutdown", ()).ok();
             tauri::async_runtime::block_on(svc.shutdown());
+            // Signals always exit — restart flag is intentionally ignored.
         }
         std::process::exit(0);
     })

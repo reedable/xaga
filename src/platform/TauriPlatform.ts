@@ -9,8 +9,8 @@ import type {
   Embedded,
   Entry,
   Feed,
-  FeedImportResult,
   Filter,
+  ImportResult,
   Item,
   Topic,
 } from "../types";
@@ -204,7 +204,7 @@ export class TauriPlatform implements Platform {
     return await invoker("remove_feed", { url: feedUrl });
   }
 
-  async importFeeds(signal: AbortSignal): Promise<FeedImportResult | null> {
+  async importFeeds(signal: AbortSignal): Promise<ImportResult<Feed> | null> {
     const filePath = await open({
       filters: [{ name: "OPML", extensions: ["opml", "xml"] }],
     }) as string | null;
@@ -214,7 +214,7 @@ export class TauriPlatform implements Platform {
       .with(abortable, { signal })
       .with(logged, { logger, name: "import_feeds" });
 
-    return invoker<FeedImportResult>("import_feeds", { filePath });
+    return invoker<ImportResult<Feed>>("import_feeds", { filePath });
   }
 
   async exportFeeds(signal: AbortSignal): Promise<void> {
@@ -440,6 +440,33 @@ export class TauriPlatform implements Platform {
     return invoker("remove_bookmark", { id: entry.id });
   }
 
+  async importBookmarks(signal: AbortSignal): Promise<ImportResult<Entry> | null> {
+    const filePath = await open({
+      filters: [{ name: "Bookmarks", extensions: ["html", "htm"] }],
+    }) as string | null;
+    if (!filePath) return null;
+
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "import_bookmarks" });
+
+    return invoker<ImportResult<Entry>>("import_bookmarks", { filePath });
+  }
+
+  async exportBookmarks(signal: AbortSignal): Promise<void> {
+    const filePath = await save({
+      filters: [{ name: "Bookmarks", extensions: ["html"] }],
+      defaultPath: "bookmarks.html",
+    }) as string | null;
+    if (!filePath) return;
+
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "export_bookmarks" });
+
+    await invoker("export_bookmarks", { filePath });
+  }
+
   async listBookmarks(signal: AbortSignal): Promise<Entry[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -551,6 +578,14 @@ export class TauriPlatform implements Platform {
 
   onExportFeeds(callback: () => void): Promise<UnlistenFn> {
     return listen("menu:export-feeds", callback);
+  }
+
+  onImportBookmarks(callback: () => void): Promise<UnlistenFn> {
+    return listen("menu:import-bookmarks", callback);
+  }
+
+  onExportBookmarks(callback: () => void): Promise<UnlistenFn> {
+    return listen("menu:export-bookmarks", callback);
   }
 
   async getTheme(): Promise<string> {

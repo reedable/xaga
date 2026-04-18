@@ -1,5 +1,13 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+
+/// Indicates whether the app should restart or exit after the service drains.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShutdownReason {
+    Exit,
+    Restart,
+}
 
 use super::model::{Embedder, load_default_embedder};
 use super::pipeline::embed_file;
@@ -41,6 +49,7 @@ pub struct EmbeddingService {
     background_tx: flume::Sender<BackgroundMsg>,
     service_tx: flume::Sender<ServiceMsg>,
     done_rx: flume::Receiver<()>,
+    restart_requested: Arc<AtomicBool>,
 }
 
 impl EmbeddingService {
@@ -59,6 +68,7 @@ impl EmbeddingService {
         let loop_priority_tx = priority_tx.clone();
         let loop_background_tx = background_tx.clone();
 
+        let restart_requested = Arc::new(AtomicBool::new(false));
         let (done_tx, done_rx) = flume::bounded::<()>(1);
 
         std::thread::Builder::new()
@@ -96,6 +106,7 @@ impl EmbeddingService {
             background_tx,
             service_tx,
             done_rx,
+            restart_requested,
         })
     }
 
@@ -119,11 +130,23 @@ impl EmbeddingService {
         let _ = self.service_tx.send(ServiceMsg::ResetDatabase { data_dir });
     }
 
-    /// Signals the run loop to stop after finishing the current in-flight write,
-    /// then waits for it to exit.  Call this on shutdown instead of sleeping.
-    pub async fn shutdown(self) {
+    /// Marks the service as needing a restart after shutdown.  Must be called
+    /// before `shutdown()` for `ShutdownReason::Restart` to be returned.
+    pub fn request_restart(&self) {
+        self.restart_requested.store(true, Ordering::SeqCst);
+    }
+
+    /// Sends `Shutdown` through the service channel, waits for the run loop to
+    /// finish the current in-flight LanceDB write and exit, then returns the
+    /// reason so the caller can restart or exit cleanly.
+    pub async fn shutdown(self) -> ShutdownReason {
         let _ = self.service_tx.send(ServiceMsg::Shutdown);
         let _ = self.done_rx.recv_async().await;
+        if self.restart_requested.load(Ordering::SeqCst) {
+            ShutdownReason::Restart
+        } else {
+            ShutdownReason::Exit
+        }
     }
 }
 

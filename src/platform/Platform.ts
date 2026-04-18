@@ -5,8 +5,8 @@ import type {
   Embedded,
   Entry,
   Feed,
-  FeedImportResult,
   Filter,
+  ImportResult,
   Item,
   Topic,
 } from "../types";
@@ -29,7 +29,7 @@ export interface Platform {
   // Feeds
   listFeeds(signal: AbortSignal): Promise<Feed[]>;
   addFeed(signal: AbortSignal, feedUrl: string): Promise<Feed>;
-  importFeeds(signal: AbortSignal): Promise<FeedImportResult | null>;
+  importFeeds(signal: AbortSignal): Promise<ImportResult<Feed> | null>;
   exportFeeds(signal: AbortSignal): Promise<void>;
   refreshFeed(signal: AbortSignal, feedId: string): Promise<Feed>;
   renameFeed(signal: AbortSignal, feedId: string, title: string): Promise<Feed>;
@@ -70,6 +70,8 @@ export interface Platform {
   addBookmark(signal: AbortSignal, entry: Entry): Promise<Entry>;
   removeBookmark(signal: AbortSignal, entry: Entry): Promise<string>;
   listBookmarks(signal: AbortSignal): Promise<Entry[]>;
+  importBookmarks(signal: AbortSignal): Promise<ImportResult<Entry> | null>;
+  exportBookmarks(signal: AbortSignal): Promise<void>;
 
   // Embedding queries
   queryByItem(
@@ -106,6 +108,8 @@ export interface Platform {
   onOpenSettings(callback: () => void): Promise<UnlistenFn>;
   onImportFeeds(callback: () => void): Promise<UnlistenFn>;
   onExportFeeds(callback: () => void): Promise<UnlistenFn>;
+  onImportBookmarks(callback: () => void): Promise<UnlistenFn>;
+  onExportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;
   onShowArticleSummary(callback: (show: boolean) => void): Promise<UnlistenFn>;
   onShutdown(callback: () => void): Promise<UnlistenFn>;

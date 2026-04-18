@@ -114,9 +114,9 @@ export function isFeed(item?: Item | null): item is Feed {
 
 // ── Import ───────────────────────────────────────────────────────────────────
 
-/** Result returned by the backend after importing an OPML file. */
-export type FeedImportResult = {
-  added: number;
-  skipped: number;
-  failed: number;
+/** Result returned by the backend after any bulk import operation. */
+export type ImportResult<T> = {
+  added: T[];
+  skipped: string[];
+  failed: string[];
 };

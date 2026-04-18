@@ -1,3 +1,4 @@
+use serde::Serialize;
 use tauri::State;
 use xaga_core::bookmarks;
 use xaga_core::filter;
@@ -5,6 +6,13 @@ use xaga_core::types::Entry;
 
 use crate::AppState;
 use super::require_main_window;
+
+#[derive(Serialize)]
+pub struct BookmarkImportResult {
+    pub added: Vec<Entry>,
+    pub skipped: Vec<String>,
+    pub failed: Vec<String>,
+}
 
 #[tauri::command]
 pub async fn add_bookmark(
@@ -53,4 +61,35 @@ pub async fn list_bookmarks(state: State<'_, AppState>) -> Result<Vec<Entry>, St
         .map_err(|e| e.to_string())?;
     filter::annotate_unread_status(&data_dir, &mut entries).await;
     Ok(entries)
+}
+
+#[tauri::command]
+pub async fn import_bookmarks(
+    window: tauri::Window,
+    file_path: String,
+    state: State<'_, AppState>,
+) -> Result<BookmarkImportResult, String> {
+    require_main_window(&window)?;
+    let data_dir = state.library.read().unwrap().clone();
+    let html = tokio::fs::read_to_string(&file_path)
+        .await
+        .map_err(|e| e.to_string())?;
+    let (added, skipped, failed) = bookmarks::import_bookmarks(&data_dir, &html)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(BookmarkImportResult { added, skipped, failed })
+
+}
+
+#[tauri::command]
+pub async fn export_bookmarks(
+    window: tauri::Window,
+    file_path: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    require_main_window(&window)?;
+    let data_dir = state.library.read().unwrap().clone();
+    bookmarks::export_bookmarks(&data_dir, std::path::Path::new(&file_path))
+        .await
+        .map_err(|e| e.to_string())
 }

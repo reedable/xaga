@@ -11,9 +11,9 @@ use super::{parse_item_filter, require_main_window};
 
 #[derive(Serialize)]
 pub struct ImportResult {
-    pub added: usize,
-    pub skipped: usize,
-    pub failed: usize,
+    pub added: Vec<feeds::Feed>,
+    pub skipped: Vec<String>,
+    pub failed: Vec<String>,
 }
 
 #[tauri::command]
@@ -77,30 +77,30 @@ pub async fn import_feeds(
     let raw_urls = xaga_core::opml::parse_opml(&xml).map_err(|e| e.to_string())?;
 
     let mut seen: HashSet<String> = HashSet::new();
-    let mut added = 0usize;
-    let mut skipped = 0usize;
-    let mut failed = 0usize;
+    let mut added: Vec<feeds::Feed> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
 
     for raw in raw_urls {
         let normalized = match xaga_core::util::normalize_url(&raw) {
             Ok(u) => u,
             Err(e) => {
                 log::warn!("import_feeds: invalid URL {raw:?}: {e}");
-                failed += 1;
+                failed.push(raw);
                 continue;
             }
         };
 
         if !seen.insert(normalized.clone()) {
-            skipped += 1;
+            skipped.push(normalized);
             continue;
         }
 
         match feeds::add_feed(&state.http_client, &dir, &library, &normalized).await {
-            Ok(_) => added += 1,
+            Ok(feed) => added.push(feed),
             Err(e) => {
                 log::warn!("import_feeds: failed to add {normalized:?}: {e}");
-                failed += 1;
+                failed.push(normalized);
             }
         }
     }
