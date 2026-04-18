@@ -1,15 +1,24 @@
-import { Bookmark, Circle } from "@mui/icons-material";
+import { Bookmark, Circle, Clear } from "@mui/icons-material";
 import {
   Button,
   Collapse,
+  IconButton,
+  InputAdornment,
   LinearProgress,
   ListItemButton,
   ListItemText,
+  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useState, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent,
+} from "react";
 import { Virtuoso } from "react-virtuoso";
 import { RELATED_THRESHOLD, TOPIC_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
@@ -28,9 +37,15 @@ import {
   type Filter,
   type Item,
 } from "../../types";
+
 import cx from "../../utils/cx";
 import formatByline from "../../utils/formatByline";
 import css from "./_.module.css";
+
+function getEmptyMessage(filter: Filter, filterText: string): string {
+  const label = filter === "all" ? "items" : `${filter} items`;
+  return filterText ? `No ${label} match "${filterText}"` : `No ${label}`;
+}
 
 interface ItemListProps {
   className?: string;
@@ -70,7 +85,27 @@ export function ItemList({
 
   const [items, setItems] = useState<Item[]>([]);
   const [filter, setFilter] = useState<Filter>(selectedFilter ?? "all");
+  const [filterText, setFilterText] = useState("");
+  const [prevSelectedList, setPrevSelectedList] = useState(selectedList);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+
+  if (prevSelectedList !== selectedList) {
+    setPrevSelectedList(selectedList);
+    setFilterText("");
+  }
+
+  const displayedItems = useMemo(() => {
+    if (!filterText) return items;
+    const lower = filterText.toLowerCase();
+    return items.filter((item) => {
+      if (item.title.toLowerCase().includes(lower)) return true;
+      if (isEntry(item)) {
+        if (item.url.toLowerCase().includes(lower)) return true;
+        if (item.summary?.toLowerCase().includes(lower)) return true;
+      }
+      return false;
+    });
+  }, [items, filterText]);
 
   const requestItems = useCallback(
     async (selectedList: Item) => {
@@ -110,6 +145,7 @@ export function ItemList({
 
       if (isEntry(item)) {
         onSelectArticle(item);
+        // FIXME This sometimes fails with "file not found"
         const e = await markEntryRead(item);
         if (e) setItems((prev) => prev.map((p) => (p.id === e.id ? e : p)));
       }
@@ -188,6 +224,31 @@ export function ItemList({
             Upcoming
           </ToggleButton>
         </ToggleButtonGroup>
+
+        <TextField
+          className={css.FilterInput}
+          size="small"
+          fullWidth
+          placeholder="Filter…"
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
+          slotProps={{
+            input: {
+              endAdornment: filterText ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    aria-label="Clear filter"
+                    onClick={() => setFilterText("")}
+                    edge="end"
+                  >
+                    <Clear fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
+            },
+          }}
+        />
       </div>
 
       <div>
@@ -199,15 +260,23 @@ export function ItemList({
       {!loadingEntries && !loadingRelatedItems && items.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography variant="body2" color="text.disabled">
-            No entries
+            {getEmptyMessage(filter, "")}
           </Typography>
         </div>
       )}
 
-      {items.length > 0 && (
+      {items.length > 0 && displayedItems.length === 0 && (
+        <div className={cx(css.List, css.Placeholder)}>
+          <Typography variant="body2" color="text.disabled">
+            {getEmptyMessage(filter, filterText)}
+          </Typography>
+        </div>
+      )}
+
+      {displayedItems.length > 0 && (
         <Virtuoso
           className={css.List}
-          data={items}
+          data={displayedItems}
           itemContent={(_index, item) => (
             <div key={item.id} className={css.ListItem}>
               <ListItemButton
