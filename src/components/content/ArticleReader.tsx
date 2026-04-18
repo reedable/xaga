@@ -9,14 +9,14 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useArticles } from "../../hooks/useArticles";
 import { useBookmarks } from "../../hooks/useBookmarks";
 import useEntries from "../../hooks/useEntries";
 import { useView } from "../../hooks/useView";
 import { usePlatform } from "../../platform/Platform";
-import { buildEntryHtml } from "../../text/buildEntryHtml";
+import { buildEntryHtml, type ReaderStyle } from "../../text/buildEntryHtml";
 import { markdownToHtml } from "../../text/markdownPipeline";
 import { type Entry, type Item } from "../../types";
 import cx from "../../utils/cx";
@@ -41,10 +41,21 @@ export default function ArticleReader({
   setLoading,
 }: ArticleReaderProps) {
   const platform = usePlatform();
-  const { view, themeMode } = useView();
+  const { view, themeMode, readerFontFamily, readerFontSize, readerLineHeight } =
+    useView();
   const [abort, abortControllerRef] = useAbortController();
-  const [html, setHtml] = useState<string | null>(null);
+  const [bodyHtml, setBodyHtml] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+
+  const readerStyle: ReaderStyle = useMemo(
+    () => ({ themeMode, fontFamily: readerFontFamily, fontSize: readerFontSize, lineHeight: readerLineHeight }),
+    [themeMode, readerFontFamily, readerFontSize, readerLineHeight],
+  );
+
+  const html = useMemo(
+    () => (bodyHtml ? buildEntryHtml(bodyHtml, readerStyle) : null),
+    [bodyHtml, readerStyle],
+  );
 
   const { bookmarkMap, addBookmark, removeBookmark } =
     useBookmarks(abortControllerRef);
@@ -61,7 +72,7 @@ export default function ArticleReader({
 
   const requestArticle = useCallback(
     async (entry: Entry) => {
-      setHtml(null);
+      setBodyHtml(null);
 
       if (view === "full") {
         // readArticle saves the item, hence marking it read.
@@ -70,7 +81,7 @@ export default function ArticleReader({
 
         if (markdown) {
           const body = await markdownToHtml(markdown);
-          if (body) setHtml(buildEntryHtml(body, themeMode));
+          if (body) setBodyHtml(body);
         }
       } else {
         const item = await markEntryRead(entry);
@@ -78,25 +89,25 @@ export default function ArticleReader({
 
         if (entry.summary) {
           const body = await markdownToHtml(entry.summary);
-          if (body) setHtml(buildEntryHtml(body, themeMode));
+          if (body) setBodyHtml(body);
         }
       }
     },
-    [view, readArticle, themeMode, markEntryRead, onChangeEntry],
+    [view, readArticle, markEntryRead, onChangeEntry],
   );
 
   const reloadArticle = useCallback(
     async (entry: Entry) => {
-      setHtml(null);
+      setBodyHtml(null);
 
       const article = await loadArticle(entry);
 
       if (article?.content) {
         const body = await markdownToHtml(article.content);
-        if (body) setHtml(buildEntryHtml(body, themeMode));
+        if (body) setBodyHtml(body);
       }
     },
-    [themeMode, loadArticle],
+    [loadArticle],
   );
 
   const handleOpen = useCallback(() => {
@@ -113,7 +124,7 @@ export default function ArticleReader({
 
   const handleLoadArticleByUrl = useCallback(
     async (url: string) => {
-      setHtml(null);
+      setBodyHtml(null);
 
       let article = await findArticleByUrl(url);
 
@@ -123,12 +134,12 @@ export default function ArticleReader({
 
       if (article?.content) {
         const body = await markdownToHtml(article.content);
-        if (body) setHtml(buildEntryHtml(body, themeMode));
+        if (body) setBodyHtml(body);
       }
 
       if (article) onSelectEntry(article);
     },
-    [findArticleByUrl, loadArticleByUrl, onSelectEntry, themeMode],
+    [findArticleByUrl, loadArticleByUrl, onSelectEntry],
   );
 
   const handleMarkRead = useCallback(async () => {

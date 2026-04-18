@@ -1,7 +1,25 @@
 .Settings {
-  align-items: center;
   display: flex;
   height: 100%;
+  width: 100%;
+}
+
+.Sidebar {
+  border-right: var(--border);
+  flex-shrink: 0;
+  overflow-y: auto;
+  width: 180px;
+}
+
+.Layout {
+  display: flex;
   justify-content: center;
   width: 100%;
+
+  .Content {
+    flex: 1;
+    max-width: 800px;
+    overflow-y: auto;
+    padding: 2rem;
+  }
 }

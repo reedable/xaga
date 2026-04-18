@@ -84,7 +84,7 @@ export function ItemList({
   const { bookmarkMap } = useBookmarks(abortControllerRef);
 
   const [items, setItems] = useState<Item[]>([]);
-  const [filter, setFilter] = useState<Filter>(selectedFilter ?? "all");
+  const [filter, setFilter] = useState<Filter>(selectedFilter ?? "unread");
   const [filterText, setFilterText] = useState("");
   const [prevSelectedList, setPrevSelectedList] = useState(selectedList);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);

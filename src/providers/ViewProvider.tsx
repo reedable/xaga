@@ -9,7 +9,13 @@ import {
 import { usePlatform } from "../platform/Platform";
 import { darkTheme, lightTheme } from "../theme";
 import type { View } from "../types";
-import ViewContext, { type ThemeMode, type ThemeSetting } from "./ViewContext";
+import ViewContext, {
+  type FontFamily,
+  type ThemeMode,
+  type ThemeSetting,
+  READER_FONT_SIZE_DEFAULT,
+  READER_LINE_HEIGHT_DEFAULT,
+} from "./ViewContext";
 
 function systemPrefersDark(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -20,6 +26,14 @@ export function ViewProvider({ children }: { children: ReactNode }) {
   const [view, setView] = useState<View>("full");
   const [themeSetting, setThemeSetting] = useState<ThemeSetting>("auto");
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
+  const [readerFontFamily, setReaderFontFamilyState] =
+    useState<FontFamily>("system");
+  const [readerFontSize, setReaderFontSizeState] = useState(
+    READER_FONT_SIZE_DEFAULT,
+  );
+  const [readerLineHeight, setReaderLineHeightState] = useState(
+    READER_LINE_HEIGHT_DEFAULT,
+  );
 
   const effectiveThemeMode: ThemeMode =
     themeSetting === "auto" ? (systemDark ? "dark" : "light") : themeSetting;
@@ -34,11 +48,47 @@ export function ViewProvider({ children }: { children: ReactNode }) {
     [platform],
   );
 
+  const setReaderFontFamily = useCallback(
+    (value: FontFamily) => {
+      platform.setReaderFontFamily(value).catch(console.error);
+      setReaderFontFamilyState(value);
+    },
+    [platform],
+  );
+
+  const setReaderFontSize = useCallback(
+    (value: number) => {
+      platform.setReaderFontSize(value).catch(console.error);
+      setReaderFontSizeState(value);
+    },
+    [platform],
+  );
+
+  const setReaderLineHeight = useCallback(
+    (value: number) => {
+      platform.setReaderLineHeight(value).catch(console.error);
+      setReaderLineHeightState(value);
+    },
+    [platform],
+  );
+
   // Load persisted theme on startup.
   useEffect(() => {
     platform
       .getTheme()
       .then((t) => setThemeSetting(t as ThemeSetting))
+      .catch(console.error);
+  }, [platform]);
+
+  // Load persisted reader prefs on startup.
+  useEffect(() => {
+    platform
+      .getReaderPrefs()
+      .then(({ fontFamily, fontSize, lineHeight }) => {
+        setReaderFontFamilyState(fontFamily as FontFamily);
+        setReaderFontSizeState(fontSize);
+        setReaderLineHeightState(lineHeight);
+      })
       .catch(console.error);
   }, [platform]);
 
@@ -76,8 +126,25 @@ export function ViewProvider({ children }: { children: ReactNode }) {
       themeSetting,
       changeThemeSetting,
       themeMode: effectiveThemeMode,
+      readerFontFamily,
+      setReaderFontFamily,
+      readerFontSize,
+      setReaderFontSize,
+      readerLineHeight,
+      setReaderLineHeight,
     }),
-    [view, themeSetting, changeThemeSetting, effectiveThemeMode],
+    [
+      view,
+      themeSetting,
+      changeThemeSetting,
+      effectiveThemeMode,
+      readerFontFamily,
+      setReaderFontFamily,
+      readerFontSize,
+      setReaderFontSize,
+      readerLineHeight,
+      setReaderLineHeight,
+    ],
   );
 
   return (

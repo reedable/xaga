@@ -596,6 +596,30 @@ export class TauriPlatform implements Platform {
     return invoke<void>("set_theme", { theme });
   }
 
+  async getRefreshOnStartup(): Promise<boolean> {
+    return invoke<boolean>("get_refresh_on_startup");
+  }
+
+  async setRefreshOnStartup(value: boolean): Promise<void> {
+    return invoke<void>("set_refresh_on_startup", { value });
+  }
+
+  async getReaderPrefs(): Promise<{ fontFamily: string; fontSize: number; lineHeight: number }> {
+    return invoke<{ fontFamily: string; fontSize: number; lineHeight: number }>("get_reader_prefs");
+  }
+
+  async setReaderFontFamily(value: string): Promise<void> {
+    return invoke<void>("set_reader_font_family", { value });
+  }
+
+  async setReaderFontSize(value: number): Promise<void> {
+    return invoke<void>("set_reader_font_size", { value });
+  }
+
+  async setReaderLineHeight(value: number): Promise<void> {
+    return invoke<void>("set_reader_line_height", { value });
+  }
+
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn> {
     return listen<string>("menu:set-theme", (e) => callback(e.payload));
   }

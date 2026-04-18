@@ -103,6 +103,14 @@ export interface Platform {
   getTheme(): Promise<string>;
   setTheme(theme: string): Promise<void>;
 
+  // Settings
+  getRefreshOnStartup(): Promise<boolean>;
+  setRefreshOnStartup(value: boolean): Promise<void>;
+  getReaderPrefs(): Promise<{ fontFamily: string; fontSize: number; lineHeight: number }>;
+  setReaderFontFamily(value: string): Promise<void>;
+  setReaderFontSize(value: number): Promise<void>;
+  setReaderLineHeight(value: number): Promise<void>;
+
   // Events
   onOpenLibrary(callback: () => void): Promise<UnlistenFn>;
   onOpenSettings(callback: () => void): Promise<UnlistenFn>;

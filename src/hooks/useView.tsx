@@ -14,5 +14,11 @@ export function useView() {
     themeSetting: context.themeSetting,
     changeTheme: context.changeThemeSetting,
     themeMode: context.themeMode,
+    readerFontFamily: context.readerFontFamily,
+    setReaderFontFamily: context.setReaderFontFamily,
+    readerFontSize: context.readerFontSize,
+    setReaderFontSize: context.setReaderFontSize,
+    readerLineHeight: context.readerLineHeight,
+    setReaderLineHeight: context.setReaderLineHeight,
   };
 }
