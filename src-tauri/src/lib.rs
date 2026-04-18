@@ -10,9 +10,12 @@ use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuIte
 use tauri::{Emitter, Manager, Runtime};
 use xaga_core::embeddings::EmbeddingService;
 
+pub(crate) const DEFAULT_LOADER_TIMEOUT_SECS: u64 = 10;
+
 pub(crate) struct AppState {
     pub(crate) library: Arc<RwLock<PathBuf>>,
     pub(crate) theme: Arc<RwLock<String>>,
+    pub(crate) loader_timeout_secs: Arc<RwLock<u64>>,
     pub(crate) embedding_service: Arc<Mutex<Option<EmbeddingService>>>,
     pub(crate) http_client: reqwest::Client,
 }
@@ -27,6 +30,10 @@ pub(crate) fn feeds_dir(library: &Path) -> PathBuf {
 pub(crate) struct UserSettings {
     pub(crate) library: Option<String>,
     pub(crate) theme: Option<String>,
+    /// Maximum seconds to wait for a loader webview to deliver its HTML before
+    /// the webview is force-closed. Lower values shrink the window available to
+    /// malicious scripts. Defaults to 10 seconds if absent.
+    pub(crate) loader_timeout_secs: Option<u64>,
 }
 
 pub(crate) fn load_settings(path: &Path) -> UserSettings {
@@ -81,15 +88,18 @@ pub fn run() {
     // Pre-created Arcs shared between .manage() and the .setup() closure.
     let library: Arc<RwLock<PathBuf>> = Arc::new(RwLock::new(PathBuf::new()));
     let theme: Arc<RwLock<String>> = Arc::new(RwLock::new("auto".to_string()));
+    let loader_timeout_secs: Arc<RwLock<u64>> = Arc::new(RwLock::new(DEFAULT_LOADER_TIMEOUT_SECS));
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
     let setup_library = Arc::clone(&library);
     let setup_theme = Arc::clone(&theme);
+    let setup_loader_timeout = Arc::clone(&loader_timeout_secs);
     let setup_svc = Arc::clone(&embedding_service);
 
     let app = tauri::Builder::default()
         .manage(AppState {
             library,
             theme: theme.clone(),
+            loader_timeout_secs,
             embedding_service: embedding_service.clone(),
             http_client,
         })
@@ -252,8 +262,10 @@ pub fn run() {
                 .map(PathBuf::from)
                 .unwrap_or(default_library);
             let theme = settings.theme.unwrap_or_else(|| "auto".to_string());
+            let timeout = settings.loader_timeout_secs.unwrap_or(DEFAULT_LOADER_TIMEOUT_SECS);
             *setup_library.write().unwrap() = lib_path.clone();
             *setup_theme.write().unwrap() = theme.clone();
+            *setup_loader_timeout.write().unwrap() = timeout;
 
             // Correct the theme checkmarks now that we know the persisted value.
             update_theme_checkmarks(app.handle(), &theme);

@@ -2,14 +2,17 @@ use tauri::State;
 use xaga_core::topics::{self, Topic};
 
 use crate::AppState;
+use super::require_main_window;
 
 #[tauri::command]
 pub async fn save_topic(
+    window: tauri::Window,
     id: String,
     title: String,
     content: String,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
+    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     topics::save_topic(&data_dir, &id, &title, &content)
         .await
@@ -18,10 +21,12 @@ pub async fn save_topic(
 
 #[tauri::command]
 pub async fn create_topic(
+    window: tauri::Window,
     title: String,
     content: String,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
+    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     topics::create_topic(&data_dir, &title, &content)
         .await
@@ -45,7 +50,8 @@ pub async fn read_topic(id: String, state: State<'_, AppState>) -> Result<Topic,
 }
 
 #[tauri::command]
-pub async fn delete_topic(id: String, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn delete_topic(window: tauri::Window, id: String, state: State<'_, AppState>) -> Result<(), String> {
+    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     topics::delete_topic(&data_dir, &id)
         .await

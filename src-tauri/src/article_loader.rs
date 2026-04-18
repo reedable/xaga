@@ -12,6 +12,7 @@ pub async fn load_via_webview(
     app: &AppHandle,
     pending: &PendingRequests,
     url: &str,
+    timeout_secs: u64,
 ) -> Result<String, String> {
     let id = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed).to_string();
     let label = format!("loader-{}", id);
@@ -52,7 +53,7 @@ pub async fn load_via_webview(
         }
     });
 
-    let result = tokio::time::timeout(std::time::Duration::from_secs(20), rx).await;
+    let result = tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), rx).await;
 
     pending.lock().map_err(|e| e.to_string())?.remove(&id);
     if let Some(w) = app.get_webview_window(&label) {

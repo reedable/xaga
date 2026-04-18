@@ -3,9 +3,11 @@ use xaga_core::entries;
 use xaga_core::types::Entry;
 
 use crate::AppState;
+use super::require_main_window;
 
 #[tauri::command]
-pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
+pub async fn mark_entry_read(window: tauri::Window, id: String, state: State<'_, AppState>) -> Result<Entry, String> {
+    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     entries::mark_entry_read(&data_dir, &id)
         .await
@@ -13,7 +15,8 @@ pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<E
 }
 
 #[tauri::command]
-pub async fn mark_entry_unread(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
+pub async fn mark_entry_unread(window: tauri::Window, id: String, state: State<'_, AppState>) -> Result<Entry, String> {
+    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     entries::mark_entry_unread(&data_dir, &id)
         .await

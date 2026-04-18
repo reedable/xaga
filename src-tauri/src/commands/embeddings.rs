@@ -82,7 +82,8 @@ pub async fn query_by_topics(
 }
 
 #[tauri::command]
-pub async fn reset_embeddings(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn reset_embeddings(window: tauri::Window, state: State<'_, AppState>) -> Result<(), String> {
+    super::require_main_window(&window)?;
     let library = state.library.read().unwrap().clone();
     if let Some(svc) = state.embedding_service.lock().unwrap().as_ref() {
         svc.reset(library);

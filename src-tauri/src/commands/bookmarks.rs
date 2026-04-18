@@ -4,9 +4,11 @@ use xaga_core::filter;
 use xaga_core::types::Entry;
 
 use crate::AppState;
+use super::require_main_window;
 
 #[tauri::command]
 pub async fn add_bookmark(
+    window: tauri::Window,
     id: String,
     url: String,
     title: String,
@@ -16,6 +18,7 @@ pub async fn add_bookmark(
     summary: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Entry, String> {
+    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     let entry = Entry {
         id,
@@ -33,7 +36,8 @@ pub async fn add_bookmark(
 }
 
 #[tauri::command]
-pub async fn remove_bookmark(id: String, state: State<'_, AppState>) -> Result<String, String> {
+pub async fn remove_bookmark(window: tauri::Window, id: String, state: State<'_, AppState>) -> Result<String, String> {
+    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     bookmarks::remove_bookmark(&data_dir, &id)
         .await

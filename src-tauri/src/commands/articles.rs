@@ -2,31 +2,42 @@ use tauri::{AppHandle, State};
 use xaga_core::articles;
 
 use crate::{article_loader, AppState};
+use super::{require_loader_window, require_main_window};
 
 #[tauri::command]
 pub async fn receive_html(
+    window: tauri::Window,
     pending: State<'_, article_loader::PendingRequests>,
     id: String,
     html: String,
 ) -> Result<(), String> {
+    require_loader_window(&window)?;
     let mut map = pending.lock().map_err(|e| e.to_string())?;
     if let Some(tx) = map.remove(&id) {
         let _ = tx.send(html);
     }
+    // HTML has been handed off — terminate the webview immediately so
+    // untrusted scripts cannot continue running or spamming IPC.
+    let _ = window.close();
     Ok(())
 }
 
 #[tauri::command]
 pub async fn load_article(
+    window: tauri::Window,
     url: String,
     app: AppHandle,
     pending: State<'_, article_loader::PendingRequests>,
+    state: State<'_, AppState>,
 ) -> Result<String, String> {
-    article_loader::load_via_webview(&app, &pending, &url).await
+    require_main_window(&window)?;
+    let timeout_secs = *state.loader_timeout_secs.read().unwrap();
+    article_loader::load_via_webview(&app, &pending, &url, timeout_secs).await
 }
 
 #[tauri::command]
 pub async fn save_article(
+    window: tauri::Window,
     id: String,
     url: String,
     title: String,
@@ -36,6 +47,7 @@ pub async fn save_article(
     markdown: String,
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
+    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     articles::save_article(
         &data_dir,
@@ -53,6 +65,7 @@ pub async fn save_article(
 
 #[tauri::command]
 pub async fn create_article(
+    window: tauri::Window,
     url: String,
     title: String,
     published_at: Option<String>,
@@ -61,6 +74,7 @@ pub async fn create_article(
     markdown: String,
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
+    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     articles::create_article(
         &data_dir,

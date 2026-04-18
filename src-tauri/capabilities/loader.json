@@ -3,7 +3,5 @@
   "identifier": "loader",
   "description": "Off-screen loader windows for fetching remote article content.",
   "windows": ["loader-*"],
-  "permissions": [
-    "core:default"
-  ]
+  "permissions": []
 }

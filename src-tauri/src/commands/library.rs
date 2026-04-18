@@ -5,6 +5,7 @@ use tauri::{AppHandle, Manager, State};
 use xaga_core::embeddings::EmbeddingService;
 
 use crate::{AppState, file_watchers, load_settings, save_settings};
+use super::require_main_window;
 
 #[tauri::command]
 pub async fn get_library(state: State<'_, AppState>) -> Result<String, String> {
@@ -13,10 +14,12 @@ pub async fn get_library(state: State<'_, AppState>) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn set_library(
+    window: tauri::Window,
     path: String,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<String, String> {
+    require_main_window(&window)?;
     let new_path = PathBuf::from(&path);
 
     std::fs::create_dir_all(&new_path).map_err(|e| e.to_string())?;
