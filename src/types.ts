@@ -11,8 +11,8 @@ const FILTERS: string[] = [
 
 export type Filter = (typeof FILTERS)[number];
 
-export function isFilter(value?: string | null): value is Filter {
-  return !!value && FILTERS.includes(value);
+export function isFilter(value?: unknown): value is Filter {
+  return !!value && typeof value === "string" && FILTERS.includes(value);
 }
 
 const VIEWS: string[] = ["full", "summary"] as const;
@@ -49,6 +49,14 @@ export type Embedded = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isEmbedded(obj: any): obj is Embedded {
   return obj && typeof obj === "object" && typeof obj.similarity === "number";
+}
+
+export type Shortcut = Item & {
+  filter: Filter;
+};
+
+export function isShortcut(item: Item): item is Shortcut {
+  return isItem(item) && "filter" in item && isFilter(item.filter);
 }
 
 // ── Entry ────────────────────────────────────────────────────────────────────

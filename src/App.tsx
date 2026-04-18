@@ -8,7 +8,7 @@ import { ALL_ITEMS } from "./Items";
 import { usePlatform } from "./platform/Platform";
 import { BookmarksProvider } from "./providers/BookmarksProvider";
 import FeedsProvider from "./providers/FeedsProvider";
-import type { Filter, Item } from "./types";
+import { isShortcut, type Filter, type Item } from "./types";
 import Logger from "./utils/Logger";
 
 const loggerContext = Logger.getLogger("App");
@@ -31,9 +31,14 @@ function App() {
     }
   }, [platform]);
 
-  const handleSelectList = useCallback((item: Item, filter?: Filter) => {
+  const handleSelectList = useCallback((item: Item) => {
     setSelectedList(item);
-    if (filter) setSelectedFilter(filter);
+
+    if (isShortcut(item)) {
+      setSelectedFilter(item.filter);
+    } else {
+      setSelectedFilter("unread");
+    }
   }, []);
 
   const handleChangeItem = useCallback((item: Item) => {

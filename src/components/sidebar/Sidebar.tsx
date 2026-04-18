@@ -1,30 +1,32 @@
-import { Add, Settings } from "@mui/icons-material";
+import { Add, Bookmark, Circle, Settings, Star } from "@mui/icons-material";
 import { IconButton } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import { useTopics } from "../../hooks/useTopics";
+import { BOOKMARKED_ITEMS, RECOMMENDED_ITEMS, UNREAD_ITEMS } from "../../Items";
 import { usePlatform } from "../../platform/Platform";
-import type { Feed, Filter, Item, Topic } from "../../types";
-import compareDates from "../../utils/compareDates";
+import { isShortcut, type Feed, type Item, type Topic } from "../../types";
 import cx from "../../utils/cx";
 import css from "./_.module.css";
 import EditFeedDialog from "./EditFeedDialog";
 import EditTopicDialog from "./EditTopicDialog";
 import Expander from "./Expander";
-import { Shortcuts } from "./Shortcuts";
+import ExpanderItem from "./ExpanderItem";
 
 export const SIDEBAR_WIDTH = 240;
 
 interface SidebarProps {
   className?: string;
   selectedList: Item;
-  onSelectList: (item: Item, filter?: Filter) => void;
+  onSelectList: (item: Item) => void;
 }
 
-export type ExpanderType = "topics" | "projects" | "feeds";
+export type ExpanderType = "shortcuts" | "topics" | "projects" | "feeds";
 
-const sort = (a: Feed, b: Feed) => compareDates(b.updatedAt, a.updatedAt);
+// TODO Allow user to sort
+// const sort = (a: Feed, b: Feed) => compareDates(b.updatedAt, a.updatedAt);
+const sort = (a: Item, b: Item) => a.title.localeCompare(b.title);
 
 export function Sidebar({
   className,
@@ -33,19 +35,31 @@ export function Sidebar({
 }: SidebarProps) {
   const platform = usePlatform();
   const [abort, abortControllerRef] = useAbortController();
+
   const [selectedExpander, setSelectedExpander] = useState<ExpanderType | null>(
-    null,
+    "shortcuts",
   );
+
   const { listTopics, saveTopic, createTopic, deleteTopic } =
     useTopics(abortControllerRef);
-  const { listFeeds, addFeed, importFeeds, exportFeeds, renameFeed, deleteFeed } = useFeeds(abortControllerRef);
+
+  const {
+    listFeeds,
+    addFeed,
+    importFeeds,
+    exportFeeds,
+    renameFeed,
+    deleteFeed,
+  } = useFeeds(abortControllerRef);
+
+  const { loadingSet } = useFeeds(abortControllerRef);
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [feeds, setFeeds] = useState<Feed[]>([]);
+
   const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
   const [isAddingTopic, setIsAddingTopic] = useState(false);
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
   const [isAddingFeed, setIsAddingFeed] = useState(false);
-
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [feeds, setFeeds] = useState<Feed[]>([]);
 
   const getExpandHandler = useCallback((expander: ExpanderType) => {
     return () => {
@@ -59,7 +73,7 @@ export function Sidebar({
   }, [listFeeds]);
 
   const requestTopics = useCallback(async () => {
-    const results = await listTopics();
+    const results = await listTopics(sort);
     if (results) setTopics(results);
   }, [listTopics]);
 
@@ -131,12 +145,16 @@ export function Sidebar({
 
   useEffect(() => {
     const unlisten = platform.onImportFeeds(handleImportFeeds);
-    return () => { unlisten.then((fn) => fn()); };
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, [platform, handleImportFeeds]);
 
   useEffect(() => {
     const unlisten = platform.onExportFeeds(handleExportFeeds);
-    return () => { unlisten.then((fn) => fn()); };
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, [platform, handleExportFeeds]);
 
   useEffect(() => {
@@ -150,32 +168,86 @@ export function Sidebar({
 
   return (
     <div className={cx(className, css.Sidebar)}>
-      <Shortcuts onSelectList={onSelectList} />
+      {/* <Shortcuts onSelectList={onSelectList} /> */}
+
+      <Expander
+        label="Shortcuts"
+        isExpanded={selectedExpander === "shortcuts"}
+        onClickHeader={getExpandHandler("shortcuts")}
+        // TODO Implement "Add shortcut" action
+        // renderHeaderAction={() => (
+        //   <IconButton size="small" onClick={() => setIsAddingTopic(true)}>
+        //     <Add sx={{ fontSize: 16 }} />
+        //   </IconButton>
+        // )}
+      >
+        <ExpanderItem
+          icon={Star}
+          item={RECOMMENDED_ITEMS}
+          loading={!!loadingSet?.size}
+          selected={
+            isShortcut(selectedList) &&
+            selectedList.id === RECOMMENDED_ITEMS.id &&
+            selectedList.filter === RECOMMENDED_ITEMS.filter
+          }
+          onSelectItem={onSelectList}
+        />
+
+        <ExpanderItem
+          icon={Circle}
+          item={UNREAD_ITEMS}
+          loading={!!loadingSet?.size}
+          selected={
+            isShortcut(selectedList) &&
+            selectedList.id === UNREAD_ITEMS.id &&
+            selectedList.filter === UNREAD_ITEMS.filter
+          }
+          onSelectItem={onSelectList}
+        />
+
+        <ExpanderItem
+          icon={Bookmark}
+          item={BOOKMARKED_ITEMS}
+          loading={!!loadingSet?.size}
+          selected={
+            isShortcut(selectedList) &&
+            selectedList.id === BOOKMARKED_ITEMS.id &&
+            selectedList.filter === BOOKMARKED_ITEMS.filter
+          }
+          onSelectItem={onSelectList}
+        />
+      </Expander>
 
       <Expander
         label="Topics"
-        items={topics}
         isExpanded={selectedExpander === "topics"}
-        selectedList={selectedList}
         onClickHeader={getExpandHandler("topics")}
-        onSelectList={onSelectList}
         renderHeaderAction={() => (
           <IconButton size="small" onClick={() => setIsAddingTopic(true)}>
             <Add sx={{ fontSize: 16 }} />
           </IconButton>
         )}
-        renderSecondaryAction={(item) => (
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              setEditingTopic(item as Topic);
-            }}
-          >
-            <Settings sx={{ fontSize: 16 }} />
-          </IconButton>
-        )}
-      />
+      >
+        {topics.map((item) => (
+          <ExpanderItem
+            item={item}
+            loading={!!loadingSet?.size}
+            selected={selectedList?.id === item.id}
+            onSelectItem={onSelectList}
+            renderSecondaryAction={(item: Item) => (
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingTopic(item as Topic);
+                }}
+              >
+                <Settings sx={{ fontSize: 16 }} />
+              </IconButton>
+            )}
+          />
+        ))}
+      </Expander>
 
       <EditTopicDialog
         open={editingTopic !== null || isAddingTopic}
@@ -188,39 +260,36 @@ export function Sidebar({
         onDelete={handleDeleteTopic}
       />
 
-      {/* <Expander
-        label="Projects"
-        items={projects}
-        isExpanded={selectedExpander === "projects"}
-        selectedItem={selectedList}
-        onClickHeader={getExpandHandler("projects")}
-        onSelectItem={onSelectItem}
-      /> */}
-
       <Expander
         label="Feeds"
-        items={feeds}
         isExpanded={selectedExpander === "feeds"}
-        selectedList={selectedList}
         onClickHeader={getExpandHandler("feeds")}
-        onSelectList={onSelectList}
         renderHeaderAction={() => (
           <IconButton size="small" onClick={() => setIsAddingFeed(true)}>
             <Add sx={{ fontSize: 16 }} />
           </IconButton>
         )}
-        renderSecondaryAction={(item) => (
-          <IconButton
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              setEditingFeed(item as Feed);
-            }}
-          >
-            <Settings sx={{ fontSize: 16 }} />
-          </IconButton>
-        )}
-      />
+      >
+        {feeds.map((item) => (
+          <ExpanderItem
+            item={item}
+            loading={loadingSet?.has(item.id)}
+            selected={selectedList?.id === item.id}
+            onSelectItem={onSelectList}
+            renderSecondaryAction={(item: Item) => (
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingFeed(item as Feed);
+                }}
+              >
+                <Settings sx={{ fontSize: 16 }} />
+              </IconButton>
+            )}
+          />
+        ))}
+      </Expander>
 
       <EditFeedDialog
         open={editingFeed !== null || isAddingFeed}
