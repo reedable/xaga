@@ -100,6 +100,34 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
     [abortControllerRef, platform, setError],
   );
 
+  const importFeeds = useCallback(
+    async () => {
+      const signal = abortControllerRef.current.signal;
+      setError(null);
+
+      try {
+        return await platform.importFeeds(signal);
+      } catch (e) {
+        setError(e);
+      }
+    },
+    [abortControllerRef, platform, setError],
+  );
+
+  const exportFeeds = useCallback(
+    async () => {
+      const signal = abortControllerRef.current.signal;
+      setError(null);
+
+      try {
+        await platform.exportFeeds(signal);
+      } catch (e) {
+        setError(e);
+      }
+    },
+    [abortControllerRef, platform, setError],
+  );
+
   const DEFAULT_CALLBACK = () => {};
 
   const refreshAllFeeds = useCallback(
@@ -137,6 +165,8 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
     loadingSet,
     listFeeds,
     addFeed,
+    importFeeds,
+    exportFeeds,
     renameFeed,
     deleteFeed,
     refreshFeed,

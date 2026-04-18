@@ -10,6 +10,7 @@
     "core:window:allow-set-title",
     "window-state:default",
     "dialog:allow-open",
+    "dialog:allow-save",
     "opener:default"
   ]
 }

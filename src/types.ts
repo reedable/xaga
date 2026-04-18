@@ -111,3 +111,12 @@ export function isFeed(item?: Item | null): item is Feed {
     !!item && "entry_count" in item && typeof item.entry_count === "number"
   );
 }
+
+// ── Import ───────────────────────────────────────────────────────────────────
+
+/** Result returned by the backend after importing an OPML file. */
+export type FeedImportResult = {
+  added: number;
+  skipped: number;
+  failed: number;
+};

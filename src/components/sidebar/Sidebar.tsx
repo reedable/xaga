@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import { useTopics } from "../../hooks/useTopics";
+import { usePlatform } from "../../platform/Platform";
 import type { Feed, Filter, Item, Topic } from "../../types";
 import compareDates from "../../utils/compareDates";
 import cx from "../../utils/cx";
@@ -30,13 +31,14 @@ export function Sidebar({
   selectedList,
   onSelectList,
 }: SidebarProps) {
+  const platform = usePlatform();
   const [abort, abortControllerRef] = useAbortController();
   const [selectedExpander, setSelectedExpander] = useState<ExpanderType | null>(
     null,
   );
   const { listTopics, saveTopic, createTopic, deleteTopic } =
     useTopics(abortControllerRef);
-  const { listFeeds, addFeed, renameFeed, deleteFeed } = useFeeds(abortControllerRef);
+  const { listFeeds, addFeed, importFeeds, exportFeeds, renameFeed, deleteFeed } = useFeeds(abortControllerRef);
   const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
   const [isAddingTopic, setIsAddingTopic] = useState(false);
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
@@ -115,6 +117,27 @@ export function Sidebar({
     },
     [addFeed, renameFeed, requestFeeds, onSelectList],
   );
+
+  const handleImportFeeds = useCallback(async () => {
+    const result = await importFeeds();
+    if (result !== null && result !== undefined) {
+      await requestFeeds();
+    }
+  }, [importFeeds, requestFeeds]);
+
+  const handleExportFeeds = useCallback(async () => {
+    await exportFeeds();
+  }, [exportFeeds]);
+
+  useEffect(() => {
+    const unlisten = platform.onImportFeeds(handleImportFeeds);
+    return () => { unlisten.then((fn) => fn()); };
+  }, [platform, handleImportFeeds]);
+
+  useEffect(() => {
+    const unlisten = platform.onExportFeeds(handleExportFeeds);
+    return () => { unlisten.then((fn) => fn()); };
+  }, [platform, handleExportFeeds]);
 
   useEffect(() => {
     abort();

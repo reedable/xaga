@@ -5,6 +5,7 @@ import type {
   Embedded,
   Entry,
   Feed,
+  FeedImportResult,
   Filter,
   Item,
   Topic,
@@ -28,6 +29,8 @@ export interface Platform {
   // Feeds
   listFeeds(signal: AbortSignal): Promise<Feed[]>;
   addFeed(signal: AbortSignal, feedUrl: string): Promise<Feed>;
+  importFeeds(signal: AbortSignal): Promise<FeedImportResult | null>;
+  exportFeeds(signal: AbortSignal): Promise<void>;
   refreshFeed(signal: AbortSignal, feedId: string): Promise<Feed>;
   renameFeed(signal: AbortSignal, feedId: string, title: string): Promise<Feed>;
   // refreshAllFeeds(signal: AbortSignal): Promise<PromiseSettledResult<Feed>[]>;
@@ -101,6 +104,8 @@ export interface Platform {
   // Events
   onOpenLibrary(callback: () => void): Promise<UnlistenFn>;
   onOpenSettings(callback: () => void): Promise<UnlistenFn>;
+  onImportFeeds(callback: () => void): Promise<UnlistenFn>;
+  onExportFeeds(callback: () => void): Promise<UnlistenFn>;
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;
   onShowArticleSummary(callback: (show: boolean) => void): Promise<UnlistenFn>;
   onShutdown(callback: () => void): Promise<UnlistenFn>;

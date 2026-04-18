@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { z } from "zod";
 import type {
@@ -9,6 +9,7 @@ import type {
   Embedded,
   Entry,
   Feed,
+  FeedImportResult,
   Filter,
   Item,
   Topic,
@@ -201,6 +202,33 @@ export class TauriPlatform implements Platform {
       .with(logged, { logger, name: "remove_feed" });
 
     return await invoker("remove_feed", { url: feedUrl });
+  }
+
+  async importFeeds(signal: AbortSignal): Promise<FeedImportResult | null> {
+    const filePath = await open({
+      filters: [{ name: "OPML", extensions: ["opml", "xml"] }],
+    }) as string | null;
+    if (!filePath) return null;
+
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "import_feeds" });
+
+    return invoker<FeedImportResult>("import_feeds", { filePath });
+  }
+
+  async exportFeeds(signal: AbortSignal): Promise<void> {
+    const filePath = await save({
+      filters: [{ name: "OPML", extensions: ["opml"] }],
+      defaultPath: "feeds.opml",
+    }) as string | null;
+    if (!filePath) return;
+
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "export_feeds" });
+
+    await invoker("export_feeds", { filePath });
   }
 
   // Entries -------------------------------------------------------------------
@@ -515,6 +543,14 @@ export class TauriPlatform implements Platform {
 
   onOpenSettings(callback: () => void): Promise<UnlistenFn> {
     return listen("menu:open-settings", callback);
+  }
+
+  onImportFeeds(callback: () => void): Promise<UnlistenFn> {
+    return listen("menu:import-feeds", callback);
+  }
+
+  onExportFeeds(callback: () => void): Promise<UnlistenFn> {
+    return listen("menu:export-feeds", callback);
   }
 
   async getTheme(): Promise<string> {

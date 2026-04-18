@@ -133,13 +133,24 @@ pub fn run() {
                 app,
                 "File",
                 true,
-                &[&MenuItem::with_id(
-                    app,
-                    "open_library",
-                    "Open Library",
-                    true,
-                    None::<&str>,
-                )?],
+                &[
+                    &MenuItem::with_id(app, "open_library", "Open Library", true, None::<&str>)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &MenuItem::with_id(
+                        app,
+                        "import_feeds",
+                        "Import Feeds From OPML\u{2026}",
+                        true,
+                        None::<&str>,
+                    )?,
+                    &MenuItem::with_id(
+                        app,
+                        "export_feeds",
+                        "Export Feeds As OPML\u{2026}",
+                        true,
+                        None::<&str>,
+                    )?,
+                ],
             )?;
             let edit_menu = Submenu::with_items(
                 app,
@@ -216,6 +227,12 @@ pub fn run() {
             "open_library" => {
                 app.emit("menu:open-library", ()).ok();
             }
+            "import_feeds" => {
+                app.emit("menu:import-feeds", ()).ok();
+            }
+            "export_feeds" => {
+                app.emit("menu:export-feeds", ()).ok();
+            }
             "open_settings" => {
                 app.emit("menu:open-settings", ()).ok();
             }
@@ -262,7 +279,9 @@ pub fn run() {
                 .map(PathBuf::from)
                 .unwrap_or(default_library);
             let theme = settings.theme.unwrap_or_else(|| "auto".to_string());
-            let timeout = settings.loader_timeout_secs.unwrap_or(DEFAULT_LOADER_TIMEOUT_SECS);
+            let timeout = settings
+                .loader_timeout_secs
+                .unwrap_or(DEFAULT_LOADER_TIMEOUT_SECS);
             *setup_library.write().unwrap() = lib_path.clone();
             *setup_theme.write().unwrap() = theme.clone();
             *setup_loader_timeout.write().unwrap() = timeout;
@@ -316,6 +335,8 @@ pub fn run() {
             commands::feeds::refresh_feed,
             commands::feeds::rename_feed,
             commands::feeds::remove_feed,
+            commands::feeds::import_feeds,
+            commands::feeds::export_feeds,
             commands::feeds::list_entries,
             commands::bookmarks::add_bookmark,
             commands::bookmarks::remove_bookmark,

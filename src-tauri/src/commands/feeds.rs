@@ -1,3 +1,6 @@
+use std::collections::HashSet;
+
+use serde::Serialize;
 use tauri::State;
 use xaga_core::feeds;
 use xaga_core::item::{self, ItemSource};
@@ -5,6 +8,13 @@ use xaga_core::types::Entry;
 
 use crate::{feeds_dir, AppState};
 use super::{parse_item_filter, require_main_window};
+
+#[derive(Serialize)]
+pub struct ImportResult {
+    pub added: usize,
+    pub skipped: usize,
+    pub failed: usize,
+}
 
 #[tauri::command]
 pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<feeds::Feed>, String> {
@@ -48,6 +58,79 @@ pub async fn remove_feed(window: tauri::Window, url: String, state: State<'_, Ap
     let feed_id = feeds::feed_id_from_url(&url).map_err(|e| e.to_string())?;
     feeds::remove_feed(&dir, &feed_id).await.map_err(|e| e.to_string())?;
     Ok(url)
+}
+
+#[tauri::command]
+pub async fn import_feeds(
+    window: tauri::Window,
+    file_path: String,
+    state: State<'_, AppState>,
+) -> Result<ImportResult, String> {
+    require_main_window(&window)?;
+    let library = state.library.read().unwrap().clone();
+    let dir = feeds_dir(&library);
+
+    let xml = tokio::fs::read_to_string(&file_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let raw_urls = xaga_core::opml::parse_opml(&xml).map_err(|e| e.to_string())?;
+
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut added = 0usize;
+    let mut skipped = 0usize;
+    let mut failed = 0usize;
+
+    for raw in raw_urls {
+        let normalized = match xaga_core::util::normalize_url(&raw) {
+            Ok(u) => u,
+            Err(e) => {
+                log::warn!("import_feeds: invalid URL {raw:?}: {e}");
+                failed += 1;
+                continue;
+            }
+        };
+
+        if !seen.insert(normalized.clone()) {
+            skipped += 1;
+            continue;
+        }
+
+        match feeds::add_feed(&state.http_client, &dir, &library, &normalized).await {
+            Ok(_) => added += 1,
+            Err(e) => {
+                log::warn!("import_feeds: failed to add {normalized:?}: {e}");
+                failed += 1;
+            }
+        }
+    }
+
+    Ok(ImportResult { added, skipped, failed })
+}
+
+#[tauri::command]
+pub async fn export_feeds(
+    window: tauri::Window,
+    file_path: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    require_main_window(&window)?;
+    let dir = feeds_dir(&state.library.read().unwrap());
+
+    let feed_list = feeds::list_feeds(&dir)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let pairs: Vec<(&str, &str)> = feed_list
+        .iter()
+        .map(|f| (f.url.as_str(), f.title.as_str()))
+        .collect();
+
+    let opml = xaga_core::opml::build_opml(&pairs);
+
+    tokio::fs::write(&file_path, opml)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
