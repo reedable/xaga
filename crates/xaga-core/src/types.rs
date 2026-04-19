@@ -103,15 +103,37 @@ impl std::ops::DerefMut for EmbeddedEntry {
     fn deref_mut(&mut self) -> &mut Entry { &mut self.entry }
 }
 
+// ── Annotation ────────────────────────────────────────────────────────────────
+
+/// A saved highlight or annotation on a span of text in an article.
+/// A plain highlight has `note: None`; an annotation has `note: Some(...)`.
+/// Mirrors the TypeScript `Annotation` type.
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct Annotation {
+    pub id: String,
+    /// One text segment per block-level element covered by the selection.
+    /// Single-paragraph selections produce a one-element vec.
+    pub text: Vec<String>,
+    /// 0-based occurrence index for each corresponding entry in `text`.
+    pub occurrence: Vec<u32>,
+    /// Highlight color; currently always "yellow".
+    pub color: String,
+    /// Optional user note. Absent for plain highlights.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    pub created_at: String,
+}
+
 // ── Article ───────────────────────────────────────────────────────────────────
 
-/// A fully loaded saved entry, including markdown content.
+/// A fully loaded saved entry, including markdown content and annotations.
 /// Mirrors the TypeScript `Article` type (= `Entry & Document`).
 #[derive(Debug, Serialize)]
 pub struct Article {
     #[serde(flatten)]
     pub meta: Entry,
     pub content: String,
+    pub annotations: Vec<Annotation>,
 }
 
 impl Item for Article {

@@ -1,6 +1,7 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { createContext, useContext } from "react";
 import type {
+  Annotation,
   Article,
   Embedded,
   Entry,
@@ -55,6 +56,10 @@ export interface Platform {
     signal: AbortSignal,
     article: Omit<Article, "id" | "createdAt">,
   ): Promise<Article>;
+
+  // Annotations
+  addAnnotation(signal: AbortSignal, articleId: string, annotation: Omit<Annotation, "createdAt">): Promise<Article>;
+  removeAnnotation(signal: AbortSignal, articleId: string, annotationId: string): Promise<Article>;
 
   // Topics
   createTopic(

@@ -17,7 +17,7 @@ import {
   Typography,
 } from "@mui/material";
 import type { ReactNode } from "react";
-import { useView } from "../../hooks/useView";
+import { useAppearance } from "../../hooks/useAppearance";
 import {
   READER_FONT_SIZE_MAX,
   READER_FONT_SIZE_MIN,
@@ -105,7 +105,7 @@ export function AppearanceSettings() {
   const {
     themeSetting,
     changeTheme,
-    view,
+    readerView: view,
     setView,
     readerFontFamily,
     setReaderFontFamily,
@@ -113,7 +113,7 @@ export function AppearanceSettings() {
     setReaderFontSize,
     readerLineHeight,
     setReaderLineHeight,
-  } = useView();
+  } = useAppearance();
 
   return (
     <Box>

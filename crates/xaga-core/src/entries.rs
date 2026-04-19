@@ -26,6 +26,7 @@ pub(crate) fn render_entry(
     published_at: Option<&str>,
     updated_at: Option<&str>,
     summary: Option<&str>,
+    annotations: &[crate::types::Annotation],
     markdown: &str,
 ) -> String {
     #[derive(serde::Serialize)]
@@ -40,6 +41,8 @@ pub(crate) fn render_entry(
         updated: Option<&'a str>,
         #[serde(skip_serializing_if = "Option::is_none")]
         summary: Option<String>,
+        #[serde(skip_serializing_if = "<[_]>::is_empty")]
+        annotations: &'a [crate::types::Annotation],
     }
 
     let clean_summary = summary.map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "));
@@ -52,6 +55,7 @@ pub(crate) fn render_entry(
         published: published_at,
         updated: updated_at,
         summary: clean_summary.as_deref().map(str::to_string),
+        annotations,
     };
 
     let yaml = serde_yaml::to_string(&fm).expect("frontmatter serialization is infallible");
@@ -113,7 +117,7 @@ pub async fn write_entry(
     let path = entry_path(data_dir, &hash12);
 
     let created_at = Utc::now().to_rfc3339();
-    let content = render_entry(&normalized, title, &created_at, published_at, updated_at, summary, "");
+    let content = render_entry(&normalized, title, &created_at, published_at, updated_at, summary, &[], "");
     tokio::fs::create_dir_all(path.parent().unwrap()).await?;
     tokio::fs::write(&path, content.as_bytes()).await?;
     Ok(path)

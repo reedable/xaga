@@ -82,8 +82,30 @@ export function isDocument(item?: Item | null): item is Document {
   return !!item && "content" in item && typeof item.content === "string";
 }
 
-/** A fully loaded saved entry, including markdown content. */
-export type Article = Entry & Document;
+// ── Annotation ───────────────────────────────────────────────────────────────
+
+/** A saved highlight or annotation on a span of article text.
+ * A plain highlight has no `note`; an annotation includes user-supplied text. */
+export type Annotation = {
+  id: string;
+  /** One text segment per block-level element covered by the selection.
+   *  Single-paragraph selections produce a one-element array. */
+  text: string[];
+  /** 0-based occurrence index for each corresponding entry in `text`. */
+  occurrence: number[];
+  /** Highlight color; currently always "yellow". */
+  color: string;
+  /** Optional user note. Absent for plain highlights. */
+  note?: string;
+  createdAt: string;
+};
+
+// ── Article ──────────────────────────────────────────────────────────────────
+
+/** A fully loaded saved entry, including markdown content and annotations. */
+export type Article = Entry & Document & {
+  annotations: Annotation[];
+};
 
 export function isArticle(item?: Item | null): item is Article {
   return !!item && isEntry(item) && isDocument(item);

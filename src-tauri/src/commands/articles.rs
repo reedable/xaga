@@ -110,3 +110,36 @@ pub async fn read_article(
         .await
         .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn add_annotation(
+    window: tauri::Window,
+    article_id: String,
+    id: String,
+    text: Vec<String>,
+    occurrence: Vec<u32>,
+    color: String,
+    note: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<articles::Article, String> {
+    require_main_window(&window)?;
+    let data_dir = state.library.read().unwrap().clone();
+    let annotation = xaga_core::types::Annotation { id, text, occurrence, color, note, created_at: String::new() };
+    articles::add_annotation(&data_dir, &article_id, annotation)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn remove_annotation(
+    window: tauri::Window,
+    article_id: String,
+    annotation_id: String,
+    state: State<'_, AppState>,
+) -> Result<articles::Article, String> {
+    require_main_window(&window)?;
+    let data_dir = state.library.read().unwrap().clone();
+    articles::remove_annotation(&data_dir, &article_id, &annotation_id)
+        .await
+        .map_err(|e| e.to_string())
+}

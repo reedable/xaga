@@ -394,6 +394,8 @@ pub fn run() {
             commands::articles::find_article,
             commands::articles::read_article,
             commands::articles::create_article,
+            commands::articles::add_annotation,
+            commands::articles::remove_annotation,
             commands::entries::mark_entry_read,
             commands::entries::mark_entry_unread,
             commands::entries::list_all_articles,

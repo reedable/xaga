@@ -1,7 +1,7 @@
 import { useContext } from "react";
 import AppearanceContext from "../providers/AppearanceContext";
 
-export function useView() {
+export function useAppearance() {
   const context = useContext(AppearanceContext);
 
   if (!context) {
@@ -9,7 +9,7 @@ export function useView() {
   }
 
   return {
-    view: context.readerView,
+    readerView: context.readerView,
     setView: context.setReaderView,
     themeSetting: context.themeSetting,
     changeTheme: context.changeThemeSetting,

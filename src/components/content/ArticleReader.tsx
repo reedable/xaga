@@ -11,10 +11,11 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
+import { useAnnotations } from "../../hooks/useAnnotations";
+import { useAppearance } from "../../hooks/useAppearance";
 import { useArticles } from "../../hooks/useArticles";
 import { useBookmarks } from "../../hooks/useBookmarks";
 import useEntries from "../../hooks/useEntries";
-import { useView } from "../../hooks/useView";
 import { usePlatform } from "../../platform/Platform";
 import { buildEntryHtml, type ReaderStyle } from "../../text/buildEntryHtml";
 import { markdownToHtml } from "../../text/markdownPipeline";
@@ -43,16 +44,24 @@ export default function ArticleReader({
   const platform = usePlatform();
 
   const {
-    view,
+    readerView,
     themeMode,
     readerFontFamily,
     readerFontSize,
     readerLineHeight,
-  } = useView();
+  } = useAppearance();
 
   const [abort, abortControllerRef] = useAbortController();
   const [bodyHtml, setBodyHtml] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+
+  // Annotations
+  const {
+    annotations,
+    setAnnotationsFromArticle,
+    saveAnnotation,
+    removeAnnotation,
+  } = useAnnotations(abortControllerRef, selectedEntry.id);
 
   const readerStyle: ReaderStyle = useMemo(
     () => ({
@@ -86,9 +95,9 @@ export default function ArticleReader({
     async (entry: Entry) => {
       setBodyHtml(null);
 
-      if (view === "full") {
-        // readArticle saves the item, hence marking it read.
+      if (readerView === "full") {
         const article = await readArticle(entry);
+        if (article) setAnnotationsFromArticle(article);
         const markdown = article?.content || article?.summary;
 
         if (markdown) {
@@ -105,7 +114,13 @@ export default function ArticleReader({
         if (item) onChangeEntry?.(item);
       }
     },
-    [view, readArticle, markEntryRead, onChangeEntry],
+    [
+      readerView,
+      readArticle,
+      setAnnotationsFromArticle,
+      markEntryRead,
+      onChangeEntry,
+    ],
   );
 
   const reloadArticle = useCallback(
@@ -122,7 +137,7 @@ export default function ArticleReader({
     [loadArticle],
   );
 
-  const handleOpen = useCallback(() => {
+  const handleOpenUrl = useCallback(() => {
     platform.openUrl(selectedEntry.url);
   }, [platform, selectedEntry]);
 
@@ -176,7 +191,7 @@ export default function ArticleReader({
     (async () => {
       requestArticle(selectedEntry);
     })();
-  }, [requestArticle, abort, selectedEntry, view]);
+  }, [requestArticle, abort, selectedEntry, readerView]);
 
   useEffect(() => {
     setLoading?.(loading);
@@ -208,7 +223,7 @@ export default function ArticleReader({
             </Tooltip>
 
             <Tooltip title="Open in browser">
-              <IconButton onClick={handleOpen}>
+              <IconButton onClick={handleOpenUrl}>
                 <OpenInNew />
               </IconButton>
             </Tooltip>
@@ -262,7 +277,10 @@ export default function ArticleReader({
             <Reader
               className={cx(className)}
               html={html}
+              annotations={annotations}
               onClickUrl={handleLoadArticleByUrl}
+              onSaveAnnotation={saveAnnotation}
+              onRemoveAnnotation={removeAnnotation}
             />
           )}
         </div>

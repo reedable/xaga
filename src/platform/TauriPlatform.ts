@@ -5,6 +5,7 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { z } from "zod";
 import type {
+  Annotation,
   Article,
   Embedded,
   Entry,
@@ -73,13 +74,33 @@ const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
   content: data.content,
 });
 
+const AnnotationSchema = z.object({
+  id: z.string(),
+  text: z.array(z.string()),
+  occurrence: z.array(z.number()),
+  color: z.string(),
+  note: z.string().nullable().optional(),
+  created_at: z.string(),
+});
+
+const toAnnotation = (data: z.infer<typeof AnnotationSchema>): Annotation => ({
+  id: data.id,
+  text: data.text,
+  occurrence: data.occurrence,
+  color: data.color,
+  note: data.note ?? undefined,
+  createdAt: data.created_at,
+});
+
 const ArticleSchema = EntrySchema.extend({
   content: z.string(),
+  annotations: z.array(AnnotationSchema).default([]),
 });
 
 const toArticle = (data: z.infer<typeof ArticleSchema>): Article => ({
   ...toEntry(data),
   content: data.content,
+  annotations: data.annotations.map(toAnnotation),
 });
 
 // const AnyItemSchema = EntrySchema.or(ItemSchema);
@@ -351,6 +372,34 @@ export class TauriPlatform implements Platform {
       markdown: article.content,
     });
 
+    return ArticleSchema.transform(toArticle).parse(result);
+  }
+
+  // Annotations ---------------------------------------------------------------
+
+  async addAnnotation(signal: AbortSignal, articleId: string, annotation: Omit<Annotation, "createdAt">): Promise<Article> {
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "add_annotation" });
+
+    const result = await invoker<unknown>("add_annotation", {
+      articleId,
+      id: annotation.id,
+      text: annotation.text,
+      occurrence: annotation.occurrence,
+      color: annotation.color,
+      note: annotation.note ?? null,
+    });
+
+    return ArticleSchema.transform(toArticle).parse(result);
+  }
+
+  async removeAnnotation(signal: AbortSignal, articleId: string, annotationId: string): Promise<Article> {
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "remove_annotation" });
+
+    const result = await invoker<unknown>("remove_annotation", { articleId, annotationId });
     return ArticleSchema.transform(toArticle).parse(result);
   }
 

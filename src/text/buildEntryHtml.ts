@@ -3,9 +3,24 @@ import {
   READER_LINE_HEIGHT_DEFAULT,
   type ThemeMode,
 } from "../providers/AppearanceContext";
+import { ANNOTATION_COLORS } from "./annotationColors";
 import { FONT_FAMILY_CSS, type FontFamily } from "../utils/FontFamily";
 
+// ── postMessage type constants ────────────────────────────────────────────────
+
+/** Existing: iframe notifies parent that a link was clicked. */
 export const OPEN_URL = "open-url";
+
+/** Iframe notifies parent that the user has selected text. */
+export const SELECTION_MADE = "selection-made";
+
+/** Iframe notifies parent that the selection was cleared. */
+export const SELECTION_CLEARED = "selection-cleared";
+
+/** Iframe notifies parent that the user clicked an existing highlight mark. */
+export const HIGHLIGHT_CLICKED = "highlight-clicked";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ReaderStyle {
   themeMode: ThemeMode;
@@ -14,7 +29,22 @@ export interface ReaderStyle {
   lineHeight: number;
 }
 
-export function buildEntryHtml(bodyHtml: string, style: ReaderStyle): string {
+/** Minimal annotation shape passed into the iframe HTML template. */
+export interface SerializedAnnotation {
+  id: string;
+  text: string[];
+  occurrence: number[];
+  color: string;
+  note: string | null;
+}
+
+// ── Builder ───────────────────────────────────────────────────────────────────
+
+export function buildEntryHtml(
+  bodyHtml: string,
+  style: ReaderStyle,
+  annotations: SerializedAnnotation[] = [],
+): string {
   const { themeMode, fontFamily, fontSize, lineHeight } = style;
   const prefersDark = themeMode === "dark";
   const bg = prefersDark ? "#121212" : "#ffffff";
@@ -22,6 +52,9 @@ export function buildEntryHtml(bodyHtml: string, style: ReaderStyle): string {
   const linkColor = prefersDark ? "#90caf9" : "#1565c0";
   const codeBg = prefersDark ? "#1e1e1e" : "#f5f5f5";
   const fontStack = FONT_FAMILY_CSS[fontFamily];
+
+  // Safely embed annotations as a JSON literal inside the script.
+  const annotationsJson = JSON.stringify(annotations);
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
     *{box-sizing:border-box}
@@ -36,10 +69,244 @@ export function buildEntryHtml(bodyHtml: string, style: ReaderStyle): string {
     blockquote{border-left:4px solid #888;margin-left:0;padding-left:1rem;opacity:0.85}
     table{border-collapse:collapse;width:100%}
     th,td{border:1px solid #888;padding:0.4rem 0.6rem}
+    ${Object.entries(ANNOTATION_COLORS).map(([name, t]) =>
+      `mark[data-ann-color="${name}"]{background:${t.bg};border-radius:2px;cursor:pointer;outline:1px solid ${t.accent}}` +
+      `mark[data-ann-color="${name}"]:hover{background:${t.accent}}`
+    ).join("")}
   </style></head><body><article>${bodyHtml}</article><script>
+    var __ANNOTATIONS__ = ${annotationsJson};
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    // Build a TreeWalker that visits only text nodes outside <script>, <style>,
+    // and existing <mark data-ann-id> elements (to avoid double-counting).
+    function makeTextWalker(root) {
+      return document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode: function(node) {
+          var p = node.parentElement;
+          while (p && p !== root) {
+            var tag = p.tagName ? p.tagName.toUpperCase() : '';
+            if (tag === 'SCRIPT' || tag === 'STYLE') return NodeFilter.FILTER_REJECT;
+            if (tag === 'MARK' && p.dataset && p.dataset.annId) return NodeFilter.FILTER_REJECT;
+            p = p.parentElement;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+    }
+
+    // Block-level tags that delimit segment boundaries.
+    var BLOCK_TAGS = {P:1,H1:1,H2:1,H3:1,H4:1,H5:1,H6:1,LI:1,BLOCKQUOTE:1,TD:1,TH:1,PRE:1,DIV:1,SECTION:1,ARTICLE:1};
+    function closestBlock(node) {
+      var el = node.parentElement;
+      while (el && el !== document.body) {
+        if (BLOCK_TAGS[el.tagName ? el.tagName.toUpperCase() : '']) return el;
+        el = el.parentElement;
+      }
+      return document.body;
+    }
+
+    // Apply one segment of an annotation highlight to the document.
+    // segText is the exact string to find; targetOcc is the 0-based occurrence index.
+    function applyHighlightSegment(id, segText, targetOcc, color, note) {
+      var walker = makeTextWalker(document.body);
+      var count = 0;
+      var node;
+
+      while ((node = walker.nextNode())) {
+        var text = node.nodeValue;
+        var start = 0;
+        var idx;
+        while ((idx = text.indexOf(segText, start)) !== -1) {
+          if (count === targetOcc) {
+            try {
+              var range = document.createRange();
+              range.setStart(node, idx);
+              range.setEnd(node, idx + segText.length);
+              var mark = document.createElement('mark');
+              mark.dataset.annId = id;
+              mark.dataset.annText = segText;
+              mark.dataset.annColor = color;
+              if (note) mark.title = note;
+              range.surroundContents(mark);
+
+              (function(m) {
+                m.addEventListener('click', function(e) {
+                  e.stopPropagation();
+                  var rect = m.getBoundingClientRect();
+                  window.parent.postMessage({
+                    type: '${HIGHLIGHT_CLICKED}',
+                    annotationId: m.dataset.annId,
+                    text: m.dataset.annText,
+                    rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+                  }, '*');
+                });
+              })(mark);
+            } catch (e) {
+              console.warn('[xaga] Could not apply highlight segment:', segText, e);
+            }
+            return;
+          }
+          count++;
+          start = idx + segText.length;
+        }
+      }
+    }
+
+    // Apply all segments of an annotation (ann.text[] / ann.occurrence[]).
+    function applyHighlight(ann) {
+      for (var i = 0; i < ann.text.length; i++) {
+        applyHighlightSegment(ann.id, ann.text[i], ann.occurrence[i], ann.color, ann.note);
+      }
+    }
+
+    // Remove all highlight marks with the given annotationId, unwrapping text content.
+    function removeHighlight(annotationId) {
+      var marks = document.querySelectorAll('mark[data-ann-id="' + annotationId + '"]');
+      for (var i = 0; i < marks.length; i++) {
+        var mark = marks[i];
+        var parent = mark.parentNode;
+        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+        parent.removeChild(mark);
+      }
+      document.body.normalize();
+    }
+
+    // Collect text segments and their occurrence indices from the current selection.
+    // Splits at block-level boundaries so each segment can be highlighted independently.
+    // Returns { texts: string[], occurrences: number[] } or null when no selection.
+    function getSegmentsAndOccurrences() {
+      var sel = window.getSelection();
+      if (!sel || sel.isCollapsed) return null;
+      var range = sel.getRangeAt(0);
+
+      // Collect all text nodes in document order (for occurrence counting).
+      var allNodes = [];
+      var walkerAll = makeTextWalker(document.body);
+      var n;
+      while ((n = walkerAll.nextNode())) allNodes.push(n);
+
+      // Find text nodes that overlap with the selection range and record
+      // the selected portion of each one.
+      var selected = []; // { node, text, startOff }
+      for (var i = 0; i < allNodes.length; i++) {
+        var node = allNodes[i];
+        var nodeRange = document.createRange();
+        nodeRange.selectNodeContents(node);
+
+        // Node ends before selection starts — skip.
+        if (range.compareBoundaryPoints(Range.END_TO_START, nodeRange) >= 0) continue;
+        // Node starts after selection ends — stop.
+        if (range.compareBoundaryPoints(Range.START_TO_END, nodeRange) <= 0) break;
+
+        var startOff = (node === range.startContainer) ? range.startOffset : 0;
+        var endOff   = (node === range.endContainer)   ? range.endOffset   : node.nodeValue.length;
+        var text = node.nodeValue.slice(startOff, endOff);
+        if (text) selected.push({ node: node, text: text, startOff: startOff });
+      }
+
+      if (selected.length === 0) return null;
+
+      // Each text node's contribution is its own segment. This ensures that selections
+      // crossing inline elements (e.g. <a>, <strong>) remain findable — concatenating
+      // across text nodes produces a string that exists in no single text node, breaking
+      // indexOf-based highlight application. Whitespace-only nodes (e.g. newlines between
+      // block elements) are filtered out.
+      var segments = selected
+        .filter(function(s) { return s.text.trim() !== ''; })
+        .map(function(s) { return { text: s.text, startNode: s.node, startOff: s.startOff }; });
+
+      if (segments.length === 0) return null;
+
+      // For each segment, count how many times its text appeared in the document
+      // before the occurrence that is part of our selection.
+      // If the segment text spans multiple DOM nodes (inline elements), it won't be
+      // found in any single text node — fall back to occurrence 0, which is correct
+      // for virtually all real-world cross-inline-element selections.
+      var texts = [];
+      var occurrences = [];
+
+      for (var si = 0; si < segments.length; si++) {
+        var seg = segments[si];
+        texts.push(seg.text);
+
+        var count = 0;
+        var found = false;
+        for (var i = 0; i < allNodes.length && !found; i++) {
+          var node = allNodes[i];
+          var nodeText = node.nodeValue;
+          var start = 0;
+          var idx;
+          while ((idx = nodeText.indexOf(seg.text, start)) !== -1) {
+            if (node === seg.startNode && idx === seg.startOff) {
+              found = true;
+              break;
+            }
+            count++;
+            start = idx + seg.text.length;
+          }
+        }
+        occurrences.push(count); // 0 when not found (cross-node segment)
+      }
+
+      return { texts: texts, occurrences: occurrences };
+    }
+
+    // ── Init: apply stored highlights ──────────────────────────────────────────
+
+    document.addEventListener('DOMContentLoaded', function() {
+      __ANNOTATIONS__.forEach(applyHighlight);
+    });
+
+    // ── Selection detection ────────────────────────────────────────────────────
+
+    document.addEventListener('mouseup', function(e) {
+      // If the click landed on a highlight mark, let the mark's own click handler
+      // post HIGHLIGHT_CLICKED. Suppressing SELECTION_CLEARED here prevents the
+      // tooltip from being opened and immediately dismissed.
+      if (e.target && e.target.closest && e.target.closest('mark[data-ann-id]')) return;
+      setTimeout(function() {
+        var sel = window.getSelection();
+        if (!sel || sel.isCollapsed || !sel.toString().trim()) {
+          window.parent.postMessage({ type: '${SELECTION_CLEARED}' }, '*');
+          return;
+        }
+        var result = getSegmentsAndOccurrences();
+        if (!result) {
+          window.parent.postMessage({ type: '${SELECTION_CLEARED}' }, '*');
+          return;
+        }
+        var range = sel.getRangeAt(0);
+        var rect = range.getBoundingClientRect();
+        window.parent.postMessage({
+          type: '${SELECTION_MADE}',
+          texts: result.texts,
+          occurrences: result.occurrences,
+          rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+        }, '*');
+      }, 10);
+    });
+
+    // ── Link interception (existing) ───────────────────────────────────────────
+
     document.addEventListener('click', function(e) {
       var a = e.target.closest('a[href]');
-      if (a) { e.preventDefault(); window.parent.postMessage({ type: '${OPEN_URL}', url: a.href }, '*'); }
+      if (a) {
+        e.preventDefault();
+        window.parent.postMessage({ type: '${OPEN_URL}', url: a.href }, '*');
+      }
+    });
+
+    // ── Parent → iframe messages ───────────────────────────────────────────────
+
+    window.addEventListener('message', function(e) {
+      var msg = e.data;
+      if (!msg || !msg.type) return;
+      if (msg.type === 'apply-highlights') {
+        msg.annotations.forEach(applyHighlight);
+      } else if (msg.type === 'remove-highlight') {
+        removeHighlight(msg.annotationId);
+      }
     });
   </script></body></html>`;
 }
