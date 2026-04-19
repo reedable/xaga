@@ -1,10 +1,9 @@
 import {
-  FONT_FAMILY_CSS,
   READER_FONT_SIZE_DEFAULT,
   READER_LINE_HEIGHT_DEFAULT,
-  type FontFamily,
   type ThemeMode,
-} from "../providers/ViewContext";
+} from "../providers/AppearanceContext";
+import { FONT_FAMILY_CSS, type FontFamily } from "../utils/FontFamily";
 
 export const OPEN_URL = "open-url";
 

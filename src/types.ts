@@ -15,12 +15,12 @@ export function isFilter(value?: unknown): value is Filter {
   return !!value && typeof value === "string" && FILTERS.includes(value);
 }
 
-const VIEWS: string[] = ["full", "summary"] as const;
+const READER_VIEWS: string[] = ["full", "summary"] as const;
 
-export type View = (typeof VIEWS)[number];
+export type ReaderView = (typeof READER_VIEWS)[number];
 
-export function isView(value?: string | null): value is View {
-  return !!value && VIEWS.includes(value);
+export function isReaderView(value?: string | null): value is ReaderView {
+  return !!value && READER_VIEWS.includes(value);
 }
 
 /** Minimal contract shared by every displayable item (entries, notes, …). */

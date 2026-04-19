@@ -1,5 +1,4 @@
 import {
-  Close,
   DensityLarge,
   DensitySmall,
   TextDecrease,
@@ -18,7 +17,6 @@ import {
   Typography,
 } from "@mui/material";
 import type { ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
 import { useView } from "../../hooks/useView";
 import {
   READER_FONT_SIZE_MAX,
@@ -28,7 +26,7 @@ import {
   READER_LINE_HEIGHT_STEP,
   type FontFamily,
   type ThemeSetting,
-} from "../../providers/ViewContext";
+} from "../../providers/AppearanceContext";
 
 interface StepperProps {
   value: number;
@@ -104,7 +102,6 @@ function ReaderStepper({
 }
 
 export function AppearanceSettings() {
-  const navigate = useNavigate();
   const {
     themeSetting,
     changeTheme,
@@ -120,23 +117,9 @@ export function AppearanceSettings() {
 
   return (
     <Box>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          flexWrap: "nowrap",
-        }}
-      >
-        <Typography component="h1" variant="h6" gutterBottom>
-          Appearance
-        </Typography>
-
-        <Tooltip title="Close">
-          <IconButton aria-label="Close" onClick={() => navigate("/")}>
-            <Close />
-          </IconButton>
-        </Tooltip>
-      </div>
+      <Typography component="h1" variant="h6" gutterBottom>
+        Appearance
+      </Typography>
 
       <Box sx={{ mt: 3 }}>
         <FormControl size="small" sx={{ minWidth: 200 }}>
@@ -165,7 +148,11 @@ export function AppearanceSettings() {
         />
       </Box>
 
-      <Typography component="h2" variant="subtitle1" sx={{ mt: 4, mb: 1, fontWeight: 600 }}>
+      <Typography
+        component="h2"
+        variant="subtitle1"
+        sx={{ mt: 4, mb: 1, fontWeight: 600 }}
+      >
         Reading
       </Typography>
 
@@ -186,7 +173,11 @@ export function AppearanceSettings() {
       </Box>
 
       <Box sx={{ alignItems: "center", display: "flex", gap: 2, mt: 2 }}>
-        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 80 }}>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ minWidth: 80 }}
+        >
           Font size
         </Typography>
         <ReaderStepper
@@ -204,7 +195,11 @@ export function AppearanceSettings() {
       </Box>
 
       <Box sx={{ alignItems: "center", display: "flex", gap: 2, mt: 2 }}>
-        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 80 }}>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ minWidth: 80 }}
+        >
           Line height
         </Typography>
         <ReaderStepper

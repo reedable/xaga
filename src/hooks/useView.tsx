@@ -1,16 +1,16 @@
 import { useContext } from "react";
-import ViewContext from "../providers/ViewContext";
+import AppearanceContext from "../providers/AppearanceContext";
 
 export function useView() {
-  const context = useContext(ViewContext);
+  const context = useContext(AppearanceContext);
 
   if (!context) {
     throw new TypeError("useView must be used within ViewProvider");
   }
 
   return {
-    view: context.view,
-    setView: context.setView,
+    view: context.readerView,
+    setView: context.setReaderView,
     themeSetting: context.themeSetting,
     changeTheme: context.changeThemeSetting,
     themeMode: context.themeMode,

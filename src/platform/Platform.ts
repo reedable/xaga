@@ -121,6 +121,13 @@ export interface Platform {
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;
   onShowArticleSummary(callback: (show: boolean) => void): Promise<UnlistenFn>;
   onShutdown(callback: () => void): Promise<UnlistenFn>;
+
+  // Settings sync (main window receives these when settings window saves)
+  onThemeChangedFromSettings(callback: (theme: string) => void): Promise<UnlistenFn>;
+  onReaderFontFamilyChanged(callback: (value: string) => void): Promise<UnlistenFn>;
+  onReaderFontSizeChanged(callback: (value: number) => void): Promise<UnlistenFn>;
+  onReaderLineHeightChanged(callback: (value: number) => void): Promise<UnlistenFn>;
+  onRefreshOnStartupChanged(callback: (value: boolean) => void): Promise<UnlistenFn>;
 }
 
 export const PlatformContext = createContext<Platform | null>(null);

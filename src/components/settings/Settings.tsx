@@ -1,5 +1,4 @@
 import { List, ListItemButton, ListItemText } from "@mui/material";
-import { useEffect } from "react";
 import {
   Navigate,
   Route,
@@ -21,14 +20,6 @@ export function Settings() {
   const location = useLocation();
   const activeSection = location.pathname.split("/").pop();
 
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") navigate("/");
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigate]);
-
   return (
     <div className={css.Settings}>
       <nav className={css.Sidebar}>
@@ -37,7 +28,7 @@ export function Settings() {
             <ListItemButton
               key={path}
               selected={activeSection === path}
-              onClick={() => navigate(`/settings/${path}`)}
+              onClick={() => navigate(`/${path}`)}
             >
               <ListItemText primary={label} />
             </ListItemButton>

@@ -282,6 +282,24 @@ impl EmbeddingsDb {
 
     /// Inserts an embedding row, replacing any existing row with the same id.
     pub async fn upsert(&self, entry: EmbeddingEntry) -> Result<(), EmbeddingsError> {
+        // Delete before insert rather than using merge_insert.
+        //
+        // merge_insert performs a relational join between the incoming row and all
+        // matching rows in the table.  If the table already contains two rows with
+        // the same id (from a previous bug or interrupted recovery), merge_insert
+        // emits one updated output row per match — doubling the duplicates on every
+        // subsequent upsert instead of cleaning them up.
+        //
+        // An explicit delete-then-insert guarantees exactly one row per id
+        // regardless of prior state.  The service processes one message at a time
+        // on a single thread, so this two-step operation is effectively atomic from
+        // the application's perspective.
+        let escaped = entry.id.replace('\'', "''");
+        self.table
+            .delete(&format!("id = '{escaped}'"))
+            .await
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
         let batch = entry_to_batch(entry, &self.schema)?;
 
         let reader: Box<dyn RecordBatchReader + Send> = Box::new(RecordBatchIterator::new(
@@ -289,13 +307,9 @@ impl EmbeddingsDb {
             self.schema.clone(),
         ));
 
-        let mut merge = self.table.clone().merge_insert(&["id"]);
-
-        merge.when_matched_update_all(None);
-        merge.when_not_matched_insert_all();
-
-        merge
-            .execute(reader)
+        self.table
+            .add(reader)
+            .execute()
             .await
             .map(|_| ())
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))

@@ -41,14 +41,26 @@ export default function ArticleReader({
   setLoading,
 }: ArticleReaderProps) {
   const platform = usePlatform();
-  const { view, themeMode, readerFontFamily, readerFontSize, readerLineHeight } =
-    useView();
+
+  const {
+    view,
+    themeMode,
+    readerFontFamily,
+    readerFontSize,
+    readerLineHeight,
+  } = useView();
+
   const [abort, abortControllerRef] = useAbortController();
   const [bodyHtml, setBodyHtml] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
   const readerStyle: ReaderStyle = useMemo(
-    () => ({ themeMode, fontFamily: readerFontFamily, fontSize: readerFontSize, lineHeight: readerLineHeight }),
+    () => ({
+      themeMode,
+      fontFamily: readerFontFamily,
+      fontSize: readerFontSize,
+      lineHeight: readerLineHeight,
+    }),
     [themeMode, readerFontFamily, readerFontSize, readerLineHeight],
   );
 
@@ -241,19 +253,9 @@ export default function ArticleReader({
           <Collapse in={loading} unmountOnExit>
             <LinearProgress />
 
-            {selectedEntry?.summary ? (
-              <div className={css.Advisory}>
-                <Typography variant="caption">
-                  Here's a summary while loading your article...
-                </Typography>
-              </div>
-            ) : (
-              <div className={css.Advisory}>
-                <Typography variant="caption">
-                  Loading your article...
-                </Typography>
-              </div>
-            )}
+            <div className={css.Advisory}>
+              <Typography variant="caption">Loading...</Typography>
+            </div>
           </Collapse>
 
           {html && (

@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use serde::{Deserialize, Serialize};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
-use tauri::{Emitter, Manager, Runtime};
+use tauri::{Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 use xaga_core::embeddings::{EmbeddingService, ShutdownReason};
 
 pub(crate) const DEFAULT_LOADER_TIMEOUT_SECS: u64 = 10;
@@ -275,7 +275,21 @@ pub fn run() {
                 app.emit("menu:export-bookmarks", ()).ok();
             }
             "open_settings" => {
-                app.emit("menu:open-settings", ()).ok();
+                if let Some(win) = app.get_webview_window("settings") {
+                    win.show().ok();
+                    win.set_focus().ok();
+                } else {
+                    WebviewWindowBuilder::new(
+                        app,
+                        "settings",
+                        WebviewUrl::App("index.html".into()),
+                    )
+                    .title("Settings")
+                    .inner_size(680.0, 520.0)
+                    .resizable(false)
+                    .build()
+                    .ok();
+                }
             }
             id @ ("theme_auto" | "theme_light" | "theme_dark") => {
                 let theme = match id {

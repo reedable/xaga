@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Route, Routes, useNavigate } from "react-router-dom";
 import css from "./_.module.css";
 import { ItemView } from "./components/content/ItemView";
 import { ItemList } from "./components/list/ItemList";
-import { Settings } from "./components/settings/Settings";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { ALL_ITEMS } from "./Shortcuts";
 import { useFeeds } from "./hooks/useFeeds";
@@ -14,7 +12,6 @@ import { isShortcut, type Filter, type Item } from "./types";
 
 function App() {
   const platform = usePlatform();
-  const navigate = useNavigate();
   const { library, refreshOnStartup, settingsLoaded } = useSettings();
   const [selectedList, setSelectedList] = useState<Item>(ALL_ITEMS);
   const [selectedFilter, setSelectedFilter] = useState<Filter | undefined>();
@@ -55,15 +52,11 @@ function App() {
   }, [settingsLoaded, refreshOnStartup, refreshAllFeeds]);
 
   useEffect(() => {
-    const unlistens = [
-      platform.onOpenSettings(() => navigate("/settings/general")),
-      platform.onShutdown(() => setShuttingDown(true)),
-    ];
-
+    const unlisten = platform.onShutdown(() => setShuttingDown(true));
     return () => {
-      unlistens.forEach((p) => p.then((fn: () => void) => fn()));
+      unlisten.then((fn) => fn());
     };
-  }, [platform, navigate]);
+  }, [platform]);
 
   return (
     <>
@@ -71,38 +64,29 @@ function App() {
         <div className={css.ShutdownOverlay}>Saving data, please wait…</div>
       )}
 
-      <Routes>
-        <Route path="/settings/*" element={<Settings />} />
+      <BookmarksProvider>
+        <div className={css.App}>
+          <Sidebar
+            className={css.Sidebar}
+            selectedList={selectedList}
+            onSelectList={handleSelectList}
+          />
 
-        <Route
-          path="/*"
-          element={
-            <BookmarksProvider>
-              <div className={css.App}>
-                <Sidebar
-                  className={css.Sidebar}
-                  selectedList={selectedList}
-                  onSelectList={handleSelectList}
-                />
+          <ItemList
+            className={css.ItemList}
+            selectedList={selectedList}
+            selectedFilter={selectedFilter}
+            onSelectArticle={setSelectedItem}
+          />
 
-                <ItemList
-                  className={css.ItemList}
-                  selectedList={selectedList}
-                  selectedFilter={selectedFilter}
-                  onSelectArticle={setSelectedItem}
-                />
-
-                <ItemView
-                  className={css.ItemView}
-                  selectedItem={selectedItem}
-                  onSelectRelatedItem={setSelectedItem}
-                  onChangeItem={handleChangeItem}
-                />
-              </div>
-            </BookmarksProvider>
-          }
-        />
-      </Routes>
+          <ItemView
+            className={css.ItemView}
+            selectedItem={selectedItem}
+            onSelectRelatedItem={setSelectedItem}
+            onChangeItem={handleChangeItem}
+          />
+        </div>
+      </BookmarksProvider>
     </>
   );
 }

@@ -1,7 +1,7 @@
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::{AppState, load_settings, save_settings};
+use crate::{AppState, load_settings, save_settings, update_theme_checkmarks};
 use super::require_main_window;
 
 #[derive(Serialize)]
@@ -37,7 +37,12 @@ pub async fn set_theme(
     settings.theme = Some(theme.clone());
     save_settings(&settings_path, &settings).map_err(|e| e.to_string())?;
 
-    *state.theme.write().unwrap() = theme;
+    *state.theme.write().unwrap() = theme.clone();
+
+    update_theme_checkmarks(&app, &theme);
+    if let Some(main) = app.get_webview_window("main") {
+        main.emit("settings:theme", &theme).ok();
+    }
 
     Ok(())
 }
@@ -66,6 +71,10 @@ pub async fn set_refresh_on_startup(
     save_settings(&settings_path, &settings).map_err(|e| e.to_string())?;
 
     *state.refresh_on_startup.write().unwrap() = value;
+
+    if let Some(main) = app.get_webview_window("main") {
+        main.emit("settings:refresh-on-startup", value).ok();
+    }
 
     Ok(())
 }
@@ -97,7 +106,11 @@ pub async fn set_reader_font_family(
     settings.reader_font_family = Some(value.clone());
     save_settings(&settings_path, &settings).map_err(|e| e.to_string())?;
 
-    *state.reader_font_family.write().unwrap() = value;
+    *state.reader_font_family.write().unwrap() = value.clone();
+
+    if let Some(main) = app.get_webview_window("main") {
+        main.emit("settings:reader-font-family", &value).ok();
+    }
 
     Ok(())
 }
@@ -122,6 +135,10 @@ pub async fn set_reader_font_size(
 
     *state.reader_font_size.write().unwrap() = value;
 
+    if let Some(main) = app.get_webview_window("main") {
+        main.emit("settings:reader-font-size", value).ok();
+    }
+
     Ok(())
 }
 
@@ -144,6 +161,10 @@ pub async fn set_reader_line_height(
     save_settings(&settings_path, &settings).map_err(|e| e.to_string())?;
 
     *state.reader_line_height.write().unwrap() = value;
+
+    if let Some(main) = app.get_webview_window("main") {
+        main.emit("settings:reader-line-height", value).ok();
+    }
 
     Ok(())
 }

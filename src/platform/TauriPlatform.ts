@@ -631,4 +631,24 @@ export class TauriPlatform implements Platform {
   onShutdown(callback: () => void): Promise<UnlistenFn> {
     return listen("embedding:shutdown", callback);
   }
+
+  onThemeChangedFromSettings(callback: (theme: string) => void): Promise<UnlistenFn> {
+    return listen<string>("settings:theme", (e) => callback(e.payload));
+  }
+
+  onReaderFontFamilyChanged(callback: (value: string) => void): Promise<UnlistenFn> {
+    return listen<string>("settings:reader-font-family", (e) => callback(e.payload));
+  }
+
+  onReaderFontSizeChanged(callback: (value: number) => void): Promise<UnlistenFn> {
+    return listen<number>("settings:reader-font-size", (e) => callback(e.payload));
+  }
+
+  onReaderLineHeightChanged(callback: (value: number) => void): Promise<UnlistenFn> {
+    return listen<number>("settings:reader-line-height", (e) => callback(e.payload));
+  }
+
+  onRefreshOnStartupChanged(callback: (value: boolean) => void): Promise<UnlistenFn> {
+    return listen<boolean>("settings:refresh-on-startup", (e) => callback(e.payload));
+  }
 }

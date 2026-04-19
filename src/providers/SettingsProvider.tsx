@@ -49,6 +49,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     };
   }, [platform, switchLibrary]);
 
+  useEffect(() => {
+    const unlisten = platform.onRefreshOnStartupChanged(setRefreshOnStartupState);
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [platform]);
+
   const value = useMemo(
     () => ({ library, switchLibrary, refreshOnStartup, setRefreshOnStartup, settingsLoaded }),
     [library, switchLibrary, refreshOnStartup, setRefreshOnStartup, settingsLoaded],
