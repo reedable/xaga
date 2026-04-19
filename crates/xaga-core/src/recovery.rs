@@ -104,9 +104,14 @@ pub async fn build_recovery_plan(
         .chain(article_entries.keys())
         .map(String::as_str)
         .collect();
+    // Annotation rows use composite IDs "{article_id}:{annotation_id}".
+    // For those, check the article-ID prefix against the filesystem.
     let to_delete: Vec<String> = db_meta
         .into_keys()
-        .filter(|id| !fs_ids.contains(id.as_str()))
+        .filter(|id| {
+            let article_id = id.split_once(':').map_or(id.as_str(), |(a, _)| a);
+            !fs_ids.contains(article_id)
+        })
         .collect();
 
     Ok(RecoveryPlan {

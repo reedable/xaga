@@ -48,6 +48,7 @@ impl Frontmatter {
     }
 
     /// SHA-256 checksum of the embeddable content (title + embed_text).
+    /// Annotations are embedded as separate rows and are not included here.
     pub fn content_checksum(&self, body: &str) -> String {
         use sha2::Digest;
         let mut h = sha2::Sha256::new();
@@ -120,7 +121,7 @@ fn split_document(raw: &str) -> Option<(Frontmatter, String)> {
     let rest = raw.strip_prefix("---\n")?;
     let end = rest.find("\n---\n")?;
     let yaml = &rest[..end];
-    let body = rest[end + 5..].trim_start_matches('\n').to_string();
+    let body = rest[end + 5..].trim_matches('\n').to_string();
 
     let fm: FrontmatterRaw = serde_yaml::from_str(yaml).ok()?;
 

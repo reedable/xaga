@@ -11,6 +11,7 @@ use xaga_core::embeddings::{BackgroundMsg, PriorityMsg};
 /// - import/   create → parse frontmatter → move to unread/{hash}.md or spill/
 /// - unread/   create → background: Embed
 /// - unread/   modify → priority:   Embed
+/// - read/     modify → priority:   Embed  (annotations added/removed)
 /// - topics/   create → priority:   Embed
 /// - topics/   modify → priority:   Embed
 /// - topics/   delete → background: Delete
@@ -26,6 +27,7 @@ pub fn watch(
         priority_tx.clone(),
         background_tx.clone(),
     );
+    watch_read(data_dir.join("read"), priority_tx.clone());
     watch_topics(data_dir.join("topics"), priority_tx, background_tx.clone());
     watch_archived(data_dir.join("archived"), background_tx);
 }
@@ -79,6 +81,54 @@ fn watch_unread(
 
         if let Err(e) = debouncer.watcher().watch(&dir, RecursiveMode::NonRecursive) {
             log::error!("file_watchers: unread watch failed: {e}");
+            return;
+        }
+
+        std::thread::park();
+    });
+}
+
+fn watch_read(
+    dir: PathBuf,
+    priority_tx: flume::Sender<PriorityMsg>,
+) {
+    std::thread::spawn(move || {
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            log::error!("file_watchers: cannot create {}: {e}", dir.display());
+            return;
+        }
+
+        let mut debouncer = match new_debouncer(
+            Duration::from_millis(200),
+            None,
+            move |result: notify_debouncer_full::DebounceEventResult| {
+                let Ok(events) = result else { return };
+
+                for event in events {
+                    for path in &event.paths {
+                        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+                            continue;
+                        }
+                        let Some(id) = path.file_stem().and_then(|s| s.to_str()) else {
+                            continue;
+                        };
+                        if matches!(event.kind, EventKind::Modify(_)) {
+                            log::debug!("file_watchers: read modify → priority embed {id}");
+                            let _ = priority_tx.send(PriorityMsg::Embed(id.to_string()));
+                        }
+                    }
+                }
+            },
+        ) {
+            Ok(d) => d,
+            Err(e) => {
+                log::error!("file_watchers: read debouncer init failed: {e}");
+                return;
+            }
+        };
+
+        if let Err(e) = debouncer.watcher().watch(&dir, RecursiveMode::NonRecursive) {
+            log::error!("file_watchers: read watch failed: {e}");
             return;
         }
 

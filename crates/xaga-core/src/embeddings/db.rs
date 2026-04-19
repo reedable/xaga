@@ -358,6 +358,41 @@ impl EmbeddingsDb {
         Ok(map)
     }
 
+    /// Returns a map of `id → checksum` for all annotation rows belonging to `article_id`.
+    ///
+    /// Annotation rows use composite IDs of the form `"{article_id}:{annotation_id}"`.
+    pub async fn annotation_meta_for_article(
+        &self,
+        article_id: &str,
+    ) -> Result<HashMap<String, String>, EmbeddingsError> {
+        let escaped = article_id.replace('\'', "''");
+        let batches: Vec<RecordBatch> = self
+            .table
+            .query()
+            .only_if(format!("id LIKE '{escaped}:%'"))
+            .execute()
+            .await?
+            .try_collect()
+            .await
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
+        let mut map = HashMap::new();
+        for batch in &batches {
+            let ids = batch
+                .column_by_name("id")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let checksums = batch
+                .column_by_name("checksum")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            if let (Some(ids), Some(checksums)) = (ids, checksums) {
+                for i in 0..batch.num_rows() {
+                    map.insert(ids.value(i).to_string(), checksums.value(i).to_string());
+                }
+            }
+        }
+        Ok(map)
+    }
+
     /// Returns the stored checksum for `id`, or `None` if not indexed.
     pub async fn get_checksum(&self, id: &str) -> Result<Option<String>, EmbeddingsError> {
         let escaped = id.replace('\'', "''");
