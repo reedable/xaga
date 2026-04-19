@@ -3,11 +3,11 @@ import css from "./_.module.css";
 import { ItemView } from "./components/content/ItemView";
 import { ItemList } from "./components/list/ItemList";
 import { Sidebar } from "./components/sidebar/Sidebar";
-import { ALL_ITEMS } from "./Shortcuts";
 import { useFeeds } from "./hooks/useFeeds";
 import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
 import { BookmarksProvider } from "./providers/BookmarksProvider";
+import { ALL_ITEMS } from "./Shortcuts";
 import { isShortcut, type Filter, type Item } from "./types";
 
 function App() {

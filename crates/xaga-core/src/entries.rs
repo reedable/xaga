@@ -28,19 +28,34 @@ pub(crate) fn render_entry(
     summary: Option<&str>,
     markdown: &str,
 ) -> String {
-    let published_line = published_at
-        .map(|v| format!("published: {v}\n"))
-        .unwrap_or_default();
-    let updated_line = updated_at
-        .map(|v| format!("updated: {v}\n"))
-        .unwrap_or_default();
-    let summary_line = summary
-        .map(|s| {
-            let clean: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
-            format!("summary: {clean}\n")
-        })
-        .unwrap_or_default();
-    format!("---\nsource: {source}\ntitle: {title}\naliases:\n  - {title}\ncreated: {created_at}\n{published_line}{updated_line}{summary_line}---\n\n{markdown}\n")
+    #[derive(serde::Serialize)]
+    struct Fm<'a> {
+        source: &'a str,
+        title: &'a str,
+        aliases: Vec<&'a str>,
+        created: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        published: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        updated: Option<&'a str>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        summary: Option<String>,
+    }
+
+    let clean_summary = summary.map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "));
+
+    let fm = Fm {
+        source,
+        title,
+        aliases: vec![title],
+        created: created_at,
+        published: published_at,
+        updated: updated_at,
+        summary: clean_summary.as_deref().map(str::to_string),
+    };
+
+    let yaml = serde_yaml::to_string(&fm).expect("frontmatter serialization is infallible");
+    format!("---\n{yaml}---\n\n{markdown}\n")
 }
 
 // ── Path helpers ──────────────────────────────────────────────────────────────

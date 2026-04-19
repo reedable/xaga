@@ -96,13 +96,13 @@ export default function ArticleReader({
           if (body) setBodyHtml(body);
         }
       } else {
-        const item = await markEntryRead(entry);
-        if (item) onChangeEntry?.(item);
-
         if (entry.summary) {
           const body = await markdownToHtml(entry.summary);
           if (body) setBodyHtml(body);
         }
+
+        const item = await markEntryRead(entry);
+        if (item) onChangeEntry?.(item);
       }
     },
     [view, readArticle, markEntryRead, onChangeEntry],

@@ -145,9 +145,8 @@ export function ItemList({
 
       if (isEntry(item)) {
         onSelectArticle(item);
-        // FIXME This sometimes fails with "file not found"
-        const e = await markEntryRead(item);
-        if (e) setItems((prev) => prev.map((p) => (p.id === e.id ? e : p)));
+        const i = await markEntryRead(item);
+        if (i) setItems((prev) => prev.map((p) => (p.id === i.id ? i : p)));
       }
     },
     [markEntryRead, onSelectArticle],
@@ -173,7 +172,7 @@ export function ItemList({
   }, [abort, refreshList, selectedList]);
 
   const handleMarkEntriesRead = useCallback(async () => {
-    const promises = items.filter(isEntry).map(markEntryRead);
+    const promises = displayedItems.filter(isEntry).map(markEntryRead);
 
     promises.map(async (promise) => {
       const item = await promise;
@@ -183,7 +182,7 @@ export function ItemList({
     });
 
     await Promise.all(promises);
-  }, [items, markEntryRead]);
+  }, [displayedItems, markEntryRead]);
 
   useEffect(() => {
     (async () => setFilter(selectedFilter ?? "all"))();
