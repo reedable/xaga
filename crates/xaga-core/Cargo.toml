@@ -19,6 +19,7 @@ serde_yaml        = "0.9"
 url               = "2"
 quick-xml         = { version = "0.37", features = ["encoding"] }
 uuid              = { version = "1", features = ["v4"] }
+fs2               = "0.4"
 thiserror         = "2"
 log               = "0.4"
 scraper           = "0.22"

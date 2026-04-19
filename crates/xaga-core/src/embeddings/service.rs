@@ -9,6 +9,7 @@ pub enum ShutdownReason {
     Restart,
 }
 
+use super::lock::LockFile;
 use super::model::{Embedder, load_default_embedder};
 use super::pipeline::embed_file;
 use super::{EmbeddingsDb, EmbeddingsError};
@@ -44,18 +45,34 @@ pub enum BackgroundMsg {
 /// The Tauri layer creates one `EmbeddingService` per library and forwards
 /// file-watcher events via `priority_sender()`.  All LanceDB interactions live
 /// inside this service — nothing outside needs to know LanceDB exists.
+///
+/// The service holds the library's `LockFile` for its entire lifetime.
+/// Dropping the service (or calling `shutdown()`) releases the lock so the
+/// next launch can acquire it.
 pub struct EmbeddingService {
     priority_tx: flume::Sender<PriorityMsg>,
     background_tx: flume::Sender<BackgroundMsg>,
     service_tx: flume::Sender<ServiceMsg>,
     done_rx: flume::Receiver<()>,
     restart_requested: Arc<AtomicBool>,
+    // Held for the service's lifetime; released (file deleted) on Drop.
+    _lock: LockFile,
 }
 
 impl EmbeddingService {
     /// Opens (or creates) the embeddings DB, loads the model, and starts the
     /// background loop.  Fails if the model files are missing.
+    ///
+    /// Returns `Err(EmbeddingsError::LockNotAcquired)` if another instance
+    /// already holds the library lock.  In that case the caller should treat
+    /// the embeddings DB as read-only and not start this service.
     pub async fn start(data_dir: PathBuf) -> Result<Self, EmbeddingsError> {
+        // Acquire the lock before touching LanceDB.  If the file already exists
+        // another instance is running against the same library; we must not
+        // write to the DB from this instance.
+        let lock = LockFile::try_acquire(LockFile::path_for(&data_dir))
+            .ok_or(EmbeddingsError::LockNotAcquired)?;
+
         let embedder = load_default_embedder().await?;
 
         let db = EmbeddingsDb::open(&data_dir).await?;
@@ -107,6 +124,7 @@ impl EmbeddingService {
             service_tx,
             done_rx,
             restart_requested,
+            _lock: lock,
         })
     }
 

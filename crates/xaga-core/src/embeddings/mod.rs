@@ -1,4 +1,5 @@
 pub mod db;
+pub mod lock;
 pub mod model;
 pub mod pipeline;
 pub mod service;
@@ -11,6 +12,8 @@ use thiserror::Error;
 pub enum EmbeddingsError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("lock file already held by another instance — embeddings are read-only")]
+    LockNotAcquired,
     #[error("Model download failed: {0}")]
     ModelDownload(String),
     #[error("Model error: {0}")]
@@ -42,6 +45,7 @@ impl From<arrow_schema::ArrowError> for EmbeddingsError {
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
 pub use db::{EmbeddingEntry, EmbeddingsDb};
+pub use lock::LockFile;
 pub use model::{default_model_dir, load_default_embedder, model_files_present, Embedder, DEFAULT_MODEL_REPO, MODEL_FILES};
 pub use pipeline::embed_file;
 pub use service::{BackgroundMsg, EmbeddingService, PriorityMsg, ShutdownReason};

@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
-use xaga_core::embeddings::{EmbeddingService, ShutdownReason};
+use xaga_core::embeddings::{EmbeddingService, EmbeddingsError, ShutdownReason};
 
 pub(crate) const DEFAULT_LOADER_TIMEOUT_SECS: u64 = 10;
 
@@ -355,6 +355,9 @@ pub fn run() {
             update_theme_checkmarks(app.handle(), &theme);
 
             // Start the EmbeddingService; file watcher + recovery fire inside it.
+            // If another instance already holds the library lock, we skip the
+            // service entirely — embeddings are available for reading but this
+            // instance will not write to LanceDB.
             tauri::async_runtime::spawn(async move {
                 match EmbeddingService::start(lib_path.clone()).await {
                     Ok(svc) => {
@@ -365,6 +368,9 @@ pub fn run() {
                         );
                         svc.trigger_recovery(lib_path.clone());
                         *setup_svc.lock().unwrap() = Some(svc);
+                    }
+                    Err(EmbeddingsError::LockNotAcquired) => {
+                        log::warn!("startup: another instance holds the library lock — embeddings are read-only");
                     }
                     Err(e) => log::error!("startup: embedding service failed: {e}"),
                 }

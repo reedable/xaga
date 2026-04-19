@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use clap::{Args, Subcommand};
-use xaga_core::embeddings::{default_model_dir, load_default_embedder, EmbeddingsDb, DEFAULT_MODEL_REPO, MODEL_FILES};
+use xaga_core::embeddings::{default_model_dir, load_default_embedder, EmbeddingsDb, LockFile, DEFAULT_MODEL_REPO, MODEL_FILES};
 use xaga_core::recovery;
 
 use crate::die;
@@ -62,6 +62,18 @@ pub enum EmbeddingsCommand {
     },
 }
 
+/// Acquires the library write lock or exits with a clear error.
+///
+/// The returned `LockFile` must be kept alive for the duration of the write
+/// operation — dropping it releases the lock.
+fn require_write_lock(data_dir: &Path) -> LockFile {
+    LockFile::try_acquire(LockFile::path_for(data_dir)).unwrap_or_else(|| {
+        eprintln!("error: the Xaga UI is running against this library.");
+        eprintln!("       Stop the UI before running write commands.");
+        std::process::exit(1);
+    })
+}
+
 pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
     match cmd {
         EmbeddingsCommand::Status => match EmbeddingsDb::open(data_dir).await {
@@ -87,6 +99,7 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
         },
 
         EmbeddingsCommand::Embed { path } => {
+            let _lock = require_write_lock(data_dir);
             let t0 = Instant::now();
             let embedder = make_embedder().await;
             println!("device:       {}", embedder.device_label());
@@ -113,6 +126,7 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
         }
 
         EmbeddingsCommand::Recover => {
+            let _lock = require_write_lock(data_dir);
             let db = match EmbeddingsDb::open(data_dir).await {
                 Ok(db) => db,
                 Err(e) => die(e),
@@ -126,6 +140,7 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
         }
 
         EmbeddingsCommand::Reset => {
+            let _lock = require_write_lock(data_dir);
             EmbeddingsDb::destroy(data_dir).unwrap_or_else(|e| die(e));
             match EmbeddingsDb::open(data_dir).await {
                 Ok(_) => println!("Embeddings index cleared."),
@@ -134,6 +149,7 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
         }
 
         EmbeddingsCommand::Reindex => {
+            let _lock = require_write_lock(data_dir);
             EmbeddingsDb::destroy(data_dir).unwrap_or_else(|e| die(e));
             let db = match EmbeddingsDb::open(data_dir).await {
                 Ok(db) => db,
