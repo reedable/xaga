@@ -10,7 +10,7 @@ export default function useEntries(
   const [error, setError] = useState<unknown>(null);
 
   const listEntries = useCallback(
-    async (feed: Feed, filter: Filter = "all") => {
+    async (feed: Feed, filter: Filter = "unread") => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
@@ -27,7 +27,7 @@ export default function useEntries(
   );
 
   const listAllEntries = useCallback(
-    async (filter: Filter = "all") => {
+    async (filter: Filter = "unread") => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);

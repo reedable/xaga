@@ -5,15 +5,13 @@ use serde::Serialize;
 /// Mirrors the TypeScript `ItemFilter` type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ItemFilter {
-    /// Everything except upcoming items (published_at > now). Default.
+    /// All items. Default.
     #[default]
     All,
     /// Items with no saved `.md` body.
     Unread,
     /// Only items listed in `bookmarks.html`.
     Bookmarked,
-    /// Items whose published_at > now, sorted oldest-first.
-    Upcoming,
 }
 
 impl std::str::FromStr for ItemFilter {
@@ -23,7 +21,6 @@ impl std::str::FromStr for ItemFilter {
             "all" => Ok(Self::All),
             "unread" => Ok(Self::Unread),
             "bookmarked" => Ok(Self::Bookmarked),
-            "upcoming" => Ok(Self::Upcoming),
             other => Err(format!("unknown item filter: {other}")),
         }
     }

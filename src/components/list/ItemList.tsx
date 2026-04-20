@@ -156,8 +156,6 @@ export function ItemList({
     (_event: MouseEvent<HTMLElement>, value: string) => {
       if (isFilter(value)) {
         setFilter(value);
-      } else {
-        setFilter("all");
       }
     },
     [],
@@ -210,17 +208,14 @@ export function ItemList({
           value={filter}
           onChange={handleFilter}
         >
-          <ToggleButton size="small" value="all" aria-label="All">
-            All
-          </ToggleButton>
           <ToggleButton size="small" value="unread" aria-label="Unread">
             Unread
           </ToggleButton>
           <ToggleButton size="small" value="bookmarked" aria-label="Bookmarked">
             Bookmarked
           </ToggleButton>
-          <ToggleButton size="small" value="upcoming" aria-label="Upcoming">
-            Upcoming
+          <ToggleButton size="small" value="all" aria-label="All">
+            All
           </ToggleButton>
         </ToggleButtonGroup>
 

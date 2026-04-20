@@ -6,7 +6,6 @@ use chrono::{DateTime, Utc};
 use crate::types::{EmbeddedEntry, Entry, Item, ItemFilter};
 use crate::util::normalize_url;
 
-/// Returns the set of item IDs (file stems) currently in the `unread/` directory.
 async fn unread_ids(library: &Path) -> HashSet<String> {
     let mut ids = HashSet::new();
     if let Ok(mut dir) = tokio::fs::read_dir(library.join("unread")).await {
@@ -40,23 +39,16 @@ pub async fn annotate_embedded_unread_status(library: &Path, entries: &mut Vec<E
 /// Filter `items` according to `item_filter` — predicate only, no sorting.
 ///
 /// Works on any `T` that implements `Item`. Items without a `source` are
-/// treated as authored (already read, not bookmarkable). Items without a
-/// `published_at` are treated as having no publish date (excluded from
-/// `Upcoming`, included in `All`).
+/// treated as authored (already read, not bookmarkable).
 pub async fn filter_items<T: Item>(
     library: &Path,
     mut items: Vec<T>,
     item_filter: &ItemFilter,
 ) -> std::io::Result<Vec<T>> {
-    let now = Utc::now();
-
     match item_filter {
-        ItemFilter::All => {
-            items.retain(|i| timestamp(i) <= now);
-        }
+        ItemFilter::All => {}
 
         ItemFilter::Unread => {
-            items.retain(|i| timestamp(i) <= now);
             let ids = unread_ids(library).await;
             items.retain(|i| i.url().is_some() && ids.contains(i.id()));
         }
@@ -77,28 +69,14 @@ pub async fn filter_items<T: Item>(
                 }
             });
         }
-
-        ItemFilter::Upcoming => {
-            items.retain(|i| timestamp(i) > now);
-        }
     }
 
     Ok(items)
 }
 
-/// Sort `items` by the natural order implied by `item_filter`.
-///
-/// `Upcoming` sorts ascending by `published_at` (soonest first). All other
-/// filters sort descending by most-recent timestamp.
-pub fn sort_items<T: Item>(items: &mut Vec<T>, item_filter: &ItemFilter) {
-    match item_filter {
-        ItemFilter::Upcoming => {
-            items.sort_by(|a, b| timestamp(a).cmp(&timestamp(b)));
-        }
-        _ => {
-            items.sort_by(|a, b| timestamp(b).cmp(&timestamp(a)));
-        }
-    }
+/// Sort `items` by most-recent timestamp, descending.
+pub fn sort_items<T: Item>(items: &mut Vec<T>, _item_filter: &ItemFilter) {
+    items.sort_by(|a, b| timestamp(b).cmp(&timestamp(a)));
 }
 
 fn timestamp<T: Item>(item: &T) -> DateTime<Utc> {

@@ -148,16 +148,25 @@ const EmbeddedEntrySchema = EntrySchema.extend(EmbeddedSchema.shape);
 const EmbeddedItemSchema = ItemSchema.extend(EmbeddedSchema.shape);
 // EmbeddedAnnotationResultSchema is checked first: it requires `color` and `reference`,
 // which regular entries never have, so it fails fast for non-annotation rows.
-const AnyEmbeddedItemSchema = EmbeddedAnnotationResultSchema.or(EmbeddedEntrySchema).or(EmbeddedItemSchema);
+const AnyEmbeddedItemSchema =
+  EmbeddedAnnotationResultSchema.or(EmbeddedEntrySchema).or(EmbeddedItemSchema);
 
 const toAnyEmbeddedItem = (data: z.infer<typeof AnyEmbeddedItemSchema>) => {
   if ("color" in data) {
-    return toEmbeddedAnnotationResult(data as z.infer<typeof EmbeddedAnnotationResultSchema>);
+    return toEmbeddedAnnotationResult(
+      data as z.infer<typeof EmbeddedAnnotationResultSchema>,
+    );
   }
   if ("is_unread" in data) {
-    return { ...toEntry(data as z.infer<typeof EmbeddedEntrySchema>), ...toEmbedded(data as z.infer<typeof EmbeddedSchema>) };
+    return {
+      ...toEntry(data as z.infer<typeof EmbeddedEntrySchema>),
+      ...toEmbedded(data as z.infer<typeof EmbeddedSchema>),
+    };
   }
-  return { ...toItem(data as z.infer<typeof EmbeddedItemSchema>), ...toEmbedded(data as z.infer<typeof EmbeddedSchema>) };
+  return {
+    ...toItem(data as z.infer<typeof EmbeddedItemSchema>),
+    ...toEmbedded(data as z.infer<typeof EmbeddedSchema>),
+  };
 };
 
 export class TauriPlatform implements Platform {
@@ -293,7 +302,7 @@ export class TauriPlatform implements Platform {
   async listEntries(
     signal: AbortSignal,
     feedUrl: string,
-    filter: Filter = "all",
+    filter: Filter = "unread",
   ): Promise<Entry[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -312,7 +321,7 @@ export class TauriPlatform implements Platform {
 
   async listAllEntries(
     signal: AbortSignal,
-    itemFilter: Filter = "all",
+    itemFilter: Filter = "unread",
   ): Promise<Entry[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })

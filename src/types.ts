@@ -5,7 +5,6 @@ const FILTERS: string[] = [
   "all",
   "unread",
   "bookmarked",
-  "upcoming",
   "archived",
 ] as const;
 
