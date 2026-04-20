@@ -39,8 +39,9 @@ fn annotation_checksum(annotation: &Annotation) -> String {
 /// - Deletes rows for annotations removed from the file.
 /// - Upserts rows for annotations that are new or whose checksum changed.
 ///
-/// Each annotation row uses the composite ID `"{article_id}:{annotation.id}"`.
+/// Each annotation row uses the annotation's own UUID as its DB ID.
 /// The title is the highlighted text; the note (if present) is the embedding body.
+/// The `reference` column holds the parent article ID; `color` holds the highlight color.
 async fn embed_annotations(
     article_id: &str,
     fm: &Frontmatter,
@@ -52,7 +53,7 @@ async fn embed_annotations(
     let current_ids: HashSet<String> = fm
         .annotations
         .iter()
-        .map(|a| format!("{article_id}:{}", a.id))
+        .map(|a| a.id.clone())
         .collect();
 
     let to_delete: Vec<String> = existing
@@ -69,21 +70,20 @@ async fn embed_annotations(
     }
 
     for annotation in &fm.annotations {
-        let row_id = format!("{article_id}:{}", annotation.id);
         let checksum = annotation_checksum(annotation);
 
-        if existing.get(&row_id).map_or(false, |s| s == &checksum) {
-            log::debug!("embed_file: annotation {row_id} checksum unchanged — skipping");
+        if existing.get(&annotation.id).map_or(false, |s| s == &checksum) {
+            log::debug!("embed_file: annotation {} checksum unchanged — skipping", annotation.id);
             continue;
         }
 
-        log::debug!("embed_file: embedding annotation {row_id}");
+        log::debug!("embed_file: embedding annotation {}", annotation.id);
         let title = annotation.text.join(" ");
         let body = annotation.note.clone().unwrap_or_default();
         let vector = compute_vector(embedder, title.clone(), body).await?;
 
         db.upsert(EmbeddingEntry {
-            id: row_id,
+            id: annotation.id.clone(),
             source: fm.source.clone(),
             title,
             created_at: annotation.created_at.clone(),
@@ -91,6 +91,8 @@ async fn embed_annotations(
             updated_at: fm.updated_at.clone().unwrap_or_default(),
             checksum,
             vector,
+            reference: article_id.to_string(),
+            color: annotation.color.clone(),
         })
         .await?;
     }

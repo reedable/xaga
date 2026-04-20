@@ -8,8 +8,8 @@ import {
 } from "../../text/buildEntryHtml";
 import type { Annotation } from "../../types";
 import cx from "../../utils/cx";
-import { AnnotationTooltip } from "./AnnotationTooltip";
 import Logger from "../../utils/Logger";
+import { AnnotationTooltip } from "./AnnotationTooltip";
 
 export interface SelectionRect {
   top: number;
@@ -30,15 +30,17 @@ interface TooltipState {
 interface ReaderProps {
   className?: string;
   html: string;
+  reference: string;
   annotations?: Annotation[];
   onClickUrl?: (url: string) => void;
-  onSaveAnnotation?: (annotation: Omit<Annotation, "createdAt">) => void;
-  onRemoveAnnotation?: (annotationId: string) => void;
+  onSaveAnnotation?: (annotation: Omit<Annotation, "createdAt" | "updatedAt">) => void;
+  onRemoveAnnotation?: (annotation: Pick<Annotation, "id" | "reference">) => void;
 }
 
 export function Reader({
   className,
   html,
+  reference,
   annotations,
   onClickUrl,
   onSaveAnnotation,
@@ -119,10 +121,12 @@ export function Reader({
 
   const handleCloseTooltip = useCallback(() => {
     if (tooltip?.color === "none") {
-      onRemoveAnnotation?.(tooltip.annotationId);
+      onRemoveAnnotation?.({ id: tooltip.annotationId, reference });
     } else if (tooltip) {
       onSaveAnnotation?.({
         id: tooltip.annotationId,
+        title: tooltip.text.join(" "),
+        reference,
         text: tooltip.text,
         occurrence: tooltip.occurrence,
         color: tooltip.color,

@@ -6,6 +6,17 @@ use crate::util::{normalize_url, parse_document, url_hash12};
 pub use crate::entries::EntryError as ArticleError;
 pub use crate::types::{Annotation, Article};
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Populates the `reference` field on each annotation with the given article ID.
+/// Annotations loaded from YAML frontmatter have `reference = ""` by default.
+fn with_reference(mut annotations: Vec<Annotation>, article_id: &str) -> Vec<Annotation> {
+    for a in &mut annotations {
+        a.reference = article_id.to_string();
+    }
+    annotations
+}
+
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
 pub(crate) fn article_path(data_dir: &Path, hash12: &str) -> PathBuf {
@@ -94,7 +105,7 @@ pub async fn save_article(
             is_unread,
         },
         content: markdown.to_string(),
-        annotations: existing_annotations,
+        annotations: with_reference(existing_annotations, id),
     })
 }
 
@@ -143,7 +154,7 @@ pub async fn read_article(
     Ok(Article {
         meta: entry_from_fm(id, &fm, is_unread),
         content: body,
-        annotations: fm.annotations,
+        annotations: with_reference(fm.annotations, id),
     })
 }
 
@@ -189,7 +200,7 @@ pub async fn add_annotation(
     Ok(Article {
         meta: entry_from_fm(article_id, &fm, is_unread),
         content: body,
-        annotations,
+        annotations: with_reference(annotations, article_id),
     })
 }
 
@@ -225,6 +236,6 @@ pub async fn remove_annotation(
     Ok(Article {
         meta: entry_from_fm(article_id, &fm, is_unread),
         content: body,
-        annotations,
+        annotations: with_reference(annotations, article_id),
     })
 }

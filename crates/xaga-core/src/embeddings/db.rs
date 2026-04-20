@@ -49,6 +49,10 @@ pub struct EmbeddingEntry {
     pub updated_at: String,
     pub checksum: String,
     pub vector: Vec<f32>,
+    /// For annotation rows: the parent article ID. Empty for regular entries.
+    pub reference: String,
+    /// For annotation rows: the highlight color. Empty for regular entries.
+    pub color: String,
 }
 
 // ── Arrow helpers ─────────────────────────────────────────────────────────────
@@ -62,6 +66,8 @@ fn make_schema() -> Arc<Schema> {
         Field::new("published_at", DataType::Utf8, false),
         Field::new("updated_at", DataType::Utf8, false),
         Field::new("checksum", DataType::Utf8, false),
+        Field::new("reference", DataType::Utf8, false),
+        Field::new("color", DataType::Utf8, false),
         Field::new(
             "vector",
             DataType::FixedSizeList(
@@ -92,6 +98,8 @@ fn entry_to_batch(
             Arc::new(StringArray::from(vec![entry.published_at])),
             Arc::new(StringArray::from(vec![entry.updated_at])),
             Arc::new(StringArray::from(vec![entry.checksum])),
+            Arc::new(StringArray::from(vec![entry.reference])),
+            Arc::new(StringArray::from(vec![entry.color])),
             Arc::new(vector_array),
         ],
     )?)
@@ -117,6 +125,8 @@ async fn create_empty_documents_table(
             Arc::new(StringArray::from(Vec::<&str>::new())), // published_at
             Arc::new(StringArray::from(Vec::<&str>::new())), // updated_at
             Arc::new(StringArray::from(Vec::<&str>::new())), // checksum
+            Arc::new(StringArray::from(Vec::<&str>::new())), // reference
+            Arc::new(StringArray::from(Vec::<&str>::new())), // color
             Arc::new(empty_vector),
         ],
     )?;
@@ -140,6 +150,8 @@ struct BatchSummaryColumns<'a> {
     created_ats: &'a StringArray,
     published_ats: Option<&'a StringArray>,
     updated_ats: Option<&'a StringArray>,
+    references: Option<&'a StringArray>,
+    colors: Option<&'a StringArray>,
 }
 
 impl<'a> BatchSummaryColumns<'a> {
@@ -167,6 +179,12 @@ impl<'a> BatchSummaryColumns<'a> {
             updated_ats: batch
                 .column_by_name("updated_at")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>()),
+            references: batch
+                .column_by_name("reference")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>()),
+            colors: batch
+                .column_by_name("color")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>()),
         })
     }
 
@@ -174,11 +192,7 @@ impl<'a> BatchSummaryColumns<'a> {
         fn opt_str(col: Option<&StringArray>, i: usize) -> Option<String> {
             col.and_then(|a| {
                 let v = a.value(i);
-                if v.is_empty() {
-                    None
-                } else {
-                    Some(v.to_string())
-                }
+                if v.is_empty() { None } else { Some(v.to_string()) }
             })
         }
         Entry {
@@ -191,6 +205,14 @@ impl<'a> BatchSummaryColumns<'a> {
             summary: None,
             is_unread: false,
         }
+    }
+
+    fn reference_at(&self, i: usize) -> String {
+        self.references.map_or(String::new(), |a| a.value(i).to_string())
+    }
+
+    fn color_at(&self, i: usize) -> String {
+        self.colors.map_or(String::new(), |a| a.value(i).to_string())
     }
 }
 
@@ -277,7 +299,7 @@ impl EmbeddingsDb {
     pub async fn all_checksums(
         &self,
     ) -> Result<std::collections::HashSet<String>, EmbeddingsError> {
-        Ok(self.all_entries_meta().await?.into_values().collect())
+        Ok(self.all_entries_meta().await?.into_values().map(|(checksum, _)| checksum).collect())
     }
 
     /// Inserts an embedding row, replacing any existing row with the same id.
@@ -325,10 +347,11 @@ impl EmbeddingsDb {
         Ok(n)
     }
 
-    /// Returns a map of `id → checksum` for every row in the database.
+    /// Returns a map of `id → (checksum, reference)` for every row in the database.
+    /// `reference` is non-empty only for annotation rows (it holds the parent article ID).
     /// Used by recovery to determine which files are already embedded and whether
     /// content has changed.
-    pub async fn all_entries_meta(&self) -> Result<HashMap<String, String>, EmbeddingsError> {
+    pub async fn all_entries_meta(&self) -> Result<HashMap<String, (String, String)>, EmbeddingsError> {
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -344,14 +367,17 @@ impl EmbeddingsDb {
             let ids = batch
                 .column_by_name("id")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
-
             let checksums = batch
                 .column_by_name("checksum")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let references = batch
+                .column_by_name("reference")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
             if let (Some(ids), Some(checksums)) = (ids, checksums) {
                 for i in 0..batch.num_rows() {
-                    map.insert(ids.value(i).to_string(), checksums.value(i).to_string());
+                    let reference = references.map_or(String::new(), |a| a.value(i).to_string());
+                    map.insert(ids.value(i).to_string(), (checksums.value(i).to_string(), reference));
                 }
             }
         }
@@ -359,8 +385,6 @@ impl EmbeddingsDb {
     }
 
     /// Returns a map of `id → checksum` for all annotation rows belonging to `article_id`.
-    ///
-    /// Annotation rows use composite IDs of the form `"{article_id}:{annotation_id}"`.
     pub async fn annotation_meta_for_article(
         &self,
         article_id: &str,
@@ -369,7 +393,7 @@ impl EmbeddingsDb {
         let batches: Vec<RecordBatch> = self
             .table
             .query()
-            .only_if(format!("id LIKE '{escaped}:%'"))
+            .only_if(format!("reference = '{escaped}'"))
             .execute()
             .await?
             .try_collect()
@@ -511,7 +535,7 @@ impl EmbeddingsDb {
         min_similarity: f32,
         max_similarity: f32,
         limit: Option<usize>,
-    ) -> Result<Vec<(f32, Entry)>, EmbeddingsError> {
+    ) -> Result<Vec<(f32, Entry, String, String)>, EmbeddingsError> {
         use arrow_array::Array;
 
         let batches: Vec<RecordBatch> = self
@@ -525,7 +549,7 @@ impl EmbeddingsDb {
 
         let query_norm: f32 = query_vector.iter().map(|x| x * x).sum::<f32>().sqrt();
 
-        let mut scored: Vec<(f32, Entry)> = Vec::new();
+        let mut scored: Vec<(f32, Entry, String, String)> = Vec::new();
         for batch in &batches {
             let Some(id_col) = batch
                 .column_by_name("id")
@@ -570,7 +594,7 @@ impl EmbeddingsDb {
                 };
 
                 if similarity >= min_similarity && similarity <= max_similarity {
-                    scored.push((similarity, cols.summary_at(i)));
+                    scored.push((similarity, cols.summary_at(i), cols.reference_at(i), cols.color_at(i)));
                 }
             }
         }
@@ -601,7 +625,7 @@ impl EmbeddingsDb {
             )
             .await?
             .into_iter()
-            .map(|(similarity, entry)| EmbeddedEntry { entry, similarity })
+            .map(|(similarity, entry, reference, color)| EmbeddedEntry { entry, similarity, reference, color })
             .collect())
     }
 
@@ -776,7 +800,7 @@ impl EmbeddingsDb {
             .await
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
-        let mut scored: Vec<(f32, Entry)> = Vec::new();
+        let mut scored: Vec<(f32, Entry, String, String)> = Vec::new();
         for batch in &batches {
             use arrow_array::Array;
             let Some(id_col) = batch
@@ -827,7 +851,7 @@ impl EmbeddingsDb {
                     .fold(f32::NEG_INFINITY, f32::max);
 
                 if max_sim >= effective_min && max_sim <= effective_max {
-                    scored.push((max_sim, cols.summary_at(i)));
+                    scored.push((max_sim, cols.summary_at(i), cols.reference_at(i), cols.color_at(i)));
                 }
             }
         }
@@ -839,7 +863,7 @@ impl EmbeddingsDb {
 
         Ok(scored
             .into_iter()
-            .map(|(similarity, entry)| EmbeddedEntry { entry, similarity })
+            .map(|(similarity, entry, reference, color)| EmbeddedEntry { entry, similarity, reference, color })
             .collect())
     }
 
@@ -931,7 +955,7 @@ impl EmbeddingsDb {
             for i in 0..batch.num_rows() {
                 let entry = cols.summary_at(i);
                 let similarity = distances.map_or(0.0, |d| 1.0 - d.value(i));
-                results.push(EmbeddedEntry { entry, similarity });
+                results.push(EmbeddedEntry { entry, similarity, reference: cols.reference_at(i), color: cols.color_at(i) });
             }
         }
 

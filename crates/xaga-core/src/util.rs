@@ -74,6 +74,8 @@ impl Frontmatter {
             updated_at: self.updated_at.clone().unwrap_or_default(),
             checksum: self.content_checksum(body),
             vector,
+            reference: String::new(),
+            color: String::new(),
         }
     }
 }

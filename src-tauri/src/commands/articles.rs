@@ -124,7 +124,7 @@ pub async fn add_annotation(
 ) -> Result<articles::Article, String> {
     require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
-    let annotation = xaga_core::types::Annotation { id, text, occurrence, color, note, created_at: String::new() };
+    let annotation = xaga_core::types::Annotation { id, reference: article_id.clone(), text, occurrence, color, note, created_at: String::new() };
     articles::add_annotation(&data_dir, &article_id, annotation)
         .await
         .map_err(|e| e.to_string())

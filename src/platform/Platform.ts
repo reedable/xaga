@@ -58,8 +58,14 @@ export interface Platform {
   ): Promise<Article>;
 
   // Annotations
-  addAnnotation(signal: AbortSignal, articleId: string, annotation: Omit<Annotation, "createdAt">): Promise<Article>;
-  removeAnnotation(signal: AbortSignal, articleId: string, annotationId: string): Promise<Article>;
+  addAnnotation(
+    signal: AbortSignal,
+    annotation: Omit<Annotation, "createdAt" | "updatedAt">,
+  ): Promise<Article>;
+  removeAnnotation(
+    signal: AbortSignal,
+    annotation: Pick<Annotation, "id" | "reference">,
+  ): Promise<Article>;
 
   // Topics
   createTopic(
@@ -111,7 +117,11 @@ export interface Platform {
   // Settings
   getRefreshOnStartup(): Promise<boolean>;
   setRefreshOnStartup(value: boolean): Promise<void>;
-  getReaderPrefs(): Promise<{ fontFamily: string; fontSize: number; lineHeight: number }>;
+  getReaderPrefs(): Promise<{
+    fontFamily: string;
+    fontSize: number;
+    lineHeight: number;
+  }>;
   setReaderFontFamily(value: string): Promise<void>;
   setReaderFontSize(value: number): Promise<void>;
   setReaderLineHeight(value: number): Promise<void>;
@@ -128,11 +138,21 @@ export interface Platform {
   onShutdown(callback: () => void): Promise<UnlistenFn>;
 
   // Settings sync (main window receives these when settings window saves)
-  onThemeChangedFromSettings(callback: (theme: string) => void): Promise<UnlistenFn>;
-  onReaderFontFamilyChanged(callback: (value: string) => void): Promise<UnlistenFn>;
-  onReaderFontSizeChanged(callback: (value: number) => void): Promise<UnlistenFn>;
-  onReaderLineHeightChanged(callback: (value: number) => void): Promise<UnlistenFn>;
-  onRefreshOnStartupChanged(callback: (value: boolean) => void): Promise<UnlistenFn>;
+  onThemeChangedFromSettings(
+    callback: (theme: string) => void,
+  ): Promise<UnlistenFn>;
+  onReaderFontFamilyChanged(
+    callback: (value: string) => void,
+  ): Promise<UnlistenFn>;
+  onReaderFontSizeChanged(
+    callback: (value: number) => void,
+  ): Promise<UnlistenFn>;
+  onReaderLineHeightChanged(
+    callback: (value: number) => void,
+  ): Promise<UnlistenFn>;
+  onRefreshOnStartupChanged(
+    callback: (value: boolean) => void,
+  ): Promise<UnlistenFn>;
 }
 
 export const PlatformContext = createContext<Platform | null>(null);

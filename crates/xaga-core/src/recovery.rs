@@ -85,7 +85,7 @@ pub async fn build_recovery_plan(
     let make_batch = |entries: &HashMap<String, (PathBuf, String)>| -> Vec<String> {
         let mut batch: Vec<(&String, &PathBuf)> = entries
             .iter()
-            .filter(|(id, (_, checksum))| db_meta.get(id.as_str()).map_or(true, |s| s != checksum))
+            .filter(|(id, (_, checksum))| db_meta.get(id.as_str()).map_or(true, |(s, _)| s != checksum))
             .map(|(id, (path, _))| (id, path))
             .collect();
         batch.sort_by(|(_, a), (_, b)| {
@@ -104,14 +104,16 @@ pub async fn build_recovery_plan(
         .chain(article_entries.keys())
         .map(String::as_str)
         .collect();
-    // Annotation rows use composite IDs "{article_id}:{annotation_id}".
-    // For those, check the article-ID prefix against the filesystem.
+    // Annotation rows carry a non-empty `reference` (parent article ID).
+    // For those, check the reference against the filesystem; for all other
+    // rows, check the row's own ID.
     let to_delete: Vec<String> = db_meta
-        .into_keys()
-        .filter(|id| {
-            let article_id = id.split_once(':').map_or(id.as_str(), |(a, _)| a);
-            !fs_ids.contains(article_id)
+        .into_iter()
+        .filter(|(id, (_, reference))| {
+            let file_id = if reference.is_empty() { id.as_str() } else { reference.as_str() };
+            !fs_ids.contains(file_id)
         })
+        .map(|(id, _)| id)
         .collect();
 
     Ok(RecoveryPlan {

@@ -61,7 +61,7 @@ export default function ArticleReader({
     setAnnotationsFromArticle,
     saveAnnotation,
     removeAnnotation,
-  } = useAnnotations(abortControllerRef, selectedEntry.id);
+  } = useAnnotations(abortControllerRef);
 
   const readerStyle: ReaderStyle = useMemo(
     () => ({
@@ -277,6 +277,7 @@ export default function ArticleReader({
             <Reader
               className={cx(className)}
               html={html}
+              reference={selectedEntry.id}
               annotations={annotations}
               onClickUrl={handleLoadArticleByUrl}
               onSaveAnnotation={saveAnnotation}

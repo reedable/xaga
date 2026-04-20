@@ -83,7 +83,7 @@ export function AnnotationTooltip({
           top: position.y,
           left: position.x,
           zIndex: 9999,
-          minWidth: 200,
+          minWidth: 320,
           maxWidth: 320,
           borderLeft: `4px solid ${getAnnotationColor(color).accent}`,
         }}
@@ -103,7 +103,7 @@ export function AnnotationTooltip({
               }}
               placeholder="Add a note…"
               onKeyDown={handleNoteKeyDown}
-              sx={{ fontSize: "0.875rem" }}
+              sx={{ width: "100%" }}
             />
           </Collapse>
 

@@ -76,6 +76,7 @@ const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
 
 const AnnotationSchema = z.object({
   id: z.string(),
+  reference: z.string(),
   text: z.array(z.string()),
   occurrence: z.array(z.number()),
   color: z.string(),
@@ -85,11 +86,37 @@ const AnnotationSchema = z.object({
 
 const toAnnotation = (data: z.infer<typeof AnnotationSchema>): Annotation => ({
   id: data.id,
+  title: data.text.join(" "),
+  reference: data.reference,
   text: data.text,
   occurrence: data.occurrence,
   color: data.color,
   note: data.note ?? undefined,
   createdAt: data.created_at,
+});
+
+// Schema for annotation rows returned from embedding queries.
+// These carry only the fields stored in LanceDB — no text[] or occurrence[].
+const EmbeddedAnnotationResultSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  created_at: z.string(),
+  updated_at: z.string().nullable().optional(),
+  color: z.string(),
+  reference: z.string(),
+  similarity: z.number(),
+});
+
+const toEmbeddedAnnotationResult = (
+  data: z.infer<typeof EmbeddedAnnotationResultSchema>,
+) => ({
+  id: data.id,
+  title: data.title,
+  createdAt: data.created_at,
+  updatedAt: data.updated_at ?? undefined,
+  color: data.color,
+  reference: data.reference,
+  similarity: data.similarity,
 });
 
 const ArticleSchema = EntrySchema.extend({
@@ -119,13 +146,18 @@ function toEmbedded(data: z.infer<typeof EmbeddedSchema>): Embedded {
 
 const EmbeddedEntrySchema = EntrySchema.extend(EmbeddedSchema.shape);
 const EmbeddedItemSchema = ItemSchema.extend(EmbeddedSchema.shape);
-const AnyEmbeddedItemSchema = EmbeddedEntrySchema.or(EmbeddedItemSchema);
+// EmbeddedAnnotationResultSchema is checked first: it requires `color` and `reference`,
+// which regular entries never have, so it fails fast for non-annotation rows.
+const AnyEmbeddedItemSchema = EmbeddedAnnotationResultSchema.or(EmbeddedEntrySchema).or(EmbeddedItemSchema);
 
 const toAnyEmbeddedItem = (data: z.infer<typeof AnyEmbeddedItemSchema>) => {
-  if ("is_unread" in data) {
-    return { ...toEntry(data), ...toEmbedded(data) };
+  if ("color" in data) {
+    return toEmbeddedAnnotationResult(data as z.infer<typeof EmbeddedAnnotationResultSchema>);
   }
-  return { ...toItem(data), ...toEmbedded(data) };
+  if ("is_unread" in data) {
+    return { ...toEntry(data as z.infer<typeof EmbeddedEntrySchema>), ...toEmbedded(data as z.infer<typeof EmbeddedSchema>) };
+  }
+  return { ...toItem(data as z.infer<typeof EmbeddedItemSchema>), ...toEmbedded(data as z.infer<typeof EmbeddedSchema>) };
 };
 
 export class TauriPlatform implements Platform {
@@ -209,7 +241,11 @@ export class TauriPlatform implements Platform {
     return FeedSchema.transform(toFeed).parse(result);
   }
 
-  async renameFeed(signal: AbortSignal, feedId: string, title: string): Promise<Feed> {
+  async renameFeed(
+    signal: AbortSignal,
+    feedId: string,
+    title: string,
+  ): Promise<Feed> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "rename_feed" });
@@ -226,9 +262,9 @@ export class TauriPlatform implements Platform {
   }
 
   async importFeeds(signal: AbortSignal): Promise<ImportResult<Feed> | null> {
-    const filePath = await open({
+    const filePath = (await open({
       filters: [{ name: "OPML", extensions: ["opml", "xml"] }],
-    }) as string | null;
+    })) as string | null;
     if (!filePath) return null;
 
     const invoker = decorate(invoke)
@@ -239,10 +275,10 @@ export class TauriPlatform implements Platform {
   }
 
   async exportFeeds(signal: AbortSignal): Promise<void> {
-    const filePath = await save({
+    const filePath = (await save({
       filters: [{ name: "OPML", extensions: ["opml"] }],
       defaultPath: "feeds.opml",
-    }) as string | null;
+    })) as string | null;
     if (!filePath) return;
 
     const invoker = decorate(invoke)
@@ -377,13 +413,16 @@ export class TauriPlatform implements Platform {
 
   // Annotations ---------------------------------------------------------------
 
-  async addAnnotation(signal: AbortSignal, articleId: string, annotation: Omit<Annotation, "createdAt">): Promise<Article> {
+  async addAnnotation(
+    signal: AbortSignal,
+    annotation: Omit<Annotation, "createdAt" | "updatedAt">,
+  ): Promise<Article> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "add_annotation" });
 
     const result = await invoker<unknown>("add_annotation", {
-      articleId,
+      articleId: annotation.reference,
       id: annotation.id,
       text: annotation.text,
       occurrence: annotation.occurrence,
@@ -394,12 +433,18 @@ export class TauriPlatform implements Platform {
     return ArticleSchema.transform(toArticle).parse(result);
   }
 
-  async removeAnnotation(signal: AbortSignal, articleId: string, annotationId: string): Promise<Article> {
+  async removeAnnotation(
+    signal: AbortSignal,
+    annotation: Pick<Annotation, "id" | "reference">,
+  ): Promise<Article> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "remove_annotation" });
 
-    const result = await invoker<unknown>("remove_annotation", { articleId, annotationId });
+    const result = await invoker<unknown>("remove_annotation", {
+      articleId: annotation.reference,
+      annotationId: annotation.id,
+    });
     return ArticleSchema.transform(toArticle).parse(result);
   }
 
@@ -489,10 +534,12 @@ export class TauriPlatform implements Platform {
     return invoker("remove_bookmark", { id: entry.id });
   }
 
-  async importBookmarks(signal: AbortSignal): Promise<ImportResult<Entry> | null> {
-    const filePath = await open({
+  async importBookmarks(
+    signal: AbortSignal,
+  ): Promise<ImportResult<Entry> | null> {
+    const filePath = (await open({
       filters: [{ name: "Bookmarks", extensions: ["html", "htm"] }],
-    }) as string | null;
+    })) as string | null;
     if (!filePath) return null;
 
     const invoker = decorate(invoke)
@@ -503,10 +550,10 @@ export class TauriPlatform implements Platform {
   }
 
   async exportBookmarks(signal: AbortSignal): Promise<void> {
-    const filePath = await save({
+    const filePath = (await save({
       filters: [{ name: "Bookmarks", extensions: ["html"] }],
       defaultPath: "bookmarks.html",
-    }) as string | null;
+    })) as string | null;
     if (!filePath) return;
 
     const invoker = decorate(invoke)
@@ -653,8 +700,14 @@ export class TauriPlatform implements Platform {
     return invoke<void>("set_refresh_on_startup", { value });
   }
 
-  async getReaderPrefs(): Promise<{ fontFamily: string; fontSize: number; lineHeight: number }> {
-    return invoke<{ fontFamily: string; fontSize: number; lineHeight: number }>("get_reader_prefs");
+  async getReaderPrefs(): Promise<{
+    fontFamily: string;
+    fontSize: number;
+    lineHeight: number;
+  }> {
+    return invoke<{ fontFamily: string; fontSize: number; lineHeight: number }>(
+      "get_reader_prefs",
+    );
   }
 
   async setReaderFontFamily(value: string): Promise<void> {
@@ -674,30 +727,50 @@ export class TauriPlatform implements Platform {
   }
 
   onShowArticleSummary(callback: (show: boolean) => void): Promise<UnlistenFn> {
-    return listen<boolean>("menu:show-article-summary", (e) => callback(e.payload));
+    return listen<boolean>("menu:show-article-summary", (e) =>
+      callback(e.payload),
+    );
   }
 
   onShutdown(callback: () => void): Promise<UnlistenFn> {
     return listen("embedding:shutdown", callback);
   }
 
-  onThemeChangedFromSettings(callback: (theme: string) => void): Promise<UnlistenFn> {
+  onThemeChangedFromSettings(
+    callback: (theme: string) => void,
+  ): Promise<UnlistenFn> {
     return listen<string>("settings:theme", (e) => callback(e.payload));
   }
 
-  onReaderFontFamilyChanged(callback: (value: string) => void): Promise<UnlistenFn> {
-    return listen<string>("settings:reader-font-family", (e) => callback(e.payload));
+  onReaderFontFamilyChanged(
+    callback: (value: string) => void,
+  ): Promise<UnlistenFn> {
+    return listen<string>("settings:reader-font-family", (e) =>
+      callback(e.payload),
+    );
   }
 
-  onReaderFontSizeChanged(callback: (value: number) => void): Promise<UnlistenFn> {
-    return listen<number>("settings:reader-font-size", (e) => callback(e.payload));
+  onReaderFontSizeChanged(
+    callback: (value: number) => void,
+  ): Promise<UnlistenFn> {
+    return listen<number>("settings:reader-font-size", (e) =>
+      callback(e.payload),
+    );
   }
 
-  onReaderLineHeightChanged(callback: (value: number) => void): Promise<UnlistenFn> {
-    return listen<number>("settings:reader-line-height", (e) => callback(e.payload));
+  onReaderLineHeightChanged(
+    callback: (value: number) => void,
+  ): Promise<UnlistenFn> {
+    return listen<number>("settings:reader-line-height", (e) =>
+      callback(e.payload),
+    );
   }
 
-  onRefreshOnStartupChanged(callback: (value: boolean) => void): Promise<UnlistenFn> {
-    return listen<boolean>("settings:refresh-on-startup", (e) => callback(e.payload));
+  onRefreshOnStartupChanged(
+    callback: (value: boolean) => void,
+  ): Promise<UnlistenFn> {
+    return listen<boolean>("settings:refresh-on-startup", (e) =>
+      callback(e.payload),
+    );
   }
 }

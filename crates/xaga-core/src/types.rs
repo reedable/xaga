@@ -78,11 +78,17 @@ impl Item for Entry {
 
 /// An `Entry` returned from an embedding similarity query, carrying its score.
 /// Mirrors the TypeScript `EmbeddedEntry` type (= `Entry & Embedded`).
+/// For annotation rows, `reference` holds the parent article ID and `color`
+/// holds the highlight color; both are omitted for regular entries.
 #[derive(Debug, Serialize)]
 pub struct EmbeddedEntry {
     #[serde(flatten)]
     pub entry: Entry,
     pub similarity: f32,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub reference: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub color: String,
 }
 
 impl Item for EmbeddedEntry {
@@ -111,6 +117,10 @@ impl std::ops::DerefMut for EmbeddedEntry {
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct Annotation {
     pub id: String,
+    /// The ID of the article this annotation belongs to.
+    /// Populated at runtime from context; not stored in YAML frontmatter.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub reference: String,
     /// One text segment per block-level element covered by the selection.
     /// Single-paragraph selections produce a one-element vec.
     pub text: Vec<String>,
