@@ -97,7 +97,13 @@ export type Annotation = Item & {
 };
 
 export function isAnnotation(item?: Item | null): item is Annotation {
-  return !!item && "color" in item;
+  return (
+    !!item &&
+    "color" in item &&
+    typeof item.color === "string" &&
+    "reference" in item &&
+    typeof item.reference == "string"
+  );
 }
 
 // ── Article ──────────────────────────────────────────────────────────────────

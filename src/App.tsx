@@ -76,7 +76,7 @@ function App() {
             className={css.ItemList}
             selectedList={selectedList}
             selectedFilter={selectedFilter}
-            onSelectArticle={setSelectedItem}
+            onSelectItem={setSelectedItem}
           />
 
           <ItemView

@@ -1,7 +1,7 @@
 import { useCallback, useState, type RefObject } from "react";
 import { usePlatform } from "../platform/Platform";
 import { processEntry } from "../text/entryWorker";
-import type { Entry } from "../types";
+import type { Article, Entry } from "../types";
 
 export function useArticles(abortControllerRef: RefObject<AbortController>) {
   const platform = usePlatform();
@@ -28,6 +28,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           title,
           content: markdown,
           url,
+          annotations: [],
         });
 
         return await platform.readArticle(signal, article.id);
@@ -45,22 +46,22 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
    * the disc.
    */
   const loadArticle = useCallback(
-    async (entry: Entry) => {
+    async (article: Article) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
 
       try {
-        const html = await platform.loadArticle(signal, entry.url);
-        const { title, markdown } = await processEntry(entry.url, html);
+        const html = await platform.loadArticle(signal, article.url);
+        const { title, markdown } = await processEntry(article.url, html);
 
         await platform.saveArticle(signal, {
-          ...entry,
+          ...article,
           title,
           content: markdown,
         });
 
-        return await platform.readArticle(signal, entry.id);
+        return await platform.readArticle(signal, article.id);
       } catch (e) {
         setError(e);
       } finally {
@@ -79,7 +80,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
    * md file from unread/ to read/ directory, i.e. marks the item read.
    */
   const readArticle = useCallback(
-    async (entry: Entry) => {
+    async (entry: Pick<Entry, "id">) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
@@ -91,7 +92,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           return article;
         }
 
-        return await loadArticle(entry);
+        return await loadArticle(article);
       } catch (e) {
         setError(e);
       } finally {

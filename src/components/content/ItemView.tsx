@@ -1,5 +1,13 @@
 import { Typography } from "@mui/material";
-import { isEntry, type Item } from "../../types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useArticles } from "../../hooks/useArticles";
+import {
+  isAnnotation,
+  isEntry,
+  type Annotation,
+  type Entry,
+  type Item,
+} from "../../types";
 import cx from "../../utils/cx";
 import ArticleReader from "./ArticleReader";
 import css from "./_.module.css";
@@ -17,6 +25,27 @@ export function ItemView({
   onSelectRelatedItem,
   onChangeItem,
 }: ItemViewProps) {
+  const abortControllerRef = useRef(new AbortController());
+  const { readArticle } = useArticles(abortControllerRef);
+  const [referenceEntry, setReferenceEntry] = useState<Entry | null>(null);
+
+  const requestReferenceEntry = useCallback(
+    async (annotation: Annotation) => {
+      const entry = await readArticle({
+        id: annotation.reference,
+      });
+
+      if (entry) setReferenceEntry(entry);
+    },
+    [readArticle],
+  );
+
+  useEffect(() => {
+    if (isAnnotation(selectedItem)) {
+      (async () => requestReferenceEntry(selectedItem))();
+    }
+  }, [requestReferenceEntry, selectedItem]);
+
   if (!selectedItem) {
     return (
       <div className={cx(className, css.Placeholder)}>
@@ -30,13 +59,19 @@ export function ItemView({
   return (
     <div className={cx(className, css.LayoutContainer)}>
       <div className={css.Layout}>
-        {isEntry(selectedItem) && (
+        {isEntry(selectedItem) ? (
           <ArticleReader
             selectedEntry={selectedItem}
             onChangeEntry={onChangeItem}
             onSelectEntry={onSelectRelatedItem}
           />
-        )}
+        ) : isAnnotation(selectedItem) && referenceEntry ? (
+          <ArticleReader
+            selectedEntry={referenceEntry}
+            onChangeEntry={onChangeItem}
+            onSelectEntry={onSelectRelatedItem}
+          />
+        ) : null}
       </div>
     </div>
   );

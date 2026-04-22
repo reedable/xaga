@@ -1,4 +1,4 @@
-import { Bookmark, Circle, Clear } from "@mui/icons-material";
+import { Bookmark, Circle, Clear, FormatQuote } from "@mui/icons-material";
 import {
   Button,
   Collapse,
@@ -28,12 +28,12 @@ import { useFeeds } from "../../hooks/useFeeds";
 import useRelatedItems from "../../hooks/useRelatedItems";
 import { ALL_ITEMS, RECOMMENDED_ITEMS } from "../../Shortcuts";
 import {
+  isAnnotation,
   isEntry,
   isFeed,
   isFilter,
   isItem,
   isTopic,
-  type Entry,
   type Filter,
   type Item,
 } from "../../types";
@@ -51,14 +51,14 @@ interface ItemListProps {
   className?: string;
   selectedList: Item;
   selectedFilter?: Filter;
-  onSelectArticle: (entry: Entry) => void;
+  onSelectItem: (item: Item) => void;
 }
 
 export function ItemList({
   className,
   selectedList,
   selectedFilter,
-  onSelectArticle,
+  onSelectItem,
 }: ItemListProps) {
   const [abort, abortControllerRef] = useAbortController();
 
@@ -142,14 +142,14 @@ export function ItemList({
   const handleClickItem = useCallback(
     async (item: Item) => {
       setSelectedItemId(item.id);
+      onSelectItem(item);
 
       if (isEntry(item)) {
-        onSelectArticle(item);
         const i = await markEntryRead(item);
         if (i) setItems((prev) => prev.map((p) => (p.id === i.id ? i : p)));
       }
     },
-    [markEntryRead, onSelectArticle],
+    [markEntryRead, onSelectItem],
   );
 
   const handleFilter = useCallback(
@@ -289,6 +289,8 @@ export function ItemList({
                       {bookmarkMap?.get(item.id) && (
                         <Bookmark color="primary" />
                       )}
+
+                      {isAnnotation(item) && <FormatQuote color="primary" />}
 
                       <span>{formatByline(item)}</span>
                     </>
