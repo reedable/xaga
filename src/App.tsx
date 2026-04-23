@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import css from "./_.module.css";
 import { ItemView } from "./components/content/ItemView";
 import { ItemList } from "./components/list/ItemList";
+import { SearchResultList } from "./components/list/SearchResultList";
 import { Sidebar } from "./components/sidebar/Sidebar";
+import { TitleBar } from "./components/titlebar/TitleBar";
 import { useFeeds } from "./hooks/useFeeds";
 import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
@@ -17,6 +19,7 @@ function App() {
   const [selectedFilter, setSelectedFilter] = useState<Filter | undefined>();
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [shuttingDown, setShuttingDown] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const abortControllerRef = useRef(new AbortController());
   const { refreshAllFeeds } = useFeeds(abortControllerRef);
@@ -65,26 +68,41 @@ function App() {
       )}
 
       <BookmarksProvider>
-        <div className={css.App}>
-          <Sidebar
-            className={css.Sidebar}
-            selectedList={selectedList}
-            onSelectList={handleSelectList}
+        <div className={css.Root}>
+          <TitleBar
+            className={css.TitleBar}
+            onSearchQueryChange={setSearchQuery}
           />
 
-          <ItemList
-            className={css.ItemList}
-            selectedList={selectedList}
-            selectedFilter={selectedFilter}
-            onSelectItem={setSelectedItem}
-          />
+          <div className={css.App}>
+            <Sidebar
+              className={css.Sidebar}
+              selectedList={selectedList}
+              onSelectList={handleSelectList}
+            />
 
-          <ItemView
-            className={css.ItemView}
-            selectedItem={selectedItem}
-            onSelectRelatedItem={setSelectedItem}
-            onChangeItem={handleChangeItem}
-          />
+            <ItemList
+              className={css.ItemList}
+              selectedList={selectedList}
+              selectedFilter={selectedFilter}
+              onSelectItem={setSelectedItem}
+            />
+
+            <ItemView
+              className={css.ItemView}
+              selectedItem={selectedItem}
+              onSelectRelatedItem={setSelectedItem}
+              onChangeItem={handleChangeItem}
+            />
+
+            {searchQuery && (
+              <SearchResultList
+                className={css.SearchResultList}
+                searchQuery={searchQuery}
+                onSelectItem={setSelectedItem}
+              />
+            )}
+          </div>
         </div>
       </BookmarksProvider>
     </>

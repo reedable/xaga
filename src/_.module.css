@@ -1,6 +1,17 @@
+.Root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.TitleBar {
+  flex-shrink: 0;
+}
+
 .App {
   display: flex;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 
   .Sidebar {
     content: "";
@@ -11,6 +22,10 @@
   }
 
   .ItemView {
+    border-left: var(--border);
+  }
+
+  .SearchResultList {
     border-left: var(--border);
   }
 }

@@ -55,6 +55,7 @@ pub struct EmbeddingService {
     service_tx: flume::Sender<ServiceMsg>,
     done_rx: flume::Receiver<()>,
     restart_requested: Arc<AtomicBool>,
+    embedder: Arc<Embedder>,
     // Held for the service's lifetime; released (file deleted) on Drop.
     _lock: LockFile,
 }
@@ -74,6 +75,7 @@ impl EmbeddingService {
             .ok_or(EmbeddingsError::LockNotAcquired)?;
 
         let embedder = load_default_embedder().await?;
+        let service_embedder = Arc::clone(&embedder);
 
         let db = EmbeddingsDb::open(&data_dir).await?;
 
@@ -124,6 +126,7 @@ impl EmbeddingService {
             service_tx,
             done_rx,
             restart_requested,
+            embedder: service_embedder,
             _lock: lock,
         })
     }
@@ -141,6 +144,11 @@ impl EmbeddingService {
     /// Enqueues a full recovery pass (non-blocking).
     pub fn trigger_recovery(&self, data_dir: PathBuf) {
         let _ = self.service_tx.send(ServiceMsg::StartRecovery { data_dir });
+    }
+
+    /// Returns a clone of the Arc<Embedder> for on-demand text embedding outside the service loop.
+    pub fn embedder(&self) -> Arc<Embedder> {
+        Arc::clone(&self.embedder)
     }
 
     /// Resets the embeddings DB and re-runs recovery (non-blocking).

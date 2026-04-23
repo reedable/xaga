@@ -667,6 +667,34 @@ export class TauriPlatform implements Platform {
       .map((e) => e.data);
   }
 
+  async queryByText(
+    signal: AbortSignal,
+    text: string,
+    itemFilter?: Filter,
+    minSimilarity?: number | null,
+    maxSimilarity?: number | null,
+    limit?: number | null,
+  ): Promise<(Embedded & Item)[]> {
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "query_by_text" });
+
+    const results = await invoker<unknown[]>("query_by_text", {
+      text,
+      limit,
+      minSimilarity,
+      maxSimilarity,
+      itemFilter,
+    });
+
+    return results
+      .map((e) =>
+        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e),
+      )
+      .filter((e) => !e.error) // FIXME Dropping failed items silently!
+      .map((e) => e.data);
+  }
+
   // Events --------------------------------------------------------------------
 
   onOpenLibrary(callback: () => void): Promise<UnlistenFn> {

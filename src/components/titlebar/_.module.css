@@ -1,0 +1,33 @@
+.TitleBar {
+  align-items: center;
+  background-color: var(--background-color);
+  /* border-bottom: var(--border); */
+  display: flex;
+  flex-direction: row;
+  flex-shrink: 0;
+  height: var(--titlebar-height);
+  padding: 0 8px 0 0;
+  position: relative;
+  user-select: none;
+}
+
+/* Reserve space for native traffic lights (macOS titleBarStyle overlay) */
+.TrafficLightSpacer {
+  flex-shrink: 0;
+  width: 72px;
+}
+
+.Title {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  left: 50%;
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.SearchArea {
+  align-items: center;
+  display: flex;
+  margin-left: auto;
+}

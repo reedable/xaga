@@ -82,6 +82,48 @@ pub async fn query_by_topics(
 }
 
 #[tauri::command]
+pub async fn query_by_text(
+    text: String,
+    item_filter: Option<String>,
+    min_similarity: Option<f32>,
+    max_similarity: Option<f32>,
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> Result<Vec<EmbeddedEntry>, String> {
+    let library = state.library.read().unwrap().clone();
+    let item_filter = parse_item_filter(item_filter)?;
+
+    // Acquire Arc<Embedder> while holding the lock, then drop the lock before awaiting.
+    let embedder = {
+        let guard = state.embedding_service.lock().unwrap();
+        guard
+            .as_ref()
+            .ok_or_else(|| "embedding service not running".to_string())?
+            .embedder()
+    };
+
+    let text_clone = text.clone();
+    let vector = tokio::task::spawn_blocking(move || embedder.embed("", &text_clone))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+
+    let result = item::list_embedded_items(
+        &library,
+        EmbeddedItemSource::RelatedToVector { vector, limit, min_similarity, max_similarity },
+        item_filter,
+    )
+    .await
+    .map_err(|e| e.to_string());
+
+    match &result {
+        Ok(entries) => log::debug!("query_by_text: ok ({} entries)", entries.len()),
+        Err(e) => log::debug!("query_by_text: err — {e}"),
+    }
+    result
+}
+
+#[tauri::command]
 pub async fn reset_embeddings(window: tauri::Window, state: State<'_, AppState>) -> Result<(), String> {
     super::require_main_window(&window)?;
     let library = state.library.read().unwrap().clone();

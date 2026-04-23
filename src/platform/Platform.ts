@@ -110,6 +110,15 @@ export interface Platform {
     limit?: number | null,
   ): Promise<(Embedded & Item)[]>;
 
+  queryByText(
+    signal: AbortSignal,
+    text: string,
+    filter?: Filter,
+    minSimilarity?: number | null,
+    maxSimilarity?: number | null,
+    limit?: number | null,
+  ): Promise<(Embedded & Item)[]>;
+
   // Theme
   getTheme(): Promise<string>;
   setTheme(theme: string): Promise<void>;

@@ -430,6 +430,7 @@ pub fn run() {
             commands::embeddings::query_by_item,
             commands::embeddings::query_by_bookmarks,
             commands::embeddings::query_by_topics,
+            commands::embeddings::query_by_text,
             commands::embeddings::reset_embeddings,
         ])
         .build(tauri::generate_context!())

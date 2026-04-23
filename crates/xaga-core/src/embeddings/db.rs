@@ -961,4 +961,67 @@ impl EmbeddingsDb {
 
         Ok(results)
     }
+
+    /// Returns items whose vectors are most similar to the given query vector.
+    /// Unlike `find_related`, no ID lookup is performed and nothing is excluded.
+    pub async fn find_by_vector(
+        &self,
+        query_vector: Vec<f32>,
+        limit: Option<usize>,
+        min_similarity: Option<f32>,
+        max_similarity: Option<f32>,
+    ) -> Result<Vec<EmbeddedEntry>, EmbeddingsError> {
+        if max_similarity.is_some() {
+            let exclude = HashSet::new();
+            return self
+                .full_scan_by_similarity(
+                    &query_vector,
+                    &exclude,
+                    min_similarity.unwrap_or(f32::NEG_INFINITY),
+                    max_similarity.unwrap(),
+                    limit,
+                )
+                .await;
+        }
+
+        let effective_limit = match limit {
+            Some(n) => n,
+            None => self.count().await?,
+        };
+        let (_, upper_distance) = similarity_bounds(min_similarity, max_similarity);
+        let batches: Vec<RecordBatch> = self
+            .table
+            .query()
+            .nearest_to(query_vector)
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?
+            .distance_type(DistanceType::Cosine)
+            .distance_range(None, upper_distance)
+            .limit(effective_limit)
+            .execute()
+            .await?
+            .try_collect()
+            .await
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
+        let mut results = Vec::new();
+        for batch in &batches {
+            let Some(cols) = BatchSummaryColumns::from_batch(batch) else {
+                continue;
+            };
+            let distances = batch
+                .column_by_name("_distance")
+                .and_then(|c| c.as_any().downcast_ref::<Float32Array>());
+            for i in 0..batch.num_rows() {
+                let entry = cols.summary_at(i);
+                let similarity = distances.map_or(0.0, |d| 1.0 - d.value(i));
+                results.push(EmbeddedEntry {
+                    entry,
+                    similarity,
+                    reference: cols.reference_at(i),
+                    color: cols.color_at(i),
+                });
+            }
+        }
+        Ok(results)
+    }
 }

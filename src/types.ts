@@ -1,3 +1,11 @@
+// ── Utils ────────────────────────────────────────────────────────────────────
+
+export type AbortError = DOMException;
+
+export function isAbortError(value?: unknown): value is AbortError {
+  return value instanceof DOMException && value?.name === "AbortError";
+}
+
 // ── Presentation ─────────────────────────────────────────────────────────────
 
 const FILTERS: string[] = [

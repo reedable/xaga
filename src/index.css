@@ -6,6 +6,10 @@ body,
   height: 100%;
 }
 
+:root {
+  --titlebar-height: 38px;
+}
+
 /* See App.tsx for data-theme attribute */
 html {
   &[data-theme="light"] {
