@@ -8,8 +8,10 @@ import {
   Tooltip,
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
+import { useAppearance } from "../../hooks/useAppearance";
 import {
-  ANNOTATION_COLORS,
+  ANNOTATION_COLORS_DARK,
+  ANNOTATION_COLORS_LIGHT,
   getAnnotationColor,
 } from "../../text/annotationColors";
 
@@ -59,6 +61,10 @@ export function AnnotationTooltip({
   onChange,
   onClose,
 }: AnnotationTooltipProps) {
+  const { themeMode } = useAppearance();
+  const dark = themeMode === "dark";
+  const annotationColors = dark ? ANNOTATION_COLORS_DARK : ANNOTATION_COLORS_LIGHT;
+
   const initialNote = note ?? "";
   const [noteValue, setNoteValue] = useState(initialNote);
 
@@ -85,7 +91,7 @@ export function AnnotationTooltip({
           zIndex: 9999,
           minWidth: 320,
           maxWidth: 320,
-          borderLeft: `4px solid ${getAnnotationColor(color).accent}`,
+          borderLeft: `4px solid ${getAnnotationColor(color, dark).accent}`,
         }}
       >
         <Box sx={{ display: "flex", flexDirection: "column", p: 1, gap: 0.5 }}>
@@ -108,7 +114,7 @@ export function AnnotationTooltip({
           </Collapse>
 
           <Box sx={{ display: "flex", alignItems: "center" }}>
-            {Object.entries(ANNOTATION_COLORS).map(([name, tokens]) => (
+            {Object.entries(annotationColors).map(([name, tokens]) => (
               <SwatchTarget
                 key={name}
                 onClick={() => onChange(name, noteValue)}

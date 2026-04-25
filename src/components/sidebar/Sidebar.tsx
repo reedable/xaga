@@ -1,8 +1,9 @@
 import {
   Add,
-  Bookmark,
+  Bookmarks,
   Circle,
   Feed as FeedIcon,
+  FormatQuote,
   Settings,
   Star,
 } from "@mui/icons-material";
@@ -11,12 +12,8 @@ import { useCallback, useEffect, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import { useTopics } from "../../hooks/useTopics";
-import {
-  BOOKMARKED_ITEMS,
-  RECOMMENDED_ITEMS,
-  UNREAD_ITEMS,
-} from "../../Shortcuts";
 import { usePlatform } from "../../platform/Platform";
+import { ANNOTATION_ITEMS, RECOMMENDED_ITEMS, SAVED_ITEMS, UNREAD_ITEMS } from "../../Shortcuts";
 import { isShortcut, type Feed, type Item, type Topic } from "../../types";
 import cx from "../../utils/cx";
 import css from "./_.module.css";
@@ -217,6 +214,30 @@ export function Sidebar({
         />
 
         <ExpanderItem
+          icon={Bookmarks}
+          item={SAVED_ITEMS}
+          loading={!!loadingSet?.size}
+          selected={
+            isShortcut(selectedList) &&
+            selectedList.id === SAVED_ITEMS.id &&
+            selectedList.filter === SAVED_ITEMS.filter
+          }
+          onSelectItem={onSelectList}
+        />
+
+        <ExpanderItem
+          icon={FormatQuote}
+          item={ANNOTATION_ITEMS}
+          loading={!!loadingSet?.size}
+          selected={
+            isShortcut(selectedList) &&
+            selectedList.id === ANNOTATION_ITEMS.id &&
+            selectedList.filter === ANNOTATION_ITEMS.filter
+          }
+          onSelectItem={onSelectList}
+        />
+
+        {/* <ExpanderItem
           icon={Bookmark}
           item={BOOKMARKED_ITEMS}
           loading={!!loadingSet?.size}
@@ -226,7 +247,7 @@ export function Sidebar({
             selectedList.filter === BOOKMARKED_ITEMS.filter
           }
           onSelectItem={onSelectList}
-        />
+        /> */}
       </Expander>
 
       <Expander

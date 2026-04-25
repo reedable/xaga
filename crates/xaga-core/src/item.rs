@@ -26,6 +26,8 @@ pub enum EmbeddedItemSource {
     RelatedToBookmarks { limit: Option<usize>, min_similarity: Option<f32>, max_similarity: Option<f32> },
     /// Items related to the centroid of all topics.
     RelatedToTopics { limit: Option<usize>, min_similarity: Option<f32>, max_similarity: Option<f32> },
+    /// Items related to the union of all annotation embeddings.
+    RelatedToAnnotations { limit: Option<usize>, min_similarity: Option<f32>, max_similarity: Option<f32> },
     /// Items related to an arbitrary pre-computed query vector (e.g. from embedded search text).
     RelatedToVector { vector: Vec<f32>, limit: Option<usize>, min_similarity: Option<f32>, max_similarity: Option<f32> },
 }
@@ -106,6 +108,22 @@ pub async fn list_embedded_items(
                 .collect();
             let db = EmbeddingsDb::open(library).await?;
             let entries = db.find_related_to_many(&topic_ids, limit, min_similarity, max_similarity).await?;
+            let mut entries = filter::filter_items(library, entries, &item_filter)
+                .await
+                .map_err(ItemError::Io)?;
+            filter::annotate_embedded_unread_status(library, &mut entries).await;
+            Ok(entries)
+        }
+        EmbeddedItemSource::RelatedToAnnotations { limit, min_similarity, max_similarity } => {
+            let db = EmbeddingsDb::open(library).await?;
+            let annotation_ids: Vec<String> = db
+                .list_annotations()
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|a| a.id)
+                .collect();
+            let entries = db.find_related_to_many(&annotation_ids, limit, min_similarity, max_similarity).await?;
             let mut entries = filter::filter_items(library, entries, &item_filter)
                 .await
                 .map_err(ItemError::Io)?;

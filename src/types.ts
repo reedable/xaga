@@ -13,6 +13,7 @@ const FILTERS: string[] = [
   "all",
   "unread",
   "bookmarked",
+  "saved",
   "archived",
 ] as const;
 
@@ -111,6 +112,45 @@ export function isAnnotation(item?: Item | null): item is Annotation {
     typeof item.color === "string" &&
     "reference" in item &&
     typeof item.reference == "string"
+  );
+}
+
+// ── SavedItem ────────────────────────────────────────────────────────────────
+
+/** A bookmark or annotation returned by list_saved. Annotations have reference and color set. */
+export type SavedItem = Item & {
+  url: string;
+  /** Present for annotations (parent article ID); absent for bookmarks. */
+  reference?: string;
+  /** Present for annotations; absent for bookmarks. */
+  color?: string;
+};
+
+export function isSavedAnnotation(
+  item: SavedItem,
+): item is SavedItem & { reference: string; color: string } {
+  return typeof item.reference === "string" && typeof item.color === "string";
+}
+
+// ── AnnotationSummary ────────────────────────────────────────────────────────
+
+/** Lightweight annotation record from the embeddings DB — no text[] or occurrence[]. */
+export type AnnotationSummary = Item & {
+  reference: string;
+  color: string;
+  /** The canonical URL of the parent article. */
+  url: string;
+};
+
+export function isAnnotationSummary(item?: Item | null): item is AnnotationSummary {
+  return (
+    !!item &&
+    "color" in item &&
+    typeof item.color === "string" &&
+    "reference" in item &&
+    typeof item.reference === "string" &&
+    "url" in item &&
+    typeof item.url === "string"
   );
 }
 

@@ -12,6 +12,8 @@ pub enum ItemFilter {
     Unread,
     /// Only items listed in `bookmarks.html`.
     Bookmarked,
+    /// Items that are bookmarked or have at least one annotation.
+    Saved,
 }
 
 impl std::str::FromStr for ItemFilter {
@@ -21,6 +23,7 @@ impl std::str::FromStr for ItemFilter {
             "all" => Ok(Self::All),
             "unread" => Ok(Self::Unread),
             "bookmarked" => Ok(Self::Bookmarked),
+            "saved" => Ok(Self::Saved),
             other => Err(format!("unknown item filter: {other}")),
         }
     }
@@ -69,6 +72,41 @@ impl Item for Entry {
     fn updated_at(&self) -> Option<&str> { self.updated_at.as_deref() }
     fn url(&self) -> Option<&str> { Some(&self.url) }
     fn published_at(&self) -> Option<&str> { self.published_at.as_deref() }
+}
+
+// ── SavedItem ─────────────────────────────────────────────────────────────────
+
+/// A unified record representing either a bookmark or an annotation.
+/// Annotations have `reference` and `color` set; bookmarks do not.
+#[derive(Debug, Serialize)]
+pub struct SavedItem {
+    pub id: String,
+    pub title: String,
+    pub created_at: String,
+    pub url: String,
+    /// Parent article ID — present for annotations, absent for bookmarks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
+    /// Highlight color — present for annotations, absent for bookmarks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
+// ── AnnotationSummary ─────────────────────────────────────────────────────────
+
+/// A lightweight annotation record sourced from the embeddings DB.
+/// Contains only what LanceDB stores — no `text[]`, `occurrence[]`, or `note`.
+#[derive(Debug, Serialize)]
+pub struct AnnotationSummary {
+    pub id: String,
+    /// The ID of the article this annotation belongs to.
+    pub reference: String,
+    /// The highlighted text segments joined into a single string.
+    pub title: String,
+    pub color: String,
+    pub created_at: String,
+    /// The canonical URL of the parent article.
+    pub url: String,
 }
 
 // ── EmbeddedEntry ─────────────────────────────────────────────────────────────

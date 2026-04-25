@@ -1,4 +1,4 @@
-import { Bookmark, Circle } from "@mui/icons-material";
+import { Bookmark, Circle, FormatQuote } from "@mui/icons-material";
 import {
   List,
   ListItem,
@@ -10,8 +10,9 @@ import { useCallback, useEffect, useState } from "react";
 import { RELATED_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
 import { useBookmarks } from "../../hooks/useBookmarks";
+import useEntries from "../../hooks/useEntries";
 import useRelatedItems from "../../hooks/useRelatedItems";
-import { isEntry, type Embedded, type Item } from "../../types";
+import { isAnnotation, isEntry, type Embedded, type Item } from "../../types";
 import cx from "../../utils/cx";
 import { abortable, decorate, retriable } from "../../utils/Decorator";
 import formatByline from "../../utils/formatByline";
@@ -32,6 +33,7 @@ export function RelatedItemList({
   const [abort, abortControllerRef] = useAbortController();
   const { queryByItem } = useRelatedItems(abortControllerRef);
   const [embeddedItems, setEmbeddedItems] = useState<(Embedded & Item)[]>([]);
+  const { markEntryRead } = useEntries(abortControllerRef);
   const { bookmarkMap } = useBookmarks(abortControllerRef);
 
   const requestRelatedItems = useCallback(
@@ -62,6 +64,17 @@ export function RelatedItemList({
     [abortControllerRef, queryByItem],
   );
 
+  const handleSelectItem = useCallback(
+    async (item: Item) => {
+      onSelectItem(item);
+
+      if (isEntry(item)) {
+        await markEntryRead(item);
+      }
+    },
+    [markEntryRead, onSelectItem],
+  );
+
   useEffect(() => {
     abort();
 
@@ -85,10 +98,18 @@ export function RelatedItemList({
           <ListItem key={item.id} className={css.ListItem} disablePadding>
             <ListItemButton
               className={css.ListItemButton}
-              onClick={() => onSelectItem(item)}
+              onClick={() => handleSelectItem(item)}
             >
               <ListItemText
-                primary={item.title}
+                primary={
+                  <>
+                    {isAnnotation(item) && (
+                      <FormatQuote sx={{ transform: "rotate(180deg)" }} />
+                    )}
+                    {item.title}
+                    {isAnnotation(item) && <FormatQuote />}
+                  </>
+                }
                 secondary={
                   <>
                     {isEntry(item) && item.isUnread && (

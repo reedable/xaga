@@ -1,5 +1,7 @@
 use tauri::{AppHandle, State};
 use xaga_core::articles;
+use xaga_core::embeddings::EmbeddingsDb;
+use xaga_core::types::AnnotationSummary;
 
 use crate::{article_loader, AppState};
 use super::{require_loader_window, require_main_window};
@@ -140,6 +142,17 @@ pub async fn remove_annotation(
     require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     articles::remove_annotation(&data_dir, &article_id, &annotation_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_annotations(state: State<'_, AppState>) -> Result<Vec<AnnotationSummary>, String> {
+    let data_dir = state.library.read().unwrap().clone();
+    let db = EmbeddingsDb::open(&data_dir)
+        .await
+        .map_err(|e| e.to_string())?;
+    db.list_annotations()
         .await
         .map_err(|e| e.to_string())
 }

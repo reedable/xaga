@@ -7,6 +7,7 @@ pub mod feeds;
 pub mod filter;
 pub mod item;
 pub mod recovery;
+pub mod saved;
 pub mod topics;
 pub mod types;
 pub mod util;

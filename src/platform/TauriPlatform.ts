@@ -6,6 +6,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { z } from "zod";
 import type {
   Annotation,
+  AnnotationSummary,
   Article,
   Embedded,
   Entry,
@@ -13,6 +14,7 @@ import type {
   Filter,
   ImportResult,
   Item,
+  SavedItem,
   Topic,
 } from "../types";
 import { abortable, decorate, logged } from "../utils/Decorator";
@@ -93,6 +95,44 @@ const toAnnotation = (data: z.infer<typeof AnnotationSchema>): Annotation => ({
   color: data.color,
   note: data.note ?? undefined,
   createdAt: data.created_at,
+});
+
+const SavedItemSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  created_at: z.string(),
+  url: z.string(),
+  reference: z.string().optional(),
+  color: z.string().optional(),
+});
+
+const toSavedItem = (data: z.infer<typeof SavedItemSchema>): SavedItem => ({
+  id: data.id,
+  title: data.title,
+  createdAt: data.created_at,
+  url: data.url,
+  reference: data.reference,
+  color: data.color,
+});
+
+const AnnotationSummarySchema = z.object({
+  id: z.string(),
+  reference: z.string(),
+  title: z.string(),
+  color: z.string(),
+  created_at: z.string(),
+  url: z.string(),
+});
+
+const toAnnotationSummary = (
+  data: z.infer<typeof AnnotationSummarySchema>,
+): AnnotationSummary => ({
+  id: data.id,
+  reference: data.reference,
+  title: data.title,
+  color: data.color,
+  createdAt: data.created_at,
+  url: data.url,
 });
 
 // Schema for annotation rows returned from embedding queries.
@@ -457,6 +497,32 @@ export class TauriPlatform implements Platform {
     return ArticleSchema.transform(toArticle).parse(result);
   }
 
+  async listSaved(signal: AbortSignal): Promise<SavedItem[]> {
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "list_saved" });
+
+    const results = await invoker<unknown[]>("list_saved");
+
+    return results
+      .map((e) => SavedItemSchema.transform(toSavedItem).safeParse(e))
+      .filter((e) => !e.error)
+      .map((e) => e.data);
+  }
+
+  async listAnnotations(signal: AbortSignal): Promise<AnnotationSummary[]> {
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "list_annotations" });
+
+    const results = await invoker<unknown[]>("list_annotations");
+
+    return results
+      .map((e) => AnnotationSummarySchema.transform(toAnnotationSummary).safeParse(e))
+      .filter((e) => !e.error)
+      .map((e) => e.data);
+  }
+
   // Topics --------------------------------------------------------------------
 
   async createTopic(
@@ -653,6 +719,32 @@ export class TauriPlatform implements Platform {
       .with(logged, { logger, name: "query_by_topics" });
 
     const results = await invoker<unknown[]>("query_by_topics", {
+      limit,
+      minSimilarity,
+      maxSimilarity,
+      itemFilter,
+    });
+
+    return results
+      .map((e) =>
+        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e),
+      )
+      .filter((e) => !e.error) // FIXME Dropping failed items silently!
+      .map((e) => e.data);
+  }
+
+  async queryByAnnotations(
+    signal: AbortSignal,
+    itemFilter?: Filter,
+    minSimilarity?: number | null,
+    maxSimilarity?: number | null,
+    limit?: number | null,
+  ): Promise<(Embedded & Item)[]> {
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "query_by_annotations" });
+
+    const results = await invoker<unknown[]>("query_by_annotations", {
       limit,
       minSimilarity,
       maxSimilarity,

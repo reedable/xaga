@@ -3,6 +3,7 @@ use std::path::Path;
 
 use chrono::{DateTime, Utc};
 
+use crate::embeddings::EmbeddingsDb;
 use crate::types::{EmbeddedEntry, Entry, Item, ItemFilter};
 use crate::util::normalize_url;
 
@@ -65,7 +66,44 @@ pub async fn filter_items<T: Item>(
                 None => false,
                 Some(src) => {
                     let normalized = normalize_url(src).unwrap_or_else(|_| src.to_string());
-                    bookmark_sources.contains(src) || bookmark_sources.contains(&normalized)
+                    bookmark_sources.contains(&normalized)
+                }
+            });
+        }
+
+        ItemFilter::Saved => {
+            let (bookmark_sources, annotated_ids) = tokio::join!(
+                async {
+                    crate::bookmarks::list_bookmarks(library)
+                        .await
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|e| e.url)
+                        .collect::<HashSet<String>>()
+                },
+                async {
+                    let Ok(db) = EmbeddingsDb::open(library).await else {
+                        return HashSet::new();
+                    };
+                    db.list_annotations()
+                        .await
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|a| a.reference)
+                        .collect::<HashSet<String>>()
+                },
+            );
+
+            items.retain(|i| {
+                if annotated_ids.contains(i.id()) {
+                    return true;
+                }
+                match i.url() {
+                    None => false,
+                    Some(src) => {
+                        let normalized = normalize_url(src).unwrap_or_else(|_| src.to_string());
+                        bookmark_sources.contains(&normalized)
+                    }
                 }
             });
         }

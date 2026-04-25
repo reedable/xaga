@@ -2,6 +2,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { createContext, useContext } from "react";
 import type {
   Annotation,
+  AnnotationSummary,
   Article,
   Embedded,
   Entry,
@@ -9,6 +10,7 @@ import type {
   Filter,
   ImportResult,
   Item,
+  SavedItem,
   Topic,
 } from "../types";
 
@@ -66,6 +68,8 @@ export interface Platform {
     signal: AbortSignal,
     annotation: Pick<Annotation, "id" | "reference">,
   ): Promise<Article>;
+  listAnnotations(signal: AbortSignal): Promise<AnnotationSummary[]>;
+  listSaved(signal: AbortSignal): Promise<SavedItem[]>;
 
   // Topics
   createTopic(
@@ -103,6 +107,14 @@ export interface Platform {
   ): Promise<(Embedded & Item)[]>;
 
   queryByTopics(
+    signal: AbortSignal,
+    filter?: Filter,
+    minSimilarity?: number | null,
+    maxSimilarity?: number | null,
+    limit?: number | null,
+  ): Promise<(Embedded & Item)[]>;
+
+  queryByAnnotations(
     signal: AbortSignal,
     filter?: Filter,
     minSimilarity?: number | null,

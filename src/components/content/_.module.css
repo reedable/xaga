@@ -105,7 +105,16 @@
 
               .ListItemButton {
                 .Primary {
-                  font-size: 0.8125rem;
+                  display: -webkit-box;
+                  -webkit-box-orient: vertical;
+                  font-size: 0.8125em;
+                  line-clamp: 4;
+                  -webkit-line-clamp: 4;
+                  overflow: hidden;
+
+                  svg {
+                    font-size: 0.8125em;
+                  }
                 }
 
                 .Secondary {

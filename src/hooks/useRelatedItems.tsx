@@ -95,5 +95,33 @@ export default function useRelatedItems(
     [abortControllerRef, platform],
   );
 
-  return { loading, error, queryByItem, queryByBookmarks, queryByTopics };
+  const queryByAnnotations = useCallback(
+    async (
+      filter: Filter = "all",
+      minSimilarity: number = 0.5,
+      maxSimilarity?: number,
+      max?: number,
+    ) => {
+      const signal = abortControllerRef.current.signal;
+      setError(null);
+      setLoading(true);
+
+      try {
+        return await platform.queryByAnnotations(
+          signal,
+          filter,
+          minSimilarity,
+          maxSimilarity ?? null,
+          max ?? null,
+        );
+      } catch (e) {
+        setError(e);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [abortControllerRef, platform],
+  );
+
+  return { loading, error, queryByItem, queryByBookmarks, queryByTopics, queryByAnnotations };
 }

@@ -26,7 +26,11 @@ import { useBookmarks } from "../../hooks/useBookmarks";
 import useEntries from "../../hooks/useEntries";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRelatedItems from "../../hooks/useRelatedItems";
-import { ALL_ITEMS, RECOMMENDED_ITEMS } from "../../Shortcuts";
+import {
+  ALL_ITEMS,
+  ANNOTATION_ITEMS,
+  RECOMMENDED_ITEMS,
+} from "../../Shortcuts";
 import {
   isAnnotation,
   isEntry,
@@ -73,6 +77,7 @@ export function ItemList({
     loading: loadingRelatedItems,
     queryByItem,
     queryByBookmarks,
+    queryByAnnotations,
   } = useRelatedItems(abortControllerRef);
 
   const {
@@ -111,7 +116,10 @@ export function ItemList({
     async (selectedList: Item) => {
       if (selectedList === RECOMMENDED_ITEMS) {
         // const entries = await queryByTopics(filter, RELATED_THRESHOLD);
-        const entries = await queryByBookmarks(filter, RELATED_THRESHOLD);
+        const entries = await queryByBookmarks(filter, 0.82);
+        if (entries) setItems(entries);
+      } else if (selectedList === ANNOTATION_ITEMS) {
+        const entries = await queryByAnnotations(filter, RELATED_THRESHOLD);
         if (entries) setItems(entries);
       } else if (isFeed(selectedList)) {
         const entries = await listEntries(selectedList, filter);
@@ -124,7 +132,14 @@ export function ItemList({
         if (entries) setItems(entries);
       }
     },
-    [queryByBookmarks, filter, listEntries, queryByItem, listAllEntries],
+    [
+      queryByBookmarks,
+      queryByAnnotations,
+      filter,
+      listEntries,
+      queryByItem,
+      listAllEntries,
+    ],
   );
 
   const refreshList = useCallback(
@@ -211,9 +226,12 @@ export function ItemList({
           <ToggleButton size="small" value="unread" aria-label="Unread">
             Unread
           </ToggleButton>
-          <ToggleButton size="small" value="bookmarked" aria-label="Bookmarked">
-            Bookmarked
+          <ToggleButton size="small" value="saved" aria-label="Saved">
+            Saved
           </ToggleButton>
+          {/* <ToggleButton size="small" value="bookmarked" aria-label="Bookmarked">
+            Bookmarked
+          </ToggleButton> */}
           <ToggleButton size="small" value="all" aria-label="All">
             All
           </ToggleButton>
@@ -279,7 +297,15 @@ export function ItemList({
                 onClick={() => handleClickItem(item)}
               >
                 <ListItemText
-                  primary={item.title}
+                  primary={
+                    <>
+                      {isAnnotation(item) && (
+                        <FormatQuote sx={{ transform: "rotate(180deg)" }} />
+                      )}
+                      {item.title}
+                      {isAnnotation(item) && <FormatQuote />}
+                    </>
+                  }
                   secondary={
                     <>
                       {isEntry(item) && item.isUnread && (
@@ -289,8 +315,6 @@ export function ItemList({
                       {bookmarkMap?.get(item.id) && (
                         <Bookmark color="primary" />
                       )}
-
-                      {isAnnotation(item) && <FormatQuote color="primary" />}
 
                       <span>{formatByline(item)}</span>
                     </>

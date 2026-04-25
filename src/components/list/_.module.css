@@ -64,6 +64,10 @@
           line-clamp: 2;
           line-height: 1.625;
           overflow: hidden;
+
+          svg {
+            font-size: 0.875em;
+          }
         }
 
         .Secondary {

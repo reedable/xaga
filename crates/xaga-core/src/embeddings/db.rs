@@ -12,7 +12,7 @@ use lancedb::DistanceType;
 use lancedb::query::{ExecutableQuery, QueryBase};
 
 use super::EmbeddingsError;
-use crate::types::{EmbeddedEntry, Entry};
+use crate::types::{AnnotationSummary, EmbeddedEntry, Entry};
 
 const EMBEDDING_DIM: i32 = 384;
 
@@ -517,6 +517,40 @@ impl EmbeddingsDb {
 
         summaries.sort_by(|a, b| a.url.cmp(&b.url));
         Ok(summaries)
+    }
+
+    /// Returns all annotation rows (those with a non-empty `reference` column),
+    /// sorted by `created_at`.
+    pub async fn list_annotations(&self) -> Result<Vec<AnnotationSummary>, EmbeddingsError> {
+        let batches: Vec<RecordBatch> = self
+            .table
+            .query()
+            .only_if("reference != ''")
+            .execute()
+            .await?
+            .try_collect()
+            .await
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
+        let mut results = Vec::new();
+        for batch in &batches {
+            let Some(cols) = BatchSummaryColumns::from_batch(batch) else {
+                continue;
+            };
+            for i in 0..batch.num_rows() {
+                results.push(AnnotationSummary {
+                    id: cols.ids.value(i).to_string(),
+                    reference: cols.reference_at(i),
+                    title: cols.titles.value(i).to_string(),
+                    color: cols.color_at(i),
+                    created_at: cols.created_ats.value(i).to_string(),
+                    url: cols.sources.value(i).to_string(),
+                });
+            }
+        }
+
+        results.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        Ok(results)
     }
 
     /// Full-scan similarity search returning scores alongside entries.
