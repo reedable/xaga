@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::Path;
 
 use thiserror::Error;
@@ -53,14 +54,14 @@ pub async fn list_items(
     library: &Path,
     source: ItemSource,
     item_filter: ItemFilter,
+    unread: &HashSet<String>,
 ) -> Result<Vec<Entry>> {
     match source {
         ItemSource::FeedEntries { url } => {
-            // log::debug!("list_items: FeedEntries");
-            let mut entries = feeds::list_entries(library, url.as_deref(), item_filter)
+            let mut entries = feeds::list_entries(library, url.as_deref(), item_filter, unread)
                 .await
                 .map_err(ItemError::Feed)?;
-            filter::annotate_unread_status(library, &mut entries).await;
+            filter::annotate_unread_status(unread, &mut entries);
             Ok(entries)
         }
     }
@@ -71,17 +72,16 @@ pub async fn list_embedded_items(
     library: &Path,
     source: EmbeddedItemSource,
     item_filter: ItemFilter,
+    unread: &HashSet<String>,
 ) -> Result<Vec<EmbeddedEntry>> {
     match source {
         EmbeddedItemSource::RelatedTo { id, limit, min_similarity, max_similarity } => {
-            // Preserve similarity rank — filter only, no sort.
-            // log::debug!("list_embedded_items: calling find_related");
             let db = EmbeddingsDb::open(library).await?;
             let entries = db.find_related(&id, limit, min_similarity, max_similarity).await?;
-            let mut entries = filter::filter_items(library, entries, &item_filter)
+            let mut entries = filter::filter_items(library, entries, &item_filter, unread)
                 .await
                 .map_err(ItemError::Io)?;
-            filter::annotate_embedded_unread_status(library, &mut entries).await;
+            filter::annotate_embedded_unread_status(unread, &mut entries);
             Ok(entries)
         }
         EmbeddedItemSource::RelatedToBookmarks { limit, min_similarity, max_similarity } => {
@@ -93,10 +93,10 @@ pub async fn list_embedded_items(
                 .collect();
             let db = EmbeddingsDb::open(library).await?;
             let entries = db.find_related_to_many(&bookmark_ids, limit, min_similarity, max_similarity).await?;
-            let mut entries = filter::filter_items(library, entries, &item_filter)
+            let mut entries = filter::filter_items(library, entries, &item_filter, unread)
                 .await
                 .map_err(ItemError::Io)?;
-            filter::annotate_embedded_unread_status(library, &mut entries).await;
+            filter::annotate_embedded_unread_status(unread, &mut entries);
             Ok(entries)
         }
         EmbeddedItemSource::RelatedToTopics { limit, min_similarity, max_similarity } => {
@@ -108,10 +108,10 @@ pub async fn list_embedded_items(
                 .collect();
             let db = EmbeddingsDb::open(library).await?;
             let entries = db.find_related_to_many(&topic_ids, limit, min_similarity, max_similarity).await?;
-            let mut entries = filter::filter_items(library, entries, &item_filter)
+            let mut entries = filter::filter_items(library, entries, &item_filter, unread)
                 .await
                 .map_err(ItemError::Io)?;
-            filter::annotate_embedded_unread_status(library, &mut entries).await;
+            filter::annotate_embedded_unread_status(unread, &mut entries);
             Ok(entries)
         }
         EmbeddedItemSource::RelatedToAnnotations { limit, min_similarity, max_similarity } => {
@@ -124,19 +124,19 @@ pub async fn list_embedded_items(
                 .map(|a| a.id)
                 .collect();
             let entries = db.find_related_to_many(&annotation_ids, limit, min_similarity, max_similarity).await?;
-            let mut entries = filter::filter_items(library, entries, &item_filter)
+            let mut entries = filter::filter_items(library, entries, &item_filter, unread)
                 .await
                 .map_err(ItemError::Io)?;
-            filter::annotate_embedded_unread_status(library, &mut entries).await;
+            filter::annotate_embedded_unread_status(unread, &mut entries);
             Ok(entries)
         }
         EmbeddedItemSource::RelatedToVector { vector, limit, min_similarity, max_similarity } => {
             let db = EmbeddingsDb::open(library).await?;
             let entries = db.find_by_vector(vector, limit, min_similarity, max_similarity).await?;
-            let mut entries = filter::filter_items(library, entries, &item_filter)
+            let mut entries = filter::filter_items(library, entries, &item_filter, unread)
                 .await
                 .map_err(ItemError::Io)?;
-            filter::annotate_embedded_unread_status(library, &mut entries).await;
+            filter::annotate_embedded_unread_status(unread, &mut entries);
             Ok(entries)
         }
     }

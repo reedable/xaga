@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::Path;
 
 use atom_syndication as atom;
@@ -13,7 +14,7 @@ use super::{list_feed_ids, parse_atom, xml_path, FeedError, Result};
 ///
 /// If `url` is `Some`, restricts to that feed; if `None`, returns entries
 /// across every feed in `library/feeds/`.
-pub async fn list_entries(library: &Path, url: Option<&str>, item_filter: ItemFilter) -> Result<Vec<Entry>> {
+pub async fn list_entries(library: &Path, url: Option<&str>, item_filter: ItemFilter, unread: &HashSet<String>) -> Result<Vec<Entry>> {
     let feeds_dir = library.join("feeds");
     let mut entries = Vec::new();
 
@@ -48,7 +49,7 @@ pub async fn list_entries(library: &Path, url: Option<&str>, item_filter: ItemFi
         }
     }
 
-    let mut items = crate::filter::filter_items(library, entries, &item_filter)
+    let mut items = crate::filter::filter_items(library, entries, &item_filter, unread)
         .await
         .map_err(FeedError::Io)?;
     crate::filter::sort_items(&mut items, &item_filter);

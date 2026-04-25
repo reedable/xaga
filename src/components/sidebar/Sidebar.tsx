@@ -7,13 +7,18 @@ import {
   Settings,
   Star,
 } from "@mui/icons-material";
-import { IconButton } from "@mui/material";
+import { IconButton, Typography } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import { useTopics } from "../../hooks/useTopics";
 import { usePlatform } from "../../platform/Platform";
-import { ANNOTATION_ITEMS, RECOMMENDED_ITEMS, SAVED_ITEMS, UNREAD_ITEMS } from "../../Shortcuts";
+import {
+  ANNOTATION_ITEMS,
+  RECOMMENDED_ITEMS,
+  SAVED_ITEMS,
+  UNREAD_ITEMS,
+} from "../../Shortcuts";
 import { isShortcut, type Feed, type Item, type Topic } from "../../types";
 import cx from "../../utils/cx";
 import css from "./_.module.css";
@@ -28,18 +33,26 @@ interface SidebarProps {
   className?: string;
   selectedList: Item;
   onSelectList: (item: Item) => void;
+  editingFeed: Feed | null;
+  onSetEditingFeed: (feed: Feed | null) => void;
 }
 
 export type ExpanderType = "shortcuts" | "topics" | "projects" | "feeds";
 
 // TODO Allow user to sort
-// const sort = (a: Feed, b: Feed) => compareDates(b.updatedAt, a.updatedAt);
-const sort = (a: Item, b: Item) => a.title.localeCompare(b.title);
+const sortByTitle = (a: Item, b: Item) => a.title.localeCompare(b.title);
+
+const sortByUnreadCount = (a: Feed, b: Feed) => b.unreadCount - a.unreadCount;
+
+// const sortByUpdatedAt = (a: Feed, b: Feed) =>
+//   compareDates(b.updatedAt, a.updatedAt);
 
 export function Sidebar({
   className,
   selectedList,
   onSelectList,
+  editingFeed,
+  onSetEditingFeed,
 }: SidebarProps) {
   const platform = usePlatform();
   const [abort, abortControllerRef] = useAbortController();
@@ -66,7 +79,7 @@ export function Sidebar({
 
   const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
   const [isAddingTopic, setIsAddingTopic] = useState(false);
-  const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
+  const setEditingFeed = onSetEditingFeed;
   const [isAddingFeed, setIsAddingFeed] = useState(false);
 
   const getExpandHandler = useCallback((expander: ExpanderType) => {
@@ -76,12 +89,12 @@ export function Sidebar({
   }, []);
 
   const requestFeeds = useCallback(async () => {
-    const results = await listFeeds(sort);
+    const results = await listFeeds(sortByUnreadCount);
     if (results) setFeeds(results);
   }, [listFeeds]);
 
   const requestTopics = useCallback(async () => {
-    const results = await listTopics(sort);
+    const results = await listTopics(sortByTitle);
     if (results) setTopics(results);
   }, [listTopics]);
 
@@ -303,23 +316,24 @@ export function Sidebar({
           </IconButton>
         )}
       >
-        {feeds.map((item) => (
+        {feeds.map((feed) => (
           <ExpanderItem
-            item={item}
-            loading={loadingSet?.has(item.id)}
-            selected={selectedList?.id === item.id}
+            key={feed.id}
+            item={feed}
+            loading={loadingSet?.has(feed.id)}
+            selected={selectedList?.id === feed.id}
             onSelectItem={onSelectList}
-            renderSecondaryAction={(item: Item) => (
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingFeed(item as Feed);
-                }}
-              >
-                <Settings sx={{ fontSize: 16 }} />
-              </IconButton>
-            )}
+            renderSecondaryAction={() =>
+              feed.unreadCount > 0 ? (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ pr: 1 }}
+                >
+                  {feed.unreadCount}
+                </Typography>
+              ) : null
+            }
           />
         ))}
       </Expander>

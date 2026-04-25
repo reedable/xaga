@@ -10,6 +10,7 @@ import type {
   Filter,
   ImportResult,
   Item,
+  ListUpdate,
   SavedItem,
   Topic,
 } from "../types";
@@ -152,6 +153,8 @@ export interface Platform {
   onOpenSettings(callback: () => void): Promise<UnlistenFn>;
   onImportFeeds(callback: () => void): Promise<UnlistenFn>;
   onExportFeeds(callback: () => void): Promise<UnlistenFn>;
+  onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn>;
+  onListUpdated(callback: (update: ListUpdate) => void): Promise<UnlistenFn>;
   onImportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onExportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;

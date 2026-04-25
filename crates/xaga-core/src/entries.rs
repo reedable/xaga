@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
@@ -153,7 +154,7 @@ pub async fn mark_entry_unread(data_dir: &Path, id: &str) -> Result<Entry, Entry
 
 /// Returns a summary for every entry in both `read/` and `unread/`.
 /// Results are sorted by source URL.
-pub async fn list_entries(data_dir: &Path) -> Result<Vec<Entry>, EntryError> {
+pub async fn list_entries(data_dir: &Path, unread: &HashSet<String>) -> Result<Vec<Entry>, EntryError> {
     let mut entries: Vec<Entry> = Vec::new();
 
     for dir in entry_dirs(data_dir) {
@@ -173,7 +174,7 @@ pub async fn list_entries(data_dir: &Path) -> Result<Vec<Entry>, EntryError> {
         }
     }
 
-    crate::filter::annotate_unread_status(data_dir, &mut entries).await;
+    crate::filter::annotate_unread_status(unread, &mut entries);
     entries.sort_by(|a, b| a.url.cmp(&b.url));
     Ok(entries)
 }

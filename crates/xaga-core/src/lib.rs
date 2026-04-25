@@ -10,4 +10,5 @@ pub mod recovery;
 pub mod saved;
 pub mod topics;
 pub mod types;
+pub mod unread;
 pub mod util;

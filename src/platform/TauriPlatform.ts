@@ -14,6 +14,7 @@ import type {
   Filter,
   ImportResult,
   Item,
+  ListUpdate,
   SavedItem,
   Topic,
 } from "../types";
@@ -37,16 +38,28 @@ const toItem = (data: z.infer<typeof ItemSchema>): Item => ({
   updatedAt: data.updated_at ?? undefined,
 });
 
+const ListUpdateSchema = z.object({
+  id: z.string(),
+  unread_count: z.number(),
+});
+
+const toListUpdate = (data: z.infer<typeof ListUpdateSchema>): ListUpdate => ({
+  id: data.id,
+  unreadCount: data.unread_count,
+});
+
 const FeedSchema = ItemSchema.extend({
   url: z.string(),
   entry_count: z.number(),
+  unread_count: z.number(),
 });
 
 const toFeed = (data: z.infer<typeof FeedSchema>): Feed => {
   return {
     ...toItem(data),
     url: data.url,
-    entry_count: data.entry_count,
+    entryCount: data.entry_count,
+    unreadCount: data.unread_count,
   };
 };
 
@@ -806,6 +819,20 @@ export class TauriPlatform implements Platform {
 
   onExportFeeds(callback: () => void): Promise<UnlistenFn> {
     return listen("menu:export-feeds", callback);
+  }
+
+  onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn> {
+    return listen<unknown>("feed:refreshed", (e) => {
+      const result = FeedSchema.transform(toFeed).safeParse(e.payload);
+      if (result.success) callback(result.data);
+    });
+  }
+
+  onListUpdated(callback: (update: ListUpdate) => void): Promise<UnlistenFn> {
+    return listen<unknown>("list:updated", (e) => {
+      const result = ListUpdateSchema.transform(toListUpdate).safeParse(e.payload);
+      if (result.success) callback(result.data);
+    });
   }
 
   onImportBookmarks(callback: () => void): Promise<UnlistenFn> {

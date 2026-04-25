@@ -4,7 +4,7 @@ use xaga_core::bookmarks;
 use xaga_core::filter;
 use xaga_core::types::Entry;
 
-use crate::AppState;
+use crate::{get_unread, AppState};
 use super::require_main_window;
 
 #[derive(Serialize)]
@@ -59,7 +59,8 @@ pub async fn list_bookmarks(state: State<'_, AppState>) -> Result<Vec<Entry>, St
     let mut entries = bookmarks::list_bookmarks(&data_dir)
         .await
         .map_err(|e| e.to_string())?;
-    filter::annotate_unread_status(&data_dir, &mut entries).await;
+    let unread = get_unread(&state);
+    filter::annotate_unread_status(&unread, &mut entries);
     Ok(entries)
 }
 

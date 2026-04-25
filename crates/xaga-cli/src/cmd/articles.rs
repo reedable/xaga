@@ -28,7 +28,7 @@ pub enum ArticlesCommand {
 pub async fn handle(cmd: ArticlesCommand, data_dir: &Path) {
     match cmd {
         ArticlesCommand::List => {
-            match entries::list_entries(data_dir).await {
+            match entries::list_entries(data_dir, &xaga_core::filter::unread_ids(data_dir).await).await {
                 Ok(docs) if docs.is_empty() => {
                     println!("No articles saved.");
                 }

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Indicates whether the app should restart or exit after the service drains.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -300,6 +300,7 @@ async fn run_loop(
                     }
 
                     background_since_compact += 1;
+
                     if background_since_compact >= BACKGROUND_COMPACT_INTERVAL {
                         background_since_compact = 0;
                         log::info!("background_rx: {BACKGROUND_COMPACT_INTERVAL}-item interval — compacting");

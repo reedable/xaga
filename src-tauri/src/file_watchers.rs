@@ -4,6 +4,7 @@ use std::time::Duration;
 use notify_debouncer_full::new_debouncer;
 use notify_debouncer_full::notify::{EventKind, RecursiveMode, Watcher};
 use xaga_core::embeddings::{BackgroundMsg, PriorityMsg};
+use xaga_core::unread::UnreadTracker;
 
 /// Spawns one watcher thread per directory.
 ///
@@ -20,12 +21,14 @@ pub fn watch(
     data_dir: PathBuf,
     priority_tx: flume::Sender<PriorityMsg>,
     background_tx: flume::Sender<BackgroundMsg>,
+    tracker: UnreadTracker,
 ) {
     watch_import(data_dir.clone());
     watch_unread(
         data_dir.join("unread"),
         priority_tx.clone(),
         background_tx.clone(),
+        tracker,
     );
     watch_read(data_dir.join("read"), priority_tx.clone());
     watch_topics(data_dir.join("topics"), priority_tx, background_tx.clone());
@@ -36,6 +39,7 @@ fn watch_unread(
     dir: PathBuf,
     priority_tx: flume::Sender<PriorityMsg>,
     background_tx: flume::Sender<BackgroundMsg>,
+    tracker: UnreadTracker,
 ) {
     std::thread::spawn(move || {
         if let Err(e) = std::fs::create_dir_all(&dir) {
@@ -60,11 +64,16 @@ fn watch_unread(
                         match event.kind {
                             EventKind::Create(_) => {
                                 log::debug!("file_watchers: unread create → background embed {id}");
+                                tracker.add(id);
                                 let _ = background_tx.send(BackgroundMsg::Embed(id.to_string()));
                             }
                             EventKind::Modify(_) => {
                                 log::debug!("file_watchers: unread modify → priority embed {id}");
                                 let _ = priority_tx.send(PriorityMsg::Embed(id.to_string()));
+                            }
+                            EventKind::Remove(_) => {
+                                log::debug!("file_watchers: unread remove → tracker remove {id}");
+                                tracker.remove(id);
                             }
                             _ => {}
                         }

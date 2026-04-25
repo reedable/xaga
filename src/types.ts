@@ -188,14 +188,23 @@ export function isNote(item?: Item | null): item is Note {
 /** A subscribed RSS/Atom feed. */
 export type Feed = Item & {
   url: string;
-  entry_count: number;
+  entryCount: number;
+  unreadCount: number;
 };
 
 export function isFeed(item?: Item | null): item is Feed {
   return (
-    !!item && "entry_count" in item && typeof item.entry_count === "number"
+    !!item && "entryCount" in item && typeof item.entryCount === "number"
   );
 }
+
+// ── ListUpdate ───────────────────────────────────────────────────────────────
+
+/** Emitted by the backend when the unread count of any list (Feed, Topic, …) changes. */
+export type ListUpdate = {
+  id: string;
+  unreadCount: number;
+};
 
 // ── Import ───────────────────────────────────────────────────────────────────
 

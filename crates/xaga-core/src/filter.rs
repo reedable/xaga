@@ -7,7 +7,9 @@ use crate::embeddings::EmbeddingsDb;
 use crate::types::{EmbeddedEntry, Entry, Item, ItemFilter};
 use crate::util::normalize_url;
 
-async fn unread_ids(library: &Path) -> HashSet<String> {
+/// Scans `library/unread/` and returns the set of entry IDs present there.
+/// Use this only when no `UnreadTracker` is available (e.g. CLI callers).
+pub async fn unread_ids(library: &Path) -> HashSet<String> {
     let mut ids = HashSet::new();
     if let Ok(mut dir) = tokio::fs::read_dir(library.join("unread")).await {
         while let Ok(Some(dirent)) = dir.next_entry().await {
@@ -21,19 +23,17 @@ async fn unread_ids(library: &Path) -> HashSet<String> {
     ids
 }
 
-/// Reads the `unread/` directory and sets `is_unread` on each entry.
-pub async fn annotate_unread_status(library: &Path, entries: &mut Vec<Entry>) {
-    let ids = unread_ids(library).await;
+/// Sets `is_unread` on each entry based on the provided unread ID set.
+pub fn annotate_unread_status(unread: &HashSet<String>, entries: &mut Vec<Entry>) {
     for entry in entries.iter_mut() {
-        entry.is_unread = ids.contains(&entry.id);
+        entry.is_unread = unread.contains(&entry.id);
     }
 }
 
 /// Same as `annotate_unread_status` but for `EmbeddedEntry`.
-pub async fn annotate_embedded_unread_status(library: &Path, entries: &mut Vec<EmbeddedEntry>) {
-    let ids = unread_ids(library).await;
+pub fn annotate_embedded_unread_status(unread: &HashSet<String>, entries: &mut Vec<EmbeddedEntry>) {
     for embedded in entries.iter_mut() {
-        embedded.entry.is_unread = ids.contains(&embedded.entry.id);
+        embedded.entry.is_unread = unread.contains(&embedded.entry.id);
     }
 }
 
@@ -45,13 +45,13 @@ pub async fn filter_items<T: Item>(
     library: &Path,
     mut items: Vec<T>,
     item_filter: &ItemFilter,
+    unread: &HashSet<String>,
 ) -> std::io::Result<Vec<T>> {
     match item_filter {
         ItemFilter::All => {}
 
         ItemFilter::Unread => {
-            let ids = unread_ids(library).await;
-            items.retain(|i| i.url().is_some() && ids.contains(i.id()));
+            items.retain(|i| i.url().is_some() && unread.contains(i.id()));
         }
 
         ItemFilter::Bookmarked => {

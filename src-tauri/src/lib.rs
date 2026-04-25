@@ -5,6 +5,8 @@ mod file_watchers;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
+use xaga_core::unread::UnreadTracker;
+
 use serde::{Deserialize, Serialize};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
@@ -22,10 +24,20 @@ pub(crate) struct AppState {
     pub(crate) reader_line_height: Arc<RwLock<f64>>,
     pub(crate) embedding_service: Arc<Mutex<Option<EmbeddingService>>>,
     pub(crate) http_client: reqwest::Client,
+    pub(crate) unread_tracker: Arc<Mutex<Option<UnreadTracker>>>,
 }
 
 pub(crate) fn feeds_dir(library: &Path) -> PathBuf {
     library.join("feeds")
+}
+
+pub(crate) fn get_unread(state: &AppState) -> std::collections::HashSet<String> {
+    state.unread_tracker
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|t| t.snapshot())
+        .unwrap_or_default()
 }
 
 // ── Settings helpers ───────────────────────────────────────────────────────────
@@ -102,6 +114,8 @@ pub fn run() {
     let reader_font_size: Arc<RwLock<f64>> = Arc::new(RwLock::new(16.0));
     let reader_line_height: Arc<RwLock<f64>> = Arc::new(RwLock::new(1.75));
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
+    let unread_tracker: Arc<Mutex<Option<UnreadTracker>>> = Arc::new(Mutex::new(None));
+    let setup_unread_tracker = Arc::clone(&unread_tracker);
     let setup_library = Arc::clone(&library);
     let setup_theme = Arc::clone(&theme);
     let setup_refresh_on_startup = Arc::clone(&refresh_on_startup);
@@ -122,6 +136,7 @@ pub fn run() {
             reader_line_height,
             embedding_service: embedding_service.clone(),
             http_client,
+            unread_tracker,
         })
         .manage(article_loader::PendingRequests::default())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -361,11 +376,16 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 match EmbeddingService::start(lib_path.clone()).await {
                     Ok(svc) => {
+                        let tracker = UnreadTracker::new(&lib_path).await;
+                        *setup_unread_tracker.lock().unwrap() = Some(tracker.clone());
+
                         file_watchers::watch(
                             lib_path.clone(),
                             svc.priority_sender(),
                             svc.background_sender(),
+                            tracker,
                         );
+
                         svc.trigger_recovery(lib_path.clone());
                         *setup_svc.lock().unwrap() = Some(svc);
                     }

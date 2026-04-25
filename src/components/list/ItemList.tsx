@@ -1,4 +1,10 @@
-import { Bookmark, Circle, Clear, FormatQuote } from "@mui/icons-material";
+import {
+  Bookmark,
+  Circle,
+  Clear,
+  FormatQuote,
+  Settings,
+} from "@mui/icons-material";
 import {
   Button,
   Collapse,
@@ -56,6 +62,7 @@ interface ItemListProps {
   selectedList: Item;
   selectedFilter?: Filter;
   onSelectItem: (item: Item) => void;
+  onEditFeed?: () => void;
 }
 
 export function ItemList({
@@ -63,6 +70,7 @@ export function ItemList({
   selectedList,
   selectedFilter,
   onSelectItem,
+  onEditFeed,
 }: ItemListProps) {
   const [abort, abortControllerRef] = useAbortController();
 
@@ -125,7 +133,11 @@ export function ItemList({
         const entries = await listEntries(selectedList, filter);
         if (entries) setItems(entries);
       } else if (isTopic(selectedList)) {
-        const items = await queryByItem(selectedList, filter, selectedList.threshold ?? TOPIC_THRESHOLD);
+        const items = await queryByItem(
+          selectedList,
+          filter,
+          selectedList.threshold ?? TOPIC_THRESHOLD,
+        );
         if (items) setItems(items);
       } else {
         const entries = await listAllEntries(filter);
@@ -212,9 +224,22 @@ export function ItemList({
   return (
     <div className={cx(className, css.ItemList)}>
       <div className={css.Header}>
-        <Typography variant="overline" color="text.secondary">
-          {!selectedList ? "All items" : (selectedList?.title ?? "Entries")}
-        </Typography>
+        <div className={css.HeadingWrapper}>
+          <Typography
+            className={css.Heading}
+            component="div"
+            color="text.secondary"
+            variant="overline"
+          >
+            {!selectedList ? "All items" : (selectedList?.title ?? "Entries")}
+          </Typography>
+
+          {onEditFeed && (
+            <IconButton size="small" onClick={onEditFeed}>
+              <Settings sx={{ fontSize: 16 }} />
+            </IconButton>
+          )}
+        </div>
 
         <ToggleButtonGroup
           aria-label="Filter"

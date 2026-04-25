@@ -243,6 +243,7 @@ pub struct Feed {
     pub url: String,
     pub title: String,
     pub entry_count: usize,
+    pub unread_count: usize,
     pub created_at: String,
     pub updated_at: Option<String>,
 }

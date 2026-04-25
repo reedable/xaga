@@ -10,7 +10,7 @@ import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
 import { BookmarksProvider } from "./providers/BookmarksProvider";
 import { ALL_ITEMS } from "./Shortcuts";
-import { isShortcut, type Filter, type Item } from "./types";
+import { isFeed, isShortcut, type Feed, type Filter, type Item } from "./types";
 
 function App() {
   const platform = usePlatform();
@@ -20,6 +20,7 @@ function App() {
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [shuttingDown, setShuttingDown] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
 
   const abortControllerRef = useRef(new AbortController());
   const { refreshAllFeeds } = useFeeds(abortControllerRef);
@@ -79,6 +80,8 @@ function App() {
               className={css.Sidebar}
               selectedList={selectedList}
               onSelectList={handleSelectList}
+              editingFeed={editingFeed}
+              onSetEditingFeed={setEditingFeed}
             />
 
             <ItemList
@@ -86,6 +89,7 @@ function App() {
               selectedList={selectedList}
               selectedFilter={selectedFilter}
               onSelectItem={setSelectedItem}
+              onEditFeed={isFeed(selectedList) ? () => setEditingFeed(selectedList) : undefined}
             />
 
             <ItemView

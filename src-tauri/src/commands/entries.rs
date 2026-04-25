@@ -2,7 +2,7 @@ use tauri::State;
 use xaga_core::entries;
 use xaga_core::types::Entry;
 
-use crate::AppState;
+use crate::{get_unread, AppState};
 use super::require_main_window;
 
 #[tauri::command]
@@ -26,7 +26,8 @@ pub async fn mark_entry_unread(window: tauri::Window, id: String, state: State<'
 #[tauri::command]
 pub async fn list_all_articles(state: State<'_, AppState>) -> Result<Vec<Entry>, String> {
     let data_dir = state.library.read().unwrap().clone();
-    entries::list_entries(&data_dir)
+    let unread = get_unread(&state);
+    entries::list_entries(&data_dir, &unread)
         .await
         .map_err(|e| e.to_string())
 }

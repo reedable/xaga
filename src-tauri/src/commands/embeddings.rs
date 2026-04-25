@@ -2,7 +2,7 @@ use tauri::State;
 use xaga_core::item::{self, EmbeddedItemSource};
 use xaga_core::types::EmbeddedEntry;
 
-use crate::AppState;
+use crate::{get_unread, AppState};
 use super::parse_item_filter;
 
 #[tauri::command]
@@ -17,10 +17,12 @@ pub async fn query_by_item(
     let library = state.library.read().unwrap().clone();
     let item_filter = parse_item_filter(item_filter)?;
 
+    let unread = get_unread(&state);
     let result = item::list_embedded_items(
         &library,
         EmbeddedItemSource::RelatedTo { id, limit, min_similarity, max_similarity },
         item_filter,
+        &unread,
     )
     .await
     .map_err(|e| e.to_string());
@@ -42,10 +44,12 @@ pub async fn query_by_bookmarks(
     let library = state.library.read().unwrap().clone();
     let item_filter = parse_item_filter(item_filter)?;
 
+    let unread = get_unread(&state);
     let result = item::list_embedded_items(
         &library,
         EmbeddedItemSource::RelatedToBookmarks { limit, min_similarity, max_similarity },
         item_filter,
+        &unread,
     )
     .await
     .map_err(|e| e.to_string());
@@ -67,10 +71,12 @@ pub async fn query_by_annotations(
     let library = state.library.read().unwrap().clone();
     let item_filter = parse_item_filter(item_filter)?;
 
+    let unread = get_unread(&state);
     let result = item::list_embedded_items(
         &library,
         EmbeddedItemSource::RelatedToAnnotations { limit, min_similarity, max_similarity },
         item_filter,
+        &unread,
     )
     .await
     .map_err(|e| e.to_string());
@@ -92,10 +98,12 @@ pub async fn query_by_topics(
     let library = state.library.read().unwrap().clone();
     let item_filter = parse_item_filter(item_filter)?;
 
+    let unread = get_unread(&state);
     let result = item::list_embedded_items(
         &library,
         EmbeddedItemSource::RelatedToTopics { limit, min_similarity, max_similarity },
         item_filter,
+        &unread,
     )
     .await
     .map_err(|e| e.to_string());
@@ -133,10 +141,12 @@ pub async fn query_by_text(
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
 
+    let unread = get_unread(&state);
     let result = item::list_embedded_items(
         &library,
         EmbeddedItemSource::RelatedToVector { vector, limit, min_similarity, max_similarity },
         item_filter,
+        &unread,
     )
     .await
     .map_err(|e| e.to_string());

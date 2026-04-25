@@ -30,8 +30,9 @@ pub enum FeedsCommand {
 pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &PathBuf, data_dir: &PathBuf) {
     match cmd {
         FeedsCommand::Add { url } => {
+            let unread = xaga_core::filter::unread_ids(data_dir).await;
             eprint!("Fetching {url} ... ");
-            match feeds::add_feed(client, feeds_dir, data_dir, &url).await {
+            match feeds::add_feed(client, feeds_dir, data_dir, &url, &unread).await {
                 Ok(feed) => {
                     eprintln!("done");
                     println!("[{}] {}", feed.id, feed.title);
@@ -45,7 +46,7 @@ pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &Pat
             Err(e) => die(e),
         },
 
-        FeedsCommand::List => match feeds::list_feeds(feeds_dir).await {
+        FeedsCommand::List => match feeds::list_feeds(feeds_dir, &xaga_core::filter::unread_ids(data_dir).await).await {
             Ok(feeds) if feeds.is_empty() => {
                 println!("No feeds saved. Use `feeds add <url>` to add one.");
             }
@@ -61,8 +62,9 @@ pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &Pat
         },
 
         FeedsCommand::Refresh { id: Some(id) } => {
+            let unread = xaga_core::filter::unread_ids(data_dir).await;
             eprint!("Refreshing {id} ... ");
-            match feeds::refresh_feed(client, feeds_dir, data_dir, &id).await {
+            match feeds::refresh_feed(client, feeds_dir, data_dir, &id, &unread).await {
                 Ok(feed) => {
                     eprintln!("done");
                     println!("[{}] {}", feed.id, feed.title);
@@ -72,7 +74,8 @@ pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &Pat
         }
 
         FeedsCommand::Refresh { id: None } => {
-            let results = feeds::refresh_all_feeds(client, feeds_dir, data_dir).await;
+            let unread = xaga_core::filter::unread_ids(data_dir).await;
+            let results = feeds::refresh_all_feeds(client, feeds_dir, data_dir, &unread).await;
             if results.is_empty() {
                 println!("No feeds saved. Use `feeds add <url>` to add one.");
                 return;
