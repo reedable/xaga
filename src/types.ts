@@ -50,6 +50,21 @@ export function isItem(obj: any): obj is Item {
   );
 }
 
+export type Collection = Item & {
+  entryCount: number;
+  unreadCount: number;
+};
+
+export function isCollection(item?: Item | null): item is Collection {
+  return (
+    isItem(item) &&
+    "entryCount" in item &&
+    typeof item.entryCount === "number" &&
+    "unreadCount" in item &&
+    typeof item.unreadCount === "number"
+  );
+}
+
 export type Embedded = {
   similarity: number;
 };
@@ -142,7 +157,9 @@ export type AnnotationSummary = Item & {
   url: string;
 };
 
-export function isAnnotationSummary(item?: Item | null): item is AnnotationSummary {
+export function isAnnotationSummary(
+  item?: Item | null,
+): item is AnnotationSummary {
   return (
     !!item &&
     "color" in item &&
@@ -168,10 +185,10 @@ export function isArticle(item?: Item | null): item is Article {
 
 // ── Topic ────────────────────────────────────────────────────────────────────
 
-export type Topic = Document & { threshold?: number };
+export type Topic = Document & Collection & { threshold?: number };
 
 export function isTopic(item?: Item | null): item is Topic {
-  return isDocument(item);
+  return isDocument(item) && isCollection(item);
 }
 
 // ── Note ─────────────────────────────────────────────────────────────────────
@@ -186,25 +203,13 @@ export function isNote(item?: Item | null): item is Note {
 // ── Feed ─────────────────────────────────────────────────────────────────────
 
 /** A subscribed RSS/Atom feed. */
-export type Feed = Item & {
+export type Feed = Collection & {
   url: string;
-  entryCount: number;
-  unreadCount: number;
 };
 
 export function isFeed(item?: Item | null): item is Feed {
-  return (
-    !!item && "entryCount" in item && typeof item.entryCount === "number"
-  );
+  return isCollection(item) && "url" in item && typeof item.url === "string";
 }
-
-// ── ListUpdate ───────────────────────────────────────────────────────────────
-
-/** Emitted by the backend when the unread count of any list (Feed, Topic, …) changes. */
-export type ListUpdate = {
-  id: string;
-  unreadCount: number;
-};
 
 // ── Import ───────────────────────────────────────────────────────────────────
 

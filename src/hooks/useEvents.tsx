@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { usePlatform } from "../platform/Platform";
-import type { Feed, ListUpdate } from "../types";
+import type { Feed } from "../types";
 
 export function useEvents() {
   const platform = usePlatform();
@@ -15,9 +15,9 @@ export function useEvents() {
     [platform],
   );
 
-  const onListUpdated = useCallback(
-    (callback: (update: ListUpdate) => void) => {
-      const unlistenPromise = platform.onListUpdated(callback);
+  const onUnreadChanged = useCallback(
+    (callback: () => void) => {
+      const unlistenPromise = platform.onUnreadChanged(callback);
       return () => {
         unlistenPromise.then((unlisten) => unlisten());
       };
@@ -27,6 +27,6 @@ export function useEvents() {
 
   return {
     onFeedRefreshed,
-    onListUpdated,
+    onUnreadChanged,
   };
 }

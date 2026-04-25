@@ -31,7 +31,7 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
 
   const createTopic = useCallback(
     async (
-      topic: Omit<Topic, "id" | "createdAt">,
+      topic: Omit<Topic, "id" | "createdAt" | "unreadCount" | "entryCount">,
     ): Promise<Topic | undefined> => {
       const signal = abortControllerRef.current.signal;
       setLoading(true);

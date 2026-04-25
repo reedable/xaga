@@ -4,12 +4,12 @@ import {
   Circle,
   Feed as FeedIcon,
   FormatQuote,
-  Settings,
   Star,
 } from "@mui/icons-material";
 import { IconButton, Typography } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
+import { useEvents } from "../../hooks/useEvents";
 import { useFeeds } from "../../hooks/useFeeds";
 import { useTopics } from "../../hooks/useTopics";
 import { usePlatform } from "../../platform/Platform";
@@ -35,6 +35,8 @@ interface SidebarProps {
   onSelectList: (item: Item) => void;
   editingFeed: Feed | null;
   onSetEditingFeed: (feed: Feed | null) => void;
+  editingTopic: Topic | null;
+  onSetEditingTopic: (topic: Topic | null) => void;
 }
 
 export type ExpanderType = "shortcuts" | "topics" | "projects" | "feeds";
@@ -42,10 +44,11 @@ export type ExpanderType = "shortcuts" | "topics" | "projects" | "feeds";
 // TODO Allow user to sort
 const sortByTitle = (a: Item, b: Item) => a.title.localeCompare(b.title);
 
-const sortByUnreadCount = (a: Feed, b: Feed) => b.unreadCount - a.unreadCount;
-
-// const sortByUpdatedAt = (a: Feed, b: Feed) =>
+// const sortByUpdatedAt = (a: Feed | Topic, b: Feed | Topic) =>
 //   compareDates(b.updatedAt, a.updatedAt);
+
+const sortByUnreadCount = (a: Feed | Topic, b: Feed | Topic) =>
+  b.unreadCount - a.unreadCount || sortByTitle(a, b);
 
 export function Sidebar({
   className,
@@ -53,8 +56,11 @@ export function Sidebar({
   onSelectList,
   editingFeed,
   onSetEditingFeed,
+  editingTopic,
+  onSetEditingTopic,
 }: SidebarProps) {
   const platform = usePlatform();
+  const { onUnreadChanged } = useEvents();
   const [abort, abortControllerRef] = useAbortController();
 
   const [selectedExpander, setSelectedExpander] = useState<ExpanderType | null>(
@@ -77,7 +83,6 @@ export function Sidebar({
   const [topics, setTopics] = useState<Topic[]>([]);
   const [feeds, setFeeds] = useState<Feed[]>([]);
 
-  const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
   const [isAddingTopic, setIsAddingTopic] = useState(false);
   const setEditingFeed = onSetEditingFeed;
   const [isAddingFeed, setIsAddingFeed] = useState(false);
@@ -94,7 +99,7 @@ export function Sidebar({
   }, [listFeeds]);
 
   const requestTopics = useCallback(async () => {
-    const results = await listTopics(sortByTitle);
+    const results = await listTopics(sortByUnreadCount);
     if (results) setTopics(results);
   }, [listTopics]);
 
@@ -177,6 +182,16 @@ export function Sidebar({
       unlisten.then((fn) => fn());
     };
   }, [platform, handleExportFeeds]);
+
+  useEffect(() => {
+    const unlisten = onUnreadChanged(() => {
+      requestTopics();
+      requestFeeds();
+    });
+    return () => {
+      unlisten();
+    };
+  }, [onUnreadChanged, requestTopics, requestFeeds]);
 
   useEffect(() => {
     abort();
@@ -280,17 +295,18 @@ export function Sidebar({
             loading={!!loadingSet?.size}
             selected={selectedList?.id === item.id}
             onSelectItem={onSelectList}
-            renderSecondaryAction={(item: Item) => (
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingTopic(item as Topic);
-                }}
-              >
-                <Settings sx={{ fontSize: 16 }} />
-              </IconButton>
-            )}
+            renderSecondaryAction={(item: Item) => {
+              const topic = item as Topic;
+              return topic.unreadCount > 0 ? (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ pr: 1 }}
+                >
+                  {topic.unreadCount}
+                </Typography>
+              ) : null;
+            }}
           />
         ))}
       </Expander>
@@ -299,7 +315,7 @@ export function Sidebar({
         open={editingTopic !== null || isAddingTopic}
         topic={editingTopic}
         onClose={() => {
-          setEditingTopic(null);
+          onSetEditingTopic(null);
           setIsAddingTopic(false);
         }}
         onSave={handleSaveTopic}

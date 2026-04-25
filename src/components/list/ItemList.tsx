@@ -62,7 +62,7 @@ interface ItemListProps {
   selectedList: Item;
   selectedFilter?: Filter;
   onSelectItem: (item: Item) => void;
-  onEditFeed?: () => void;
+  onEdit?: () => void;
 }
 
 export function ItemList({
@@ -70,7 +70,7 @@ export function ItemList({
   selectedList,
   selectedFilter,
   onSelectItem,
-  onEditFeed,
+  onEdit,
 }: ItemListProps) {
   const [abort, abortControllerRef] = useAbortController();
 
@@ -210,7 +210,7 @@ export function ItemList({
   }, [displayedItems, markEntryRead]);
 
   useEffect(() => {
-    (async () => setFilter(selectedFilter ?? "all"))();
+    (async () => setFilter(selectedFilter ?? "unread"))();
   }, [selectedFilter]);
 
   useEffect(() => {
@@ -234,8 +234,8 @@ export function ItemList({
             {!selectedList ? "All items" : (selectedList?.title ?? "Entries")}
           </Typography>
 
-          {onEditFeed && (
-            <IconButton size="small" onClick={onEditFeed}>
+          {onEdit && (
+            <IconButton size="small" onClick={onEdit}>
               <Settings sx={{ fontSize: 16 }} />
             </IconButton>
           )}
@@ -337,11 +337,13 @@ export function ItemList({
                         <Circle className={css.UnreadIcon} color="primary" />
                       )}
 
-                      {bookmarkMap?.get(item.id) && (
-                        <Bookmark color="primary" />
-                      )}
+                      <div className={css.HelperText}>
+                        <div className={css.Byline}>{formatByline(item)}</div>
 
-                      <span>{formatByline(item)}</span>
+                        {bookmarkMap?.get(item.id) && (
+                          <Bookmark color="primary" />
+                        )}
+                      </div>
                     </>
                   }
                   slotProps={{

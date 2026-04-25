@@ -62,6 +62,8 @@ pub async fn save_topic(
         updated_at: Some(updated_at),
         content: content.to_string(),
         threshold,
+        entry_count: 0,
+        unread_count: 0,
     })
 }
 
@@ -91,6 +93,8 @@ pub async fn read_topic(data_dir: &Path, id: &str) -> Result<Topic, TopicsError>
         updated_at: fm.updated_at,
         content: body,
         threshold: fm.threshold,
+        entry_count: 0,
+        unread_count: 0,
     })
 }
 
@@ -128,6 +132,8 @@ pub async fn list_topics(data_dir: &Path) -> Result<Vec<Topic>, TopicsError> {
                 updated_at: fm.updated_at,
                 content: body,
                 threshold: fm.threshold,
+                entry_count: 0,
+                unread_count: 0,
             });
         }
     }

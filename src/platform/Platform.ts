@@ -10,7 +10,6 @@ import type {
   Filter,
   ImportResult,
   Item,
-  ListUpdate,
   SavedItem,
   Topic,
 } from "../types";
@@ -75,7 +74,7 @@ export interface Platform {
   // Topics
   createTopic(
     signal: AbortSignal,
-    topic: Omit<Topic, "id" | "createdAt">,
+    topic: Omit<Topic, "id" | "createdAt" | "unreadCount" | "entryCount">,
   ): Promise<Topic>;
   saveTopic(signal: AbortSignal, topic: Topic): Promise<Topic>;
   deleteTopic(signal: AbortSignal, id: string): Promise<void>;
@@ -154,7 +153,7 @@ export interface Platform {
   onImportFeeds(callback: () => void): Promise<UnlistenFn>;
   onExportFeeds(callback: () => void): Promise<UnlistenFn>;
   onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn>;
-  onListUpdated(callback: (update: ListUpdate) => void): Promise<UnlistenFn>;
+  onUnreadChanged(callback: () => void): Promise<UnlistenFn>;
   onImportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onExportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;

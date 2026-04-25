@@ -14,7 +14,6 @@ import type {
   Filter,
   ImportResult,
   Item,
-  ListUpdate,
   SavedItem,
   Topic,
 } from "../types";
@@ -36,16 +35,6 @@ const toItem = (data: z.infer<typeof ItemSchema>): Item => ({
   title: data.title,
   createdAt: data.created_at,
   updatedAt: data.updated_at ?? undefined,
-});
-
-const ListUpdateSchema = z.object({
-  id: z.string(),
-  unread_count: z.number(),
-});
-
-const toListUpdate = (data: z.infer<typeof ListUpdateSchema>): ListUpdate => ({
-  id: data.id,
-  unreadCount: data.unread_count,
 });
 
 const FeedSchema = ItemSchema.extend({
@@ -83,12 +72,16 @@ const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
 const TopicSchema = ItemSchema.extend({
   content: z.string(),
   threshold: z.number().nullable().optional(),
+  entry_count: z.number(),
+  unread_count: z.number(),
 });
 
 const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
   ...toItem(data),
   content: data.content,
   threshold: data.threshold ?? undefined,
+  entryCount: data.entry_count,
+  unreadCount: data.unread_count,
 });
 
 const AnnotationSchema = z.object({
@@ -542,7 +535,7 @@ export class TauriPlatform implements Platform {
 
   async createTopic(
     signal: AbortSignal,
-    topic: Omit<Topic, "id" | "createdAt">,
+    topic: Omit<Topic, "id" | "createdAt" | "unreadCount">,
   ): Promise<Topic> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -828,11 +821,8 @@ export class TauriPlatform implements Platform {
     });
   }
 
-  onListUpdated(callback: (update: ListUpdate) => void): Promise<UnlistenFn> {
-    return listen<unknown>("list:updated", (e) => {
-      const result = ListUpdateSchema.transform(toListUpdate).safeParse(e.payload);
-      if (result.success) callback(result.data);
-    });
+  onUnreadChanged(callback: () => void): Promise<UnlistenFn> {
+    return listen("unread:changed", callback);
   }
 
   onImportBookmarks(callback: () => void): Promise<UnlistenFn> {

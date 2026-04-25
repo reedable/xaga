@@ -2,6 +2,8 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
+use tokio::sync::Notify;
+
 /// Tracks which entry IDs are currently in the `unread/` directory.
 ///
 /// Initialized once at startup via a full directory scan, then kept current
@@ -10,6 +12,7 @@ use std::sync::{Arc, RwLock};
 #[derive(Clone)]
 pub struct UnreadTracker {
     ids: Arc<RwLock<HashSet<String>>>,
+    notify: Arc<Notify>,
 }
 
 impl UnreadTracker {
@@ -18,22 +21,30 @@ impl UnreadTracker {
         let ids = scan_unread_dir(data_dir).await;
         Self {
             ids: Arc::new(RwLock::new(ids)),
+            notify: Arc::new(Notify::new()),
         }
     }
 
-    /// Records that an entry has become unread.
+    /// Records that an entry has become unread and notifies subscribers.
     pub fn add(&self, id: &str) {
         self.ids.write().unwrap().insert(id.to_string());
+        self.notify.notify_one();
     }
 
-    /// Records that an entry is no longer unread.
+    /// Records that an entry is no longer unread and notifies subscribers.
     pub fn remove(&self, id: &str) {
         self.ids.write().unwrap().remove(id);
+        self.notify.notify_one();
     }
 
     /// Returns a point-in-time snapshot of the current unread ID set.
     pub fn snapshot(&self) -> HashSet<String> {
         self.ids.read().unwrap().clone()
+    }
+
+    /// Returns the shared `Notify` so callers can `await` change signals.
+    pub fn subscribe(&self) -> Arc<Notify> {
+        Arc::clone(&self.notify)
     }
 }
 

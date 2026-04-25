@@ -88,6 +88,18 @@
           gap: 0.25em;
           margin-top: 0.5em;
 
+          .HelperText {
+            align-items: center;
+            display: flex;
+            width: 100%;
+
+            .Byline {
+              flex-grow: 1;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+          }
+
           svg {
             font-size: 0.875em;
 

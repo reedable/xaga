@@ -373,11 +373,13 @@ pub fn run() {
             // If another instance already holds the library lock, we skip the
             // service entirely — embeddings are available for reading but this
             // instance will not write to LanceDB.
+            let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 match EmbeddingService::start(lib_path.clone()).await {
                     Ok(svc) => {
                         let tracker = UnreadTracker::new(&lib_path).await;
                         *setup_unread_tracker.lock().unwrap() = Some(tracker.clone());
+                        let notify = tracker.subscribe();
 
                         file_watchers::watch(
                             lib_path.clone(),
@@ -385,6 +387,13 @@ pub fn run() {
                             svc.background_sender(),
                             tracker,
                         );
+
+                        tauri::async_runtime::spawn(async move {
+                            loop {
+                                notify.notified().await;
+                                app_handle.emit("unread:changed", ()).ok();
+                            }
+                        });
 
                         svc.trigger_recovery(lib_path.clone());
                         *setup_svc.lock().unwrap() = Some(svc);

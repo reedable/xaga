@@ -220,6 +220,8 @@ pub struct Topic {
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub threshold: Option<f32>,
+    pub entry_count: usize,
+    pub unread_count: usize,
 }
 
 impl Item for Topic {

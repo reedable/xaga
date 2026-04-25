@@ -10,7 +10,7 @@ import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
 import { BookmarksProvider } from "./providers/BookmarksProvider";
 import { ALL_ITEMS } from "./Shortcuts";
-import { isFeed, isShortcut, type Feed, type Filter, type Item } from "./types";
+import { isFeed, isShortcut, isTopic, type Feed, type Filter, type Item, type Topic } from "./types";
 
 function App() {
   const platform = usePlatform();
@@ -21,6 +21,7 @@ function App() {
   const [shuttingDown, setShuttingDown] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
+  const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
 
   const abortControllerRef = useRef(new AbortController());
   const { refreshAllFeeds } = useFeeds(abortControllerRef);
@@ -82,6 +83,8 @@ function App() {
               onSelectList={handleSelectList}
               editingFeed={editingFeed}
               onSetEditingFeed={setEditingFeed}
+              editingTopic={editingTopic}
+              onSetEditingTopic={setEditingTopic}
             />
 
             <ItemList
@@ -89,7 +92,11 @@ function App() {
               selectedList={selectedList}
               selectedFilter={selectedFilter}
               onSelectItem={setSelectedItem}
-              onEditFeed={isFeed(selectedList) ? () => setEditingFeed(selectedList) : undefined}
+              onEdit={
+                isFeed(selectedList) ? () => setEditingFeed(selectedList) :
+                isTopic(selectedList) ? () => setEditingTopic(selectedList) :
+                undefined
+              }
             />
 
             <ItemView

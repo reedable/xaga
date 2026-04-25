@@ -68,8 +68,13 @@ fn watch_unread(
                                 let _ = background_tx.send(BackgroundMsg::Embed(id.to_string()));
                             }
                             EventKind::Modify(_) => {
-                                log::debug!("file_watchers: unread modify → priority embed {id}");
-                                let _ = priority_tx.send(PriorityMsg::Embed(id.to_string()));
+                                if path.exists() {
+                                    log::debug!("file_watchers: unread modify → priority embed {id}");
+                                    let _ = priority_tx.send(PriorityMsg::Embed(id.to_string()));
+                                } else {
+                                    log::debug!("file_watchers: unread rename-out → tracker remove {id}");
+                                    tracker.remove(id);
+                                }
                             }
                             EventKind::Remove(_) => {
                                 log::debug!("file_watchers: unread remove → tracker remove {id}");
