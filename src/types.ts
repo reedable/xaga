@@ -168,7 +168,7 @@ export function isArticle(item?: Item | null): item is Article {
 
 // ── Topic ────────────────────────────────────────────────────────────────────
 
-export type Topic = Document;
+export type Topic = Document & { threshold?: number };
 
 export function isTopic(item?: Item | null): item is Topic {
   return isDocument(item);

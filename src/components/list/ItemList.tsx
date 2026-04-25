@@ -125,7 +125,7 @@ export function ItemList({
         const entries = await listEntries(selectedList, filter);
         if (entries) setItems(entries);
       } else if (isTopic(selectedList)) {
-        const items = await queryByItem(selectedList, filter, TOPIC_THRESHOLD);
+        const items = await queryByItem(selectedList, filter, selectedList.threshold ?? TOPIC_THRESHOLD);
         if (items) setItems(items);
       } else {
         const entries = await listAllEntries(filter);

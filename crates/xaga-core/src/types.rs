@@ -210,8 +210,24 @@ impl Item for Document {
 
 // ── Topic ─────────────────────────────────────────────────────────────────────
 
-/// Mirrors the TypeScript `Topic` type (= `Document`).
-pub type Topic = Document;
+/// Mirrors the TypeScript `Topic` type (= `Document & { threshold?: number }`).
+#[derive(Debug, Serialize)]
+pub struct Topic {
+    pub id: String,
+    pub title: String,
+    pub created_at: String,
+    pub updated_at: Option<String>,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<f32>,
+}
+
+impl Item for Topic {
+    fn id(&self) -> &str { &self.id }
+    fn title(&self) -> &str { &self.title }
+    fn created_at(&self) -> &str { &self.created_at }
+    fn updated_at(&self) -> Option<&str> { self.updated_at.as_deref() }
+}
 
 // ── Note ─────────────────────────────────────────────────────────────────────
 

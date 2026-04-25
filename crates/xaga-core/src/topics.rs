@@ -21,8 +21,11 @@ pub(crate) fn topic_path(data_dir: &Path, id: &str) -> PathBuf {
     data_dir.join("topics").join(format!("{id}.md"))
 }
 
-fn render_topic(id: &str, title: &str, created_at: &str, updated_at: &str, content: &str) -> String {
-    format!("---\nid: {id}\ntitle: {title}\ncreated: {created_at}\nupdated: {updated_at}\n---\n\n{content}\n")
+fn render_topic(id: &str, title: &str, created_at: &str, updated_at: &str, threshold: Option<f32>, content: &str) -> String {
+    let threshold_line = threshold
+        .map(|t| format!("threshold: {:.2}\n", t))
+        .unwrap_or_default();
+    format!("---\nid: {id}\ntitle: {title}\ncreated: {created_at}\nupdated: {updated_at}\n{threshold_line}---\n\n{content}\n")
 }
 
 /// Creates or updates a topic at `topics/{id}.md`.
@@ -33,6 +36,7 @@ pub async fn save_topic(
     id: &str,
     title: &str,
     content: &str,
+    threshold: Option<f32>,
 ) -> Result<Topic, TopicsError> {
     let dir = data_dir.join("topics");
     tokio::fs::create_dir_all(&dir).await?;
@@ -49,7 +53,7 @@ pub async fn save_topic(
 
     let updated_at = Utc::now().to_rfc3339();
 
-    tokio::fs::write(&path, render_topic(id, title, &created_at, &updated_at, content).as_bytes()).await?;
+    tokio::fs::write(&path, render_topic(id, title, &created_at, &updated_at, threshold, content).as_bytes()).await?;
 
     Ok(Topic {
         id: id.to_string(),
@@ -57,6 +61,7 @@ pub async fn save_topic(
         created_at,
         updated_at: Some(updated_at),
         content: content.to_string(),
+        threshold,
     })
 }
 
@@ -65,9 +70,10 @@ pub async fn create_topic(
     data_dir: &Path,
     title: &str,
     content: &str,
+    threshold: Option<f32>,
 ) -> Result<Topic, TopicsError> {
     let id = Uuid::new_v4().to_string();
-    save_topic(data_dir, &id, title, content).await
+    save_topic(data_dir, &id, title, content, threshold).await
 }
 
 /// Returns the topic for the given id.
@@ -84,6 +90,7 @@ pub async fn read_topic(data_dir: &Path, id: &str) -> Result<Topic, TopicsError>
         created_at: fm.created_at,
         updated_at: fm.updated_at,
         content: body,
+        threshold: fm.threshold,
     })
 }
 
@@ -120,6 +127,7 @@ pub async fn list_topics(data_dir: &Path) -> Result<Vec<Topic>, TopicsError> {
                 created_at: fm.created_at,
                 updated_at: fm.updated_at,
                 content: body,
+                threshold: fm.threshold,
             });
         }
     }

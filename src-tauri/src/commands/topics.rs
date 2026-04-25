@@ -10,11 +10,12 @@ pub async fn save_topic(
     id: String,
     title: String,
     content: String,
+    threshold: Option<f32>,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
     require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
-    topics::save_topic(&data_dir, &id, &title, &content)
+    topics::save_topic(&data_dir, &id, &title, &content, threshold)
         .await
         .map_err(|e| e.to_string())
 }
@@ -24,11 +25,12 @@ pub async fn create_topic(
     window: tauri::Window,
     title: String,
     content: String,
+    threshold: Option<f32>,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
     require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
-    topics::create_topic(&data_dir, &title, &content)
+    topics::create_topic(&data_dir, &title, &content, threshold)
         .await
         .map_err(|e| e.to_string())
 }

@@ -86,13 +86,13 @@ export function Sidebar({
   }, [listTopics]);
 
   const handleSaveTopic = useCallback(
-    async (title: string, content: string) => {
+    async (title: string, content: string, threshold: number) => {
       let topic: Topic | undefined;
 
       if (editingTopic) {
-        topic = await saveTopic({ ...editingTopic, title, content });
+        topic = await saveTopic({ ...editingTopic, title, content, threshold });
       } else {
-        topic = await createTopic({ title, content });
+        topic = await createTopic({ title, content, threshold });
       }
 
       if (topic) {

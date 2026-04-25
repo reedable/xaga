@@ -69,11 +69,13 @@ const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
 
 const TopicSchema = ItemSchema.extend({
   content: z.string(),
+  threshold: z.number().nullable().optional(),
 });
 
 const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
   ...toItem(data),
   content: data.content,
+  threshold: data.threshold ?? undefined,
 });
 
 const AnnotationSchema = z.object({
@@ -546,6 +548,7 @@ export class TauriPlatform implements Platform {
       id: topic.id,
       title: topic.title,
       content: topic.content,
+      threshold: topic.threshold ?? null,
     });
 
     return TopicSchema.transform(toTopic).parse(result);

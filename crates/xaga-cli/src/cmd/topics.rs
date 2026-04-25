@@ -53,7 +53,7 @@ pub async fn handle(cmd: TopicsCommand, data_dir: &Path) {
 
             let content = read_until_eof("Content (end with Ctrl-D):");
 
-            match topics::create_topic(data_dir, &title, &content).await {
+            match topics::create_topic(data_dir, &title, &content, None).await {
                 Ok(t) => println!("Saved topic '{}'", t.id),
                 Err(e) => die(e),
             }
