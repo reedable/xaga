@@ -3,6 +3,8 @@ use std::sync::Arc;
 
 use super::EmbeddingsError;
 
+const MODEL_DOWNLOAD_BASE: &str = "https://huggingface.co";
+
 pub const DEFAULT_MODEL_REPO: &str = "Qdrant/all-MiniLM-L6-v2-onnx";
 pub const MODEL_FILES: &[&str] = &[
     "model.onnx",
@@ -25,6 +27,80 @@ pub fn default_model_dir() -> PathBuf {
 /// Returns true if all required model files are present in `model_dir`.
 pub fn model_files_present(model_dir: &Path) -> bool {
     MODEL_FILES.iter().all(|f| model_dir.join(f).is_file())
+}
+
+/// Downloads the model into a staging directory and atomically renames it into
+/// place only once all files have been fetched.  A leftover staging directory
+/// from a previous failed attempt is removed before starting.
+///
+/// Returns immediately (no-op) if the model files are already present.
+pub async fn download_model_if_missing(client: &reqwest::Client) -> Result<(), EmbeddingsError> {
+    let model_dir = default_model_dir();
+    if model_files_present(&model_dir) {
+        return Ok(());
+    }
+
+    let parent = model_dir.parent().ok_or_else(|| {
+        EmbeddingsError::ModelDownload("model_dir has no parent".into())
+    })?;
+
+    let staging_dir = {
+        let name = model_dir
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy();
+        parent.join(format!("{name}-download"))
+    };
+
+    if staging_dir.exists() {
+        std::fs::remove_dir_all(&staging_dir).map_err(|e| {
+            EmbeddingsError::ModelDownload(format!("remove stale staging dir: {e}"))
+        })?;
+    }
+
+    std::fs::create_dir_all(&staging_dir)
+        .map_err(|e| EmbeddingsError::ModelDownload(format!("create staging dir: {e}")))?;
+
+    if let Err(e) = fetch_all_files(client, &staging_dir).await {
+        let _ = std::fs::remove_dir_all(&staging_dir);
+        return Err(e);
+    }
+
+    if model_dir.exists() {
+        std::fs::remove_dir_all(&model_dir).map_err(|e| {
+            EmbeddingsError::ModelDownload(format!("remove partial model dir: {e}"))
+        })?;
+    }
+
+    std::fs::rename(&staging_dir, &model_dir).map_err(|e| {
+        EmbeddingsError::ModelDownload(format!("rename staging to model dir: {e}"))
+    })?;
+
+    log::info!("embedding model ready at {}", model_dir.display());
+    Ok(())
+}
+
+async fn fetch_all_files(client: &reqwest::Client, dir: &Path) -> Result<(), EmbeddingsError> {
+    for &filename in MODEL_FILES {
+        let url = format!(
+            "{MODEL_DOWNLOAD_BASE}/{DEFAULT_MODEL_REPO}/resolve/main/{filename}"
+        );
+        log::info!("downloading {filename}");
+        let bytes = client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| EmbeddingsError::ModelDownload(format!("{filename}: {e}")))?
+            .error_for_status()
+            .map_err(|e| EmbeddingsError::ModelDownload(format!("{filename}: {e}")))?
+            .bytes()
+            .await
+            .map_err(|e| EmbeddingsError::ModelDownload(format!("{filename}: {e}")))?;
+        std::fs::write(dir.join(filename), &bytes)
+            .map_err(|e| EmbeddingsError::ModelDownload(format!("{filename}: write: {e}")))?;
+        log::info!("downloaded {filename} ({} bytes)", bytes.len());
+    }
+    Ok(())
 }
 
 /// Loads the default model from `default_model_dir()`.

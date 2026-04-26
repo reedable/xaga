@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocalStorage } from "./hooks/useLocalStorage";
 import css from "./_.module.css";
 import { ItemView } from "./components/content/ItemView";
 import { ItemList } from "./components/list/ItemList";
@@ -7,11 +6,13 @@ import { SearchResultList } from "./components/list/SearchResultList";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { TitleBar } from "./components/titlebar/TitleBar";
 import { useFeeds } from "./hooks/useFeeds";
+import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
 import { BookmarksProvider } from "./providers/BookmarksProvider";
 import { ALL_ITEMS } from "./Shortcuts";
 import { isFeed, isShortcut, isTopic, type Feed, type Filter, type Item, type Topic } from "./types";
+import { Collapse } from "@mui/material";
 
 function App() {
   const platform = usePlatform();
@@ -35,7 +36,7 @@ function App() {
     } else {
       setSelectedFilter("unread");
     }
-  }, []);
+  }, [setSelectedFilter]);
 
   const handleChangeItem = useCallback((item: Item) => {
     // TODO We call this when an article is marked read/unread in ItemView.
@@ -96,8 +97,8 @@ function App() {
               onFilterChange={setSelectedFilter}
               onEdit={
                 isFeed(selectedList) ? () => setEditingFeed(selectedList) :
-                isTopic(selectedList) ? () => setEditingTopic(selectedList) :
-                undefined
+                  isTopic(selectedList) ? () => setEditingTopic(selectedList) :
+                    undefined
               }
             />
 
@@ -108,13 +109,13 @@ function App() {
               onChangeItem={handleChangeItem}
             />
 
-            {searchQuery && (
+            <Collapse in={!!searchQuery} orientation="horizontal">
               <SearchResultList
                 className={css.SearchResultList}
                 searchQuery={searchQuery}
                 onSelectItem={setSelectedItem}
               />
-            )}
+            </Collapse>
           </div>
         </div>
       </BookmarksProvider>

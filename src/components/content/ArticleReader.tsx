@@ -1,4 +1,4 @@
-import { Bookmark, MoreHoriz, OpenInNew, Refresh } from "@mui/icons-material";
+import { Bookmark, MoreVert, OpenInNew, Refresh } from "@mui/icons-material";
 import {
   ButtonGroup,
   Collapse,
@@ -242,7 +242,7 @@ export default function ArticleReader({
                   size="small"
                   onClick={(e) => setMenuAnchor(e.currentTarget)}
                 >
-                  <MoreHoriz fontSize="small" />
+                  <MoreVert fontSize="small" />
                 </IconButton>
               </Tooltip>
             </ButtonGroup>

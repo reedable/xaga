@@ -41,6 +41,13 @@ pub fn annotate_unread_status(unread: &HashSet<String>, entries: &mut Vec<Entry>
     }
 }
 
+/// Sets `is_bookmarked` on each entry based on the provided bookmarked ID set.
+pub fn annotate_bookmarked_status(bookmarked: &HashSet<String>, entries: &mut Vec<Entry>) {
+    for entry in entries.iter_mut() {
+        entry.is_bookmarked = bookmarked.contains(&entry.id);
+    }
+}
+
 /// Same as `annotate_unread_status` but for `EmbeddedEntry`.
 pub fn annotate_embedded_unread_status(unread: &HashSet<String>, entries: &mut Vec<EmbeddedEntry>) {
     for embedded in entries.iter_mut() {

@@ -48,9 +48,10 @@ import {
   type Item,
 } from "../../types";
 
+import { Byline } from "../Byline";
 import cx from "../../utils/cx";
-import formatByline from "../../utils/formatByline";
 import css from "./_.module.css";
+import ItemStatus from "../ItemStatus";
 
 function getEmptyMessage(filter: Filter, filterText: string): string {
   const label = filter === "all" ? "items" : `${filter} items`;
@@ -335,19 +336,7 @@ export function ItemList({
                     </>
                   }
                   secondary={
-                    <>
-                      {isEntry(item) && item.isUnread && (
-                        <Circle className={css.UnreadIcon} color="primary" />
-                      )}
-
-                      <div className={css.HelperText}>
-                        <div className={css.Byline}>{formatByline(item)}</div>
-
-                        {bookmarkMap?.get(item.id) && (
-                          <Bookmark color="primary" />
-                        )}
-                      </div>
-                    </>
+                    <ItemStatus item={item} />
                   }
                   slotProps={{
                     primary: { className: css.Primary },

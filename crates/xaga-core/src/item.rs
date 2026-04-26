@@ -62,6 +62,8 @@ pub async fn list_items(
                 .await
                 .map_err(ItemError::Feed)?;
             filter::annotate_unread_status(unread, &mut entries);
+            let bookmarked = filter::bookmarked_ids(library, unread).await;
+            filter::annotate_bookmarked_status(&bookmarked, &mut entries);
             Ok(entries)
         }
     }

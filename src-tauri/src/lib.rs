@@ -124,6 +124,7 @@ pub fn run() {
     let setup_reader_font_size = Arc::clone(&reader_font_size);
     let setup_reader_line_height = Arc::clone(&reader_line_height);
     let setup_svc = Arc::clone(&embedding_service);
+    let setup_http_client = http_client.clone();
 
     let app = tauri::Builder::default()
         .manage(AppState {
@@ -375,6 +376,10 @@ pub fn run() {
             // instance will not write to LanceDB.
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                if let Err(e) = xaga_core::embeddings::download_model_if_missing(&setup_http_client).await {
+                    log::error!("startup: model download failed: {e}");
+                }
+
                 match EmbeddingService::start(lib_path.clone()).await {
                     Ok(svc) => {
                         let tracker = UnreadTracker::new(&lib_path).await;

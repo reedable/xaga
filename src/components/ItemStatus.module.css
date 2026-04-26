@@ -1,0 +1,20 @@
+.ItemStatus {
+    align-items: center;
+    display: flex;
+    width: 100%;
+
+    .UnreadIcon {
+        flex-shrink: 0;
+        margin: 0 4px 0 0;
+        min-height: 0;
+        min-width: 0;
+    }
+
+    .Byline {
+        flex-grow: 1;
+        min-height: 0;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}

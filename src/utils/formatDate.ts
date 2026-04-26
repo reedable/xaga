@@ -2,22 +2,17 @@ import { isEntry, type Item } from "../types";
 
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 
-const SECOND = 1000;
-const MINUTE = 60 * SECOND;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
+export const SECOND = 1000;
+export const MINUTE = 60 * SECOND;
+export const HOUR = 60 * MINUTE;
+export const DAY = 24 * HOUR;
 
 export default function formatDate(item: Item): string {
-  if (isEntry(item)) {
-    const date = stringToDate(item.updatedAt, item.publishedAt, item.createdAt);
-    return _formatDate(date);
-  }
-
-  const date = stringToDate(item.updatedAt, item.createdAt);
-  return _formatDate(date);
+  const date = getItemDate(item);
+  return formatDateString(date);
 }
 
-function _formatDate(date: Date | null): string {
+function formatDateString(date: Date | null): string {
   if (!date) return "";
   if (isNaN(date.getTime())) return "";
 
@@ -40,6 +35,13 @@ function _formatDate(date: Date | null): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+export function getItemDate(item: Item) {
+  if (isEntry(item)) {
+    return stringToDate(item.updatedAt, item.publishedAt, item.createdAt);
+  }
+  return stringToDate(item.updatedAt, item.createdAt);
 }
 
 // Returns the first dateString that is value and not UNIX epoch

@@ -57,6 +57,7 @@ const EntrySchema = ItemSchema.extend({
   published_at: z.string().nullable(),
   summary: z.string().nullable(),
   is_unread: z.boolean(),
+  is_bookmarked: z.boolean(),
 });
 
 const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
@@ -66,6 +67,7 @@ const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
     publishedAt: data.published_at ?? undefined,
     summary: data.summary ?? undefined,
     isUnread: data.is_unread,
+    isBookmarked: data.is_bookmarked,
   };
 };
 

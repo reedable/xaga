@@ -1,4 +1,4 @@
-import { Bookmark, Circle, FormatQuote } from "@mui/icons-material";
+import { FormatQuote } from "@mui/icons-material";
 import {
   List,
   ListItem,
@@ -9,14 +9,13 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { RELATED_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
-import { useBookmarks } from "../../hooks/useBookmarks";
 import useEntries from "../../hooks/useEntries";
 import useRelatedItems from "../../hooks/useRelatedItems";
 import { isAnnotation, isEntry, type Embedded, type Item } from "../../types";
 import cx from "../../utils/cx";
 import { abortable, decorate, retriable } from "../../utils/Decorator";
-import formatByline from "../../utils/formatByline";
 import Logger from "../../utils/Logger";
+import ItemStatus from "../ItemStatus";
 import css from "./_.module.css";
 
 interface RelatedItemListProps {
@@ -34,7 +33,6 @@ export function RelatedItemList({
   const { queryByItem } = useRelatedItems(abortControllerRef);
   const [embeddedItems, setEmbeddedItems] = useState<(Embedded & Item)[]>([]);
   const { markEntryRead } = useEntries(abortControllerRef);
-  const { bookmarkMap } = useBookmarks(abortControllerRef);
 
   const requestRelatedItems = useCallback(
     async (item: Item) => {
@@ -111,15 +109,7 @@ export function RelatedItemList({
                   </>
                 }
                 secondary={
-                  <>
-                    {isEntry(item) && item.isUnread && (
-                      <Circle className={css.UnreadIcon} />
-                    )}
-
-                    {bookmarkMap?.get(item.id) && <Bookmark />}
-
-                    <span>{formatByline(item)}</span>
-                  </>
+                  <ItemStatus item={item} />
                 }
                 slotProps={{
                   primary: { className: css.Primary },

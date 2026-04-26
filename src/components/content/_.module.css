@@ -73,7 +73,6 @@
       aside {
         --width: 280px;
 
-        border-left: var(--border);
         flex-shrink: 0;
         overflow: hidden;
         width: var(--width);
@@ -90,10 +89,10 @@
 
           .Header {
             background-color: var(--background-color);
-            border: 0;
             flex-shrink: 0;
             padding: 0.125rem 1rem;
             position: sticky;
+            text-align: center;
             top: 0;
           }
 

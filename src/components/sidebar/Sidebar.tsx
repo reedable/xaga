@@ -1,24 +1,22 @@
 import {
   Add,
-  Bookmarks,
-  Circle,
   Feed as FeedIcon,
   FormatQuote,
-  Star,
+  Newspaper,
+  Star
 } from "@mui/icons-material";
 import { IconButton, Typography } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
-import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useEvents } from "../../hooks/useEvents";
 import { useFeeds } from "../../hooks/useFeeds";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useTopics } from "../../hooks/useTopics";
 import { usePlatform } from "../../platform/Platform";
 import {
+  ALL_ITEMS,
   ANNOTATION_ITEMS,
-  RECOMMENDED_ITEMS,
-  SAVED_ITEMS,
-  UNREAD_ITEMS,
+  RECOMMENDED_ITEMS
 } from "../../Shortcuts";
 import { isShortcut, type Feed, type Item, type Topic } from "../../types";
 import cx from "../../utils/cx";
@@ -93,7 +91,7 @@ export function Sidebar({
     return () => {
       setSelectedExpander((prev) => (prev === expander ? null : expander));
     };
-  }, []);
+  }, [setSelectedExpander]);
 
   const requestFeeds = useCallback(async () => {
     const results = await listFeeds(sortByUnreadCount);
@@ -221,13 +219,25 @@ export function Sidebar({
         label="Shortcuts"
         isExpanded={selectedExpander === "shortcuts"}
         onClickHeader={getExpandHandler("shortcuts")}
-        // TODO Implement "Add shortcut" action
-        // renderHeaderAction={() => (
-        //   <IconButton size="small" onClick={() => setIsAddingTopic(true)}>
-        //     <Add sx={{ fontSize: 16 }} />
-        //   </IconButton>
-        // )}
+      // TODO Implement "Add shortcut" action
+      // renderHeaderAction={() => (
+      //   <IconButton size="small" onClick={() => setIsAddingTopic(true)}>
+      //     <Add sx={{ fontSize: 16 }} />
+      //   </IconButton>
+      // )}
       >
+        <ExpanderItem
+          icon={Newspaper}
+          item={ALL_ITEMS}
+          loading={!!loadingSet?.size}
+          selected={
+            isShortcut(selectedList) &&
+            selectedList.id === ALL_ITEMS.id &&
+            selectedList.filter === ALL_ITEMS.filter
+          }
+          onSelectItem={onSelectList}
+        />
+
         <ExpanderItem
           icon={Star}
           item={RECOMMENDED_ITEMS}
@@ -236,30 +246,6 @@ export function Sidebar({
             isShortcut(selectedList) &&
             selectedList.id === RECOMMENDED_ITEMS.id &&
             selectedList.filter === RECOMMENDED_ITEMS.filter
-          }
-          onSelectItem={onSelectList}
-        />
-
-        <ExpanderItem
-          icon={Circle}
-          item={UNREAD_ITEMS}
-          loading={!!loadingSet?.size}
-          selected={
-            isShortcut(selectedList) &&
-            selectedList.id === UNREAD_ITEMS.id &&
-            selectedList.filter === UNREAD_ITEMS.filter
-          }
-          onSelectItem={onSelectList}
-        />
-
-        <ExpanderItem
-          icon={Bookmarks}
-          item={SAVED_ITEMS}
-          loading={!!loadingSet?.size}
-          selected={
-            isShortcut(selectedList) &&
-            selectedList.id === SAVED_ITEMS.id &&
-            selectedList.filter === SAVED_ITEMS.filter
           }
           onSelectItem={onSelectList}
         />
@@ -275,18 +261,6 @@ export function Sidebar({
           }
           onSelectItem={onSelectList}
         />
-
-        {/* <ExpanderItem
-          icon={Bookmark}
-          item={BOOKMARKED_ITEMS}
-          loading={!!loadingSet?.size}
-          selected={
-            isShortcut(selectedList) &&
-            selectedList.id === BOOKMARKED_ITEMS.id &&
-            selectedList.filter === BOOKMARKED_ITEMS.filter
-          }
-          onSelectItem={onSelectList}
-        /> */}
       </Expander>
 
       <Expander

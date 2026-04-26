@@ -117,6 +117,10 @@ export function TitleBar({ className, onSearchQueryChange }: TitleBarProps) {
             autoComplete="off"
             slotProps={{
               input: {
+                autoComplete: 'off',
+                autoCorrect: 'off',
+                autoCapitalize: 'off',
+                spellCheck: false,
                 startAdornment: (
                   <InputAdornment position="start">
                     {isPending ? (
