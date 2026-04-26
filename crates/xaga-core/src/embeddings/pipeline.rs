@@ -93,6 +93,7 @@ async fn embed_annotations(
             vector,
             reference: article_id.to_string(),
             color: annotation.color.clone(),
+            tags: vec![],
         })
         .await?;
     }
@@ -138,7 +139,14 @@ pub async fn embed_file(
             compute_vector(embedder, fm.title.clone(), fm.embed_text(&body).to_string()).await?;
         db.upsert(fm.to_embedding_entry(id.clone(), &body, vector)).await?;
     } else {
-        log::debug!("embed_file: id={id} checksum unchanged — skipping article re-embed");
+        log::debug!("embed_file: id={id} checksum unchanged — checking tags");
+        if let Some(mut existing) = db.get_entry(&id).await? {
+            if existing.tags != fm.tags {
+                log::debug!("embed_file: id={id} tags changed — upserting without re-embedding");
+                existing.tags = fm.tags.clone();
+                db.upsert(existing).await?;
+            }
+        }
     }
 
     // ── Annotations ──────────────────────────────────────────────────────────

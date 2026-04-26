@@ -21,7 +21,7 @@ export function useBookmarks(abortControllerRef: RefObject<AbortController>) {
       setLoading(true);
 
       try {
-        const result = await platform.addBookmark(signal, entry);
+        const result = await platform.addBookmark(signal, entry.id);
         return setBookmarkMap((prev) => new Map(prev).set(result.id, result));
       } catch (e) {
         setError(e);
@@ -39,7 +39,7 @@ export function useBookmarks(abortControllerRef: RefObject<AbortController>) {
       setLoading(true);
 
       try {
-        const result = await platform.removeBookmark(signal, entry);
+        const result = await platform.removeBookmark(signal, entry.id);
 
         setBookmarkMap((prev) => {
           const newValue = new Map(prev);

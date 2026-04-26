@@ -10,7 +10,7 @@ pub enum ItemFilter {
     All,
     /// Items with no saved `.md` body.
     Unread,
-    /// Only items listed in `bookmarks.html`.
+    /// Only items whose tags contain "bookmark".
     Bookmarked,
     /// Items that are bookmarked or have at least one annotation.
     Saved,
@@ -45,6 +45,7 @@ pub trait Item {
     /// ISO-8601 publish date, if known. `None` excludes the item from `Upcoming`
     /// and includes it in `All`.
     fn published_at(&self) -> Option<&str> { None }
+    fn is_bookmarked(&self) -> bool { false }
 }
 
 // ── Entry ─────────────────────────────────────────────────────────────────────
@@ -63,6 +64,10 @@ pub struct Entry {
     pub updated_at: Option<String>,
     pub summary: Option<String>,
     pub is_unread: bool,
+    pub is_bookmarked: bool,
+    /// Internal only — not sent to the frontend.
+    #[serde(skip)]
+    pub tags: Vec<String>,
 }
 
 impl Item for Entry {
@@ -72,6 +77,7 @@ impl Item for Entry {
     fn updated_at(&self) -> Option<&str> { self.updated_at.as_deref() }
     fn url(&self) -> Option<&str> { Some(&self.url) }
     fn published_at(&self) -> Option<&str> { self.published_at.as_deref() }
+    fn is_bookmarked(&self) -> bool { self.is_bookmarked }
 }
 
 // ── SavedItem ─────────────────────────────────────────────────────────────────
@@ -133,6 +139,7 @@ impl Item for EmbeddedEntry {
     fn updated_at(&self) -> Option<&str> { self.entry.updated_at() }
     fn url(&self) -> Option<&str> { self.entry.url() }
     fn published_at(&self) -> Option<&str> { self.entry.published_at() }
+    fn is_bookmarked(&self) -> bool { self.entry.is_bookmarked() }
 }
 
 impl std::ops::Deref for EmbeddedEntry {

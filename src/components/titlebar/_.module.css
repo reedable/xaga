@@ -1,7 +1,5 @@
 .TitleBar {
   align-items: center;
-  background-color: var(--background-color);
-  /* border-bottom: var(--border); */
   display: flex;
   flex-direction: row;
   flex-shrink: 0;
@@ -28,6 +26,12 @@
 
 .SearchArea {
   align-items: center;
+  background-color: var(--background-color);
   display: flex;
-  margin-left: auto;
+  /* margin-left: auto; */
+  margin: 24px 4px 0 auto;
+
+  fieldset {
+    border-radius: 21px;
+  }
 }

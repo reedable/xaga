@@ -62,6 +62,7 @@ interface ItemListProps {
   selectedList: Item;
   selectedFilter?: Filter;
   onSelectItem: (item: Item) => void;
+  onFilterChange?: (filter: Filter) => void;
   onEdit?: () => void;
 }
 
@@ -70,6 +71,7 @@ export function ItemList({
   selectedList,
   selectedFilter,
   onSelectItem,
+  onFilterChange,
   onEdit,
 }: ItemListProps) {
   const [abort, abortControllerRef] = useAbortController();
@@ -183,9 +185,10 @@ export function ItemList({
     (_event: MouseEvent<HTMLElement>, value: string) => {
       if (isFilter(value)) {
         setFilter(value);
+        onFilterChange?.(value);
       }
     },
-    [],
+    [onFilterChange],
   );
 
   const handleRefresh = useCallback(() => {

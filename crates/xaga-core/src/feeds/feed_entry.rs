@@ -6,7 +6,7 @@ use atom_syndication as atom;
 use crate::types::{Entry, ItemFilter};
 use crate::util::{normalize_url, url_hash12};
 
-use super::{list_feed_ids, parse_atom, xml_path, FeedError, Result};
+use super::{FeedError, Result, list_feed_ids, parse_atom, xml_path};
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -14,7 +14,12 @@ use super::{list_feed_ids, parse_atom, xml_path, FeedError, Result};
 ///
 /// If `url` is `Some`, restricts to that feed; if `None`, returns entries
 /// across every feed in `library/feeds/`.
-pub async fn list_entries(library: &Path, url: Option<&str>, item_filter: ItemFilter, unread: &HashSet<String>) -> Result<Vec<Entry>> {
+pub async fn list_entries(
+    library: &Path,
+    url: Option<&str>,
+    item_filter: ItemFilter,
+    unread: &HashSet<String>,
+) -> Result<Vec<Entry>> {
     let feeds_dir = library.join("feeds");
     let mut entries = Vec::new();
 
@@ -81,7 +86,7 @@ pub(super) fn atom_entry_to_entry(e: &atom::Entry) -> Entry {
         id: url_hash12(&normalized_url),
         url,
         title,
-        // FIXME: created_at should come from the .md stub on disk (set when the stub was first
+        // FIXME: created_at should come from the .md Entry on disk (set when the Entry was first
         // created by reconcile_atom_file), not from the atom <updated> date. list_entries
         // currently reads only from the atom XML and does not merge with the filesystem.
         created_at: updated_at.clone(),
@@ -89,5 +94,7 @@ pub(super) fn atom_entry_to_entry(e: &atom::Entry) -> Entry {
         updated_at: Some(updated_at),
         summary,
         is_unread: false,
+        is_bookmarked: false,
+        tags: vec![],
     }
 }

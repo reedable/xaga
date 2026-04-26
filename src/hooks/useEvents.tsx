@@ -25,8 +25,19 @@ export function useEvents() {
     [platform],
   );
 
+  const onEmbeddingsChanged = useCallback(
+    (callback: () => void) => {
+      const unlistenPromise = platform.onEmbeddingsChanged(callback);
+      return () => {
+        unlistenPromise.then((unlisten) => unlisten());
+      };
+    },
+    [platform],
+  );
+
   return {
     onFeedRefreshed,
     onUnreadChanged,
+    onEmbeddingsChanged,
   };
 }

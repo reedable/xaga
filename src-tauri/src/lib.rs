@@ -388,10 +388,21 @@ pub fn run() {
                             tracker,
                         );
 
+                        let embeddings_app_handle = app_handle.clone();
                         tauri::async_runtime::spawn(async move {
                             loop {
                                 notify.notified().await;
                                 app_handle.emit("unread:changed", ()).ok();
+                            }
+                        });
+
+                        let priority_drained_rx = svc.subscribe_to_priority_drained();
+                        tauri::async_runtime::spawn(async move {
+                            loop {
+                                if priority_drained_rx.recv_async().await.is_err() {
+                                    break;
+                                }
+                                embeddings_app_handle.emit("embedding:changed", ()).ok();
                             }
                         });
 

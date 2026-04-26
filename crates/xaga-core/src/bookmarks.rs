@@ -1,10 +1,10 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use chrono::DateTime;
 use scraper::{ElementRef, Html, Selector};
 use thiserror::Error;
 
-pub use crate::types::Entry;
+use crate::types::Entry;
 use crate::util::{normalize_url, url_hash12};
 
 #[derive(Debug, Error)]
@@ -13,12 +13,6 @@ pub enum BookmarksError {
     Io(#[from] std::io::Error),
     #[error("Invalid URL: {0}")]
     InvalidUrl(#[from] url::ParseError),
-}
-
-// ── Path ──────────────────────────────────────────────────────────────────────
-
-fn bookmarks_path(data_dir: &Path) -> PathBuf {
-    data_dir.join("bookmarks.html")
 }
 
 // ── Serialisation helpers ─────────────────────────────────────────────────────
@@ -138,112 +132,98 @@ fn parse(html: &str) -> Vec<Entry> {
             updated_at,
             summary,
             is_unread: false,
+            is_bookmarked: false,
+            tags: vec![],
         });
     }
     entries
 }
 
-// ── Internal I/O ──────────────────────────────────────────────────────────────
-
-async fn read_all(data_dir: &Path) -> Result<Vec<Entry>, BookmarksError> {
-    let path = bookmarks_path(data_dir);
-    if !tokio::fs::try_exists(&path).await? {
-        return Ok(vec![]);
-    }
-    let raw = tokio::fs::read_to_string(&path).await?;
-    Ok(parse(&raw))
-}
-
-async fn write_all(data_dir: &Path, entries: &[Entry]) -> Result<(), BookmarksError> {
-    tokio::fs::create_dir_all(data_dir).await?;
-    tokio::fs::write(bookmarks_path(data_dir), render(entries).as_bytes()).await?;
-    Ok(())
-}
-
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/// Adds or updates a bookmark.
+pub struct BookmarkImportResult {
+    /// IDs of Entries newly created in `read/`.
+    pub added: Vec<String>,
+    /// IDs of Entries that already existed and received the "bookmark" tag.
+    pub updated: Vec<String>,
+    /// URLs that could not be processed.
+    pub failed: Vec<String>,
+}
+
+/// Parses `html` as a Netscape bookmark file and creates or updates Entries.
 ///
-/// Deduplicates by normalized URL: if a bookmark for the same URL already
-/// exists it is replaced in-place (upsert); otherwise the entry is appended.
-/// Returns the stored entry (with the normalized URL as `id` and `source`).
-pub async fn add_bookmark(data_dir: &Path, entry: &Entry) -> Result<Entry, BookmarksError> {
-    let normalized = normalize_url(&entry.url)?;
-    let mut entries = read_all(data_dir).await?;
-
-    let hash = url_hash12(&normalized);
-    let new_entry = Entry {
-        id: hash.clone(),
-        url: normalized,
-        title: entry.title.clone(),
-        created_at: entry.created_at.clone(),
-        published_at: entry.published_at.clone(),
-        updated_at: entry.updated_at.clone(),
-        summary: entry.summary.clone(),
-        is_unread: false,
-    };
-
-    match entries.iter().position(|e| e.id == hash) {
-        Some(pos) => entries[pos] = new_entry,
-        None => entries.push(new_entry),
-    }
-
-    write_all(data_dir, &entries).await?;
-
-    // Re-borrow the stored entry from the vec (position is stable after the write).
-    Ok(entries.into_iter().find(|e| e.id == hash).unwrap())
-}
-
-/// Removes a bookmark by ID.  Returns the removed entry's ID, or `None` if not found.
-pub async fn remove_bookmark(data_dir: &Path, id: &str) -> Result<Option<String>, BookmarksError> {
-    let mut entries = read_all(data_dir).await?;
-    let removed_id = entries.iter().find(|e| e.id == id).map(|e| e.id.clone());
-    entries.retain(|e| e.id != id);
-    write_all(data_dir, &entries).await?;
-    Ok(removed_id)
-}
-
-/// Returns all bookmarks, in insertion order.
-pub async fn list_bookmarks(data_dir: &Path) -> Result<Vec<Entry>, BookmarksError> {
-    read_all(data_dir).await
-}
-
-/// Parses `html` as a Netscape bookmark file and merges every entry into the
-/// library.  Returns `(added, failed)` counts.
+/// For each URL:
+/// - If an Entry already exists (fetched or previously imported): adds the
+///   "bookmark" tag via `set_entry_tags`.
+/// - Otherwise: creates a new Entry in `read/` with `tags: ["bookmark"]`.
 ///
-/// Duplicate URLs within the imported file are skipped after the first
-/// occurrence.  Entries already in the library are upserted (updated in-place).
+/// Duplicate URLs within the file are skipped after the first occurrence.
+/// The caller is responsible for queuing embed messages for the returned ids.
 pub async fn import_bookmarks(
     data_dir: &Path,
     html: &str,
-) -> Result<(Vec<Entry>, Vec<String>, Vec<String>), BookmarksError> {
-    let entries = parse(html);
-    // `parse` already normalizes URLs, so `entry.url` is the canonical form.
+) -> Result<BookmarkImportResult, BookmarksError> {
+    let bookmark_tag = "bookmark".to_string();
+    let parsed = parse(html);
     let mut seen = std::collections::HashSet::new();
-    let mut added: Vec<Entry> = Vec::new();
-    let mut skipped: Vec<String> = Vec::new();
+    let mut added: Vec<String> = Vec::new();
+    let mut updated: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
-    for entry in entries {
+
+    for entry in parsed {
         if !seen.insert(entry.url.clone()) {
-            skipped.push(entry.url);
             continue;
         }
-        match add_bookmark(data_dir, &entry).await {
-            Ok(stored) => added.push(stored),
-            Err(_) => failed.push(entry.url),
+
+        let id = url_hash12(&entry.url);
+
+        if let Some(_) = crate::entries::find_entry_path(data_dir, &id).await {
+            // Entry already exists — add "bookmark" tag if not already present.
+            match crate::entries::read_entry(data_dir, &id).await {
+                Ok(existing) => {
+                    let mut tags = existing.tags;
+                    if !tags.contains(&bookmark_tag) {
+                        tags.push(bookmark_tag.clone());
+                        match crate::entries::set_entry_tags(data_dir, &id, tags).await {
+                            Ok(_) => updated.push(id),
+                            Err(_) => failed.push(entry.url),
+                        }
+                    } else {
+                        updated.push(id);
+                    }
+                }
+                Err(_) => failed.push(entry.url),
+            }
+        } else {
+            // No Entry exists — create one in read/ with the bookmark tag.
+            match crate::entries::write_read_entry(
+                data_dir,
+                &entry.url,
+                &entry.title,
+                &entry.created_at,
+                entry.published_at.as_deref(),
+                entry.updated_at.as_deref(),
+                entry.summary.as_deref(),
+                &[bookmark_tag.clone()],
+            )
+            .await
+            {
+                Ok(id) => added.push(id),
+                Err(_) => failed.push(entry.url),
+            }
         }
     }
-    Ok((added, skipped, failed))
+
+    Ok(BookmarkImportResult { added, updated, failed })
 }
 
-/// Copies the library's `bookmarks.html` to `dest_path`.  If no bookmarks
-/// file exists yet, writes an empty Netscape bookmark document instead.
+/// Exports all bookmarked entries as a Netscape bookmark file to `dest_path`.
 pub async fn export_bookmarks(data_dir: &Path, dest_path: &Path) -> Result<(), BookmarksError> {
-    let src = bookmarks_path(data_dir);
-    if tokio::fs::try_exists(&src).await? {
-        tokio::fs::copy(&src, dest_path).await?;
-    } else {
-        tokio::fs::write(dest_path, render(&[]).as_bytes()).await?;
-    }
+    let unread = crate::filter::unread_ids(data_dir).await;
+    let mut entries = crate::entries::list_entries(data_dir, &unread)
+        .await
+        .unwrap_or_default();
+    entries.retain(|e| e.is_bookmarked);
+    tokio::fs::write(dest_path, render(&entries).as_bytes()).await?;
     Ok(())
 }

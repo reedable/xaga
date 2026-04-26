@@ -54,6 +54,7 @@ pub struct EmbeddingService {
     background_tx: flume::Sender<BackgroundMsg>,
     service_tx: flume::Sender<ServiceMsg>,
     done_rx: flume::Receiver<()>,
+    priority_drained_rx: flume::Receiver<()>,
     restart_requested: Arc<AtomicBool>,
     embedder: Arc<Embedder>,
     // Held for the service's lifetime; released (file deleted) on Drop.
@@ -82,6 +83,7 @@ impl EmbeddingService {
         let (priority_tx, priority_rx) = flume::unbounded::<PriorityMsg>();
         let (service_tx, service_rx) = flume::unbounded::<ServiceMsg>();
         let (background_tx, background_rx) = flume::unbounded::<BackgroundMsg>();
+        let (priority_drained_tx, priority_drained_rx) = flume::unbounded::<()>();
 
         let loop_service_tx = service_tx.clone();
         let loop_priority_tx = priority_tx.clone();
@@ -109,6 +111,7 @@ impl EmbeddingService {
                         loop_service_tx,
                         background_rx,
                         loop_background_tx,
+                        priority_drained_tx,
                         embedder,
                         db,
                     )
@@ -125,6 +128,7 @@ impl EmbeddingService {
             background_tx,
             service_tx,
             done_rx,
+            priority_drained_rx,
             restart_requested,
             embedder: service_embedder,
             _lock: lock,
@@ -139,6 +143,11 @@ impl EmbeddingService {
     /// Returns the sender for the file watcher to deliver background embedding events.
     pub fn background_sender(&self) -> flume::Sender<BackgroundMsg> {
         self.background_tx.clone()
+    }
+
+    /// Returns a receiver that fires once each time the priority queue drains to empty.
+    pub fn subscribe_to_priority_drained(&self) -> flume::Receiver<()> {
+        self.priority_drained_rx.clone()
     }
 
     /// Enqueues a full recovery pass (non-blocking).
@@ -199,6 +208,7 @@ async fn run_loop(
     service_tx: flume::Sender<ServiceMsg>,
     background_rx: flume::Receiver<BackgroundMsg>,
     background_tx: flume::Sender<BackgroundMsg>,
+    priority_drained_tx: flume::Sender<()>,
     embedder: Arc<Embedder>,
     mut db: EmbeddingsDb,
 ) {
@@ -282,6 +292,7 @@ async fn run_loop(
                     if let Err(e) = db.compact().await {
                         log::error!("background_rx: compact failed: {e}");
                     }
+                    let _ = priority_drained_tx.send(());
                 }
 
                 match result {

@@ -10,8 +10,8 @@ use crate::types::Feed;
 use crate::util::{feed_entry_id, normalize_url, url_hash12};
 
 use super::{
-    fetch_xml, list_feed_ids, now_fixed, parse_atom, parse_incoming, to_fixed, write_atom_atomic,
-    xml_path, FeedError, Result,
+    FeedError, Result, fetch_xml, list_feed_ids, now_fixed, parse_atom, parse_incoming, to_fixed,
+    write_atom_atomic, xml_path,
 };
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -86,7 +86,7 @@ pub fn feed_id_from_url(url: &str) -> Result<FeedId> {
 
 /// Add a new feed: fetch, convert to Atom, and save as `{id}.atom`.
 /// If the file already exists, new entries are merged in (idempotent / promotes to refresh).
-/// Writes frontmatter-only `.md` stubs for new entries into `data_dir/articles/`.
+/// Writes frontmatter-only `.md` for new entries into `data_dir/articles/`.
 pub async fn add_feed(
     client: &reqwest::Client,
     feeds_dir: &Path,
@@ -122,13 +122,25 @@ pub async fn add_feed(
     write_atom_atomic(feeds_dir, &id, &atom_feed).await?;
     for ae in &new_atom_entries {
         let e = super::feed_entry::atom_entry_to_entry(ae);
-        if e.url.is_empty() { continue; }
-        // Only create a stub in unread/ if the entry doesn't already exist in any dir.
-        if crate::entries::find_entry_path(data_dir, &e.id).await.is_some() { continue; }
+        if e.url.is_empty() {
+            continue;
+        }
+        // Only create an Entry in unread/ if the entry doesn't already exist in any dir.
+        if crate::entries::find_entry_path(data_dir, &e.id)
+            .await
+            .is_some()
+        {
+            continue;
+        }
         let _ = crate::entries::write_entry(
-            data_dir, &e.url, &e.title,
-            e.published_at.as_deref(), e.updated_at.as_deref(), e.summary.as_deref(),
-        ).await;
+            data_dir,
+            &e.url,
+            &e.title,
+            e.published_at.as_deref(),
+            e.updated_at.as_deref(),
+            e.summary.as_deref(),
+        )
+        .await;
     }
     let created_at = file_created_at(&path, Some(*atom_feed.updated())).await;
     let summary = feed_summary(&id, &atom_feed, created_at, unread);
@@ -151,8 +163,7 @@ pub async fn refresh_feed(
     let existing_xml = tokio::fs::read_to_string(&path).await?;
     let mut existing = parse_atom(&existing_xml)?;
 
-    let url = self_link_url(&existing)
-        .ok_or_else(|| FeedError::MissingSelfLink(id.clone()))?;
+    let url = self_link_url(&existing).ok_or_else(|| FeedError::MissingSelfLink(id.clone()))?;
 
     let xml = fetch_xml(client, &url).await?;
     let incoming = parse_incoming(&xml)?;
@@ -219,14 +230,20 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
         let xml = match tokio::fs::read_to_string(&path).await {
             Ok(s) => s,
             Err(e) => {
-                results.push(RepairResult { id, outcome: RepairOutcome::ParseError(e.to_string()) });
+                results.push(RepairResult {
+                    id,
+                    outcome: RepairOutcome::ParseError(e.to_string()),
+                });
                 continue;
             }
         };
         let mut feed = match parse_atom(&xml) {
             Ok(f) => f,
             Err(e) => {
-                results.push(RepairResult { id, outcome: RepairOutcome::ParseError(e.to_string()) });
+                results.push(RepairResult {
+                    id,
+                    outcome: RepairOutcome::ParseError(e.to_string()),
+                });
                 continue;
             }
         };
@@ -239,7 +256,10 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
                 feed.set_id(url_hash12(&normalized));
                 feed_id_synthesized = true;
             } else {
-                results.push(RepairResult { id, outcome: RepairOutcome::NoId });
+                results.push(RepairResult {
+                    id,
+                    outcome: RepairOutcome::NoId,
+                });
                 continue;
             }
         } else {
@@ -295,7 +315,10 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
             // Steps 4-5: try to derive the URL from <id>.
             let feed_id_val = feed.id().to_string();
             if !feed_id_val.starts_with("http://") && !feed_id_val.starts_with("https://") {
-                results.push(RepairResult { id, outcome: RepairOutcome::NoRepairableUrl });
+                results.push(RepairResult {
+                    id,
+                    outcome: RepairOutcome::NoRepairableUrl,
+                });
                 continue;
             }
             canonical_url = match normalize_url(&feed_id_val) {
@@ -316,12 +339,17 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
         let expected_id = feed_id_from_url(&canonical_url)?;
         let needs_rename = expected_id != id;
 
-        let content_changed =
-            feed_id_synthesized || self_link_added || entry_links_normalized || entry_ids_synthesized;
+        let content_changed = feed_id_synthesized
+            || self_link_added
+            || entry_links_normalized
+            || entry_ids_synthesized;
 
         match (content_changed, needs_rename) {
             (false, false) => {
-                results.push(RepairResult { id, outcome: RepairOutcome::Ok });
+                results.push(RepairResult {
+                    id,
+                    outcome: RepairOutcome::Ok,
+                });
             }
             (true, false) => {
                 write_atom_atomic(feeds_dir, &id, &feed).await?;
@@ -341,7 +369,9 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
                 if new_path.exists() {
                     results.push(RepairResult {
                         id,
-                        outcome: RepairOutcome::RenameConflict { target: expected_id },
+                        outcome: RepairOutcome::RenameConflict {
+                            target: expected_id,
+                        },
                     });
                     continue;
                 }
@@ -369,7 +399,12 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
 }
 
 /// Rename a feed by updating its `<title>` in the stored Atom file.
-pub async fn rename_feed(feeds_dir: &Path, id: &FeedId, new_title: &str, unread: &HashSet<String>) -> Result<Feed> {
+pub async fn rename_feed(
+    feeds_dir: &Path,
+    id: &FeedId,
+    new_title: &str,
+    unread: &HashSet<String>,
+) -> Result<Feed> {
     let path = xml_path(feeds_dir, id);
     if !path.exists() {
         return Err(FeedError::NotFound(id.clone()));
@@ -439,7 +474,11 @@ fn normalize_entry_links(entry: &mut atom::Entry) {
         .iter()
         .map(|l| {
             let mut link = l.clone();
-            let raw = if let Ok(norm) = normalize_url(l.href()) { norm } else { l.href().to_string() };
+            let raw = if let Ok(norm) = normalize_url(l.href()) {
+                norm
+            } else {
+                l.href().to_string()
+            };
             link.set_href(xml_attr_encode(&raw));
             link
         })
@@ -537,7 +576,10 @@ fn apply_incoming(
         let fallback = self_link_url(existing)
             .map(|u| normalize_url(&u).unwrap_or(u))
             .unwrap_or_default();
-        existing.set_title(atom::Text::plain(incoming_title(&incoming.title, &fallback)));
+        existing.set_title(atom::Text::plain(incoming_title(
+            &incoming.title,
+            &fallback,
+        )));
     }
 
     let new_entries: Vec<_> = incoming.entries.iter().map(to_atom_entry).collect();
@@ -550,8 +592,7 @@ fn apply_incoming(
 /// Sorts all entries newest-first after merging.
 /// Returns the entries that were actually added.
 fn merge_entries(feed: &mut atom::Feed, new_entries: Vec<atom::Entry>) -> Vec<atom::Entry> {
-    let existing_ids: HashSet<String> =
-        feed.entries().iter().map(|e| e.id().to_string()).collect();
+    let existing_ids: HashSet<String> = feed.entries().iter().map(|e| e.id().to_string()).collect();
 
     let to_add: Vec<_> = new_entries
         .into_iter()
@@ -570,8 +611,12 @@ fn merge_entries(feed: &mut atom::Feed, new_entries: Vec<atom::Entry>) -> Vec<at
 
 /// Set (or replace) the `<link rel="self">` on `feed`.
 fn set_self_link(feed: &mut atom::Feed, url: &str) {
-    let mut links: Vec<atom::Link> =
-        feed.links().iter().filter(|l| l.rel() != "self").cloned().collect();
+    let mut links: Vec<atom::Link> = feed
+        .links()
+        .iter()
+        .filter(|l| l.rel() != "self")
+        .cloned()
+        .collect();
     let mut link = atom::Link::default();
     link.set_href(xml_attr_encode(url));
     link.set_rel("self");
@@ -586,18 +631,29 @@ pub(super) fn self_link_url(feed: &atom::Feed) -> Option<String> {
         .map(|l| l.href().to_string())
 }
 
-fn feed_summary(id: &FeedId, feed: &atom::Feed, created_at: DateTime<FixedOffset>, unread_ids: &HashSet<String>) -> Feed {
-    let unread_count = feed.entries().iter().filter(|e| {
-        let url = e.links().iter()
-            .find(|l| l.rel() == "alternate")
-            .or_else(|| e.links().first())
-            .map(|l| l.href())
-            .unwrap_or("");
-        let entry_id = normalize_url(url)
-            .map(|n| url_hash12(&n))
-            .unwrap_or_else(|_| url_hash12(url));
-        unread_ids.contains(&entry_id)
-    }).count();
+fn feed_summary(
+    id: &FeedId,
+    feed: &atom::Feed,
+    created_at: DateTime<FixedOffset>,
+    unread_ids: &HashSet<String>,
+) -> Feed {
+    let unread_count = feed
+        .entries()
+        .iter()
+        .filter(|e| {
+            let url = e
+                .links()
+                .iter()
+                .find(|l| l.rel() == "alternate")
+                .or_else(|| e.links().first())
+                .map(|l| l.href())
+                .unwrap_or("");
+            let entry_id = normalize_url(url)
+                .map(|n| url_hash12(&n))
+                .unwrap_or_else(|_| url_hash12(url));
+            unread_ids.contains(&entry_id)
+        })
+        .count();
 
     Feed {
         id: id.to_string(),
@@ -613,7 +669,10 @@ fn feed_summary(id: &FeedId, feed: &atom::Feed, created_at: DateTime<FixedOffset
 /// Returns the file creation time as a `DateTime<FixedOffset>`.
 /// Falls back to `updated_at` if the OS does not track creation time.
 /// Falls back to the UNIX epoch if that is also unavailable.
-async fn file_created_at(path: &Path, updated_at: Option<DateTime<FixedOffset>>) -> DateTime<FixedOffset> {
+async fn file_created_at(
+    path: &Path,
+    updated_at: Option<DateTime<FixedOffset>>,
+) -> DateTime<FixedOffset> {
     let epoch = || {
         chrono::DateTime::from_timestamp(0, 0)
             .unwrap()

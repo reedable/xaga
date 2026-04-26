@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::entries::{find_entry_path, render_entry, EntryError};
+use crate::entries::{entry_from_fm, find_entry_path, render_entry, EntryError};
 use crate::util::{normalize_url, parse_document, url_hash12};
 
 pub use crate::entries::EntryError as ArticleError;
@@ -23,24 +23,6 @@ pub(crate) fn article_path(data_dir: &Path, hash12: &str) -> PathBuf {
     data_dir.join("read").join(format!("{hash12}.md"))
 }
 
-// ── Internal helper ───────────────────────────────────────────────────────────
-
-fn entry_from_fm(
-    id: &str,
-    fm: &crate::util::Frontmatter,
-    is_unread: bool,
-) -> crate::entries::Entry {
-    crate::entries::Entry {
-        id: id.to_string(),
-        url: fm.source.clone(),
-        title: fm.title.clone(),
-        created_at: fm.created_at.clone(),
-        published_at: fm.published_at.clone(),
-        updated_at: fm.updated_at.clone(),
-        summary: fm.summary.clone(),
-        is_unread,
-    }
-}
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -69,14 +51,14 @@ pub async fn save_article(
         }
     };
 
-    let (created_at, existing_annotations) = if file_exists {
+    let (created_at, existing_annotations, existing_tags) = if file_exists {
         let raw = tokio::fs::read_to_string(&path).await?;
         match parse_document(&raw) {
-            Some((fm, _)) => (fm.created_at, fm.annotations),
-            None => (chrono::Utc::now().to_rfc3339(), vec![]),
+            Some((fm, _)) => (fm.created_at, fm.annotations, fm.tags),
+            None => (chrono::Utc::now().to_rfc3339(), vec![], vec![]),
         }
     } else {
-        (chrono::Utc::now().to_rfc3339(), vec![])
+        (chrono::Utc::now().to_rfc3339(), vec![], vec![])
     };
 
     let is_unread = path.parent().map_or(false, |p| p.ends_with("unread"));
@@ -89,10 +71,12 @@ pub async fn save_article(
         updated_at,
         summary,
         &existing_annotations,
+        &existing_tags,
         markdown,
     );
     tokio::fs::write(&path, content.as_bytes()).await?;
 
+    let is_bookmarked = existing_tags.contains(&"bookmark".to_string());
     Ok(Article {
         meta: crate::entries::Entry {
             id: id.to_string(),
@@ -103,6 +87,8 @@ pub async fn save_article(
             updated_at: updated_at.map(str::to_string),
             summary: summary.map(str::to_string),
             is_unread,
+            is_bookmarked,
+            tags: existing_tags,
         },
         content: markdown.to_string(),
         annotations: with_reference(existing_annotations, id),
@@ -150,11 +136,12 @@ pub async fn read_article(
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
     let is_unread = path.parent().map_or(false, |p| p.ends_with("unread"));
+    let annotations = fm.annotations.clone();
 
     Ok(Article {
-        meta: entry_from_fm(id, &fm, is_unread),
+        meta: entry_from_fm(id.to_string(), fm, is_unread),
         content: body,
-        annotations: with_reference(fm.annotations, id),
+        annotations: with_reference(annotations, id),
     })
 }
 
@@ -189,6 +176,7 @@ pub async fn add_annotation(
         fm.updated_at.as_deref(),
         fm.summary.as_deref(),
         &annotations,
+        &fm.tags,
         &body,
     );
     tokio::fs::write(&path, content.as_bytes()).await?;
@@ -198,7 +186,7 @@ pub async fn add_annotation(
     // keyed by annotation id, combining the highlighted text and the user note into one embedding.
 
     Ok(Article {
-        meta: entry_from_fm(article_id, &fm, is_unread),
+        meta: entry_from_fm(article_id.to_string(), fm, is_unread),
         content: body,
         annotations: with_reference(annotations, article_id),
     })
@@ -229,12 +217,13 @@ pub async fn remove_annotation(
         fm.updated_at.as_deref(),
         fm.summary.as_deref(),
         &annotations,
+        &fm.tags,
         &body,
     );
     tokio::fs::write(&path, content.as_bytes()).await?;
 
     Ok(Article {
-        meta: entry_from_fm(article_id, &fm, is_unread),
+        meta: entry_from_fm(article_id.to_string(), fm, is_unread),
         content: body,
         annotations: with_reference(annotations, article_id),
     })

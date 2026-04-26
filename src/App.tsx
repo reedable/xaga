@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocalStorage } from "./hooks/useLocalStorage";
 import css from "./_.module.css";
 import { ItemView } from "./components/content/ItemView";
 import { ItemList } from "./components/list/ItemList";
@@ -16,7 +17,7 @@ function App() {
   const platform = usePlatform();
   const { library, refreshOnStartup, settingsLoaded } = useSettings();
   const [selectedList, setSelectedList] = useState<Item>(ALL_ITEMS);
-  const [selectedFilter, setSelectedFilter] = useState<Filter | undefined>();
+  const [selectedFilter, setSelectedFilter] = useLocalStorage<Filter | undefined>("list.filter", undefined);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [shuttingDown, setShuttingDown] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -92,6 +93,7 @@ function App() {
               selectedList={selectedList}
               selectedFilter={selectedFilter}
               onSelectItem={setSelectedItem}
+              onFilterChange={setSelectedFilter}
               onEdit={
                 isFeed(selectedList) ? () => setEditingFeed(selectedList) :
                 isTopic(selectedList) ? () => setEditingTopic(selectedList) :

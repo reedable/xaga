@@ -2,14 +2,15 @@ use std::path::Path;
 
 use thiserror::Error;
 
-use crate::bookmarks::{self, BookmarksError};
 use crate::embeddings::{EmbeddingsDb, EmbeddingsError};
+use crate::entries::EntryError;
+use crate::filter;
 use crate::types::SavedItem;
 
 #[derive(Debug, Error)]
 pub enum SavedError {
-    #[error("Bookmarks error: {0}")]
-    Bookmarks(#[from] BookmarksError),
+    #[error("Entry error: {0}")]
+    Entry(#[from] EntryError),
     #[error("Embeddings error: {0}")]
     Embeddings(#[from] EmbeddingsError),
 }
@@ -19,19 +20,21 @@ pub enum SavedError {
 ///
 /// Bookmarks have `reference` and `color` absent; annotations have both set.
 pub async fn list_saved(data_dir: &Path) -> Result<Vec<SavedItem>, SavedError> {
-    let (bookmarks_result, annotations_result) = tokio::join!(
-        bookmarks::list_bookmarks(data_dir),
+    let unread = filter::unread_ids(data_dir).await;
+    let (entries_result, annotations_result) = tokio::join!(
+        crate::entries::list_entries(data_dir, &unread),
         async {
             let db = EmbeddingsDb::open(data_dir).await?;
             db.list_annotations().await
         },
     );
 
-    let bookmarks = bookmarks_result?;
+    let bookmarks = entries_result?
+        .into_iter()
+        .filter(|e| e.is_bookmarked);
     let annotations = annotations_result?;
 
     let mut items: Vec<SavedItem> = bookmarks
-        .into_iter()
         .map(|e| SavedItem {
             id: e.id,
             title: e.title,

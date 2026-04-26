@@ -85,18 +85,20 @@ pub async fn list_embedded_items(
             Ok(entries)
         }
         EmbeddedItemSource::RelatedToBookmarks { limit, min_similarity, max_similarity } => {
-            let bookmark_ids: Vec<String> = crate::bookmarks::list_bookmarks(library)
+            let unread = filter::unread_ids(library).await;
+            let bookmark_ids: Vec<String> = crate::entries::list_entries(library, &unread)
                 .await
                 .unwrap_or_default()
                 .into_iter()
+                .filter(|e| e.is_bookmarked)
                 .map(|e| e.id)
                 .collect();
             let db = EmbeddingsDb::open(library).await?;
             let entries = db.find_related_to_many(&bookmark_ids, limit, min_similarity, max_similarity).await?;
-            let mut entries = filter::filter_items(library, entries, &item_filter, unread)
+            let mut entries = filter::filter_items(library, entries, &item_filter, &unread)
                 .await
                 .map_err(ItemError::Io)?;
-            filter::annotate_embedded_unread_status(unread, &mut entries);
+            filter::annotate_embedded_unread_status(&unread, &mut entries);
             Ok(entries)
         }
         EmbeddedItemSource::RelatedToTopics { limit, min_similarity, max_similarity } => {

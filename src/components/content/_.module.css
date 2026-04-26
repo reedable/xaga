@@ -26,6 +26,7 @@
         align-items: center;
         display: flex;
         flex-direction: row;
+        margin: 4px 16px 0 0;
 
         h1 {
           flex-grow: 1;

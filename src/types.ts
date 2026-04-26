@@ -90,6 +90,7 @@ export type Entry = Item & {
   publishedAt?: string;
   summary?: string;
   isUnread?: boolean;
+  isBookmarked?: boolean;
 };
 
 export function isEntry(item?: Item | null): item is Entry {

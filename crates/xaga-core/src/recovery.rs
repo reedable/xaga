@@ -63,7 +63,7 @@ async fn scan_dir(dir: &Path, fs_entries: &mut HashMap<String, (PathBuf, String)
 /// LanceDB.  Topics entries appear first in `to_embed` so they are indexed
 /// before articles.
 ///
-/// Call `reconcile_feed_entries` before this so that article stubs exist on
+/// Call `reconcile_feed_entries` before this so that Entry exist on
 /// disk before the articles directory is scanned.
 pub async fn build_recovery_plan(
     data_dir: &Path,
@@ -85,7 +85,11 @@ pub async fn build_recovery_plan(
     let make_batch = |entries: &HashMap<String, (PathBuf, String)>| -> Vec<String> {
         let mut batch: Vec<(&String, &PathBuf)> = entries
             .iter()
-            .filter(|(id, (_, checksum))| db_meta.get(id.as_str()).map_or(true, |(s, _)| s != checksum))
+            .filter(|(id, (_, checksum))| {
+                db_meta
+                    .get(id.as_str())
+                    .map_or(true, |(s, _)| s != checksum)
+            })
             .map(|(id, (path, _))| (id, path))
             .collect();
         batch.sort_by(|(_, a), (_, b)| {
@@ -110,7 +114,11 @@ pub async fn build_recovery_plan(
     let to_delete: Vec<String> = db_meta
         .into_iter()
         .filter(|(id, (_, reference))| {
-            let file_id = if reference.is_empty() { id.as_str() } else { reference.as_str() };
+            let file_id = if reference.is_empty() {
+                id.as_str()
+            } else {
+                reference.as_str()
+            };
             !fs_ids.contains(file_id)
         })
         .map(|(id, _)| id)
@@ -125,7 +133,7 @@ pub async fn build_recovery_plan(
 
 // ── Feed entry reconciliation ─────────────────────────────────────────────────
 
-/// For every entry in one `.atom` file, ensure an article stub exists on disk.
+/// For every entry in one `.atom` file, ensure an Entry exists on disk.
 /// Called both during full recovery (once per feed) and live when the file
 /// watcher detects a change to a specific `.atom` file.
 pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) {
@@ -211,7 +219,7 @@ pub struct RecoveryReport {
 /// Executes a full recovery: reconciles topics and articles against LanceDB.
 ///
 /// Order of operations:
-/// 1. Create missing `.md` stubs for feed entries (articles must exist before scanning).
+/// 1. Create missing `.md` for feed entries (articles must exist before scanning).
 /// 2. Build and apply the unified recovery plan (topics embedded before articles).
 ///
 /// Designed to be called from the CLI (`xaga embeddings recover` / `reindex`).

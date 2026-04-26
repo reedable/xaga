@@ -5,7 +5,6 @@ use chrono::{DateTime, Utc};
 
 use crate::embeddings::EmbeddingsDb;
 use crate::types::{EmbeddedEntry, Entry, Item, ItemFilter};
-use crate::util::normalize_url;
 
 /// Scans `library/unread/` and returns the set of entry IDs present there.
 /// Use this only when no `UnreadTracker` is available (e.g. CLI callers).
@@ -21,6 +20,18 @@ pub async fn unread_ids(library: &Path) -> HashSet<String> {
         }
     }
     ids
+}
+
+/// Reads all `.md` entries and returns the set of IDs whose tags contain "bookmark".
+/// Used to annotate feed entries (from Atom XML) that don't carry .md file state.
+pub async fn bookmarked_ids(library: &Path, unread: &HashSet<String>) -> HashSet<String> {
+    crate::entries::list_entries(library, unread)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|e| e.is_bookmarked)
+        .map(|e| e.id)
+        .collect()
 }
 
 /// Sets `is_unread` on each entry based on the provided unread ID set.
@@ -55,32 +66,13 @@ pub async fn filter_items<T: Item>(
         }
 
         ItemFilter::Bookmarked => {
-            let bookmark_sources: HashSet<String> = crate::bookmarks::list_bookmarks(library)
-                .await
-                .unwrap_or_default()
-                .into_iter()
-                .map(|e| e.url)
-                .collect();
-
-            items.retain(|i| match i.url() {
-                None => false,
-                Some(src) => {
-                    let normalized = normalize_url(src).unwrap_or_else(|_| src.to_string());
-                    bookmark_sources.contains(&normalized)
-                }
-            });
+            let bookmarked_ids = bookmarked_ids(library, unread).await;
+            items.retain(|i| bookmarked_ids.contains(i.id()));
         }
 
         ItemFilter::Saved => {
-            let (bookmark_sources, annotated_ids) = tokio::join!(
-                async {
-                    crate::bookmarks::list_bookmarks(library)
-                        .await
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|e| e.url)
-                        .collect::<HashSet<String>>()
-                },
+            let (bookmarked_ids, annotated_ids) = tokio::join!(
+                bookmarked_ids(library, unread),
                 async {
                     let Ok(db) = EmbeddingsDb::open(library).await else {
                         return HashSet::new();
@@ -93,19 +85,7 @@ pub async fn filter_items<T: Item>(
                         .collect::<HashSet<String>>()
                 },
             );
-
-            items.retain(|i| {
-                if annotated_ids.contains(i.id()) {
-                    return true;
-                }
-                match i.url() {
-                    None => false,
-                    Some(src) => {
-                        let normalized = normalize_url(src).unwrap_or_else(|_| src.to_string());
-                        bookmark_sources.contains(&normalized)
-                    }
-                }
-            });
+            items.retain(|i| bookmarked_ids.contains(i.id()) || annotated_ids.contains(i.id()));
         }
     }
 

@@ -204,30 +204,6 @@ export default function ArticleReader({
           <Typography component="h1" variant="h5">
             {selectedEntry.title}
           </Typography>
-
-          <ButtonGroup>
-            <Tooltip
-              title={
-                bookmarkMap?.get(selectedEntry.id)
-                  ? "Remove bookmark"
-                  : "Add bookmark"
-              }
-            >
-              <IconButton onClick={toggleBookmark}>
-                <Bookmark
-                  color={
-                    bookmarkMap?.get(selectedEntry.id) ? "primary" : undefined
-                  }
-                />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title="Open in browser">
-              <IconButton onClick={handleOpenUrl}>
-                <OpenInNew />
-              </IconButton>
-            </Tooltip>
-          </ButtonGroup>
         </div>
       </div>
 
@@ -238,14 +214,38 @@ export default function ArticleReader({
               {formatByline(selectedEntry)}
             </Typography>
 
-            <Tooltip title="More actions">
-              <IconButton
-                size="small"
-                onClick={(e) => setMenuAnchor(e.currentTarget)}
+            <ButtonGroup>
+              <Tooltip
+                title={
+                  bookmarkMap?.get(selectedEntry.id)
+                    ? "Remove bookmark"
+                    : "Add bookmark"
+                }
               >
-                <MoreHoriz fontSize="small" />
-              </IconButton>
-            </Tooltip>
+                <IconButton size="small" onClick={toggleBookmark}>
+                  <Bookmark
+                    color={
+                      bookmarkMap?.get(selectedEntry.id) ? "primary" : undefined
+                    }
+                  />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="Open in browser">
+                <IconButton size="small" onClick={handleOpenUrl}>
+                  <OpenInNew />
+                </IconButton>
+              </Tooltip>
+
+              <Tooltip title="More actions">
+                <IconButton
+                  size="small"
+                  onClick={(e) => setMenuAnchor(e.currentTarget)}
+                >
+                  <MoreHoriz fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </ButtonGroup>
 
             <Menu
               anchorEl={menuAnchor}

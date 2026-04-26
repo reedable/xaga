@@ -3,9 +3,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 use arrow_array::{
-    FixedSizeListArray, Float32Array, RecordBatch, RecordBatchIterator, RecordBatchReader,
-    StringArray,
+    Array, FixedSizeListArray, Float32Array, ListArray, RecordBatch, RecordBatchIterator,
+    RecordBatchReader, StringArray,
 };
+use arrow_array::builder::{ListBuilder, StringBuilder};
 use arrow_schema::{DataType, Field, Schema};
 use futures::TryStreamExt;
 use lancedb::DistanceType;
@@ -53,6 +54,7 @@ pub struct EmbeddingEntry {
     pub reference: String,
     /// For annotation rows: the highlight color. Empty for regular entries.
     pub color: String,
+    pub tags: Vec<String>,
 }
 
 // ── Arrow helpers ─────────────────────────────────────────────────────────────
@@ -68,6 +70,11 @@ fn make_schema() -> Arc<Schema> {
         Field::new("checksum", DataType::Utf8, false),
         Field::new("reference", DataType::Utf8, false),
         Field::new("color", DataType::Utf8, false),
+        Field::new(
+            "tags",
+            DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
+            false,
+        ),
         Field::new(
             "vector",
             DataType::FixedSizeList(
@@ -88,6 +95,13 @@ fn entry_to_batch(
     let vector_array =
         FixedSizeListArray::try_new(vector_field, EMBEDDING_DIM, vector_values, None)?;
 
+    let mut tags_builder = ListBuilder::new(StringBuilder::new());
+    for tag in &entry.tags {
+        tags_builder.values().append_value(tag);
+    }
+    tags_builder.append(true);
+    let tags_array = tags_builder.finish();
+
     Ok(RecordBatch::try_new(
         schema.clone(),
         vec![
@@ -100,6 +114,7 @@ fn entry_to_batch(
             Arc::new(StringArray::from(vec![entry.checksum])),
             Arc::new(StringArray::from(vec![entry.reference])),
             Arc::new(StringArray::from(vec![entry.color])),
+            Arc::new(tags_array),
             Arc::new(vector_array),
         ],
     )?)
@@ -115,6 +130,7 @@ async fn create_empty_documents_table(
         Arc::new(Float32Array::from(Vec::<f32>::new())),
         None,
     )?;
+    let empty_tags = ListBuilder::new(StringBuilder::new()).finish();
     let empty_batch = RecordBatch::try_new(
         schema.clone(),
         vec![
@@ -127,6 +143,7 @@ async fn create_empty_documents_table(
             Arc::new(StringArray::from(Vec::<&str>::new())), // checksum
             Arc::new(StringArray::from(Vec::<&str>::new())), // reference
             Arc::new(StringArray::from(Vec::<&str>::new())), // color
+            Arc::new(empty_tags),                            // tags
             Arc::new(empty_vector),
         ],
     )?;
@@ -152,6 +169,7 @@ struct BatchSummaryColumns<'a> {
     updated_ats: Option<&'a StringArray>,
     references: Option<&'a StringArray>,
     colors: Option<&'a StringArray>,
+    tags: Option<&'a ListArray>,
 }
 
 impl<'a> BatchSummaryColumns<'a> {
@@ -185,7 +203,17 @@ impl<'a> BatchSummaryColumns<'a> {
             colors: batch
                 .column_by_name("color")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>()),
+            tags: batch
+                .column_by_name("tags")
+                .and_then(|c| c.as_any().downcast_ref::<ListArray>()),
         })
+    }
+
+    fn tags_at(&self, i: usize) -> Vec<String> {
+        let Some(arr) = self.tags else { return vec![] };
+        let item = arr.value(i);
+        let Some(strings) = item.as_any().downcast_ref::<StringArray>() else { return vec![] };
+        (0..strings.len()).map(|j| strings.value(j).to_string()).collect()
     }
 
     fn summary_at(&self, i: usize) -> Entry {
@@ -195,6 +223,8 @@ impl<'a> BatchSummaryColumns<'a> {
                 if v.is_empty() { None } else { Some(v.to_string()) }
             })
         }
+        let tags = self.tags_at(i);
+        let is_bookmarked = tags.contains(&"bookmark".to_string());
         Entry {
             id: self.ids.value(i).to_string(),
             url: self.sources.value(i).to_string(),
@@ -204,6 +234,8 @@ impl<'a> BatchSummaryColumns<'a> {
             updated_at: opt_str(self.updated_ats, i),
             summary: None,
             is_unread: false,
+            is_bookmarked,
+            tags,
         }
     }
 
@@ -440,6 +472,67 @@ impl EmbeddingsDb {
                 Some(arr.value(0).to_string())
             }
         }))
+    }
+
+    /// Returns a fully populated `EmbeddingEntry` for `id` so the caller can
+    /// mutate metadata (e.g. tags) and upsert without re-running the embedder.
+    /// Returns `None` if the entry is not in the database.
+    pub async fn get_entry(&self, id: &str) -> Result<Option<EmbeddingEntry>, EmbeddingsError> {
+        let escaped = id.replace('\'', "''");
+        let batches: Vec<RecordBatch> = self
+            .table
+            .query()
+            .only_if(format!("id = '{escaped}'"))
+            .limit(1)
+            .execute()
+            .await?
+            .try_collect()
+            .await
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
+        for batch in &batches {
+            if batch.num_rows() == 0 { continue; }
+            let get_str = |name: &str| -> String {
+                batch.column_by_name(name)
+                    .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+                    .map(|a| a.value(0).to_string())
+                    .unwrap_or_default()
+            };
+            let tags = batch
+                .column_by_name("tags")
+                .and_then(|c| c.as_any().downcast_ref::<ListArray>())
+                .map(|arr| {
+                    let item = arr.value(0);
+                    item.as_any().downcast_ref::<StringArray>()
+                        .map(|s| (0..s.len()).map(|j| s.value(j).to_string()).collect())
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+            let vector = batch
+                .column_by_name("vector")
+                .and_then(|c| c.as_any().downcast_ref::<FixedSizeListArray>())
+                .map(|arr| {
+                    let values = arr.value(0);
+                    values.as_any().downcast_ref::<Float32Array>()
+                        .map(|f| f.values().to_vec())
+                        .unwrap_or_default()
+                })
+                .unwrap_or_default();
+            return Ok(Some(EmbeddingEntry {
+                id: get_str("id"),
+                source: get_str("source"),
+                title: get_str("title"),
+                created_at: get_str("created_at"),
+                published_at: get_str("published_at"),
+                updated_at: get_str("updated_at"),
+                checksum: get_str("checksum"),
+                reference: get_str("reference"),
+                color: get_str("color"),
+                tags,
+                vector,
+            }));
+        }
+        Ok(None)
     }
 
     /// Deletes the row whose `id` column matches exactly.

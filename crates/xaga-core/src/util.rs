@@ -40,6 +40,7 @@ pub struct Frontmatter {
     pub summary: Option<String>,
     pub annotations: Vec<crate::types::Annotation>,
     pub threshold: Option<f32>,
+    pub tags: Vec<String>,
 }
 
 impl Frontmatter {
@@ -77,6 +78,7 @@ impl Frontmatter {
             vector,
             reference: String::new(),
             color: String::new(),
+            tags: self.tags.clone(),
         }
     }
 }
@@ -119,6 +121,8 @@ struct FrontmatterRaw {
     annotations: Vec<crate::types::Annotation>,
     #[serde(default)]
     threshold: Option<f32>,
+    #[serde(default)]
+    tags: Vec<String>,
 }
 
 fn split_document(raw: &str) -> Option<(Frontmatter, String)> {
@@ -140,6 +144,7 @@ fn split_document(raw: &str) -> Option<(Frontmatter, String)> {
             summary: fm.summary,
             annotations: fm.annotations,
             threshold: fm.threshold,
+            tags: fm.tags,
         },
         body,
     ))

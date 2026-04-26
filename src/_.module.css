@@ -11,6 +11,8 @@
 .App {
   display: flex;
   flex: 1;
+  /* margin-top: calc(-1px * var(--titlebar-height)); */
+  margin-top: -38px;
   min-height: 0;
 
   .Sidebar {
@@ -27,6 +29,7 @@
 
   .SearchResultList {
     border-left: var(--border);
+    padding-top: calc(var(--titlebar-height) + 24px);
   }
 }
 

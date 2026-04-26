@@ -162,6 +162,7 @@ export function Reader({
 
       switch (msg.type) {
         case OPEN_URL:
+          setTooltip(null);
           if (msg.url) onClickUrl?.(msg.url);
           break;
         case SELECTION_MADE:

@@ -9,6 +9,7 @@ import {
 import { IconButton, Typography } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
+import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useEvents } from "../../hooks/useEvents";
 import { useFeeds } from "../../hooks/useFeeds";
 import { useTopics } from "../../hooks/useTopics";
@@ -60,10 +61,11 @@ export function Sidebar({
   onSetEditingTopic,
 }: SidebarProps) {
   const platform = usePlatform();
-  const { onUnreadChanged } = useEvents();
+  const { onUnreadChanged, onEmbeddingsChanged } = useEvents();
   const [abort, abortControllerRef] = useAbortController();
 
-  const [selectedExpander, setSelectedExpander] = useState<ExpanderType | null>(
+  const [selectedExpander, setSelectedExpander] = useLocalStorage<ExpanderType | null>(
+    "sidebar.expander",
     "shortcuts",
   );
 
@@ -192,6 +194,15 @@ export function Sidebar({
       unlisten();
     };
   }, [onUnreadChanged, requestTopics, requestFeeds]);
+
+  useEffect(() => {
+    const unlisten = onEmbeddingsChanged(() => {
+      requestTopics();
+    });
+    return () => {
+      unlisten();
+    };
+  }, [onEmbeddingsChanged, requestTopics]);
 
   useEffect(() => {
     abort();

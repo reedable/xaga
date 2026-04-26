@@ -82,8 +82,8 @@ export interface Platform {
   readTopic(signal: AbortSignal, id: string): Promise<Topic>;
 
   // Bookmarks
-  addBookmark(signal: AbortSignal, entry: Entry): Promise<Entry>;
-  removeBookmark(signal: AbortSignal, entry: Entry): Promise<string>;
+  addBookmark(signal: AbortSignal, id: string): Promise<Entry>;
+  removeBookmark(signal: AbortSignal, id: string): Promise<string>;
   listBookmarks(signal: AbortSignal): Promise<Entry[]>;
   importBookmarks(signal: AbortSignal): Promise<ImportResult<Entry> | null>;
   exportBookmarks(signal: AbortSignal): Promise<void>;
@@ -154,6 +154,7 @@ export interface Platform {
   onExportFeeds(callback: () => void): Promise<UnlistenFn>;
   onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn>;
   onUnreadChanged(callback: () => void): Promise<UnlistenFn>;
+  onEmbeddingsChanged(callback: () => void): Promise<UnlistenFn>;
   onImportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onExportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;

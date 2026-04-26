@@ -592,30 +592,21 @@ export class TauriPlatform implements Platform {
 
   // Bookmarks -----------------------------------------------------------------
 
-  async addBookmark(signal: AbortSignal, entry: Entry): Promise<Entry> {
+  async addBookmark(signal: AbortSignal, id: string): Promise<Entry> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "add_bookmark" });
 
-    const result = await invoker<unknown>("add_bookmark", {
-      id: entry.id,
-      url: entry.url,
-      title: entry.title,
-      createdAt: entry.createdAt,
-      publishedAt: entry.publishedAt,
-      updatedAt: entry.updatedAt,
-      summary: entry.summary,
-    });
-
+    const result = await invoker<unknown>("add_bookmark", { id });
     return EntrySchema.transform(toEntry).parse(result);
   }
 
-  async removeBookmark(signal: AbortSignal, entry: Entry): Promise<string> {
+  async removeBookmark(signal: AbortSignal, id: string): Promise<string> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "remove_bookmark" });
 
-    return invoker("remove_bookmark", { id: entry.id });
+    return invoker("remove_bookmark", { id });
   }
 
   async importBookmarks(
@@ -823,6 +814,10 @@ export class TauriPlatform implements Platform {
 
   onUnreadChanged(callback: () => void): Promise<UnlistenFn> {
     return listen("unread:changed", callback);
+  }
+
+  onEmbeddingsChanged(callback: () => void): Promise<UnlistenFn> {
+    return listen("embedding:changed", callback);
   }
 
   onImportBookmarks(callback: () => void): Promise<UnlistenFn> {

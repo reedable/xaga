@@ -74,15 +74,12 @@ export function TitleBar({ className, onSearchQueryChange }: TitleBarProps) {
     if (!inputValue) setIsExpanded(false);
   }, [inputValue]);
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (e.button !== 0) return;
-      const target = e.target as HTMLElement;
-      if (target.closest("button, input, a, textarea")) return;
-      void getCurrentWindow().startDragging();
-    },
-    [],
-  );
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button, input, a, textarea")) return;
+    void getCurrentWindow().startDragging();
+  }, []);
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -96,18 +93,19 @@ export function TitleBar({ className, onSearchQueryChange }: TitleBarProps) {
   const classes = [css.TitleBar, className].filter(Boolean).join(" ");
 
   return (
-    <div className={classes} onMouseDown={handleMouseDown} onDoubleClick={handleDoubleClick}>
+    <div
+      className={classes}
+      onMouseDown={handleMouseDown}
+      onDoubleClick={handleDoubleClick}
+    >
       <div className={css.TrafficLightSpacer} />
 
-      <span className={css.Title}>Xaga</span>
-
       <div className={css.SearchArea}>
-        {!isExpanded && (
+        {!isExpanded ? (
           <IconButton size="small" onClick={handleExpand} aria-label="Search">
             <Search fontSize="small" />
           </IconButton>
-        )}
-        {isExpanded && (
+        ) : (
           <TextField
             inputRef={inputRef}
             size="small"
