@@ -18,7 +18,7 @@
     overflow: hidden;
 
     .Header {
-      border-bottom: var(--border);
+      /* border-bottom: var(--border); */
       flex-shrink: 0;
       padding: 1rem 2rem 1rem 2rem;
 
@@ -46,7 +46,7 @@
 
         .Byline {
           align-items: center;
-          border-bottom: var(--border);
+          /* border-bottom: var(--border); */
           display: flex;
           justify-content: space-between;
           padding: 0 0 0 2rem;
