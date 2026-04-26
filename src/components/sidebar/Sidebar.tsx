@@ -18,7 +18,7 @@ import {
   ANNOTATION_ITEMS,
   RECOMMENDED_ITEMS
 } from "../../Shortcuts";
-import { isShortcut, type Feed, type Item, type Topic } from "../../types";
+import { isFeed, isTopic, isShortcut, type Feed, type Item, type Topic } from "../../types";
 import cx from "../../utils/cx";
 import css from "./_.module.css";
 import EditFeedDialog from "./EditFeedDialog";
@@ -67,6 +67,8 @@ export function Sidebar({
     "shortcuts",
   );
 
+  const [pinnedIds, setPinnedIds] = useLocalStorage<string[]>("sidebar.pinnedCollections", []);
+
   const { listTopics, saveTopic, createTopic, deleteTopic } =
     useTopics(abortControllerRef);
 
@@ -87,6 +89,11 @@ export function Sidebar({
   const setEditingFeed = onSetEditingFeed;
   const [isAddingFeed, setIsAddingFeed] = useState(false);
 
+  const pinnedCollections = pinnedIds
+    .map((id) => [...topics, ...feeds].find((c) => c.id === id))
+    .filter((c): c is Topic | Feed => c !== undefined)
+    .sort(sortByUnreadCount);
+
   const getExpandHandler = useCallback((expander: ExpanderType) => {
     return () => {
       setSelectedExpander((prev) => (prev === expander ? null : expander));
@@ -104,7 +111,7 @@ export function Sidebar({
   }, [listTopics]);
 
   const handleSaveTopic = useCallback(
-    async (title: string, content: string, threshold: number) => {
+    async (title: string, content: string, threshold: number, pinned: boolean) => {
       let topic: Topic | undefined;
 
       if (editingTopic) {
@@ -114,48 +121,57 @@ export function Sidebar({
       }
 
       if (topic) {
+        setPinnedIds((prev) =>
+          pinned ? (prev.includes(topic.id) ? prev : [...prev, topic.id]) : prev.filter((id) => id !== topic.id),
+        );
         await requestTopics();
         onSelectList(topic);
       }
     },
-    [createTopic, editingTopic, onSelectList, requestTopics, saveTopic],
+    [createTopic, editingTopic, onSelectList, requestTopics, saveTopic, setPinnedIds],
   );
 
   const handleDeleteTopic = useCallback(
     async (topic: Topic) => {
       await deleteTopic(topic.id);
+      setPinnedIds((prev) => prev.filter((id) => id !== topic.id));
       await requestTopics();
     },
-    [deleteTopic, requestTopics],
+    [deleteTopic, requestTopics, setPinnedIds],
   );
 
   const handleSaveFeed = useCallback(
-    async (title: string) => {
+    async (title: string, pinned: boolean) => {
       if (!editingFeed) return;
       await renameFeed(editingFeed.id, title);
+      setPinnedIds((prev) =>
+        pinned ? (prev.includes(editingFeed.id) ? prev : [...prev, editingFeed.id]) : prev.filter((id) => id !== editingFeed.id),
+      );
       await requestFeeds();
     },
-    [editingFeed, renameFeed, requestFeeds],
+    [editingFeed, renameFeed, requestFeeds, setPinnedIds],
   );
 
   const handleDeleteFeed = useCallback(
     async (feed: Feed) => {
       await deleteFeed(feed.url);
+      setPinnedIds((prev) => prev.filter((id) => id !== feed.id));
       await requestFeeds();
     },
-    [deleteFeed, requestFeeds],
+    [deleteFeed, requestFeeds, setPinnedIds],
   );
 
   const handleAddFeed = useCallback(
-    async (url: string, title: string) => {
+    async (url: string, title: string, pinned: boolean) => {
       const feed = await addFeed(url);
       if (feed) {
         if (title) await renameFeed(feed.id, title);
+        if (pinned) setPinnedIds((prev) => [...prev, feed.id]);
         await requestFeeds();
         onSelectList(feed);
       }
     },
-    [addFeed, renameFeed, requestFeeds, onSelectList],
+    [addFeed, renameFeed, requestFeeds, onSelectList, setPinnedIds],
   );
 
   const handleImportFeeds = useCallback(async () => {
@@ -261,6 +277,23 @@ export function Sidebar({
           }
           onSelectItem={onSelectList}
         />
+
+        {pinnedCollections.map((item) => (
+          <ExpanderItem
+            key={item.id}
+            icon={isTopic(item) ? FeedIcon : undefined}
+            item={item}
+            selected={selectedList?.id === item.id}
+            onSelectItem={onSelectList}
+            renderSecondaryAction={() =>
+              item.unreadCount > 0 ? (
+                <Typography variant="caption" color="text.secondary" sx={{ pr: 1 }}>
+                  {item.unreadCount}
+                </Typography>
+              ) : null
+            }
+          />
+        ))}
       </Expander>
 
       <Expander
@@ -283,11 +316,7 @@ export function Sidebar({
             renderSecondaryAction={(item: Item) => {
               const topic = item as Topic;
               return topic.unreadCount > 0 ? (
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ pr: 1 }}
-                >
+                <Typography variant="caption" color="text.secondary" sx={{ pr: 1 }}>
                   {topic.unreadCount}
                 </Typography>
               ) : null;
@@ -299,6 +328,7 @@ export function Sidebar({
       <EditTopicDialog
         open={editingTopic !== null || isAddingTopic}
         topic={editingTopic}
+        pinned={pinnedIds.includes(editingTopic?.id ?? "")}
         onClose={() => {
           onSetEditingTopic(null);
           setIsAddingTopic(false);
@@ -326,11 +356,7 @@ export function Sidebar({
             onSelectItem={onSelectList}
             renderSecondaryAction={() =>
               feed.unreadCount > 0 ? (
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ pr: 1 }}
-                >
+                <Typography variant="caption" color="text.secondary" sx={{ pr: 1 }}>
                   {feed.unreadCount}
                 </Typography>
               ) : null
@@ -342,6 +368,7 @@ export function Sidebar({
       <EditFeedDialog
         open={editingFeed !== null || isAddingFeed}
         feed={editingFeed}
+        pinned={pinnedIds.includes(editingFeed?.id ?? "")}
         onClose={() => {
           setEditingFeed(null);
           setIsAddingFeed(false);

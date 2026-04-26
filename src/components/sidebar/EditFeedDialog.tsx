@@ -1,9 +1,11 @@
 import {
   Button,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   TextField,
 } from "@mui/material";
 import { useState, useEffect, type SubmitEvent } from "react";
@@ -12,15 +14,17 @@ import type { Feed } from "../../types";
 interface EditFeedDialogProps {
   open: boolean;
   feed: Feed | null;
+  pinned: boolean;
   onClose: () => void;
-  onAdd: (url: string, title: string) => Promise<void>;
-  onSave: (title: string) => Promise<void>;
+  onAdd: (url: string, title: string, pinned: boolean) => Promise<void>;
+  onSave: (title: string, pinned: boolean) => Promise<void>;
   onDelete: (feed: Feed) => Promise<void>;
 }
 
 export default function EditFeedDialog({
   open,
   feed,
+  pinned,
   onClose,
   onAdd,
   onSave,
@@ -28,6 +32,7 @@ export default function EditFeedDialog({
 }: EditFeedDialogProps) {
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
+  const [pinnedState, setPinnedState] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -37,18 +42,19 @@ export default function EditFeedDialog({
     if (open) {
       setTitle(feed?.title ?? "");
       setUrl(feed?.url ?? "");
+      setPinnedState(pinned);
     }
-  }, [open, feed]);
+  }, [open, feed, pinned]);
 
   const handleSubmit = async (e: SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSaving(true);
     try {
       if (isAdding) {
-        await onAdd(url.trim(), title.trim());
+        await onAdd(url.trim(), title.trim(), pinnedState);
       } else {
         if (!title.trim()) return;
-        await onSave(title.trim());
+        await onSave(title.trim(), pinnedState);
       }
       onClose();
     } finally {
@@ -113,6 +119,17 @@ export default function EditFeedDialog({
               />
             </>
           )}
+
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={pinnedState}
+                onChange={(e) => setPinnedState(e.target.checked)}
+                disabled={busy}
+              />
+            }
+            label="Add to Shortcuts"
+          />
         </DialogContent>
 
         <DialogActions>

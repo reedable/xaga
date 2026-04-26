@@ -2,10 +2,12 @@ import { Add, Remove } from "@mui/icons-material";
 import {
   Box,
   Button,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   IconButton,
   TextField,
   Typography,
@@ -17,14 +19,16 @@ import type { Topic } from "../../types";
 interface EditTopicDialogProps {
   open: boolean;
   topic: Topic | null;
+  pinned: boolean;
   onClose: () => void;
-  onSave: (title: string, content: string, threshold: number) => Promise<void>;
+  onSave: (title: string, content: string, threshold: number, pinned: boolean) => Promise<void>;
   onDelete: (topic: Topic) => Promise<void>;
 }
 
 export default function EditTopicDialog({
   open,
   topic,
+  pinned,
   onClose,
   onSave,
   onDelete,
@@ -32,6 +36,7 @@ export default function EditTopicDialog({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [thresholdText, setThresholdText] = useState(TOPIC_THRESHOLD.toFixed(2));
+  const [pinnedState, setPinnedState] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -40,8 +45,9 @@ export default function EditTopicDialog({
       setTitle(topic?.title ?? "");
       setDescription(topic?.content ?? "");
       setThresholdText((topic?.threshold ?? TOPIC_THRESHOLD).toFixed(2));
+      setPinnedState(pinned);
     }
-  }, [open, topic]);
+  }, [open, topic, pinned]);
 
   const parseThreshold = () => {
     const v = parseFloat(thresholdText);
@@ -69,7 +75,7 @@ export default function EditTopicDialog({
 
     setSaving(true);
     try {
-      await onSave(title.trim(), description, parseThreshold());
+      await onSave(title.trim(), description, parseThreshold(), pinnedState);
       onClose();
     } finally {
       setSaving(false);
@@ -111,6 +117,17 @@ export default function EditTopicDialog({
             minRows={4}
             fullWidth
           />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={pinnedState}
+                onChange={(e) => setPinnedState(e.target.checked)}
+                disabled={busy}
+              />
+            }
+            label="Add to Shortcuts"
+          />
+
           <Box>
             <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
               Similarity threshold
