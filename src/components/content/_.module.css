@@ -18,9 +18,8 @@
     overflow: hidden;
 
     .Header {
-      /* border-bottom: var(--border); */
       flex-shrink: 0;
-      padding: 1rem 2rem 1rem 2rem;
+      padding: 1.5em 2em;
 
       .Title {
         align-items: center;

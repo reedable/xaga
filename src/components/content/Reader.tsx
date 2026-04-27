@@ -135,7 +135,7 @@ export function Reader({
     }
 
     setTooltip(null);
-  }, [onRemoveAnnotation, onSaveAnnotation, tooltip]);
+  }, [onRemoveAnnotation, onSaveAnnotation, reference, tooltip]);
 
   const handleIframeLoad = useCallback(() => {
     if (!annotations?.length) return;
@@ -198,7 +198,7 @@ export function Reader({
         sandbox="allow-scripts"
         style={{
           width: "100%",
-          height: "100%",
+          height: "calc(100vh - 150px)",
           border: "none",
           display: "block",
         }}

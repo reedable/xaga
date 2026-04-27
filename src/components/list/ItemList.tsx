@@ -1,9 +1,7 @@
 import {
-  Bookmark,
-  Circle,
   Clear,
   FormatQuote,
-  Settings,
+  Settings
 } from "@mui/icons-material";
 import {
   Button,
@@ -28,7 +26,6 @@ import {
 import { Virtuoso } from "react-virtuoso";
 import { RELATED_THRESHOLD, TOPIC_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
-import { useBookmarks } from "../../hooks/useBookmarks";
 import useEntries from "../../hooks/useEntries";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRelatedItems from "../../hooks/useRelatedItems";
@@ -48,10 +45,9 @@ import {
   type Item,
 } from "../../types";
 
-import { Byline } from "../Byline";
 import cx from "../../utils/cx";
-import css from "./_.module.css";
 import ItemStatus from "../ItemStatus";
+import css from "./_.module.css";
 
 function getEmptyMessage(filter: Filter, filterText: string): string {
   const label = filter === "all" ? "items" : `${filter} items`;
@@ -96,8 +92,6 @@ export function ItemList({
     refreshFeed,
     refreshAllFeeds,
   } = useFeeds(abortControllerRef);
-
-  const { bookmarkMap } = useBookmarks(abortControllerRef);
 
   const [items, setItems] = useState<Item[]>([]);
   const [filter, setFilter] = useState<Filter>(selectedFilter ?? "unread");

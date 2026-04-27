@@ -304,6 +304,8 @@ export function buildEntryHtml(
       if (!msg || !msg.type) return;
       if (msg.type === 'apply-highlights') {
         msg.annotations.forEach(applyHighlight);
+        var sel = window.getSelection();
+        if (sel) sel.removeAllRanges();
       } else if (msg.type === 'remove-highlight') {
         removeHighlight(msg.annotationId);
       }

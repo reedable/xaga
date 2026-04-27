@@ -21,6 +21,7 @@ import { buildEntryHtml, type ReaderStyle } from "../../text/buildEntryHtml";
 import { markdownToHtml } from "../../text/markdownPipeline";
 import { type Entry, type Item } from "../../types";
 import cx from "../../utils/cx";
+import { FONT_FAMILY_CSS } from "../../utils/FontFamily";
 import formatByline from "../../utils/formatByline";
 import css from "./_.module.css";
 import { Reader } from "./Reader";
@@ -201,7 +202,7 @@ export default function ArticleReader({
     <>
       <div className={css.Header}>
         <div className={css.Title}>
-          <Typography component="h1" variant="h5">
+          <Typography component="h1" variant="h5" sx={{ fontFamily: FONT_FAMILY_CSS[readerFontFamily] }}>
             {selectedEntry.title}
           </Typography>
         </div>
