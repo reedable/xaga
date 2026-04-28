@@ -16,6 +16,7 @@ import { useAppearance } from "../../hooks/useAppearance";
 import { useArticles } from "../../hooks/useArticles";
 import { useBookmarks } from "../../hooks/useBookmarks";
 import useEntries from "../../hooks/useEntries";
+import { useEvents } from "../../hooks/useEvents";
 import { usePlatform } from "../../platform/Platform";
 import { buildEntryHtml, type ReaderStyle } from "../../text/buildEntryHtml";
 import { markdownToHtml } from "../../text/markdownPipeline";
@@ -79,10 +80,21 @@ export default function ArticleReader({
     [bodyHtml, readerStyle],
   );
 
-  const { bookmarkMap, addBookmark, removeBookmark } =
-    useBookmarks(abortControllerRef);
-
+  const { addBookmark, removeBookmark } = useBookmarks(abortControllerRef);
   const { markEntryRead, markEntryUnread } = useEntries(abortControllerRef);
+  const { onUnreadChanged, onBookmarkChanged } = useEvents();
+
+  useEffect(() => {
+    return onUnreadChanged((entry) => {
+      if (entry.id === selectedEntry.id) onChangeEntry?.(entry);
+    });
+  }, [onUnreadChanged, selectedEntry.id, onChangeEntry]);
+
+  useEffect(() => {
+    return onBookmarkChanged((entry) => {
+      if (entry.id === selectedEntry.id) onChangeEntry?.(entry);
+    });
+  }, [onBookmarkChanged, selectedEntry.id, onChangeEntry]);
 
   const {
     loading,
@@ -111,17 +123,10 @@ export default function ArticleReader({
           if (body) setBodyHtml(body);
         }
 
-        const item = await markEntryRead(entry);
-        if (item) onChangeEntry?.(item);
+        await markEntryRead(entry);
       }
     },
-    [
-      readerView,
-      readArticle,
-      setAnnotationsFromArticle,
-      markEntryRead,
-      onChangeEntry,
-    ],
+    [readerView, readArticle, setAnnotationsFromArticle, markEntryRead],
   );
 
   const reloadArticle = useCallback(
@@ -143,12 +148,12 @@ export default function ArticleReader({
   }, [platform, selectedEntry]);
 
   const toggleBookmark = useCallback(async () => {
-    if (bookmarkMap?.get(selectedEntry.id)) {
+    if (selectedEntry.isBookmarked) {
       await removeBookmark(selectedEntry);
     } else {
       await addBookmark(selectedEntry);
     }
-  }, [addBookmark, bookmarkMap, removeBookmark, selectedEntry]);
+  }, [addBookmark, removeBookmark, selectedEntry]);
 
   const handleLoadArticleByUrl = useCallback(
     async (url: string) => {
@@ -171,16 +176,14 @@ export default function ArticleReader({
   );
 
   const handleMarkRead = useCallback(async () => {
-    const item = await markEntryRead(selectedEntry);
-    if (item) onChangeEntry?.(item);
+    await markEntryRead(selectedEntry);
     setMenuAnchor(null);
-  }, [markEntryRead, onChangeEntry, selectedEntry]);
+  }, [markEntryRead, selectedEntry]);
 
   const handleMarkUnread = useCallback(async () => {
-    const item = await markEntryUnread(selectedEntry);
-    if (item) onChangeEntry?.(item);
+    await markEntryUnread(selectedEntry);
     setMenuAnchor(null);
-  }, [markEntryUnread, onChangeEntry, selectedEntry]);
+  }, [markEntryUnread, selectedEntry]);
 
   const handleReload = useCallback(async () => {
     reloadArticle(selectedEntry);
@@ -192,7 +195,8 @@ export default function ArticleReader({
     (async () => {
       requestArticle(selectedEntry);
     })();
-  }, [requestArticle, abort, selectedEntry, readerView]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestArticle, abort, selectedEntry.id, readerView]);
 
   useEffect(() => {
     setLoading?.(loading);
@@ -218,7 +222,7 @@ export default function ArticleReader({
             <ButtonGroup>
               <Tooltip
                 title={
-                  bookmarkMap?.get(selectedEntry.id)
+                  selectedEntry.isBookmarked
                     ? "Remove bookmark"
                     : "Add bookmark"
                 }
@@ -226,7 +230,7 @@ export default function ArticleReader({
                 <IconButton size="small" onClick={toggleBookmark}>
                   <Bookmark
                     color={
-                      bookmarkMap?.get(selectedEntry.id) ? "primary" : undefined
+                      selectedEntry.isBookmarked ? "primary" : undefined
                     }
                   />
                 </IconButton>

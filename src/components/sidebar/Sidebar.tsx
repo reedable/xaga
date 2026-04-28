@@ -9,6 +9,7 @@ import { IconButton, Typography } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useEvents } from "../../hooks/useEvents";
+import { useCollections } from "../../hooks/useCollections";
 import { useFeeds } from "../../hooks/useFeeds";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useTopics } from "../../hooks/useTopics";
@@ -18,7 +19,7 @@ import {
   ANNOTATION_ITEMS,
   RECOMMENDED_ITEMS
 } from "../../Shortcuts";
-import { isFeed, isTopic, isShortcut, type Feed, type Item, type Topic } from "../../types";
+import { isShortcut, isTopic, type Feed, type Item, type Topic } from "../../types";
 import cx from "../../utils/cx";
 import css from "./_.module.css";
 import EditFeedDialog from "./EditFeedDialog";
@@ -69,19 +70,18 @@ export function Sidebar({
 
   const [pinnedIds, setPinnedIds] = useLocalStorage<string[]>("sidebar.pinnedCollections", []);
 
-  const { listTopics, saveTopic, createTopic, deleteTopic } =
-    useTopics(abortControllerRef);
+  const { listFeeds, listTopics } = useCollections(abortControllerRef);
+
+  const { saveTopic, createTopic, deleteTopic } = useTopics(abortControllerRef);
 
   const {
-    listFeeds,
+    loadingSet: loadingFeeds,
     addFeed,
     importFeeds,
     exportFeeds,
     renameFeed,
     deleteFeed,
   } = useFeeds(abortControllerRef);
-
-  const { loadingSet } = useFeeds(abortControllerRef);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [feeds, setFeeds] = useState<Feed[]>([]);
 
@@ -245,7 +245,7 @@ export function Sidebar({
         <ExpanderItem
           icon={Newspaper}
           item={ALL_ITEMS}
-          loading={!!loadingSet?.size}
+          loading={!!loadingFeeds?.size}
           selected={
             isShortcut(selectedList) &&
             selectedList.id === ALL_ITEMS.id &&
@@ -257,7 +257,7 @@ export function Sidebar({
         <ExpanderItem
           icon={Star}
           item={RECOMMENDED_ITEMS}
-          loading={!!loadingSet?.size}
+          loading={!!loadingFeeds?.size}
           selected={
             isShortcut(selectedList) &&
             selectedList.id === RECOMMENDED_ITEMS.id &&
@@ -269,7 +269,7 @@ export function Sidebar({
         <ExpanderItem
           icon={FormatQuote}
           item={ANNOTATION_ITEMS}
-          loading={!!loadingSet?.size}
+          loading={!!loadingFeeds?.size}
           selected={
             isShortcut(selectedList) &&
             selectedList.id === ANNOTATION_ITEMS.id &&
@@ -283,6 +283,7 @@ export function Sidebar({
             key={item.id}
             icon={isTopic(item) ? FeedIcon : undefined}
             item={item}
+            loading={!!loadingFeeds?.size}
             selected={selectedList?.id === item.id}
             onSelectItem={onSelectList}
             renderSecondaryAction={() =>
@@ -308,9 +309,10 @@ export function Sidebar({
       >
         {topics.map((item) => (
           <ExpanderItem
+            key={item.id}
             icon={FeedIcon}
             item={item}
-            loading={!!loadingSet?.size}
+            loading={!!loadingFeeds?.size}
             selected={selectedList?.id === item.id}
             onSelectItem={onSelectList}
             renderSecondaryAction={(item: Item) => {
@@ -351,7 +353,7 @@ export function Sidebar({
           <ExpanderItem
             key={feed.id}
             item={feed}
-            loading={loadingSet?.has(feed.id)}
+            loading={loadingFeeds?.has(feed.id)}
             selected={selectedList?.id === feed.id}
             onSelectItem={onSelectList}
             renderSecondaryAction={() =>

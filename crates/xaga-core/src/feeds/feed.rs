@@ -93,6 +93,7 @@ pub async fn add_feed(
     data_dir: &Path,
     url: &str,
     unread: &HashSet<String>,
+    bookmarked: &HashSet<String>,
 ) -> Result<Feed> {
     let url = if url.trim_start().starts_with("http://") {
         format!("https://{}", url.trim_start()[7..].trim_start())
@@ -143,7 +144,7 @@ pub async fn add_feed(
         .await;
     }
     let created_at = file_created_at(&path, Some(*atom_feed.updated())).await;
-    let summary = feed_summary(&id, &atom_feed, created_at, unread);
+    let summary = feed_summary(&id, &atom_feed, created_at, unread, bookmarked);
     Ok(summary)
 }
 
@@ -155,6 +156,7 @@ pub async fn refresh_feed(
     data_dir: &Path,
     id: &FeedId,
     unread: &HashSet<String>,
+    bookmarked: &HashSet<String>,
 ) -> Result<Feed> {
     let path = xml_path(feeds_dir, id);
     if !path.exists() {
@@ -172,7 +174,7 @@ pub async fn refresh_feed(
     let created_at = file_created_at(&path, Some(*existing.updated())).await;
     write_atom_atomic(feeds_dir, id, &existing).await?;
     crate::recovery::reconcile_atom_file(data_dir, id.as_str()).await;
-    let summary = feed_summary(id, &existing, created_at, unread);
+    let summary = feed_summary(id, &existing, created_at, unread, bookmarked);
     Ok(summary)
 }
 
@@ -182,6 +184,7 @@ pub async fn refresh_all_feeds(
     feeds_dir: &Path,
     data_dir: &Path,
     unread: &HashSet<String>,
+    bookmarked: &HashSet<String>,
 ) -> Vec<(FeedId, Result<Feed>)> {
     let ids = match list_feed_ids(feeds_dir).await {
         Ok(ids) => ids,
@@ -189,14 +192,14 @@ pub async fn refresh_all_feeds(
     };
     let mut results = Vec::with_capacity(ids.len());
     for id in ids {
-        let result = refresh_feed(client, feeds_dir, data_dir, &id, unread).await;
+        let result = refresh_feed(client, feeds_dir, data_dir, &id, unread, bookmarked).await;
         results.push((id, result));
     }
     results
 }
 
 /// List all feeds on disk, parsed from their Atom XML.
-pub async fn list_feeds(feeds_dir: &Path, unread: &HashSet<String>) -> Result<Vec<Feed>> {
+pub async fn list_feeds(feeds_dir: &Path, unread: &HashSet<String>, bookmarked: &HashSet<String>) -> Result<Vec<Feed>> {
     let ids = list_feed_ids(feeds_dir).await?;
     let mut feeds = Vec::with_capacity(ids.len());
     for id in ids {
@@ -204,7 +207,7 @@ pub async fn list_feeds(feeds_dir: &Path, unread: &HashSet<String>) -> Result<Ve
         if let Ok(xml) = tokio::fs::read_to_string(&path).await {
             if let Ok(atom_feed) = parse_atom(&xml) {
                 let created_at = file_created_at(&path, Some(*atom_feed.updated())).await;
-                feeds.push(feed_summary(&id, &atom_feed, created_at, unread));
+                feeds.push(feed_summary(&id, &atom_feed, created_at, unread, bookmarked));
             }
         }
     }
@@ -404,6 +407,7 @@ pub async fn rename_feed(
     id: &FeedId,
     new_title: &str,
     unread: &HashSet<String>,
+    bookmarked: &HashSet<String>,
 ) -> Result<Feed> {
     let path = xml_path(feeds_dir, id);
     if !path.exists() {
@@ -414,7 +418,7 @@ pub async fn rename_feed(
     feed.set_title(atom::Text::plain(new_title));
     let created_at = file_created_at(&path, Some(*feed.updated())).await;
     write_atom_atomic(feeds_dir, id, &feed).await?;
-    Ok(feed_summary(id, &feed, created_at, unread))
+    Ok(feed_summary(id, &feed, created_at, unread, bookmarked))
 }
 
 /// Remove a feed (deletes `{id}.atom`).
@@ -636,11 +640,12 @@ fn feed_summary(
     feed: &atom::Feed,
     created_at: DateTime<FixedOffset>,
     unread_ids: &HashSet<String>,
+    bookmarked_ids: &HashSet<String>,
 ) -> Feed {
-    let unread_count = feed
+    let entry_ids: Vec<String> = feed
         .entries()
         .iter()
-        .filter(|e| {
+        .map(|e| {
             let url = e
                 .links()
                 .iter()
@@ -648,12 +653,14 @@ fn feed_summary(
                 .or_else(|| e.links().first())
                 .map(|l| l.href())
                 .unwrap_or("");
-            let entry_id = normalize_url(url)
+            normalize_url(url)
                 .map(|n| url_hash12(&n))
-                .unwrap_or_else(|_| url_hash12(url));
-            unread_ids.contains(&entry_id)
+                .unwrap_or_else(|_| url_hash12(url))
         })
-        .count();
+        .collect();
+
+    let unread_count = entry_ids.iter().filter(|id| unread_ids.contains(*id)).count();
+    let bookmarked_count = entry_ids.iter().filter(|id| bookmarked_ids.contains(*id)).count();
 
     Feed {
         id: id.to_string(),
@@ -661,6 +668,7 @@ fn feed_summary(
         title: feed.title().value.clone(),
         entry_count: feed.entries().len(),
         unread_count,
+        bookmarked_count,
         created_at: created_at.to_rfc3339(),
         updated_at: Some(feed.updated().to_rfc3339()),
     }

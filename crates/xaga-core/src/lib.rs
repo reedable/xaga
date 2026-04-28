@@ -1,4 +1,5 @@
 pub mod articles;
+pub mod entry_cache;
 pub mod opml;
 pub mod entries;
 pub mod bookmarks;
@@ -10,5 +11,4 @@ pub mod recovery;
 pub mod saved;
 pub mod topics;
 pub mod types;
-pub mod unread;
 pub mod util;

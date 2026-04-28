@@ -74,8 +74,11 @@ pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &Pat
         }
 
         FeedsCommand::Refresh { id: None } => {
-            let unread = xaga_core::filter::unread_ids(data_dir).await;
-            let results = feeds::refresh_all_feeds(client, feeds_dir, data_dir, &unread).await;
+            let (unread, bookmarked) = tokio::join!(
+                xaga_core::filter::unread_ids(data_dir),
+                xaga_core::filter::bookmarked_ids(data_dir),
+            );
+            let results = feeds::refresh_all_feeds(client, feeds_dir, data_dir, &unread, &bookmarked).await;
             if results.is_empty() {
                 println!("No feeds saved. Use `feeds add <url>` to add one.");
                 return;

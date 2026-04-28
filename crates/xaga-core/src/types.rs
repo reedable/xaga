@@ -45,6 +45,7 @@ pub trait Item {
     /// ISO-8601 publish date, if known. `None` excludes the item from `Upcoming`
     /// and includes it in `All`.
     fn published_at(&self) -> Option<&str> { None }
+    fn is_unread(&self) -> bool { false }
     fn is_bookmarked(&self) -> bool { false }
 }
 
@@ -54,7 +55,7 @@ pub trait Item {
 ///
 /// Used as the list-view representation of a feed entry, and embedded
 /// (via `#[serde(flatten)]`) inside `Article`.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Entry {
     pub id: String,
     pub url: String,
@@ -77,6 +78,7 @@ impl Item for Entry {
     fn updated_at(&self) -> Option<&str> { self.updated_at.as_deref() }
     fn url(&self) -> Option<&str> { Some(&self.url) }
     fn published_at(&self) -> Option<&str> { self.published_at.as_deref() }
+    fn is_unread(&self) -> bool { self.is_unread }
     fn is_bookmarked(&self) -> bool { self.is_bookmarked }
 }
 
@@ -139,6 +141,7 @@ impl Item for EmbeddedEntry {
     fn updated_at(&self) -> Option<&str> { self.entry.updated_at() }
     fn url(&self) -> Option<&str> { self.entry.url() }
     fn published_at(&self) -> Option<&str> { self.entry.published_at() }
+    fn is_unread(&self) -> bool { self.entry.is_unread() }
     fn is_bookmarked(&self) -> bool { self.entry.is_bookmarked() }
 }
 
@@ -253,6 +256,7 @@ pub struct Feed {
     pub title: String,
     pub entry_count: usize,
     pub unread_count: usize,
+    pub bookmarked_count: usize,
     pub created_at: String,
     pub updated_at: Option<String>,
 }

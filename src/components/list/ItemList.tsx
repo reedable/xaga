@@ -27,6 +27,7 @@ import { Virtuoso } from "react-virtuoso";
 import { RELATED_THRESHOLD, TOPIC_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
 import useEntries from "../../hooks/useEntries";
+import { useEvents } from "../../hooks/useEvents";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRelatedItems from "../../hooks/useRelatedItems";
 import {
@@ -39,8 +40,8 @@ import {
   isEntry,
   isFeed,
   isFilter,
-  isItem,
   isTopic,
+  type Collection,
   type Filter,
   type Item,
 } from "../../types";
@@ -56,7 +57,7 @@ function getEmptyMessage(filter: Filter, filterText: string): string {
 
 interface ItemListProps {
   className?: string;
-  selectedList: Item;
+  selectedCollection: Collection;
   selectedFilter?: Filter;
   onSelectItem: (item: Item) => void;
   onFilterChange?: (filter: Filter) => void;
@@ -65,23 +66,22 @@ interface ItemListProps {
 
 export function ItemList({
   className,
-  selectedList,
+  selectedCollection,
   selectedFilter,
   onSelectItem,
   onFilterChange,
   onEdit,
 }: ItemListProps) {
   const [abort, abortControllerRef] = useAbortController();
+  const [loading, setLoading] = useState(false);
 
   const {
-    loading: loadingEntries,
     listEntries,
     listAllEntries,
     markEntryRead,
   } = useEntries(abortControllerRef);
 
   const {
-    loading: loadingRelatedItems,
     queryByItem,
     queryByBookmarks,
     queryByAnnotations,
@@ -93,14 +93,16 @@ export function ItemList({
     refreshAllFeeds,
   } = useFeeds(abortControllerRef);
 
+  const { onUnreadChanged, onBookmarkChanged } = useEvents();
+
   const [items, setItems] = useState<Item[]>([]);
   const [filter, setFilter] = useState<Filter>(selectedFilter ?? "unread");
   const [filterText, setFilterText] = useState("");
-  const [prevSelectedList, setPrevSelectedList] = useState(selectedList);
+  const [prevSelectedList, setPrevSelectedList] = useState(selectedCollection);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
-  if (prevSelectedList !== selectedList) {
-    setPrevSelectedList(selectedList);
+  if (prevSelectedList !== selectedCollection) {
+    setPrevSelectedList(selectedCollection);
     setFilterText("");
   }
 
@@ -119,26 +121,32 @@ export function ItemList({
 
   const requestItems = useCallback(
     async (selectedList: Item) => {
-      if (selectedList === RECOMMENDED_ITEMS) {
-        // const entries = await queryByTopics(filter, RELATED_THRESHOLD);
-        const entries = await queryByBookmarks(filter, 0.82);
-        if (entries) setItems(entries);
-      } else if (selectedList === ANNOTATION_ITEMS) {
-        const entries = await queryByAnnotations(filter, RELATED_THRESHOLD);
-        if (entries) setItems(entries);
-      } else if (isFeed(selectedList)) {
-        const entries = await listEntries(selectedList, filter);
-        if (entries) setItems(entries);
-      } else if (isTopic(selectedList)) {
-        const items = await queryByItem(
-          selectedList,
-          filter,
-          selectedList.threshold ?? TOPIC_THRESHOLD,
-        );
-        if (items) setItems(items);
-      } else {
-        const entries = await listAllEntries(filter);
-        if (entries) setItems(entries);
+      setLoading(true);
+
+      try {
+        if (selectedList === RECOMMENDED_ITEMS) {
+          // const entries = await queryByTopics(filter, RELATED_THRESHOLD);
+          const entries = await queryByBookmarks(filter, 0.82);
+          if (entries) setItems(entries);
+        } else if (selectedList === ANNOTATION_ITEMS) {
+          const entries = await queryByAnnotations(filter, RELATED_THRESHOLD);
+          if (entries) setItems(entries);
+        } else if (isFeed(selectedList)) {
+          const entries = await listEntries(selectedList, filter);
+          if (entries) setItems(entries);
+        } else if (isTopic(selectedList)) {
+          const items = await queryByItem(
+            selectedList,
+            filter,
+            selectedList.threshold ?? TOPIC_THRESHOLD,
+          );
+          if (items) setItems(items);
+        } else {
+          const entries = await listAllEntries(filter);
+          if (entries) setItems(entries);
+        }
+      } finally {
+        setLoading(false);
       }
     },
     [
@@ -169,8 +177,7 @@ export function ItemList({
       onSelectItem(item);
 
       if (isEntry(item)) {
-        const i = await markEntryRead(item);
-        if (i) setItems((prev) => prev.map((p) => (p.id === i.id ? i : p)));
+        await markEntryRead(item);
       }
     },
     [markEntryRead, onSelectItem],
@@ -190,21 +197,12 @@ export function ItemList({
     abort();
 
     (async () => {
-      refreshList(selectedList);
+      refreshList(selectedCollection);
     })();
-  }, [abort, refreshList, selectedList]);
+  }, [abort, refreshList, selectedCollection]);
 
   const handleMarkEntriesRead = useCallback(async () => {
-    const promises = displayedItems.filter(isEntry).map(markEntryRead);
-
-    promises.map(async (promise) => {
-      const item = await promise;
-      if (isItem(item)) {
-        setItems((prev) => prev.map((p) => (p.id === item.id ? item : p)));
-      }
-    });
-
-    await Promise.all(promises);
+    await Promise.all(displayedItems.filter(isEntry).map(markEntryRead));
   }, [displayedItems, markEntryRead]);
 
   useEffect(() => {
@@ -215,9 +213,21 @@ export function ItemList({
     abort();
 
     (async () => {
-      requestItems(selectedList);
+      requestItems(selectedCollection);
     })();
-  }, [selectedList, requestItems, abort]);
+  }, [selectedCollection, requestItems, abort]);
+
+  useEffect(() => {
+    return onUnreadChanged((entry) => {
+      setItems((prev) => prev.map((p) => (p.id === entry.id ? entry : p)));
+    });
+  }, [onUnreadChanged]);
+
+  useEffect(() => {
+    return onBookmarkChanged((entry) => {
+      setItems((prev) => prev.map((p) => (p.id === entry.id ? entry : p)));
+    });
+  }, [onBookmarkChanged]);
 
   return (
     <div className={cx(className, css.ItemList)}>
@@ -229,7 +239,7 @@ export function ItemList({
             color="text.secondary"
             variant="overline"
           >
-            {!selectedList ? "All items" : (selectedList?.title ?? "Entries")}
+            {!selectedCollection ? "All items" : (selectedCollection?.title ?? "Entries")}
           </Typography>
 
           {onEdit && (
@@ -287,12 +297,12 @@ export function ItemList({
       </div>
 
       <div>
-        <Collapse in={loadingEntries || loadingRelatedItems || loadingFeeds}>
-          <LinearProgress variant="indeterminate" />
+        <Collapse in={loading}>
+          <LinearProgress variant="indeterminate" color={loadingFeeds ? 'warning' : 'primary'} />
         </Collapse>
       </div>
 
-      {!loadingEntries && !loadingRelatedItems && items.length === 0 && (
+      {!loading && items.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography variant="body2" color="text.disabled">
             {getEmptyMessage(filter, "")}
@@ -343,7 +353,7 @@ export function ItemList({
         />
       )}
 
-      {(loadingEntries || loadingRelatedItems) && items.length === 0 && (
+      {loading && items.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography variant="body2" color="text.disabled">
             Loading...

@@ -219,8 +219,7 @@ pub async fn import_bookmarks(
 
 /// Exports all bookmarked entries as a Netscape bookmark file to `dest_path`.
 pub async fn export_bookmarks(data_dir: &Path, dest_path: &Path) -> Result<(), BookmarksError> {
-    let unread = crate::filter::unread_ids(data_dir).await;
-    let mut entries = crate::entries::list_entries(data_dir, &unread)
+    let mut entries = crate::entries::list_entries(data_dir)
         .await
         .unwrap_or_default();
     entries.retain(|e| e.is_bookmarked);

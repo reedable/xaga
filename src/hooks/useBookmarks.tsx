@@ -1,35 +1,26 @@
-import { useCallback, useContext, type RefObject } from "react";
+import { useCallback, useState, type RefObject } from "react";
 import { usePlatform } from "../platform/Platform";
-import BookmarksContext from "../providers/BookmarksContext";
 import type { Entry } from "../types";
 
 export function useBookmarks(abortControllerRef: RefObject<AbortController>) {
-  const context = useContext(BookmarksContext);
   const platform = usePlatform();
-
-  if (!context) {
-    throw new TypeError("useBookmarks must be used within BookmarksProvider");
-  }
-
-  const { error, loading, bookmarkMap, setError, setLoading, setBookmarkMap } =
-    context;
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<unknown>(null);
 
   const addBookmark = useCallback(
     async (entry: Entry) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
-
       try {
-        const result = await platform.addBookmark(signal, entry.id);
-        return setBookmarkMap((prev) => new Map(prev).set(result.id, result));
+        return await platform.addBookmark(signal, entry.id);
       } catch (e) {
         setError(e);
       } finally {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform, setBookmarkMap, setError, setLoading],
+    [abortControllerRef, platform],
   );
 
   const removeBookmark = useCallback(
@@ -37,30 +28,16 @@ export function useBookmarks(abortControllerRef: RefObject<AbortController>) {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
-
       try {
-        const result = await platform.removeBookmark(signal, entry.id);
-
-        setBookmarkMap((prev) => {
-          const newValue = new Map(prev);
-          newValue.delete(result);
-          return newValue;
-        });
-        return result;
+        return await platform.removeBookmark(signal, entry.id);
       } catch (e) {
         setError(e);
       } finally {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform, setBookmarkMap, setError, setLoading],
+    [abortControllerRef, platform],
   );
 
-  return {
-    loading,
-    error,
-    bookmarkMap,
-    addBookmark,
-    removeBookmark,
-  };
+  return { loading, error, addBookmark, removeBookmark };
 }

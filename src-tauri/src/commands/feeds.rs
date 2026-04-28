@@ -6,7 +6,7 @@ use xaga_core::feeds;
 use xaga_core::item::{self, ItemSource};
 use xaga_core::types::Entry;
 
-use crate::{feeds_dir, get_unread, AppState};
+use crate::{feeds_dir, get_bookmarked, get_unread, AppState};
 use super::{parse_item_filter, require_main_window};
 
 #[derive(Serialize)]
@@ -20,8 +20,8 @@ pub struct ImportResult {
 pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<feeds::Feed>, String> {
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
-    let unread = get_unread(&state);
-    feeds::list_feeds(&dir, &unread).await.map_err(|e| e.to_string())
+    let (unread, bookmarked) = (get_unread(&state), get_bookmarked(&state));
+    feeds::list_feeds(&dir, &unread, &bookmarked).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -29,8 +29,8 @@ pub async fn add_feed(window: tauri::Window, url: String, state: State<'_, AppSt
     require_main_window(&window)?;
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
-    let unread = get_unread(&state);
-    feeds::add_feed(&state.http_client, &dir, &library, &url, &unread)
+    let (unread, bookmarked) = (get_unread(&state), get_bookmarked(&state));
+    feeds::add_feed(&state.http_client, &dir, &library, &url, &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())
 }
@@ -40,8 +40,8 @@ pub async fn refresh_feed(window: tauri::Window, id: String, state: State<'_, Ap
     require_main_window(&window)?;
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
-    let unread = get_unread(&state);
-    let feed = feeds::refresh_feed(&state.http_client, &dir, &library, &feeds::FeedId(id), &unread)
+    let (unread, bookmarked) = (get_unread(&state), get_bookmarked(&state));
+    let feed = feeds::refresh_feed(&state.http_client, &dir, &library, &feeds::FeedId(id), &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())?;
     window.emit("feed:refreshed", &feed).ok();
@@ -53,8 +53,8 @@ pub async fn rename_feed(window: tauri::Window, id: String, title: String, state
     require_main_window(&window)?;
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
-    let unread = get_unread(&state);
-    feeds::rename_feed(&dir, &feeds::FeedId(id), &title, &unread)
+    let (unread, bookmarked) = (get_unread(&state), get_bookmarked(&state));
+    feeds::rename_feed(&dir, &feeds::FeedId(id), &title, &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())
 }
@@ -84,7 +84,7 @@ pub async fn import_feeds(
 
     let raw_urls = xaga_core::opml::parse_opml(&xml).map_err(|e| e.to_string())?;
 
-    let unread = get_unread(&state);
+    let (unread, bookmarked) = (get_unread(&state), get_bookmarked(&state));
     let mut seen: HashSet<String> = HashSet::new();
     let mut added: Vec<feeds::Feed> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
@@ -105,7 +105,7 @@ pub async fn import_feeds(
             continue;
         }
 
-        match feeds::add_feed(&state.http_client, &dir, &library, &normalized, &unread).await {
+        match feeds::add_feed(&state.http_client, &dir, &library, &normalized, &unread, &bookmarked).await {
             Ok(feed) => added.push(feed),
             Err(e) => {
                 log::warn!("import_feeds: failed to add {normalized:?}: {e}");
@@ -127,8 +127,8 @@ pub async fn export_feeds(
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
 
-    let unread = get_unread(&state);
-    let feed_list = feeds::list_feeds(&dir, &unread)
+    let (unread, bookmarked) = (get_unread(&state), get_bookmarked(&state));
+    let feed_list = feeds::list_feeds(&dir, &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -152,8 +152,8 @@ pub async fn list_entries(
 ) -> Result<Vec<Entry>, String> {
     let library = state.library.read().unwrap().clone();
     let item_filter = parse_item_filter(item_filter)?;
-    let unread = get_unread(&state);
-    item::list_items(&library, ItemSource::FeedEntries { url }, item_filter, &unread)
+    let (unread, bookmarked) = (get_unread(&state), get_bookmarked(&state));
+    item::list_items(&library, ItemSource::FeedEntries { url }, item_filter, &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())
 }

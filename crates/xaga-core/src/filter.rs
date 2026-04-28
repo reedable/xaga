@@ -4,34 +4,48 @@ use std::path::Path;
 use chrono::{DateTime, Utc};
 
 use crate::embeddings::EmbeddingsDb;
-use crate::types::{EmbeddedEntry, Entry, Item, ItemFilter};
+use crate::types::{Entry, Item, ItemFilter};
 
-/// Scans `library/unread/` and returns the set of entry IDs present there.
-/// Use this only when no `UnreadTracker` is available (e.g. CLI callers).
+/// Scans `library/entries/` and returns the set of IDs whose frontmatter contains the `unread` tag.
 pub async fn unread_ids(library: &Path) -> HashSet<String> {
     let mut ids = HashSet::new();
-    if let Ok(mut dir) = tokio::fs::read_dir(library.join("unread")).await {
+    if let Ok(mut dir) = tokio::fs::read_dir(library.join("entries")).await {
         while let Ok(Some(dirent)) = dir.next_entry().await {
             let path = dirent.path();
             if path.extension().and_then(|e| e.to_str()) != Some("md") { continue; }
-            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                ids.insert(stem.to_string());
+            if let Ok(raw) = tokio::fs::read_to_string(&path).await {
+                if let Some(fm) = crate::util::parse_frontmatter(&raw) {
+                    if fm.tags.contains(&"unread".to_string()) {
+                        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                            ids.insert(stem.to_string());
+                        }
+                    }
+                }
             }
         }
     }
     ids
 }
 
-/// Reads all `.md` entries and returns the set of IDs whose tags contain "bookmark".
-/// Used to annotate feed entries (from Atom XML) that don't carry .md file state.
-pub async fn bookmarked_ids(library: &Path, unread: &HashSet<String>) -> HashSet<String> {
-    crate::entries::list_entries(library, unread)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|e| e.is_bookmarked)
-        .map(|e| e.id)
-        .collect()
+/// Scans `library/entries/` and returns the set of IDs whose frontmatter contains the `bookmark` tag.
+pub async fn bookmarked_ids(library: &Path) -> HashSet<String> {
+    let mut ids = HashSet::new();
+    if let Ok(mut dir) = tokio::fs::read_dir(library.join("entries")).await {
+        while let Ok(Some(dirent)) = dir.next_entry().await {
+            let path = dirent.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("md") { continue; }
+            if let Ok(raw) = tokio::fs::read_to_string(&path).await {
+                if let Some(fm) = crate::util::parse_frontmatter(&raw) {
+                    if fm.tags.contains(&"bookmark".to_string()) {
+                        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                            ids.insert(stem.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    ids
 }
 
 /// Sets `is_unread` on each entry based on the provided unread ID set.
@@ -48,12 +62,6 @@ pub fn annotate_bookmarked_status(bookmarked: &HashSet<String>, entries: &mut Ve
     }
 }
 
-/// Same as `annotate_unread_status` but for `EmbeddedEntry`.
-pub fn annotate_embedded_unread_status(unread: &HashSet<String>, entries: &mut Vec<EmbeddedEntry>) {
-    for embedded in entries.iter_mut() {
-        embedded.entry.is_unread = unread.contains(&embedded.entry.id);
-    }
-}
 
 /// Filter `items` according to `item_filter` — predicate only, no sorting.
 ///
@@ -63,36 +71,31 @@ pub async fn filter_items<T: Item>(
     library: &Path,
     mut items: Vec<T>,
     item_filter: &ItemFilter,
-    unread: &HashSet<String>,
 ) -> std::io::Result<Vec<T>> {
     match item_filter {
         ItemFilter::All => {}
 
         ItemFilter::Unread => {
-            items.retain(|i| i.url().is_some() && unread.contains(i.id()));
+            items.retain(|i| i.url().is_some() && i.is_unread());
         }
 
         ItemFilter::Bookmarked => {
-            let bookmarked_ids = bookmarked_ids(library, unread).await;
-            items.retain(|i| bookmarked_ids.contains(i.id()));
+            items.retain(|i| i.is_bookmarked());
         }
 
         ItemFilter::Saved => {
-            let (bookmarked_ids, annotated_ids) = tokio::join!(
-                bookmarked_ids(library, unread),
-                async {
-                    let Ok(db) = EmbeddingsDb::open(library).await else {
-                        return HashSet::new();
-                    };
-                    db.list_annotations()
-                        .await
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|a| a.reference)
-                        .collect::<HashSet<String>>()
-                },
-            );
-            items.retain(|i| bookmarked_ids.contains(i.id()) || annotated_ids.contains(i.id()));
+            let annotated_ids = {
+                let Ok(db) = EmbeddingsDb::open(library).await else {
+                    return Ok(items.into_iter().filter(|i| i.is_bookmarked()).collect());
+                };
+                db.list_annotations()
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|a| a.reference)
+                    .collect::<HashSet<String>>()
+            };
+            items.retain(|i| i.is_bookmarked() || annotated_ids.contains(i.id()));
         }
     }
 

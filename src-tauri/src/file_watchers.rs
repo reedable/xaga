@@ -4,15 +4,14 @@ use std::time::Duration;
 use notify_debouncer_full::new_debouncer;
 use notify_debouncer_full::notify::{EventKind, RecursiveMode, Watcher};
 use xaga_core::embeddings::{BackgroundMsg, PriorityMsg};
-use xaga_core::unread::UnreadTracker;
+use xaga_core::entry_cache::EntryStateCache;
 
 /// Spawns one watcher thread per directory.
 ///
 /// Routing:
-/// - import/   create → parse frontmatter → move to unread/{hash}.md or spill/
-/// - unread/   create → background: Embed
-/// - unread/   modify → priority:   Embed
-/// - read/     modify → priority:   Embed  (annotations added/removed)
+/// - import/   create → parse frontmatter → move to entries/{hash}.md or spill/ (with unread tag)
+/// - entries/  create → background: Embed
+/// - entries/  modify → priority:   Embed
 /// - topics/   create → priority:   Embed
 /// - topics/   modify → priority:   Embed
 /// - topics/   delete → background: Delete
@@ -21,25 +20,24 @@ pub fn watch(
     data_dir: PathBuf,
     priority_tx: flume::Sender<PriorityMsg>,
     background_tx: flume::Sender<BackgroundMsg>,
-    tracker: UnreadTracker,
+    cache: EntryStateCache,
 ) {
     watch_import(data_dir.clone());
-    watch_unread(
-        data_dir.join("unread"),
+    watch_entries(
+        data_dir.join("entries"),
         priority_tx.clone(),
         background_tx.clone(),
-        tracker,
+        cache,
     );
-    watch_read(data_dir.join("read"), priority_tx.clone());
     watch_topics(data_dir.join("topics"), priority_tx, background_tx.clone());
     watch_archived(data_dir.join("archived"), background_tx);
 }
 
-fn watch_unread(
+fn watch_entries(
     dir: PathBuf,
     priority_tx: flume::Sender<PriorityMsg>,
     background_tx: flume::Sender<BackgroundMsg>,
-    tracker: UnreadTracker,
+    cache: EntryStateCache,
 ) {
     std::thread::spawn(move || {
         if let Err(e) = std::fs::create_dir_all(&dir) {
@@ -63,22 +61,31 @@ fn watch_unread(
                         };
                         match event.kind {
                             EventKind::Create(_) => {
-                                log::debug!("file_watchers: unread create → background embed {id}");
-                                tracker.add(id);
+                                log::debug!("file_watchers: entries create → background embed {id}");
+                                if let Ok(raw) = std::fs::read_to_string(path) {
+                                    if let Some(fm) = xaga_core::util::parse_frontmatter(&raw) {
+                                        cache.update(xaga_core::entries::entry_from_fm(id.to_string(), fm));
+                                    }
+                                }
                                 let _ = background_tx.send(BackgroundMsg::Embed(id.to_string()));
                             }
                             EventKind::Modify(_) => {
                                 if path.exists() {
-                                    log::debug!("file_watchers: unread modify → priority embed {id}");
+                                    log::debug!("file_watchers: entries modify → priority embed {id}");
+                                    if let Ok(raw) = std::fs::read_to_string(path) {
+                                        if let Some(fm) = xaga_core::util::parse_frontmatter(&raw) {
+                                            cache.update(xaga_core::entries::entry_from_fm(id.to_string(), fm));
+                                        }
+                                    }
                                     let _ = priority_tx.send(PriorityMsg::Embed(id.to_string()));
                                 } else {
-                                    log::debug!("file_watchers: unread rename-out → tracker remove {id}");
-                                    tracker.remove(id);
+                                    log::debug!("file_watchers: entries rename-out → cache remove {id}");
+                                    cache.remove(id);
                                 }
                             }
                             EventKind::Remove(_) => {
-                                log::debug!("file_watchers: unread remove → tracker remove {id}");
-                                tracker.remove(id);
+                                log::debug!("file_watchers: entries remove → cache remove {id}");
+                                cache.remove(id);
                             }
                             _ => {}
                         }
@@ -88,61 +95,13 @@ fn watch_unread(
         ) {
             Ok(d) => d,
             Err(e) => {
-                log::error!("file_watchers: unread debouncer init failed: {e}");
+                log::error!("file_watchers: entries debouncer init failed: {e}");
                 return;
             }
         };
 
         if let Err(e) = debouncer.watcher().watch(&dir, RecursiveMode::NonRecursive) {
-            log::error!("file_watchers: unread watch failed: {e}");
-            return;
-        }
-
-        std::thread::park();
-    });
-}
-
-fn watch_read(
-    dir: PathBuf,
-    priority_tx: flume::Sender<PriorityMsg>,
-) {
-    std::thread::spawn(move || {
-        if let Err(e) = std::fs::create_dir_all(&dir) {
-            log::error!("file_watchers: cannot create {}: {e}", dir.display());
-            return;
-        }
-
-        let mut debouncer = match new_debouncer(
-            Duration::from_millis(200),
-            None,
-            move |result: notify_debouncer_full::DebounceEventResult| {
-                let Ok(events) = result else { return };
-
-                for event in events {
-                    for path in &event.paths {
-                        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-                            continue;
-                        }
-                        let Some(id) = path.file_stem().and_then(|s| s.to_str()) else {
-                            continue;
-                        };
-                        if matches!(event.kind, EventKind::Modify(_)) {
-                            log::debug!("file_watchers: read modify → priority embed {id}");
-                            let _ = priority_tx.send(PriorityMsg::Embed(id.to_string()));
-                        }
-                    }
-                }
-            },
-        ) {
-            Ok(d) => d,
-            Err(e) => {
-                log::error!("file_watchers: read debouncer init failed: {e}");
-                return;
-            }
-        };
-
-        if let Err(e) = debouncer.watcher().watch(&dir, RecursiveMode::NonRecursive) {
-            log::error!("file_watchers: read watch failed: {e}");
+            log::error!("file_watchers: entries watch failed: {e}");
             return;
         }
 
@@ -212,7 +171,7 @@ fn watch_topics(
 
 fn watch_import(data_dir: PathBuf) {
     let import_dir = data_dir.join("import");
-    let unread_dir = data_dir.join("unread");
+    let entries_dir = data_dir.join("entries");
     let spill_dir = data_dir.join("spill");
 
     std::thread::spawn(move || {
@@ -249,7 +208,7 @@ fn watch_import(data_dir: PathBuf) {
                             continue;
                         }
 
-                        process_import(path, &import_dir, &unread_dir, &spill_dir);
+                        process_import(path, &import_dir, &entries_dir, &spill_dir);
                     }
                 }
             },
@@ -283,7 +242,7 @@ fn watch_import(data_dir: PathBuf) {
 fn process_import(
     path: &std::path::Path,
     import_dir: &std::path::Path,
-    unread_dir: &std::path::Path,
+    entries_dir: &std::path::Path,
     spill_dir: &std::path::Path,
 ) {
     let raw = match std::fs::read_to_string(path) {
@@ -325,7 +284,7 @@ fn process_import(
     };
 
     let hash = xaga_core::util::url_hash12(&normalized);
-    let dest = unread_dir.join(format!("{hash}.md"));
+    let dest = entries_dir.join(format!("{hash}.md"));
 
     if dest.exists() {
         log::warn!(
@@ -336,15 +295,49 @@ fn process_import(
         return;
     }
 
-    if let Err(e) = std::fs::rename(path, &dest) {
+    // Ensure the unread tag is present so imported files appear as unread.
+    let (doc_fm, body) = match xaga_core::util::parse_document(&raw) {
+        Some(pair) => pair,
+        None => {
+            move_to_spill(path, import_dir, spill_dir);
+            return;
+        }
+    };
+    let mut tags = doc_fm.tags.clone();
+    if !tags.contains(&"unread".to_string()) {
+        tags.push("unread".to_string());
+    }
+    let content = xaga_core::entries::render_entry(
+        &doc_fm.source,
+        &doc_fm.title,
+        &doc_fm.created_at,
+        doc_fm.published_at.as_deref(),
+        doc_fm.updated_at.as_deref(),
+        doc_fm.summary.as_deref(),
+        &doc_fm.annotations,
+        &tags,
+        &body,
+    );
+
+    if let Err(e) = std::fs::create_dir_all(entries_dir) {
+        log::error!("file_watchers: import mkdir entries: {e}");
+        move_to_spill(path, import_dir, spill_dir);
+        return;
+    }
+
+    if let Err(e) = std::fs::write(&dest, content.as_bytes()) {
         log::error!(
-            "file_watchers: import rename {} → unread/{hash}.md: {e}",
-            path.display()
+            "file_watchers: import write entries/{hash}.md: {e}",
         );
         move_to_spill(path, import_dir, spill_dir);
+        return;
+    }
+
+    if let Err(e) = std::fs::remove_file(path) {
+        log::warn!("file_watchers: import cleanup {}: {e}", path.display());
     } else {
         log::debug!(
-            "file_watchers: import {} → unread/{hash}.md",
+            "file_watchers: import {} → entries/{hash}.md",
             path.display()
         );
     }

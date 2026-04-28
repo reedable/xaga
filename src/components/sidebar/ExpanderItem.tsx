@@ -6,9 +6,12 @@ import {
   ListItemIcon,
   ListItemText,
 } from "@mui/material";
+import { motion } from "framer-motion";
 import type { ElementType, ReactNode } from "react";
 import type { Item } from "../../types";
 import cx from "../../utils/cx";
+
+const MotionListItem = motion(ListItem);
 
 export interface ExpanderItemProps {
   className?: string;
@@ -30,8 +33,9 @@ export default function ExpanderItem({
   renderSecondaryAction,
 }: ExpanderItemProps) {
   return (
-    <ListItem
-      key={item.id}
+    <MotionListItem
+      layout
+      transition={{ duration: 0.3, ease: "easeOut" }}
       disablePadding
       secondaryAction={renderSecondaryAction?.(item)}
     >
@@ -53,6 +57,6 @@ export default function ExpanderItem({
           primaryTypographyProps={{ variant: "body2", noWrap: true }}
         />
       </ListItemButton>
-    </ListItem>
+    </MotionListItem>
   );
 }

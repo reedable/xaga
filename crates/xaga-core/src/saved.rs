@@ -4,7 +4,6 @@ use thiserror::Error;
 
 use crate::embeddings::{EmbeddingsDb, EmbeddingsError};
 use crate::entries::EntryError;
-use crate::filter;
 use crate::types::SavedItem;
 
 #[derive(Debug, Error)]
@@ -20,9 +19,8 @@ pub enum SavedError {
 ///
 /// Bookmarks have `reference` and `color` absent; annotations have both set.
 pub async fn list_saved(data_dir: &Path) -> Result<Vec<SavedItem>, SavedError> {
-    let unread = filter::unread_ids(data_dir).await;
     let (entries_result, annotations_result) = tokio::join!(
-        crate::entries::list_entries(data_dir, &unread),
+        crate::entries::list_entries(data_dir),
         async {
             let db = EmbeddingsDb::open(data_dir).await?;
             db.list_annotations().await

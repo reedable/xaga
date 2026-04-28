@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { usePlatform } from "../platform/Platform";
-import type { Feed } from "../types";
+import type { Entry, Feed } from "../types";
 
 export function useEvents() {
   const platform = usePlatform();
@@ -16,8 +16,18 @@ export function useEvents() {
   );
 
   const onUnreadChanged = useCallback(
-    (callback: () => void) => {
+    (callback: (entry: Entry) => void) => {
       const unlistenPromise = platform.onUnreadChanged(callback);
+      return () => {
+        unlistenPromise.then((unlisten) => unlisten());
+      };
+    },
+    [platform],
+  );
+
+  const onBookmarkChanged = useCallback(
+    (callback: (entry: Entry) => void) => {
+      const unlistenPromise = platform.onBookmarkChanged(callback);
       return () => {
         unlistenPromise.then((unlisten) => unlisten());
       };
@@ -38,6 +48,7 @@ export function useEvents() {
   return {
     onFeedRefreshed,
     onUnreadChanged,
+    onBookmarkChanged,
     onEmbeddingsChanged,
   };
 }

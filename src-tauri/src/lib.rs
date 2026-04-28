@@ -5,9 +5,8 @@ mod file_watchers;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
-use xaga_core::unread::UnreadTracker;
-
 use serde::{Deserialize, Serialize};
+use xaga_core::entry_cache::EntryStateCache;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 use xaga_core::embeddings::{EmbeddingService, EmbeddingsError, ShutdownReason};
@@ -24,7 +23,7 @@ pub(crate) struct AppState {
     pub(crate) reader_line_height: Arc<RwLock<f64>>,
     pub(crate) embedding_service: Arc<Mutex<Option<EmbeddingService>>>,
     pub(crate) http_client: reqwest::Client,
-    pub(crate) unread_tracker: Arc<Mutex<Option<UnreadTracker>>>,
+    pub(crate) entry_cache: Arc<Mutex<Option<EntryStateCache>>>,
 }
 
 pub(crate) fn feeds_dir(library: &Path) -> PathBuf {
@@ -32,12 +31,11 @@ pub(crate) fn feeds_dir(library: &Path) -> PathBuf {
 }
 
 pub(crate) fn get_unread(state: &AppState) -> std::collections::HashSet<String> {
-    state.unread_tracker
-        .lock()
-        .unwrap()
-        .as_ref()
-        .map(|t| t.snapshot())
-        .unwrap_or_default()
+    state.entry_cache.lock().unwrap().as_ref().map(|c| c.unread_snapshot()).unwrap_or_default()
+}
+
+pub(crate) fn get_bookmarked(state: &AppState) -> std::collections::HashSet<String> {
+    state.entry_cache.lock().unwrap().as_ref().map(|c| c.bookmarked_snapshot()).unwrap_or_default()
 }
 
 // ── Settings helpers ───────────────────────────────────────────────────────────
@@ -114,8 +112,8 @@ pub fn run() {
     let reader_font_size: Arc<RwLock<f64>> = Arc::new(RwLock::new(16.0));
     let reader_line_height: Arc<RwLock<f64>> = Arc::new(RwLock::new(1.75));
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
-    let unread_tracker: Arc<Mutex<Option<UnreadTracker>>> = Arc::new(Mutex::new(None));
-    let setup_unread_tracker = Arc::clone(&unread_tracker);
+    let entry_cache: Arc<Mutex<Option<EntryStateCache>>> = Arc::new(Mutex::new(None));
+    let setup_entry_cache = Arc::clone(&entry_cache);
     let setup_library = Arc::clone(&library);
     let setup_theme = Arc::clone(&theme);
     let setup_refresh_on_startup = Arc::clone(&refresh_on_startup);
@@ -137,7 +135,7 @@ pub fn run() {
             reader_line_height,
             embedding_service: embedding_service.clone(),
             http_client,
-            unread_tracker,
+            entry_cache,
         })
         .manage(article_loader::PendingRequests::default())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -380,27 +378,35 @@ pub fn run() {
                     log::error!("startup: model download failed: {e}");
                 }
 
+                let cache = EntryStateCache::new(&lib_path).await;
+                *setup_entry_cache.lock().unwrap() = Some(cache.clone());
+
+                let unread_app_handle = app_handle.clone();
+                let mut unread_rx = cache.subscribe_unread();
+                tauri::async_runtime::spawn(async move {
+                    while let Ok(entry) = unread_rx.recv().await {
+                        unread_app_handle.emit("unread:changed", &entry).ok();
+                    }
+                });
+
+                let bookmarked_app_handle = app_handle.clone();
+                let mut bookmarked_rx = cache.subscribe_bookmarked();
+                tauri::async_runtime::spawn(async move {
+                    while let Ok(entry) = bookmarked_rx.recv().await {
+                        bookmarked_app_handle.emit("bookmark:changed", &entry).ok();
+                    }
+                });
+
                 match EmbeddingService::start(lib_path.clone()).await {
                     Ok(svc) => {
-                        let tracker = UnreadTracker::new(&lib_path).await;
-                        *setup_unread_tracker.lock().unwrap() = Some(tracker.clone());
-                        let notify = tracker.subscribe();
-
                         file_watchers::watch(
                             lib_path.clone(),
                             svc.priority_sender(),
                             svc.background_sender(),
-                            tracker,
+                            cache,
                         );
 
                         let embeddings_app_handle = app_handle.clone();
-                        tauri::async_runtime::spawn(async move {
-                            loop {
-                                notify.notified().await;
-                                app_handle.emit("unread:changed", ()).ok();
-                            }
-                        });
-
                         let priority_drained_rx = svc.subscribe_to_priority_drained();
                         tauri::async_runtime::spawn(async move {
                             loop {

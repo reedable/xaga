@@ -15,27 +15,6 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
   const { error, loading, loadingSet, setLoading, setLoadingSet, setError } =
     context;
 
-  const listFeeds = useCallback(
-    async (compare?: (a: Feed, b: Feed) => number) => {
-      const signal = abortControllerRef.current.signal;
-      setLoading(true);
-
-      try {
-        if (compare) {
-          const results = await platform.listFeeds(signal);
-          return results?.sort(compare);
-        }
-
-        return platform.listFeeds(signal);
-      } catch (e) {
-        setError(e);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [abortControllerRef, platform, setError, setLoading],
-  );
-
   const refreshFeed = useCallback(
     async (feedId: string) => {
       const signal = abortControllerRef.current.signal;
@@ -163,7 +142,6 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
     error,
     loading,
     loadingSet,
-    listFeeds,
     addFeed,
     importFeeds,
     exportFeeds,

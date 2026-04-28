@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
@@ -20,7 +19,7 @@ pub enum EntryError {
 
 // ── Frontmatter rendering ─────────────────────────────────────────────────────
 
-pub(crate) fn render_entry(
+pub fn render_entry(
     source: &str,
     title: &str,
     created_at: &str,
@@ -70,10 +69,11 @@ pub(crate) fn render_entry(
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
 pub(crate) fn entry_path(data_dir: &Path, hash12: &str) -> PathBuf {
-    data_dir.join("unread").join(format!("{hash12}.md"))
+    data_dir.join("entries").join(format!("{hash12}.md"))
 }
 
-pub(crate) fn entry_from_fm(id: String, fm: crate::util::Frontmatter, is_unread: bool) -> Entry {
+pub fn entry_from_fm(id: String, fm: crate::util::Frontmatter) -> Entry {
+    let is_unread = fm.tags.contains(&"unread".to_string());
     let is_bookmarked = fm.tags.contains(&"bookmark".to_string());
     Entry {
         id,
@@ -95,7 +95,7 @@ pub(crate) fn entry_from_fm(id: String, fm: crate::util::Frontmatter, is_unread:
 /// Use this only for directory-level operations (scanning, watching).
 /// To locate a specific entry by id, use [`find_entry_path`] instead.
 pub fn entry_dirs(library: &Path) -> Vec<PathBuf> {
-    vec![library.join("unread"), library.join("read")]
+    vec![library.join("entries")]
 }
 
 /// Finds the current path of an entry by id, checking all entry directories in order.
@@ -110,8 +110,8 @@ pub async fn find_entry_path(data_dir: &Path, id: &str) -> Option<PathBuf> {
     None
 }
 
-/// Writes a new Entry to `unread/{hash12}.md`. Called by
-/// `reconcile_atom_file` when a feed entry has no local file yet.
+/// Writes a new Entry to `entries/{hash12}.md` with the `unread` tag.
+/// Called by `reconcile_atom_file` when a feed entry has no local file yet.
 pub async fn write_entry(
     data_dir: &Path,
     url: &str,
@@ -125,13 +125,14 @@ pub async fn write_entry(
     let path = entry_path(data_dir, &hash12);
 
     let created_at = Utc::now().to_rfc3339();
-    let content = render_entry(&normalized, title, &created_at, published_at, updated_at, summary, &[], &[], "");
+    let tags = vec!["unread".to_string()];
+    let content = render_entry(&normalized, title, &created_at, published_at, updated_at, summary, &[], &tags, "");
     tokio::fs::create_dir_all(path.parent().unwrap()).await?;
     tokio::fs::write(&path, content.as_bytes()).await?;
     Ok(path)
 }
 
-/// Writes a new Entry to `read/{hash12}.md` with the given tags.
+/// Writes a new Entry to `entries/{hash12}.md` without the `unread` tag (already read).
 /// If an Entry already exists at that path it is left untouched and the
 /// existing id is returned. The caller is responsible for queuing an embed.
 pub async fn write_read_entry(
@@ -146,7 +147,7 @@ pub async fn write_read_entry(
 ) -> Result<String, EntryError> {
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
-    let path = crate::articles::article_path(data_dir, &hash12);
+    let path = entry_path(data_dir, &hash12);
 
     if !tokio::fs::try_exists(&path).await? {
         let content = render_entry(&normalized, title, created_at, published_at, updated_at, summary, &[], tags, "");
@@ -157,41 +158,14 @@ pub async fn write_read_entry(
     Ok(hash12)
 }
 
-/// Moves the entry to `read/{hash12}.md` regardless of which directory it currently lives in.
-/// Returns the updated Entry with `is_unread = false`.
-pub async fn mark_entry_read(data_dir: &Path, id: &str) -> Result<Entry, EntryError> {
-    let dest = crate::articles::article_path(data_dir, id);
-    let src = find_entry_path(data_dir, id).await.ok_or(EntryError::NotFound)?;
-    if src != dest {
-        tokio::fs::create_dir_all(dest.parent().unwrap()).await?;
-        tokio::fs::rename(&src, &dest).await?;
-    }
-    let raw = tokio::fs::read_to_string(&dest).await?;
-    let fm = crate::util::parse_frontmatter(&raw).ok_or(EntryError::NotFound)?;
-    Ok(entry_from_fm(id.to_string(), fm, false))
-}
 
-/// Moves the entry to `unread/{hash12}.md` regardless of which directory it currently lives in.
-/// Returns the updated Entry with `is_unread = true`.
-pub async fn mark_entry_unread(data_dir: &Path, id: &str) -> Result<Entry, EntryError> {
-    let dest = entry_path(data_dir, id);
-    let src = find_entry_path(data_dir, id).await.ok_or(EntryError::NotFound)?;
-    if src != dest {
-        tokio::fs::create_dir_all(dest.parent().unwrap()).await?;
-        tokio::fs::rename(&src, &dest).await?;
-    }
-    let raw = tokio::fs::read_to_string(&dest).await?;
-    let fm = crate::util::parse_frontmatter(&raw).ok_or(EntryError::NotFound)?;
-    Ok(entry_from_fm(id.to_string(), fm, true))
-}
 
 /// Reads an entry by id and returns its metadata. Does not modify the file.
 pub async fn read_entry(data_dir: &Path, id: &str) -> Result<Entry, EntryError> {
     let path = find_entry_path(data_dir, id).await.ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
     let fm = parse_frontmatter(&raw).ok_or(EntryError::NotFound)?;
-    let is_unread = path.parent().map_or(false, |p| p.ends_with("unread"));
-    Ok(entry_from_fm(id.to_string(), fm, is_unread))
+    Ok(entry_from_fm(id.to_string(), fm))
 }
 
 /// Replaces the tags on an entry's frontmatter and writes the file back.
@@ -200,7 +174,6 @@ pub async fn set_entry_tags(data_dir: &Path, id: &str, tags: Vec<String>) -> Res
     let path = find_entry_path(data_dir, id).await.ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = crate::util::parse_document(&raw).ok_or(EntryError::NotFound)?;
-    let is_unread = path.parent().map_or(false, |p| p.ends_with("unread"));
     let content = render_entry(
         &fm.source,
         &fm.title,
@@ -213,6 +186,7 @@ pub async fn set_entry_tags(data_dir: &Path, id: &str, tags: Vec<String>) -> Res
         &body,
     );
     tokio::fs::write(&path, content.as_bytes()).await?;
+    let is_unread = tags.contains(&"unread".to_string());
     let is_bookmarked = tags.contains(&"bookmark".to_string());
     Ok(Entry {
         id: id.to_string(),
@@ -228,9 +202,9 @@ pub async fn set_entry_tags(data_dir: &Path, id: &str, tags: Vec<String>) -> Res
     })
 }
 
-/// Returns a summary for every entry in both `read/` and `unread/`.
-/// Results are sorted by source URL.
-pub async fn list_entries(data_dir: &Path, unread: &HashSet<String>) -> Result<Vec<Entry>, EntryError> {
+/// Returns a summary for every entry in `entries/`.
+/// `is_unread` is derived from each file's frontmatter tags.
+pub async fn list_entries(data_dir: &Path) -> Result<Vec<Entry>, EntryError> {
     let mut entries: Vec<Entry> = Vec::new();
 
     for dir in entry_dirs(data_dir) {
@@ -245,12 +219,11 @@ pub async fn list_entries(data_dir: &Path, unread: &HashSet<String>) -> Result<V
             }
             let raw = tokio::fs::read_to_string(&path).await?;
             if let Some(fm) = parse_frontmatter(&raw) {
-                entries.push(entry_from_fm(crate::util::item_id(&path), fm, false));
+                entries.push(entry_from_fm(crate::util::item_id(&path), fm));
             }
         }
     }
 
-    crate::filter::annotate_unread_status(unread, &mut entries);
     entries.sort_by(|a, b| a.url.cmp(&b.url));
     Ok(entries)
 }

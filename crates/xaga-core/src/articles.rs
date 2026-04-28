@@ -20,7 +20,7 @@ fn with_reference(mut annotations: Vec<Annotation>, article_id: &str) -> Vec<Ann
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
 pub(crate) fn article_path(data_dir: &Path, hash12: &str) -> PathBuf {
-    data_dir.join("read").join(format!("{hash12}.md"))
+    data_dir.join("entries").join(format!("{hash12}.md"))
 }
 
 
@@ -44,10 +44,10 @@ pub async fn save_article(
     let (path, file_exists) = match find_entry_path(data_dir, id).await {
         Some(p) => (p, true),
         None => {
-            // No existing file (e.g. bookmark with no synced entry) — create in read/.
-            let read_path = article_path(data_dir, id);
-            tokio::fs::create_dir_all(read_path.parent().unwrap()).await?;
-            (read_path, false)
+            // No existing file (e.g. bookmark with no synced entry) — create in entries/.
+            let entries_path = article_path(data_dir, id);
+            tokio::fs::create_dir_all(entries_path.parent().unwrap()).await?;
+            (entries_path, false)
         }
     };
 
@@ -60,8 +60,6 @@ pub async fn save_article(
     } else {
         (chrono::Utc::now().to_rfc3339(), vec![], vec![])
     };
-
-    let is_unread = path.parent().map_or(false, |p| p.ends_with("unread"));
 
     let content = render_entry(
         &normalized,
@@ -76,6 +74,7 @@ pub async fn save_article(
     );
     tokio::fs::write(&path, content.as_bytes()).await?;
 
+    let is_unread = existing_tags.contains(&"unread".to_string());
     let is_bookmarked = existing_tags.contains(&"bookmark".to_string());
     Ok(Article {
         meta: crate::entries::Entry {
@@ -135,11 +134,10 @@ pub async fn read_article(
 
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
-    let is_unread = path.parent().map_or(false, |p| p.ends_with("unread"));
     let annotations = fm.annotations.clone();
 
     Ok(Article {
-        meta: entry_from_fm(id.to_string(), fm, is_unread),
+        meta: entry_from_fm(id.to_string(), fm),
         content: body,
         annotations: with_reference(annotations, id),
     })
@@ -155,7 +153,6 @@ pub async fn add_annotation(
     let path = find_entry_path(data_dir, article_id).await.ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
-    let is_unread = path.parent().map_or(false, |p| p.ends_with("unread"));
 
     let mut annotations = fm.annotations.clone();
     if let Some(pos) = annotations.iter().position(|a| a.id == annotation.id) {
@@ -186,7 +183,7 @@ pub async fn add_annotation(
     // keyed by annotation id, combining the highlighted text and the user note into one embedding.
 
     Ok(Article {
-        meta: entry_from_fm(article_id.to_string(), fm, is_unread),
+        meta: entry_from_fm(article_id.to_string(), fm),
         content: body,
         annotations: with_reference(annotations, article_id),
     })
@@ -201,7 +198,6 @@ pub async fn remove_annotation(
     let path = find_entry_path(data_dir, article_id).await.ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
-    let is_unread = path.parent().map_or(false, |p| p.ends_with("unread"));
 
     let annotations: Vec<Annotation> = fm.annotations
         .iter()
@@ -223,7 +219,7 @@ pub async fn remove_annotation(
     tokio::fs::write(&path, content.as_bytes()).await?;
 
     Ok(Article {
-        meta: entry_from_fm(article_id.to_string(), fm, is_unread),
+        meta: entry_from_fm(article_id.to_string(), fm),
         content: body,
         annotations: with_reference(annotations, article_id),
     })

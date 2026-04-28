@@ -7,28 +7,6 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
-  // TODO Pass optional sorting logic to it?
-  const listTopics = useCallback(
-    async (compare?: (a: Topic, b: Topic) => number) => {
-      const signal = abortControllerRef.current.signal;
-      setLoading(true);
-
-      try {
-        if (compare) {
-          const results = await platform.listTopics(signal);
-          return results?.sort(compare);
-        }
-
-        return await platform.listTopics(signal);
-      } catch (e) {
-        setError(e);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [abortControllerRef, platform],
-  );
-
   const createTopic = useCallback(
     async (
       topic: Omit<Topic, "id" | "createdAt" | "unreadCount" | "entryCount">,
@@ -82,5 +60,5 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     [abortControllerRef, platform],
   );
 
-  return { error, loading, createTopic, deleteTopic, listTopics, saveTopic };
+  return { error, loading, createTopic, deleteTopic, saveTopic };
 }

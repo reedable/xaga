@@ -5,7 +5,7 @@ use xaga_core::embeddings::BackgroundMsg;
 use xaga_core::entries;
 use xaga_core::types::Entry;
 
-use crate::{get_unread, AppState};
+use crate::AppState;
 use super::require_main_window;
 
 #[derive(Serialize)]
@@ -40,7 +40,7 @@ pub async fn remove_bookmark(
     window: tauri::Window,
     id: String,
     state: State<'_, AppState>,
-) -> Result<String, String> {
+) -> Result<entries::Entry, String> {
     require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     let current = entries::read_entry(&data_dir, &id)
@@ -49,15 +49,13 @@ pub async fn remove_bookmark(
     let tags: Vec<String> = current.tags.into_iter().filter(|t| t != "bookmark").collect();
     entries::set_entry_tags(&data_dir, &id, tags)
         .await
-        .map_err(|e| e.to_string())?;
-    Ok(id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn list_bookmarks(state: State<'_, AppState>) -> Result<Vec<Entry>, String> {
     let data_dir = state.library.read().unwrap().clone();
-    let unread = get_unread(&state);
-    let mut entries = entries::list_entries(&data_dir, &unread)
+    let mut entries = entries::list_entries(&data_dir)
         .await
         .map_err(|e| e.to_string())?;
     entries.retain(|e| e.is_bookmarked);
@@ -79,11 +77,9 @@ pub async fn import_bookmarks(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Normally the file watcher queues embed messages when .md files are
-    // created or modified. Imported bookmarks are written directly to read/,
-    // which is intentionally not watched for creates (entries arriving there
-    // via rename from unread/ are already indexed). We queue explicitly here
-    // to avoid adding that unnecessary watch.
+    // The file watcher queues embed messages for entries/ on modify events,
+    // but import writes files directly without going through the watcher path.
+    // Queue explicitly here so imported bookmarks get indexed.
     {
         let svc = state.embedding_service.lock().unwrap();
         if let Some(svc) = svc.as_ref() {

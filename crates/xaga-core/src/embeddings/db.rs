@@ -224,6 +224,7 @@ impl<'a> BatchSummaryColumns<'a> {
             })
         }
         let tags = self.tags_at(i);
+        let is_unread = tags.contains(&"unread".to_string());
         let is_bookmarked = tags.contains(&"bookmark".to_string());
         Entry {
             id: self.ids.value(i).to_string(),
@@ -233,7 +234,7 @@ impl<'a> BatchSummaryColumns<'a> {
             published_at: opt_str(self.published_ats, i),
             updated_at: opt_str(self.updated_ats, i),
             summary: None,
-            is_unread: false,
+            is_unread,
             is_bookmarked,
             tags,
         }

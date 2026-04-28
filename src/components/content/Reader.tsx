@@ -198,7 +198,7 @@ export function Reader({
         sandbox="allow-scripts"
         style={{
           width: "100%",
-          height: "calc(100vh - 150px)",
+          height: "100%",
           border: "none",
           display: "block",
         }}

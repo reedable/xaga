@@ -19,6 +19,7 @@ pub async fn list_entries(
     url: Option<&str>,
     item_filter: ItemFilter,
     unread: &HashSet<String>,
+    bookmarked: &HashSet<String>,
 ) -> Result<Vec<Entry>> {
     let feeds_dir = library.join("feeds");
     let mut entries = Vec::new();
@@ -54,7 +55,9 @@ pub async fn list_entries(
         }
     }
 
-    let mut items = crate::filter::filter_items(library, entries, &item_filter, unread)
+    crate::filter::annotate_unread_status(unread, &mut entries);
+    crate::filter::annotate_bookmarked_status(bookmarked, &mut entries);
+    let mut items = crate::filter::filter_items(library, entries, &item_filter)
         .await
         .map_err(FeedError::Io)?;
     crate::filter::sort_items(&mut items, &item_filter);

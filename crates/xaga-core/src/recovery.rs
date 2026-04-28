@@ -59,9 +59,9 @@ async fn scan_dir(dir: &Path, fs_entries: &mut HashMap<String, (PathBuf, String)
 
 // ── Public plan builder ───────────────────────────────────────────────────────
 
-/// Scans `{data_dir}/topics/` and `{data_dir}/articles/` and compares against
+/// Scans `{data_dir}/topics/` and `{data_dir}/entries/` and compares against
 /// LanceDB.  Topics entries appear first in `to_embed` so they are indexed
-/// before articles.
+/// before entries.
 ///
 /// Call `reconcile_feed_entries` before this so that Entry exist on
 /// disk before the articles directory is scanned.

@@ -9,7 +9,6 @@ import { useFeeds } from "./hooks/useFeeds";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
-import { BookmarksProvider } from "./providers/BookmarksProvider";
 import { ALL_ITEMS } from "./Shortcuts";
 import { isFeed, isShortcut, isTopic, type Feed, type Filter, type Item, type Topic } from "./types";
 import { Collapse } from "@mui/material";
@@ -71,54 +70,52 @@ function App() {
         <div className={css.ShutdownOverlay}>Saving data, please wait…</div>
       )}
 
-      <BookmarksProvider>
-        <div className={css.Root}>
-          <TitleBar
-            className={css.TitleBar}
-            onSearchQueryChange={setSearchQuery}
+      <div className={css.Root}>
+        <TitleBar
+          className={css.TitleBar}
+          onSearchQueryChange={setSearchQuery}
+        />
+
+        <div className={css.App}>
+          <Sidebar
+            className={css.Sidebar}
+            selectedList={selectedList}
+            onSelectList={handleSelectList}
+            editingFeed={editingFeed}
+            onSetEditingFeed={setEditingFeed}
+            editingTopic={editingTopic}
+            onSetEditingTopic={setEditingTopic}
           />
 
-          <div className={css.App}>
-            <Sidebar
-              className={css.Sidebar}
-              selectedList={selectedList}
-              onSelectList={handleSelectList}
-              editingFeed={editingFeed}
-              onSetEditingFeed={setEditingFeed}
-              editingTopic={editingTopic}
-              onSetEditingTopic={setEditingTopic}
-            />
+          <ItemList
+            className={css.ItemList}
+            selectedCollection={selectedList}
+            selectedFilter={selectedFilter}
+            onSelectItem={setSelectedItem}
+            onFilterChange={setSelectedFilter}
+            onEdit={
+              isFeed(selectedList) ? () => setEditingFeed(selectedList) :
+                isTopic(selectedList) ? () => setEditingTopic(selectedList) :
+                  undefined
+            }
+          />
 
-            <ItemList
-              className={css.ItemList}
-              selectedList={selectedList}
-              selectedFilter={selectedFilter}
+          <ItemView
+            className={css.ItemView}
+            selectedItem={selectedItem}
+            onSelectRelatedItem={setSelectedItem}
+            onChangeItem={handleChangeItem}
+          />
+
+          <Collapse in={!!searchQuery} orientation="horizontal">
+            <SearchResultList
+              className={css.SearchResultList}
+              searchQuery={searchQuery}
               onSelectItem={setSelectedItem}
-              onFilterChange={setSelectedFilter}
-              onEdit={
-                isFeed(selectedList) ? () => setEditingFeed(selectedList) :
-                  isTopic(selectedList) ? () => setEditingTopic(selectedList) :
-                    undefined
-              }
             />
-
-            <ItemView
-              className={css.ItemView}
-              selectedItem={selectedItem}
-              onSelectRelatedItem={setSelectedItem}
-              onChangeItem={handleChangeItem}
-            />
-
-            <Collapse in={!!searchQuery} orientation="horizontal">
-              <SearchResultList
-                className={css.SearchResultList}
-                searchQuery={searchQuery}
-                onSelectItem={setSelectedItem}
-              />
-            </Collapse>
-          </div>
+          </Collapse>
         </div>
-      </BookmarksProvider>
+      </div>
     </>
   );
 }
