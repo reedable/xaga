@@ -79,6 +79,30 @@ pub async fn query_by_annotations(
 }
 
 #[tauri::command]
+pub async fn query_by_saved(
+    item_filter: Option<String>,
+    min_similarity: Option<f32>,
+    max_similarity: Option<f32>,
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> Result<Vec<EmbeddedEntry>, String> {
+    let library = state.library.read().unwrap().clone();
+    let item_filter = parse_item_filter(item_filter)?;
+    let result = item::list_embedded_items(
+        &library,
+        EmbeddedItemSource::RelatedToSaved { limit, min_similarity, max_similarity },
+        item_filter,
+    )
+    .await
+    .map_err(|e| e.to_string());
+    match &result {
+        Ok(entries) => log::debug!("query_by_saved: ok ({} entries)", entries.len()),
+        Err(e) => log::debug!("query_by_saved: err — {e}"),
+    }
+    result
+}
+
+#[tauri::command]
 pub async fn query_by_topics(
     item_filter: Option<String>,
     min_similarity: Option<f32>,

@@ -6,6 +6,12 @@ use tokio::sync::broadcast;
 
 use crate::types::Entry;
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CacheSnapshot {
+    unread: HashSet<String>,
+    bookmarked: HashSet<String>,
+}
+
 /// In-memory cache of entry tag state, built at startup and kept current by
 /// the file watcher. Cloning is cheap — all clones share the same data.
 #[derive(Clone)]
@@ -17,11 +23,69 @@ pub struct EntryStateCache {
 }
 
 impl EntryStateCache {
-    /// Scans `data_dir/entries/` once and returns a fully populated cache.
-    pub async fn new(data_dir: &Path) -> Self {
-        let mut unread = HashSet::new();
-        let mut bookmarked = HashSet::new();
+    /// Returns a populated cache and a flag indicating whether a background
+    /// cache recovery pass is needed. If a snapshot exists, seeds from it and
+    /// returns immediately with `needs_recovery = true`. Otherwise runs a full
+    /// blocking scan and returns with `needs_recovery = false`.
+    pub async fn new(data_dir: &Path) -> (Self, bool) {
+        let (unread, bookmarked, needs_recovery) = match load_snapshot(data_dir).await {
+            Some((unread, bookmarked)) => (unread, bookmarked, true),
+            None => {
+                let (mut unread, mut bookmarked) = (HashSet::new(), HashSet::new());
+                let entries_dir = data_dir.join("entries");
+                if let Ok(mut dir) = tokio::fs::read_dir(&entries_dir).await {
+                    while let Ok(Some(dirent)) = dir.next_entry().await {
+                        let path = dirent.path();
+                        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+                            continue;
+                        }
+                        let Some(stem) = path.file_stem().and_then(|s| s.to_str().map(str::to_string)) else {
+                            continue;
+                        };
+                        if let Ok(raw) = tokio::fs::read_to_string(&path).await {
+                            if let Some(fm) = crate::util::parse_frontmatter(&raw) {
+                                if fm.tags.contains(&"unread".to_string()) {
+                                    unread.insert(stem.clone());
+                                } else {
+                                    unread.remove(&stem);
+                                }
+                                if fm.tags.contains(&"bookmark".to_string()) {
+                                    bookmarked.insert(stem.clone());
+                                } else {
+                                    bookmarked.remove(&stem);
+                                }
+                            }
+                        }
+                    }
+                }
+                (unread, bookmarked, false)
+            }
+        };
 
+        let (unread_tx, _) = broadcast::channel(256);
+        let (bookmarked_tx, _) = broadcast::channel(256);
+
+        let cache = Self {
+            unread: Arc::new(RwLock::new(unread)),
+            bookmarked: Arc::new(RwLock::new(bookmarked)),
+            unread_tx: Arc::new(unread_tx),
+            bookmarked_tx: Arc::new(bookmarked_tx),
+        };
+        (cache, needs_recovery)
+    }
+
+    /// Parses `raw` as a frontmatter document and calls `update()`. Convenience
+    /// for callers (file watcher, recovery) that already have the file contents.
+    pub fn update_from_raw(&self, id: &str, raw: &str) {
+        if let Some(fm) = crate::util::parse_frontmatter(raw) {
+            self.update(crate::entries::entry_from_fm(id.to_string(), fm));
+        }
+    }
+
+    /// Scans `data_dir/entries/` and calls `update()` for every entry, broadcasting
+    /// any changes to the frontend. Run in a background task after seeding from a
+    /// snapshot so the UI receives corrections without blocking.
+    pub async fn recover(&self, data_dir: &Path) {
         let entries_dir = data_dir.join("entries");
         if let Ok(mut dir) = tokio::fs::read_dir(&entries_dir).await {
             while let Ok(Some(dirent)) = dir.next_entry().await {
@@ -33,26 +97,9 @@ impl EntryStateCache {
                     continue;
                 };
                 if let Ok(raw) = tokio::fs::read_to_string(&path).await {
-                    if let Some(fm) = crate::util::parse_frontmatter(&raw) {
-                        if fm.tags.contains(&"unread".to_string()) {
-                            unread.insert(stem.clone());
-                        }
-                        if fm.tags.contains(&"bookmark".to_string()) {
-                            bookmarked.insert(stem);
-                        }
-                    }
+                    self.update_from_raw(&stem, &raw);
                 }
             }
-        }
-
-        let (unread_tx, _) = broadcast::channel(256);
-        let (bookmarked_tx, _) = broadcast::channel(256);
-
-        Self {
-            unread: Arc::new(RwLock::new(unread)),
-            bookmarked: Arc::new(RwLock::new(bookmarked)),
-            unread_tx: Arc::new(unread_tx),
-            bookmarked_tx: Arc::new(bookmarked_tx),
         }
     }
 
@@ -94,4 +141,20 @@ impl EntryStateCache {
     pub fn subscribe_bookmarked(&self) -> broadcast::Receiver<Entry> {
         self.bookmarked_tx.subscribe()
     }
+
+    pub async fn persist(&self, data_dir: &Path) {
+        let snap = CacheSnapshot {
+            unread: self.unread.read().unwrap().clone(),
+            bookmarked: self.bookmarked.read().unwrap().clone(),
+        };
+        if let Ok(json) = serde_json::to_string(&snap) {
+            let _ = tokio::fs::write(data_dir.join(".entry_state_cache.json"), json.as_bytes()).await;
+        }
+    }
+}
+
+async fn load_snapshot(data_dir: &Path) -> Option<(HashSet<String>, HashSet<String>)> {
+    let raw = tokio::fs::read_to_string(data_dir.join(".entry_state_cache.json")).await.ok()?;
+    let snap = serde_json::from_str::<CacheSnapshot>(&raw).ok()?;
+    Some((snap.unread, snap.bookmarked))
 }

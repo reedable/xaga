@@ -7,28 +7,39 @@ import {
 } from "@mui/material";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import css from "./_.module.css";
 
 interface TitleBarProps {
   className?: string;
-  onSearchQueryChange: (query: string) => void;
 }
 
 const DEBOUNCE_MS = 300;
 
-export function TitleBar({ className, onSearchQueryChange }: TitleBarProps) {
+export function TitleBar({ className }: TitleBarProps) {
+  const [, setSearchParams] = useSearchParams();
   const [inputValue, setInputValue] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const updateSearch = useCallback(
+    (value: string) =>
+      setSearchParams((prev) => {
+        if (value) prev.set("search", value);
+        else prev.delete("search");
+        return prev;
+      }),
+    [setSearchParams],
+  );
+
   const commitSearch = useCallback(
     (value: string) => {
       setIsPending(false);
-      onSearchQueryChange(value);
+      updateSearch(value);
     },
-    [onSearchQueryChange],
+    [updateSearch],
   );
 
   const handleChange = useCallback(
@@ -40,14 +51,14 @@ export function TitleBar({ className, onSearchQueryChange }: TitleBarProps) {
 
       if (!value) {
         setIsPending(false);
-        onSearchQueryChange("");
+        updateSearch("");
         return;
       }
 
       setIsPending(true);
       debounceRef.current = setTimeout(() => commitSearch(value), DEBOUNCE_MS);
     },
-    [commitSearch, onSearchQueryChange],
+    [commitSearch, updateSearch],
   );
 
   const handleExpand = useCallback(() => {
@@ -60,8 +71,8 @@ export function TitleBar({ className, onSearchQueryChange }: TitleBarProps) {
     setInputValue("");
     setIsPending(false);
     setIsExpanded(false);
-    onSearchQueryChange("");
-  }, [onSearchQueryChange]);
+    updateSearch("");
+  }, [updateSearch]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -117,9 +128,9 @@ export function TitleBar({ className, onSearchQueryChange }: TitleBarProps) {
             autoComplete="off"
             slotProps={{
               input: {
-                autoComplete: 'off',
-                autoCorrect: 'off',
-                autoCapitalize: 'off',
+                autoComplete: "off",
+                autoCorrect: "off",
+                autoCapitalize: "off",
                 spellCheck: false,
                 startAdornment: (
                   <InputAdornment position="start">

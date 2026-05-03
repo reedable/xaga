@@ -80,13 +80,13 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
    * md file from unread/ to read/ directory, i.e. marks the item read.
    */
   const readArticle = useCallback(
-    async (entry: Pick<Entry, "id">) => {
+    async (entryId: Entry["id"]) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
 
       try {
-        const article = await platform.readArticle(signal, entry.id);
+        const article = await platform.readArticle(signal, entryId);
 
         if (article.content) {
           return article;

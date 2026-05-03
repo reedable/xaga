@@ -3,7 +3,7 @@ import { usePlatform } from "../platform/Platform";
 import type { Entry, Feed, Filter } from "../types";
 
 export default function useEntries(
-  abortControllerRef: RefObject<AbortController>,
+  abortControllerRef: RefObject<AbortController>
 ) {
   const platform = usePlatform();
   const [loading, setLoading] = useState(false);
@@ -23,7 +23,7 @@ export default function useEntries(
         setLoading(false);
       }
     },
-    [abortControllerRef, platform],
+    [abortControllerRef, platform]
   );
 
   const listAllEntries = useCallback(
@@ -40,41 +40,41 @@ export default function useEntries(
         setLoading(false);
       }
     },
-    [abortControllerRef, platform],
+    [abortControllerRef, platform]
   );
 
   const markEntryRead = useCallback(
-    async (item: Entry) => {
+    async (entryId: Entry["id"]) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
 
       try {
-        return await platform.markEntryRead(signal, item.id);
+        return await platform.markEntryRead(signal, entryId);
       } catch (e) {
         setError(e);
       } finally {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform],
+    [abortControllerRef, platform]
   );
 
   const markEntryUnread = useCallback(
-    async (item: Entry) => {
+    async (entryId: Entry["id"]) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
 
       try {
-        return await platform.markEntryUnread(signal, item.id);
+        return await platform.markEntryUnread(signal, entryId);
       } catch (e) {
         setError(e);
       } finally {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform],
+    [abortControllerRef, platform]
   );
 
   return {

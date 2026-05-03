@@ -10,6 +10,8 @@ use arrow_array::builder::{ListBuilder, StringBuilder};
 use arrow_schema::{DataType, Field, Schema};
 use futures::TryStreamExt;
 use lancedb::DistanceType;
+use lancedb::index::Index;
+use lancedb::index::vector::IvfPqIndexBuilder;
 use lancedb::query::{ExecutableQuery, QueryBase};
 
 use super::EmbeddingsError;
@@ -151,8 +153,15 @@ async fn create_empty_documents_table(
         vec![Ok(empty_batch)],
         schema.clone(),
     ));
-    connection
+    let table = connection
         .create_table("documents", reader)
+        .execute()
+        .await?;
+    table
+        .create_index(
+            &["vector"],
+            Index::IvfPq(IvfPqIndexBuilder::default().distance_type(DistanceType::Cosine)),
+        )
         .execute()
         .await?;
     Ok(())
@@ -584,6 +593,12 @@ impl EmbeddingsDb {
             .await
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
+        log::info!("EmbeddingsDb::compact: optimizing vector index");
+        self.table
+            .optimize(OptimizeAction::Index(Default::default()))
+            .await
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
         log::info!("EmbeddingsDb::compact: done");
         Ok(())
     }
@@ -908,16 +923,16 @@ impl EmbeddingsDb {
             return Ok(vec![]);
         }
 
+        // 3. Full scan: for each candidate, score by max similarity to any source vector.
+        let effective_min = min_similarity.unwrap_or(1.0 - DEFAULT_MAX_COSINE_DISTANCE);
+        let effective_max = max_similarity.unwrap_or(f32::INFINITY);
+        let exclude: HashSet<String> = ids.iter().cloned().collect();
+
         // Pre-compute source norms.
         let source_norms: Vec<f32> = source_vectors
             .iter()
             .map(|v| v.iter().map(|x| x * x).sum::<f32>().sqrt())
             .collect();
-
-        // 3. Full scan: for each candidate, score by max similarity to any source vector.
-        let effective_min = min_similarity.unwrap_or(1.0 - DEFAULT_MAX_COSINE_DISTANCE);
-        let effective_max = max_similarity.unwrap_or(f32::INFINITY);
-        let exclude: HashSet<String> = ids.iter().cloned().collect();
 
         let batches: Vec<RecordBatch> = self
             .table
@@ -983,7 +998,6 @@ impl EmbeddingsDb {
                 }
             }
         }
-
         scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
         if let Some(n) = limit {
             scored.truncate(n);
@@ -1062,6 +1076,7 @@ impl EmbeddingsDb {
             .query()
             .nearest_to(query_vector)
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?
+            .bypass_vector_index()
             .distance_type(DistanceType::Cosine)
             .distance_range(None, upper_distance)
             .only_if(format!("id != '{escaped}'"))
@@ -1122,6 +1137,7 @@ impl EmbeddingsDb {
             .query()
             .nearest_to(query_vector)
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?
+            .bypass_vector_index()
             .distance_type(DistanceType::Cosine)
             .distance_range(None, upper_distance)
             .limit(effective_limit)

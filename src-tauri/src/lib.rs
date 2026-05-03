@@ -97,6 +97,15 @@ fn update_theme_checkmarks<R: Runtime>(app: &tauri::AppHandle<R>, selected: &str
     }
 }
 
+// ── Commands ───────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+fn set_find_enabled(app: tauri::AppHandle, enabled: bool) {
+    if let Some(MenuItemKind::MenuItem(item)) = app.menu().and_then(|m| m.get("find")) {
+        item.set_enabled(enabled).ok();
+    }
+}
+
 // ── Entry point ────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -213,6 +222,8 @@ pub fn run() {
                     &PredefinedMenuItem::copy(app, None)?,
                     &PredefinedMenuItem::paste(app, None)?,
                     &PredefinedMenuItem::select_all(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &MenuItem::with_id(app, "find", "Find\u{2026}", false, Some("cmd+f"))?,
                 ],
             )?;
             let view_menu = Submenu::with_id_and_items(
@@ -333,6 +344,9 @@ pub fn run() {
                     .unwrap_or(false);
                 app.emit("menu:show-article-summary", checked).ok();
             }
+            "find" => {
+                app.emit("menu:find", ()).ok();
+            }
             "quit" => {
                 app.exit(0);
             }
@@ -378,7 +392,7 @@ pub fn run() {
                     log::error!("startup: model download failed: {e}");
                 }
 
-                let cache = EntryStateCache::new(&lib_path).await;
+                let (cache, needs_recovery) = EntryStateCache::new(&lib_path).await;
                 *setup_entry_cache.lock().unwrap() = Some(cache.clone());
 
                 let unread_app_handle = app_handle.clone();
@@ -403,7 +417,7 @@ pub fn run() {
                             lib_path.clone(),
                             svc.priority_sender(),
                             svc.background_sender(),
-                            cache,
+                            cache.clone(),
                         );
 
                         let embeddings_app_handle = app_handle.clone();
@@ -417,7 +431,21 @@ pub fn run() {
                             }
                         });
 
+                        let embeddings_app_handle = app_handle.clone();
+                        let background_drained_rx = svc.subscribe_to_background_drained();
+                        tauri::async_runtime::spawn(async move {
+                            loop {
+                                if background_drained_rx.recv_async().await.is_err() {
+                                    break;
+                                }
+                                embeddings_app_handle.emit("embedding:changed", ()).ok();
+                            }
+                        });
+
                         svc.trigger_recovery(lib_path.clone());
+                        if needs_recovery {
+                            svc.trigger_cache_recovery(cache.clone(), lib_path.clone());
+                        }
                         *setup_svc.lock().unwrap() = Some(svc);
                     }
                     Err(EmbeddingsError::LockNotAcquired) => {
@@ -439,6 +467,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            set_find_enabled,
             commands::articles::receive_html,
             commands::articles::load_article,
             commands::articles::save_article,
@@ -449,6 +478,7 @@ pub fn run() {
             commands::articles::remove_annotation,
             commands::articles::list_annotations,
             commands::saved::list_saved,
+            commands::entries::is_cache_seeded,
             commands::entries::mark_entry_read,
             commands::entries::mark_entry_unread,
             commands::entries::list_all_articles,
@@ -483,6 +513,7 @@ pub fn run() {
             commands::embeddings::query_by_item,
             commands::embeddings::query_by_bookmarks,
             commands::embeddings::query_by_annotations,
+            commands::embeddings::query_by_saved,
             commands::embeddings::query_by_topics,
             commands::embeddings::query_by_text,
             commands::embeddings::reset_embeddings,
@@ -503,8 +534,12 @@ pub fn run() {
                 if let Some(w) = app.get_webview_window("main") {
                     w.hide().ok();
                 }
+                let app_handle = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    match svc.shutdown().await {
+                    let state = app_handle.state::<AppState>();
+                    let cache = state.entry_cache.lock().unwrap().clone();
+                    let data_dir = state.library.read().unwrap().clone();
+                    match svc.shutdown(cache.as_ref(), &data_dir).await {
                         ShutdownReason::Restart => restart_process(),
                         ShutdownReason::Exit => std::process::exit(0),
                     }
@@ -547,8 +582,12 @@ fn take_service(app: &tauri::AppHandle) -> Option<EmbeddingService> {
 fn shutdown_with_overlay(app: &tauri::AppHandle, svc: EmbeddingService) {
     log::info!("shutdown: waiting for embedding service to drain");
     app.emit("embedding:shutdown", ()).ok();
+    let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        match svc.shutdown().await {
+        let state = app_handle.state::<AppState>();
+        let cache = state.entry_cache.lock().unwrap().clone();
+        let data_dir = state.library.read().unwrap().clone();
+        match svc.shutdown(cache.as_ref(), &data_dir).await {
             ShutdownReason::Restart => restart_process(),
             ShutdownReason::Exit => std::process::exit(0),
         }
@@ -565,7 +604,10 @@ fn install_signal_handler(
         if let Some(svc) = svc {
             log::info!("signal: waiting for embedding service to drain");
             app_handle.emit("embedding:shutdown", ()).ok();
-            tauri::async_runtime::block_on(svc.shutdown());
+            let state = app_handle.state::<AppState>();
+            let cache = state.entry_cache.lock().unwrap().clone();
+            let data_dir = state.library.read().unwrap().clone();
+            tauri::async_runtime::block_on(svc.shutdown(cache.as_ref(), &data_dir));
             // Signals always exit — restart flag is intentionally ignored.
         }
         std::process::exit(0);

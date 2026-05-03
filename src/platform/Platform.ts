@@ -39,6 +39,9 @@ export interface Platform {
   // refreshAllFeeds(signal: AbortSignal): Promise<PromiseSettledResult<Feed>[]>;
   removeFeed(signal: AbortSignal, feedUrl: string): Promise<string>;
 
+  // Startup
+  isCacheSeeded(): Promise<boolean>;
+
   // Entries
   listEntries(
     signal: AbortSignal,
@@ -122,6 +125,14 @@ export interface Platform {
     limit?: number | null,
   ): Promise<(Embedded & Item)[]>;
 
+  queryBySaved(
+    signal: AbortSignal,
+    filter?: Filter,
+    minSimilarity?: number | null,
+    maxSimilarity?: number | null,
+    limit?: number | null,
+  ): Promise<(Embedded & Item)[]>;
+
   queryByText(
     signal: AbortSignal,
     text: string,
@@ -160,6 +171,8 @@ export interface Platform {
   onExportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;
   onShowArticleSummary(callback: (show: boolean) => void): Promise<UnlistenFn>;
+  onFind(callback: () => void): Promise<UnlistenFn>;
+  setFindEnabled(enabled: boolean): Promise<void>;
   onShutdown(callback: () => void): Promise<UnlistenFn>;
 
   // Settings sync (main window receives these when settings window saves)

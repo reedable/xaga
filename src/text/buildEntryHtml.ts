@@ -20,6 +20,21 @@ export const SELECTION_CLEARED = "selection-cleared";
 /** Iframe notifies parent that the user clicked an existing highlight mark. */
 export const HIGHLIGHT_CLICKED = "highlight-clicked";
 
+/** Iframe notifies parent that Cmd-F was pressed inside the iframe. */
+export const FIND_OPEN = "find-open";
+
+/** Iframe notifies parent of the current find result count and position. */
+export const FIND_RESULT = "find-result";
+
+/** Parent → iframe: execute a text search. */
+export const FIND_IN_PAGE = "find-in-page";
+
+/** Parent → iframe: move to next (+1) or previous (−1) match. */
+export const FIND_NAVIGATE = "find-navigate";
+
+/** Parent → iframe: clear all find highlights. */
+export const FIND_CLEAR = "find-clear";
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ReaderStyle {
@@ -62,6 +77,7 @@ export function buildEntryHtml(
     article{max-width:680px;margin:0 auto}
     p,li{margin-bottom:1em}
     img{max-width:100%;height:auto}
+    audio,video{display:none}
     a{color:${linkColor};cursor:pointer}
     h1,h2,h3,h4,h5,h6{margin-top:1.5rem;margin-bottom:0.5rem}
     pre{overflow-x:auto;padding:1rem;background:${codeBg};border-radius:4px}
@@ -73,6 +89,8 @@ export function buildEntryHtml(
       `mark[data-ann-color="${name}"]{background:${t.bg};border-radius:2px;cursor:pointer;outline:1px solid ${t.accent}${prefersDark && name !== "none" ? ";color:#000000" : ""}}` +
       `mark[data-ann-color="${name}"]:hover{background:${t.accent};color:${prefersDark ? "#000000" : fg}}`
     ).join("")}
+    mark.xf{background:${prefersDark ? "#7b6200" : "#fff176"};border-radius:2px;color:inherit}
+    mark.xf.xfa{background:${prefersDark ? "#e65100" : "#ff9800"};border-radius:2px;color:${prefersDark ? "#fff" : "#000"};outline:2px solid ${prefersDark ? "#ff6d00" : "#e65100"}}
   </style></head><body><article>${bodyHtml}</article><script>
     var __ANNOTATIONS__ = ${annotationsJson};
 
@@ -132,6 +150,7 @@ export function buildEntryHtml(
 
               (function(m) {
                 m.addEventListener('click', function(e) {
+                  if (e.target && e.target.closest && e.target.closest('a[href]')) return;
                   e.stopPropagation();
                   var rect = m.getBoundingClientRect();
                   window.parent.postMessage({
@@ -287,6 +306,91 @@ export function buildEntryHtml(
       }, 10);
     });
 
+    // ── Find-in-page ───────────────────────────────────────────────────────────
+
+    var __findMatches__ = [];
+    var __findCurrent__ = -1;
+
+    function clearFindMarks() {
+      var marks = document.querySelectorAll('mark.xf');
+      for (var i = 0; i < marks.length; i++) {
+        var m = marks[i];
+        var p = m.parentNode;
+        while (m.firstChild) p.insertBefore(m.firstChild, m);
+        p.removeChild(m);
+      }
+      document.body.normalize();
+      __findMatches__ = [];
+      __findCurrent__ = -1;
+    }
+
+    function findInPage(query) {
+      clearFindMarks();
+      if (!query) {
+        window.parent.postMessage({ type: '${FIND_RESULT}', total: 0, current: 0 }, '*');
+        return;
+      }
+      var lower = query.toLowerCase();
+      var walker = makeTextWalker(document.body);
+      var node;
+      var collected = [];
+      while ((node = walker.nextNode())) {
+        var text = node.nodeValue.toLowerCase();
+        var start = 0;
+        var idx;
+        while ((idx = text.indexOf(lower, start)) !== -1) {
+          collected.push({ node: node, start: idx, end: idx + query.length });
+          start = idx + lower.length;
+        }
+      }
+      // Apply marks in reverse so earlier ranges stay valid after DOM mutations.
+      var markEls = [];
+      for (var i = collected.length - 1; i >= 0; i--) {
+        try {
+          var range = document.createRange();
+          range.setStart(collected[i].node, collected[i].start);
+          range.setEnd(collected[i].node, collected[i].end);
+          var mark = document.createElement('mark');
+          mark.className = 'xf';
+          range.surroundContents(mark);
+          markEls.unshift(mark);
+        } catch (e) {}
+      }
+      __findMatches__ = markEls;
+      if (__findMatches__.length > 0) {
+        __findCurrent__ = 0;
+        __findMatches__[0].className = 'xf xfa';
+        __findMatches__[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+      window.parent.postMessage({
+        type: '${FIND_RESULT}',
+        total: __findMatches__.length,
+        current: __findMatches__.length > 0 ? 1 : 0
+      }, '*');
+    }
+
+    function navigateFind(direction) {
+      if (__findMatches__.length === 0) return;
+      __findMatches__[__findCurrent__].className = 'xf';
+      __findCurrent__ = (__findCurrent__ + direction + __findMatches__.length) % __findMatches__.length;
+      __findMatches__[__findCurrent__].className = 'xf xfa';
+      __findMatches__[__findCurrent__].scrollIntoView({ block: 'center', behavior: 'smooth' });
+      window.parent.postMessage({
+        type: '${FIND_RESULT}',
+        total: __findMatches__.length,
+        current: __findCurrent__ + 1
+      }, '*');
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault();
+        window.parent.postMessage({ type: '${FIND_OPEN}' }, '*');
+      } else if (e.key === 'Escape') {
+        window.parent.postMessage({ type: '${FIND_CLEAR}' }, '*');
+      }
+    });
+
     // ── Link interception (existing) ───────────────────────────────────────────
 
     document.addEventListener('click', function(e) {
@@ -308,6 +412,13 @@ export function buildEntryHtml(
         if (sel) sel.removeAllRanges();
       } else if (msg.type === 'remove-highlight') {
         removeHighlight(msg.annotationId);
+      } else if (msg.type === '${FIND_IN_PAGE}') {
+        findInPage(msg.query || '');
+      } else if (msg.type === '${FIND_NAVIGATE}') {
+        navigateFind(msg.direction);
+      } else if (msg.type === '${FIND_CLEAR}') {
+        clearFindMarks();
+        window.parent.postMessage({ type: '${FIND_RESULT}', total: 0, current: 0 }, '*');
       }
     });
   </script></body></html>`;

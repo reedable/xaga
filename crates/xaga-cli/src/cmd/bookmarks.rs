@@ -2,7 +2,6 @@ use std::path::Path;
 
 use clap::{Args, Subcommand};
 use xaga_core::entries;
-use xaga_core::filter;
 
 use crate::die;
 
@@ -31,8 +30,7 @@ pub enum BookmarksCommand {
 pub async fn handle(cmd: BookmarksCommand, data_dir: &Path) {
     match cmd {
         BookmarksCommand::List => {
-            let unread = filter::unread_ids(data_dir).await;
-            match entries::list_entries(data_dir, &unread).await {
+            match entries::list_entries(data_dir).await {
                 Ok(items) => {
                     let bookmarks: Vec<_> = items.into_iter().filter(|e| e.is_bookmarked).collect();
                     if bookmarks.is_empty() {

@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
+import { useEvents } from "../../hooks/useEvents";
 import {
+  FIND_CLEAR,
+  FIND_IN_PAGE,
+  FIND_NAVIGATE,
+  FIND_OPEN,
+  FIND_RESULT,
   HIGHLIGHT_CLICKED,
   OPEN_URL,
   SELECTION_CLEARED,
@@ -10,6 +16,7 @@ import type { Annotation } from "../../types";
 import cx from "../../utils/cx";
 import Logger from "../../utils/Logger";
 import { AnnotationTooltip } from "./AnnotationTooltip";
+import { FindBar } from "./FindBar";
 
 export interface SelectionRect {
   top: number;
@@ -46,8 +53,12 @@ export function Reader({
   onSaveAnnotation,
   onRemoveAnnotation,
 }: ReaderProps) {
+  const { onFind } = useEvents();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findResult, setFindResult] = useState<{ total: number; current: number } | null>(null);
 
   /** Convert iframe-local rect to fixed viewport coords, positioned below selection. */
   const toViewportPosition = useCallback((rect: SelectionRect) => {
@@ -138,12 +149,50 @@ export function Reader({
   }, [onRemoveAnnotation, onSaveAnnotation, reference, tooltip]);
 
   const handleIframeLoad = useCallback(() => {
-    if (!annotations?.length) return;
+    if (annotations?.length) {
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: "apply-highlights", annotations },
+        "*",
+      );
+    }
+    if (findOpen && findQuery) {
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: FIND_IN_PAGE, query: findQuery },
+        "*",
+      );
+    }
+  }, [annotations, findOpen, findQuery]);
+
+  const handleFindClose = useCallback(() => {
+    setFindOpen(false);
+    setFindQuery("");
+    setFindResult(null);
+    iframeRef.current?.contentWindow?.postMessage({ type: FIND_CLEAR }, "*");
+  }, []);
+
+  const handleFindNavigate = useCallback((direction: 1 | -1) => {
     iframeRef.current?.contentWindow?.postMessage(
-      { type: "apply-highlights", annotations },
+      { type: FIND_NAVIGATE, direction },
       "*",
     );
-  }, [annotations]);
+  }, []);
+
+  // Send updated query to iframe whenever it changes while find bar is open.
+  useEffect(() => {
+    if (!findOpen) return;
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: FIND_IN_PAGE, query: findQuery },
+      "*",
+    );
+  }, [findQuery, findOpen]);
+
+  // Clear stale result count when switching to a different entry.
+  useEffect(() => {
+    setFindResult(null);
+  }, [reference]);
+
+  // Edit → Find… menu item (Cmd-F).
+  useEffect(() => onFind(() => setFindOpen(true)), [onFind]);
 
   useEffect(() => {
     const blob = new Blob([html], { type: "text/html" });
@@ -182,6 +231,17 @@ export function Reader({
             msg.rect as SelectionRect,
           );
           break;
+        case FIND_OPEN:
+          setFindOpen(true);
+          break;
+        case FIND_RESULT:
+          setFindResult({ total: msg.total as number, current: msg.current as number });
+          break;
+        case FIND_CLEAR:
+          setFindOpen(false);
+          setFindQuery("");
+          setFindResult(null);
+          break;
       }
     }
 
@@ -190,12 +250,12 @@ export function Reader({
   }, [onClickUrl, handleSelectionMade, handleClickHighlight]);
 
   return (
-    <>
+    <div className={cx(className)} style={{ position: "relative", width: "100%", height: "100%" }}>
       <iframe
         ref={iframeRef}
-        className={cx(className)}
         onLoad={handleIframeLoad}
         sandbox="allow-scripts"
+        allow="autoplay 'none'"
         style={{
           width: "100%",
           height: "100%",
@@ -204,6 +264,17 @@ export function Reader({
         }}
         title="Entry reader"
       />
+
+      {findOpen && (
+        <FindBar
+          query={findQuery}
+          current={findResult?.current ?? 0}
+          total={findResult?.total ?? 0}
+          onChange={setFindQuery}
+          onNavigate={handleFindNavigate}
+          onClose={handleFindClose}
+        />
+      )}
 
       {tooltip && (
         <AnnotationTooltip
@@ -215,6 +286,6 @@ export function Reader({
           onClose={handleCloseTooltip}
         />
       )}
-    </>
+    </div>
   );
 }

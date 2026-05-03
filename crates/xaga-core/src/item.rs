@@ -29,6 +29,8 @@ pub enum EmbeddedItemSource {
     RelatedToTopics { limit: Option<usize>, min_similarity: Option<f32>, max_similarity: Option<f32> },
     /// Items related to the union of all annotation embeddings.
     RelatedToAnnotations { limit: Option<usize>, min_similarity: Option<f32>, max_similarity: Option<f32> },
+    /// Items related to the union of all bookmarked items and annotations.
+    RelatedToSaved { limit: Option<usize>, min_similarity: Option<f32>, max_similarity: Option<f32> },
     /// Items related to an arbitrary pre-computed query vector (e.g. from embedded search text).
     RelatedToVector { vector: Vec<f32>, limit: Option<usize>, min_similarity: Option<f32>, max_similarity: Option<f32> },
 }
@@ -118,6 +120,38 @@ pub async fn list_embedded_items(
                 .map(|a| a.id)
                 .collect();
             let entries = db.find_related_to_many(&annotation_ids, limit, min_similarity, max_similarity).await?;
+            filter::filter_items(library, entries, &item_filter)
+                .await
+                .map_err(ItemError::Io)
+        }
+        EmbeddedItemSource::RelatedToSaved { limit, min_similarity, max_similarity } => {
+            let bookmark_ids: Vec<String> = crate::entries::list_entries(library)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|e| e.is_bookmarked)
+                .map(|e| e.id)
+                .collect();
+            let db = EmbeddingsDb::open(library).await?;
+            let annotation_ids: Vec<String> = db
+                .list_annotations()
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|a| a.id)
+                .collect();
+            let n_bookmarks = bookmark_ids.len();
+            let n_annotations = annotation_ids.len();
+            let mut seen = HashSet::new();
+            let combined_ids: Vec<String> = bookmark_ids
+                .into_iter()
+                .chain(annotation_ids)
+                .filter(|id| seen.insert(id.clone()))
+                .collect();
+            log::debug!("query_by_saved: {} seeds ({} bookmarks, {} annotations, {} after dedup)",
+                combined_ids.len(), n_bookmarks, n_annotations, combined_ids.len(),
+            );
+            let entries = db.find_related_to_many(&combined_ids, limit, min_similarity, max_similarity).await?;
             filter::filter_items(library, entries, &item_filter)
                 .await
                 .map_err(ItemError::Io)

@@ -135,7 +135,7 @@ const AnnotationSummarySchema = z.object({
 });
 
 const toAnnotationSummary = (
-  data: z.infer<typeof AnnotationSummarySchema>,
+  data: z.infer<typeof AnnotationSummarySchema>
 ): AnnotationSummary => ({
   id: data.id,
   reference: data.reference,
@@ -158,7 +158,7 @@ const EmbeddedAnnotationResultSchema = z.object({
 });
 
 const toEmbeddedAnnotationResult = (
-  data: z.infer<typeof EmbeddedAnnotationResultSchema>,
+  data: z.infer<typeof EmbeddedAnnotationResultSchema>
 ) => ({
   id: data.id,
   title: data.title,
@@ -204,7 +204,7 @@ const AnyEmbeddedItemSchema =
 const toAnyEmbeddedItem = (data: z.infer<typeof AnyEmbeddedItemSchema>) => {
   if ("color" in data) {
     return toEmbeddedAnnotationResult(
-      data as z.infer<typeof EmbeddedAnnotationResultSchema>,
+      data as z.infer<typeof EmbeddedAnnotationResultSchema>
     );
   }
   if ("is_unread" in data) {
@@ -252,22 +252,22 @@ export class TauriPlatform implements Platform {
 
   // Library -------------------------------------------------------------------
 
-  async getLibrary(): Promise<string> {
-    const invoker = decorate(invoke).with(logged, {
-      logger,
-      name: "getLibrary",
-    });
+  async isCacheSeeded(): Promise<boolean> {
+    const name = "is_cache_seeded";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<boolean>(name);
+  }
 
-    return invoker<string>("get_library");
+  async getLibrary(): Promise<string> {
+    const name = "get_library";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<string>(name);
   }
 
   async setLibrary(path: string): Promise<string> {
-    const invoker = decorate(invoke).with(logged, {
-      logger,
-      name: "setLibrary",
-    });
-
-    return invoker<string>("set_library", { path });
+    const name = "set_library";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<string>(name, { path });
   }
 
   // Feeds ---------------------------------------------------------------------
@@ -303,7 +303,7 @@ export class TauriPlatform implements Platform {
   async renameFeed(
     signal: AbortSignal,
     feedId: string,
-    title: string,
+    title: string
   ): Promise<Feed> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -326,11 +326,12 @@ export class TauriPlatform implements Platform {
     })) as string | null;
     if (!filePath) return null;
 
+    const name = "import_feeds";
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "import_feeds" });
+      .with(logged, { logger, name });
 
-    return invoker<ImportResult<Feed>>("import_feeds", { filePath });
+    return invoker<ImportResult<Feed>>(name, { filePath });
   }
 
   async exportFeeds(signal: AbortSignal): Promise<void> {
@@ -352,7 +353,7 @@ export class TauriPlatform implements Platform {
   async listEntries(
     signal: AbortSignal,
     feedUrl: string,
-    filter: Filter = "unread",
+    filter: Filter = "unread"
   ): Promise<Entry[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -371,7 +372,7 @@ export class TauriPlatform implements Platform {
 
   async listAllEntries(
     signal: AbortSignal,
-    itemFilter: Filter = "unread",
+    itemFilter: Filter = "unread"
   ): Promise<Entry[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -452,7 +453,7 @@ export class TauriPlatform implements Platform {
 
   async createArticle(
     signal: AbortSignal,
-    article: Omit<Article, "id" | "createdAt">,
+    article: Omit<Article, "id" | "createdAt">
   ): Promise<Article> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -474,7 +475,7 @@ export class TauriPlatform implements Platform {
 
   async addAnnotation(
     signal: AbortSignal,
-    annotation: Omit<Annotation, "createdAt" | "updatedAt">,
+    annotation: Omit<Annotation, "createdAt" | "updatedAt">
   ): Promise<Article> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -494,7 +495,7 @@ export class TauriPlatform implements Platform {
 
   async removeAnnotation(
     signal: AbortSignal,
-    annotation: Pick<Annotation, "id" | "reference">,
+    annotation: Pick<Annotation, "id" | "reference">
   ): Promise<Article> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -528,7 +529,9 @@ export class TauriPlatform implements Platform {
     const results = await invoker<unknown[]>("list_annotations");
 
     return results
-      .map((e) => AnnotationSummarySchema.transform(toAnnotationSummary).safeParse(e))
+      .map((e) =>
+        AnnotationSummarySchema.transform(toAnnotationSummary).safeParse(e)
+      )
       .filter((e) => !e.error)
       .map((e) => e.data);
   }
@@ -537,7 +540,7 @@ export class TauriPlatform implements Platform {
 
   async createTopic(
     signal: AbortSignal,
-    topic: Omit<Topic, "id" | "createdAt" | "unreadCount">,
+    topic: Omit<Topic, "id" | "createdAt" | "unreadCount">
   ): Promise<Topic> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -613,7 +616,7 @@ export class TauriPlatform implements Platform {
   }
 
   async importBookmarks(
-    signal: AbortSignal,
+    signal: AbortSignal
   ): Promise<ImportResult<Entry> | null> {
     const filePath = (await open({
       filters: [{ name: "Bookmarks", extensions: ["html", "htm"] }],
@@ -662,7 +665,7 @@ export class TauriPlatform implements Platform {
     itemFilter: Filter = "all",
     minSimilarity: number | null = null,
     maxSimilarity: number | null = null,
-    limit: number | null = null,
+    limit: number | null = null
   ): Promise<(Embedded & Item)[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -678,7 +681,7 @@ export class TauriPlatform implements Platform {
 
     return results
       .map((e) =>
-        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e),
+        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e)
       )
       .filter((e) => !e.error) // FIXME Dropping failed items silently!
       .map((e) => e.data);
@@ -689,7 +692,7 @@ export class TauriPlatform implements Platform {
     itemFilter?: Filter,
     minSimilarity?: number | null,
     maxSimilarity?: number | null,
-    limit?: number | null,
+    limit?: number | null
   ): Promise<(Embedded & Item)[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -704,7 +707,7 @@ export class TauriPlatform implements Platform {
 
     return results
       .map((e) =>
-        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e),
+        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e)
       )
       .filter((e) => !e.error) // FIXME Dropping failed items silently!
       .map((e) => e.data);
@@ -715,7 +718,7 @@ export class TauriPlatform implements Platform {
     itemFilter?: Filter,
     minSimilarity?: number | null,
     maxSimilarity?: number | null,
-    limit?: number | null,
+    limit?: number | null
   ): Promise<(Embedded & Item)[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -730,7 +733,7 @@ export class TauriPlatform implements Platform {
 
     return results
       .map((e) =>
-        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e),
+        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e)
       )
       .filter((e) => !e.error) // FIXME Dropping failed items silently!
       .map((e) => e.data);
@@ -741,7 +744,7 @@ export class TauriPlatform implements Platform {
     itemFilter?: Filter,
     minSimilarity?: number | null,
     maxSimilarity?: number | null,
-    limit?: number | null,
+    limit?: number | null
   ): Promise<(Embedded & Item)[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -756,7 +759,33 @@ export class TauriPlatform implements Platform {
 
     return results
       .map((e) =>
-        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e),
+        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e)
+      )
+      .filter((e) => !e.error) // FIXME Dropping failed items silently!
+      .map((e) => e.data);
+  }
+
+  async queryBySaved(
+    signal: AbortSignal,
+    itemFilter?: Filter,
+    minSimilarity?: number | null,
+    maxSimilarity?: number | null,
+    limit?: number | null
+  ): Promise<(Embedded & Item)[]> {
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "query_by_saved" });
+
+    const results = await invoker<unknown[]>("query_by_saved", {
+      limit,
+      minSimilarity,
+      maxSimilarity,
+      itemFilter,
+    });
+
+    return results
+      .map((e) =>
+        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e)
       )
       .filter((e) => !e.error) // FIXME Dropping failed items silently!
       .map((e) => e.data);
@@ -768,7 +797,7 @@ export class TauriPlatform implements Platform {
     itemFilter?: Filter,
     minSimilarity?: number | null,
     maxSimilarity?: number | null,
-    limit?: number | null,
+    limit?: number | null
   ): Promise<(Embedded & Item)[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -784,7 +813,7 @@ export class TauriPlatform implements Platform {
 
     return results
       .map((e) =>
-        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e),
+        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e)
       )
       .filter((e) => !e.error) // FIXME Dropping failed items silently!
       .map((e) => e.data);
@@ -793,68 +822,99 @@ export class TauriPlatform implements Platform {
   // Events --------------------------------------------------------------------
 
   onOpenLibrary(callback: () => void): Promise<UnlistenFn> {
-    return listen("menu:open-library", callback);
+    const name = "menu:open-library";
+    const listener = decorate(callback).with(logged, { logger, name });
+    return listen(name, listener);
   }
 
   onOpenSettings(callback: () => void): Promise<UnlistenFn> {
-    return listen("menu:open-settings", callback);
+    const name = "menu:open-settings";
+    const listener = decorate(callback).with(logged, { logger, name });
+    return listen(name, listener);
   }
 
   onImportFeeds(callback: () => void): Promise<UnlistenFn> {
-    return listen("menu:import-feeds", callback);
+    const name = "menu:import-feeds";
+    const listener = decorate(callback).with(logged, { logger, name });
+    return listen(name, listener);
   }
 
   onExportFeeds(callback: () => void): Promise<UnlistenFn> {
-    return listen("menu:export-feeds", callback);
+    const name = "menu:export-feeds";
+    const listener = decorate(callback).with(logged, { logger, name });
+    return listen(name, listener);
   }
 
   onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn> {
-    return listen<unknown>("feed:refreshed", (e) => {
+    const name = "feed:refreshed";
+    const listener = decorate((e) => {
       const result = FeedSchema.transform(toFeed).safeParse(e.payload);
       if (result.success) callback(result.data);
-    });
+    }).with(logged, { logger, name });
+
+    return listen<unknown>(name, listener);
   }
 
   onUnreadChanged(callback: (entry: Entry) => void): Promise<UnlistenFn> {
-    return listen<unknown>("unread:changed", (e) => {
+    const name = "unread:changed";
+    const listener = decorate((e) => {
       const result = EntrySchema.transform(toEntry).safeParse(e.payload);
       if (result.success) callback(result.data);
-    });
+    }).with(logged, { logger, name });
+
+    return listen<unknown>(name, listener);
   }
 
   onBookmarkChanged(callback: (entry: Entry) => void): Promise<UnlistenFn> {
-    return listen<unknown>("bookmark:changed", (e) => {
+    const name = "bookmark:changed";
+    const listener = decorate((e) => {
       const result = EntrySchema.transform(toEntry).safeParse(e.payload);
       if (result.success) callback(result.data);
-    });
+    }).with(logged, { logger, name });
+
+    return listen<unknown>(name, listener);
   }
 
   onEmbeddingsChanged(callback: () => void): Promise<UnlistenFn> {
-    return listen("embedding:changed", callback);
+    const name = "embedding:changed";
+    const listener = decorate(callback).with(logged, { logger, name });
+    return listen(name, listener);
   }
 
   onImportBookmarks(callback: () => void): Promise<UnlistenFn> {
-    return listen("menu:import-bookmarks", callback);
+    const name = "menu:import-bookmarks";
+    const listener = decorate(callback).with(logged, { logger, name });
+    return listen(name, listener);
   }
 
   onExportBookmarks(callback: () => void): Promise<UnlistenFn> {
-    return listen("menu:export-bookmarks", callback);
+    const name = "menu:export-bookmarks";
+    const listener = decorate(callback).with(logged, { logger, name });
+    return listen(name, listener);
   }
 
   async getTheme(): Promise<string> {
-    return invoke<string>("get_theme");
+    const name = "get_theme";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<string>(name);
   }
 
   async setTheme(theme: string): Promise<void> {
-    return invoke<void>("set_theme", { theme });
+    const name = "set_theme";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<void>(name, { theme });
   }
 
   async getRefreshOnStartup(): Promise<boolean> {
-    return invoke<boolean>("get_refresh_on_startup");
+    const name = "get_refresh_on_startup";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<boolean>(name);
   }
 
   async setRefreshOnStartup(value: boolean): Promise<void> {
-    return invoke<void>("set_refresh_on_startup", { value });
+    const name = "set_refresh_on_startup";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<void>(name, { value });
   }
 
   async getReaderPrefs(): Promise<{
@@ -862,72 +922,114 @@ export class TauriPlatform implements Platform {
     fontSize: number;
     lineHeight: number;
   }> {
-    return invoke<{ fontFamily: string; fontSize: number; lineHeight: number }>(
-      "get_reader_prefs",
-    );
+    const name = "get_reader_prefs";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<{
+      fontFamily: string;
+      fontSize: number;
+      lineHeight: number;
+    }>(name);
   }
 
   async setReaderFontFamily(value: string): Promise<void> {
-    return invoke<void>("set_reader_font_family", { value });
+    const name = "set_reader_font_family";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<void>(name, { value });
   }
 
   async setReaderFontSize(value: number): Promise<void> {
-    return invoke<void>("set_reader_font_size", { value });
+    const name = "set_reader_font_size";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<void>(name, { value });
   }
 
   async setReaderLineHeight(value: number): Promise<void> {
-    return invoke<void>("set_reader_line_height", { value });
+    const name = "set_reader_line_height";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<void>(name, { value });
   }
 
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn> {
-    return listen<string>("menu:set-theme", (e) => callback(e.payload));
+    const name = "menu:set-theme";
+    const listener = decorate((e: { payload: string }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
+    return listen<string>(name, listener);
   }
 
   onShowArticleSummary(callback: (show: boolean) => void): Promise<UnlistenFn> {
-    return listen<boolean>("menu:show-article-summary", (e) =>
-      callback(e.payload),
-    );
+    const name = "menu:show-article-summary";
+    const listener = decorate((e: { payload: boolean }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
+    return listen<boolean>(name, listener);
+  }
+
+  onFind(callback: () => void): Promise<UnlistenFn> {
+    const name = "menu:find";
+    const listener = decorate(callback).with(logged, { logger, name });
+    return listen(name, listener);
+  }
+
+  setFindEnabled(enabled: boolean): Promise<void> {
+    const name = "set_find_enabled";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<void>(name, { enabled });
   }
 
   onShutdown(callback: () => void): Promise<UnlistenFn> {
-    return listen("embedding:shutdown", callback);
+    const name = "embedding:shutdown";
+    const listener = decorate(callback).with(logged, { logger, name });
+    return listen(name, listener);
   }
 
   onThemeChangedFromSettings(
-    callback: (theme: string) => void,
+    callback: (theme: string) => void
   ): Promise<UnlistenFn> {
-    return listen<string>("settings:theme", (e) => callback(e.payload));
+    const name = "settings:theme";
+    const listener = decorate((e: { payload: string }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
+    return listen<string>(name, listener);
   }
 
   onReaderFontFamilyChanged(
-    callback: (value: string) => void,
+    callback: (value: string) => void
   ): Promise<UnlistenFn> {
-    return listen<string>("settings:reader-font-family", (e) =>
-      callback(e.payload),
-    );
+    const name = "settings:reader-font-family";
+    const listener = decorate((e: { payload: string }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
+    return listen<string>(name, listener);
   }
 
   onReaderFontSizeChanged(
-    callback: (value: number) => void,
+    callback: (value: number) => void
   ): Promise<UnlistenFn> {
-    return listen<number>("settings:reader-font-size", (e) =>
-      callback(e.payload),
-    );
+    const name = "settings:reader-font-size";
+    const listener = decorate((e: { payload: number }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
+    return listen<number>(name, listener);
   }
 
   onReaderLineHeightChanged(
-    callback: (value: number) => void,
+    callback: (value: number) => void
   ): Promise<UnlistenFn> {
-    return listen<number>("settings:reader-line-height", (e) =>
-      callback(e.payload),
-    );
+    const name = "settings:reader-line-height";
+    const listener = decorate((e: { payload: number }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
+    return listen<number>(name, listener);
   }
 
   onRefreshOnStartupChanged(
-    callback: (value: boolean) => void,
+    callback: (value: boolean) => void
   ): Promise<UnlistenFn> {
-    return listen<boolean>("settings:refresh-on-startup", (e) =>
-      callback(e.payload),
-    );
+    const name = "settings:refresh-on-startup";
+    const listener = decorate((e: { payload: boolean }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
+    return listen<boolean>(name, listener);
   }
 }

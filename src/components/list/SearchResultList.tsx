@@ -1,4 +1,4 @@
-import { Bookmark, Circle, FormatQuote } from "@mui/icons-material";
+import { Circle } from "@mui/icons-material";
 import {
   Collapse,
   LinearProgress,
@@ -7,42 +7,52 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
+import { useEvents } from "../../hooks/useEvents";
 import useSearch from "../../hooks/useSearch";
 import { isAnnotation, isEntry, type Embedded, type Item } from "../../types";
 import cx from "../../utils/cx";
 import formatByline from "../../utils/formatByline";
+import Quotes from "../Quotes";
 import css from "./_.module.css";
 
 interface SearchResultListProps {
   className?: string;
   searchQuery: string;
-  onSelectItem: (item: Item) => void;
 }
 
-export function SearchResultList({
-  className,
-  searchQuery,
-  onSelectItem,
-}: SearchResultListProps) {
+export function SearchResultList({ className, searchQuery }: SearchResultListProps) {
+  const navigate = useNavigate();
+  const { collectionId, itemId: selectedItemId } = useParams();
+  const [searchParams] = useSearchParams();
+
   const { loading, error, search } = useSearch();
+  const { onUnreadChanged } = useEvents();
   const [results, setResults] = useState<(Embedded & Item)[]>([]);
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
   useEffect(() => {
-    setResults([]);
     (async () => {
+      setResults([]);
       const r = await search(searchQuery);
       if (r) setResults(r);
     })();
   }, [searchQuery, search]);
 
+  useEffect(() => {
+    return onUnreadChanged((entry) => {
+      setResults((prev) =>
+        prev.map((p) => (p.id === entry.id ? { ...p, ...entry } : p))
+      );
+    });
+  }, [onUnreadChanged]);
+
   const handleClickItem = useCallback(
     (item: Item) => {
-      setSelectedItemId(item.id);
-      onSelectItem(item);
+      const params = new URLSearchParams(searchParams);
+      navigate(`/${collectionId}/${item.id}?${params.toString()}`);
     },
-    [onSelectItem],
+    [navigate, collectionId, searchParams],
   );
 
   return (
@@ -59,7 +69,7 @@ export function SearchResultList({
         </Collapse>
       </div>
 
-      {error && !loading && (
+      {!!error && !loading && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography variant="body2" color="error">
             Search failed
@@ -87,13 +97,14 @@ export function SearchResultList({
                 onClick={() => handleClickItem(item)}
               >
                 <ListItemText
-                  primary={item.title}
+                  primary={
+                    <Quotes quoted={isAnnotation(item)}>{item.title}</Quotes>
+                  }
                   secondary={
                     <>
                       {isEntry(item) && item.isUnread && (
                         <Circle className={css.UnreadIcon} color="primary" />
                       )}
-                      {isAnnotation(item) && <FormatQuote color="primary" />}
                       <span>{formatByline(item)}</span>
                     </>
                   }

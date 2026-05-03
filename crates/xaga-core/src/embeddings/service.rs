@@ -16,8 +16,16 @@ use super::{EmbeddingsDb, EmbeddingsError};
 
 /// Application-level control messages (low volume, high significance).
 enum ServiceMsg {
-    StartRecovery { data_dir: PathBuf },
-    ResetDatabase { data_dir: PathBuf },
+    StartRecovery {
+        data_dir: PathBuf,
+    },
+    ResetDatabase {
+        data_dir: PathBuf,
+    },
+    RecoverCache {
+        cache: crate::entry_cache::EntryStateCache,
+        data_dir: PathBuf,
+    },
     Shutdown,
 }
 
@@ -55,6 +63,7 @@ pub struct EmbeddingService {
     service_tx: flume::Sender<ServiceMsg>,
     done_rx: flume::Receiver<()>,
     priority_drained_rx: flume::Receiver<()>,
+    background_drained_rx: flume::Receiver<()>,
     restart_requested: Arc<AtomicBool>,
     embedder: Arc<Embedder>,
     // Held for the service's lifetime; released (file deleted) on Drop.
@@ -84,6 +93,7 @@ impl EmbeddingService {
         let (service_tx, service_rx) = flume::unbounded::<ServiceMsg>();
         let (background_tx, background_rx) = flume::unbounded::<BackgroundMsg>();
         let (priority_drained_tx, priority_drained_rx) = flume::unbounded::<()>();
+        let (background_drained_tx, background_drained_rx) = flume::unbounded::<()>();
 
         let loop_service_tx = service_tx.clone();
         let loop_priority_tx = priority_tx.clone();
@@ -112,6 +122,7 @@ impl EmbeddingService {
                         background_rx,
                         loop_background_tx,
                         priority_drained_tx,
+                        background_drained_tx,
                         embedder,
                         db,
                     )
@@ -129,6 +140,7 @@ impl EmbeddingService {
             service_tx,
             done_rx,
             priority_drained_rx,
+            background_drained_rx,
             restart_requested,
             embedder: service_embedder,
             _lock: lock,
@@ -150,9 +162,26 @@ impl EmbeddingService {
         self.priority_drained_rx.clone()
     }
 
+    /// Returns a receiver that fires once each time the background queue drains to empty.
+    pub fn subscribe_to_background_drained(&self) -> flume::Receiver<()> {
+        self.background_drained_rx.clone()
+    }
+
     /// Enqueues a full recovery pass (non-blocking).
     pub fn trigger_recovery(&self, data_dir: PathBuf) {
         let _ = self.service_tx.send(ServiceMsg::StartRecovery { data_dir });
+    }
+
+    /// Enqueues a non-blocking cache recovery pass that updates and broadcasts
+    /// any entries that changed since the snapshot was written.
+    pub fn trigger_cache_recovery(
+        &self,
+        cache: crate::entry_cache::EntryStateCache,
+        data_dir: PathBuf,
+    ) {
+        let _ = self
+            .service_tx
+            .send(ServiceMsg::RecoverCache { cache, data_dir });
     }
 
     /// Returns a clone of the Arc<Embedder> for on-demand text embedding outside the service loop.
@@ -171,10 +200,17 @@ impl EmbeddingService {
         self.restart_requested.store(true, Ordering::SeqCst);
     }
 
-    /// Sends `Shutdown` through the service channel, waits for the run loop to
-    /// finish the current in-flight LanceDB write and exit, then returns the
-    /// reason so the caller can restart or exit cleanly.
-    pub async fn shutdown(self) -> ShutdownReason {
+    /// Persists the cache, sends `Shutdown` through the service channel, waits
+    /// for the run loop to finish the current in-flight LanceDB write and exit,
+    /// then returns the reason so the caller can restart or exit cleanly.
+    pub async fn shutdown(
+        self,
+        cache: Option<&crate::entry_cache::EntryStateCache>,
+        data_dir: &Path,
+    ) -> ShutdownReason {
+        if let Some(cache) = cache {
+            cache.persist(data_dir).await;
+        }
         let _ = self.service_tx.send(ServiceMsg::Shutdown);
         let _ = self.done_rx.recv_async().await;
         if self.restart_requested.load(Ordering::SeqCst) {
@@ -209,6 +245,7 @@ async fn run_loop(
     background_rx: flume::Receiver<BackgroundMsg>,
     background_tx: flume::Sender<BackgroundMsg>,
     priority_drained_tx: flume::Sender<()>,
+    background_drained_tx: flume::Sender<()>,
     embedder: Arc<Embedder>,
     mut db: EmbeddingsDb,
 ) {
@@ -235,6 +272,11 @@ async fn run_loop(
                     log::info!("embedding service: starting recovery for {}", dir.display());
                     dispatch_recovery(&dir, &db, &priority_tx, &background_tx).await;
                     log::info!("embedding service: recovery dispatch complete");
+                }
+                Ok(ServiceMsg::RecoverCache { cache, data_dir: dir }) => {
+                    log::info!("embedding service: recovering cache for {}", dir.display());
+                    cache.recover(&dir).await;
+                    log::info!("embedding service: cache recovery complete");
                 }
                 Ok(ServiceMsg::ResetDatabase { data_dir: dir }) => {
                     if let Err(e) = db.reset().await {
@@ -339,6 +381,10 @@ async fn run_loop(
                     }
                 }
                 Err(_) => { log::warn!("background_rx: disconnected"); break; }
+                }
+
+                if background_rx.is_empty() {
+                    let _ = background_drained_tx.send(());
                 }
             },
         }

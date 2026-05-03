@@ -27,6 +27,11 @@ pub async fn mark_entry_unread(window: tauri::Window, id: String, state: State<'
 }
 
 #[tauri::command]
+pub fn is_cache_seeded(state: State<'_, AppState>) -> bool {
+    state.entry_cache.lock().unwrap().is_some()
+}
+
+#[tauri::command]
 pub async fn list_all_articles(state: State<'_, AppState>) -> Result<Vec<Entry>, String> {
     let data_dir = state.library.read().unwrap().clone();
     entries::list_entries(&data_dir)

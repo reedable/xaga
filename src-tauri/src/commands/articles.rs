@@ -1,6 +1,7 @@
 use tauri::{AppHandle, State};
 use xaga_core::articles;
 use xaga_core::embeddings::EmbeddingsDb;
+use xaga_core::entries;
 use xaga_core::types::AnnotationSummary;
 
 use crate::{article_loader, AppState};
@@ -108,9 +109,16 @@ pub async fn read_article(
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
     let data_dir = state.library.read().unwrap().clone();
-    articles::read_article(&data_dir, &id)
+    let article = articles::read_article(&data_dir, &id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    if let Ok(current) = entries::read_entry(&data_dir, &id).await {
+        let tags = current.tags.into_iter().filter(|t| t != "unread").collect();
+        let _ = entries::set_entry_tags(&data_dir, &id, tags).await;
+    }
+
+    Ok(article)
 }
 
 #[tauri::command]

@@ -1,4 +1,3 @@
-import { FormatQuote } from "@mui/icons-material";
 import {
   List,
   ListItem,
@@ -7,45 +6,40 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { RELATED_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
-import useEntries from "../../hooks/useEntries";
+import { useEvents } from "../../hooks/useEvents";
 import useRelatedItems from "../../hooks/useRelatedItems";
-import { isAnnotation, isEntry, type Embedded, type Item } from "../../types";
+import { isAnnotation, type Embedded, type Item } from "../../types";
 import cx from "../../utils/cx";
 import { abortable, decorate, retriable } from "../../utils/Decorator";
 import Logger from "../../utils/Logger";
 import ItemStatus from "../ItemStatus";
+import Quotes from "../Quotes";
 import css from "./_.module.css";
 
 interface RelatedItemListProps {
   className?: string;
-  selectedItem: Item;
-  onSelectItem: (item: Item) => void;
+  itemId: Item["id"];
 }
 
-export function RelatedItemList({
-  className,
-  selectedItem,
-  onSelectItem,
-}: RelatedItemListProps) {
+export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
+  const navigate = useNavigate();
+  const { collectionId } = useParams();
+  const [searchParams] = useSearchParams();
+
   const [abort, abortControllerRef] = useAbortController();
   const { queryByItem } = useRelatedItems(abortControllerRef);
   const [embeddedItems, setEmbeddedItems] = useState<(Embedded & Item)[]>([]);
-  const { markEntryRead } = useEntries(abortControllerRef);
+  const { onUnreadChanged } = useEvents();
 
   const requestRelatedItems = useCallback(
-    async (item: Item) => {
+    async (id: string) => {
       setEmbeddedItems([]);
 
       const retriable_queryByItem = decorate(async () => {
-        const results = await queryByItem(
-          item,
-          "all",
-          RELATED_THRESHOLD,
-          1,
-          12,
-        );
+        const results = await queryByItem(id, "all", RELATED_THRESHOLD, 1, 12);
         if (!results) throw new Error("query failed");
         return results;
       })
@@ -59,27 +53,29 @@ export function RelatedItemList({
       const results = await retriable_queryByItem();
       if (results) setEmbeddedItems(results);
     },
-    [abortControllerRef, queryByItem],
+    [abortControllerRef, queryByItem]
   );
 
   const handleSelectItem = useCallback(
-    async (item: Item) => {
-      onSelectItem(item);
-
-      if (isEntry(item)) {
-        await markEntryRead(item);
-      }
+    (item: Item) => {
+      const params = new URLSearchParams(searchParams);
+      navigate(`/${collectionId}/${item.id}?${params.toString()}`);
     },
-    [markEntryRead, onSelectItem],
+    [navigate, collectionId, searchParams],
   );
 
   useEffect(() => {
     abort();
+    (async () => { requestRelatedItems(itemId); })();
+  }, [abort, queryByItem, requestRelatedItems, itemId]);
 
-    (async () => {
-      requestRelatedItems(selectedItem);
-    })();
-  }, [abort, queryByItem, requestRelatedItems, selectedItem]);
+  useEffect(() => {
+    return onUnreadChanged((entry) => {
+      setEmbeddedItems((prev) =>
+        prev.map((p) => (p.id === entry.id ? { ...p, ...entry } : p))
+      );
+    });
+  }, [onUnreadChanged]);
 
   if (embeddedItems.length === 0) return null;
 
@@ -100,17 +96,9 @@ export function RelatedItemList({
             >
               <ListItemText
                 primary={
-                  <>
-                    {isAnnotation(item) && (
-                      <FormatQuote sx={{ transform: "rotate(180deg)" }} />
-                    )}
-                    {item.title}
-                    {isAnnotation(item) && <FormatQuote />}
-                  </>
+                  <Quotes quoted={isAnnotation(item)}>{item.title}</Quotes>
                 }
-                secondary={
-                  <ItemStatus item={item} />
-                }
+                secondary={<ItemStatus item={item} />}
                 slotProps={{
                   primary: { className: css.Primary },
                   secondary: { className: css.Secondary },

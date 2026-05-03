@@ -63,9 +63,7 @@ fn watch_entries(
                             EventKind::Create(_) => {
                                 log::debug!("file_watchers: entries create → background embed {id}");
                                 if let Ok(raw) = std::fs::read_to_string(path) {
-                                    if let Some(fm) = xaga_core::util::parse_frontmatter(&raw) {
-                                        cache.update(xaga_core::entries::entry_from_fm(id.to_string(), fm));
-                                    }
+                                    cache.update_from_raw(id, &raw);
                                 }
                                 let _ = background_tx.send(BackgroundMsg::Embed(id.to_string()));
                             }
@@ -73,9 +71,7 @@ fn watch_entries(
                                 if path.exists() {
                                     log::debug!("file_watchers: entries modify → priority embed {id}");
                                     if let Ok(raw) = std::fs::read_to_string(path) {
-                                        if let Some(fm) = xaga_core::util::parse_frontmatter(&raw) {
-                                            cache.update(xaga_core::entries::entry_from_fm(id.to_string(), fm));
-                                        }
+                                        cache.update_from_raw(id, &raw);
                                     }
                                     let _ = priority_tx.send(PriorityMsg::Embed(id.to_string()));
                                 } else {

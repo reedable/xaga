@@ -10,6 +10,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import useAbortController from "../../hooks/useAbortController";
 import { useAnnotations } from "../../hooks/useAnnotations";
 import { useAppearance } from "../../hooks/useAppearance";
@@ -30,19 +31,14 @@ import { RelatedItemList } from "./RelatedItemList";
 
 export interface ArticleReaderProps {
   className?: string;
-  selectedEntry: Entry;
-  onChangeEntry?: (entry: Item) => void;
-  onSelectEntry: (entry: Item) => void;
-  setLoading?: (loading: boolean) => void;
+  entryId: Entry["id"];
 }
 
-export default function ArticleReader({
-  className,
-  selectedEntry,
-  onChangeEntry,
-  onSelectEntry,
-  setLoading,
-}: ArticleReaderProps) {
+export default function ArticleReader({ className, entryId }: ArticleReaderProps) {
+  const navigate = useNavigate();
+  const { collectionId } = useParams();
+  const [searchParams] = useSearchParams();
+
   const platform = usePlatform();
 
   const {
@@ -54,10 +50,10 @@ export default function ArticleReader({
   } = useAppearance();
 
   const [abort, abortControllerRef] = useAbortController();
+  const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
   const [bodyHtml, setBodyHtml] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
-  // Annotations
   const {
     annotations,
     setAnnotationsFromArticle,
@@ -72,29 +68,22 @@ export default function ArticleReader({
       fontSize: readerFontSize,
       lineHeight: readerLineHeight,
     }),
-    [themeMode, readerFontFamily, readerFontSize, readerLineHeight],
+    [themeMode, readerFontFamily, readerFontSize, readerLineHeight]
   );
 
   const html = useMemo(
     () => (bodyHtml ? buildEntryHtml(bodyHtml, readerStyle) : null),
-    [bodyHtml, readerStyle],
+    [bodyHtml, readerStyle]
   );
 
   const { addBookmark, removeBookmark } = useBookmarks(abortControllerRef);
   const { markEntryRead, markEntryUnread } = useEntries(abortControllerRef);
-  const { onUnreadChanged, onBookmarkChanged } = useEvents();
+  const { setFindEnabled } = useEvents();
 
   useEffect(() => {
-    return onUnreadChanged((entry) => {
-      if (entry.id === selectedEntry.id) onChangeEntry?.(entry);
-    });
-  }, [onUnreadChanged, selectedEntry.id, onChangeEntry]);
-
-  useEffect(() => {
-    return onBookmarkChanged((entry) => {
-      if (entry.id === selectedEntry.id) onChangeEntry?.(entry);
-    });
-  }, [onBookmarkChanged, selectedEntry.id, onChangeEntry]);
+    setFindEnabled(!!html);
+    return () => { setFindEnabled(false); };
+  }, [html, setFindEnabled]);
 
   const {
     loading,
@@ -104,50 +93,54 @@ export default function ArticleReader({
     loadArticleByUrl,
   } = useArticles(abortControllerRef);
 
+  const navigateToItem = useCallback(
+    (item: Item) => {
+      const params = new URLSearchParams(searchParams);
+      navigate(`/${collectionId}/${item.id}?${params.toString()}`);
+    },
+    [navigate, collectionId, searchParams],
+  );
+
   const requestArticle = useCallback(
-    async (entry: Entry) => {
+    async (entryId: Entry["id"]) => {
       setBodyHtml(null);
 
-      if (readerView === "full") {
-        const article = await readArticle(entry);
-        if (article) setAnnotationsFromArticle(article);
-        const markdown = article?.content || article?.summary;
+      const article = await readArticle(entryId);
 
-        if (markdown) {
-          const body = await markdownToHtml(markdown);
-          if (body) setBodyHtml(body);
-        }
-      } else {
-        if (entry.summary) {
-          const body = await markdownToHtml(entry.summary);
-          if (body) setBodyHtml(body);
-        }
+      if (article) {
+        setSelectedEntry(article);
+        setAnnotationsFromArticle(article);
+      }
 
-        await markEntryRead(entry);
+      const markdown = article?.content || article?.summary;
+
+      if (markdown) {
+        const body = await markdownToHtml(markdown);
+        if (body) setBodyHtml(body);
       }
     },
-    [readerView, readArticle, setAnnotationsFromArticle, markEntryRead],
+    [readArticle, setAnnotationsFromArticle]
   );
 
   const reloadArticle = useCallback(
     async (entry: Entry) => {
       setBodyHtml(null);
-
       const article = await loadArticle(entry);
-
       if (article?.content) {
         const body = await markdownToHtml(article.content);
         if (body) setBodyHtml(body);
       }
     },
-    [loadArticle],
+    [loadArticle]
   );
 
   const handleOpenUrl = useCallback(() => {
+    if (!selectedEntry?.url) return;
     platform.openUrl(selectedEntry.url);
   }, [platform, selectedEntry]);
 
   const toggleBookmark = useCallback(async () => {
+    if (!selectedEntry) return;
     if (selectedEntry.isBookmarked) {
       await removeBookmark(selectedEntry);
     } else {
@@ -160,54 +153,52 @@ export default function ArticleReader({
       setBodyHtml(null);
 
       let article = await findArticleByUrl(url);
-
-      if (!article) {
-        article = await loadArticleByUrl(url);
-      }
+      if (!article) article = await loadArticleByUrl(url);
 
       if (article?.content) {
         const body = await markdownToHtml(article.content);
         if (body) setBodyHtml(body);
       }
 
-      if (article) onSelectEntry(article);
+      if (article) navigateToItem(article);
     },
-    [findArticleByUrl, loadArticleByUrl, onSelectEntry],
+    [findArticleByUrl, loadArticleByUrl, navigateToItem]
   );
 
   const handleMarkRead = useCallback(async () => {
-    await markEntryRead(selectedEntry);
+    if (!entryId) return;
+    await markEntryRead(entryId);
     setMenuAnchor(null);
-  }, [markEntryRead, selectedEntry]);
+  }, [markEntryRead, entryId]);
 
   const handleMarkUnread = useCallback(async () => {
-    await markEntryUnread(selectedEntry);
+    if (!entryId) return;
+    await markEntryUnread(entryId);
     setMenuAnchor(null);
-  }, [markEntryUnread, selectedEntry]);
+  }, [markEntryUnread, entryId]);
 
   const handleReload = useCallback(async () => {
+    if (!selectedEntry) return;
     reloadArticle(selectedEntry);
     setMenuAnchor(null);
   }, [reloadArticle, selectedEntry]);
 
   useEffect(() => {
+    if (!entryId) return;
     abort();
-    (async () => {
-      requestArticle(selectedEntry);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestArticle, abort, selectedEntry.id, readerView]);
-
-  useEffect(() => {
-    setLoading?.(loading);
-  }, [loading, setLoading]);
+    (async () => { requestArticle(entryId); })();
+  }, [requestArticle, abort, entryId, readerView]);
 
   return (
     <>
       <div className={css.Header}>
         <div className={css.Title}>
-          <Typography component="h1" variant="h5" sx={{ fontFamily: FONT_FAMILY_CSS[readerFontFamily] }}>
-            {selectedEntry.title}
+          <Typography
+            component="h1"
+            variant="h5"
+            sx={{ fontFamily: FONT_FAMILY_CSS[readerFontFamily] }}
+          >
+            {selectedEntry?.title}
           </Typography>
         </div>
       </div>
@@ -216,23 +207,15 @@ export default function ArticleReader({
         <div className={css.Entry}>
           <div className={css.Byline}>
             <Typography variant="caption" color="text.secondary">
-              {formatByline(selectedEntry)}
+              {selectedEntry && formatByline(selectedEntry)}
             </Typography>
 
             <ButtonGroup>
               <Tooltip
-                title={
-                  selectedEntry.isBookmarked
-                    ? "Remove bookmark"
-                    : "Add bookmark"
-                }
+                title={selectedEntry?.isBookmarked ? "Remove bookmark" : "Add bookmark"}
               >
                 <IconButton size="small" onClick={toggleBookmark}>
-                  <Bookmark
-                    color={
-                      selectedEntry.isBookmarked ? "primary" : undefined
-                    }
-                  />
+                  <Bookmark color={selectedEntry?.isBookmarked ? "primary" : undefined} />
                 </IconButton>
               </Tooltip>
 
@@ -243,10 +226,7 @@ export default function ArticleReader({
               </Tooltip>
 
               <Tooltip title="More actions">
-                <IconButton
-                  size="small"
-                  onClick={(e) => setMenuAnchor(e.currentTarget)}
-                >
+                <IconButton size="small" onClick={(e) => setMenuAnchor(e.currentTarget)}>
                   <MoreVert fontSize="small" />
                 </IconButton>
               </Tooltip>
@@ -257,12 +237,11 @@ export default function ArticleReader({
               open={Boolean(menuAnchor)}
               onClose={() => setMenuAnchor(null)}
             >
-              {selectedEntry.isUnread ? (
+              {selectedEntry?.isUnread ? (
                 <MenuItem onClick={handleMarkRead}>Mark as read</MenuItem>
               ) : (
                 <MenuItem onClick={handleMarkUnread}>Mark as unread</MenuItem>
               )}
-
               <MenuItem onClick={handleReload}>
                 <Refresh fontSize="small" sx={{ mr: 1 }} />
                 Reload document
@@ -272,13 +251,12 @@ export default function ArticleReader({
 
           <Collapse in={loading} unmountOnExit>
             <LinearProgress />
-
             <div className={css.Advisory}>
               <Typography variant="caption">Loading...</Typography>
             </div>
           </Collapse>
 
-          {html && (
+          {selectedEntry && html && (
             <Reader
               className={cx(className)}
               html={html}
@@ -291,12 +269,11 @@ export default function ArticleReader({
           )}
         </div>
 
-        <aside>
-          <RelatedItemList
-            selectedItem={selectedEntry}
-            onSelectItem={onSelectEntry}
-          />
-        </aside>
+        {selectedEntry && (
+          <aside>
+            <RelatedItemList itemId={selectedEntry.id} />
+          </aside>
+        )}
       </div>
     </>
   );

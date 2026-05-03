@@ -28,7 +28,7 @@ pub enum ArticlesCommand {
 pub async fn handle(cmd: ArticlesCommand, data_dir: &Path) {
     match cmd {
         ArticlesCommand::List => {
-            match entries::list_entries(data_dir, &xaga_core::filter::unread_ids(data_dir).await).await {
+            match entries::list_entries(data_dir).await {
                 Ok(docs) if docs.is_empty() => {
                     println!("No articles saved.");
                 }
@@ -56,15 +56,30 @@ pub async fn handle(cmd: ArticlesCommand, data_dir: &Path) {
         }
 
         ArticlesCommand::MarkRead { id } => {
-            match entries::mark_entry_read(data_dir, &id).await {
-                Ok(_) => println!("Marked as read."),
+            match entries::read_entry(data_dir, &id).await {
+                Ok(entry) => {
+                    let tags = entry.tags.into_iter().filter(|t| t != "unread").collect();
+                    match entries::set_entry_tags(data_dir, &id, tags).await {
+                        Ok(_) => println!("Marked as read."),
+                        Err(e) => die(e),
+                    }
+                }
                 Err(e) => die(e),
             }
         }
 
         ArticlesCommand::MarkUnread { id } => {
-            match entries::mark_entry_unread(data_dir, &id).await {
-                Ok(_) => println!("Marked as unread."),
+            match entries::read_entry(data_dir, &id).await {
+                Ok(entry) => {
+                    let mut tags = entry.tags;
+                    if !tags.contains(&"unread".to_string()) {
+                        tags.push("unread".to_string());
+                    }
+                    match entries::set_entry_tags(data_dir, &id, tags).await {
+                        Ok(_) => println!("Marked as unread."),
+                        Err(e) => die(e),
+                    }
+                }
                 Err(e) => die(e),
             }
         }

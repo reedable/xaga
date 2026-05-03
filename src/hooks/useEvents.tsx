@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { usePlatform } from "../platform/Platform";
 import type { Entry, Feed } from "../types";
+import { debounced } from "../utils/Decorator";
 
 export function useEvents() {
   const platform = usePlatform();
@@ -12,7 +13,7 @@ export function useEvents() {
         unlistenPromise.then((unlisten) => unlisten());
       };
     },
-    [platform],
+    [platform]
   );
 
   const onUnreadChanged = useCallback(
@@ -22,7 +23,7 @@ export function useEvents() {
         unlistenPromise.then((unlisten) => unlisten());
       };
     },
-    [platform],
+    [platform]
   );
 
   const onBookmarkChanged = useCallback(
@@ -32,17 +33,34 @@ export function useEvents() {
         unlistenPromise.then((unlisten) => unlisten());
       };
     },
-    [platform],
+    [platform]
   );
 
   const onEmbeddingsChanged = useCallback(
     (callback: () => void) => {
-      const unlistenPromise = platform.onEmbeddingsChanged(callback);
+      const unlistenPromise = platform.onEmbeddingsChanged(
+        debounced(callback, { wait: 200 })
+      );
       return () => {
         unlistenPromise.then((unlisten) => unlisten());
       };
     },
-    [platform],
+    [platform]
+  );
+
+  const onFind = useCallback(
+    (callback: () => void) => {
+      const unlistenPromise = platform.onFind(callback);
+      return () => {
+        unlistenPromise.then((unlisten) => unlisten());
+      };
+    },
+    [platform]
+  );
+
+  const setFindEnabled = useCallback(
+    (enabled: boolean) => platform.setFindEnabled(enabled),
+    [platform]
   );
 
   return {
@@ -50,5 +68,7 @@ export function useEvents() {
     onUnreadChanged,
     onBookmarkChanged,
     onEmbeddingsChanged,
+    onFind,
+    setFindEnabled,
   };
 }

@@ -25,29 +25,31 @@ export default function Expander({
 
   return (
     <>
-      <ToggleButton
-        className={css.ExpanderHeader}
-        selected={isExpanded}
-        value="checked"
-        onClick={handleClickHeader}
-      >
-        <ChevronRight className={css.ChevronIcon} />
-
-        <Typography
-          className={css.Label}
-          component="div"
-          variant="overline"
-          sx={{ flex: 1 }}
+      <div className={css.ExpanderHeaderWrapper}>
+        <ToggleButton
+          className={css.ExpanderHeader}
+          selected={isExpanded}
+          value="checked"
+          onClick={handleClickHeader}
         >
-          {label}
-        </Typography>
+          <ChevronRight className={css.ChevronIcon} />
+
+          <Typography
+            className={css.Label}
+            component="div"
+            variant="overline"
+            sx={{ flex: 1 }}
+          >
+            {label}
+          </Typography>
+        </ToggleButton>
 
         {renderHeaderAction && (
-          <span onClick={(e) => e.stopPropagation()}>
+          <span onClick={(e) => e.stopPropagation()} className={css.ExpanderHeaderAction}>
             {renderHeaderAction()}
           </span>
         )}
-      </ToggleButton>
+      </div>
 
       <div className={cx(css.ExpanderContent, isExpanded && css.Expanded)}>
         <Collapse in={isExpanded}>

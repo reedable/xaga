@@ -74,7 +74,7 @@ export function isEmbedded(obj: any): obj is Embedded {
   return obj && typeof obj === "object" && typeof obj.similarity === "number";
 }
 
-export type Shortcut = Item & {
+export type Shortcut = Collection & {
   filter: Filter;
 };
 
@@ -111,12 +111,15 @@ export function isDocument(item?: Item | null): item is Document {
 /** A saved highlight or annotation on a span of article text. */
 export type Annotation = Item & {
   // The ID of the article this annotation belongs to.
-  reference: string;
+  reference: Item["id"];
+
   // One text segment per block-level element covered by the selection.
   // Single-paragraph selections produce a one-element array.
   text: string[];
+
   // 0-based occurrence index for each corresponding entry in `text`.
   occurrence: number[];
+
   color: string;
   note?: string;
 };
@@ -143,7 +146,7 @@ export type SavedItem = Item & {
 };
 
 export function isSavedAnnotation(
-  item: SavedItem,
+  item: SavedItem
 ): item is SavedItem & { reference: string; color: string } {
   return typeof item.reference === "string" && typeof item.color === "string";
 }
@@ -159,7 +162,7 @@ export type AnnotationSummary = Item & {
 };
 
 export function isAnnotationSummary(
-  item?: Item | null,
+  item?: Item | null
 ): item is AnnotationSummary {
   return (
     !!item &&

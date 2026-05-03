@@ -8,13 +8,14 @@ export function useSaved(abortControllerRef: RefObject<AbortController>) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
-  const load = useCallback(async () => {
+  const listSaved = useCallback(async () => {
     const signal = abortControllerRef.current.signal;
     setError(null);
     setLoading(true);
     try {
       const result = await platform.listSaved(signal);
       setSaved(result);
+      return result;
     } catch (e) {
       setError(e);
     } finally {
@@ -22,5 +23,5 @@ export function useSaved(abortControllerRef: RefObject<AbortController>) {
     }
   }, [abortControllerRef, platform]);
 
-  return { saved, loading, error, load };
+  return { saved, loading, error, listSaved };
 }

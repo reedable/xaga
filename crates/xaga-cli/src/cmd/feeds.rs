@@ -30,9 +30,12 @@ pub enum FeedsCommand {
 pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &PathBuf, data_dir: &PathBuf) {
     match cmd {
         FeedsCommand::Add { url } => {
-            let unread = xaga_core::filter::unread_ids(data_dir).await;
+            let (unread, bookmarked) = tokio::join!(
+                xaga_core::filter::unread_ids(data_dir),
+                xaga_core::filter::bookmarked_ids(data_dir),
+            );
             eprint!("Fetching {url} ... ");
-            match feeds::add_feed(client, feeds_dir, data_dir, &url, &unread).await {
+            match feeds::add_feed(client, feeds_dir, data_dir, &url, &unread, &bookmarked).await {
                 Ok(feed) => {
                     eprintln!("done");
                     println!("[{}] {}", feed.id, feed.title);
@@ -46,25 +49,34 @@ pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &Pat
             Err(e) => die(e),
         },
 
-        FeedsCommand::List => match feeds::list_feeds(feeds_dir, &xaga_core::filter::unread_ids(data_dir).await).await {
-            Ok(feeds) if feeds.is_empty() => {
-                println!("No feeds saved. Use `feeds add <url>` to add one.");
-            }
-            Ok(feeds) => {
-                for feed in &feeds {
-                    let updated = feed.updated_at.as_deref().unwrap_or("unknown");
-                    println!("[{}] {} ({} entries)", feed.id, feed.title, feed.entry_count);
-                    println!("  url:     {}", feed.url);
-                    println!("  updated: {updated}");
+        FeedsCommand::List => {
+            let (unread, bookmarked) = tokio::join!(
+                xaga_core::filter::unread_ids(data_dir),
+                xaga_core::filter::bookmarked_ids(data_dir),
+            );
+            match feeds::list_feeds(feeds_dir, &unread, &bookmarked).await {
+                Ok(feeds) if feeds.is_empty() => {
+                    println!("No feeds saved. Use `feeds add <url>` to add one.");
                 }
+                Ok(feeds) => {
+                    for feed in &feeds {
+                        let updated = feed.updated_at.as_deref().unwrap_or("unknown");
+                        println!("[{}] {} ({} entries)", feed.id, feed.title, feed.entry_count);
+                        println!("  url:     {}", feed.url);
+                        println!("  updated: {updated}");
+                    }
+                }
+                Err(e) => die(e),
             }
-            Err(e) => die(e),
-        },
+        }
 
         FeedsCommand::Refresh { id: Some(id) } => {
-            let unread = xaga_core::filter::unread_ids(data_dir).await;
+            let (unread, bookmarked) = tokio::join!(
+                xaga_core::filter::unread_ids(data_dir),
+                xaga_core::filter::bookmarked_ids(data_dir),
+            );
             eprint!("Refreshing {id} ... ");
-            match feeds::refresh_feed(client, feeds_dir, data_dir, &id, &unread).await {
+            match feeds::refresh_feed(client, feeds_dir, data_dir, &id, &unread, &bookmarked).await {
                 Ok(feed) => {
                     eprintln!("done");
                     println!("[{}] {}", feed.id, feed.title);

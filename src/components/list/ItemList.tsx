@@ -1,8 +1,4 @@
-import {
-  Clear,
-  FormatQuote,
-  Settings
-} from "@mui/icons-material";
+import { Clear, Settings } from "@mui/icons-material";
 import {
   Button,
   Collapse,
@@ -23,6 +19,7 @@ import {
   useState,
   type MouseEvent,
 } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 import { RELATED_THRESHOLD, TOPIC_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
@@ -30,10 +27,13 @@ import useEntries from "../../hooks/useEntries";
 import { useEvents } from "../../hooks/useEvents";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRelatedItems from "../../hooks/useRelatedItems";
+import { useSaved } from "../../hooks/useSaved";
 import {
   ALL_ITEMS,
   ANNOTATION_ITEMS,
   RECOMMENDED_ITEMS,
+  SAVED_ITEMS,
+  SIMILAR_TO_SAVED_ITEMS,
 } from "../../Shortcuts";
 import {
   isAnnotation,
@@ -45,9 +45,11 @@ import {
   type Filter,
   type Item,
 } from "../../types";
-
+import { useManageFeed } from "../../providers/ManageFeedProvider";
+import { useManageTopic } from "../../providers/ManageTopicProvider";
 import cx from "../../utils/cx";
 import ItemStatus from "../ItemStatus";
+import Quotes from "../Quotes";
 import css from "./_.module.css";
 
 function getEmptyMessage(filter: Filter, filterText: string): string {
@@ -58,34 +60,30 @@ function getEmptyMessage(filter: Filter, filterText: string): string {
 interface ItemListProps {
   className?: string;
   selectedCollection: Collection;
-  selectedFilter?: Filter;
-  onSelectItem: (item: Item) => void;
-  onFilterChange?: (filter: Filter) => void;
-  onEdit?: () => void;
 }
 
-export function ItemList({
-  className,
-  selectedCollection,
-  selectedFilter,
-  onSelectItem,
-  onFilterChange,
-  onEdit,
-}: ItemListProps) {
+export function ItemList({ className, selectedCollection }: ItemListProps) {
+  const navigate = useNavigate();
+  const { collectionId, itemId: selectedItemId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const rawFilter = searchParams.get("filter");
+  const filter: Filter = isFilter(rawFilter) ? rawFilter : "unread";
+  const search = searchParams.get("search") ?? "";
+
+  const { startEditingFeed } = useManageFeed();
+  const { startEditingTopic } = useManageTopic();
+
   const [abort, abortControllerRef] = useAbortController();
   const [loading, setLoading] = useState(false);
 
-  const {
-    listEntries,
-    listAllEntries,
-    markEntryRead,
-  } = useEntries(abortControllerRef);
+  const { listEntries, listAllEntries, markEntryRead } =
+    useEntries(abortControllerRef);
 
-  const {
-    queryByItem,
-    queryByBookmarks,
-    queryByAnnotations,
-  } = useRelatedItems(abortControllerRef);
+  const { listSaved } = useSaved(abortControllerRef);
+
+  const { queryByItem, queryByBookmarks, queryByAnnotations, queryBySaved } =
+    useRelatedItems(abortControllerRef);
 
   const {
     loading: loadingFeeds,
@@ -96,15 +94,19 @@ export function ItemList({
   const { onUnreadChanged, onBookmarkChanged } = useEvents();
 
   const [items, setItems] = useState<Item[]>([]);
-  const [filter, setFilter] = useState<Filter>(selectedFilter ?? "unread");
   const [filterText, setFilterText] = useState("");
   const [prevSelectedList, setPrevSelectedList] = useState(selectedCollection);
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
 
   if (prevSelectedList !== selectedCollection) {
     setPrevSelectedList(selectedCollection);
     setFilterText("");
   }
+
+  const handleEdit = useMemo(() => {
+    if (isFeed(selectedCollection)) return () => startEditingFeed(selectedCollection);
+    if (isTopic(selectedCollection)) return () => startEditingTopic(selectedCollection);
+    return undefined;
+  }, [selectedCollection, startEditingFeed, startEditingTopic]);
 
   const displayedItems = useMemo(() => {
     if (!filterText) return items;
@@ -125,20 +127,25 @@ export function ItemList({
 
       try {
         if (selectedList === RECOMMENDED_ITEMS) {
-          // const entries = await queryByTopics(filter, RELATED_THRESHOLD);
           const entries = await queryByBookmarks(filter, 0.82);
+          if (entries) setItems(entries);
+        } else if (selectedList === SAVED_ITEMS) {
+          const entries = await listSaved();
           if (entries) setItems(entries);
         } else if (selectedList === ANNOTATION_ITEMS) {
           const entries = await queryByAnnotations(filter, RELATED_THRESHOLD);
+          if (entries) setItems(entries);
+        } else if (selectedList === SIMILAR_TO_SAVED_ITEMS) {
+          const entries = await queryBySaved(filter, RELATED_THRESHOLD);
           if (entries) setItems(entries);
         } else if (isFeed(selectedList)) {
           const entries = await listEntries(selectedList, filter);
           if (entries) setItems(entries);
         } else if (isTopic(selectedList)) {
           const items = await queryByItem(
-            selectedList,
+            selectedList.id,
             filter,
-            selectedList.threshold ?? TOPIC_THRESHOLD,
+            selectedList.threshold ?? TOPIC_THRESHOLD
           );
           if (items) setItems(items);
         } else {
@@ -151,12 +158,14 @@ export function ItemList({
     },
     [
       queryByBookmarks,
-      queryByAnnotations,
       filter,
+      listSaved,
+      queryByAnnotations,
+      queryBySaved,
       listEntries,
       queryByItem,
       listAllEntries,
-    ],
+    ]
   );
 
   const refreshList = useCallback(
@@ -168,53 +177,45 @@ export function ItemList({
         await refreshAllFeeds(() => requestItems(list));
       }
     },
-    [refreshAllFeeds, refreshFeed, requestItems],
+    [refreshAllFeeds, refreshFeed, requestItems]
   );
 
   const handleClickItem = useCallback(
-    async (item: Item) => {
-      setSelectedItemId(item.id);
-      onSelectItem(item);
-
-      if (isEntry(item)) {
-        await markEntryRead(item);
-      }
+    (item: Item) => {
+      const params = new URLSearchParams();
+      params.set("filter", filter);
+      if (search) params.set("search", search);
+      navigate(`/${collectionId}/${item.id}?${params.toString()}`);
     },
-    [markEntryRead, onSelectItem],
+    [navigate, collectionId, filter, search]
   );
 
   const handleFilter = useCallback(
     (_event: MouseEvent<HTMLElement>, value: string) => {
       if (isFilter(value)) {
-        setFilter(value);
-        onFilterChange?.(value);
+        setSearchParams((prev) => { prev.set("filter", value); return prev; });
       }
     },
-    [onFilterChange],
+    [setSearchParams]
   );
 
   const handleRefresh = useCallback(() => {
     abort();
-
-    (async () => {
-      refreshList(selectedCollection);
-    })();
+    (async () => { refreshList(selectedCollection); })();
   }, [abort, refreshList, selectedCollection]);
 
   const handleMarkEntriesRead = useCallback(async () => {
-    await Promise.all(displayedItems.filter(isEntry).map(markEntryRead));
+    await Promise.all(
+      displayedItems
+        .filter(isEntry)
+        .map((entry) => entry.id)
+        .map(markEntryRead)
+    );
   }, [displayedItems, markEntryRead]);
 
   useEffect(() => {
-    (async () => setFilter(selectedFilter ?? "unread"))();
-  }, [selectedFilter]);
-
-  useEffect(() => {
     abort();
-
-    (async () => {
-      requestItems(selectedCollection);
-    })();
+    (async () => { requestItems(selectedCollection); })();
   }, [selectedCollection, requestItems, abort]);
 
   useEffect(() => {
@@ -239,11 +240,11 @@ export function ItemList({
             color="text.secondary"
             variant="overline"
           >
-            {!selectedCollection ? "All items" : (selectedCollection?.title ?? "Entries")}
+            {selectedCollection?.title ?? "All items"}
           </Typography>
 
-          {onEdit && (
-            <IconButton size="small" onClick={onEdit}>
+          {handleEdit && (
+            <IconButton size="small" onClick={handleEdit}>
               <Settings sx={{ fontSize: 16 }} />
             </IconButton>
           )}
@@ -262,9 +263,6 @@ export function ItemList({
           <ToggleButton size="small" value="saved" aria-label="Saved">
             Saved
           </ToggleButton>
-          {/* <ToggleButton size="small" value="bookmarked" aria-label="Bookmarked">
-            Bookmarked
-          </ToggleButton> */}
           <ToggleButton size="small" value="all" aria-label="All">
             All
           </ToggleButton>
@@ -298,13 +296,16 @@ export function ItemList({
 
       <div>
         <Collapse in={loading}>
-          <LinearProgress variant="indeterminate" color={loadingFeeds ? 'warning' : 'primary'} />
+          <LinearProgress
+            variant="indeterminate"
+            color={loadingFeeds ? "warning" : "primary"}
+          />
         </Collapse>
       </div>
 
       {!loading && items.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
-          <Typography variant="body2" color="text.disabled">
+          <Typography component="div" variant="body2" color="text.disabled">
             {getEmptyMessage(filter, "")}
           </Typography>
         </div>
@@ -312,7 +313,7 @@ export function ItemList({
 
       {items.length > 0 && displayedItems.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
-          <Typography variant="body2" color="text.disabled">
+          <Typography component="div" variant="body2" color="text.disabled">
             {getEmptyMessage(filter, filterText)}
           </Typography>
         </div>
@@ -331,17 +332,9 @@ export function ItemList({
               >
                 <ListItemText
                   primary={
-                    <>
-                      {isAnnotation(item) && (
-                        <FormatQuote sx={{ transform: "rotate(180deg)" }} />
-                      )}
-                      {item.title}
-                      {isAnnotation(item) && <FormatQuote />}
-                    </>
+                    <Quotes quoted={isAnnotation(item)}>{item.title}</Quotes>
                   }
-                  secondary={
-                    <ItemStatus item={item} />
-                  }
+                  secondary={<ItemStatus item={item} />}
                   slotProps={{
                     primary: { className: css.Primary },
                     secondary: { className: css.Secondary },
@@ -355,7 +348,7 @@ export function ItemList({
 
       {loading && items.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
-          <Typography variant="body2" color="text.disabled">
+          <Typography component="div" variant="body2" color="text.disabled">
             Loading...
           </Typography>
         </div>

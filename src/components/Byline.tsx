@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { type Item } from "../types";
+import cx from "../utils/cx";
 import formatByline from "../utils/formatByline";
 import { DAY, getItemDate, HOUR, MINUTE } from "../utils/formatDate";
+import css from "./Byline.module.css";
 
 interface BylineProps {
   className?: string;
@@ -19,7 +21,6 @@ export function Byline({ className, item }: BylineProps) {
   const [, setTick] = useState(0);
 
   useEffect(() => {
-
     function schedule(): ReturnType<typeof setTimeout> | undefined {
       const date = getItemDate(item);
       if (!date) return;
@@ -34,9 +35,14 @@ export function Byline({ className, item }: BylineProps) {
       }, delay);
     }
 
-    const id = schedule();
-    return () => clearTimeout(id!);
+    const tid = schedule();
+
+    return () => {
+      if (typeof tid === "number") clearTimeout(tid!);
+    };
   }, [item]);
 
-  return <div className={className}>{formatByline(item)}</div>;
+  return (
+    <span className={cx(className, css.Byline)}>{formatByline(item)}</span>
+  );
 }
