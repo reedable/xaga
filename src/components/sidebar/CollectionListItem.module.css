@@ -1,8 +1,12 @@
 .ListItemIcon {
-  min-width: 32px;
+  min-width: 24px;
+}
+
+.ListItemTextPrimary {
+  font-size: 13px !important;
 }
 
 .Icon {
-  font-size: 18px;
+  font-size: 16px !important;
   color: var(--text-secondary);
 }

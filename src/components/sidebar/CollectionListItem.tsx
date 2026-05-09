@@ -55,10 +55,10 @@ export default function CollectionListItem<T extends Collection>({
 
         <ListItemText
           primary={collection.title}
-          primaryTypographyProps={{
-            component: "div",
-            variant: "body2",
-            noWrap: true,
+          slotProps={{
+            primary: {
+              className: css.ListItemTextPrimary,
+            },
           }}
         />
       </ListItemButton>
