@@ -15,7 +15,7 @@ import { isAnnotation, isEntry, type Embedded, type Item } from "../../types";
 import cx from "../../utils/cx";
 import formatByline from "../../utils/formatByline";
 import Quotes from "../Quotes";
-import css from "./_.module.css";
+import css from "./SearchResultList.module.css";
 
 interface SearchResultListProps {
   className?: string;

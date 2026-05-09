@@ -103,10 +103,6 @@
 
           svg {
             font-size: 0.875em;
-
-            &.UnreadIcon {
-              font-size: 0.75em;
-            }
           }
         }
       }

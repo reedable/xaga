@@ -53,7 +53,7 @@ import {
 import cx from "../../utils/cx";
 import ItemStatus from "../ItemStatus";
 import Quotes from "../Quotes";
-import css from "./_.module.css";
+import css from "./ItemList.module.css";
 
 function getEmptyMessage(filter: Filter, filterText: string): string {
   const label = filter === "all" ? "items" : `${filter} items`;
