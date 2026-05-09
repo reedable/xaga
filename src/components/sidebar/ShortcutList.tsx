@@ -4,7 +4,7 @@ import {
   RssFeed,
   Star,
 } from "@mui/icons-material";
-import { Typography } from "@mui/material";
+import UnreadCount from "./UnreadCount";
 import { useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import useAbortController from "../../hooks/useAbortController";
@@ -85,17 +85,7 @@ export default function ShortcutList({
             isFeed(shortcut) ? feedId === shortcut.id : topicId === shortcut.id
           }
           onSelectCollection={handleSelectShortcut}
-          renderSecondaryAction={() =>
-            shortcut.unreadCount > 0 ? (
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ pr: 1, userSelect: "none" }}
-              >
-                {shortcut.unreadCount}
-              </Typography>
-            ) : null
-          }
+          renderSecondaryAction={() => <UnreadCount count={shortcut.unreadCount} />}
         />
       ))}
     </CollectionList>

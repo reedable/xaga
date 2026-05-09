@@ -1,0 +1,8 @@
+.ListItemIcon {
+  min-width: 32px;
+}
+
+.Icon {
+  font-size: 18px;
+  color: var(--text-secondary);
+}

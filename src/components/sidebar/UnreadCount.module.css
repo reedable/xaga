@@ -1,0 +1,6 @@
+.UnreadCount {
+  display: inline-block;
+  font-size: 12px;
+  padding-right: 8px;
+  user-select: none;
+}

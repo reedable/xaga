@@ -15,11 +15,13 @@ html {
   &[data-theme="light"] {
     --white: rgba(255, 255, 255, 1);
     --light-gray: rgba(0, 0, 0, 0.12);
+    --text-secondary: rgba(0, 0, 0, 0.6);
   }
 
   &[data-theme="dark"] {
     --white: rgba(18, 18, 18);
     --light-gray: rgba(255, 255, 255, 0.12);
+    --text-secondary: rgba(255, 255, 255, 0.7);
   }
 
   --background-color: var(--white);

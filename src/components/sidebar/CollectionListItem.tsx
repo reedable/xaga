@@ -10,6 +10,7 @@ import { motion } from "framer-motion";
 import type { ElementType, ReactNode } from "react";
 import type { Collection } from "../../types";
 import cx from "../../utils/cx";
+import css from "./CollectionListItem.module.css";
 
 const MotionListItem = motion(ListItem);
 
@@ -44,11 +45,11 @@ export default function CollectionListItem<T extends Collection>({
         selected={selected}
         onClick={() => onSelectCollection(collection)}
       >
-        <ListItemIcon sx={{ minWidth: 32 }}>
+        <ListItemIcon className={css.ListItemIcon}>
           {loading ? (
             <CircularProgress size={16} />
           ) : (
-            <Icon sx={{ fontSize: 18, color: "text.secondary" }} />
+            <Icon className={css.Icon} />
           )}
         </ListItemIcon>
 

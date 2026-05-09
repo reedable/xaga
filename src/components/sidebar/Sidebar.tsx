@@ -6,7 +6,7 @@ import { useTopics } from "../../hooks/useTopics";
 import { type Feed, type Topic } from "../../types";
 import cx from "../../utils/cx";
 import sortByUnreadCount from "../../utils/sortByUnreadCount";
-import css from "./_.module.css";
+import css from "./Sidebar.module.css";
 import FeedList from "./FeedList";
 import ShortcutList from "./ShortcutList";
 import TopicList from "./TopicList";

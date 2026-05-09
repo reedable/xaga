@@ -2,7 +2,7 @@ import { ChevronRight } from "@mui/icons-material";
 import { Collapse, List, ToggleButton, Typography } from "@mui/material";
 import { useCallback, type ReactNode } from "react";
 import cx from "../../utils/cx";
-import css from "./_.module.css";
+import css from "./CollectionList.module.css";
 
 export interface CollectionListProps {
   children?: ReactNode;
@@ -38,7 +38,6 @@ export default function CollectionList({
             className={css.Label}
             component="div"
             variant="overline"
-            sx={{ flex: 1 }}
           >
             {label}
           </Typography>

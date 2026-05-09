@@ -1,5 +1,5 @@
 import { Add, RssFeed } from "@mui/icons-material";
-import { IconButton, Typography } from "@mui/material";
+import { IconButton } from "@mui/material";
 import { useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import useAbortController from "../../hooks/useAbortController";
@@ -8,6 +8,8 @@ import useRouter from "../../hooks/useRouter";
 import { isFilter, type Feed } from "../../types";
 import CollectionList from "./CollectionList";
 import CollectionListItem from "./CollectionListItem";
+import css from "./FeedList.module.css";
+import UnreadCount from "./UnreadCount";
 
 type FeedListProps = {
   isExpanded?: boolean;
@@ -45,7 +47,7 @@ export default function FeedList({
       onClickHeader={onClickHeader}
       renderHeaderAction={() => (
         <IconButton size="small" onClick={onAddFeed}>
-          <Add sx={{ fontSize: 16 }} />
+          <Add className={css.AddIcon} />
         </IconButton>
       )}
     >
@@ -57,17 +59,7 @@ export default function FeedList({
           loading={loadingFeedIds.has(feed.id)}
           selected={feedId === feed.id}
           onSelectCollection={handleSelectFeed}
-          renderSecondaryAction={() =>
-            feed.unreadCount > 0 ? (
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ pr: 1, userSelect: "none" }}
-              >
-                {feed.unreadCount}
-              </Typography>
-            ) : null
-          }
+          renderSecondaryAction={() => <UnreadCount count={feed.unreadCount} />}
         />
       ))}
     </CollectionList>

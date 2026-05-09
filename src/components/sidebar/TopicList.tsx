@@ -1,5 +1,5 @@
 import { Add, Feed as FeedIcon } from "@mui/icons-material";
-import { IconButton, Typography } from "@mui/material";
+import { IconButton } from "@mui/material";
 import { useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import useAbortController from "../../hooks/useAbortController";
@@ -8,6 +8,8 @@ import useRouter from "../../hooks/useRouter";
 import { isFilter, type Topic } from "../../types";
 import CollectionList from "./CollectionList";
 import CollectionListItem from "./CollectionListItem";
+import css from "./TopicList.module.css";
+import UnreadCount from "./UnreadCount";
 
 type TopicListProps = {
   isExpanded?: boolean;
@@ -45,7 +47,7 @@ export default function TopicList({
       onClickHeader={onClickHeader}
       renderHeaderAction={() => (
         <IconButton size="small" onClick={onAddTopic}>
-          <Add sx={{ fontSize: 16 }} />
+          <Add className={css.AddIcon} />
         </IconButton>
       )}
     >
@@ -57,17 +59,7 @@ export default function TopicList({
           loading={loadingFeedIds.size > 0}
           selected={topicId === topic.id}
           onSelectCollection={handleSelectTopic}
-          renderSecondaryAction={() =>
-            topic.unreadCount > 0 ? (
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ pr: 1, userSelect: "none" }}
-              >
-                {topic.unreadCount}
-              </Typography>
-            ) : null
-          }
+          renderSecondaryAction={() => <UnreadCount count={topic.unreadCount} />}
         />
       ))}
     </CollectionList>
