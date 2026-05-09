@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   isAnnotation,
   isCollection,
+  isEntry,
   type Annotation,
   type Collection,
   type Entry,
@@ -20,7 +21,8 @@ export function isNavigationState(value: unknown): value is NavigationState {
     (v.feedId === undefined || typeof v.feedId === "string") &&
     (v.shortcutId === undefined || typeof v.shortcutId === "string") &&
     (v.entryId === undefined || typeof v.entryId === "string") &&
-    (v.annotationId === undefined || typeof v.annotationId === "string")
+    (v.annotationId === undefined || typeof v.annotationId === "string") &&
+    (v.url === undefined || typeof v.url === "string")
   );
 }
 
@@ -41,16 +43,18 @@ export default function useRouter() {
       const params = new URLSearchParams(searchParams);
       let entryId: Entry["id"];
       let annotationId: Annotation["id"] | undefined;
+      let url: Entry["url"] | undefined;
 
       if (isAnnotation(item)) {
         annotationId = item.id;
         entryId = item.reference;
       } else {
         entryId = item.id;
+        if (isEntry(item)) url = item.url;
       }
 
       logged_navigate(`/?${params.toString()}`, {
-        state: { ...state, entryId, annotationId },
+        state: { ...state, entryId, annotationId, url },
       });
     },
     [logged_navigate, searchParams, state]

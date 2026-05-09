@@ -1,25 +1,54 @@
-import { Bookmark, Circle, CircleOutlined, OpenInNew, Refresh } from "@mui/icons-material";
+import {
+  Bookmark,
+  Circle,
+  CircleOutlined,
+  OpenInNew,
+  Refresh,
+} from "@mui/icons-material";
 import { IconButton, Tooltip } from "@mui/material";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useBookmarks } from "../../hooks/useBookmarks";
 import useEntries from "../../hooks/useEntries";
+import { useEvents } from "../../hooks/useEvents";
+import useRouter from "../../hooks/useRouter";
 import { usePlatform } from "../../platform/Platform";
-import { type Article } from "../../types";
+import { type Entry } from "../../types";
 import { AddressBar } from "../AddressBar";
 import { Search } from "../Search";
 import css from "./Toolbar.module.css";
 
 interface ToolbarProps {
-  entry: Article | null;
   reload: (() => void) | null;
 }
 
-export function Toolbar({ entry, reload }: ToolbarProps) {
+export function Toolbar({ reload }: ToolbarProps) {
   const [, abortControllerRef] = useAbortController();
   const { addBookmark, removeBookmark } = useBookmarks(abortControllerRef);
   const { markEntryRead, markEntryUnread } = useEntries(abortControllerRef);
   const platform = usePlatform();
+  const {
+    state: { url, entryId },
+  } = useRouter();
+  const { onBookmarkChanged, onUnreadChanged } = useEvents();
+
+  const [latestEntry, setLatestEntry] = useState<Entry | null>(null);
+  const entry = latestEntry?.id === entryId ? latestEntry : null;
+
+  useEffect(() => {
+    if (!entryId) return;
+    const controller = new AbortController();
+    platform
+      .readArticle(controller.signal, entryId)
+      .then((article) =>
+        setLatestEntry((prev) => (prev?.id === entryId ? prev : article))
+      )
+      .catch(() => {});
+    return () => controller.abort();
+  }, [entryId, platform]);
+
+  useEffect(() => onBookmarkChanged(setLatestEntry), [onBookmarkChanged]);
+  useEffect(() => onUnreadChanged(setLatestEntry), [onUnreadChanged]);
 
   const toggleBookmark = useCallback(async () => {
     if (!entry) return;
@@ -28,9 +57,9 @@ export function Toolbar({ entry, reload }: ToolbarProps) {
   }, [entry, addBookmark, removeBookmark]);
 
   const handleOpenUrl = useCallback(() => {
-    if (!entry?.url) return;
-    void platform.openUrl(entry.url);
-  }, [entry, platform]);
+    if (!url) return;
+    void platform.openUrl(url);
+  }, [url, platform]);
 
   const toggleRead = useCallback(async () => {
     if (!entry) return;
@@ -40,11 +69,15 @@ export function Toolbar({ entry, reload }: ToolbarProps) {
 
   return (
     <div className={css.Toolbar}>
-      <AddressBar url={entry?.url ?? null} />
+      <AddressBar url={entry?.url ?? url ?? null} />
 
       <Tooltip title="Refresh">
         <span>
-          <IconButton size="small" onClick={reload ?? undefined} disabled={!reload}>
+          <IconButton
+            size="small"
+            onClick={reload ?? undefined}
+            disabled={!reload}
+          >
             <Refresh fontSize="small" />
           </IconButton>
         </span>
@@ -53,9 +86,11 @@ export function Toolbar({ entry, reload }: ToolbarProps) {
       <Tooltip title={entry?.isUnread ? "Mark as read" : "Mark as unread"}>
         <span>
           <IconButton size="small" onClick={toggleRead} disabled={!entry}>
-            {entry?.isUnread
-              ? <Circle fontSize="small" color="primary" />
-              : <CircleOutlined fontSize="small" />}
+            {entry?.isUnread ? (
+              <Circle fontSize="small" color="primary" />
+            ) : (
+              <CircleOutlined fontSize="small" />
+            )}
           </IconButton>
         </span>
       </Tooltip>
@@ -73,7 +108,7 @@ export function Toolbar({ entry, reload }: ToolbarProps) {
 
       <Tooltip title="Open in browser">
         <span>
-          <IconButton size="small" onClick={handleOpenUrl} disabled={!entry}>
+          <IconButton size="small" onClick={handleOpenUrl} disabled={!url}>
             <OpenInNew fontSize="small" />
           </IconButton>
         </span>

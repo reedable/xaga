@@ -1,9 +1,8 @@
 import { Typography } from "@mui/material";
-import { useCallback, useState } from "react";
+import { useRef } from "react";
 import useRouter from "../../hooks/useRouter";
 import cx from "../../utils/cx";
-import { type Article } from "../../types";
-import ArticleReader from "./ArticleReader";
+import ArticleReader, { type ArticleReaderHandle } from "./ArticleReader";
 import css from "./ItemView.module.css";
 import { Toolbar } from "./Toolbar";
 
@@ -15,22 +14,15 @@ export function ItemView({ className }: ItemViewProps) {
   const { state } = useRouter();
   const { entryId } = state;
 
-  const [entry, setEntry] = useState<Article | null>(null);
-  const [reload, setReload] = useState<(() => void) | null>(null);
-
-  const handleReloadChange = useCallback((fn: (() => void) | null) => {
-    setReload(fn ? () => fn : null);
-  }, []);
+  const readerRef = useRef<ArticleReaderHandle>(null);
 
   return (
     <div className={cx(className, css.LayoutContainer)}>
       <div className={css.Layout}>
-        <Toolbar entry={entry} reload={reload} />
+        <Toolbar reload={entryId ? () => readerRef.current?.reload() : null} />
+
         {entryId ? (
-          <ArticleReader
-            onEntryChange={setEntry}
-            onReloadChange={handleReloadChange}
-          />
+          <ArticleReader ref={readerRef} />
         ) : (
           <div className={css.Placeholder}>
             <Typography variant="body2" color="text.disabled">

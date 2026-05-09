@@ -1,5 +1,5 @@
 import { Typography } from "@mui/material";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import useAbortController from "../../hooks/useAbortController";
 import { useAnnotations } from "../../hooks/useAnnotations";
@@ -16,201 +16,197 @@ import css from "./ArticleReader.module.css";
 import { Reader } from "./Reader";
 import { RelatedItemList } from "./RelatedItemList";
 
+export interface ArticleReaderHandle {
+  reload: () => void;
+}
+
 export interface ArticleReaderProps {
   className?: string;
-  onEntryChange?: (entry: Article | null) => void;
-  onReloadChange?: (reload: (() => void) | null) => void;
 }
 
-export default function ArticleReader({
-  className,
-  onEntryChange,
-  onReloadChange,
-}: ArticleReaderProps) {
-  const { navigate, state } = useRouter();
-  const { entryId, annotationId } = state;
-  const [searchParams] = useSearchParams();
+const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
+  function ArticleReader({ className }, ref) {
+    const { navigate, state } = useRouter();
+    const { entryId, annotationId } = state;
+    const [searchParams] = useSearchParams();
 
-  const {
-    readerView,
-    themeMode,
-    readerFontFamily,
-    readerFontSize,
-    readerLineHeight,
-  } = useAppearance();
-
-  const [abort, abortControllerRef] = useAbortController();
-  const [selectedEntry, setSelectedEntry] = useState<Article | null>(null);
-  const [bodyHtml, setBodyHtml] = useState<string | null>(null);
-
-  const {
-    annotations,
-    setAnnotationsFromArticle,
-    saveAnnotation,
-    removeAnnotation,
-  } = useAnnotations(abortControllerRef);
-
-  const readerStyle: ReaderStyle = useMemo(
-    () => ({
+    const {
+      readerView,
       themeMode,
-      fontFamily: readerFontFamily,
-      fontSize: readerFontSize,
-      lineHeight: readerLineHeight,
-    }),
-    [themeMode, readerFontFamily, readerFontSize, readerLineHeight]
-  );
+      readerFontFamily,
+      readerFontSize,
+      readerLineHeight,
+    } = useAppearance();
 
-  const html = useMemo(
-    () => (bodyHtml ? buildEntryHtml(bodyHtml, readerStyle) : null),
-    [bodyHtml, readerStyle]
-  );
+    const [abort, abortControllerRef] = useAbortController();
+    const [selectedEntry, setSelectedEntry] = useState<Article | null>(null);
+    const [bodyHtml, setBodyHtml] = useState<string | null>(null);
 
-  const { setFindEnabled, onUnreadChanged, onBookmarkChanged } = useEvents();
+    const {
+      annotations,
+      setAnnotationsFromArticle,
+      saveAnnotation,
+      removeAnnotation,
+    } = useAnnotations(abortControllerRef);
 
-  useEffect(() => {
-    onEntryChange?.(selectedEntry);
-    return () => onEntryChange?.(null);
-  }, [selectedEntry, onEntryChange]);
+    const readerStyle: ReaderStyle = useMemo(
+      () => ({
+        themeMode,
+        fontFamily: readerFontFamily,
+        fontSize: readerFontSize,
+        lineHeight: readerLineHeight,
+      }),
+      [themeMode, readerFontFamily, readerFontSize, readerLineHeight]
+    );
 
-  useEffect(() => {
-    setFindEnabled(!!html);
-    return () => {
-      setFindEnabled(false);
-    };
-  }, [html, setFindEnabled]);
+    const html = useMemo(
+      () => (bodyHtml ? buildEntryHtml(bodyHtml, readerStyle) : null),
+      [bodyHtml, readerStyle]
+    );
 
-  const { readArticle, loadArticle, findArticleByUrl, loadArticleByUrl } =
-    useArticles(abortControllerRef);
+    const { setFindEnabled, onUnreadChanged, onBookmarkChanged } = useEvents();
 
-  const navigateToItem = useCallback(
-    (item: Item) => {
-      const params = new URLSearchParams(searchParams);
-      navigate(`/?${params.toString()}`, {
-        state: { ...state, entryId: item.id },
+    useEffect(() => {
+      setFindEnabled(!!html);
+      return () => {
+        setFindEnabled(false);
+      };
+    }, [html, setFindEnabled]);
+
+    const { readArticle, loadArticle, findArticleByUrl, loadArticleByUrl } =
+      useArticles(abortControllerRef);
+
+    const navigateToItem = useCallback(
+      (item: Item) => {
+        const params = new URLSearchParams(searchParams);
+        navigate(`/?${params.toString()}`, {
+          state: { ...state, entryId: item.id },
+        });
+      },
+      [navigate, state, searchParams]
+    );
+
+    const requestArticle = useCallback(
+      async (id: Entry["id"]) => {
+        setSelectedEntry(null);
+        setBodyHtml(null);
+
+        const article = await readArticle(id);
+
+        if (article) {
+          setSelectedEntry(article);
+          setAnnotationsFromArticle(article);
+        }
+
+        const markdown = article?.content || article?.summary;
+
+        if (markdown) {
+          const body = await markdownToHtml(markdown);
+          if (body) setBodyHtml(body);
+        }
+      },
+      [readArticle, setAnnotationsFromArticle]
+    );
+
+    const reloadArticle = useCallback(
+      async (entry: Entry) => {
+        setBodyHtml(null);
+
+        const article = await loadArticle(entry);
+
+        if (article?.content) {
+          const body = await markdownToHtml(article.content);
+          if (body) setBodyHtml(body);
+        }
+      },
+      [loadArticle]
+    );
+
+    useImperativeHandle(ref, () => ({
+      reload: () => { if (selectedEntry) reloadArticle(selectedEntry); },
+    }), [selectedEntry, reloadArticle]);
+
+    const handleLoadArticleByUrl = useCallback(
+      async (url: string) => {
+        setBodyHtml(null);
+
+        let article = await findArticleByUrl(url);
+        if (!article) article = await loadArticleByUrl(url);
+
+        if (article?.content) {
+          const body = await markdownToHtml(article.content);
+          if (body) setBodyHtml(body);
+        }
+
+        if (article) navigateToItem(article);
+      },
+      [findArticleByUrl, loadArticleByUrl, navigateToItem]
+    );
+
+    useEffect(() => {
+      if (!entryId) return;
+      abort();
+
+      (async () => {
+        requestArticle(entryId);
+      })();
+
+      return abort;
+    }, [requestArticle, abort, entryId, readerView, annotationId]);
+
+    useEffect(() => {
+      return onUnreadChanged((entry) => {
+        setSelectedEntry((prev) =>
+          prev && prev.id === entry.id ? { ...prev, ...entry } : prev
+        );
       });
-    },
-    [navigate, state, searchParams]
-  );
+    }, [onUnreadChanged]);
 
-  const requestArticle = useCallback(
-    async (id: Entry["id"]) => {
-      setSelectedEntry(null);
-      setBodyHtml(null);
+    useEffect(() => {
+      return onBookmarkChanged((entry) => {
+        setSelectedEntry((prev) =>
+          prev && prev.id === entry.id ? { ...prev, ...entry } : prev
+        );
+      });
+    }, [onBookmarkChanged]);
 
-      const article = await readArticle(id);
+    return (
+      <>
+        <div className={css.Content}>
+          <div className={css.Entry}>
+            <div className={css.Title}>
+              <Typography
+                component="h1"
+                variant="h5"
+                sx={{ fontFamily: FONT_FAMILY_CSS[readerFontFamily] }}
+              >
+                {selectedEntry?.title}
+              </Typography>
+            </div>
 
-      if (article) {
-        setSelectedEntry(article);
-        setAnnotationsFromArticle(article);
-      }
-
-      const markdown = article?.content || article?.summary;
-
-      if (markdown) {
-        const body = await markdownToHtml(markdown);
-        if (body) setBodyHtml(body);
-      }
-    },
-    [readArticle, setAnnotationsFromArticle]
-  );
-
-  const reloadArticle = useCallback(
-    async (entry: Entry) => {
-      setBodyHtml(null);
-
-      const article = await loadArticle(entry);
-
-      if (article?.content) {
-        const body = await markdownToHtml(article.content);
-        if (body) setBodyHtml(body);
-      }
-    },
-    [loadArticle]
-  );
-
-  useEffect(() => {
-    onReloadChange?.(selectedEntry ? () => reloadArticle(selectedEntry) : null);
-    return () => onReloadChange?.(null);
-  }, [selectedEntry, reloadArticle, onReloadChange]);
-
-  const handleLoadArticleByUrl = useCallback(
-    async (url: string) => {
-      setBodyHtml(null);
-
-      let article = await findArticleByUrl(url);
-      if (!article) article = await loadArticleByUrl(url);
-
-      if (article?.content) {
-        const body = await markdownToHtml(article.content);
-        if (body) setBodyHtml(body);
-      }
-
-      if (article) navigateToItem(article);
-    },
-    [findArticleByUrl, loadArticleByUrl, navigateToItem]
-  );
-
-  useEffect(() => {
-    if (!entryId) return;
-    abort();
-
-    (async () => {
-      requestArticle(entryId);
-    })();
-
-    return abort;
-  }, [requestArticle, abort, entryId, readerView, annotationId]);
-
-  useEffect(() => {
-    return onUnreadChanged((entry) => {
-      setSelectedEntry((prev) =>
-        prev && prev.id === entry.id ? { ...prev, ...entry } : prev
-      );
-    });
-  }, [onUnreadChanged]);
-
-  useEffect(() => {
-    return onBookmarkChanged((entry) => {
-      setSelectedEntry((prev) =>
-        prev && prev.id === entry.id ? { ...prev, ...entry } : prev
-      );
-    });
-  }, [onBookmarkChanged]);
-
-  return (
-    <>
-      <div className={css.Content}>
-        <div className={css.Entry}>
-          <div className={css.Title}>
-            <Typography
-              component="h1"
-              variant="h5"
-              sx={{ fontFamily: FONT_FAMILY_CSS[readerFontFamily] }}
-            >
-              {selectedEntry?.title}
-            </Typography>
+            {selectedEntry && html && (
+              <Reader
+                className={cx(className)}
+                html={html}
+                entryId={selectedEntry.id}
+                annotations={annotations}
+                scrollToAnnotationId={annotationId}
+                onClickLink={handleLoadArticleByUrl}
+                onSaveAnnotation={saveAnnotation}
+                onRemoveAnnotation={removeAnnotation}
+              />
+            )}
           </div>
 
-          {selectedEntry && html && (
-            <Reader
-              className={cx(className)}
-              html={html}
-              entryId={selectedEntry.id}
-              annotations={annotations}
-              scrollToAnnotationId={annotationId}
-              onClickLink={handleLoadArticleByUrl}
-              onSaveAnnotation={saveAnnotation}
-              onRemoveAnnotation={removeAnnotation}
-            />
+          {selectedEntry && (
+            <aside className={css.Aside}>
+              <RelatedItemList itemId={selectedEntry.id} />
+            </aside>
           )}
         </div>
+      </>
+    );
+  }
+);
 
-        {selectedEntry && (
-          <aside className={css.Aside}>
-            <RelatedItemList itemId={selectedEntry.id} />
-          </aside>
-        )}
-      </div>
-    </>
-  );
-}
+export default ArticleReader;

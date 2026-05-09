@@ -232,4 +232,5 @@ export type NavigationState = {
   shortcutId?: Shortcut["id"];
   entryId?: Entry["id"];
   annotationId?: Annotation["id"];
+  url?: Entry["url"];
 };
