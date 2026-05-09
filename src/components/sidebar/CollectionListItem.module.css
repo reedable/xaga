@@ -1,5 +1,5 @@
 .ListItemIcon {
-  min-width: 24px;
+  min-width: 24px !important;
 }
 
 .ListItemTextPrimary {
