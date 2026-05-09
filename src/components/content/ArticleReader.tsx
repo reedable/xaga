@@ -21,7 +21,11 @@ export interface ArticleReaderProps {
   onReloadChange?: (reload: (() => void) | null) => void;
 }
 
-export default function ArticleReader({ className, onEntryChange, onReloadChange }: ArticleReaderProps) {
+export default function ArticleReader({
+  className,
+  onEntryChange,
+  onReloadChange,
+}: ArticleReaderProps) {
   const { navigate, state } = useRouter();
   const { entryId, annotationId } = state;
   const [searchParams] = useSearchParams();
@@ -190,10 +194,10 @@ export default function ArticleReader({ className, onEntryChange, onReloadChange
             <Reader
               className={cx(className)}
               html={html}
-              reference={selectedEntry.id}
+              entryId={selectedEntry.id}
               annotations={annotations}
               scrollToAnnotationId={annotationId}
-              onClickUrl={handleLoadArticleByUrl}
+              onClickLink={handleLoadArticleByUrl}
               onSaveAnnotation={saveAnnotation}
               onRemoveAnnotation={removeAnnotation}
             />

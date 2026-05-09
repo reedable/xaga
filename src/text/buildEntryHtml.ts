@@ -3,13 +3,16 @@ import {
   READER_LINE_HEIGHT_DEFAULT,
   type ThemeMode,
 } from "../providers/AppearanceContext";
-import { ANNOTATION_COLORS_DARK, ANNOTATION_COLORS_LIGHT } from "./annotationColors";
 import { FONT_FAMILY_CSS, type FontFamily } from "../utils/FontFamily";
+import {
+  ANNOTATION_COLORS_DARK,
+  ANNOTATION_COLORS_LIGHT,
+} from "./annotationColors";
 
 // ── postMessage type constants ────────────────────────────────────────────────
 
 /** Existing: iframe notifies parent that a link was clicked. */
-export const OPEN_URL = "open-url";
+export const OPEN_LINK_URL = "open-url";
 
 /** Iframe notifies parent that the user has selected text. */
 export const SELECTION_MADE = "selection-made";
@@ -61,7 +64,7 @@ export interface SerializedAnnotation {
 export function buildEntryHtml(
   bodyHtml: string,
   style: ReaderStyle,
-  annotations: SerializedAnnotation[] = [],
+  annotations: SerializedAnnotation[] = []
 ): string {
   const { themeMode, fontFamily, fontSize, lineHeight } = style;
   const prefersDark = themeMode === "dark";
@@ -88,10 +91,15 @@ export function buildEntryHtml(
     blockquote{border-left:4px solid #888;margin-left:0;padding-left:1rem;opacity:0.85}
     table{border-collapse:collapse;width:100%}
     th,td{border:1px solid #888;padding:0.4rem 0.6rem}
-    ${Object.entries(prefersDark ? ANNOTATION_COLORS_DARK : ANNOTATION_COLORS_LIGHT).map(([name, t]) =>
-      `mark[data-ann-color="${name}"]{background:${t.bg};border-radius:2px;cursor:pointer;outline:1px solid ${t.accent}${prefersDark && name !== "none" ? ";color:#000000" : ""}}` +
-      `mark[data-ann-color="${name}"]:hover{background:${t.accent};color:${prefersDark ? "#000000" : fg}}`
-    ).join("")}
+    ${Object.entries(
+      prefersDark ? ANNOTATION_COLORS_DARK : ANNOTATION_COLORS_LIGHT
+    )
+      .map(
+        ([name, t]) =>
+          `mark[data-ann-color="${name}"]{background:${t.bg};border-radius:2px;cursor:pointer;outline:1px solid ${t.accent}${prefersDark && name !== "none" ? ";color:#000000" : ""}}` +
+          `mark[data-ann-color="${name}"]:hover{background:${t.accent};color:${prefersDark ? "#000000" : fg}}`
+      )
+      .join("")}
     mark.xf{background:${prefersDark ? "#7b6200" : "#fff176"};border-radius:2px;color:inherit}
     mark.xf.xfa{background:${prefersDark ? "#e65100" : "#ff9800"};border-radius:2px;color:${prefersDark ? "#fff" : "#000"};outline:2px solid ${prefersDark ? "#ff6d00" : "#e65100"}}
   </style></head><body><article>${bodyHtml}</article><script>
@@ -400,7 +408,7 @@ export function buildEntryHtml(
       var a = e.target.closest('a[href]');
       if (a) {
         e.preventDefault();
-        window.parent.postMessage({ type: '${OPEN_URL}', url: a.href }, '*');
+        window.parent.postMessage({ type: '${OPEN_LINK_URL}', url: a.href }, '*');
       }
     });
 

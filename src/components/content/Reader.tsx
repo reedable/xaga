@@ -8,7 +8,7 @@ import {
   FIND_OPEN,
   FIND_RESULT,
   HIGHLIGHT_CLICKED,
-  OPEN_URL,
+  OPEN_LINK_URL,
   SCROLL_TO_ANNOTATION,
   SELECTION_CLEARED,
   SELECTION_MADE,
@@ -37,23 +37,27 @@ interface TooltipState {
 }
 
 interface ReaderProps {
-  className?: string;
-  html: string;
-  reference: string;
   annotations?: Annotation[];
+  className?: string;
+  entryId: string;
+  html: string;
   scrollToAnnotationId?: string;
-  onClickUrl?: (url: string) => void;
-  onSaveAnnotation?: (annotation: Omit<Annotation, "createdAt" | "updatedAt">) => void;
-  onRemoveAnnotation?: (annotation: Pick<Annotation, "id" | "reference">) => void;
+  onClickLink?: (url: string) => void; //outgoing links in the html content
+  onSaveAnnotation?: (
+    annotation: Omit<Annotation, "createdAt" | "updatedAt">
+  ) => void;
+  onRemoveAnnotation?: (
+    annotation: Pick<Annotation, "id" | "reference">
+  ) => void;
 }
 
 export function Reader({
-  className,
-  html,
-  reference,
   annotations,
+  className,
+  entryId,
+  html,
   scrollToAnnotationId,
-  onClickUrl,
+  onClickLink,
   onSaveAnnotation,
   onRemoveAnnotation,
 }: ReaderProps) {
@@ -62,7 +66,10 @@ export function Reader({
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
-  const [findResult, setFindResult] = useState<{ total: number; current: number } | null>(null);
+  const [findResult, setFindResult] = useState<{
+    total: number;
+    current: number;
+  } | null>(null);
 
   /** Convert iframe-local rect to fixed viewport coords, positioned below selection. */
   const toViewportPosition = useCallback((rect: SelectionRect) => {
@@ -84,7 +91,7 @@ export function Reader({
         position: toViewportPosition(rect),
       });
     },
-    [toViewportPosition],
+    [toViewportPosition]
   );
 
   const handleClickHighlight = useCallback(
@@ -100,17 +107,19 @@ export function Reader({
         position: toViewportPosition(rect),
       });
     },
-    [annotations, toViewportPosition],
+    [annotations, toViewportPosition]
   );
 
   const handleChangeTooltip = useCallback(
     (color: string, note: string) => {
       if (tooltip && tooltip.occurrence.length > 0) {
         const id = tooltip.annotationId;
+
         iframeRef.current?.contentWindow?.postMessage(
           { type: "remove-highlight", annotationId: id },
-          "*",
+          "*"
         );
+
         if (color !== "none") {
           iframeRef.current?.contentWindow?.postMessage(
             {
@@ -125,23 +134,24 @@ export function Reader({
                 },
               ],
             },
-            "*",
+            "*"
           );
         }
       }
+
       setTooltip((prev) => (prev ? { ...prev, color, note } : null));
     },
-    [tooltip],
+    [tooltip]
   );
 
   const handleCloseTooltip = useCallback(() => {
     if (tooltip?.color === "none") {
-      onRemoveAnnotation?.({ id: tooltip.annotationId, reference });
+      onRemoveAnnotation?.({ id: tooltip.annotationId, reference: entryId });
     } else if (tooltip) {
       onSaveAnnotation?.({
         id: tooltip.annotationId,
         title: tooltip.text.join(" "),
-        reference,
+        reference: entryId,
         text: tooltip.text,
         occurrence: tooltip.occurrence,
         color: tooltip.color,
@@ -150,25 +160,25 @@ export function Reader({
     }
 
     setTooltip(null);
-  }, [onRemoveAnnotation, onSaveAnnotation, reference, tooltip]);
+  }, [onRemoveAnnotation, onSaveAnnotation, entryId, tooltip]);
 
   const handleIframeLoad = useCallback(() => {
     if (annotations?.length) {
       iframeRef.current?.contentWindow?.postMessage(
         { type: "apply-highlights", annotations },
-        "*",
+        "*"
       );
     }
     if (scrollToAnnotationId) {
       iframeRef.current?.contentWindow?.postMessage(
         { type: SCROLL_TO_ANNOTATION, annotationId: scrollToAnnotationId },
-        "*",
+        "*"
       );
     }
     if (findOpen && findQuery) {
       iframeRef.current?.contentWindow?.postMessage(
         { type: FIND_IN_PAGE, query: findQuery },
-        "*",
+        "*"
       );
     }
   }, [annotations, scrollToAnnotationId, findOpen, findQuery]);
@@ -183,7 +193,7 @@ export function Reader({
   const handleFindNavigate = useCallback((direction: 1 | -1) => {
     iframeRef.current?.contentWindow?.postMessage(
       { type: FIND_NAVIGATE, direction },
-      "*",
+      "*"
     );
   }, []);
 
@@ -192,14 +202,14 @@ export function Reader({
     if (!findOpen) return;
     iframeRef.current?.contentWindow?.postMessage(
       { type: FIND_IN_PAGE, query: findQuery },
-      "*",
+      "*"
     );
   }, [findQuery, findOpen]);
 
   // Clear stale result count when switching to a different entry.
   useEffect(() => {
-    setFindResult(null);
-  }, [reference]);
+    (async () => setFindResult(null))();
+  }, [entryId]);
 
   // Edit → Find… menu item (Cmd-F).
   useEffect(() => onFind(() => setFindOpen(true)), [onFind]);
@@ -220,15 +230,15 @@ export function Reader({
       if (!msg?.type) return;
 
       switch (msg.type) {
-        case OPEN_URL:
+        case OPEN_LINK_URL:
           setTooltip(null);
-          if (msg.url) onClickUrl?.(msg.url);
+          if (msg.url) onClickLink?.(msg.url);
           break;
         case SELECTION_MADE:
           handleSelectionMade(
             msg.texts as string[],
             msg.occurrences as number[],
-            msg.rect as SelectionRect,
+            msg.rect as SelectionRect
           );
           break;
         case SELECTION_CLEARED:
@@ -238,14 +248,17 @@ export function Reader({
           handleClickHighlight(
             msg.annotationId,
             msg.text,
-            msg.rect as SelectionRect,
+            msg.rect as SelectionRect
           );
           break;
         case FIND_OPEN:
           setFindOpen(true);
           break;
         case FIND_RESULT:
-          setFindResult({ total: msg.total as number, current: msg.current as number });
+          setFindResult({
+            total: msg.total as number,
+            current: msg.current as number,
+          });
           break;
         case FIND_CLEAR:
           setFindOpen(false);
@@ -257,7 +270,7 @@ export function Reader({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [onClickUrl, handleSelectionMade, handleClickHighlight]);
+  }, [onClickLink, handleSelectionMade, handleClickHighlight]);
 
   return (
     <div className={cx(css.Reader, className)}>
