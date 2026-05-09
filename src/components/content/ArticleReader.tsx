@@ -15,6 +15,7 @@ import { FONT_FAMILY_CSS } from "../../utils/FontFamily";
 import css from "./ArticleReader.module.css";
 import { Reader } from "./Reader";
 import { RelatedItemList } from "./RelatedItemList";
+
 export interface ArticleReaderProps {
   className?: string;
   onEntryChange?: (entry: Article | null) => void;

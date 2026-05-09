@@ -1,0 +1,47 @@
+.Stepper {
+  align-items: center;
+  border: var(--border);
+  border-radius: 4px;
+  display: flex;
+  width: fit-content;
+}
+
+.StepperLabel {
+  min-width: 52px;
+  padding: 0 8px;
+  text-align: center;
+  user-select: none;
+}
+
+.ThemeSection {
+  margin-top: 24px;
+}
+
+.SummarySection {
+  margin-top: 16px;
+}
+
+.ReadingHeading {
+  font-weight: 600;
+  margin-bottom: 8px;
+  margin-top: 32px;
+}
+
+.SelectControl {
+  min-width: 200px;
+}
+
+.FontSection {
+  margin-top: 8px;
+}
+
+.StepperRow {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.StepperRowLabel {
+  min-width: 80px;
+}

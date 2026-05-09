@@ -1,5 +1,4 @@
 import {
-  Box,
   Button,
   Checkbox,
   FormControlLabel,
@@ -7,23 +6,24 @@ import {
   Typography,
 } from "@mui/material";
 import { useSettings } from "../../hooks/useSettings";
+import css from "./GeneralSettings.module.css";
 
 export function GeneralSettings() {
   const { library, switchLibrary, refreshOnStartup, setRefreshOnStartup } =
     useSettings();
 
   return (
-    <Box>
+    <div>
       <Typography component="h1" variant="h6" gutterBottom>
         General
       </Typography>
 
-      <Box sx={{ mt: 3 }}>
+      <div className={css.LibrarySection}>
         <Typography variant="subtitle2" gutterBottom>
           Library Location
         </Typography>
 
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <div className={css.LibraryRow}>
           <TextField
             value={library}
             size="small"
@@ -34,14 +34,14 @@ export function GeneralSettings() {
           <Button
             variant="outlined"
             onClick={switchLibrary}
-            sx={{ whiteSpace: "nowrap" }}
+            className={css.SwitchButton}
           >
             Switch
           </Button>
-        </Box>
-      </Box>
+        </div>
+      </div>
 
-      <Box sx={{ mt: 3 }}>
+      <div className={css.RefreshSection}>
         <FormControlLabel
           control={
             <Checkbox
@@ -51,7 +51,7 @@ export function GeneralSettings() {
           }
           label="Refresh all feeds on start-up"
         />
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 }

@@ -5,7 +5,6 @@ import {
   TextIncrease,
 } from "@mui/icons-material";
 import {
-  Box,
   Checkbox,
   FormControl,
   FormControlLabel,
@@ -18,15 +17,16 @@ import {
 } from "@mui/material";
 import type { ReactNode } from "react";
 import { useAppearance } from "../../hooks/useAppearance";
+import type { FontFamily } from "../../utils/FontFamily";
 import {
   READER_FONT_SIZE_MAX,
   READER_FONT_SIZE_MIN,
   READER_LINE_HEIGHT_MAX,
   READER_LINE_HEIGHT_MIN,
   READER_LINE_HEIGHT_STEP,
-  type FontFamily,
   type ThemeSetting,
 } from "../../providers/AppearanceContext";
+import css from "./AppearanceSettings.module.css";
 
 interface StepperProps {
   value: number;
@@ -54,16 +54,7 @@ function ReaderStepper({
   onChange,
 }: StepperProps) {
   return (
-    <Box
-      sx={{
-        alignItems: "center",
-        border: "1px solid",
-        borderColor: "divider",
-        borderRadius: 1,
-        display: "flex",
-        width: "fit-content",
-      }}
-    >
+    <div className={css.Stepper}>
       <Tooltip title={decrementLabel}>
         <span>
           <IconButton
@@ -75,15 +66,7 @@ function ReaderStepper({
           </IconButton>
         </span>
       </Tooltip>
-      <Typography
-        variant="body2"
-        sx={{
-          minWidth: 52,
-          px: 1,
-          textAlign: "center",
-          userSelect: "none",
-        }}
-      >
+      <Typography variant="body2" className={css.StepperLabel}>
         {display}
       </Typography>
       <Tooltip title={incrementLabel}>
@@ -97,7 +80,7 @@ function ReaderStepper({
           </IconButton>
         </span>
       </Tooltip>
-    </Box>
+    </div>
   );
 }
 
@@ -116,13 +99,13 @@ export function AppearanceSettings() {
   } = useAppearance();
 
   return (
-    <Box>
+    <div>
       <Typography component="h1" variant="h6" gutterBottom>
         Appearance
       </Typography>
 
-      <Box sx={{ mt: 3 }}>
-        <FormControl size="small" sx={{ minWidth: 200 }}>
+      <div className={css.ThemeSection}>
+        <FormControl size="small" className={css.SelectControl}>
           <InputLabel>Theme</InputLabel>
           <Select
             value={themeSetting}
@@ -134,9 +117,9 @@ export function AppearanceSettings() {
             <MenuItem value="light">Light</MenuItem>
           </Select>
         </FormControl>
-      </Box>
+      </div>
 
-      <Box sx={{ mt: 2 }}>
+      <div className={css.SummarySection}>
         <FormControlLabel
           control={
             <Checkbox
@@ -146,18 +129,18 @@ export function AppearanceSettings() {
           }
           label="Show Article Summary"
         />
-      </Box>
+      </div>
 
       <Typography
         component="h2"
         variant="subtitle1"
-        sx={{ mt: 4, mb: 1, fontWeight: 600 }}
+        className={css.ReadingHeading}
       >
         Reading
       </Typography>
 
-      <Box sx={{ mt: 1 }}>
-        <FormControl size="small" sx={{ minWidth: 200 }}>
+      <div className={css.FontSection}>
+        <FormControl size="small" className={css.SelectControl}>
           <InputLabel>Font</InputLabel>
           <Select
             value={readerFontFamily}
@@ -170,13 +153,13 @@ export function AppearanceSettings() {
             <MenuItem value="monospace">Monospace</MenuItem>
           </Select>
         </FormControl>
-      </Box>
+      </div>
 
-      <Box sx={{ alignItems: "center", display: "flex", gap: 2, mt: 2 }}>
+      <div className={css.StepperRow}>
         <Typography
           variant="body2"
           color="text.secondary"
-          sx={{ minWidth: 80 }}
+          className={css.StepperRowLabel}
         >
           Font size
         </Typography>
@@ -192,13 +175,13 @@ export function AppearanceSettings() {
           incrementLabel="Increase font size"
           onChange={setReaderFontSize}
         />
-      </Box>
+      </div>
 
-      <Box sx={{ alignItems: "center", display: "flex", gap: 2, mt: 2 }}>
+      <div className={css.StepperRow}>
         <Typography
           variant="body2"
           color="text.secondary"
-          sx={{ minWidth: 80 }}
+          className={css.StepperRowLabel}
         >
           Line height
         </Typography>
@@ -214,7 +197,7 @@ export function AppearanceSettings() {
           incrementLabel="Loosen line height"
           onChange={setReaderLineHeight}
         />
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 }

@@ -1,0 +1,17 @@
+.LibrarySection {
+  margin-top: 24px;
+}
+
+.LibraryRow {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.RefreshSection {
+  margin-top: 24px;
+}
+
+.SwitchButton {
+  white-space: nowrap;
+}

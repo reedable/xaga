@@ -8,7 +8,7 @@ import {
 } from "react-router-dom";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { GeneralSettings } from "./GeneralSettings";
-import css from "./_.module.css";
+import css from "./Settings.module.css";
 
 const SECTIONS = [
   { path: "general", label: "General" },
