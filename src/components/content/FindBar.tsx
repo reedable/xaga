@@ -1,6 +1,8 @@
 import { ArrowDownward, ArrowUpward, Close } from "@mui/icons-material";
 import { IconButton, InputBase, Paper, Typography } from "@mui/material";
 import { useEffect, useRef } from "react";
+import cx from "../../utils/cx";
+import css from "./FindBar.module.css";
 
 interface FindBarProps {
   query: string;
@@ -31,21 +33,7 @@ export function FindBar({ query, current, total, onChange, onNavigate, onClose }
   const noResults = query.length > 0 && total === 0;
 
   return (
-    <Paper
-      elevation={4}
-      sx={{
-        alignItems: "center",
-        borderRadius: 1,
-        display: "flex",
-        gap: 0.5,
-        position: "absolute",
-        px: 1,
-        py: 0.5,
-        right: 8,
-        top: 8,
-        zIndex: 100,
-      }}
-    >
+    <Paper elevation={4} className={css.FindBar}>
       <InputBase
         inputRef={inputRef}
         value={query}
@@ -53,17 +41,13 @@ export function FindBar({ query, current, total, onChange, onNavigate, onClose }
         onKeyDown={handleKeyDown}
         placeholder="Find in article…"
         inputProps={{ "aria-label": "Find in article" }}
-        sx={{
-          fontSize: "0.875rem",
-          minWidth: 160,
-          "& input": { color: noResults ? "error.main" : undefined },
-        }}
+        className={cx(css.Input, noResults && css.InputNoResults)}
       />
 
       <Typography
         variant="caption"
         color={noResults ? "error" : "text.secondary"}
-        sx={{ minWidth: 44, textAlign: "center" }}
+        className={css.Count}
       >
         {noResults ? "No results" : total > 0 ? `${current} / ${total}` : ""}
       </Typography>

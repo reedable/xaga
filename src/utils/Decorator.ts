@@ -78,6 +78,7 @@ export const retriable: Decorator<{
       try {
         return await fn.apply(this, args);
       } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") throw e;
         lastError = e;
 
         if (attempt < maxAttempts - 1 && opts?.delay) {

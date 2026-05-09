@@ -406,12 +406,12 @@ export class TauriPlatform implements Platform {
 
   // Articles ------------------------------------------------------------------
 
-  async loadArticle(signal: AbortSignal, url: string): Promise<string> {
+  async loadArticle(signal: AbortSignal, url: string, keepOpen?: boolean): Promise<string> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "load_article" });
 
-    return invoker<string>("load_article", { url });
+    return invoker<string>("load_article", { url, keepOpen: keepOpen ?? false });
   }
 
   async findArticle(signal: AbortSignal, url: string): Promise<Article | null> {

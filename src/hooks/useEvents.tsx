@@ -3,58 +3,48 @@ import { usePlatform } from "../platform/Platform";
 import type { Entry, Feed } from "../types";
 import { debounced } from "../utils/Decorator";
 
+export function subscribe(register: () => Promise<() => void>): () => void {
+  let unlisten: (() => void) | null = null;
+  let cancelled = false;
+  register().then((fn) => {
+    if (cancelled) fn();
+    else unlisten = fn;
+  });
+  return () => {
+    cancelled = true;
+    unlisten?.();
+  };
+}
+
 export function useEvents() {
   const platform = usePlatform();
 
   const onFeedRefreshed = useCallback(
-    (callback: (feed: Feed) => void) => {
-      const unlistenPromise = platform.onFeedRefreshed(callback);
-      return () => {
-        unlistenPromise.then((unlisten) => unlisten());
-      };
-    },
+    (callback: (feed: Feed) => void) =>
+      subscribe(() => platform.onFeedRefreshed(callback)),
     [platform]
   );
 
   const onUnreadChanged = useCallback(
-    (callback: (entry: Entry) => void) => {
-      const unlistenPromise = platform.onUnreadChanged(callback);
-      return () => {
-        unlistenPromise.then((unlisten) => unlisten());
-      };
-    },
+    (callback: (entry: Entry) => void) =>
+      subscribe(() => platform.onUnreadChanged(callback)),
     [platform]
   );
 
   const onBookmarkChanged = useCallback(
-    (callback: (entry: Entry) => void) => {
-      const unlistenPromise = platform.onBookmarkChanged(callback);
-      return () => {
-        unlistenPromise.then((unlisten) => unlisten());
-      };
-    },
+    (callback: (entry: Entry) => void) =>
+      subscribe(() => platform.onBookmarkChanged(callback)),
     [platform]
   );
 
   const onEmbeddingsChanged = useCallback(
-    (callback: () => void) => {
-      const unlistenPromise = platform.onEmbeddingsChanged(
-        debounced(callback, { wait: 200 })
-      );
-      return () => {
-        unlistenPromise.then((unlisten) => unlisten());
-      };
-    },
+    (callback: () => void) =>
+      subscribe(() => platform.onEmbeddingsChanged(debounced(callback, { wait: 400 }))),
     [platform]
   );
 
   const onFind = useCallback(
-    (callback: () => void) => {
-      const unlistenPromise = platform.onFind(callback);
-      return () => {
-        unlistenPromise.then((unlisten) => unlisten());
-      };
-    },
+    (callback: () => void) => subscribe(() => platform.onFind(callback)),
     [platform]
   );
 

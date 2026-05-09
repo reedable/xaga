@@ -7,10 +7,9 @@ import { useCacheReady } from "./hooks/useCacheReady";
 import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
 import FeedsProvider from "./providers/FeedsProvider";
-import { ManageFeedProvider } from "./providers/ManageFeedProvider";
-import { ManageTopicProvider } from "./providers/ManageTopicProvider";
+import { TopicsProvider } from "./providers/TopicsProvider";
 import { ALL_ITEMS } from "./Shortcuts";
-import { isFilter } from "./types";
+import { isFilter, type NavigationState } from "./types";
 
 const storedFilter = (() => {
   try {
@@ -21,7 +20,8 @@ const storedFilter = (() => {
   }
 })();
 
-const initialEntry = `/${ALL_ITEMS.id}?filter=${storedFilter}`;
+const initialSearch = `?filter=${storedFilter}`;
+const initialState: NavigationState = { shortcutId: ALL_ITEMS.id };
 
 export default function App({ entryPoint }: { entryPoint: string }) {
   const platform = usePlatform();
@@ -53,27 +53,28 @@ export default function App({ entryPoint }: { entryPoint: string }) {
           <Settings />
         </MemoryRouter>
       ) : (
-        <MemoryRouter initialEntries={[initialEntry]}>
-          <ManageTopicProvider>
+        <MemoryRouter
+          initialEntries={[
+            { pathname: "/", search: initialSearch, state: initialState },
+          ]}
+        >
+          <TopicsProvider>
             <FeedsProvider>
-              <ManageFeedProvider>
-                <Routes>
-                  <Route
-                    path="/:collectionId/:itemId"
-                    element={cacheReady ? <AppLayout /> : null}
-                  />
-                  <Route
-                    path="/:collectionId"
-                    element={cacheReady ? <AppLayout /> : null}
-                  />
-                  <Route
-                    path="*"
-                    element={<Navigate to={initialEntry} replace />}
-                  />
-                </Routes>
-              </ManageFeedProvider>
+              <Routes>
+                <Route path="/" element={cacheReady ? <AppLayout /> : null} />
+                <Route
+                  path="*"
+                  element={
+                    <Navigate
+                      to={{ pathname: "/", search: initialSearch }}
+                      state={initialState}
+                      replace
+                    />
+                  }
+                />
+              </Routes>
             </FeedsProvider>
-          </ManageTopicProvider>
+          </TopicsProvider>
         </MemoryRouter>
       )}
     </>

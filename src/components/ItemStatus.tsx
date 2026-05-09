@@ -10,7 +10,9 @@ interface ItemStatusProps {
 export default function ItemStatus({ item }: ItemStatusProps) {
   return (
     <span className={css.ItemStatus}>
-      {isEntry(item) && <Circle className={css.UnreadIcon} color="primary" />}
+      {isEntry(item) && item.isUnread && (
+        <Circle className={css.UnreadIcon} color="primary" />
+      )}
       <Byline className={css.Byline} item={item} />
       {isEntry(item) && item.isBookmarked && <Bookmark color="primary" />}
     </span>

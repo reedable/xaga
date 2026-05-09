@@ -6,10 +6,10 @@ import {
   ListItemText,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
 import { useEvents } from "../../hooks/useEvents";
+import useRouter from "../../hooks/useRouter";
 import useSearch from "../../hooks/useSearch";
 import { isAnnotation, isEntry, type Embedded, type Item } from "../../types";
 import cx from "../../utils/cx";
@@ -22,13 +22,14 @@ interface SearchResultListProps {
   searchQuery: string;
 }
 
-export function SearchResultList({ className, searchQuery }: SearchResultListProps) {
-  const navigate = useNavigate();
-  const { collectionId, itemId: selectedItemId } = useParams();
-  const [searchParams] = useSearchParams();
-
+export function SearchResultList({
+  className,
+  searchQuery,
+}: SearchResultListProps) {
+  const { show, state } = useRouter();
+  const { entryId } = state;
   const { loading, error, search } = useSearch();
-  const { onUnreadChanged } = useEvents();
+  const { onUnreadChanged, onBookmarkChanged } = useEvents();
   const [results, setResults] = useState<(Embedded & Item)[]>([]);
 
   useEffect(() => {
@@ -47,13 +48,13 @@ export function SearchResultList({ className, searchQuery }: SearchResultListPro
     });
   }, [onUnreadChanged]);
 
-  const handleClickItem = useCallback(
-    (item: Item) => {
-      const params = new URLSearchParams(searchParams);
-      navigate(`/${collectionId}/${item.id}?${params.toString()}`);
-    },
-    [navigate, collectionId, searchParams],
-  );
+  useEffect(() => {
+    return onBookmarkChanged((entry) => {
+      setResults((prev) =>
+        prev.map((p) => (p.id === entry.id ? { ...p, ...entry } : p))
+      );
+    });
+  }, [onBookmarkChanged]);
 
   return (
     <div className={cx(className, css.ItemList)}>
@@ -93,8 +94,8 @@ export function SearchResultList({ className, searchQuery }: SearchResultListPro
             <div key={item.id} className={css.ListItem}>
               <ListItemButton
                 className={css.ListItemButton}
-                selected={selectedItemId === item.id}
-                onClick={() => handleClickItem(item)}
+                selected={entryId === item.id}
+                onClick={() => show(item)}
               >
                 <ListItemText
                   primary={

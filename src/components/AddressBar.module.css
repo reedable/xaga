@@ -1,0 +1,35 @@
+.AddressBar {
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  display: flex;
+  flex: 1;
+  height: 28px;
+  min-width: 0;
+
+  &:focus-within {
+    background: color-mix(in srgb, currentColor 3%, transparent);
+    border-color: color-mix(in srgb, currentColor 40%, transparent);
+  }
+
+  &:hover:not(:focus-within) {
+    border-color: color-mix(in srgb, currentColor 25%, transparent);
+  }
+}
+
+.AddressBarInput {
+  background: transparent;
+  border: none;
+  color: inherit;
+  flex: 1;
+  font-family: inherit;
+  font-size: 0.75rem;
+  min-width: 0;
+  outline: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &::placeholder {
+    color: color-mix(in srgb, currentColor 30%, transparent);
+  }
+}

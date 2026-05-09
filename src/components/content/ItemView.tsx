@@ -1,55 +1,43 @@
 import { Typography } from "@mui/material";
-import { useEffect, useRef, useState } from "react";
-import { useArticles } from "../../hooks/useArticles";
-import { useEvents } from "../../hooks/useEvents";
-import { type Entry } from "../../types";
+import { useCallback, useState } from "react";
+import useRouter from "../../hooks/useRouter";
 import cx from "../../utils/cx";
+import { type Article } from "../../types";
 import ArticleReader from "./ArticleReader";
-import css from "./_.module.css";
+import css from "./ItemView.module.css";
+import { Toolbar } from "./Toolbar";
 
-interface ItemViewProps {
+type ItemViewProps = {
   className?: string;
-  itemId: string | null;
-}
+};
 
-export function ItemView({ className, itemId }: ItemViewProps) {
-  const abortControllerRef = useRef(new AbortController());
-  const { readArticle } = useArticles(abortControllerRef);
-  const [entry, setEntry] = useState<Entry | null>(null);
+export function ItemView({ className }: ItemViewProps) {
+  const { state } = useRouter();
+  const { entryId } = state;
 
-  const { onUnreadChanged, onBookmarkChanged } = useEvents();
+  const [entry, setEntry] = useState<Article | null>(null);
+  const [reload, setReload] = useState<(() => void) | null>(null);
 
-  useEffect(() => {
-    if (!itemId) { setEntry(null); return; }
-    readArticle(itemId).then((result) => setEntry(result ?? null));
-  }, [itemId, readArticle]);
-
-  useEffect(() => {
-    return onUnreadChanged((updated) => {
-      setEntry((prev) => (prev?.id === updated.id ? updated : prev));
-    });
-  }, [onUnreadChanged]);
-
-  useEffect(() => {
-    return onBookmarkChanged((updated) => {
-      setEntry((prev) => (prev?.id === updated.id ? updated : prev));
-    });
-  }, [onBookmarkChanged]);
-
-  if (!itemId) {
-    return (
-      <div className={cx(className, css.Placeholder)}>
-        <Typography variant="body2" color="text.disabled">
-          Select an article
-        </Typography>
-      </div>
-    );
-  }
+  const handleReloadChange = useCallback((fn: (() => void) | null) => {
+    setReload(fn ? () => fn : null);
+  }, []);
 
   return (
     <div className={cx(className, css.LayoutContainer)}>
       <div className={css.Layout}>
-        {entry && <ArticleReader entryId={entry.id} />}
+        <Toolbar entry={entry} reload={reload} />
+        {entryId ? (
+          <ArticleReader
+            onEntryChange={setEntry}
+            onReloadChange={handleReloadChange}
+          />
+        ) : (
+          <div className={css.Placeholder}>
+            <Typography variant="body2" color="text.disabled">
+              Select an article
+            </Typography>
+          </div>
+        )}
       </div>
     </div>
   );

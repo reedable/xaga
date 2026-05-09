@@ -9,6 +9,7 @@ import {
   FIND_RESULT,
   HIGHLIGHT_CLICKED,
   OPEN_URL,
+  SCROLL_TO_ANNOTATION,
   SELECTION_CLEARED,
   SELECTION_MADE,
 } from "../../text/buildEntryHtml";
@@ -17,6 +18,7 @@ import cx from "../../utils/cx";
 import Logger from "../../utils/Logger";
 import { AnnotationTooltip } from "./AnnotationTooltip";
 import { FindBar } from "./FindBar";
+import css from "./Reader.module.css";
 
 export interface SelectionRect {
   top: number;
@@ -39,6 +41,7 @@ interface ReaderProps {
   html: string;
   reference: string;
   annotations?: Annotation[];
+  scrollToAnnotationId?: string;
   onClickUrl?: (url: string) => void;
   onSaveAnnotation?: (annotation: Omit<Annotation, "createdAt" | "updatedAt">) => void;
   onRemoveAnnotation?: (annotation: Pick<Annotation, "id" | "reference">) => void;
@@ -49,6 +52,7 @@ export function Reader({
   html,
   reference,
   annotations,
+  scrollToAnnotationId,
   onClickUrl,
   onSaveAnnotation,
   onRemoveAnnotation,
@@ -155,13 +159,19 @@ export function Reader({
         "*",
       );
     }
+    if (scrollToAnnotationId) {
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: SCROLL_TO_ANNOTATION, annotationId: scrollToAnnotationId },
+        "*",
+      );
+    }
     if (findOpen && findQuery) {
       iframeRef.current?.contentWindow?.postMessage(
         { type: FIND_IN_PAGE, query: findQuery },
         "*",
       );
     }
-  }, [annotations, findOpen, findQuery]);
+  }, [annotations, scrollToAnnotationId, findOpen, findQuery]);
 
   const handleFindClose = useCallback(() => {
     setFindOpen(false);
@@ -250,18 +260,13 @@ export function Reader({
   }, [onClickUrl, handleSelectionMade, handleClickHighlight]);
 
   return (
-    <div className={cx(className)} style={{ position: "relative", width: "100%", height: "100%" }}>
+    <div className={cx(css.Reader, className)}>
       <iframe
         ref={iframeRef}
         onLoad={handleIframeLoad}
         sandbox="allow-scripts"
         allow="autoplay 'none'"
-        style={{
-          width: "100%",
-          height: "100%",
-          border: "none",
-          display: "block",
-        }}
+        className={css.Iframe}
         title="Entry reader"
       />
 

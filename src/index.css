@@ -7,7 +7,7 @@ body,
 }
 
 :root {
-  --titlebar-height: 38px;
+  --titlebar-height: 24px;
 }
 
 /* See App.tsx for data-theme attribute */

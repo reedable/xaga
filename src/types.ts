@@ -223,3 +223,13 @@ export type ImportResult<T> = {
   skipped: string[];
   failed: string[];
 };
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+
+export type NavigationState = {
+  topicId?: Topic["id"];
+  feedId?: Feed["id"];
+  shortcutId?: Shortcut["id"];
+  entryId?: Entry["id"];
+  annotationId?: Annotation["id"];
+};

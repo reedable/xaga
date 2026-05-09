@@ -10,8 +10,6 @@ use arrow_array::builder::{ListBuilder, StringBuilder};
 use arrow_schema::{DataType, Field, Schema};
 use futures::TryStreamExt;
 use lancedb::DistanceType;
-use lancedb::index::Index;
-use lancedb::index::vector::IvfPqIndexBuilder;
 use lancedb::query::{ExecutableQuery, QueryBase};
 
 use super::EmbeddingsError;
@@ -153,15 +151,8 @@ async fn create_empty_documents_table(
         vec![Ok(empty_batch)],
         schema.clone(),
     ));
-    let table = connection
+    connection
         .create_table("documents", reader)
-        .execute()
-        .await?;
-    table
-        .create_index(
-            &["vector"],
-            Index::IvfPq(IvfPqIndexBuilder::default().distance_type(DistanceType::Cosine)),
-        )
         .execute()
         .await?;
     Ok(())
@@ -590,12 +581,6 @@ impl EmbeddingsDb {
                 delete_unverified: Some(true),
                 error_if_tagged_old_versions: Some(false),
             })
-            .await
-            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
-
-        log::info!("EmbeddingsDb::compact: optimizing vector index");
-        self.table
-            .optimize(OptimizeAction::Index(Default::default()))
             .await
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 

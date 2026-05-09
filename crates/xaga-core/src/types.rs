@@ -47,6 +47,8 @@ pub trait Item {
     fn published_at(&self) -> Option<&str> { None }
     fn is_unread(&self) -> bool { false }
     fn is_bookmarked(&self) -> bool { false }
+    /// Non-empty only for annotation rows; holds the parent entry ID.
+    fn reference(&self) -> &str { "" }
 }
 
 // ── Entry ─────────────────────────────────────────────────────────────────────
@@ -143,6 +145,7 @@ impl Item for EmbeddedEntry {
     fn published_at(&self) -> Option<&str> { self.entry.published_at() }
     fn is_unread(&self) -> bool { self.entry.is_unread() }
     fn is_bookmarked(&self) -> bool { self.entry.is_bookmarked() }
+    fn reference(&self) -> &str { &self.reference }
 }
 
 impl std::ops::Deref for EmbeddedEntry {

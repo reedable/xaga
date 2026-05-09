@@ -1,0 +1,25 @@
+.FindBar {
+  align-items: center;
+  border-radius: 4px;
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px;
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 100;
+}
+
+.Input {
+  font-size: 0.875rem;
+  min-width: 160px;
+}
+
+.InputNoResults input {
+  color: var(--mui-palette-error-main, #d32f2f);
+}
+
+.Count {
+  min-width: 44px;
+  text-align: center;
+}

@@ -4,6 +4,7 @@
   flex-direction: row;
   flex-shrink: 0;
   height: var(--titlebar-height);
+  margin: 0 0 14px 0;
   padding: 0 8px 0 0;
   position: relative;
   user-select: none;
@@ -24,14 +25,3 @@
   transform: translateX(-50%);
 }
 
-.SearchArea {
-  align-items: center;
-  background-color: var(--background-color);
-  display: flex;
-  /* margin-left: auto; */
-  margin: 24px 4px 0 auto;
-
-  fieldset {
-    border-radius: 21px;
-  }
-}

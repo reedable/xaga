@@ -1,0 +1,46 @@
+.SwatchTarget {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.SwatchTarget :global(.swatch-inner) {
+  transition: transform 0.1s;
+}
+
+.SwatchTarget:hover :global(.swatch-inner) {
+  transform: scale(1.25);
+}
+
+.Tooltip {
+  max-width: 320px;
+  min-width: 320px;
+  position: fixed;
+  z-index: 9999;
+}
+
+.Body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+}
+
+.NoteField {
+  width: 100%;
+}
+
+.ColorRow {
+  align-items: center;
+  display: flex;
+}
+
+.Swatch {
+  border-radius: 50%;
+  height: 16px;
+  width: 16px;
+}

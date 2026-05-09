@@ -53,7 +53,7 @@ export interface Platform {
   markEntryUnread(signal: AbortSignal, id: string): Promise<Entry>;
 
   // Articles
-  loadArticle(signal: AbortSignal, url: string): Promise<string>;
+  loadArticle(signal: AbortSignal, url: string, keepOpen?: boolean): Promise<string>;
   findArticle(signal: AbortSignal, url: string): Promise<Article | null>;
   saveArticle(signal: AbortSignal, article: Article): Promise<Article>;
   readArticle(signal: AbortSignal, id: string): Promise<Article>;

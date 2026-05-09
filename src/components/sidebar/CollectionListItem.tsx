@@ -8,41 +8,41 @@ import {
 } from "@mui/material";
 import { motion } from "framer-motion";
 import type { ElementType, ReactNode } from "react";
-import type { Collection, Item } from "../../types";
+import type { Collection } from "../../types";
 import cx from "../../utils/cx";
 
 const MotionListItem = motion(ListItem);
 
-export interface ExpanderItemProps<T extends Collection> {
+export interface CollectionListItemProps<T extends Collection> {
   className?: string;
+  collection: T;
   icon?: ElementType;
-  item: T;
   loading?: boolean;
   selected?: boolean;
   onSelectCollection: (collection: T) => void;
-  renderSecondaryAction?: (item: Item) => ReactNode;
+  renderSecondaryAction?: (collection: Collection) => ReactNode;
 }
 
-export default function ExpanderItem<T extends Collection>({
+export default function CollectionListItem<T extends Collection>({
   className,
+  collection,
   icon: Icon = RssFeed,
-  item,
   loading = false,
   selected = false,
   onSelectCollection,
   renderSecondaryAction,
-}: ExpanderItemProps<T>) {
+}: CollectionListItemProps<T>) {
   return (
     <MotionListItem
       layout
       transition={{ duration: 0.3, ease: "easeOut" }}
       disablePadding
-      secondaryAction={renderSecondaryAction?.(item)}
+      secondaryAction={renderSecondaryAction?.(collection)}
     >
       <ListItemButton
         className={cx(className)}
         selected={selected}
-        onClick={() => onSelectCollection(item)}
+        onClick={() => onSelectCollection(collection)}
       >
         <ListItemIcon sx={{ minWidth: 32 }}>
           {loading ? (
@@ -53,7 +53,7 @@ export default function ExpanderItem<T extends Collection>({
         </ListItemIcon>
 
         <ListItemText
-          primary={item.title}
+          primary={collection.title}
           primaryTypographyProps={{
             component: "div",
             variant: "body2",

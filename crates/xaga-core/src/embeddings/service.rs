@@ -276,6 +276,7 @@ async fn run_loop(
                 Ok(ServiceMsg::RecoverCache { cache, data_dir: dir }) => {
                     log::info!("embedding service: recovering cache for {}", dir.display());
                     cache.recover(&dir).await;
+                    cache.persist(&dir).await;
                     log::info!("embedding service: cache recovery complete");
                 }
                 Ok(ServiceMsg::ResetDatabase { data_dir: dir }) => {

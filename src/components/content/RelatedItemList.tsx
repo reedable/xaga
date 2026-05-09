@@ -6,10 +6,11 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { RELATED_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
 import { useEvents } from "../../hooks/useEvents";
+import useRouter from "../../hooks/useRouter";
 import useRelatedItems from "../../hooks/useRelatedItems";
 import { isAnnotation, type Embedded, type Item } from "../../types";
 import cx from "../../utils/cx";
@@ -17,7 +18,7 @@ import { abortable, decorate, retriable } from "../../utils/Decorator";
 import Logger from "../../utils/Logger";
 import ItemStatus from "../ItemStatus";
 import Quotes from "../Quotes";
-import css from "./_.module.css";
+import css from "./RelatedItemList.module.css";
 
 interface RelatedItemListProps {
   className?: string;
@@ -25,14 +26,13 @@ interface RelatedItemListProps {
 }
 
 export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
-  const navigate = useNavigate();
-  const { collectionId } = useParams();
+  const { navigate, state } = useRouter();
   const [searchParams] = useSearchParams();
 
   const [abort, abortControllerRef] = useAbortController();
   const { queryByItem } = useRelatedItems(abortControllerRef);
   const [embeddedItems, setEmbeddedItems] = useState<(Embedded & Item)[]>([]);
-  const { onUnreadChanged } = useEvents();
+  const { onUnreadChanged, onBookmarkChanged } = useEvents();
 
   const requestRelatedItems = useCallback(
     async (id: string) => {
@@ -59,15 +59,22 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
   const handleSelectItem = useCallback(
     (item: Item) => {
       const params = new URLSearchParams(searchParams);
-      navigate(`/${collectionId}/${item.id}?${params.toString()}`);
+      navigate(`/?${params.toString()}`, {
+        state: { ...state, entryId: item.id },
+      });
     },
-    [navigate, collectionId, searchParams],
+    [navigate, state, searchParams]
   );
 
   useEffect(() => {
     abort();
-    (async () => { requestRelatedItems(itemId); })();
-  }, [abort, queryByItem, requestRelatedItems, itemId]);
+
+    (async () => {
+      await requestRelatedItems(itemId);
+    })();
+
+    return abort;
+  }, [abort, requestRelatedItems, itemId]);
 
   useEffect(() => {
     return onUnreadChanged((entry) => {
@@ -76,6 +83,14 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
       );
     });
   }, [onUnreadChanged]);
+
+  useEffect(() => {
+    return onBookmarkChanged((entry) => {
+      setEmbeddedItems((prev) =>
+        prev.map((p) => (p.id === entry.id ? { ...p, ...entry } : p))
+      );
+    });
+  }, [onBookmarkChanged]);
 
   if (embeddedItems.length === 0) return null;
 

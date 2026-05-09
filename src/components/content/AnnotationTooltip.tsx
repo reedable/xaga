@@ -1,6 +1,5 @@
 import { Close } from "@mui/icons-material";
 import {
-  Box,
   ClickAwayListener,
   Collapse,
   Paper,
@@ -14,6 +13,7 @@ import {
   ANNOTATION_COLORS_LIGHT,
   getAnnotationColor,
 } from "../../text/annotationColors";
+import css from "./AnnotationTooltip.module.css";
 
 export interface AnnotationTooltipProps {
   text: string[];
@@ -34,23 +34,9 @@ function SwatchTarget({
   children: React.ReactNode;
 }) {
   return (
-    <Box
-      onClick={onClick}
-      title={title}
-      sx={{
-        width: 24,
-        height: 24,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-        flexShrink: 0,
-        "& > .swatch-inner": { transition: "transform 0.1s" },
-        "&:hover > .swatch-inner": { transform: "scale(1.25)" },
-      }}
-    >
+    <div className={css.SwatchTarget} onClick={onClick} title={title}>
       {children}
-    </Box>
+    </div>
   );
 }
 
@@ -84,17 +70,14 @@ export function AnnotationTooltip({
     <ClickAwayListener onClickAway={onClose}>
       <Paper
         elevation={4}
-        sx={{
-          position: "fixed",
+        className={css.Tooltip}
+        style={{
           top: position.y,
           left: position.x,
-          zIndex: 9999,
-          minWidth: 320,
-          maxWidth: 320,
           borderLeft: `4px solid ${getAnnotationColor(color, dark).accent}`,
         }}
       >
-        <Box sx={{ display: "flex", flexDirection: "column", p: 1, gap: 0.5 }}>
+        <div className={css.Body}>
           <Collapse in={color !== "none"}>
             <TextField
               multiline
@@ -109,11 +92,11 @@ export function AnnotationTooltip({
               }}
               placeholder="Add a note…"
               onKeyDown={handleNoteKeyDown}
-              sx={{ width: "100%" }}
+              className={css.NoteField}
             />
           </Collapse>
 
-          <Box sx={{ display: "flex", alignItems: "center" }}>
+          <div className={css.ColorRow}>
             {Object.entries(annotationColors).map(([name, tokens]) => (
               <SwatchTarget
                 key={name}
@@ -123,27 +106,16 @@ export function AnnotationTooltip({
                 {name === "none" ? (
                   <Tooltip title="none">
                     <Close
-                      className="swatch-inner"
-                      sx={{
-                        width: 16,
-                        height: 16,
-                        borderRadius: "50%",
-                      }}
+                      className={`swatch-inner ${css.Swatch}`}
                     />
                   </Tooltip>
                 ) : (
                   <Tooltip title={name}>
-                    <Box
-                      className="swatch-inner"
-                      sx={{
-                        width: 16,
-                        height: 16,
-                        borderRadius: "50%",
+                    <div
+                      className={`swatch-inner ${css.Swatch}`}
+                      style={{
                         background: tokens.accent,
-                        outline:
-                          name === color
-                            ? `2px solid ${tokens.accent}`
-                            : "none",
+                        outline: name === color ? `2px solid ${tokens.accent}` : "none",
                         outlineOffset: "2px",
                       }}
                     />
@@ -151,8 +123,8 @@ export function AnnotationTooltip({
                 )}
               </SwatchTarget>
             ))}
-          </Box>
-        </Box>
+          </div>
+        </div>
       </Paper>
     </ClickAwayListener>
   );

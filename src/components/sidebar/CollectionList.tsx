@@ -4,7 +4,7 @@ import { useCallback, type ReactNode } from "react";
 import cx from "../../utils/cx";
 import css from "./_.module.css";
 
-export interface ExpanderProps {
+export interface CollectionListProps {
   children?: ReactNode;
   label: string;
   isExpanded: boolean;
@@ -12,13 +12,13 @@ export interface ExpanderProps {
   renderHeaderAction?: () => ReactNode;
 }
 
-export default function Expander({
+export default function CollectionList({
   children,
   label,
   isExpanded,
   onClickHeader,
   renderHeaderAction,
-}: ExpanderProps) {
+}: CollectionListProps) {
   const handleClickHeader = useCallback(() => {
     onClickHeader();
   }, [onClickHeader]);
@@ -45,7 +45,10 @@ export default function Expander({
         </ToggleButton>
 
         {renderHeaderAction && (
-          <span onClick={(e) => e.stopPropagation()} className={css.ExpanderHeaderAction}>
+          <span
+            onClick={(e) => e.stopPropagation()}
+            className={css.ExpanderHeaderAction}
+          >
             {renderHeaderAction()}
           </span>
         )}

@@ -35,6 +35,9 @@ export const FIND_NAVIGATE = "find-navigate";
 /** Parent → iframe: clear all find highlights. */
 export const FIND_CLEAR = "find-clear";
 
+/** Parent → iframe: scroll the first mark with the given annotationId into view. */
+export const SCROLL_TO_ANNOTATION = "scroll-to-annotation";
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ReaderStyle {
@@ -419,6 +422,9 @@ export function buildEntryHtml(
       } else if (msg.type === '${FIND_CLEAR}') {
         clearFindMarks();
         window.parent.postMessage({ type: '${FIND_RESULT}', total: 0, current: 0 }, '*');
+      } else if (msg.type === '${SCROLL_TO_ANNOTATION}') {
+        var mark = document.querySelector('mark[data-ann-id="' + msg.annotationId + '"]');
+        if (mark) mark.scrollIntoView({ block: 'center', behavior: 'smooth' });
       }
     });
   </script></body></html>`;

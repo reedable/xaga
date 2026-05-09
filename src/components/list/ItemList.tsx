@@ -16,23 +16,27 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MouseEvent,
 } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 import { RELATED_THRESHOLD, TOPIC_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
 import useEntries from "../../hooks/useEntries";
 import { useEvents } from "../../hooks/useEvents";
 import { useFeeds } from "../../hooks/useFeeds";
+
+import useRouter from "../../hooks/useRouter";
 import useRelatedItems from "../../hooks/useRelatedItems";
 import { useSaved } from "../../hooks/useSaved";
+import { useTopics } from "../../hooks/useTopics";
 import {
   ALL_ITEMS,
   ANNOTATION_ITEMS,
   RECOMMENDED_ITEMS,
   SAVED_ITEMS,
+  SHORTCUTS,
   SIMILAR_TO_SAVED_ITEMS,
 } from "../../Shortcuts";
 import {
@@ -41,12 +45,11 @@ import {
   isFeed,
   isFilter,
   isTopic,
-  type Collection,
+  type Feed,
   type Filter,
   type Item,
+  type Topic,
 } from "../../types";
-import { useManageFeed } from "../../providers/ManageFeedProvider";
-import { useManageTopic } from "../../providers/ManageTopicProvider";
 import cx from "../../utils/cx";
 import ItemStatus from "../ItemStatus";
 import Quotes from "../Quotes";
@@ -57,25 +60,37 @@ function getEmptyMessage(filter: Filter, filterText: string): string {
   return filterText ? `No ${label} match "${filterText}"` : `No ${label}`;
 }
 
-interface ItemListProps {
+type ItemListProps = {
   className?: string;
-  selectedCollection: Collection;
-}
+  // selectedCollection: Collection;
+  onEditFeed: (feed: Feed) => void;
+  onEditTopic: (topic: Topic) => void;
+};
 
-export function ItemList({ className, selectedCollection }: ItemListProps) {
-  const navigate = useNavigate();
-  const { collectionId, itemId: selectedItemId } = useParams();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const rawFilter = searchParams.get("filter");
-  const filter: Filter = isFilter(rawFilter) ? rawFilter : "unread";
-  const search = searchParams.get("search") ?? "";
-
-  const { startEditingFeed } = useManageFeed();
-  const { startEditingTopic } = useManageTopic();
+export function ItemList({
+  className,
+  // selectedCollection,
+  onEditFeed,
+  onEditTopic,
+}: ItemListProps) {
+  const { show, state, searchParams, setSearchParams } = useRouter();
+  const { feedId, topicId, shortcutId, entryId: selectedItemId } = state;
+  const filterParam = searchParams.get("filter");
+  const filter: Filter = isFilter(filterParam) ? filterParam : "unread";
 
   const [abort, abortControllerRef] = useAbortController();
+  const { topics } = useTopics(abortControllerRef);
+  const { feeds } = useFeeds(abortControllerRef);
   const [loading, setLoading] = useState(false);
+
+  const selectedCollection = useMemo(
+    () =>
+      (feedId && feeds.find((f) => f.id === feedId)) ||
+      (topicId && topics.find((t) => t.id === topicId)) ||
+      (shortcutId && SHORTCUTS.find((s) => s.id === shortcutId)) ||
+      ALL_ITEMS,
+    [feedId, topicId, shortcutId, feeds, topics]
+  );
 
   const { listEntries, listAllEntries, markEntryRead } =
     useEntries(abortControllerRef);
@@ -95,20 +110,15 @@ export function ItemList({ className, selectedCollection }: ItemListProps) {
 
   const [items, setItems] = useState<Item[]>([]);
   const [filterText, setFilterText] = useState("");
-  const [prevSelectedList, setPrevSelectedList] = useState(selectedCollection);
-
-  if (prevSelectedList !== selectedCollection) {
-    setPrevSelectedList(selectedCollection);
-    setFilterText("");
-  }
 
   const handleEdit = useMemo(() => {
-    if (isFeed(selectedCollection)) return () => startEditingFeed(selectedCollection);
-    if (isTopic(selectedCollection)) return () => startEditingTopic(selectedCollection);
+    if (isFeed(selectedCollection)) return () => onEditFeed(selectedCollection);
+    if (isTopic(selectedCollection))
+      return () => onEditTopic(selectedCollection);
     return undefined;
-  }, [selectedCollection, startEditingFeed, startEditingTopic]);
+  }, [selectedCollection, onEditFeed, onEditTopic]);
 
-  const displayedItems = useMemo(() => {
+  const displayItems = useMemo(() => {
     if (!filterText) return items;
     const lower = filterText.toLowerCase();
     return items.filter((item) => {
@@ -180,43 +190,48 @@ export function ItemList({ className, selectedCollection }: ItemListProps) {
     [refreshAllFeeds, refreshFeed, requestItems]
   );
 
-  const handleClickItem = useCallback(
-    (item: Item) => {
-      const params = new URLSearchParams();
-      params.set("filter", filter);
-      if (search) params.set("search", search);
-      navigate(`/${collectionId}/${item.id}?${params.toString()}`);
-    },
-    [navigate, collectionId, filter, search]
-  );
-
   const handleFilter = useCallback(
     (_event: MouseEvent<HTMLElement>, value: string) => {
       if (isFilter(value)) {
-        setSearchParams((prev) => { prev.set("filter", value); return prev; });
+        setSearchParams(
+          (prev) => {
+            prev.set("filter", value);
+            return prev;
+          },
+          { state }
+        );
       }
     },
-    [setSearchParams]
+    [setSearchParams, state]
   );
 
   const handleRefresh = useCallback(() => {
     abort();
-    (async () => { refreshList(selectedCollection); })();
+    (async () => {
+      refreshList(selectedCollection);
+    })();
   }, [abort, refreshList, selectedCollection]);
 
   const handleMarkEntriesRead = useCallback(async () => {
     await Promise.all(
-      displayedItems
+      displayItems
         .filter(isEntry)
         .map((entry) => entry.id)
         .map(markEntryRead)
     );
-  }, [displayedItems, markEntryRead]);
+  }, [displayItems, markEntryRead]);
+
+  const selectedCollectionRef = useRef(selectedCollection);
+  selectedCollectionRef.current = selectedCollection;
 
   useEffect(() => {
     abort();
-    (async () => { requestItems(selectedCollection); })();
-  }, [selectedCollection, requestItems, abort]);
+    (async () => {
+      requestItems(selectedCollectionRef.current);
+    })();
+    // Depend on IDs, not objects, so feed/topic identity changes from
+    // requestFeeds/requestTopics don't re-trigger a full list reload.
+  }, [feedId, topicId, shortcutId, requestItems, abort]);
 
   useEffect(() => {
     return onUnreadChanged((entry) => {
@@ -239,6 +254,7 @@ export function ItemList({ className, selectedCollection }: ItemListProps) {
             component="div"
             color="text.secondary"
             variant="overline"
+            sx={{ userSelect: "none" }}
           >
             {selectedCollection?.title ?? "All items"}
           </Typography>
@@ -311,7 +327,7 @@ export function ItemList({ className, selectedCollection }: ItemListProps) {
         </div>
       )}
 
-      {items.length > 0 && displayedItems.length === 0 && (
+      {items.length > 0 && displayItems.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography component="div" variant="body2" color="text.disabled">
             {getEmptyMessage(filter, filterText)}
@@ -319,16 +335,16 @@ export function ItemList({ className, selectedCollection }: ItemListProps) {
         </div>
       )}
 
-      {displayedItems.length > 0 && (
+      {displayItems.length > 0 && (
         <Virtuoso
           className={css.List}
-          data={displayedItems}
+          data={displayItems}
           itemContent={(_index, item) => (
             <div key={item.id} className={css.ListItem}>
               <ListItemButton
                 className={css.ListItemButton}
                 selected={selectedItemId === item.id}
-                onClick={() => handleClickItem(item)}
+                onClick={() => show(item)}
               >
                 <ListItemText
                   primary={

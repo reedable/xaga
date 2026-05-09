@@ -1,7 +1,7 @@
 import { useCallback, useState, type RefObject } from "react";
 import { usePlatform } from "../platform/Platform";
 import { processEntry } from "../text/entryWorker";
-import type { Article, Entry } from "../types";
+import type { Entry } from "../types";
 
 export function useArticles(abortControllerRef: RefObject<AbortController>) {
   const platform = usePlatform();
@@ -21,7 +21,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       setLoading(true);
 
       try {
-        const html = await platform.loadArticle(signal, url);
+        const html = await platform.loadArticle(signal, url); //, true);
         const { title, markdown } = await processEntry(url, html);
 
         const article = await platform.createArticle(signal, {
@@ -38,7 +38,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform],
+    [abortControllerRef, platform]
   );
 
   /**
@@ -46,13 +46,14 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
    * the disc.
    */
   const loadArticle = useCallback(
-    async (article: Article) => {
+    async (entry: Entry) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
 
       try {
-        const html = await platform.loadArticle(signal, article.url);
+        const article = await platform.readArticle(signal, entry.id);
+        const html = await platform.loadArticle(signal, entry.url); //, true);
         const { title, markdown } = await processEntry(article.url, html);
 
         await platform.saveArticle(signal, {
@@ -68,7 +69,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform],
+    [abortControllerRef, platform]
   );
 
   /**
@@ -99,7 +100,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, loadArticle, platform],
+    [abortControllerRef, loadArticle, platform]
   );
 
   const findArticleByUrl = useCallback(
@@ -116,7 +117,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform],
+    [abortControllerRef, platform]
   );
 
   return {

@@ -12,30 +12,40 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useState, useEffect, type SubmitEvent } from "react";
+import { useCallback, useEffect, useState, type SubmitEvent } from "react";
 import { TOPIC_THRESHOLD } from "../../consts";
+import useAbortController from "../../hooks/useAbortController";
+import { useTopics } from "../../hooks/useTopics";
 import type { Topic } from "../../types";
 
-interface EditTopicDialogProps {
+type EditTopicDialogProps = {
   open: boolean;
   topic: Topic | null;
-  pinned: boolean;
   onClose: () => void;
-  onSave: (title: string, content: string, threshold: number, pinned: boolean) => Promise<void>;
+  onSave: (
+    title: string,
+    content: string,
+    threshold: number,
+    pinned: boolean
+  ) => Promise<void>;
   onDelete: (topic: Topic) => Promise<void>;
-}
+};
 
 export default function EditTopicDialog({
   open,
   topic,
-  pinned,
   onClose,
   onSave,
   onDelete,
 }: EditTopicDialogProps) {
+  const [, abortControllerRef] = useAbortController();
+  const { pinnedTopicIds } = useTopics(abortControllerRef);
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [thresholdText, setThresholdText] = useState(TOPIC_THRESHOLD.toFixed(2));
+  const [thresholdString, setThresholdString] = useState(
+    TOPIC_THRESHOLD.toFixed(2)
+  );
   const [pinnedState, setPinnedState] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -44,54 +54,58 @@ export default function EditTopicDialog({
     if (open) {
       setTitle(topic?.title ?? "");
       setDescription(topic?.content ?? "");
-      setThresholdText((topic?.threshold ?? TOPIC_THRESHOLD).toFixed(2));
-      setPinnedState(pinned);
+      setThresholdString((topic?.threshold ?? TOPIC_THRESHOLD).toFixed(2));
+      setPinnedState(pinnedTopicIds.includes(topic?.id ?? ""));
     }
-  }, [open, topic, pinned]);
+  }, [open, pinnedTopicIds, topic]);
 
-  const parseThreshold = () => {
-    const v = parseFloat(thresholdText);
-    if (isNaN(v)) return TOPIC_THRESHOLD;
-    return Math.max(-1, Math.min(1, v));
-  };
+  const parseThreshold = useCallback(() => {
+    const thresholdNumber = parseFloat(thresholdString);
+    if (isNaN(thresholdNumber)) return TOPIC_THRESHOLD;
+    return Math.max(-1, Math.min(1, thresholdNumber));
+  }, [thresholdString]);
 
-  const handleDecrement = () => {
+  const handleDecrement = useCallback(() => {
     const next = Math.max(-1, parseFloat((parseThreshold() - 0.01).toFixed(2)));
-    setThresholdText(next.toFixed(2));
-  };
+    setThresholdString(next.toFixed(2));
+  }, [parseThreshold]);
 
-  const handleIncrement = () => {
+  const handleIncrement = useCallback(() => {
     const next = Math.min(1, parseFloat((parseThreshold() + 0.01).toFixed(2)));
-    setThresholdText(next.toFixed(2));
-  };
+    setThresholdString(next.toFixed(2));
+  }, [parseThreshold]);
 
-  const handleThresholdBlur = () => {
-    setThresholdText(parseThreshold().toFixed(2));
-  };
+  const handleThresholdBlur = useCallback(() => {
+    setThresholdString(parseThreshold().toFixed(2));
+  }, [parseThreshold]);
 
-  const handleSubmit = async (e: SubmitEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!title.trim()) return;
+  const handleSubmit = useCallback(
+    async (e: SubmitEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      if (!title.trim()) return;
 
-    setSaving(true);
-    try {
-      await onSave(title.trim(), description, parseThreshold(), pinnedState);
-      onClose();
-    } finally {
-      setSaving(false);
-    }
-  };
+      setSaving(true);
+      try {
+        await onSave(title.trim(), description, parseThreshold(), pinnedState);
+        onClose();
+      } finally {
+        setSaving(false);
+      }
+    },
+    [description, onClose, onSave, parseThreshold, pinnedState, title]
+  );
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!topic) return;
     setDeleting(true);
+
     try {
       await onDelete(topic);
       onClose();
     } finally {
       setDeleting(false);
     }
-  };
+  }, [onClose, onDelete, topic]);
 
   const busy = saving || deleting;
 
@@ -100,7 +114,14 @@ export default function EditTopicDialog({
       <form onSubmit={handleSubmit}>
         <DialogTitle>{topic ? "Edit Topic" : "Add Topic"}</DialogTitle>
 
-        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: "16px !important" }}>
+        <DialogContent
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 2,
+            pt: "16px !important",
+          }}
+        >
           <TextField
             label="Title"
             value={title}
@@ -109,6 +130,7 @@ export default function EditTopicDialog({
             autoFocus
             fullWidth
           />
+
           <TextField
             label="Description"
             value={description}
@@ -117,6 +139,7 @@ export default function EditTopicDialog({
             minRows={4}
             fullWidth
           />
+
           <FormControlLabel
             control={
               <Checkbox
@@ -129,22 +152,38 @@ export default function EditTopicDialog({
           />
 
           <Box>
-            <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              display="block"
+              gutterBottom
+            >
               Similarity threshold
             </Typography>
+
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <IconButton size="small" onClick={handleDecrement} disabled={busy}>
+              <IconButton
+                size="small"
+                onClick={handleDecrement}
+                disabled={busy}
+              >
                 <Remove fontSize="small" />
               </IconButton>
+
               <TextField
-                value={thresholdText}
-                onChange={(e) => setThresholdText(e.target.value)}
+                value={thresholdString}
+                onChange={(e) => setThresholdString(e.target.value)}
                 onBlur={handleThresholdBlur}
                 size="small"
                 sx={{ width: 80 }}
                 slotProps={{ htmlInput: { style: { textAlign: "center" } } }}
               />
-              <IconButton size="small" onClick={handleIncrement} disabled={busy}>
+
+              <IconButton
+                size="small"
+                onClick={handleIncrement}
+                disabled={busy}
+              >
                 <Add fontSize="small" />
               </IconButton>
             </Box>
@@ -153,12 +192,23 @@ export default function EditTopicDialog({
 
         <DialogActions>
           {topic && (
-            <Button onClick={handleDelete} color="error" disabled={busy} sx={{ mr: "auto" }}>
+            <Button
+              onClick={handleDelete}
+              color="error"
+              disabled={busy}
+              sx={{ mr: "auto" }}
+            >
               Delete
             </Button>
           )}
-          <Button onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" variant="contained" disabled={!title.trim() || busy}>
+          <Button onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={!title.trim() || busy}
+          >
             Save
           </Button>
         </DialogActions>

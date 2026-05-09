@@ -95,7 +95,7 @@ pub async fn filter_items<T: Item>(
                     .map(|a| a.reference)
                     .collect::<HashSet<String>>()
             };
-            items.retain(|i| i.is_bookmarked() || annotated_ids.contains(i.id()));
+            items.retain(|i| i.is_bookmarked() || !i.reference().is_empty() || annotated_ids.contains(i.id()));
         }
     }
 

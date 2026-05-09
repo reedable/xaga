@@ -1,0 +1,9 @@
+.Search {
+  align-items: center;
+  background-color: var(--background-color);
+  display: flex;
+
+  fieldset {
+    border-radius: 21px;
+  }
+}

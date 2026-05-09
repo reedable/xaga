@@ -21,7 +21,7 @@ export function useCollections(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform],
+    [abortControllerRef, platform]
   );
 
   const listTopics = useCallback(
@@ -38,7 +38,7 @@ export function useCollections(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform],
+    [abortControllerRef, platform]
   );
 
   return { loading, error, listFeeds, listTopics };

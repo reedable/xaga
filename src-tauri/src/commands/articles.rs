@@ -16,12 +16,14 @@ pub async fn receive_html(
 ) -> Result<(), String> {
     require_loader_window(&window)?;
     let mut map = pending.lock().map_err(|e| e.to_string())?;
-    if let Some(tx) = map.remove(&id) {
+    if let Some((tx, keep_open)) = map.remove(&id) {
         let _ = tx.send(html);
+        if !keep_open {
+            // Terminate the webview immediately so untrusted scripts cannot
+            // continue running or spamming IPC.
+            let _ = window.close();
+        }
     }
-    // HTML has been handed off — terminate the webview immediately so
-    // untrusted scripts cannot continue running or spamming IPC.
-    let _ = window.close();
     Ok(())
 }
 
@@ -29,13 +31,14 @@ pub async fn receive_html(
 pub async fn load_article(
     window: tauri::Window,
     url: String,
+    keep_open: bool,
     app: AppHandle,
     pending: State<'_, article_loader::PendingRequests>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
     require_main_window(&window)?;
     let timeout_secs = *state.loader_timeout_secs.read().unwrap();
-    article_loader::load_via_webview(&app, &pending, &url, timeout_secs).await
+    article_loader::load_via_webview(&app, &pending, &url, timeout_secs, keep_open).await
 }
 
 #[tauri::command]

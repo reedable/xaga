@@ -1,5 +1,4 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
@@ -12,13 +11,13 @@ const root = document.getElementById("root");
 const platform = new TauriPlatform();
 
 createRoot(root!).render(
-  <StrictMode>
-    <PlatformContext.Provider value={platform}>
-      <SettingsProvider>
-        <AppearanceProvider>
-          <App entryPoint={getCurrentWindow().label} />
-        </AppearanceProvider>
-      </SettingsProvider>
-    </PlatformContext.Provider>
-  </StrictMode>
+  // <StrictMode>
+  <PlatformContext.Provider value={platform}>
+    <SettingsProvider>
+      <AppearanceProvider>
+        <App entryPoint={getCurrentWindow().label} />
+      </AppearanceProvider>
+    </SettingsProvider>
+  </PlatformContext.Provider>
+  // </StrictMode>
 );

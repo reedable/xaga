@@ -1,0 +1,12 @@
+.Reader {
+  height: 100%;
+  position: relative;
+  width: 100%;
+}
+
+.Iframe {
+  border: none;
+  display: block;
+  height: 100%;
+  width: 100%;
+}
