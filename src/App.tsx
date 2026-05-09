@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
-import css from "./_.module.css";
+import css from "./App.module.css";
 import { AppLayout } from "./AppLayout";
 import { Settings } from "./components/settings/Settings";
 import { useCacheReady } from "./hooks/useCacheReady";

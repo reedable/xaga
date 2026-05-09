@@ -1,7 +1,7 @@
 import { Collapse } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import css from "./_.module.css";
+import css from "./AppLayout.module.css";
 import { ItemView } from "./components/content/ItemView";
 import EditFeedDialog from "./components/dialogs/EditFeedDialog";
 import EditTopicDialog from "./components/dialogs/EditTopicDialog";

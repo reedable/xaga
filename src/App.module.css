@@ -1,0 +1,11 @@
+.ShutdownOverlay {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  display: flex;
+  font-size: 1rem;
+  inset: 0;
+  justify-content: center;
+  position: fixed;
+  z-index: 9999;
+}
