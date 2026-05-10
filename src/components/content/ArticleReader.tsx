@@ -1,5 +1,12 @@
 import { Typography } from "@mui/material";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useState,
+} from "react";
 import { useSearchParams } from "react-router-dom";
 import useAbortController from "../../hooks/useAbortController";
 import { useAnnotations } from "../../hooks/useAnnotations";
@@ -27,7 +34,7 @@ export interface ArticleReaderProps {
 const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
   function ArticleReader({ className }, ref) {
     const { navigate, state } = useRouter();
-    const { entryId, annotationId } = state;
+    const { entryId, annotationId, url } = state;
     const [searchParams] = useSearchParams();
 
     const {
@@ -65,13 +72,6 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     );
 
     const { setFindEnabled, onUnreadChanged, onBookmarkChanged } = useEvents();
-
-    useEffect(() => {
-      setFindEnabled(!!html);
-      return () => {
-        setFindEnabled(false);
-      };
-    }, [html, setFindEnabled]);
 
     const { readArticle, loadArticle, findArticleByUrl, loadArticleByUrl } =
       useArticles(abortControllerRef);
@@ -122,10 +122,6 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       [loadArticle]
     );
 
-    useImperativeHandle(ref, () => ({
-      reload: () => { if (selectedEntry) reloadArticle(selectedEntry); },
-    }), [selectedEntry, reloadArticle]);
-
     const handleLoadArticleByUrl = useCallback(
       async (url: string) => {
         setBodyHtml(null);
@@ -142,6 +138,27 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       },
       [findArticleByUrl, loadArticleByUrl, navigateToItem]
     );
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        reload: () => {
+          if (selectedEntry) {
+            reloadArticle(selectedEntry);
+          } else if (url) {
+            handleLoadArticleByUrl(url);
+          }
+        },
+      }),
+      [selectedEntry, reloadArticle, url, handleLoadArticleByUrl]
+    );
+
+    useEffect(() => {
+      setFindEnabled(!!html);
+      return () => {
+        setFindEnabled(false);
+      };
+    }, [html, setFindEnabled]);
 
     useEffect(() => {
       if (!entryId) return;

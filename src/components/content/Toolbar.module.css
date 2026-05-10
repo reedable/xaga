@@ -2,3 +2,33 @@
   display: flex;
   margin: 1rem 2rem 1.75rem 2rem;
 }
+
+.AddressBarContainer {
+  flex: 1;
+}
+
+.AddressBar {
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  display: flex;
+  flex: 1;
+  height: 28px;
+  min-width: 0;
+
+  &:focus-within {
+    background: color-mix(in srgb, currentColor 3%, transparent);
+    border-color: color-mix(in srgb, currentColor 40%, transparent);
+  }
+
+  &:hover:not(:focus-within) {
+    border-color: color-mix(in srgb, currentColor 25%, transparent);
+  }
+}
+
+.Favicon {
+  background-color: white;
+  border-radius: 4px;
+  height: 20px;
+  padding: 1px 0 0 0;
+  width: 20px;
+}

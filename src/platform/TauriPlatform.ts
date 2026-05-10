@@ -172,12 +172,14 @@ const toEmbeddedAnnotationResult = (
 const ArticleSchema = EntrySchema.extend({
   content: z.string(),
   annotations: z.array(AnnotationSchema).default([]),
+  favicon: z.string().nullable().optional(),
 });
 
 const toArticle = (data: z.infer<typeof ArticleSchema>): Article => ({
   ...toEntry(data),
   content: data.content,
   annotations: data.annotations.map(toAnnotation),
+  favicon: data.favicon ?? undefined,
 });
 
 // const AnyItemSchema = EntrySchema.or(ItemSchema);
@@ -436,6 +438,7 @@ export class TauriPlatform implements Platform {
       publishedAt: article.publishedAt,
       updatedAt: article.updatedAt,
       summary: article.summary,
+      favicon: article.favicon ?? null,
       markdown: article.content,
     });
 
@@ -465,6 +468,7 @@ export class TauriPlatform implements Platform {
       publishedAt: article.publishedAt,
       updatedAt: article.updatedAt,
       summary: article.summary,
+      favicon: article.favicon ?? null,
       markdown: article.content,
     });
 

@@ -181,6 +181,7 @@ export function isAnnotationSummary(
 export type Article = Entry &
   Document & {
     annotations: Annotation[];
+    favicon?: string;
   };
 
 export function isArticle(item?: Item | null): item is Article {

@@ -22,13 +22,14 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
 
       try {
         const html = await platform.loadArticle(signal, url); //, true);
-        const { title, markdown } = await processEntry(url, html);
+        const { title, markdown, favicon } = await processEntry(url, html);
 
         const article = await platform.createArticle(signal, {
           title,
           content: markdown,
           url,
           annotations: [],
+          favicon: favicon ?? undefined,
         });
 
         return await platform.readArticle(signal, article.id);
@@ -54,12 +55,13 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       try {
         const article = await platform.readArticle(signal, entry.id);
         const html = await platform.loadArticle(signal, entry.url); //, true);
-        const { title, markdown } = await processEntry(article.url, html);
+        const { title, markdown, favicon } = await processEntry(article.url, html);
 
         await platform.saveArticle(signal, {
           ...article,
           title,
           content: markdown,
+          favicon: favicon ?? undefined,
         });
 
         return await platform.readArticle(signal, article.id);

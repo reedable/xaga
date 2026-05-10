@@ -37,6 +37,7 @@ pub async fn save_article(
     published_at: Option<&str>,
     updated_at: Option<&str>,
     summary: Option<&str>,
+    favicon: Option<&str>,
     markdown: &str,
 ) -> Result<Article, EntryError> {
     let normalized = normalize_url(url)?;
@@ -70,6 +71,7 @@ pub async fn save_article(
         summary,
         &existing_annotations,
         &existing_tags,
+        favicon,
         markdown,
     );
     tokio::fs::write(&path, content.as_bytes()).await?;
@@ -91,6 +93,7 @@ pub async fn save_article(
         },
         content: markdown.to_string(),
         annotations: with_reference(existing_annotations, id),
+        favicon: favicon.map(str::to_string),
     })
 }
 
@@ -103,11 +106,12 @@ pub async fn create_article(
     published_at: Option<&str>,
     updated_at: Option<&str>,
     summary: Option<&str>,
+    favicon: Option<&str>,
     markdown: &str,
 ) -> Result<Article, EntryError> {
     let normalized = normalize_url(url)?;
     let id = url_hash12(&normalized);
-    save_article(data_dir, &id, url, title, published_at, updated_at, summary, markdown).await
+    save_article(data_dir, &id, url, title, published_at, updated_at, summary, favicon, markdown).await
 }
 
 /// Returns the article for the given URL if it exists, or `None` if not found.
@@ -135,11 +139,13 @@ pub async fn read_article(
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
     let annotations = fm.annotations.clone();
+    let favicon = fm.favicon.clone();
 
     Ok(Article {
         meta: entry_from_fm(id.to_string(), fm),
         content: body,
         annotations: with_reference(annotations, id),
+        favicon,
     })
 }
 
@@ -165,6 +171,7 @@ pub async fn add_annotation(
         });
     }
 
+    let favicon = fm.favicon.clone();
     let content = render_entry(
         &fm.source,
         &fm.title,
@@ -174,6 +181,7 @@ pub async fn add_annotation(
         fm.summary.as_deref(),
         &annotations,
         &fm.tags,
+        favicon.as_deref(),
         &body,
     );
     tokio::fs::write(&path, content.as_bytes()).await?;
@@ -186,6 +194,7 @@ pub async fn add_annotation(
         meta: entry_from_fm(article_id.to_string(), fm),
         content: body,
         annotations: with_reference(annotations, article_id),
+        favicon,
     })
 }
 
@@ -205,6 +214,7 @@ pub async fn remove_annotation(
         .cloned()
         .collect();
 
+    let favicon = fm.favicon.clone();
     let content = render_entry(
         &fm.source,
         &fm.title,
@@ -214,6 +224,7 @@ pub async fn remove_annotation(
         fm.summary.as_deref(),
         &annotations,
         &fm.tags,
+        favicon.as_deref(),
         &body,
     );
     tokio::fs::write(&path, content.as_bytes()).await?;
@@ -222,5 +233,6 @@ pub async fn remove_annotation(
         meta: entry_from_fm(article_id.to_string(), fm),
         content: body,
         annotations: with_reference(annotations, article_id),
+        favicon,
     })
 }

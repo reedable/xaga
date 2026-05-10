@@ -1,5 +1,5 @@
 import { Typography } from "@mui/material";
-import { useRef } from "react";
+import { useCallback, useRef } from "react";
 import useRouter from "../../hooks/useRouter";
 import cx from "../../utils/cx";
 import ArticleReader, { type ArticleReaderHandle } from "./ArticleReader";
@@ -12,14 +12,18 @@ type ItemViewProps = {
 
 export function ItemView({ className }: ItemViewProps) {
   const { state } = useRouter();
-  const { entryId } = state;
+  const { entryId, url } = state;
 
   const readerRef = useRef<ArticleReaderHandle>(null);
+
+  const handleReload = useCallback(() => {
+    readerRef.current?.reload();
+  }, []);
 
   return (
     <div className={cx(className, css.LayoutContainer)}>
       <div className={css.Layout}>
-        <Toolbar reload={entryId ? () => readerRef.current?.reload() : null} />
+        <Toolbar reload={entryId || url ? handleReload : null} />
 
         {entryId ? (
           <ArticleReader ref={readerRef} />

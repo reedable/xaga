@@ -28,6 +28,7 @@ pub fn render_entry(
     summary: Option<&str>,
     annotations: &[crate::types::Annotation],
     tags: &[String],
+    favicon: Option<&str>,
     markdown: &str,
 ) -> String {
     #[derive(serde::Serialize)]
@@ -46,6 +47,8 @@ pub fn render_entry(
         annotations: &'a [crate::types::Annotation],
         #[serde(skip_serializing_if = "<[_]>::is_empty")]
         tags: &'a [String],
+        #[serde(skip_serializing_if = "Option::is_none")]
+        favicon: Option<&'a str>,
     }
 
     let clean_summary = summary.map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "));
@@ -60,6 +63,7 @@ pub fn render_entry(
         summary: clean_summary.as_deref().map(str::to_string),
         annotations,
         tags,
+        favicon,
     };
 
     let yaml = serde_yaml::to_string(&fm).expect("frontmatter serialization is infallible");
@@ -126,7 +130,7 @@ pub async fn write_entry(
 
     let created_at = Utc::now().to_rfc3339();
     let tags = vec!["unread".to_string()];
-    let content = render_entry(&normalized, title, &created_at, published_at, updated_at, summary, &[], &tags, "");
+    let content = render_entry(&normalized, title, &created_at, published_at, updated_at, summary, &[], &tags, None, "");
     tokio::fs::create_dir_all(path.parent().unwrap()).await?;
     tokio::fs::write(&path, content.as_bytes()).await?;
     Ok(path)
@@ -150,7 +154,7 @@ pub async fn write_read_entry(
     let path = entry_path(data_dir, &hash12);
 
     if !tokio::fs::try_exists(&path).await? {
-        let content = render_entry(&normalized, title, created_at, published_at, updated_at, summary, &[], tags, "");
+        let content = render_entry(&normalized, title, created_at, published_at, updated_at, summary, &[], tags, None, "");
         tokio::fs::create_dir_all(path.parent().unwrap()).await?;
         tokio::fs::write(&path, content.as_bytes()).await?;
     }
@@ -183,6 +187,7 @@ pub async fn set_entry_tags(data_dir: &Path, id: &str, tags: Vec<String>) -> Res
         fm.summary.as_deref(),
         &fm.annotations,
         &tags,
+        fm.favicon.as_deref(),
         &body,
     );
     tokio::fs::write(&path, content.as_bytes()).await?;

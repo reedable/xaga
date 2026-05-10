@@ -41,6 +41,7 @@ pub struct Frontmatter {
     pub annotations: Vec<crate::types::Annotation>,
     pub threshold: Option<f32>,
     pub tags: Vec<String>,
+    pub favicon: Option<String>,
 }
 
 impl Frontmatter {
@@ -123,6 +124,8 @@ struct FrontmatterRaw {
     threshold: Option<f32>,
     #[serde(default)]
     tags: Vec<String>,
+    #[serde(default)]
+    favicon: Option<String>,
 }
 
 fn split_document(raw: &str) -> Option<(Frontmatter, String)> {
@@ -145,6 +148,7 @@ fn split_document(raw: &str) -> Option<(Frontmatter, String)> {
             annotations: fm.annotations,
             threshold: fm.threshold,
             tags: fm.tags,
+            favicon: fm.favicon,
         },
         body,
     ))

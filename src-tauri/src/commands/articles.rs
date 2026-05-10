@@ -50,6 +50,7 @@ pub async fn save_article(
     published_at: Option<String>,
     updated_at: Option<String>,
     summary: Option<String>,
+    favicon: Option<String>,
     markdown: String,
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
@@ -63,6 +64,7 @@ pub async fn save_article(
         published_at.as_deref(),
         updated_at.as_deref(),
         summary.as_deref(),
+        favicon.as_deref(),
         &markdown,
     )
     .await
@@ -77,6 +79,7 @@ pub async fn create_article(
     published_at: Option<String>,
     updated_at: Option<String>,
     summary: Option<String>,
+    favicon: Option<String>,
     markdown: String,
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
@@ -89,6 +92,7 @@ pub async fn create_article(
         published_at.as_deref(),
         updated_at.as_deref(),
         summary.as_deref(),
+        favicon.as_deref(),
         &markdown,
     )
     .await

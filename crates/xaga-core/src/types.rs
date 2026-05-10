@@ -192,6 +192,7 @@ pub struct Article {
     pub meta: Entry,
     pub content: String,
     pub annotations: Vec<Annotation>,
+    pub favicon: Option<String>,
 }
 
 impl Item for Article {

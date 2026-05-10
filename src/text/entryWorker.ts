@@ -25,16 +25,37 @@ function extractHeadingTitle(doc: Document): string {
   return "Untitled";
 }
 
+function extractFavicon(doc: Document, url: string): string | null {
+  const links = Array.from(doc.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]'));
+  if (links.length === 0) return null;
+
+  const preferred =
+    links.find((l) => l.getAttribute("sizes") === "32x32") ??
+    links.find((l) => l.getAttribute("sizes") === "16x16") ??
+    links[0];
+
+  const href = preferred.getAttribute("href");
+  if (!href) return null;
+
+  try {
+    return new URL(href, url).href;
+  } catch {
+    return null;
+  }
+}
+
 export async function processEntry(
   url: string,
   html: string,
-): Promise<{ title: string; markdown: string }> {
+): Promise<{ title: string; markdown: string; favicon: string | null }> {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
 
   const base = doc.createElement("base");
   base.href = url;
   doc.head.prepend(base);
+
+  const favicon = extractFavicon(doc, url);
 
   const entry = new Readability(doc).parse();
   if (!entry) {
@@ -50,5 +71,5 @@ export async function processEntry(
 
   const readabilityTitle = entry.title?.trim();
   const title = readabilityTitle || extractHeadingTitle(doc);
-  return { title, markdown: String(file) };
+  return { title, markdown: String(file), favicon };
 }

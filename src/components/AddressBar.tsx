@@ -1,4 +1,3 @@
-import { Collapse, LinearProgress } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
 import useAbortController from "../hooks/useAbortController";
 import { useArticles } from "../hooks/useArticles";
@@ -12,7 +11,7 @@ interface AddressBarProps {
 export function AddressBar({ url }: AddressBarProps) {
   const { navigate, state, searchParams } = useRouter();
   const [, abortControllerRef] = useAbortController();
-  const { loading, findArticleByUrl, loadArticleByUrl } =
+  const { findArticleByUrl, loadArticleByUrl } =
     useArticles(abortControllerRef);
 
   const [addressValue, setAddressValue] = useState(url ?? "");
@@ -73,25 +72,18 @@ export function AddressBar({ url }: AddressBarProps) {
   );
 
   return (
-    <>
-      <div className={css.AddressBar}>
-        <input
-          className={css.AddressBarInput}
-          value={addressValue}
-          placeholder="Enter URL…"
-          onChange={handleChange}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          onKeyDown={handleKeyDown}
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-        />
-      </div>
-      <Collapse in={loading} unmountOnExit>
-        <LinearProgress />
-      </Collapse>
-    </>
+    <input
+      className={css.AddressBarInput}
+      value={addressValue}
+      placeholder="Enter URL…"
+      onChange={handleChange}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="off"
+      spellCheck={false}
+    />
   );
 }
