@@ -1,8 +1,9 @@
 .Title {
   align-items: center;
+  border-bottom: 1px solid var(--dark-gray);
   display: flex;
   flex-direction: row;
-  margin: .25rem 1rem 0 2rem;
+  margin: 0.25rem 1rem 0 2rem;
 
   h1 {
     flex-grow: 1;
@@ -30,7 +31,7 @@
   overflow: hidden;
   width: var(--width);
 
-  @container item-view (width < 600px) {
+  @container item-view (width < 640px) {
     display: none;
   }
 }

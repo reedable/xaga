@@ -6,7 +6,7 @@ import { ItemView } from "./components/content/ItemView";
 import EditFeedDialog from "./components/dialogs/EditFeedDialog";
 import EditTopicDialog from "./components/dialogs/EditTopicDialog";
 import { ItemList } from "./components/list/ItemList";
-import { SearchResultList } from "./components/list/SearchResultList";
+import { SearchResultList } from "./components/search/SearchResultList";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { TitleBar } from "./components/titlebar/TitleBar";
 import useAbortController from "./hooks/useAbortController";
@@ -19,7 +19,7 @@ export function AppLayout() {
   const [searchParams] = useSearchParams();
   const filterParam = searchParams.get("filter");
   const filter = isFilter(filterParam) ? filterParam : undefined;
-  const search = searchParams.get("search") ?? "";
+  const search = searchParams.get("search");
 
   const [, abortControllerRef] = useAbortController();
   const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
@@ -167,10 +167,10 @@ export function AppLayout() {
 
         <ItemView className={css.ItemView} />
 
-        <Collapse in={!!search} orientation="horizontal">
+        <Collapse in={search !== null} unmountOnExit orientation="horizontal">
           <SearchResultList
             className={css.SearchResultList}
-            searchQuery={search}
+            searchQuery={search ?? ""}
           />
         </Collapse>
       </div>

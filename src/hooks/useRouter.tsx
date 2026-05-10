@@ -84,9 +84,16 @@ export default function useRouter() {
     [logged_navigate, searchParams, state]
   );
 
+  const clearSearch = useCallback(() => {
+    const params = new URLSearchParams(searchParams);
+    params.delete("search");
+    logged_navigate(`/?${params.toString()}`, { state });
+  }, [logged_navigate, searchParams, state]);
+
   return {
     navigate: logged_navigate,
     search,
+    clearSearch,
     show,
     state,
     searchParams,

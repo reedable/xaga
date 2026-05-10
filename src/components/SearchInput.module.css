@@ -1,7 +1,11 @@
-.Search {
+.SearchInput {
   align-items: center;
   background-color: var(--background-color);
   display: flex;
+
+  .TextField {
+    width: 100%;
+  }
 
   fieldset {
     border-radius: 21px;

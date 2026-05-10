@@ -22,6 +22,7 @@ import { FONT_FAMILY_CSS } from "../../utils/FontFamily";
 import css from "./ArticleReader.module.css";
 import { Reader } from "./Reader";
 import { RelatedItemList } from "./RelatedItemList";
+import Logger from "../../utils/Logger";
 
 export interface ArticleReaderHandle {
   reload: () => void;
@@ -30,6 +31,8 @@ export interface ArticleReaderHandle {
 export interface ArticleReaderProps {
   className?: string;
 }
+
+const logger = Logger.getLogger("ArticleReader");
 
 const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
   function ArticleReader({ className }, ref) {
@@ -110,6 +113,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
     const reloadArticle = useCallback(
       async (entry: Entry) => {
+        logger.debug("reloadArticle", entry);
         setBodyHtml(null);
 
         const article = await loadArticle(entry);
@@ -124,6 +128,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
     const handleLoadArticleByUrl = useCallback(
       async (url: string) => {
+        logger.debug("reloadArticleByUrl", url);
         setBodyHtml(null);
 
         let article = await findArticleByUrl(url);
@@ -143,6 +148,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       ref,
       () => ({
         reload: () => {
+          logger.debug("reload", selectedEntry, url);
           if (selectedEntry) {
             reloadArticle(selectedEntry);
           } else if (url) {

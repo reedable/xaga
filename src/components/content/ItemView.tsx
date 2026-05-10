@@ -5,10 +5,13 @@ import cx from "../../utils/cx";
 import ArticleReader, { type ArticleReaderHandle } from "./ArticleReader";
 import css from "./ItemView.module.css";
 import { Toolbar } from "./Toolbar";
+import Logger from "../../utils/Logger";
 
 type ItemViewProps = {
   className?: string;
 };
+
+const logger = Logger.getLogger("ItemView");
 
 export function ItemView({ className }: ItemViewProps) {
   const { state } = useRouter();
@@ -17,8 +20,9 @@ export function ItemView({ className }: ItemViewProps) {
   const readerRef = useRef<ArticleReaderHandle>(null);
 
   const handleReload = useCallback(() => {
+    logger.debug("handleReload", entryId, url, readerRef.current);
     readerRef.current?.reload();
-  }, []);
+  }, [entryId, url]);
 
   return (
     <div className={cx(className, css.LayoutContainer)}>

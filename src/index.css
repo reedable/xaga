@@ -13,14 +13,16 @@ body,
 /* See App.tsx for data-theme attribute */
 html {
   &[data-theme="light"] {
-    --white: rgba(255, 255, 255, 1);
-    --light-gray: rgba(0, 0, 0, 0.12);
+    --white: #ffffff;
+    --light-gray: #cccccc;
+    --dark-gray: #333333;
     --text-secondary: rgba(0, 0, 0, 0.6);
   }
 
   &[data-theme="dark"] {
-    --white: rgba(18, 18, 18);
-    --light-gray: rgba(255, 255, 255, 0.12);
+    --white: #000000;
+    --light-gray: #333333;
+    --dark-gray: #cccccc;
     --text-secondary: rgba(255, 255, 255, 0.7);
   }
 

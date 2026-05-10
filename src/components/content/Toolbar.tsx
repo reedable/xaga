@@ -4,6 +4,8 @@ import {
   CircleOutlined,
   Language,
   Refresh,
+  Search,
+  SearchOff,
 } from "@mui/icons-material";
 import { Collapse, IconButton, LinearProgress, Tooltip } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
@@ -16,7 +18,6 @@ import useRouter from "../../hooks/useRouter";
 import { usePlatform } from "../../platform/Platform";
 import { isArticle, type Entry } from "../../types";
 import { AddressBar } from "../AddressBar";
-import { Search } from "../Search";
 import css from "./Toolbar.module.css";
 
 interface ToolbarProps {
@@ -25,7 +26,9 @@ interface ToolbarProps {
 
 export function Toolbar({ reload }: ToolbarProps) {
   const platform = usePlatform();
-  const { state } = useRouter();
+  const { state, search, clearSearch, searchParams } = useRouter();
+  const isSearchOpen = searchParams.get("search") !== null;
+
   const [, abortControllerRef] = useAbortController();
   const { addBookmark, removeBookmark } = useBookmarks(abortControllerRef);
   const { markEntryRead, markEntryUnread } = useEntries(abortControllerRef);
@@ -36,6 +39,11 @@ export function Toolbar({ reload }: ToolbarProps) {
   const [latestEntry, setLatestEntry] = useState<Entry | null>(null);
   const entry = latestEntry?.id === entryId ? latestEntry : null;
   const [favicon, setFavicon] = useState<string | null>(null);
+
+  const handleSearchToggle = useCallback(() => {
+    if (isSearchOpen) clearSearch();
+    else search("");
+  }, [isSearchOpen, search, clearSearch]);
 
   const toggleBookmark = useCallback(async () => {
     if (!entry) return;
@@ -183,7 +191,21 @@ export function Toolbar({ reload }: ToolbarProps) {
         </Collapse>
       </div>
 
-      <Search />
+      <Collapse in={!isSearchOpen} orientation="horizontal">
+        <Tooltip title={isSearchOpen ? "Hide Search" : "Show Search"}>
+          <IconButton
+            size="small"
+            onClick={handleSearchToggle}
+            aria-label={isSearchOpen ? "Hide Search" : "Show Search"}
+          >
+            {isSearchOpen ? (
+              <SearchOff fontSize="small" />
+            ) : (
+              <Search fontSize="small" />
+            )}
+          </IconButton>
+        </Tooltip>
+      </Collapse>
     </div>
   );
 }

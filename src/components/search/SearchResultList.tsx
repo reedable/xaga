@@ -16,6 +16,7 @@ import cx from "../../utils/cx";
 import formatByline from "../../utils/formatByline";
 import Quotes from "../Quotes";
 import css from "./SearchResultList.module.css";
+import { SearchInput } from "../SearchInput";
 
 interface SearchResultListProps {
   className?: string;
@@ -26,7 +27,7 @@ export function SearchResultList({
   className,
   searchQuery,
 }: SearchResultListProps) {
-  const { show, state } = useRouter();
+  const { show, state, clearSearch } = useRouter();
   const { entryId } = state;
   const { loading, error, search } = useSearch();
   const { onUnreadChanged, onBookmarkChanged } = useEvents();
@@ -35,8 +36,11 @@ export function SearchResultList({
   useEffect(() => {
     (async () => {
       setResults([]);
-      const r = await search(searchQuery);
-      if (r) setResults(r);
+
+      if (searchQuery.trim().length) {
+        const r = await search(searchQuery);
+        if (r) setResults(r);
+      }
     })();
   }, [searchQuery, search]);
 
@@ -58,11 +62,15 @@ export function SearchResultList({
 
   return (
     <div className={cx(className, css.ItemList)}>
-      <div className={css.Header}>
-        <Typography variant="overline" color="text.secondary">
-          Results for: {searchQuery}
-        </Typography>
-      </div>
+      <SearchInput className={css.SearchInput} onClear={clearSearch} />
+
+      {searchQuery && (
+        <div className={css.Header}>
+          <Typography variant="overline" color="text.secondary">
+            Results for: {searchQuery}
+          </Typography>
+        </div>
+      )}
 
       <div>
         <Collapse in={loading}>
@@ -78,7 +86,15 @@ export function SearchResultList({
         </div>
       )}
 
-      {!error && !loading && results.length === 0 && (
+      {!searchQuery && !loading && (
+        <div className={cx(css.List, css.Placeholder)}>
+          <Typography variant="body2" color="text.disabled">
+            Type to search
+          </Typography>
+        </div>
+      )}
+
+      {searchQuery && !error && !loading && results.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography variant="body2" color="text.disabled">
             No results for "{searchQuery}"
@@ -120,7 +136,7 @@ export function SearchResultList({
         />
       )}
 
-      {loading && results.length === 0 && (
+      {searchQuery && loading && results.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography variant="body2" color="text.disabled">
             Searching…

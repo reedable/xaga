@@ -1,6 +1,7 @@
 .ItemList {
   --width: 20em;
 
+  align-items: center;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -12,6 +13,10 @@
     flex: 1;
     align-items: center;
     justify-content: center;
+  }
+
+  .SearchInput {
+    width: calc(var(--width) - 4rem);
   }
 
   .Header {

@@ -29,6 +29,6 @@
 
   .SearchResultList {
     border-left: var(--border);
-    padding-top: calc(var(--titlebar-height) + 24px);
+    padding-top: 10px;
   }
 }
