@@ -1,6 +1,6 @@
 .Toolbar {
   display: flex;
-  margin: 1rem 2rem 1.75rem 2rem;
+  margin: 1rem 1rem 1.75rem 2rem;
 }
 
 .AddressBarContainer {
@@ -15,13 +15,25 @@
   height: 28px;
   min-width: 0;
 
+  input {
+    opacity: 0.6;
+  }
+
   &:focus-within {
     background: color-mix(in srgb, currentColor 3%, transparent);
     border-color: color-mix(in srgb, currentColor 40%, transparent);
+
+    input {
+      opacity: 1;
+    }
   }
 
   &:hover:not(:focus-within) {
     border-color: color-mix(in srgb, currentColor 25%, transparent);
+
+    input {
+      opacity: 1;
+    }
   }
 }
 

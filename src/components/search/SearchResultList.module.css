@@ -28,6 +28,7 @@
 
   .List {
     flex: 1;
+    overflow-y: auto;
 
     .ListItem {
       border-bottom: var(--border);

@@ -203,7 +203,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
                 variant="h5"
                 sx={{ fontFamily: FONT_FAMILY_CSS[readerFontFamily] }}
               >
-                {selectedEntry?.title}
+                {selectedEntry?.title || <>&nbsp;</>}
               </Typography>
             </div>
 

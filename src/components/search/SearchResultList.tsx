@@ -2,12 +2,12 @@ import { Circle } from "@mui/icons-material";
 import {
   Collapse,
   LinearProgress,
+  List,
   ListItemButton,
   ListItemText,
   Typography,
 } from "@mui/material";
 import { useEffect, useState } from "react";
-import { Virtuoso } from "react-virtuoso";
 import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
 import useSearch from "../../hooks/useSearch";
@@ -103,10 +103,8 @@ export function SearchResultList({
       )}
 
       {results.length > 0 && (
-        <Virtuoso
-          className={css.List}
-          data={results}
-          itemContent={(_index, item) => (
+        <List className={css.List} disablePadding>
+          {results.map((item) => (
             <div key={item.id} className={css.ListItem}>
               <ListItemButton
                 className={css.ListItemButton}
@@ -132,8 +130,8 @@ export function SearchResultList({
                 />
               </ListItemButton>
             </div>
-          )}
-        />
+          ))}
+        </List>
       )}
 
       {searchQuery && loading && results.length === 0 && (

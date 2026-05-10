@@ -1,6 +1,8 @@
 .UnreadCount {
+  background-color: var(--background-color);
+  border-radius: 4px;
   display: inline-block;
   font-size: 12px;
-  padding-right: 8px;
+  padding: 2px 4px;
   user-select: none;
 }
