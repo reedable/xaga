@@ -5,7 +5,6 @@ import {
   Language,
   Refresh,
   Search,
-  SearchOff,
 } from "@mui/icons-material";
 import { Collapse, IconButton, LinearProgress, Tooltip } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
@@ -192,17 +191,13 @@ export function Toolbar({ reload }: ToolbarProps) {
       </div>
 
       <Collapse in={!isSearchOpen} orientation="horizontal">
-        <Tooltip title={isSearchOpen ? "Hide Search" : "Show Search"}>
+        <Tooltip title="Show Search">
           <IconButton
             size="small"
             onClick={handleSearchToggle}
-            aria-label={isSearchOpen ? "Hide Search" : "Show Search"}
+            aria-label="Show Search"
           >
-            {isSearchOpen ? (
-              <SearchOff fontSize="small" />
-            ) : (
-              <Search fontSize="small" />
-            )}
+            <Search fontSize="small" />
           </IconButton>
         </Tooltip>
       </Collapse>

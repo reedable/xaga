@@ -13,20 +13,23 @@ body,
 /* See App.tsx for data-theme attribute */
 html {
   &[data-theme="light"] {
+    --background-color: #ffffff;
     --white: #ffffff;
+    --lightest-gray: #ededed;
     --light-gray: #cccccc;
     --dark-gray: #333333;
     --text-secondary: rgba(0, 0, 0, 0.6);
   }
 
   &[data-theme="dark"] {
+    --background-color: #121212;
     --white: #000000;
+    --lightest-gray: #121212;
     --light-gray: #333333;
     --dark-gray: #cccccc;
     --text-secondary: rgba(255, 255, 255, 0.7);
   }
 
-  --background-color: var(--white);
   --border-color: var(--light-gray);
   --border: 1px solid var(--border-color);
 }
