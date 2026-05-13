@@ -16,7 +16,7 @@ import {
 import type { Annotation } from "../../types";
 import cx from "../../utils/cx";
 import Logger from "../../utils/Logger";
-import { AnnotationTooltip } from "./AnnotationTooltip";
+import { AnnotationTooltip, type AnnotationTooltipHandle } from "./AnnotationTooltip";
 import { FindBar } from "./FindBar";
 import css from "./Reader.module.css";
 
@@ -63,6 +63,7 @@ export function Reader({
 }: ReaderProps) {
   const { onFind } = useEvents();
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const tooltipRef = useRef<AnnotationTooltipHandle | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
@@ -144,11 +145,11 @@ export function Reader({
     [tooltip]
   );
 
-  const handleCloseTooltip = useCallback(() => {
+  const handleCloseTooltip = useCallback(async () => {
     if (tooltip?.color === "none") {
       onRemoveAnnotation?.({ id: tooltip.annotationId, reference: entryId });
     } else if (tooltip) {
-      onSaveAnnotation?.({
+      const annotation = {
         id: tooltip.annotationId,
         title: tooltip.text.join(" "),
         reference: entryId,
@@ -156,7 +157,9 @@ export function Reader({
         occurrence: tooltip.occurrence,
         color: tooltip.color,
         note: tooltip.note ?? undefined,
-      });
+      };
+      onSaveAnnotation?.(annotation);
+      await tooltipRef.current?.saveAnnotationToCollections(annotation as Annotation);
     }
 
     setTooltip(null);
@@ -296,6 +299,8 @@ export function Reader({
 
       {tooltip && (
         <AnnotationTooltip
+          ref={tooltipRef}
+          annotation={annotations?.find((a) => a.id === tooltip.annotationId) ?? null}
           position={tooltip.position}
           text={tooltip.text}
           color={tooltip.color}

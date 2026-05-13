@@ -20,6 +20,7 @@ export function isNavigationState(value: unknown): value is NavigationState {
     (v.topicId === undefined || typeof v.topicId === "string") &&
     (v.feedId === undefined || typeof v.feedId === "string") &&
     (v.shortcutId === undefined || typeof v.shortcutId === "string") &&
+    (v.collectionId === undefined || typeof v.collectionId === "string") &&
     (v.entryId === undefined || typeof v.entryId === "string") &&
     (v.annotationId === undefined || typeof v.annotationId === "string") &&
     (v.url === undefined || typeof v.url === "string")
@@ -75,6 +76,16 @@ export default function useRouter() {
     [showCollection, showItem]
   );
 
+  const openUrl = useCallback(
+    (url: string) => {
+      const params = new URLSearchParams(searchParams);
+      logged_navigate(`/?${params.toString()}`, {
+        state: { ...state, url },
+      });
+    },
+    [logged_navigate, searchParams, state]
+  );
+
   const search = useCallback(
     (searchString: string) => {
       const params = new URLSearchParams(searchParams);
@@ -92,6 +103,7 @@ export default function useRouter() {
 
   return {
     navigate: logged_navigate,
+    openUrl,
     search,
     clearSearch,
     show,

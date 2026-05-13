@@ -5,6 +5,7 @@
   flex-shrink: 0;
   height: 24px;
   justify-content: center;
+  transition: margin 200ms ease-in;
   width: 24px;
 }
 
@@ -39,8 +40,30 @@
   display: flex;
 }
 
+.ColorRowAction {
+  margin-left: auto;
+}
+
 .Swatch {
   border-radius: 50%;
   height: 16px;
   width: 16px;
+}
+
+.Remove {
+  font-size: 14px;
+  padding: 0 4px 0 0;
+  width: auto;
+  white-space: nowrap;
+}
+
+.RemovePending {
+  .SwatchTarget {
+    margin: 0 -10px 0 0;
+    transition: margin 200ms ease-in;
+
+    &:first-of-type {
+      margin: 0;
+    }
+  }
 }

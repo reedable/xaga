@@ -1,4 +1,5 @@
 pub mod articles;
+pub mod collections;
 pub mod bookmarks;
 pub mod entries;
 pub mod embeddings;

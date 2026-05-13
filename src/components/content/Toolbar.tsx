@@ -16,6 +16,7 @@ import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
 import { usePlatform } from "../../platform/Platform";
 import { isArticle, type Entry } from "../../types";
+import { CollectionMenuButton } from "./CollectionMenuButton";
 import { AddressBar } from "../AddressBar";
 import css from "./Toolbar.module.css";
 
@@ -138,7 +139,7 @@ export function Toolbar({ reload }: ToolbarProps) {
               </span>
             </Tooltip>
 
-            <AddressBar url={entry?.url ?? url ?? null} />
+            <AddressBar url={url ?? entry?.url ?? null} />
 
             <Tooltip title="Refresh">
               <span>
@@ -182,6 +183,8 @@ export function Toolbar({ reload }: ToolbarProps) {
                 </IconButton>
               </span>
             </Tooltip>
+
+            <CollectionMenuButton item={entry} />
           </div>
         </div>
 

@@ -218,6 +218,13 @@ export function isFeed(item?: Item | null): item is Feed {
 
 // ── Import ───────────────────────────────────────────────────────────────────
 
+// ── CollectionItem ────────────────────────────────────────────────────────────
+
+/** A single member of a Collection. Mirrors the Rust `CollectionItem` enum. */
+export type CollectionItem =
+  | { type: "entry"; id: string }
+  | { type: "annotation"; id: string };
+
 /** Result returned by the backend after any bulk import operation. */
 export type ImportResult<T> = {
   added: T[];
@@ -231,6 +238,7 @@ export type NavigationState = {
   topicId?: Topic["id"];
   feedId?: Feed["id"];
   shortcutId?: Shortcut["id"];
+  collectionId?: Collection["id"];
   entryId?: Entry["id"];
   annotationId?: Annotation["id"];
   url?: Entry["url"];

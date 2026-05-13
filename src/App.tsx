@@ -6,6 +6,7 @@ import { Settings } from "./components/settings/Settings";
 import { useCacheReady } from "./hooks/useCacheReady";
 import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
+import { CollectionsProvider } from "./providers/CollectionsProvider";
 import FeedsProvider from "./providers/FeedsProvider";
 import { TopicsProvider } from "./providers/TopicsProvider";
 import { ALL_ITEMS } from "./Shortcuts";
@@ -59,21 +60,23 @@ export default function App({ entryPoint }: { entryPoint: string }) {
           ]}
         >
           <TopicsProvider>
-            <FeedsProvider>
-              <Routes>
-                <Route path="/" element={cacheReady ? <AppLayout /> : null} />
-                <Route
-                  path="*"
-                  element={
-                    <Navigate
-                      to={{ pathname: "/", search: initialSearch }}
-                      state={initialState}
-                      replace
-                    />
-                  }
-                />
-              </Routes>
-            </FeedsProvider>
+            <CollectionsProvider>
+              <FeedsProvider>
+                <Routes>
+                  <Route path="/" element={cacheReady ? <AppLayout /> : null} />
+                  <Route
+                    path="*"
+                    element={
+                      <Navigate
+                        to={{ pathname: "/", search: initialSearch }}
+                        state={initialState}
+                        replace
+                      />
+                    }
+                  />
+                </Routes>
+              </FeedsProvider>
+            </CollectionsProvider>
           </TopicsProvider>
         </MemoryRouter>
       )}

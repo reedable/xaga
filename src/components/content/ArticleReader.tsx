@@ -7,7 +7,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useSearchParams } from "react-router-dom";
 import useAbortController from "../../hooks/useAbortController";
 import { useAnnotations } from "../../hooks/useAnnotations";
 import { useAppearance } from "../../hooks/useAppearance";
@@ -16,13 +15,13 @@ import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
 import { buildEntryHtml, type ReaderStyle } from "../../text/buildEntryHtml";
 import { markdownToHtml } from "../../text/markdownPipeline";
-import { type Article, type Entry, type Item } from "../../types";
+import { type Article, type Entry } from "../../types";
 import cx from "../../utils/cx";
 import { FONT_FAMILY_CSS } from "../../utils/FontFamily";
+import Logger from "../../utils/Logger";
 import css from "./ArticleReader.module.css";
 import { Reader } from "./Reader";
 import { RelatedItemList } from "./RelatedItemList";
-import Logger from "../../utils/Logger";
 
 export interface ArticleReaderHandle {
   reload: () => void;
@@ -36,9 +35,8 @@ const logger = Logger.getLogger("ArticleReader");
 
 const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
   function ArticleReader({ className }, ref) {
-    const { navigate, state } = useRouter();
+    const { show, openUrl, state } = useRouter();
     const { entryId, annotationId, url } = state;
-    const [searchParams] = useSearchParams();
 
     const {
       readerView,
@@ -79,16 +77,6 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     const { readArticle, loadArticle, findArticleByUrl, loadArticleByUrl } =
       useArticles(abortControllerRef);
 
-    const navigateToItem = useCallback(
-      (item: Item) => {
-        const params = new URLSearchParams(searchParams);
-        navigate(`/?${params.toString()}`, {
-          state: { ...state, entryId: item.id },
-        });
-      },
-      [navigate, state, searchParams]
-    );
-
     const requestArticle = useCallback(
       async (id: Entry["id"]) => {
         setSelectedEntry(null);
@@ -127,32 +115,34 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     );
 
     const handleLoadArticleByUrl = useCallback(
-      async (url: string) => {
-        logger.debug("reloadArticleByUrl", url);
+      async (clickedUrl: string) => {
+        logger.debug("reloadArticleByUrl", clickedUrl);
         setBodyHtml(null);
+        openUrl(clickedUrl);
 
-        let article = await findArticleByUrl(url);
-        if (!article) article = await loadArticleByUrl(url);
+        let article = await findArticleByUrl(clickedUrl);
+        if (!article) article = await loadArticleByUrl(clickedUrl);
 
         if (article?.content) {
           const body = await markdownToHtml(article.content);
           if (body) setBodyHtml(body);
         }
 
-        if (article) navigateToItem(article);
+        if (article) show(article);
       },
-      [findArticleByUrl, loadArticleByUrl, navigateToItem]
+      [findArticleByUrl, loadArticleByUrl, openUrl, show]
     );
 
     useImperativeHandle(
       ref,
       () => ({
         reload: () => {
-          logger.debug("reload", selectedEntry, url);
-          if (selectedEntry) {
-            reloadArticle(selectedEntry);
-          } else if (url) {
+          logger.debug("reload", url, selectedEntry);
+
+          if (url) {
             handleLoadArticleByUrl(url);
+          } else if (selectedEntry) {
+            reloadArticle(selectedEntry);
           }
         },
       }),

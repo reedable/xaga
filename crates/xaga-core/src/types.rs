@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 // ── ItemFilter ────────────────────────────────────────────────────────────────
 
@@ -266,6 +266,46 @@ pub struct Feed {
 }
 
 impl Item for Feed {
+    fn id(&self) -> &str { &self.id }
+    fn title(&self) -> &str { &self.title }
+    fn created_at(&self) -> &str { &self.created_at }
+    fn updated_at(&self) -> Option<&str> { self.updated_at.as_deref() }
+}
+
+// ── Collection ────────────────────────────────────────────────────────────────
+
+/// A single member of a user-managed Collection, in insertion order.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum CollectionItem {
+    Entry { id: String },
+    Annotation { id: String },
+}
+
+impl CollectionItem {
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Entry { id } | Self::Annotation { id } => id,
+        }
+    }
+}
+
+/// A user-managed collection of entries and annotations.
+/// Mirrors the TypeScript `Collection` type — Feed and Topic are special cases.
+#[derive(Debug, Serialize)]
+pub struct Collection {
+    pub id: String,
+    pub title: String,
+    pub created_at: String,
+    pub updated_at: Option<String>,
+    /// Storage only — never serialized to JSON sent to the frontend.
+    #[serde(skip)]
+    pub items: Vec<CollectionItem>,
+    pub entry_count: usize,
+    pub unread_count: usize,
+}
+
+impl Item for Collection {
     fn id(&self) -> &str { &self.id }
     fn title(&self) -> &str { &self.title }
     fn created_at(&self) -> &str { &self.created_at }

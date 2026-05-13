@@ -32,7 +32,7 @@ export function AddressBar({ url }: AddressBarProps) {
       if (!article) return;
       const params = new URLSearchParams(searchParams);
       navigate(`/?${params.toString()}`, {
-        state: { ...state, entryId: article.id },
+        state: { ...state, entryId: article.id, url: inputUrl },
       });
     },
     [findArticleByUrl, loadArticleByUrl, navigate, state, searchParams]

@@ -23,10 +23,10 @@ import {
 import { Virtuoso } from "react-virtuoso";
 import { RELATED_THRESHOLD, TOPIC_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
+import { useCollections } from "../../hooks/useCollections";
 import useEntries from "../../hooks/useEntries";
 import { useEvents } from "../../hooks/useEvents";
 import { useFeeds } from "../../hooks/useFeeds";
-
 import useRouter from "../../hooks/useRouter";
 import useRelatedItems from "../../hooks/useRelatedItems";
 import { useSaved } from "../../hooks/useSaved";
@@ -45,6 +45,7 @@ import {
   isFeed,
   isFilter,
   isTopic,
+  type Collection,
   type Feed,
   type Filter,
   type Item,
@@ -65,6 +66,7 @@ type ItemListProps = {
   // selectedCollection: Collection;
   onEditFeed: (feed: Feed) => void;
   onEditTopic: (topic: Topic) => void;
+  onEditCollection: (collection: Collection) => void;
 };
 
 export function ItemList({
@@ -72,15 +74,17 @@ export function ItemList({
   // selectedCollection,
   onEditFeed,
   onEditTopic,
+  onEditCollection,
 }: ItemListProps) {
   const { show, state, searchParams, setSearchParams } = useRouter();
-  const { feedId, topicId, shortcutId, entryId: selectedItemId } = state;
+  const { feedId, topicId, shortcutId, collectionId, entryId: selectedItemId } = state;
   const filterParam = searchParams.get("filter");
   const filter: Filter = isFilter(filterParam) ? filterParam : "unread";
 
   const [abort, abortControllerRef] = useAbortController();
   const { topics } = useTopics(abortControllerRef);
   const { feeds } = useFeeds(abortControllerRef);
+  const { collections, listCollectionItems } = useCollections(abortControllerRef);
   const [loading, setLoading] = useState(false);
 
   const selectedCollection = useMemo(
@@ -88,8 +92,9 @@ export function ItemList({
       (feedId && feeds.find((f) => f.id === feedId)) ||
       (topicId && topics.find((t) => t.id === topicId)) ||
       (shortcutId && SHORTCUTS.find((s) => s.id === shortcutId)) ||
+      (collectionId && collections.find((c) => c.id === collectionId)) ||
       ALL_ITEMS,
-    [feedId, topicId, shortcutId, feeds, topics]
+    [feedId, topicId, shortcutId, collectionId, feeds, topics, collections]
   );
 
   const { listEntries, listAllEntries, markEntryRead } =
@@ -113,10 +118,10 @@ export function ItemList({
 
   const handleEdit = useMemo(() => {
     if (isFeed(selectedCollection)) return () => onEditFeed(selectedCollection);
-    if (isTopic(selectedCollection))
-      return () => onEditTopic(selectedCollection);
+    if (isTopic(selectedCollection)) return () => onEditTopic(selectedCollection);
+    if (collectionId && selectedCollection.id === collectionId) return () => onEditCollection(selectedCollection);
     return undefined;
-  }, [selectedCollection, onEditFeed, onEditTopic]);
+  }, [selectedCollection, collectionId, onEditFeed, onEditTopic, onEditCollection]);
 
   const displayItems = useMemo(() => {
     if (!filterText) return items;
@@ -158,6 +163,9 @@ export function ItemList({
             selectedList.threshold ?? TOPIC_THRESHOLD
           );
           if (items) setItems(items);
+        } else if (collectionId && selectedList.id === collectionId) {
+          const items = await listCollectionItems(collectionId, filter);
+          if (items) setItems(items);
         } else {
           const entries = await listAllEntries(filter);
           if (entries) setItems(entries);
@@ -175,6 +183,8 @@ export function ItemList({
       listEntries,
       queryByItem,
       listAllEntries,
+      collectionId,
+      listCollectionItems,
     ]
   );
 
@@ -183,11 +193,13 @@ export function ItemList({
       if (isFeed(list)) {
         await refreshFeed(list.id);
         await requestItems(list);
+      } else if (collectionId && list.id === collectionId) {
+        await requestItems(list);
       } else {
         await refreshAllFeeds(() => requestItems(list));
       }
     },
-    [refreshAllFeeds, refreshFeed, requestItems]
+    [refreshAllFeeds, refreshFeed, requestItems, collectionId]
   );
 
   const handleFilter = useCallback(
@@ -231,7 +243,7 @@ export function ItemList({
     })();
     // Depend on IDs, not objects, so feed/topic identity changes from
     // requestFeeds/requestTopics don't re-trigger a full list reload.
-  }, [feedId, topicId, shortcutId, requestItems, abort]);
+  }, [feedId, topicId, shortcutId, collectionId, requestItems, abort]);
 
   useEffect(() => {
     return onUnreadChanged((entry) => {

@@ -4,7 +4,7 @@ import FeedsContext from "../providers/FeedsContext";
 import type { Feed } from "../types";
 import { debounced, decorate } from "../utils/Decorator";
 import sortByUnreadCount from "../utils/sortByUnreadCount";
-import { useCollections } from "./useCollections";
+import { useSidebar } from "./useSidebar";
 
 export function useFeeds(abortControllerRef: RefObject<AbortController>) {
   const context = useContext(FeedsContext);
@@ -27,7 +27,7 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
   } = context;
 
   const platform = usePlatform();
-  const { listFeeds } = useCollections(abortControllerRef);
+  const { listFeeds } = useSidebar(abortControllerRef);
 
   const refreshFeed = useCallback(
     async (feedId: string) => {

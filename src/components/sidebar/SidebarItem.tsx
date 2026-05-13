@@ -10,11 +10,11 @@ import { motion } from "framer-motion";
 import type { ElementType, ReactNode } from "react";
 import type { Collection } from "../../types";
 import cx from "../../utils/cx";
-import css from "./CollectionListItem.module.css";
+import css from "./SidebarItem.module.css";
 
 const MotionListItem = motion(ListItem);
 
-export interface CollectionListItemProps<T extends Collection> {
+export interface SidebarItemProps<T extends Collection> {
   className?: string;
   collection: T;
   icon?: ElementType;
@@ -24,7 +24,7 @@ export interface CollectionListItemProps<T extends Collection> {
   renderSecondaryAction?: (collection: Collection) => ReactNode;
 }
 
-export default function CollectionListItem<T extends Collection>({
+export default function SidebarItem<T extends Collection>({
   className,
   collection,
   icon: Icon = RssFeed,
@@ -32,7 +32,7 @@ export default function CollectionListItem<T extends Collection>({
   selected = false,
   onSelectCollection,
   renderSecondaryAction,
-}: CollectionListItemProps<T>) {
+}: SidebarItemProps<T>) {
   return (
     <MotionListItem
       layout

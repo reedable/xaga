@@ -1,65 +1,65 @@
-import { ChevronRight } from "@mui/icons-material";
-import { Collapse, List, ToggleButton, Typography } from "@mui/material";
-import { useCallback, type ReactNode } from "react";
-import cx from "../../utils/cx";
+import { Add, FolderOutlined } from "@mui/icons-material";
+import { IconButton } from "@mui/material";
+import { useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
+import useRouter from "../../hooks/useRouter";
+import { isFilter, type Collection } from "../../types";
 import css from "./CollectionList.module.css";
+import ExpandableList from "./ExpandableList";
+import SidebarItem from "./SidebarItem";
+import UnreadCount from "./UnreadCount";
 
-export interface CollectionListProps {
-  children?: ReactNode;
-  label: string;
-  isExpanded: boolean;
+type CollectionListProps = {
+  isExpanded?: boolean;
+  collections: Collection[];
+  onAddCollection: () => void;
   onClickHeader: () => void;
-  renderHeaderAction?: () => ReactNode;
-}
+};
 
 export default function CollectionList({
-  children,
-  label,
-  isExpanded,
+  isExpanded = false,
+  collections,
+  onAddCollection,
   onClickHeader,
-  renderHeaderAction,
 }: CollectionListProps) {
-  const handleClickHeader = useCallback(() => {
-    onClickHeader();
-  }, [onClickHeader]);
+  const { navigate, state } = useRouter();
+  const { collectionId } = state;
+  const [searchParams] = useSearchParams();
+  const filterParam = searchParams.get("filter");
+
+  const handleSelectCollection = useCallback(
+    (collection: Collection) => {
+      const filter = isFilter(filterParam) ? filterParam : "all";
+      navigate(`/?filter=${filter}`, {
+        state: { collectionId: collection.id },
+      });
+    },
+    [filterParam, navigate]
+  );
 
   return (
-    <>
-      <div className={css.ExpanderHeaderWrapper}>
-        <ToggleButton
-          className={css.ExpanderHeader}
-          selected={isExpanded}
-          value="checked"
-          onClick={handleClickHeader}
-        >
-          <ChevronRight className={css.ChevronIcon} />
-
-          <Typography
-            className={css.Label}
-            component="div"
-            variant="overline"
-          >
-            {label}
-          </Typography>
-        </ToggleButton>
-
-        {renderHeaderAction && (
-          <span
-            onClick={(e) => e.stopPropagation()}
-            className={css.ExpanderHeaderAction}
-          >
-            {renderHeaderAction()}
-          </span>
-        )}
-      </div>
-
-      <div className={cx(css.ExpanderContent, isExpanded && css.Expanded)}>
-        <Collapse in={isExpanded}>
-          <List dense disablePadding>
-            {children}
-          </List>
-        </Collapse>
-      </div>
-    </>
+    <ExpandableList
+      label="Collections"
+      isExpanded={isExpanded}
+      onClickHeader={onClickHeader}
+      renderHeaderAction={() => (
+        <IconButton size="small" onClick={onAddCollection}>
+          <Add className={css.AddIcon} />
+        </IconButton>
+      )}
+    >
+      {collections.map((collection) => (
+        <SidebarItem
+          collection={collection}
+          key={collection.id}
+          icon={FolderOutlined}
+          selected={collectionId === collection.id}
+          onSelectCollection={handleSelectCollection}
+          renderSecondaryAction={() => (
+            <UnreadCount count={collection.unreadCount} />
+          )}
+        />
+      ))}
+    </ExpandableList>
   );
 }

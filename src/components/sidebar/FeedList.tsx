@@ -6,8 +6,8 @@ import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRouter from "../../hooks/useRouter";
 import { isFilter, type Feed } from "../../types";
-import CollectionList from "./CollectionList";
-import CollectionListItem from "./CollectionListItem";
+import ExpandableList from "./ExpandableList";
+import SidebarItem from "./SidebarItem";
 import css from "./FeedList.module.css";
 import UnreadCount from "./UnreadCount";
 
@@ -41,7 +41,7 @@ export default function FeedList({
   );
 
   return (
-    <CollectionList
+    <ExpandableList
       label="Feeds"
       isExpanded={isExpanded}
       onClickHeader={onClickHeader}
@@ -52,7 +52,7 @@ export default function FeedList({
       )}
     >
       {feeds.map((feed) => (
-        <CollectionListItem
+        <SidebarItem
           collection={feed}
           key={feed.id}
           icon={RssFeed}
@@ -62,6 +62,6 @@ export default function FeedList({
           renderSecondaryAction={() => <UnreadCount count={feed.unreadCount} />}
         />
       ))}
-    </CollectionList>
+    </ExpandableList>
   );
 }

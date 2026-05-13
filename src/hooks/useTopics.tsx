@@ -3,7 +3,7 @@ import { usePlatform } from "../platform/Platform";
 import TopicsContext from "../providers/TopicsContext";
 import type { Topic } from "../types";
 import sortByUnreadCount from "../utils/sortByUnreadCount";
-import { useCollections } from "./useCollections";
+import { useSidebar } from "./useSidebar";
 
 export function useTopics(abortControllerRef: RefObject<AbortController>) {
   const ctx = useContext(TopicsContext);
@@ -12,7 +12,7 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
   const { topics, pinnedTopicIds, setTopics, setPinnedTopicIds } = ctx;
 
   const platform = usePlatform();
-  const { listTopics } = useCollections(abortControllerRef);
+  const { listTopics } = useSidebar(abortControllerRef);
 
   const createTopic = useCallback(
     async (

@@ -1,5 +1,6 @@
 import {
   Feed as FeedIcon,
+  FolderOutlined,
   Newspaper,
   RssFeed,
   Star,
@@ -11,9 +12,9 @@ import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRouter from "../../hooks/useRouter";
 import { ALL_ITEMS, SAVED_ITEMS, SHORTCUTS } from "../../Shortcuts";
-import { isFeed, isFilter, type Collection } from "../../types";
-import CollectionList from "./CollectionList";
-import CollectionListItem from "./CollectionListItem";
+import { isFeed, isFilter, isTopic, type Collection } from "../../types";
+import ExpandableList from "./ExpandableList";
+import SidebarItem from "./SidebarItem";
 
 type ShortcutListProps = {
   isExpanded?: boolean;
@@ -27,7 +28,7 @@ export default function ShortcutList({
   onClickHeader,
 }: ShortcutListProps) {
   const { navigate, state } = useRouter();
-  const { feedId, topicId, shortcutId } = state;
+  const { feedId, topicId, shortcutId, collectionId } = state;
   const [searchParams] = useSearchParams();
   const filterParam = searchParams.get("filter");
 
@@ -36,26 +37,28 @@ export default function ShortcutList({
 
   const handleSelectShortcut = useCallback(
     (collection: Collection) => {
-      const filter = isFilter(filterParam) ? filterParam : "unread";
-      const url = `/?filter=${filter}`;
+      const defaultFilter = isFilter(filterParam) ? filterParam : "unread";
       if (SHORTCUTS.some((s) => s.id === collection.id)) {
-        navigate(url, { state: { shortcutId: collection.id } });
+        navigate(`/?filter=${defaultFilter}`, { state: { shortcutId: collection.id } });
       } else if (isFeed(collection)) {
-        navigate(url, { state: { feedId: collection.id } });
+        navigate(`/?filter=${defaultFilter}`, { state: { feedId: collection.id } });
+      } else if (isTopic(collection)) {
+        navigate(`/?filter=${defaultFilter}`, { state: { topicId: collection.id } });
       } else {
-        navigate(url, { state: { topicId: collection.id } });
+        const filter = isFilter(filterParam) ? filterParam : "all";
+        navigate(`/?filter=${filter}`, { state: { collectionId: collection.id } });
       }
     },
     [filterParam, navigate]
   );
 
   return (
-    <CollectionList
+    <ExpandableList
       label="shortcuts"
       isExpanded={isExpanded}
       onClickHeader={onClickHeader}
     >
-      <CollectionListItem
+      <SidebarItem
         icon={Newspaper}
         collection={ALL_ITEMS}
         loading={loadingFeedIds.size > 0}
@@ -63,7 +66,7 @@ export default function ShortcutList({
         onSelectCollection={handleSelectShortcut}
       />
 
-      <CollectionListItem
+      <SidebarItem
         icon={Star}
         collection={SAVED_ITEMS}
         loading={loadingFeedIds.size > 0}
@@ -72,22 +75,26 @@ export default function ShortcutList({
       />
 
       {shortcuts.map((shortcut) => (
-        <CollectionListItem
+        <SidebarItem
           collection={shortcut}
           key={shortcut.id}
-          icon={isFeed(shortcut) ? RssFeed : FeedIcon}
+          icon={isFeed(shortcut) ? RssFeed : isTopic(shortcut) ? FeedIcon : FolderOutlined}
           loading={
             isFeed(shortcut)
               ? loadingFeedIds.has(shortcut.id)
               : loadingFeedIds.size > 0
           }
           selected={
-            isFeed(shortcut) ? feedId === shortcut.id : topicId === shortcut.id
+            isFeed(shortcut)
+              ? feedId === shortcut.id
+              : isTopic(shortcut)
+              ? topicId === shortcut.id
+              : collectionId === shortcut.id
           }
           onSelectCollection={handleSelectShortcut}
           renderSecondaryAction={() => <UnreadCount count={shortcut.unreadCount} />}
         />
       ))}
-    </CollectionList>
+    </ExpandableList>
   );
 }

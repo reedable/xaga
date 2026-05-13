@@ -6,8 +6,8 @@ import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRouter from "../../hooks/useRouter";
 import { isFilter, type Topic } from "../../types";
-import CollectionList from "./CollectionList";
-import CollectionListItem from "./CollectionListItem";
+import ExpandableList from "./ExpandableList";
+import SidebarItem from "./SidebarItem";
 import css from "./TopicList.module.css";
 import UnreadCount from "./UnreadCount";
 
@@ -41,7 +41,7 @@ export default function TopicList({
   );
 
   return (
-    <CollectionList
+    <ExpandableList
       label="Topics"
       isExpanded={isExpanded}
       onClickHeader={onClickHeader}
@@ -52,7 +52,7 @@ export default function TopicList({
       )}
     >
       {topics.map((topic) => (
-        <CollectionListItem
+        <SidebarItem
           collection={topic}
           key={topic.id}
           icon={FeedIcon}
@@ -62,6 +62,6 @@ export default function TopicList({
           renderSecondaryAction={() => <UnreadCount count={topic.unreadCount} />}
         />
       ))}
-    </CollectionList>
+    </ExpandableList>
   );
 }
