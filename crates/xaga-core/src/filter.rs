@@ -103,7 +103,7 @@ pub async fn filter_items<T: Item>(
 }
 
 /// Sort `items` by most-recent timestamp, descending.
-pub fn sort_items<T: Item>(items: &mut Vec<T>, _item_filter: &ItemFilter) {
+pub fn sort_items<T: Item>(items: &mut Vec<T>) {
     items.sort_by(|a, b| timestamp(b).cmp(&timestamp(a)));
 }
 

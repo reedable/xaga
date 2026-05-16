@@ -6,7 +6,6 @@ import {
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import { RELATED_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
 import { useEvents } from "../../hooks/useEvents";
@@ -26,9 +25,7 @@ interface RelatedItemListProps {
 }
 
 export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
-  const { navigate, state } = useRouter();
-  const [searchParams] = useSearchParams();
-
+  const { show } = useRouter();
   const [abort, abortControllerRef] = useAbortController();
   const { queryByItem } = useRelatedItems(abortControllerRef);
   const [embeddedItems, setEmbeddedItems] = useState<(Embedded & Item)[]>([]);
@@ -56,15 +53,7 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
     [abortControllerRef, queryByItem]
   );
 
-  const handleSelectItem = useCallback(
-    (item: Item) => {
-      const params = new URLSearchParams(searchParams);
-      navigate(`/?${params.toString()}`, {
-        state: { ...state, entryId: item.id },
-      });
-    },
-    [navigate, state, searchParams]
-  );
+  const handleSelectItem = useCallback((item: Item) => show(item), [show]);
 
   useEffect(() => {
     abort();

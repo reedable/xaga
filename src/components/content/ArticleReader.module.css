@@ -1,12 +1,23 @@
 .Title {
-  align-items: center;
-  border-bottom: 1px solid var(--dark-gray);
+  align-items: flex-start;
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   margin: 0.25rem 1rem 0 2rem;
 
   h1 {
     flex-grow: 1;
+  }
+}
+
+.ProgressBar {
+  border-top: 0;
+  margin: 0 1rem 0 2rem;
+  transition: border-top 200ms ease-in;
+
+  &.ProgressBarLoaded {
+    border-top: 1px solid var(--dark-gray);
+
+    transition: border-top 200ms ease-in;
   }
 }
 

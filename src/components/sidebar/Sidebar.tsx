@@ -12,8 +12,6 @@ import ShortcutList from "./ShortcutList";
 import css from "./Sidebar.module.css";
 import TopicList from "./TopicList";
 
-export const SIDEBAR_WIDTH = 240;
-
 type SidebarProps = {
   className?: string;
   onAddFeed: () => void;
@@ -21,7 +19,7 @@ type SidebarProps = {
   onAddCollection: () => void;
 };
 
-export type ListType = "SHORTCUTS" | "COLLECTIONS" | "TOPICS" | "FEEDS";
+type ListType = "SHORTCUTS" | "COLLECTIONS" | "TOPICS" | "FEEDS";
 
 export function Sidebar({
   className,
@@ -32,15 +30,26 @@ export function Sidebar({
   const [, abortControllerRef] = useAbortController();
   const { topics, pinnedTopicIds } = useTopics(abortControllerRef);
   const { feeds, pinnedFeedIds } = useFeeds(abortControllerRef);
-  const { collections, pinnedCollectionIds } = useCollections(abortControllerRef);
+  const { collections, pinnedCollectionIds } =
+    useCollections(abortControllerRef);
 
   const pinnedCollections = useMemo(
-    () => [
-      ...pinnedTopicIds.flatMap((id) => topics.filter((t) => t.id === id)),
-      ...pinnedFeedIds.flatMap((id) => feeds.filter((f) => f.id === id)),
-      ...pinnedCollectionIds.flatMap((id) => collections.filter((c) => c.id === id)),
-    ].sort(sortByUnreadCount),
-    [feeds, pinnedFeedIds, pinnedTopicIds, topics, collections, pinnedCollectionIds]
+    () =>
+      [
+        ...pinnedTopicIds.flatMap((id) => topics.filter((t) => t.id === id)),
+        ...pinnedFeedIds.flatMap((id) => feeds.filter((f) => f.id === id)),
+        ...pinnedCollectionIds.flatMap((id) =>
+          collections.filter((c) => c.id === id)
+        ),
+      ].sort(sortByUnreadCount),
+    [
+      feeds,
+      pinnedFeedIds,
+      pinnedTopicIds,
+      topics,
+      collections,
+      pinnedCollectionIds,
+    ]
   );
 
   const [expandedList, setExpandedList] = useLocalStorage<ListType | null>(
@@ -56,18 +65,18 @@ export function Sidebar({
         isExpanded={expandedList === "SHORTCUTS"}
       />
 
-      <CollectionList
-        collections={collections}
-        onAddCollection={onAddCollection}
-        onClickHeader={() => setExpandedList("COLLECTIONS")}
-        isExpanded={expandedList === "COLLECTIONS"}
-      />
-
       <TopicList
         topics={topics}
         onAddTopic={onAddTopic}
         onClickHeader={() => setExpandedList("TOPICS")}
         isExpanded={expandedList === "TOPICS"}
+      />
+
+      <CollectionList
+        collections={collections}
+        onAddCollection={onAddCollection}
+        onClickHeader={() => setExpandedList("COLLECTIONS")}
+        isExpanded={expandedList === "COLLECTIONS"}
       />
 
       <FeedList

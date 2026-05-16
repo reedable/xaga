@@ -12,7 +12,7 @@ export default function formatByline(item: Item) {
   return displayDate;
 }
 
-export function formatHost(item: Item) {
+function formatHost(item: Item) {
   if (isEntry(item)) {
     return item.url
       ? new URL(item.url).hostname.split(".").slice(-2).join(".")

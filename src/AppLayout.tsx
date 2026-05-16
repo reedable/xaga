@@ -16,11 +16,20 @@ import { useTopics } from "./hooks/useTopics";
 import { useCollections } from "./hooks/useCollections";
 import { isFilter, type Collection, type Feed, type Topic } from "./types";
 
+const storedFilter = (() => {
+  try {
+    const filter = localStorage.getItem("list.filter");
+    return isFilter(filter) ? filter : "unread";
+  } catch {
+    return "unread";
+  }
+})();
+
 export function AppLayout() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const filterParam = searchParams.get("filter");
-  const filter = isFilter(filterParam) ? filterParam : undefined;
+  const filter = isFilter(filterParam) ? filterParam : storedFilter;
   const search = searchParams.get("search");
 
   const [, abortControllerRef] = useAbortController();

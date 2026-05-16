@@ -54,7 +54,6 @@ pub async fn list_collections(state: State<'_, AppState>) -> Result<Vec<Collecti
     Ok(collections)
 }
 
-#[allow(dead_code)]
 #[tauri::command]
 pub async fn list_entry_collections(
     entry_id: String,
@@ -66,7 +65,6 @@ pub async fn list_entry_collections(
         .map_err(|e| e.to_string())
 }
 
-#[allow(dead_code)]
 #[tauri::command]
 pub async fn add_collection_item(
     window: tauri::Window,
@@ -81,7 +79,6 @@ pub async fn add_collection_item(
         .map_err(|e| e.to_string())
 }
 
-#[allow(dead_code)]
 #[tauri::command]
 pub async fn remove_collection_item(
     window: tauri::Window,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
 import css from "./App.module.css";
 import { AppLayout } from "./AppLayout";
 import { Settings } from "./components/settings/Settings";
@@ -9,20 +9,6 @@ import { usePlatform } from "./platform/Platform";
 import { CollectionsProvider } from "./providers/CollectionsProvider";
 import FeedsProvider from "./providers/FeedsProvider";
 import { TopicsProvider } from "./providers/TopicsProvider";
-import { ALL_ITEMS } from "./Shortcuts";
-import { isFilter, type NavigationState } from "./types";
-
-const storedFilter = (() => {
-  try {
-    const filter = localStorage.getItem("list.filter");
-    return isFilter(filter) ? filter : "unread";
-  } catch {
-    return "unread";
-  }
-})();
-
-const initialSearch = `?filter=${storedFilter}`;
-const initialState: NavigationState = { shortcutId: ALL_ITEMS.id };
 
 export default function App({ entryPoint }: { entryPoint: string }) {
   const platform = usePlatform();
@@ -54,31 +40,18 @@ export default function App({ entryPoint }: { entryPoint: string }) {
           <Settings />
         </MemoryRouter>
       ) : (
-        <MemoryRouter
-          initialEntries={[
-            { pathname: "/", search: initialSearch, state: initialState },
-          ]}
-        >
+        <BrowserRouter>
           <TopicsProvider>
             <CollectionsProvider>
               <FeedsProvider>
                 <Routes>
                   <Route path="/" element={cacheReady ? <AppLayout /> : null} />
-                  <Route
-                    path="*"
-                    element={
-                      <Navigate
-                        to={{ pathname: "/", search: initialSearch }}
-                        state={initialState}
-                        replace
-                      />
-                    }
-                  />
+                  <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </FeedsProvider>
             </CollectionsProvider>
           </TopicsProvider>
-        </MemoryRouter>
+        </BrowserRouter>
       )}
     </>
   );

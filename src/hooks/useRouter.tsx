@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { ALL_ITEMS } from "../Shortcuts";
 import {
   isAnnotation,
   isCollection,
@@ -13,26 +14,21 @@ import {
 import { decorate, logged } from "../utils/Decorator";
 import Logger from "../utils/Logger";
 
-export function isNavigationState(value: unknown): value is NavigationState {
-  if (!value || typeof value !== "object") return false;
-  const v = value as Record<string, unknown>;
-  return (
-    (v.topicId === undefined || typeof v.topicId === "string") &&
-    (v.feedId === undefined || typeof v.feedId === "string") &&
-    (v.shortcutId === undefined || typeof v.shortcutId === "string") &&
-    (v.collectionId === undefined || typeof v.collectionId === "string") &&
-    (v.entryId === undefined || typeof v.entryId === "string") &&
-    (v.annotationId === undefined || typeof v.annotationId === "string") &&
-    (v.url === undefined || typeof v.url === "string")
-  );
-}
-
 const logger = Logger.getLogger("useRouter");
+
+let maxHistoryIdx = 0;
 
 export default function useRouter() {
   const navigate = useNavigate();
-  const { state } = useLocation();
+  const { state: rawState } = useLocation();
+  const state: NavigationState = (rawState as NavigationState | null) ?? { shortcutId: ALL_ITEMS.id };
   const [searchParams, setSearchParams] = useSearchParams();
+
+  const currentIdx =
+    (window.history.state as { idx?: number } | null)?.idx ?? 0;
+  maxHistoryIdx = Math.max(maxHistoryIdx, currentIdx);
+  const canGoBack = currentIdx > 0;
+  const canGoForward = currentIdx < maxHistoryIdx;
 
   const logged_navigate = decorate(navigate).with(logged, {
     logger,
@@ -101,8 +97,15 @@ export default function useRouter() {
     logged_navigate(`/?${params.toString()}`, { state });
   }, [logged_navigate, searchParams, state]);
 
+  const back = useCallback(() => navigate(-1), [navigate]);
+  const forward = useCallback(() => navigate(1), [navigate]);
+
   return {
     navigate: logged_navigate,
+    back,
+    forward,
+    canGoBack,
+    canGoForward,
     openUrl,
     search,
     clearSearch,

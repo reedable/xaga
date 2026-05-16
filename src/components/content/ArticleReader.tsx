@@ -1,4 +1,4 @@
-import { Typography } from "@mui/material";
+import { Collapse, LinearProgress, Typography } from "@mui/material";
 import {
   forwardRef,
   useCallback,
@@ -117,6 +117,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     const handleLoadArticleByUrl = useCallback(
       async (clickedUrl: string) => {
         logger.debug("reloadArticleByUrl", clickedUrl);
+        setSelectedEntry(null);
         setBodyHtml(null);
         openUrl(clickedUrl);
 
@@ -193,8 +194,14 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
                 variant="h5"
                 sx={{ fontFamily: FONT_FAMILY_CSS[readerFontFamily] }}
               >
-                {selectedEntry?.title || <>&nbsp;</>}
+                {selectedEntry?.title || <>Loading...</>}
               </Typography>
+            </div>
+
+            <div className={cx(css.ProgressBar, html && css.ProgressBarLoaded)}>
+              <Collapse in={url && !html}>
+                <LinearProgress variant="indeterminate" />
+              </Collapse>
             </div>
 
             {selectedEntry && html && (

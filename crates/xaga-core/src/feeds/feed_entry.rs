@@ -60,7 +60,7 @@ pub async fn list_entries(
     let mut items = crate::filter::filter_items(library, entries, &item_filter)
         .await
         .map_err(FeedError::Io)?;
-    crate::filter::sort_items(&mut items, &item_filter);
+    crate::filter::sort_items(&mut items);
     Ok(items)
 }
 

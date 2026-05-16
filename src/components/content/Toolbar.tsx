@@ -1,4 +1,6 @@
 import {
+  ArrowBack,
+  ArrowForward,
   Bookmark,
   Circle,
   CircleOutlined,
@@ -26,14 +28,26 @@ interface ToolbarProps {
 
 export function Toolbar({ reload }: ToolbarProps) {
   const platform = usePlatform();
-  const { state, search, clearSearch, searchParams } = useRouter();
+  const {
+    navigate,
+    back,
+    forward,
+    canGoBack,
+    canGoForward,
+    openUrl,
+    state,
+    search,
+    clearSearch,
+    searchParams,
+  } = useRouter();
   const isSearchOpen = searchParams.get("search") !== null;
 
   const [, abortControllerRef] = useAbortController();
   const { addBookmark, removeBookmark } = useBookmarks(abortControllerRef);
   const { markEntryRead, markEntryUnread } = useEntries(abortControllerRef);
   const { onBookmarkChanged, onUnreadChanged } = useEvents();
-  const { loading } = useArticles(abortControllerRef);
+  const { findArticleByUrl, loadArticleByUrl, loading } =
+    useArticles(abortControllerRef);
 
   const { url, entryId } = state;
   const [latestEntry, setLatestEntry] = useState<Entry | null>(null);
@@ -56,6 +70,21 @@ export function Toolbar({ reload }: ToolbarProps) {
     if (entry.isUnread) await markEntryRead(entry.id);
     else await markEntryUnread(entry.id);
   }, [entry, markEntryRead, markEntryUnread]);
+
+  const handleNavigate = useCallback(
+    async (inputUrl: string) => {
+      if (!/^https?:\/\//i.test(inputUrl)) inputUrl = `https://${inputUrl}`;
+      openUrl(inputUrl);
+      let article = await findArticleByUrl(inputUrl);
+      if (!article) article = await loadArticleByUrl(inputUrl);
+      if (!article) return;
+      const params = new URLSearchParams(searchParams);
+      navigate(`/?${params.toString()}`, {
+        state: { ...state, entryId: article.id, url: inputUrl },
+      });
+    },
+    [findArticleByUrl, loadArticleByUrl, openUrl, navigate, state, searchParams]
+  );
 
   const handleOpenUrl = useCallback(() => {
     if (!url) return;
@@ -112,6 +141,20 @@ export function Toolbar({ reload }: ToolbarProps) {
 
   return (
     <div className={css.Toolbar}>
+      <Tooltip title="Back">
+        <span>
+          <IconButton size="small" onClick={back} disabled={!canGoBack}>
+            <ArrowBack fontSize="small" />
+          </IconButton>
+        </span>
+      </Tooltip>
+      <Tooltip title="Forward">
+        <span>
+          <IconButton size="small" onClick={forward} disabled={!canGoForward}>
+            <ArrowForward fontSize="small" />
+          </IconButton>
+        </span>
+      </Tooltip>
       <div className={css.AddressBarContainer}>
         <div>
           <div className={css.AddressBar}>
@@ -139,7 +182,7 @@ export function Toolbar({ reload }: ToolbarProps) {
               </span>
             </Tooltip>
 
-            <AddressBar url={url ?? entry?.url ?? null} />
+            <AddressBar url={url ?? null} onNavigate={handleNavigate} />
 
             <Tooltip title="Refresh">
               <span>

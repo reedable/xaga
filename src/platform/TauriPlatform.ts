@@ -195,11 +195,6 @@ const toArticle = (data: z.infer<typeof ArticleSchema>): Article => ({
   favicon: data.favicon ?? undefined,
 });
 
-// const AnyItemSchema = EntrySchema.or(ItemSchema);
-
-// const toAnyItem = (data: z.infer<typeof AnyItemSchema>) => {
-//   return "is_unread" in data ? toEntry(data) : toItem(data);
-// };
 
 const EmbeddedSchema = z.object({
   similarity: z.number(),
