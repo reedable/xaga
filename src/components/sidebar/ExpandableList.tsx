@@ -1,6 +1,6 @@
 import { ChevronRight } from "@mui/icons-material";
 import { Collapse, List, ToggleButton, Typography } from "@mui/material";
-import { useCallback, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import cx from "../../utils/cx";
 import css from "./ExpandableList.module.css";
 
@@ -19,10 +19,6 @@ export default function ExpandableList({
   onClickHeader,
   renderHeaderAction,
 }: ExpandableListProps) {
-  const handleClickHeader = useCallback(() => {
-    onClickHeader();
-  }, [onClickHeader]);
-
   return (
     <>
       <div className={css.ExpanderHeaderWrapper}>
@@ -30,15 +26,11 @@ export default function ExpandableList({
           className={css.ExpanderHeader}
           selected={isExpanded}
           value="checked"
-          onClick={handleClickHeader}
+          onClick={onClickHeader}
         >
           <ChevronRight className={css.ChevronIcon} />
 
-          <Typography
-            className={css.Label}
-            component="div"
-            variant="overline"
-          >
+          <Typography className={css.Label} component="div" variant="overline">
             {label}
           </Typography>
         </ToggleButton>

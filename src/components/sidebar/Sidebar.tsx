@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useCollections } from "../../hooks/useCollections";
 import { useFeeds } from "../../hooks/useFeeds";
@@ -57,32 +57,39 @@ export function Sidebar({
     "SHORTCUTS"
   );
 
+  const handleExpandedList = useCallback(
+    (listType: ListType) => {
+      setExpandedList((prev) => (prev === listType ? null : listType));
+    },
+    [setExpandedList]
+  );
+
   return (
     <div className={cx(className, css.Sidebar)}>
       <ShortcutList
         shortcuts={pinnedCollections}
-        onClickHeader={() => setExpandedList("SHORTCUTS")}
+        onClickHeader={() => handleExpandedList("SHORTCUTS")}
         isExpanded={expandedList === "SHORTCUTS"}
       />
 
       <TopicList
         topics={topics}
         onAddTopic={onAddTopic}
-        onClickHeader={() => setExpandedList("TOPICS")}
+        onClickHeader={() => handleExpandedList("TOPICS")}
         isExpanded={expandedList === "TOPICS"}
       />
 
       <CollectionList
         collections={collections}
         onAddCollection={onAddCollection}
-        onClickHeader={() => setExpandedList("COLLECTIONS")}
+        onClickHeader={() => handleExpandedList("COLLECTIONS")}
         isExpanded={expandedList === "COLLECTIONS"}
       />
 
       <FeedList
         feeds={feeds}
         onAddFeed={onAddFeed}
-        onClickHeader={() => setExpandedList("FEEDS")}
+        onClickHeader={() => handleExpandedList("FEEDS")}
         isExpanded={expandedList === "FEEDS"}
       />
     </div>

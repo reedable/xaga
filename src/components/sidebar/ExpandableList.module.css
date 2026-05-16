@@ -24,6 +24,12 @@
       transition: transform 200ms ease-in-out;
     }
 
+    &:focus-visible,
+    &:hover,
+    &:global(.Mui-selected):hover {
+      background-color: transparent;
+    }
+
     &[aria-pressed="true"] {
       background-color: var(--background-color);
 
