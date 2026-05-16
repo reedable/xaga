@@ -205,6 +205,8 @@ pub async fn list_collection_items(
                             title: entry.title,
                             created_at: entry.created_at,
                             url: entry.url,
+                            is_unread,
+                            is_bookmarked,
                             reference: None,
                             color: None,
                         });
@@ -219,6 +221,8 @@ pub async fn list_collection_items(
                             title: ann.title.clone(),
                             created_at: ann.created_at.clone(),
                             url: ann.url.clone(),
+                            is_unread: false,
+                            is_bookmarked: false,
                             reference: Some(ann.reference.clone()),
                             color: Some(ann.color.clone()),
                         });

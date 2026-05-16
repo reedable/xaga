@@ -125,6 +125,8 @@ const SavedItemSchema = z.object({
   title: z.string(),
   created_at: z.string(),
   url: z.string(),
+  is_unread: z.boolean(),
+  is_bookmarked: z.boolean(),
   reference: z.string().optional(),
   color: z.string().optional(),
 });
@@ -134,6 +136,8 @@ const toSavedItem = (data: z.infer<typeof SavedItemSchema>): SavedItem => ({
   title: data.title,
   createdAt: data.created_at,
   url: data.url,
+  isUnread: data.is_unread,
+  isBookmarked: data.is_bookmarked,
   reference: data.reference,
   color: data.color,
 });
@@ -380,18 +384,18 @@ export class TauriPlatform implements Platform {
       .map((e) => e.data);
   }
 
-  async listAllEntries(
+  async listAllItems(
     signal: AbortSignal,
     itemFilter: Filter = "unread"
-  ): Promise<Entry[]> {
+  ): Promise<SavedItem[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "list_entries" });
+      .with(logged, { logger, name: "list_all_items" });
 
-    const results = await invoker<unknown[]>("list_entries", { itemFilter });
+    const results = await invoker<unknown[]>("list_all_items", { itemFilter });
 
     return results
-      .map((e) => EntrySchema.transform(toEntry).safeParse(e))
+      .map((e) => SavedItemSchema.transform(toSavedItem).safeParse(e))
       .filter((e) => !e.error) // FIXME silently dropping invalid items
       .map((e) => e.data);
   }

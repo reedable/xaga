@@ -38,6 +38,8 @@ pub async fn list_saved(data_dir: &Path) -> Result<Vec<SavedItem>, SavedError> {
             title: e.title,
             created_at: e.created_at,
             url: e.url,
+            is_unread: e.is_unread,
+            is_bookmarked: true,
             reference: None,
             color: None,
         })
@@ -46,6 +48,8 @@ pub async fn list_saved(data_dir: &Path) -> Result<Vec<SavedItem>, SavedError> {
             title: a.title,
             created_at: a.created_at,
             url: a.url,
+            is_unread: false,
+            is_bookmarked: false,
             reference: Some(a.reference),
             color: Some(a.color),
         }))

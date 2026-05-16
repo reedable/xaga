@@ -94,6 +94,8 @@ pub struct SavedItem {
     pub title: String,
     pub created_at: String,
     pub url: String,
+    pub is_unread: bool,
+    pub is_bookmarked: bool,
     /// Parent article ID — present for annotations, absent for bookmarks.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reference: Option<String>,

@@ -1,9 +1,11 @@
 ## Small (hours)
 
-- [ ] Bookmark icons do not appear in ItemList/RelatedItemList
+- [x] Bookmark icons do not appear in ItemList/RelatedItemList
 - [ ] CollectionList header: shortcuts hover highlight collides with traffic lights
 - [ ] Refresh button location is awkward
 - [ ] [Logger.ts](src/utils/Logger.ts): Context tracking is broken
+- [ ] Color code annotation quotes icon
+- [ ] Color code bookmarks and bookmark icons
 
 ## Medium (days)
 

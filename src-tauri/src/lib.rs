@@ -482,6 +482,7 @@ pub fn run() {
             commands::entries::mark_entry_read,
             commands::entries::mark_entry_unread,
             commands::entries::list_all_articles,
+            commands::entries::list_all_items,
             commands::library::get_library,
             commands::library::set_library,
             commands::settings::get_theme,

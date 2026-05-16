@@ -26,14 +26,14 @@ export default function useEntries(
     [abortControllerRef, platform]
   );
 
-  const listAllEntries = useCallback(
+  const listAllItems = useCallback(
     async (filter: Filter = "unread") => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
 
       try {
-        return await platform.listAllEntries(signal, filter);
+        return await platform.listAllItems(signal, filter);
       } catch (e) {
         setError(e);
       } finally {
@@ -81,7 +81,7 @@ export default function useEntries(
     loading,
     error,
     listEntries,
-    listAllEntries,
+    listAllItems,
     markEntryRead,
     markEntryUnread,
   };

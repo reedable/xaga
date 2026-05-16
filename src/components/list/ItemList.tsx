@@ -97,7 +97,7 @@ export function ItemList({
     [feedId, topicId, shortcutId, collectionId, feeds, topics, collections]
   );
 
-  const { listEntries, listAllEntries, markEntryRead } =
+  const { listEntries, listAllItems, markEntryRead } =
     useEntries(abortControllerRef);
 
   const { listSaved } = useSaved(abortControllerRef);
@@ -167,7 +167,7 @@ export function ItemList({
           const items = await listCollectionItems(collectionId, filter);
           if (items) setItems(items);
         } else {
-          const entries = await listAllEntries(filter);
+          const entries = await listAllItems(filter);
           if (entries) setItems(entries);
         }
       } finally {
@@ -182,7 +182,7 @@ export function ItemList({
       queryBySaved,
       listEntries,
       queryByItem,
-      listAllEntries,
+      listAllItems,
       collectionId,
       listCollectionItems,
     ]

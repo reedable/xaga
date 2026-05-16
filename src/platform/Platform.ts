@@ -49,7 +49,7 @@ export interface Platform {
     feedUrl: string,
     filter: Filter,
   ): Promise<Entry[]>;
-  listAllEntries(signal: AbortSignal, filter: Filter): Promise<Entry[]>;
+  listAllItems(signal: AbortSignal, filter: Filter): Promise<SavedItem[]>;
   markEntryRead(signal: AbortSignal, id: string): Promise<Entry>;
   markEntryUnread(signal: AbortSignal, id: string): Promise<Entry>;
 

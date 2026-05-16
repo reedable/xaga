@@ -3,7 +3,6 @@ use std::path::Path;
 
 use chrono::{DateTime, Utc};
 
-use crate::embeddings::EmbeddingsDb;
 use crate::types::{Entry, Item, ItemFilter};
 
 /// Scans `library/entries/` and returns the set of IDs whose frontmatter contains the `unread` tag.
@@ -84,18 +83,7 @@ pub async fn filter_items<T: Item>(
         }
 
         ItemFilter::Saved => {
-            let annotated_ids = {
-                let Ok(db) = EmbeddingsDb::open(library).await else {
-                    return Ok(items.into_iter().filter(|i| i.is_bookmarked()).collect());
-                };
-                db.list_annotations()
-                    .await
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|a| a.reference)
-                    .collect::<HashSet<String>>()
-            };
-            items.retain(|i| i.is_bookmarked() || !i.reference().is_empty() || annotated_ids.contains(i.id()));
+            items.retain(|i| i.is_bookmarked() || !i.reference().is_empty());
         }
     }
 

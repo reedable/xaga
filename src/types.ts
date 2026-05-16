@@ -139,6 +139,8 @@ export function isAnnotation(item?: Item | null): item is Annotation {
 /** A bookmark or annotation returned by list_saved. Annotations have reference and color set. */
 export type SavedItem = Item & {
   url: string;
+  isUnread?: boolean;
+  isBookmarked?: boolean;
   /** Present for annotations (parent article ID); absent for bookmarks. */
   reference?: string;
   /** Present for annotations; absent for bookmarks. */
