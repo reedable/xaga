@@ -199,7 +199,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
             </div>
 
             <div className={cx(css.ProgressBar, html && css.ProgressBarLoaded)}>
-              <Collapse in={url && !html}>
+              <Collapse in={Boolean(url && !html)}>
                 <LinearProgress variant="indeterminate" />
               </Collapse>
             </div>
