@@ -27,6 +27,7 @@ export default function ExpandableList({
           selected={isExpanded}
           value="checked"
           onClick={onClickHeader}
+          disableRipple
         >
           <ChevronRight className={css.ChevronIcon} />
 

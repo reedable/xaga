@@ -1,4 +1,6 @@
-import { useCallback, useMemo } from "react";
+import { Refresh } from "@mui/icons-material";
+import { IconButton, Tooltip } from "@mui/material";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useCollections } from "../../hooks/useCollections";
 import { useFeeds } from "../../hooks/useFeeds";
@@ -28,8 +30,12 @@ export function Sidebar({
   onAddCollection,
 }: SidebarProps) {
   const [, abortControllerRef] = useAbortController();
+
   const { topics, pinnedTopicIds } = useTopics(abortControllerRef);
-  const { feeds, pinnedFeedIds } = useFeeds(abortControllerRef);
+
+  const { loading, feeds, pinnedFeedIds, refreshAllFeeds } =
+    useFeeds(abortControllerRef);
+
   const { collections, pinnedCollectionIds } =
     useCollections(abortControllerRef);
 
@@ -64,8 +70,45 @@ export function Sidebar({
     [setExpandedList]
   );
 
+  const stopRequestedRef = useRef(false);
+  const iidRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [spin, setSpin] = useState(false);
+
+  const handleRefreshAllFeeds = () => {
+    refreshAllFeeds();
+    setSpin(true);
+
+    iidRef.current = setInterval(() => {
+      console.log(">>>", Date.now(), stopRequestedRef.current);
+      if (stopRequestedRef.current) {
+        setSpin(false);
+        clearInterval(iidRef.current);
+      }
+    }, 1000);
+  };
+
+  useEffect(() => {
+    return () => clearTimeout(iidRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      stopRequestedRef.current = true;
+    }
+  }, [loading]);
+
   return (
     <div className={cx(className, css.Sidebar)}>
+      <Tooltip title="Refresh">
+        <IconButton
+          className={cx(css.RefreshButton, spin && css.Loading)}
+          size="small"
+          onClick={() => handleRefreshAllFeeds()}
+        >
+          <Refresh fontSize="small" />
+        </IconButton>
+      </Tooltip>
+
       <ShortcutList
         shortcuts={pinnedCollections}
         onClickHeader={() => handleExpandedList("SHORTCUTS")}

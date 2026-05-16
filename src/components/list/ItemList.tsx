@@ -83,7 +83,7 @@ export function ItemList({
 
   const [abort, abortControllerRef] = useAbortController();
   const { topics } = useTopics(abortControllerRef);
-  const { feeds } = useFeeds(abortControllerRef);
+  const { feeds, loading: loadingFeeds } = useFeeds(abortControllerRef);
   const { collections, listCollectionItems } = useCollections(abortControllerRef);
   const [loading, setLoading] = useState(false);
 
@@ -105,13 +105,7 @@ export function ItemList({
   const { queryByItem, queryByBookmarks, queryByAnnotations, queryBySaved } =
     useRelatedItems(abortControllerRef);
 
-  const {
-    loading: loadingFeeds,
-    refreshFeed,
-    refreshAllFeeds,
-  } = useFeeds(abortControllerRef);
-
-  const { onUnreadChanged, onBookmarkChanged } = useEvents();
+  const { onFeedRefreshed, onUnreadChanged, onBookmarkChanged } = useEvents();
 
   const [items, setItems] = useState<Item[]>([]);
   const [filterText, setFilterText] = useState("");
@@ -188,20 +182,6 @@ export function ItemList({
     ]
   );
 
-  const refreshList = useCallback(
-    async (list: Item = ALL_ITEMS) => {
-      if (isFeed(list)) {
-        await refreshFeed(list.id);
-        await requestItems(list);
-      } else if (collectionId && list.id === collectionId) {
-        await requestItems(list);
-      } else {
-        await refreshAllFeeds(() => requestItems(list));
-      }
-    },
-    [refreshAllFeeds, refreshFeed, requestItems, collectionId]
-  );
-
   const handleFilter = useCallback(
     (_event: MouseEvent<HTMLElement>, value: string) => {
       if (isFilter(value)) {
@@ -216,13 +196,6 @@ export function ItemList({
     },
     [setSearchParams, state]
   );
-
-  const handleRefresh = useCallback(() => {
-    abort();
-    (async () => {
-      refreshList(selectedCollection);
-    })();
-  }, [abort, refreshList, selectedCollection]);
 
   const handleMarkEntriesRead = useCallback(async () => {
     await Promise.all(
@@ -256,6 +229,10 @@ export function ItemList({
       setItems((prev) => prev.map((p) => (p.id === entry.id ? entry : p)));
     });
   }, [onBookmarkChanged]);
+
+  useEffect(() => {
+    return onFeedRefreshed(() => requestItems(selectedCollectionRef.current));
+  }, [onFeedRefreshed, requestItems]);
 
   return (
     <div className={cx(className, css.ItemList)}>
@@ -384,7 +361,6 @@ export function ItemList({
 
       <div className={css.Toolbar}>
         <Button onClick={handleMarkEntriesRead}>Mark all read</Button>
-        <Button onClick={handleRefresh}>Refresh</Button>
       </div>
     </div>
   );

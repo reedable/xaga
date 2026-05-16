@@ -1,6 +1,11 @@
 .ExpanderHeaderWrapper {
   align-items: center;
+  border-top: 1px solid var(--light-gray);
   display: flex;
+
+  &:first-of-type {
+    border-top: 0;
+  }
 
   .ExpanderHeader {
     background-color: var(--background-color);
