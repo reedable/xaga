@@ -4,10 +4,26 @@ import {
   type ThemeMode,
 } from "../providers/AppearanceContext";
 import { FONT_FAMILY_CSS, type FontFamily } from "../utils/FontFamily";
-import {
-  ANNOTATION_COLORS_DARK,
-  ANNOTATION_COLORS_LIGHT,
-} from "./annotationColors";
+
+// Annotation highlight colours for the iframe document.
+// These are intentionally kept here rather than imported from colors.module.css
+// because the iframe is a separate document and cannot use CSS Modules.
+const MARK_COLORS_LIGHT: Record<string, { bg: string; accent: string }> = {
+  red:    { bg: "rgba(255,80,80,0.35)",   accent: "rgba(210,40,40,0.60)"   },
+  orange: { bg: "rgba(255,150,0,0.40)",   accent: "rgba(210,120,0,0.65)"   },
+  yellow: { bg: "rgba(255,214,0,0.40)",   accent: "rgba(255,180,0,0.60)"   },
+  green:  { bg: "rgba(60,190,60,0.35)",   accent: "rgba(30,150,30,0.65)"   },
+  blue:   { bg: "rgba(60,130,255,0.35)",  accent: "rgba(30,90,220,0.65)"   },
+  violet: { bg: "rgba(160,70,255,0.35)",  accent: "rgba(120,30,210,0.50)"  },
+};
+const MARK_COLORS_DARK: Record<string, { bg: string; accent: string }> = {
+  red:    { bg: "rgba(255,80,80,0.80)",   accent: "rgba(255,130,130,0.75)" },
+  orange: { bg: "rgba(255,160,40,0.65)",  accent: "rgba(255,190,80,0.75)"  },
+  yellow: { bg: "rgba(255,220,40,0.55)",  accent: "rgba(255,230,80,0.75)"  },
+  green:  { bg: "rgba(60,190,60,0.70)",   accent: "rgba(110,230,110,0.75)" },
+  blue:   { bg: "rgba(60,160,255,0.75)",  accent: "rgba(120,180,255,0.75)" },
+  violet: { bg: "rgba(200,100,255,0.80)", accent: "rgba(210,140,255,0.75)" },
+};
 
 // ── postMessage type constants ────────────────────────────────────────────────
 
@@ -91,12 +107,10 @@ export function buildEntryHtml(
     blockquote{border-left:4px solid #888;margin-left:0;padding-left:1rem;opacity:0.85}
     table{border-collapse:collapse;width:100%}
     th,td{border:1px solid #888;padding:0.4rem 0.6rem}
-    ${Object.entries(
-      prefersDark ? ANNOTATION_COLORS_DARK : ANNOTATION_COLORS_LIGHT
-    )
+    ${Object.entries(prefersDark ? MARK_COLORS_DARK : MARK_COLORS_LIGHT)
       .map(
         ([name, t]) =>
-          `mark[data-ann-color="${name}"]{background:${t.bg};border-radius:2px;cursor:pointer;outline:1px solid ${t.accent}${prefersDark && name !== "none" ? ";color:#000000" : ""}}` +
+          `mark[data-ann-color="${name}"]{background:${t.bg};border-radius:2px;cursor:pointer;outline:1px solid ${t.accent}${prefersDark ? ";color:#000000" : ""}}` +
           `mark[data-ann-color="${name}"]:hover{background:${t.accent};color:${prefersDark ? "#000000" : fg}}`
       )
       .join("")}

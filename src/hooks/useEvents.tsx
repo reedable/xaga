@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { usePlatform } from "../platform/Platform";
-import type { Entry, Feed } from "../types";
+import type { Entry, Feed, SavedItem } from "../types";
 import { debounced } from "../utils/Decorator";
 
 export function subscribe(register: () => Promise<() => void>): () => void {
@@ -37,6 +37,12 @@ export function useEvents() {
     [platform]
   );
 
+  const onAnnotationChanged = useCallback(
+    (callback: (item: SavedItem) => void) =>
+      subscribe(() => platform.onAnnotationChanged(callback)),
+    [platform]
+  );
+
   const onEmbeddingsChanged = useCallback(
     (callback: () => void) =>
       subscribe(() => platform.onEmbeddingsChanged(debounced(callback, { wait: 400 }))),
@@ -57,6 +63,7 @@ export function useEvents() {
     onFeedRefreshed,
     onUnreadChanged,
     onBookmarkChanged,
+    onAnnotationChanged,
     onEmbeddingsChanged,
     onFind,
     setFindEnabled,

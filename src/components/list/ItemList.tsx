@@ -105,7 +105,7 @@ export function ItemList({
   const { queryByItem, queryByBookmarks, queryByAnnotations, queryBySaved } =
     useRelatedItems(abortControllerRef);
 
-  const { onFeedRefreshed, onUnreadChanged, onBookmarkChanged } = useEvents();
+  const { onFeedRefreshed, onUnreadChanged, onBookmarkChanged, onAnnotationChanged } = useEvents();
 
   const [items, setItems] = useState<Item[]>([]);
   const [filterText, setFilterText] = useState("");
@@ -231,6 +231,12 @@ export function ItemList({
   }, [onBookmarkChanged]);
 
   useEffect(() => {
+    return onAnnotationChanged((item) => {
+      setItems((prev) => prev.map((p) => (p.id === item.id ? item : p)));
+    });
+  }, [onAnnotationChanged]);
+
+  useEffect(() => {
     return onFeedRefreshed(() => requestItems(selectedCollectionRef.current));
   }, [onFeedRefreshed, requestItems]);
 
@@ -337,7 +343,7 @@ export function ItemList({
               >
                 <ListItemText
                   primary={
-                    <Quotes quoted={isAnnotation(item)}>{item.title}</Quotes>
+                    <Quotes quoted={isAnnotation(item)} color={isAnnotation(item) ? item.color : undefined}>{item.title}</Quotes>
                   }
                   secondary={<ItemStatus item={item} />}
                   slotProps={{

@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::embeddings::{Embedder, EmbeddingsDb, EmbeddingsError, embed_file};
+use crate::types::{Entry, SavedItem};
+use flume;
 use crate::util::parse_document;
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -260,16 +262,21 @@ async fn apply_plan(
             Err(e) => report.errors.push(format!("delete {id}: {e}")),
         }
     }
+    // Recovery runs at startup; suppress change events to avoid flooding the UI.
+    let (noop_unread_tx, _) = flume::unbounded::<Entry>();
+    let (noop_bookmarked_tx, _) = flume::unbounded::<Entry>();
+    let (noop_annotation_tx, _) = flume::unbounded::<SavedItem>();
+
     for id in &plan.to_embed_topics {
         let path = crate::topics::topic_path(data_dir, id);
-        match embed_file(&path, embedder, db).await {
+        match embed_file(&path, embedder, db, &noop_unread_tx, &noop_bookmarked_tx, &noop_annotation_tx).await {
             Ok(()) => report.embedded += 1,
             Err(e) => report.errors.push(format!("embed topic {id}: {e}")),
         }
     }
     for id in &plan.to_embed_articles {
         match crate::entries::find_entry_path(data_dir, id).await {
-            Some(path) => match embed_file(&path, embedder, db).await {
+            Some(path) => match embed_file(&path, embedder, db, &noop_unread_tx, &noop_bookmarked_tx, &noop_annotation_tx).await {
                 Ok(()) => report.embedded += 1,
                 Err(e) => report.errors.push(format!("embed article {id}: {e}")),
             },

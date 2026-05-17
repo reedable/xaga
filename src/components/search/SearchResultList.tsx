@@ -113,7 +113,7 @@ export function SearchResultList({
               >
                 <ListItemText
                   primary={
-                    <Quotes quoted={isAnnotation(item)}>{item.title}</Quotes>
+                    <Quotes quoted={isAnnotation(item)} color={isAnnotation(item) ? item.color : undefined}>{item.title}</Quotes>
                   }
                   secondary={
                     <>

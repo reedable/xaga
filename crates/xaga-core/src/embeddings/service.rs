@@ -2,6 +2,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::types::{Entry, SavedItem};
+
 /// Indicates whether the app should restart or exit after the service drains.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShutdownReason {
@@ -64,6 +66,9 @@ pub struct EmbeddingService {
     done_rx: flume::Receiver<()>,
     priority_drained_rx: flume::Receiver<()>,
     background_drained_rx: flume::Receiver<()>,
+    unread_changed_rx: flume::Receiver<Entry>,
+    bookmarked_changed_rx: flume::Receiver<Entry>,
+    annotation_changed_rx: flume::Receiver<SavedItem>,
     restart_requested: Arc<AtomicBool>,
     embedder: Arc<Embedder>,
     // Held for the service's lifetime; released (file deleted) on Drop.
@@ -94,6 +99,9 @@ impl EmbeddingService {
         let (background_tx, background_rx) = flume::unbounded::<BackgroundMsg>();
         let (priority_drained_tx, priority_drained_rx) = flume::unbounded::<()>();
         let (background_drained_tx, background_drained_rx) = flume::unbounded::<()>();
+        let (unread_changed_tx, unread_changed_rx) = flume::unbounded::<Entry>();
+        let (bookmarked_changed_tx, bookmarked_changed_rx) = flume::unbounded::<Entry>();
+        let (annotation_changed_tx, annotation_changed_rx) = flume::unbounded::<SavedItem>();
 
         let loop_service_tx = service_tx.clone();
         let loop_priority_tx = priority_tx.clone();
@@ -123,6 +131,9 @@ impl EmbeddingService {
                         loop_background_tx,
                         priority_drained_tx,
                         background_drained_tx,
+                        unread_changed_tx,
+                        bookmarked_changed_tx,
+                        annotation_changed_tx,
                         embedder,
                         db,
                     )
@@ -141,6 +152,9 @@ impl EmbeddingService {
             done_rx,
             priority_drained_rx,
             background_drained_rx,
+            unread_changed_rx,
+            bookmarked_changed_rx,
+            annotation_changed_rx,
             restart_requested,
             embedder: service_embedder,
             _lock: lock,
@@ -165,6 +179,21 @@ impl EmbeddingService {
     /// Returns a receiver that fires once each time the background queue drains to empty.
     pub fn subscribe_to_background_drained(&self) -> flume::Receiver<()> {
         self.background_drained_rx.clone()
+    }
+
+    /// Returns a receiver that fires when an entry's is_unread state changes.
+    pub fn subscribe_to_unread_changed(&self) -> flume::Receiver<Entry> {
+        self.unread_changed_rx.clone()
+    }
+
+    /// Returns a receiver that fires when an entry's is_bookmarked state changes.
+    pub fn subscribe_to_bookmarked_changed(&self) -> flume::Receiver<Entry> {
+        self.bookmarked_changed_rx.clone()
+    }
+
+    /// Returns a receiver that fires when an annotation's color or content changes.
+    pub fn subscribe_to_annotation_changed(&self) -> flume::Receiver<SavedItem> {
+        self.annotation_changed_rx.clone()
     }
 
     /// Enqueues a full recovery pass (non-blocking).
@@ -246,6 +275,9 @@ async fn run_loop(
     background_tx: flume::Sender<BackgroundMsg>,
     priority_drained_tx: flume::Sender<()>,
     background_drained_tx: flume::Sender<()>,
+    unread_changed_tx: flume::Sender<Entry>,
+    bookmarked_changed_tx: flume::Sender<Entry>,
+    annotation_changed_tx: flume::Sender<SavedItem>,
     embedder: Arc<Embedder>,
     mut db: EmbeddingsDb,
 ) {
@@ -306,7 +338,7 @@ async fn run_loop(
                             Some(path) => {
                                 log::debug!("priority_rx: path={}", path.display());
 
-                                if let Err(e) = embed_file(&path, &embedder, &db).await {
+                                if let Err(e) = embed_file(&path, &embedder, &db, &unread_changed_tx, &bookmarked_changed_tx, &annotation_changed_tx).await {
                                     log::error!("priority_rx: embed_file failed id={id}: {e}");
                                 }
                             }
@@ -346,7 +378,7 @@ async fn run_loop(
                         Some(path) => {
                             log::debug!("background_rx: path={}", path.display());
 
-                            if let Err(e) = embed_file(&path, &embedder, &db).await {
+                            if let Err(e) = embed_file(&path, &embedder, &db, &unread_changed_tx, &bookmarked_changed_tx, &annotation_changed_tx).await {
                                 log::error!("background_rx: embed_file failed id={id}: {e}");
                             }
                         }

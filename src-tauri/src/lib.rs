@@ -395,22 +395,6 @@ pub fn run() {
                 let (cache, needs_recovery) = EntryStateCache::new(&lib_path).await;
                 *setup_entry_cache.lock().unwrap() = Some(cache.clone());
 
-                let unread_app_handle = app_handle.clone();
-                let mut unread_rx = cache.subscribe_unread();
-                tauri::async_runtime::spawn(async move {
-                    while let Ok(entry) = unread_rx.recv().await {
-                        unread_app_handle.emit("unread:changed", &entry).ok();
-                    }
-                });
-
-                let bookmarked_app_handle = app_handle.clone();
-                let mut bookmarked_rx = cache.subscribe_bookmarked();
-                tauri::async_runtime::spawn(async move {
-                    while let Ok(entry) = bookmarked_rx.recv().await {
-                        bookmarked_app_handle.emit("bookmark:changed", &entry).ok();
-                    }
-                });
-
                 match EmbeddingService::start(lib_path.clone()).await {
                     Ok(svc) => {
                         file_watchers::watch(
@@ -439,6 +423,39 @@ pub fn run() {
                                     break;
                                 }
                                 embeddings_app_handle.emit("embedding:changed", ()).ok();
+                            }
+                        });
+
+                        let unread_app_handle = app_handle.clone();
+                        let unread_rx = svc.subscribe_to_unread_changed();
+                        tauri::async_runtime::spawn(async move {
+                            loop {
+                                match unread_rx.recv_async().await {
+                                    Ok(entry) => { unread_app_handle.emit("unread:changed", &entry).ok(); }
+                                    Err(_) => break,
+                                }
+                            }
+                        });
+
+                        let bookmarked_app_handle = app_handle.clone();
+                        let bookmarked_rx = svc.subscribe_to_bookmarked_changed();
+                        tauri::async_runtime::spawn(async move {
+                            loop {
+                                match bookmarked_rx.recv_async().await {
+                                    Ok(entry) => { bookmarked_app_handle.emit("bookmark:changed", &entry).ok(); }
+                                    Err(_) => break,
+                                }
+                            }
+                        });
+
+                        let annotation_app_handle = app_handle.clone();
+                        let annotation_rx = svc.subscribe_to_annotation_changed();
+                        tauri::async_runtime::spawn(async move {
+                            loop {
+                                match annotation_rx.recv_async().await {
+                                    Ok(item) => { annotation_app_handle.emit("annotation:changed", &item).ok(); }
+                                    Err(_) => break,
+                                }
                             }
                         });
 

@@ -4,7 +4,7 @@
 - [x] CollectionList header: shortcuts hover highlight collides with traffic lights
 - [x] Refresh button location is awkward
 - [ ] [Logger.ts](src/utils/Logger.ts): Context tracking is broken
-- [ ] Color code annotation quotes icon
+- [x] Color code annotation quotes icon
 - [ ] Color code bookmarks and bookmark icons
 
 ## Medium (days)

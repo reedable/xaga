@@ -418,10 +418,11 @@ impl EmbeddingsDb {
     }
 
     /// Returns a map of `id → checksum` for all annotation rows belonging to `article_id`.
+    /// Returns `(checksum, color)` per annotation id for the given article.
     pub async fn annotation_meta_for_article(
         &self,
         article_id: &str,
-    ) -> Result<HashMap<String, String>, EmbeddingsError> {
+    ) -> Result<HashMap<String, (String, String)>, EmbeddingsError> {
         let escaped = article_id.replace('\'', "''");
         let batches: Vec<RecordBatch> = self
             .table
@@ -441,9 +442,15 @@ impl EmbeddingsDb {
             let checksums = batch
                 .column_by_name("checksum")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
-            if let (Some(ids), Some(checksums)) = (ids, checksums) {
+            let colors = batch
+                .column_by_name("color")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            if let (Some(ids), Some(checksums), Some(colors)) = (ids, checksums, colors) {
                 for i in 0..batch.num_rows() {
-                    map.insert(ids.value(i).to_string(), checksums.value(i).to_string());
+                    map.insert(
+                        ids.value(i).to_string(),
+                        (checksums.value(i).to_string(), colors.value(i).to_string()),
+                    );
                 }
             }
         }

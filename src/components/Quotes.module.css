@@ -1,2 +1,7 @@
 .Quotes {
+  color: var(--color-icon, currentColor);
+}
+
+.Open {
+  transform: rotate(180deg);
 }

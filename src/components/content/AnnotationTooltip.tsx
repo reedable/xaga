@@ -8,12 +8,8 @@ import {
   Tooltip,
 } from "@mui/material";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { useAppearance } from "../../hooks/useAppearance";
-import {
-  ANNOTATION_COLORS_DARK,
-  ANNOTATION_COLORS_LIGHT,
-  getAnnotationColor,
-} from "../../text/annotationColors";
+import colorCss from "../../colors.module.css";
+import { COLOR_NAMES } from "../../colors";
 import type { Annotation, Entry } from "../../types";
 import cx from "../../utils/cx";
 import css from "./AnnotationTooltip.module.css";
@@ -27,9 +23,9 @@ export interface AnnotationTooltipProps {
   annotation?: Annotation | null;
   text: string[];
   note?: string | null;
-  color: string;
+  color: string | null;
   position: { x: number; y: number };
-  onChange: (color: string, note: string) => void;
+  onChange: (color: string | null, note: string) => void;
   onClose: () => void;
 }
 
@@ -63,12 +59,6 @@ export const AnnotationTooltip = forwardRef<AnnotationTooltipHandle, AnnotationT
   }, ref) {
     const collectionMenuRef = useRef<CollectionMenuButtonHandle | null>(null);
 
-    const { themeMode } = useAppearance();
-    const dark = themeMode === "dark";
-    const annotationColors = dark
-      ? ANNOTATION_COLORS_DARK
-      : ANNOTATION_COLORS_LIGHT;
-
     const initialNote = note ?? "";
     const [noteValue, setNoteValue] = useState(initialNote);
     const [pendingRemove, setPendingRemove] = useState(false);
@@ -90,19 +80,17 @@ export const AnnotationTooltip = forwardRef<AnnotationTooltipHandle, AnnotationT
       return () => window.removeEventListener("blur", onClose);
     }, [onClose]);
 
+    const colorClass = color ? colorCss[color as keyof typeof colorCss] : undefined;
+
     return (
       <ClickAwayListener onClickAway={onClose}>
         <Paper
           elevation={4}
-          className={css.Tooltip}
-          style={{
-            top: position.y,
-            left: position.x,
-            borderLeft: `4px solid ${getAnnotationColor(color, dark).accent}`,
-          }}
+          className={cx(css.Tooltip, colorClass)}
+          style={{ top: position.y, left: position.x }}
         >
           <div className={css.Body}>
-            <Collapse in={color !== "none"}>
+            <Collapse in={color !== null}>
               <TextField
                 multiline
                 minRows={1}
@@ -121,54 +109,47 @@ export const AnnotationTooltip = forwardRef<AnnotationTooltipHandle, AnnotationT
             </Collapse>
 
             <div className={cx(css.ColorRow, pendingRemove && css.RemovePending)}>
-              {Object.entries(annotationColors).map(([name, tokens]) =>
-                name === "none" ? (
-                  <SwatchTarget
-                    key={name}
-                    className={css.Remove}
-                    onClick={() => {
-                      if (pendingRemove) {
-                        onChange("none", noteValue);
-                        setPendingRemove(false);
-                      } else {
-                        setPendingRemove(true);
-                      }
-                    }}
-                  >
-                    <Tooltip title="Remove Annotation">
-                      <>
-                        <Close className={`swatch-inner ${css.Swatch}`} />
+              <SwatchTarget
+                className={css.Remove}
+                onClick={() => {
+                  if (pendingRemove) {
+                    onChange(null, noteValue);
+                    setPendingRemove(false);
+                  } else {
+                    setPendingRemove(true);
+                  }
+                }}
+              >
+                <Tooltip title="Remove Annotation">
+                  <>
+                    <Close className="swatch-inner" />
+                    <Collapse in={pendingRemove} orientation="horizontal">
+                      <Button>Remove</Button>
+                    </Collapse>
+                  </>
+                </Tooltip>
+              </SwatchTarget>
 
-                        <Collapse in={pendingRemove} orientation="horizontal">
-                          <Button>Remove</Button>
-                        </Collapse>
-                      </>
-                    </Tooltip>
-                  </SwatchTarget>
-                ) : (
-                  <SwatchTarget
-                    key={name}
-                    onClick={() => {
-                      setPendingRemove(false);
-                      onChange(name, noteValue);
-                    }}
-                  >
-                    <Tooltip title={name}>
-                      <div
-                        className={`swatch-inner ${css.Swatch}`}
-                        style={{
-                          background: tokens.accent,
-                          outline:
-                            name === color
-                              ? `2px solid ${tokens.accent}`
-                              : "none",
-                          outlineOffset: "2px",
-                        }}
-                      />
-                    </Tooltip>
-                  </SwatchTarget>
-                )
-              )}
+              {COLOR_NAMES.map((name) => (
+                <SwatchTarget
+                  key={name}
+                  onClick={() => {
+                    setPendingRemove(false);
+                    onChange(name, noteValue);
+                  }}
+                >
+                  <Tooltip title={name}>
+                    <div
+                      className={cx(
+                        "swatch-inner",
+                        css.Swatch,
+                        colorCss[name as keyof typeof colorCss],
+                        name === color && css.Selected,
+                      )}
+                    />
+                  </Tooltip>
+                </SwatchTarget>
+              ))}
 
               <div className={css.ColorRowAction}>
                 <CollectionMenuButton ref={collectionMenuRef} item={annotation ?? null} />

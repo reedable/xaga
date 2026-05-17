@@ -1,0 +1,79 @@
+/* ── Shared colour palette ─────────────────────────────────────────────────────
+ *
+ * Each class exposes three custom properties consumed by UI components:
+ *   --color-bg     — translucent fill (mark background, etc.)
+ *   --color-accent — semi-opaque accent (mark outline, hover fill, swatch bg,
+ *                    tooltip border); designed for contrast against dark text
+ *   --color-icon   — fully opaque foreground colour for standalone icons
+ *                    (e.g. FormatQuote); designed for contrast against the
+ *                    app background (white in light mode, #121212 in dark mode)
+ *
+ * Dark-mode overrides are keyed on the [data-theme="dark"] attribute set by
+ * AppearanceProvider on <html>.
+ */
+
+.red {
+  --color-bg:     rgba(255,80,80,0.35);
+  --color-accent: rgba(210,40,40,0.60);
+  --color-icon:   #c62828;
+}
+:global([data-theme="dark"]) .red {
+  --color-bg:     rgba(255,80,80,0.80);
+  --color-accent: rgba(255,130,130,0.75);
+  --color-icon:   #c46666;
+}
+
+.orange {
+  --color-bg:     rgba(255,150,0,0.40);
+  --color-accent: rgba(210,120,0,0.65);
+  --color-icon:   #b54d00;
+}
+:global([data-theme="dark"]) .orange {
+  --color-bg:     rgba(255,160,40,0.65);
+  --color-accent: rgba(255,190,80,0.75);
+  --color-icon:   #c49341;
+}
+
+.yellow {
+  --color-bg:     rgba(255,214,0,0.40);
+  --color-accent: rgba(255,180,0,0.60);
+  --color-icon:   #a06200;
+}
+:global([data-theme="dark"]) .yellow {
+  --color-bg:     rgba(255,220,40,0.55);
+  --color-accent: rgba(255,230,80,0.75);
+  --color-icon:   #c4b141;
+}
+
+.green {
+  --color-bg:     rgba(60,190,60,0.35);
+  --color-accent: rgba(30,150,30,0.65);
+  --color-icon:   #2e7d32;
+}
+:global([data-theme="dark"]) .green {
+  --color-bg:     rgba(60,190,60,0.70);
+  --color-accent: rgba(110,230,110,0.75);
+  --color-icon:   #57b157;
+}
+
+.blue {
+  --color-bg:     rgba(60,130,255,0.35);
+  --color-accent: rgba(30,90,220,0.65);
+  --color-icon:   #1565c0;
+}
+:global([data-theme="dark"]) .blue {
+  --color-bg:     rgba(60,160,255,0.75);
+  --color-accent: rgba(120,180,255,0.75);
+  --color-icon:   #5f8cc4;
+}
+
+.violet {
+  --color-bg:     rgba(160,70,255,0.35);
+  --color-accent: rgba(120,30,210,0.50);
+  --color-icon:   #6a1b9a;
+}
+:global([data-theme="dark"]) .violet {
+  --color-bg:     rgba(200,100,255,0.80);
+  --color-accent: rgba(210,140,255,0.75);
+  --color-icon:   #a26ec4;
+}

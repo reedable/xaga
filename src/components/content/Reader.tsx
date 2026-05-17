@@ -29,7 +29,7 @@ export interface SelectionRect {
 
 interface TooltipState {
   annotationId: string;
-  color: string;
+  color: string | null;
   note?: string | null;
   text: string[];
   occurrence: number[];
@@ -88,7 +88,7 @@ export function Reader({
         annotationId: uuidv4(),
         text: texts,
         occurrence: occurrences,
-        color: "none",
+        color: null,
         position: toViewportPosition(rect),
       });
     },
@@ -112,7 +112,7 @@ export function Reader({
   );
 
   const handleChangeTooltip = useCallback(
-    (color: string, note: string) => {
+    (color: string | null, note: string) => {
       if (tooltip && tooltip.occurrence.length > 0) {
         const id = tooltip.annotationId;
 
@@ -121,7 +121,7 @@ export function Reader({
           "*"
         );
 
-        if (color !== "none") {
+        if (color !== null) {
           iframeRef.current?.contentWindow?.postMessage(
             {
               type: "apply-highlights",
@@ -146,9 +146,11 @@ export function Reader({
   );
 
   const handleCloseTooltip = useCallback(async () => {
-    if (tooltip?.color === "none") {
+    if (!tooltip) {
+      // nothing to do
+    } else if (tooltip.color === null) {
       onRemoveAnnotation?.({ id: tooltip.annotationId, reference: entryId });
-    } else if (tooltip) {
+    } else {
       const annotation = {
         id: tooltip.annotationId,
         title: tooltip.text.join(" "),

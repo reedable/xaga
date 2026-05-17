@@ -2,8 +2,6 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
-use tokio::sync::broadcast;
-
 use crate::types::Entry;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -14,12 +12,12 @@ struct CacheSnapshot {
 
 /// In-memory cache of entry tag state, built at startup and kept current by
 /// the file watcher. Cloning is cheap — all clones share the same data.
+/// Used for fast set-membership lookups (is_unread, is_bookmarked).
+/// Change events for the UI are emitted by the embedding pipeline instead.
 #[derive(Clone)]
 pub struct EntryStateCache {
     unread: Arc<RwLock<HashSet<String>>>,
     bookmarked: Arc<RwLock<HashSet<String>>>,
-    unread_tx: Arc<broadcast::Sender<Entry>>,
-    bookmarked_tx: Arc<broadcast::Sender<Entry>>,
 }
 
 impl EntryStateCache {
@@ -62,14 +60,9 @@ impl EntryStateCache {
             }
         };
 
-        let (unread_tx, _) = broadcast::channel(256);
-        let (bookmarked_tx, _) = broadcast::channel(256);
-
         let cache = Self {
             unread: Arc::new(RwLock::new(unread)),
             bookmarked: Arc::new(RwLock::new(bookmarked)),
-            unread_tx: Arc::new(unread_tx),
-            bookmarked_tx: Arc::new(bookmarked_tx),
         };
         (cache, needs_recovery)
     }
@@ -115,8 +108,7 @@ impl EntryStateCache {
             if entry.is_bookmarked { set.insert(entry.id.clone()) } else { set.remove(&entry.id) }
         };
 
-        if unread_changed { let _ = self.unread_tx.send(entry.clone()); }
-        if bookmarked_changed { let _ = self.bookmarked_tx.send(entry); }
+        let _ = (unread_changed, bookmarked_changed, entry);
     }
 
     /// Remove an entry from all sets (e.g. when archived or deleted).
@@ -132,14 +124,6 @@ impl EntryStateCache {
 
     pub fn bookmarked_snapshot(&self) -> HashSet<String> {
         self.bookmarked.read().unwrap().clone()
-    }
-
-    pub fn subscribe_unread(&self) -> broadcast::Receiver<Entry> {
-        self.unread_tx.subscribe()
-    }
-
-    pub fn subscribe_bookmarked(&self) -> broadcast::Receiver<Entry> {
-        self.bookmarked_tx.subscribe()
     }
 
     pub async fn persist(&self, data_dir: &Path) {

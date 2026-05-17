@@ -966,6 +966,16 @@ export class TauriPlatform implements Platform {
     return listen<unknown>(name, listener);
   }
 
+  onAnnotationChanged(callback: (item: SavedItem) => void): Promise<UnlistenFn> {
+    const name = "annotation:changed";
+    const listener = decorate((e) => {
+      const result = SavedItemSchema.transform(toSavedItem).safeParse(e.payload);
+      if (result.success) callback(result.data);
+    }).with(logged, { logger, name });
+
+    return listen<unknown>(name, listener);
+  }
+
   onEmbeddingsChanged(callback: () => void): Promise<UnlistenFn> {
     const name = "embedding:changed";
     const listener = decorate(callback).with(logged, { logger, name });
