@@ -79,7 +79,7 @@ pub async fn list_embedded_items(
         EmbeddedItemSource::RelatedTo { id, limit, min_similarity, max_similarity } => {
             let db = EmbeddingsDb::open(library).await?;
             let entries = db.find_related(&id, limit, min_similarity, max_similarity).await?;
-            filter::filter_items(library, entries, &item_filter)
+            filter::filter_items(entries, &item_filter)
                 .await
                 .map_err(ItemError::Io)
         }
@@ -93,7 +93,7 @@ pub async fn list_embedded_items(
                 .collect();
             let db = EmbeddingsDb::open(library).await?;
             let entries = db.find_related_to_many(&bookmark_ids, limit, min_similarity, max_similarity).await?;
-            filter::filter_items(library, entries, &item_filter)
+            filter::filter_items(entries, &item_filter)
                 .await
                 .map_err(ItemError::Io)
         }
@@ -106,7 +106,7 @@ pub async fn list_embedded_items(
                 .collect();
             let db = EmbeddingsDb::open(library).await?;
             let entries = db.find_related_to_many(&topic_ids, limit, min_similarity, max_similarity).await?;
-            filter::filter_items(library, entries, &item_filter)
+            filter::filter_items(entries, &item_filter)
                 .await
                 .map_err(ItemError::Io)
         }
@@ -120,7 +120,7 @@ pub async fn list_embedded_items(
                 .map(|a| a.id)
                 .collect();
             let entries = db.find_related_to_many(&annotation_ids, limit, min_similarity, max_similarity).await?;
-            filter::filter_items(library, entries, &item_filter)
+            filter::filter_items(entries, &item_filter)
                 .await
                 .map_err(ItemError::Io)
         }
@@ -152,14 +152,14 @@ pub async fn list_embedded_items(
                 combined_ids.len(), n_bookmarks, n_annotations, combined_ids.len(),
             );
             let entries = db.find_related_to_many(&combined_ids, limit, min_similarity, max_similarity).await?;
-            filter::filter_items(library, entries, &item_filter)
+            filter::filter_items(entries, &item_filter)
                 .await
                 .map_err(ItemError::Io)
         }
         EmbeddedItemSource::RelatedToVector { vector, limit, min_similarity, max_similarity } => {
             let db = EmbeddingsDb::open(library).await?;
             let entries = db.find_by_vector(vector, limit, min_similarity, max_similarity).await?;
-            filter::filter_items(library, entries, &item_filter)
+            filter::filter_items(entries, &item_filter)
                 .await
                 .map_err(ItemError::Io)
         }

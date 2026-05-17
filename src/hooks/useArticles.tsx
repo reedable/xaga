@@ -1,10 +1,12 @@
 import { useCallback, useState, type RefObject } from "react";
+import { useAppearance } from "./useAppearance";
 import { usePlatform } from "../platform/Platform";
 import { processEntry } from "../text/entryWorker";
 import type { Entry } from "../types";
 
 export function useArticles(abortControllerRef: RefObject<AbortController>) {
   const platform = usePlatform();
+  const { showOriginalSite: keepOpen } = useAppearance();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -21,7 +23,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       setLoading(true);
 
       try {
-        const html = await platform.loadArticle(signal, url); //, true);
+        const html = await platform.loadArticle(signal, url, keepOpen);
         const { title, markdown, favicon } = await processEntry(url, html);
 
         const article = await platform.createArticle(signal, {
@@ -39,7 +41,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, keepOpen, platform]
   );
 
   /**
@@ -54,7 +56,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
 
       try {
         const article = await platform.readArticle(signal, entry.id);
-        const html = await platform.loadArticle(signal, entry.url); //, true);
+        const html = await platform.loadArticle(signal, entry.url, keepOpen);
         const { title, markdown, favicon } = await processEntry(article.url, html);
 
         await platform.saveArticle(signal, {
@@ -71,7 +73,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, keepOpen, platform]
   );
 
   /**
@@ -91,7 +93,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       try {
         const article = await platform.readArticle(signal, entryId);
 
-        if (article.content) {
+        if (article.content && !keepOpen) {
           return article;
         }
 
@@ -103,6 +105,33 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       }
     },
     [abortControllerRef, loadArticle, platform]
+  );
+
+  const updateArticleFromHtml = useCallback(
+    async (entry: Entry, html: string) => {
+      const signal = abortControllerRef.current.signal;
+      setError(null);
+      setLoading(true);
+
+      try {
+        const article = await platform.readArticle(signal, entry.id);
+        const { title, markdown, favicon } = await processEntry(article.url, html);
+
+        await platform.saveArticle(signal, {
+          ...article,
+          title,
+          content: markdown,
+          favicon: favicon ?? undefined,
+        });
+
+        return await platform.readArticle(signal, article.id);
+      } catch (e) {
+        setError(e);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [abortControllerRef, platform]
   );
 
   const findArticleByUrl = useCallback(
@@ -129,5 +158,6 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
     loadArticle,
     loadArticleByUrl,
     findArticleByUrl,
+    updateArticleFromHtml,
   };
 }

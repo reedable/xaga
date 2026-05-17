@@ -16,6 +16,7 @@ export const READER_LINE_HEIGHT_DEFAULT = 1.75;
 export type AppearanceContextType = {
   readerView: ReaderView;
   setReaderView: (readerView: ReaderView) => void;
+  showOriginalSite: boolean;
   themeSetting: ThemeSetting;
   changeThemeSetting: (mode: ThemeSetting) => void;
   themeMode: ThemeMode;

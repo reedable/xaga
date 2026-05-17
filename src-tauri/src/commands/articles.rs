@@ -1,4 +1,4 @@
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use xaga_core::articles;
 use xaga_core::embeddings::EmbeddingsDb;
 use xaga_core::entries;
@@ -6,6 +6,33 @@ use xaga_core::types::AnnotationSummary;
 
 use crate::{article_loader, AppState};
 use super::{require_loader_window, require_main_window};
+
+#[tauri::command]
+pub async fn loader_will_unload(app: AppHandle, url: String) {
+    app.emit("loader:will-unload", url).ok();
+}
+
+#[derive(serde::Serialize, Clone)]
+struct LoaderClosed {
+    url: String,
+    html: String,
+}
+
+#[tauri::command]
+pub async fn capture_and_close_loader(
+    window: tauri::Window,
+    app: AppHandle,
+    label: String,
+    html: String,
+    url: String,
+) -> Result<(), String> {
+    require_loader_window(&window)?;
+    app.emit("loader:closed", LoaderClosed { url, html }).ok();
+    if let Some(w) = app.get_webview_window(&label) {
+        let _ = w.close();
+    }
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn receive_html(

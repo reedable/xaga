@@ -26,6 +26,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   const [themeSetting, setThemeSetting] = useState<ThemeSetting>("auto");
 
   const [readerView, setReaderView] = useState<ReaderView>("full");
+  const [showOriginalSite, setShowOriginalSite] = useState(false);
 
   const [readerFontFamily, setReaderFontFamilyState] =
     useState<FontFamily>("system");
@@ -122,6 +123,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       platform.onShowArticleSummary((showArticleSummary) =>
         setReaderView(showArticleSummary ? "summary" : "full"),
       ),
+      platform.onShowOriginalSite(setShowOriginalSite),
     ];
 
     return () => {
@@ -151,6 +153,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     () => ({
       readerView,
       setReaderView,
+      showOriginalSite,
       themeSetting,
       changeThemeSetting,
       themeMode,
@@ -163,6 +166,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     }),
     [
       readerView,
+      showOriginalSite,
       themeSetting,
       changeThemeSetting,
       themeMode,

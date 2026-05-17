@@ -67,7 +67,6 @@ pub fn annotate_bookmarked_status(bookmarked: &HashSet<String>, entries: &mut Ve
 /// Works on any `T` that implements `Item`. Items without a `source` are
 /// treated as authored (already read, not bookmarkable).
 pub async fn filter_items<T: Item>(
-    library: &Path,
     mut items: Vec<T>,
     item_filter: &ItemFilter,
 ) -> std::io::Result<Vec<T>> {

@@ -233,6 +233,10 @@ const toAnyEmbeddedItem = (data: z.infer<typeof AnyEmbeddedItemSchema>) => {
   };
 };
 
+listen<string>("loader:will-unload", (e) => {
+  console.log("[diagnostic] loader:will-unload", e.payload);
+});
+
 export class TauriPlatform implements Platform {
   // Window --------------------------------------------------------------------
 
@@ -1064,6 +1068,22 @@ export class TauriPlatform implements Platform {
       callback(e.payload)
     ).with(logged, { logger, name });
     return listen<boolean>(name, listener);
+  }
+
+  onShowOriginalSite(callback: (show: boolean) => void): Promise<UnlistenFn> {
+    const name = "menu:show-original-site";
+    const listener = decorate((e: { payload: boolean }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
+    return listen<boolean>(name, listener);
+  }
+
+  onLoaderClosed(callback: (data: { url: string; html: string }) => void): Promise<UnlistenFn> {
+    const name = "loader:closed";
+    const listener = decorate((e: { payload: { url: string; html: string } }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
+    return listen<{ url: string; html: string }>(name, listener);
   }
 
   onFind(callback: () => void): Promise<UnlistenFn> {

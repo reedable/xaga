@@ -10,6 +10,7 @@ export function useAppearance() {
 
   return {
     readerView: context.readerView,
+    showOriginalSite: context.showOriginalSite,
     setView: context.setReaderView,
     themeSetting: context.themeSetting,
     changeTheme: context.changeThemeSetting,

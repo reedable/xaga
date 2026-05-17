@@ -49,6 +49,12 @@ export function useEvents() {
     [platform]
   );
 
+  const onLoaderClosed = useCallback(
+    (callback: (data: { url: string; html: string }) => void) =>
+      subscribe(() => platform.onLoaderClosed(callback)),
+    [platform]
+  );
+
   const onFind = useCallback(
     (callback: () => void) => subscribe(() => platform.onFind(callback)),
     [platform]
@@ -65,6 +71,7 @@ export function useEvents() {
     onBookmarkChanged,
     onAnnotationChanged,
     onEmbeddingsChanged,
+    onLoaderClosed,
     onFind,
     setFindEnabled,
   };

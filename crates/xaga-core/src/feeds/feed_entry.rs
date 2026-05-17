@@ -57,7 +57,7 @@ pub async fn list_entries(
 
     crate::filter::annotate_unread_status(unread, &mut entries);
     crate::filter::annotate_bookmarked_status(bookmarked, &mut entries);
-    let mut items = crate::filter::filter_items(library, entries, &item_filter)
+    let mut items = crate::filter::filter_items(entries, &item_filter)
         .await
         .map_err(FeedError::Io)?;
     crate::filter::sort_items(&mut items);

@@ -72,9 +72,9 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       [bodyHtml, readerStyle]
     );
 
-    const { setFindEnabled, onUnreadChanged, onBookmarkChanged } = useEvents();
+    const { setFindEnabled, onUnreadChanged, onBookmarkChanged, onLoaderClosed } = useEvents();
 
-    const { readArticle, loadArticle, findArticleByUrl, loadArticleByUrl } =
+    const { readArticle, loadArticle, findArticleByUrl, loadArticleByUrl, updateArticleFromHtml } =
       useArticles(abortControllerRef);
 
     const requestArticle = useCallback(
@@ -183,6 +183,22 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
         );
       });
     }, [onBookmarkChanged]);
+
+    useEffect(() => {
+      if (!selectedEntry) return;
+      return onLoaderClosed(async ({ url, html }) => {
+        if (selectedEntry.url !== url) return;
+        const article = await updateArticleFromHtml(selectedEntry, html);
+        if (!article) return;
+        setSelectedEntry(article);
+        setAnnotationsFromArticle(article);
+        const markdown = article.content || article.summary;
+        if (markdown) {
+          const body = await markdownToHtml(markdown);
+          if (body) setBodyHtml(body);
+        }
+      });
+    }, [onLoaderClosed, selectedEntry, updateArticleFromHtml, setAnnotationsFromArticle]);
 
     return (
       <>
