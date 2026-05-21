@@ -29,7 +29,8 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
   const [abort, abortControllerRef] = useAbortController();
   const { queryByItem } = useRelatedItems(abortControllerRef);
   const [embeddedItems, setEmbeddedItems] = useState<(Embedded & Item)[]>([]);
-  const { onUnreadChanged, onBookmarkChanged, onAnnotationChanged } = useEvents();
+  const { onUnreadChanged, onBookmarkChanged, onAnnotationChanged } =
+    useEvents();
 
   const requestRelatedItems = useCallback(
     async (id: string) => {
@@ -108,7 +109,12 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
             >
               <ListItemText
                 primary={
-                  <Quotes quoted={isAnnotation(item)} color={isAnnotation(item) ? item.color : undefined}>{item.title}</Quotes>
+                  <Quotes
+                    quoted={isAnnotation(item)}
+                    color={isAnnotation(item) ? item.color : undefined}
+                  >
+                    {item.title}
+                  </Quotes>
                 }
                 secondary={<ItemStatus item={item} />}
                 slotProps={{

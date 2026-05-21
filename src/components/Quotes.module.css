@@ -1,5 +1,9 @@
 .Quotes {
   color: var(--color-icon, currentColor);
+
+  svg {
+    font-size: 1em;
+  }
 }
 
 .Open {

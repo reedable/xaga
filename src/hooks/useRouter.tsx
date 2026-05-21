@@ -21,7 +21,9 @@ let maxHistoryIdx = 0;
 export default function useRouter() {
   const navigate = useNavigate();
   const { state: rawState } = useLocation();
-  const state: NavigationState = (rawState as NavigationState | null) ?? { shortcutId: ALL_ITEMS.id };
+  const state: NavigationState = (rawState as NavigationState | null) ?? {
+    shortcutId: ALL_ITEMS.id,
+  };
   const [searchParams, setSearchParams] = useSearchParams();
 
   const currentIdx =

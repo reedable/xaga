@@ -23,18 +23,19 @@
   padding: 0;
 }
 
-.ListItemButton {}
+.ListItemButton {
+}
 
 .Primary {
   display: -webkit-box !important;
+  -webkit-box-orient: vertical;
   font-size: 0.8125em !important;
   line-clamp: 4;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
+  overflow: hidden;
 
   svg {
-    font-size: 0.8125em;
+    font-size: 1em;
   }
 }
 

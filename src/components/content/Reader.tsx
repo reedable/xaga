@@ -16,7 +16,10 @@ import {
 import type { Annotation } from "../../types";
 import cx from "../../utils/cx";
 import Logger from "../../utils/Logger";
-import { AnnotationTooltip, type AnnotationTooltipHandle } from "./AnnotationTooltip";
+import {
+  AnnotationTooltip,
+  type AnnotationTooltipHandle,
+} from "./AnnotationTooltip";
 import { FindBar } from "./FindBar";
 import css from "./Reader.module.css";
 
@@ -161,7 +164,9 @@ export function Reader({
         note: tooltip.note ?? undefined,
       };
       onSaveAnnotation?.(annotation);
-      await tooltipRef.current?.saveAnnotationToCollections(annotation as Annotation);
+      await tooltipRef.current?.saveAnnotationToCollections(
+        annotation as Annotation
+      );
     }
 
     setTooltip(null);
@@ -302,7 +307,9 @@ export function Reader({
       {tooltip && (
         <AnnotationTooltip
           ref={tooltipRef}
-          annotation={annotations?.find((a) => a.id === tooltip.annotationId) ?? null}
+          annotation={
+            annotations?.find((a) => a.id === tooltip.annotationId) ?? null
+          }
           position={tooltip.position}
           text={tooltip.text}
           color={tooltip.color}

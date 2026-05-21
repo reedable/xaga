@@ -199,7 +199,6 @@ const toArticle = (data: z.infer<typeof ArticleSchema>): Article => ({
   favicon: data.favicon ?? undefined,
 });
 
-
 const EmbeddedSchema = z.object({
   similarity: z.number(),
 });
@@ -424,12 +423,19 @@ export class TauriPlatform implements Platform {
 
   // Articles ------------------------------------------------------------------
 
-  async loadArticle(signal: AbortSignal, url: string, keepOpen?: boolean): Promise<string> {
+  async loadArticle(
+    signal: AbortSignal,
+    url: string,
+    keepOpen?: boolean
+  ): Promise<string> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "load_article" });
 
-    return invoker<string>("load_article", { url, keepOpen: keepOpen ?? false });
+    return invoker<string>("load_article", {
+      url,
+      keepOpen: keepOpen ?? false,
+    });
   }
 
   async findArticle(signal: AbortSignal, url: string): Promise<Article | null> {
@@ -629,45 +635,72 @@ export class TauriPlatform implements Platform {
       .map((e) => e.data);
   }
 
-  async listEntryCollections(signal: AbortSignal, entryId: string): Promise<string[]> {
+  async listEntryCollections(
+    signal: AbortSignal,
+    entryId: string
+  ): Promise<string[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "list_entry_collections" });
     return invoker<string[]>("list_entry_collections", { entryId });
   }
 
-  async addCollectionItem(signal: AbortSignal, collectionId: string, item: Entry | Annotation): Promise<Collection> {
+  async addCollectionItem(
+    signal: AbortSignal,
+    collectionId: string,
+    item: Entry | Annotation
+  ): Promise<Collection> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "add_collection_item" });
     const collectionItem = isAnnotation(item)
       ? { type: "annotation", id: item.id }
       : { type: "entry", id: item.id };
-    const result = await invoker<unknown>("add_collection_item", { collectionId, item: collectionItem });
+    const result = await invoker<unknown>("add_collection_item", {
+      collectionId,
+      item: collectionItem,
+    });
     return CollectionSchema.transform(toCollection).parse(result);
   }
 
-  async removeCollectionItem(signal: AbortSignal, collectionId: string, itemId: string): Promise<Collection> {
+  async removeCollectionItem(
+    signal: AbortSignal,
+    collectionId: string,
+    itemId: string
+  ): Promise<Collection> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "remove_collection_item" });
-    const result = await invoker<unknown>("remove_collection_item", { collectionId, itemId });
+    const result = await invoker<unknown>("remove_collection_item", {
+      collectionId,
+      itemId,
+    });
     return CollectionSchema.transform(toCollection).parse(result);
   }
 
-  async listCollectionItems(signal: AbortSignal, id: string, filter: Filter): Promise<SavedItem[]> {
+  async listCollectionItems(
+    signal: AbortSignal,
+    id: string,
+    filter: Filter
+  ): Promise<SavedItem[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "list_collection_items" });
 
-    const results = await invoker<unknown[]>("list_collection_items", { id, itemFilter: filter });
+    const results = await invoker<unknown[]>("list_collection_items", {
+      id,
+      itemFilter: filter,
+    });
     return results
       .map((e) => SavedItemSchema.transform(toSavedItem).safeParse(e))
       .filter((e) => !e.error)
       .map((e) => e.data);
   }
 
-  async createCollection(signal: AbortSignal, title: string): Promise<Collection> {
+  async createCollection(
+    signal: AbortSignal,
+    title: string
+  ): Promise<Collection> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "create_collection" });
@@ -675,7 +708,11 @@ export class TauriPlatform implements Platform {
     return CollectionSchema.transform(toCollection).parse(result);
   }
 
-  async saveCollection(signal: AbortSignal, id: string, title: string): Promise<Collection> {
+  async saveCollection(
+    signal: AbortSignal,
+    id: string,
+    title: string
+  ): Promise<Collection> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "save_collection" });
@@ -970,10 +1007,14 @@ export class TauriPlatform implements Platform {
     return listen<unknown>(name, listener);
   }
 
-  onAnnotationChanged(callback: (item: SavedItem) => void): Promise<UnlistenFn> {
+  onAnnotationChanged(
+    callback: (item: SavedItem) => void
+  ): Promise<UnlistenFn> {
     const name = "annotation:changed";
     const listener = decorate((e) => {
-      const result = SavedItemSchema.transform(toSavedItem).safeParse(e.payload);
+      const result = SavedItemSchema.transform(toSavedItem).safeParse(
+        e.payload
+      );
       if (result.success) callback(result.data);
     }).with(logged, { logger, name });
 
@@ -1078,7 +1119,9 @@ export class TauriPlatform implements Platform {
     return listen<boolean>(name, listener);
   }
 
-  onLoaderClosed(callback: (data: { url: string; html: string }) => void): Promise<UnlistenFn> {
+  onLoaderClosed(
+    callback: (data: { url: string; html: string }) => void
+  ): Promise<UnlistenFn> {
     const name = "loader:closed";
     const listener = decorate((e: { payload: { url: string; html: string } }) =>
       callback(e.payload)

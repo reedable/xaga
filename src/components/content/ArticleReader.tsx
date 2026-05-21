@@ -72,10 +72,20 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       [bodyHtml, readerStyle]
     );
 
-    const { setFindEnabled, onUnreadChanged, onBookmarkChanged, onLoaderClosed } = useEvents();
+    const {
+      setFindEnabled,
+      onUnreadChanged,
+      onBookmarkChanged,
+      onLoaderClosed,
+    } = useEvents();
 
-    const { readArticle, loadArticle, findArticleByUrl, loadArticleByUrl, updateArticleFromHtml } =
-      useArticles(abortControllerRef);
+    const {
+      readArticle,
+      loadArticle,
+      findArticleByUrl,
+      loadArticleByUrl,
+      updateArticleFromHtml,
+    } = useArticles(abortControllerRef);
 
     const requestArticle = useCallback(
       async (id: Entry["id"]) => {
@@ -198,7 +208,12 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
           if (body) setBodyHtml(body);
         }
       });
-    }, [onLoaderClosed, selectedEntry, updateArticleFromHtml, setAnnotationsFromArticle]);
+    }, [
+      onLoaderClosed,
+      selectedEntry,
+      updateArticleFromHtml,
+      setAnnotationsFromArticle,
+    ]);
 
     return (
       <>

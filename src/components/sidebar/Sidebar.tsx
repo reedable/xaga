@@ -79,7 +79,6 @@ export function Sidebar({
     setSpin(true);
 
     iidRef.current = setInterval(() => {
-      console.log(">>>", Date.now(), stopRequestedRef.current);
       if (stopRequestedRef.current) {
         setSpin(false);
         clearInterval(iidRef.current);
