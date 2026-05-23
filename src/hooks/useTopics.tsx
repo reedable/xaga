@@ -1,7 +1,7 @@
 import { useCallback, useContext, type RefObject } from "react";
 import { usePlatform } from "../platform/Platform";
 import TopicsContext from "../providers/TopicsContext";
-import type { Topic } from "../types";
+import type { Annotation, Entry, Filter, Topic } from "../types";
 import sortByUnreadCount from "../utils/sortByUnreadCount";
 import { useSidebar } from "./useSidebar";
 
@@ -52,6 +52,54 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     [abortControllerRef, platform]
   );
 
+  const listTopicItems = useCallback(
+    async (id: string, filter: Filter) => {
+      const signal = abortControllerRef.current.signal;
+      try {
+        return await platform.listTopicItems(signal, id, filter);
+      } catch {
+        return undefined;
+      }
+    },
+    [abortControllerRef, platform]
+  );
+
+  const addTopicItem = useCallback(
+    async (topicId: string, item: Entry | Annotation) => {
+      const signal = abortControllerRef.current.signal;
+      try {
+        return await platform.addTopicItem(signal, topicId, item);
+      } catch {
+        // surfaced via dialog
+      }
+    },
+    [abortControllerRef, platform]
+  );
+
+  const removeTopicItem = useCallback(
+    async (topicId: string, itemId: string) => {
+      const signal = abortControllerRef.current.signal;
+      try {
+        return await platform.removeTopicItem(signal, topicId, itemId);
+      } catch {
+        // surfaced via dialog
+      }
+    },
+    [abortControllerRef, platform]
+  );
+
+  const listEntryTopics = useCallback(
+    async (entryId: string) => {
+      const signal = abortControllerRef.current.signal;
+      try {
+        return await platform.listEntryTopics(signal, entryId);
+      } catch {
+        return undefined;
+      }
+    },
+    [abortControllerRef, platform]
+  );
+
   const requestTopics = useCallback(async () => {
     const results = await listTopics(sortByUnreadCount);
     if (results) setTopics(results);
@@ -65,5 +113,9 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     createTopic,
     saveTopic,
     deleteTopic,
+    listTopicItems,
+    addTopicItem,
+    removeTopicItem,
+    listEntryTopics,
   };
 }

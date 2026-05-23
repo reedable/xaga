@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import css from "./AppLayout.module.css";
 import { ItemView } from "./components/content/ItemView";
-import EditCollectionDialog from "./components/dialogs/EditCollectionDialog";
 import EditFeedDialog from "./components/dialogs/EditFeedDialog";
 import EditTopicDialog from "./components/dialogs/EditTopicDialog";
 import { ItemList } from "./components/list/ItemList";
@@ -13,8 +12,7 @@ import { TitleBar } from "./components/titlebar/TitleBar";
 import useAbortController from "./hooks/useAbortController";
 import { useFeeds } from "./hooks/useFeeds";
 import { useTopics } from "./hooks/useTopics";
-import { useCollections } from "./hooks/useCollections";
-import { isFilter, type Collection, type Feed, type Topic } from "./types";
+import { isFilter, type Feed, type Topic } from "./types";
 
 const storedFilter = (() => {
   try {
@@ -37,10 +35,6 @@ export function AppLayout() {
   const [isAddingTopic, setIsAddingTopic] = useState(false);
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
   const [isAddingFeed, setIsAddingFeed] = useState(false);
-  const [editingCollection, setEditingCollection] = useState<Collection | null>(null);
-  const [isAddingCollection, setIsAddingCollection] = useState(false);
-
-  // Manage Topic
 
   const {
     requestTopics,
@@ -52,14 +46,6 @@ export function AppLayout() {
 
   const { requestFeeds, addFeed, renameFeed, deleteFeed, setPinnedFeedIds } =
     useFeeds(abortControllerRef);
-
-  const {
-    requestCollections,
-    createCollection,
-    saveCollection,
-    deleteCollection,
-    setPinnedCollectionIds,
-  } = useCollections(abortControllerRef);
 
   const closeEditTopic = useCallback(() => {
     setEditingTopic(null);
@@ -110,45 +96,6 @@ export function AppLayout() {
       await requestTopics();
     },
     [deleteTopic, setPinnedTopicIds, requestTopics]
-  );
-
-  // Manage collection
-
-  const closeEditCollection = useCallback(() => {
-    setEditingCollection(null);
-    setIsAddingCollection(false);
-  }, []);
-
-  const handleSaveCollection = useCallback(
-    async (title: string, pinned: boolean) => {
-      let collection: Collection | undefined;
-
-      if (editingCollection) {
-        collection = await saveCollection({ ...editingCollection, title });
-      } else {
-        collection = await createCollection(title);
-      }
-
-      if (collection) {
-        setPinnedCollectionIds((prev) =>
-          pinned
-            ? prev.includes(collection.id) ? prev : [...prev, collection.id]
-            : prev.filter((id) => id !== collection.id)
-        );
-        await requestCollections();
-        navigate("/?filter=all", { state: { collectionId: collection.id } });
-      }
-    },
-    [editingCollection, saveCollection, createCollection, setPinnedCollectionIds, requestCollections, navigate]
-  );
-
-  const handleDeleteCollection = useCallback(
-    async (collection: Collection) => {
-      await deleteCollection(collection.id);
-      setPinnedCollectionIds((prev) => prev.filter((id) => id !== collection.id));
-      await requestCollections();
-    },
-    [deleteCollection, setPinnedCollectionIds, requestCollections]
   );
 
   const closeEditFeed = useCallback(() => {
@@ -206,10 +153,6 @@ export function AppLayout() {
     requestTopics();
   }, [requestTopics]);
 
-  useEffect(() => {
-    requestCollections();
-  }, [requestCollections]);
-
   return (
     <div className={css.Root}>
       <TitleBar className={css.TitleBar} />
@@ -219,14 +162,12 @@ export function AppLayout() {
           className={css.Sidebar}
           onAddFeed={() => setIsAddingFeed(true)}
           onAddTopic={() => setIsAddingTopic(true)}
-          onAddCollection={() => setIsAddingCollection(true)}
         />
 
         <ItemList
           className={css.ItemList}
           onEditFeed={setEditingFeed}
           onEditTopic={setEditingTopic}
-          onEditCollection={setEditingCollection}
         />
 
         <ItemView className={css.ItemView} />
@@ -238,14 +179,6 @@ export function AppLayout() {
           />
         </Collapse>
       </div>
-
-      <EditCollectionDialog
-        open={editingCollection !== null || isAddingCollection}
-        collection={editingCollection}
-        onClose={closeEditCollection}
-        onSave={handleSaveCollection}
-        onDelete={handleDeleteCollection}
-      />
 
       <EditTopicDialog
         open={editingTopic !== null || isAddingTopic}

@@ -9,7 +9,6 @@ import type {
   Annotation,
   AnnotationSummary,
   Article,
-  Collection,
   Embedded,
   Entry,
   Feed,
@@ -78,17 +77,6 @@ const TopicSchema = ItemSchema.extend({
   threshold: z.number().nullable().optional(),
   entry_count: z.number(),
   unread_count: z.number(),
-});
-
-const CollectionSchema = ItemSchema.extend({
-  entry_count: z.number(),
-  unread_count: z.number(),
-});
-
-const toCollection = (data: z.infer<typeof CollectionSchema>): Collection => ({
-  ...toItem(data),
-  entryCount: data.entry_count,
-  unreadCount: data.unread_count,
 });
 
 const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
@@ -621,110 +609,53 @@ export class TauriPlatform implements Platform {
     return TopicSchema.transform(toTopic).parse(result);
   }
 
-  // Collections ---------------------------------------------------------------
-
-  async listCollections(signal: AbortSignal): Promise<Collection[]> {
-    const invoker = decorate(invoke)
-      .with(abortable, { signal })
-      .with(logged, { logger, name: "list_collections" });
-
-    const results = await invoker<unknown[]>("list_collections");
-    return results
-      .map((e) => CollectionSchema.transform(toCollection).safeParse(e))
-      .filter((e) => !e.error)
-      .map((e) => e.data);
-  }
-
-  async listEntryCollections(
-    signal: AbortSignal,
-    entryId: string
-  ): Promise<string[]> {
-    const invoker = decorate(invoke)
-      .with(abortable, { signal })
-      .with(logged, { logger, name: "list_entry_collections" });
-    return invoker<string[]>("list_entry_collections", { entryId });
-  }
-
-  async addCollectionItem(
-    signal: AbortSignal,
-    collectionId: string,
-    item: Entry | Annotation
-  ): Promise<Collection> {
-    const invoker = decorate(invoke)
-      .with(abortable, { signal })
-      .with(logged, { logger, name: "add_collection_item" });
-    const collectionItem = isAnnotation(item)
-      ? { type: "annotation", id: item.id }
-      : { type: "entry", id: item.id };
-    const result = await invoker<unknown>("add_collection_item", {
-      collectionId,
-      item: collectionItem,
-    });
-    return CollectionSchema.transform(toCollection).parse(result);
-  }
-
-  async removeCollectionItem(
-    signal: AbortSignal,
-    collectionId: string,
-    itemId: string
-  ): Promise<Collection> {
-    const invoker = decorate(invoke)
-      .with(abortable, { signal })
-      .with(logged, { logger, name: "remove_collection_item" });
-    const result = await invoker<unknown>("remove_collection_item", {
-      collectionId,
-      itemId,
-    });
-    return CollectionSchema.transform(toCollection).parse(result);
-  }
-
-  async listCollectionItems(
+  async listTopicItems(
     signal: AbortSignal,
     id: string,
     filter: Filter
   ): Promise<SavedItem[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "list_collection_items" });
-
-    const results = await invoker<unknown[]>("list_collection_items", {
-      id,
-      itemFilter: filter,
-    });
+      .with(logged, { logger, name: "list_topic_items" });
+    const results = await invoker<unknown[]>("list_topic_items", { id, itemFilter: filter });
     return results
       .map((e) => SavedItemSchema.transform(toSavedItem).safeParse(e))
       .filter((e) => !e.error)
       .map((e) => e.data);
   }
 
-  async createCollection(
+  async addTopicItem(
     signal: AbortSignal,
-    title: string
-  ): Promise<Collection> {
+    topicId: string,
+    item: Entry | Annotation
+  ): Promise<Topic> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "create_collection" });
-    const result = await invoker<unknown>("create_collection", { title });
-    return CollectionSchema.transform(toCollection).parse(result);
+      .with(logged, { logger, name: "add_topic_item" });
+    const topicItem = isAnnotation(item)
+      ? { type: "annotation", id: item.id, reference: item.reference }
+      : { type: "entry", id: item.id };
+    const result = await invoker<unknown>("add_topic_item", { topicId, item: topicItem });
+    return TopicSchema.transform(toTopic).parse(result);
   }
 
-  async saveCollection(
+  async removeTopicItem(
     signal: AbortSignal,
-    id: string,
-    title: string
-  ): Promise<Collection> {
+    topicId: string,
+    itemId: string
+  ): Promise<Topic> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "save_collection" });
-    const result = await invoker<unknown>("save_collection", { id, title });
-    return CollectionSchema.transform(toCollection).parse(result);
+      .with(logged, { logger, name: "remove_topic_item" });
+    const result = await invoker<unknown>("remove_topic_item", { topicId, itemId });
+    return TopicSchema.transform(toTopic).parse(result);
   }
 
-  async deleteCollection(signal: AbortSignal, id: string): Promise<void> {
+  async listEntryTopics(signal: AbortSignal, entryId: string): Promise<string[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "delete_collection" });
-    await invoker("delete_collection", { id });
+      .with(logged, { logger, name: "list_entry_topics" });
+    return invoker<string[]>("list_entry_topics", { entryId });
   }
 
   // Bookmarks -----------------------------------------------------------------

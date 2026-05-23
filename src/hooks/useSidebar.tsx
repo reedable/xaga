@@ -1,6 +1,6 @@
 import { useCallback, useState, type RefObject } from "react";
 import { usePlatform } from "../platform/Platform";
-import type { Collection, Feed, Topic } from "../types";
+import type { Feed, Topic } from "../types";
 
 export function useSidebar(abortControllerRef: RefObject<AbortController>) {
   const platform = usePlatform();
@@ -41,22 +41,5 @@ export function useSidebar(abortControllerRef: RefObject<AbortController>) {
     [abortControllerRef, platform]
   );
 
-  const listCollections = useCallback(
-    async (compare?: (a: Collection, b: Collection) => number) => {
-      const signal = abortControllerRef.current.signal;
-      setLoading(true);
-
-      try {
-        const results = await platform.listCollections(signal);
-        return compare ? results?.sort(compare) : results;
-      } catch (e) {
-        setError(e);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [abortControllerRef, platform]
-  );
-
-  return { loading, error, listFeeds, listTopics, listCollections };
+  return { loading, error, listFeeds, listTopics };
 }

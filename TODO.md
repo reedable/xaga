@@ -6,6 +6,10 @@
 - [x] [Logger.ts](src/utils/Logger.ts): Context tracking is broken
 - [x] Color code annotation quotes icon
 - [ ] Color code bookmarks and bookmark icons
+- [ ] [ItemList.tsx](src/components/list/ItemList.tsx): Item list does not reload after adding or removing a manual item via TopicMenuButton
+- [ ] [ItemList.tsx](src/components/list/ItemList.tsx): `onAnnotationChanged` only patches items in place — does not add new annotations to or remove deleted annotations from the list
+- [ ] [topics.rs](crates/xaga-core/src/topics.rs): `list_entry_topics` scans all topic files O(n) — called on every annotation removal and every TopicMenuButton open; needs a reverse index
+- [x] [TopicMenuButton.tsx](src/components/content/TopicMenuButton.tsx): Long topic lists make the "Add to Topic" menu unwieldy — replace MUI Menu with a right-side Drawer containing a filter input and scrollable topic list
 
 ## Medium (days)
 

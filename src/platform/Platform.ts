@@ -4,7 +4,6 @@ import type {
   Annotation,
   AnnotationSummary,
   Article,
-  Collection,
   Embedded,
   Entry,
   Feed,
@@ -84,16 +83,10 @@ export interface Platform {
   deleteTopic(signal: AbortSignal, id: string): Promise<void>;
   listTopics(signal: AbortSignal): Promise<Topic[]>;
   readTopic(signal: AbortSignal, id: string): Promise<Topic>;
-
-  // Collections
-  listCollections(signal: AbortSignal): Promise<Collection[]>;
-  listCollectionItems(signal: AbortSignal, id: string, filter: Filter): Promise<SavedItem[]>;
-  listEntryCollections(signal: AbortSignal, entryId: string): Promise<string[]>;
-  addCollectionItem(signal: AbortSignal, collectionId: string, item: Entry | Annotation): Promise<Collection>;
-  removeCollectionItem(signal: AbortSignal, collectionId: string, itemId: string): Promise<Collection>;
-  createCollection(signal: AbortSignal, title: string): Promise<Collection>;
-  saveCollection(signal: AbortSignal, id: string, title: string): Promise<Collection>;
-  deleteCollection(signal: AbortSignal, id: string): Promise<void>;
+  listTopicItems(signal: AbortSignal, id: string, filter: Filter): Promise<SavedItem[]>;
+  addTopicItem(signal: AbortSignal, topicId: string, item: Entry | Annotation): Promise<Topic>;
+  removeTopicItem(signal: AbortSignal, topicId: string, itemId: string): Promise<Topic>;
+  listEntryTopics(signal: AbortSignal, entryId: string): Promise<string[]>;
 
   // Bookmarks
   addBookmark(signal: AbortSignal, id: string): Promise<Entry>;

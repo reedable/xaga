@@ -164,7 +164,7 @@ export function Reader({
         note: tooltip.note ?? undefined,
       };
       onSaveAnnotation?.(annotation);
-      await tooltipRef.current?.saveAnnotationToCollections(
+      await tooltipRef.current?.saveAnnotationToTopics(
         annotation as Annotation
       );
     }

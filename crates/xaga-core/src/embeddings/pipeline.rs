@@ -240,9 +240,11 @@ pub async fn embed_file(
 
     // ── Annotations ──────────────────────────────────────────────────────────
 
-    if !fm.annotations.is_empty() {
-        embed_annotations(&id, &fm, embedder, db, annotation_tx).await?;
-    }
+    // Always reconcile annotation rows — even when fm.annotations is empty —
+    // so that removing the last annotation from an article deletes its stale
+    // LanceDB row.  The function is a no-op when both the file and the DB have
+    // zero annotations for this article.
+    embed_annotations(&id, &fm, embedder, db, annotation_tx).await?;
 
     Ok(())
 }

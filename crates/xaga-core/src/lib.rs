@@ -1,5 +1,4 @@
 pub mod articles;
-pub mod collections;
 pub mod entry_cache;
 pub mod opml;
 pub mod entries;

@@ -6,7 +6,6 @@ import { Settings } from "./components/settings/Settings";
 import { useCacheReady } from "./hooks/useCacheReady";
 import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
-import { CollectionsProvider } from "./providers/CollectionsProvider";
 import FeedsProvider from "./providers/FeedsProvider";
 import { TopicsProvider } from "./providers/TopicsProvider";
 
@@ -42,14 +41,12 @@ export default function App({ entryPoint }: { entryPoint: string }) {
       ) : (
         <BrowserRouter>
           <TopicsProvider>
-            <CollectionsProvider>
-              <FeedsProvider>
-                <Routes>
-                  <Route path="/" element={cacheReady ? <AppLayout /> : null} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-              </FeedsProvider>
-            </CollectionsProvider>
+            <FeedsProvider>
+              <Routes>
+                <Route path="/" element={cacheReady ? <AppLayout /> : null} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </FeedsProvider>
           </TopicsProvider>
         </BrowserRouter>
       )}

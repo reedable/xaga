@@ -2,6 +2,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use xaga_core::articles;
 use xaga_core::embeddings::EmbeddingsDb;
 use xaga_core::entries;
+use xaga_core::topics;
 use xaga_core::types::AnnotationSummary;
 
 use crate::{article_loader, AppState};
@@ -183,9 +184,19 @@ pub async fn remove_annotation(
 ) -> Result<articles::Article, String> {
     require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
-    articles::remove_annotation(&data_dir, &article_id, &annotation_id)
+    let result = articles::remove_annotation(&data_dir, &article_id, &annotation_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Evict the deleted annotation from any topic items lists immediately,
+    // so topic item lists don't serve stale data before LanceDB catches up.
+    if let Ok(topic_ids) = topics::list_entry_topics(&data_dir, &annotation_id).await {
+        for topic_id in topic_ids {
+            let _ = topics::remove_topic_item(&data_dir, &topic_id, &annotation_id).await;
+        }
+    }
+
+    Ok(result)
 }
 
 #[tauri::command]

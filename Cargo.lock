@@ -10003,8 +10003,10 @@ dependencies = [
  "dirs 5.0.1",
  "reqwest 0.12.28",
  "serde",
+ "serde_yaml",
  "tokio",
  "toml 0.8.2",
+ "uuid",
  "xaga-core",
 ]
 

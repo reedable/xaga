@@ -240,7 +240,6 @@ export type NavigationState = {
   topicId?: Topic["id"];
   feedId?: Feed["id"];
   shortcutId?: Shortcut["id"];
-  collectionId?: Collection["id"];
   entryId?: Entry["id"];
   annotationId?: Annotation["id"];
   url?: Entry["url"];

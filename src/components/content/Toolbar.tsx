@@ -18,7 +18,7 @@ import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
 import { usePlatform } from "../../platform/Platform";
 import { isArticle, type Entry } from "../../types";
-import { CollectionMenuButton } from "./CollectionMenuButton";
+import { TopicMenuButton } from "./TopicMenuButton";
 import { AddressBar } from "../AddressBar";
 import css from "./Toolbar.module.css";
 
@@ -227,7 +227,7 @@ export function Toolbar({ reload }: ToolbarProps) {
               </span>
             </Tooltip>
 
-            <CollectionMenuButton item={entry} />
+            <TopicMenuButton item={entry} />
           </div>
         </div>
 

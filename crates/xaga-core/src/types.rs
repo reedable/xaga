@@ -236,6 +236,9 @@ pub struct Topic {
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub threshold: Option<f32>,
+    /// Storage only — never serialized to JSON sent to the frontend.
+    #[serde(skip)]
+    pub items: Vec<CollectionItem>,
     pub entry_count: usize,
     pub unread_count: usize,
 }
@@ -281,13 +284,17 @@ impl Item for Feed {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum CollectionItem {
     Entry { id: String },
-    Annotation { id: String },
+    /// `reference` is the parent article's ID, stored so the annotation can be
+    /// looked up from the article file without scanning the whole library or
+    /// relying on LanceDB. Older entries that pre-date this field deserialize
+    /// with `reference = ""` via the serde default.
+    Annotation { id: String, #[serde(default)] reference: String },
 }
 
 impl CollectionItem {
     pub fn id(&self) -> &str {
         match self {
-            Self::Entry { id } | Self::Annotation { id } => id,
+            Self::Entry { id } | Self::Annotation { id, .. } => id,
         }
     }
 }

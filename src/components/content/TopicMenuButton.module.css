@@ -1,0 +1,27 @@
+.Checkbox {
+  padding: 0;
+  margin-right: 8px;
+}
+
+.DrawerContent {
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  height: 100%;
+}
+
+.DrawerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 8px 16px;
+}
+
+.DrawerFilter {
+  padding: 8px 16px;
+}
+
+.DrawerList {
+  flex: 1;
+  overflow-y: auto;
+}

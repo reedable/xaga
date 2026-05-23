@@ -21,9 +21,8 @@ import {
   type MouseEvent,
 } from "react";
 import { Virtuoso } from "react-virtuoso";
-import { RELATED_THRESHOLD, TOPIC_THRESHOLD } from "../../consts";
+import { RELATED_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
-import { useCollections } from "../../hooks/useCollections";
 import useEntries from "../../hooks/useEntries";
 import { useEvents } from "../../hooks/useEvents";
 import { useFeeds } from "../../hooks/useFeeds";
@@ -45,7 +44,6 @@ import {
   isFeed,
   isFilter,
   isTopic,
-  type Collection,
   type Feed,
   type Filter,
   type Item,
@@ -63,28 +61,23 @@ function getEmptyMessage(filter: Filter, filterText: string): string {
 
 type ItemListProps = {
   className?: string;
-  // selectedCollection: Collection;
   onEditFeed: (feed: Feed) => void;
   onEditTopic: (topic: Topic) => void;
-  onEditCollection: (collection: Collection) => void;
 };
 
 export function ItemList({
   className,
-  // selectedCollection,
   onEditFeed,
   onEditTopic,
-  onEditCollection,
 }: ItemListProps) {
   const { show, state, searchParams, setSearchParams } = useRouter();
-  const { feedId, topicId, shortcutId, collectionId, entryId: selectedItemId } = state;
+  const { feedId, topicId, shortcutId, entryId: selectedItemId } = state;
   const filterParam = searchParams.get("filter");
   const filter: Filter = isFilter(filterParam) ? filterParam : "unread";
 
   const [abort, abortControllerRef] = useAbortController();
-  const { topics } = useTopics(abortControllerRef);
+  const { topics, listTopicItems } = useTopics(abortControllerRef);
   const { feeds, loading: loadingFeeds } = useFeeds(abortControllerRef);
-  const { collections, listCollectionItems } = useCollections(abortControllerRef);
   const [loading, setLoading] = useState(false);
 
   const selectedCollection = useMemo(
@@ -92,9 +85,8 @@ export function ItemList({
       (feedId && feeds.find((f) => f.id === feedId)) ||
       (topicId && topics.find((t) => t.id === topicId)) ||
       (shortcutId && SHORTCUTS.find((s) => s.id === shortcutId)) ||
-      (collectionId && collections.find((c) => c.id === collectionId)) ||
       ALL_ITEMS,
-    [feedId, topicId, shortcutId, collectionId, feeds, topics, collections]
+    [feedId, topicId, shortcutId, feeds, topics]
   );
 
   const { listEntries, listAllItems, markEntryRead } =
@@ -102,7 +94,7 @@ export function ItemList({
 
   const { listSaved } = useSaved(abortControllerRef);
 
-  const { queryByItem, queryByBookmarks, queryByAnnotations, queryBySaved } =
+  const { queryByBookmarks, queryByAnnotations, queryBySaved } =
     useRelatedItems(abortControllerRef);
 
   const { onFeedRefreshed, onUnreadChanged, onBookmarkChanged, onAnnotationChanged } = useEvents();
@@ -113,9 +105,8 @@ export function ItemList({
   const handleEdit = useMemo(() => {
     if (isFeed(selectedCollection)) return () => onEditFeed(selectedCollection);
     if (isTopic(selectedCollection)) return () => onEditTopic(selectedCollection);
-    if (collectionId && selectedCollection.id === collectionId) return () => onEditCollection(selectedCollection);
     return undefined;
-  }, [selectedCollection, collectionId, onEditFeed, onEditTopic, onEditCollection]);
+  }, [selectedCollection, onEditFeed, onEditTopic]);
 
   const displayItems = useMemo(() => {
     if (!filterText) return items;
@@ -151,14 +142,7 @@ export function ItemList({
           const entries = await listEntries(selectedList, filter);
           if (entries) setItems(entries);
         } else if (isTopic(selectedList)) {
-          const items = await queryByItem(
-            selectedList.id,
-            filter,
-            selectedList.threshold ?? TOPIC_THRESHOLD
-          );
-          if (items) setItems(items);
-        } else if (collectionId && selectedList.id === collectionId) {
-          const items = await listCollectionItems(collectionId, filter);
+          const items = await listTopicItems(selectedList.id, filter);
           if (items) setItems(items);
         } else {
           const entries = await listAllItems(filter);
@@ -175,10 +159,8 @@ export function ItemList({
       queryByAnnotations,
       queryBySaved,
       listEntries,
-      queryByItem,
+      listTopicItems,
       listAllItems,
-      collectionId,
-      listCollectionItems,
     ]
   );
 
@@ -216,7 +198,7 @@ export function ItemList({
     })();
     // Depend on IDs, not objects, so feed/topic identity changes from
     // requestFeeds/requestTopics don't re-trigger a full list reload.
-  }, [feedId, topicId, shortcutId, collectionId, requestItems, abort]);
+  }, [feedId, topicId, shortcutId, requestItems, abort]);
 
   useEffect(() => {
     return onUnreadChanged((entry) => {

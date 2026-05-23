@@ -2,13 +2,11 @@ import { Refresh } from "@mui/icons-material";
 import { IconButton, Tooltip } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
-import { useCollections } from "../../hooks/useCollections";
 import { useFeeds } from "../../hooks/useFeeds";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useTopics } from "../../hooks/useTopics";
 import cx from "../../utils/cx";
 import sortByUnreadCount from "../../utils/sortByUnreadCount";
-import CollectionList from "./CollectionList";
 import FeedList from "./FeedList";
 import ShortcutList from "./ShortcutList";
 import css from "./Sidebar.module.css";
@@ -18,16 +16,14 @@ type SidebarProps = {
   className?: string;
   onAddFeed: () => void;
   onAddTopic: () => void;
-  onAddCollection: () => void;
 };
 
-type ListType = "SHORTCUTS" | "COLLECTIONS" | "TOPICS" | "FEEDS";
+type ListType = "SHORTCUTS" | "TOPICS" | "FEEDS";
 
 export function Sidebar({
   className,
   onAddFeed,
   onAddTopic,
-  onAddCollection,
 }: SidebarProps) {
   const [, abortControllerRef] = useAbortController();
 
@@ -36,26 +32,13 @@ export function Sidebar({
   const { loading, feeds, pinnedFeedIds, refreshAllFeeds } =
     useFeeds(abortControllerRef);
 
-  const { collections, pinnedCollectionIds } =
-    useCollections(abortControllerRef);
-
   const pinnedCollections = useMemo(
     () =>
       [
         ...pinnedTopicIds.flatMap((id) => topics.filter((t) => t.id === id)),
         ...pinnedFeedIds.flatMap((id) => feeds.filter((f) => f.id === id)),
-        ...pinnedCollectionIds.flatMap((id) =>
-          collections.filter((c) => c.id === id)
-        ),
       ].sort(sortByUnreadCount),
-    [
-      feeds,
-      pinnedFeedIds,
-      pinnedTopicIds,
-      topics,
-      collections,
-      pinnedCollectionIds,
-    ]
+    [feeds, pinnedFeedIds, pinnedTopicIds, topics]
   );
 
   const [expandedList, setExpandedList] = useLocalStorage<ListType | null>(
@@ -119,13 +102,6 @@ export function Sidebar({
         onAddTopic={onAddTopic}
         onClickHeader={() => handleExpandedList("TOPICS")}
         isExpanded={expandedList === "TOPICS"}
-      />
-
-      <CollectionList
-        collections={collections}
-        onAddCollection={onAddCollection}
-        onClickHeader={() => handleExpandedList("COLLECTIONS")}
-        isExpanded={expandedList === "COLLECTIONS"}
       />
 
       <FeedList

@@ -13,10 +13,10 @@ import { COLOR_NAMES } from "../../colors";
 import type { Annotation, Entry } from "../../types";
 import cx from "../../utils/cx";
 import css from "./AnnotationTooltip.module.css";
-import { CollectionMenuButton, type CollectionMenuButtonHandle } from "./CollectionMenuButton";
+import { TopicMenuButton, type TopicMenuButtonHandle } from "./TopicMenuButton";
 
 export interface AnnotationTooltipHandle {
-  saveAnnotationToCollections: (annotation: Entry | Annotation) => Promise<void>;
+  saveAnnotationToTopics: (annotation: Entry | Annotation) => Promise<void>;
 }
 
 export interface AnnotationTooltipProps {
@@ -57,15 +57,15 @@ export const AnnotationTooltip = forwardRef<AnnotationTooltipHandle, AnnotationT
     onChange,
     onClose,
   }, ref) {
-    const collectionMenuRef = useRef<CollectionMenuButtonHandle | null>(null);
+    const collectionMenuRef = useRef<TopicMenuButtonHandle | null>(null);
 
     const initialNote = note ?? "";
     const [noteValue, setNoteValue] = useState(initialNote);
     const [pendingRemove, setPendingRemove] = useState(false);
 
     useImperativeHandle(ref, () => ({
-      saveAnnotationToCollections: (item: Entry | Annotation) =>
-        collectionMenuRef.current?.saveToCollections(item) ?? Promise.resolve(),
+      saveAnnotationToTopics: (item: Entry | Annotation) =>
+        collectionMenuRef.current?.saveToTopics(item) ?? Promise.resolve(),
     }));
 
     const handleNoteKeyDown = useCallback(
@@ -152,7 +152,7 @@ export const AnnotationTooltip = forwardRef<AnnotationTooltipHandle, AnnotationT
               ))}
 
               <div className={css.ColorRowAction}>
-                <CollectionMenuButton ref={collectionMenuRef} item={annotation ?? null} />
+                <TopicMenuButton ref={collectionMenuRef} item={annotation ?? null} />
               </div>
             </div>
           </div>
