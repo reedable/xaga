@@ -3,7 +3,7 @@ use std::path::Path;
 
 use thiserror::Error;
 
-use crate::embeddings::EmbeddingsDb;
+use crate::embeddings::{EmbeddingsDb, RowKind};
 use crate::feeds;
 use crate::filter;
 use crate::types::{EmbeddedEntry, Entry, ItemFilter};
@@ -33,6 +33,8 @@ pub enum EmbeddedItemSource {
     RelatedToSaved { limit: Option<usize>, min_similarity: Option<f32>, max_similarity: Option<f32> },
     /// Items related to an arbitrary pre-computed query vector (e.g. from embedded search text).
     RelatedToVector { vector: Vec<f32>, limit: Option<usize>, min_similarity: Option<f32>, max_similarity: Option<f32> },
+    /// Topics ranked by similarity to a given item.
+    TopicsRelatedTo { id: String, limit: Option<usize>, min_similarity: Option<f32> },
 }
 
 // ── Error ─────────────────────────────────────────────────────────────────────
@@ -78,7 +80,7 @@ pub async fn list_embedded_items(
     match source {
         EmbeddedItemSource::RelatedTo { id, limit, min_similarity, max_similarity } => {
             let db = EmbeddingsDb::open(library).await?;
-            let entries = db.find_related(&id, limit, min_similarity, max_similarity).await?;
+            let entries = db.find_related(&id, limit, min_similarity, max_similarity, None).await?;
             filter::filter_items(entries, &item_filter)
                 .await
                 .map_err(ItemError::Io)
@@ -162,6 +164,12 @@ pub async fn list_embedded_items(
             filter::filter_items(entries, &item_filter)
                 .await
                 .map_err(ItemError::Io)
+        }
+        EmbeddedItemSource::TopicsRelatedTo { id, limit, min_similarity } => {
+            let db = EmbeddingsDb::open(library).await?;
+            db.find_related(&id, limit, min_similarity, None, Some(RowKind::Topic))
+                .await
+                .map_err(ItemError::Embeddings)
         }
     }
 }

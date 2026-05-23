@@ -100,6 +100,18 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     [abortControllerRef, platform]
   );
 
+  const rankTopicsRelatedToItem = useCallback(
+    async (itemId: string, minSimilarity?: number) => {
+      const signal = abortControllerRef.current.signal;
+      try {
+        return await platform.rankTopicsRelatedToItem(signal, itemId, minSimilarity);
+      } catch {
+        return undefined;
+      }
+    },
+    [abortControllerRef, platform]
+  );
+
   const requestTopics = useCallback(async () => {
     const results = await listTopics(sortByUnreadCount);
     if (results) setTopics(results);
@@ -117,5 +129,6 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     addTopicItem,
     removeTopicItem,
     listEntryTopics,
+    rankTopicsRelatedToItem,
   };
 }

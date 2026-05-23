@@ -6,11 +6,14 @@ import {
   Drawer,
   IconButton,
   InputAdornment,
+  LinearProgress,
   List,
   ListItem,
   ListItemButton,
   ListItemText,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from "@mui/material";
@@ -39,12 +42,16 @@ export const TopicMenuButton = forwardRef<TopicMenuButtonHandle, TopicMenuButton
       listEntryTopics,
       addTopicItem,
       removeTopicItem,
+      rankTopicsRelatedToItem,
     } = useTopics(abortControllerRef);
 
     const [open, setOpen] = useState(false);
     const [memberIds, setMemberIds] = useState<Set<string>>(new Set());
     const [selectedTopicIds, setSelectedTopicIds] = useState<Set<string>>(new Set());
     const [filterText, setFilterText] = useState("");
+    const [sortBy, setSortBy] = useState<"name" | "relevance">("name");
+    const [similarityMap, setSimilarityMap] = useState<Map<string, number>>(new Map());
+    const [relevanceLoading, setRelevanceLoading] = useState(false);
 
     useEffect(() => {
       if (!item) return;
@@ -74,6 +81,20 @@ export const TopicMenuButton = forwardRef<TopicMenuButtonHandle, TopicMenuButton
       setOpen(false);
       setFilterText("");
     }, []);
+
+    const handleSortByChange = useCallback(
+      async (_: React.MouseEvent, value: "name" | "relevance" | null) => {
+        if (!value) return;
+        setSortBy(value);
+        if (value === "relevance" && item) {
+          setRelevanceLoading(true);
+          const results = await rankTopicsRelatedToItem(item.id);
+          setSimilarityMap(new Map((results ?? []).map((r) => [r.id, r.similarity])));
+          setRelevanceLoading(false);
+        }
+      },
+      [item, rankTopicsRelatedToItem]
+    );
 
     const handleToggle = useCallback(
       async (topicId: string) => {
@@ -116,10 +137,13 @@ export const TopicMenuButton = forwardRef<TopicMenuButtonHandle, TopicMenuButton
       return [...base].sort((a, b) => {
         const aChecked = checkedIds.has(a.id);
         const bChecked = checkedIds.has(b.id);
-        if (aChecked === bChecked) return 0;
-        return aChecked ? -1 : 1;
+        if (aChecked !== bChecked) return aChecked ? -1 : 1;
+        if (sortBy === "relevance") {
+          return (similarityMap.get(b.id) ?? 0) - (similarityMap.get(a.id) ?? 0);
+        }
+        return 0;
       });
-    }, [sortedTopics, filterText, item, memberIds, selectedTopicIds]);
+    }, [sortedTopics, filterText, item, memberIds, selectedTopicIds, sortBy, similarityMap]);
 
     return (
       <>
@@ -155,11 +179,23 @@ export const TopicMenuButton = forwardRef<TopicMenuButtonHandle, TopicMenuButton
               <Typography variant="subtitle1" fontWeight={600}>
                 Add to Topic
               </Typography>
-              <IconButton size="small" onClick={handleClose}>
-                <Close fontSize="small" />
-              </IconButton>
+              <div className={css.DrawerHeaderRight}>
+                <ToggleButtonGroup
+                  value={sortBy}
+                  exclusive
+                  size="small"
+                  onChange={handleSortByChange}
+                >
+                  <ToggleButton value="name">Name</ToggleButton>
+                  <ToggleButton value="relevance" disabled={!item}>Relevance</ToggleButton>
+                </ToggleButtonGroup>
+                <IconButton size="small" onClick={handleClose}>
+                  <Close fontSize="small" />
+                </IconButton>
+              </div>
             </div>
             <Divider />
+            {relevanceLoading && <LinearProgress />}
             <div className={css.DrawerFilter}>
               <TextField
                 placeholder="Filter topics…"

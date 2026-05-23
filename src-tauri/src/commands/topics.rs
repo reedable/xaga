@@ -1,7 +1,7 @@
 use tauri::State;
 use xaga_core::item::{self, EmbeddedItemSource};
 use xaga_core::topics::{self, Topic};
-use xaga_core::types::{CollectionItem, ItemFilter, SavedItem};
+use xaga_core::types::{CollectionItem, ItemFilter, RankedItem, SavedItem};
 
 use crate::{get_unread, AppState};
 use super::{parse_item_filter, require_main_window};
@@ -153,4 +153,29 @@ pub async fn list_entry_topics(
     topics::list_entry_topics(&data_dir, &entry_id)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn rank_topics_by_item(
+    item_id: String,
+    min_similarity: Option<f32>,
+    state: State<'_, AppState>,
+) -> Result<Vec<RankedItem>, String> {
+    let data_dir = state.library.read().unwrap().clone();
+    let entries = item::list_embedded_items(
+        &data_dir,
+        EmbeddedItemSource::TopicsRelatedTo {
+            id: item_id,
+            limit: None,
+            min_similarity,
+        },
+        ItemFilter::All,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(entries
+        .into_iter()
+        .map(|e| RankedItem { id: e.entry.id, similarity: e.similarity })
+        .collect())
 }

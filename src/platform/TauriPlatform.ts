@@ -658,6 +658,20 @@ export class TauriPlatform implements Platform {
     return invoker<string[]>("list_entry_topics", { entryId });
   }
 
+  async rankTopicsRelatedToItem(
+    signal: AbortSignal,
+    itemId: string,
+    minSimilarity?: number,
+  ): Promise<Array<{ id: string } & Embedded>> {
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "rank_topics_by_item" });
+    return invoker<Array<{ id: string } & Embedded>>("rank_topics_by_item", {
+      itemId,
+      minSimilarity: minSimilarity ?? null,
+    });
+  }
+
   // Bookmarks -----------------------------------------------------------------
 
   async addBookmark(signal: AbortSignal, id: string): Promise<Entry> {

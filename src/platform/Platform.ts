@@ -87,6 +87,11 @@ export interface Platform {
   addTopicItem(signal: AbortSignal, topicId: string, item: Entry | Annotation): Promise<Topic>;
   removeTopicItem(signal: AbortSignal, topicId: string, itemId: string): Promise<Topic>;
   listEntryTopics(signal: AbortSignal, entryId: string): Promise<string[]>;
+  rankTopicsRelatedToItem(
+    signal: AbortSignal,
+    itemId: string,
+    minSimilarity?: number,
+  ): Promise<Array<{ id: string } & Embedded>>;
 
   // Bookmarks
   addBookmark(signal: AbortSignal, id: string): Promise<Entry>;

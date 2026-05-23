@@ -17,6 +17,25 @@ use crate::types::{AnnotationSummary, EmbeddedEntry, Entry};
 
 const EMBEDDING_DIM: i32 = 384;
 
+/// Restricts a similarity query to rows of a specific type.
+/// Row type is derivable from field shape — the same principle used by
+/// `list_annotations()` (`only_if("reference != ''")`).
+pub enum RowKind {
+    Entry,
+    Annotation,
+    Topic,
+}
+
+impl RowKind {
+    fn predicate(&self) -> &'static str {
+        match self {
+            RowKind::Entry => "source != ''",
+            RowKind::Annotation => "reference != ''",
+            RowKind::Topic => "source = '' AND reference = ''",
+        }
+    }
+}
+
 /// Cosine distance threshold used when the caller does not specify one.
 /// Cosine distance = 1 − cosine_similarity; range [0, 1] for unit vectors.
 /// 0.5 corresponds to cosine similarity ≥ 0.5.
@@ -670,12 +689,15 @@ impl EmbeddingsDb {
         min_similarity: f32,
         max_similarity: f32,
         limit: Option<usize>,
+        row_kind: Option<&RowKind>,
     ) -> Result<Vec<(f32, Entry, String, String)>, EmbeddingsError> {
         use arrow_array::Array;
 
-        let batches: Vec<RecordBatch> = self
-            .table
-            .query()
+        let mut q = self.table.query();
+        if let Some(kind) = row_kind {
+            q = q.only_if(kind.predicate());
+        }
+        let batches: Vec<RecordBatch> = q
             .execute()
             .await?
             .try_collect()
@@ -749,6 +771,7 @@ impl EmbeddingsDb {
         min_similarity: f32,
         max_similarity: f32,
         limit: Option<usize>,
+        row_kind: Option<&RowKind>,
     ) -> Result<Vec<EmbeddedEntry>, EmbeddingsError> {
         Ok(self
             .full_scan_scored(
@@ -757,6 +780,7 @@ impl EmbeddingsDb {
                 min_similarity,
                 max_similarity,
                 limit,
+                row_kind,
             )
             .await?
             .into_iter()
@@ -1013,6 +1037,7 @@ impl EmbeddingsDb {
         limit: Option<usize>,
         min_similarity: Option<f32>,
         max_similarity: Option<f32>,
+        row_kind: Option<RowKind>,
     ) -> Result<Vec<EmbeddedEntry>, EmbeddingsError> {
         // 1. Fetch the query vector for this id.
         let escaped = id.replace('\'', "''");
@@ -1054,6 +1079,7 @@ impl EmbeddingsDb {
                     min_similarity.unwrap_or(f32::NEG_INFINITY),
                     max_similarity.unwrap(),
                     limit,
+                    row_kind.as_ref(),
                 )
                 .await;
         }
@@ -1071,7 +1097,10 @@ impl EmbeddingsDb {
             .bypass_vector_index()
             .distance_type(DistanceType::Cosine)
             .distance_range(None, upper_distance)
-            .only_if(format!("id != '{escaped}'"))
+            .only_if(match &row_kind {
+                Some(k) => format!("id != '{escaped}' AND {}", k.predicate()),
+                None => format!("id != '{escaped}'"),
+            })
             .limit(effective_limit)
             .execute()
             .await?
@@ -1115,6 +1144,7 @@ impl EmbeddingsDb {
                     min_similarity.unwrap_or(f32::NEG_INFINITY),
                     max_similarity.unwrap(),
                     limit,
+                    None,
                 )
                 .await;
         }

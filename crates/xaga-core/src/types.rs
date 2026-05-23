@@ -121,6 +121,16 @@ pub struct AnnotationSummary {
     pub url: String,
 }
 
+// ── RankedItem ────────────────────────────────────────────────────────────────
+
+/// A minimal similarity result: just an item ID and its cosine similarity score.
+/// Mirrors the TypeScript `{ id: string } & Embedded` pattern.
+#[derive(Debug, Serialize)]
+pub struct RankedItem {
+    pub id: String,
+    pub similarity: f32,
+}
+
 // ── EmbeddedEntry ─────────────────────────────────────────────────────────────
 
 /// An `Entry` returned from an embedding similarity query, carrying its score.

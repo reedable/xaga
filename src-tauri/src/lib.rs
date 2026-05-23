@@ -561,6 +561,7 @@ pub fn run() {
             commands::topics::remove_topic_item,
             commands::topics::list_topic_items,
             commands::topics::list_entry_topics,
+            commands::topics::rank_topics_by_item,
             commands::embeddings::query_by_item,
             commands::embeddings::query_by_bookmarks,
             commands::embeddings::query_by_annotations,
