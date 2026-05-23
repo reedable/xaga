@@ -46,7 +46,7 @@ export function Toolbar({ reload }: ToolbarProps) {
   const { addBookmark, removeBookmark } = useBookmarks(abortControllerRef);
   const { markEntryRead, markEntryUnread } = useEntries(abortControllerRef);
   const { onBookmarkChanged, onUnreadChanged } = useEvents();
-  const { findArticleByUrl, loadArticleByUrl, loading } =
+  const { findArticleByUrl, loadArticle, loadArticleByUrl, loading } =
     useArticles(abortControllerRef);
 
   const { url, entryId } = state;
@@ -86,10 +86,10 @@ export function Toolbar({ reload }: ToolbarProps) {
     [findArticleByUrl, loadArticleByUrl, openUrl, navigate, state, searchParams]
   );
 
-  const handleOpenUrl = useCallback(() => {
-    if (!url) return;
-    void platform.openUrl(url);
-  }, [url, platform]);
+  const handleShowOriginalSite = useCallback(async () => {
+    if (!entry) return;
+    await loadArticle(entry, true);
+  }, [entry, loadArticle]);
 
   const getFavicon = useCallback(async (url?: string) => {
     if (!url) return null;
@@ -158,12 +158,12 @@ export function Toolbar({ reload }: ToolbarProps) {
       <div className={css.AddressBarContainer}>
         <div>
           <div className={css.AddressBar}>
-            <Tooltip title="Open in browser">
+            <Tooltip title="Show Original Site">
               <span>
                 <IconButton
                   size="small"
-                  onClick={handleOpenUrl}
-                  disabled={!url}
+                  onClick={handleShowOriginalSite}
+                  disabled={!entry}
                 >
                   {favicon ? (
                     <div className={css.Favicon}>
@@ -171,7 +171,7 @@ export function Toolbar({ reload }: ToolbarProps) {
                         src={favicon}
                         width={16}
                         height={16}
-                        alt="Open in browser"
+                        alt="Show original site"
                         style={{ margin: "0 2px" }}
                       />
                     </div>

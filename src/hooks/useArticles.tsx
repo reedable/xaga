@@ -1,12 +1,10 @@
 import { useCallback, useState, type RefObject } from "react";
-import { useAppearance } from "./useAppearance";
 import { usePlatform } from "../platform/Platform";
 import { processEntry } from "../text/entryWorker";
 import type { Entry } from "../types";
 
 export function useArticles(abortControllerRef: RefObject<AbortController>) {
   const platform = usePlatform();
-  const { showOriginalSite: keepOpen } = useAppearance();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -23,7 +21,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       setLoading(true);
 
       try {
-        const html = await platform.loadArticle(signal, url, keepOpen);
+        const html = await platform.loadArticle(signal, url);
         const { title, markdown, favicon } = await processEntry(url, html);
 
         const article = await platform.createArticle(signal, {
@@ -41,7 +39,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, keepOpen, platform]
+    [abortControllerRef, platform]
   );
 
   /**
@@ -49,7 +47,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
    * the disc.
    */
   const loadArticle = useCallback(
-    async (entry: Entry) => {
+    async (entry: Entry, keepOpen = false) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
@@ -73,7 +71,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, keepOpen, platform]
+    [abortControllerRef, platform]
   );
 
   /**
@@ -93,7 +91,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       try {
         const article = await platform.readArticle(signal, entryId);
 
-        if (article.content && !keepOpen) {
+        if (article.content) {
           return article;
         }
 

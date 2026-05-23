@@ -1056,14 +1056,6 @@ export class TauriPlatform implements Platform {
     return listen<boolean>(name, listener);
   }
 
-  onShowOriginalSite(callback: (show: boolean) => void): Promise<UnlistenFn> {
-    const name = "menu:show-original-site";
-    const listener = decorate((e: { payload: boolean }) =>
-      callback(e.payload)
-    ).with(logged, { logger, name });
-    return listen<boolean>(name, listener);
-  }
-
   onLoaderClosed(
     callback: (data: { url: string; html: string }) => void
   ): Promise<UnlistenFn> {

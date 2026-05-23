@@ -6,6 +6,7 @@
 - [x] [Logger.ts](src/utils/Logger.ts): Context tracking is broken
 - [x] Color code annotation quotes icon
 - [ ] Color code bookmarks and bookmark icons
+- [ ] Move "open in browser" to a new UI location (favicon was repurposed for Show Original Site)
 - [ ] [ItemList.tsx](src/components/list/ItemList.tsx): Item list does not reload after adding or removing a manual item via TopicMenuButton
 - [ ] [ItemList.tsx](src/components/list/ItemList.tsx): `onAnnotationChanged` only patches items in place — does not add new annotations to or remove deleted annotations from the list
 - [ ] [topics.rs](crates/xaga-core/src/topics.rs): `list_entry_topics` scans all topic files O(n) — called on every annotation removal and every TopicMenuButton open; needs a reverse index
@@ -14,7 +15,7 @@
 ## Medium (days)
 
 - [ ] [TauriPlatform.ts](src/platform/TauriPlatform.ts): Invalid items silently dropped in ~10 list operations — add unified error reporting
-- [ ] Collection menu display is awkward and overlaps with annotation tooltip
+- [x] Collection menu display is awkward and overlaps with annotation tooltip
 - [ ] Sidebar is crowded/visually congested
 - [ ] [feed_entry.rs](crates/xaga-core/src/feeds/feed_entry.rs): `created_at` should come from the `.md` Entry on disk, not derived elsewhere
 - [ ] [AppearanceProvider.tsx](src/providers/AppearanceProvider.tsx): Add `systemFontFamily` and `systemFontSize` support

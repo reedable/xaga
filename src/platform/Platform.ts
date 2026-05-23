@@ -181,7 +181,6 @@ export interface Platform {
   onExportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;
   onShowArticleSummary(callback: (show: boolean) => void): Promise<UnlistenFn>;
-  onShowOriginalSite(callback: (show: boolean) => void): Promise<UnlistenFn>;
   onLoaderClosed(callback: (data: { url: string; html: string }) => void): Promise<UnlistenFn>;
   onFind(callback: () => void): Promise<UnlistenFn>;
   setFindEnabled(enabled: boolean): Promise<void>;

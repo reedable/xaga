@@ -265,14 +265,6 @@ pub fn run() {
                         false,
                         None::<&str>,
                     )?,
-                    &CheckMenuItem::with_id(
-                        app,
-                        "show_original_site",
-                        "Show Original Site",
-                        true,
-                        false,
-                        None::<&str>,
-                    )?,
                     &PredefinedMenuItem::separator(app)?,
                     &PredefinedMenuItem::fullscreen(app, Some("Enter Full Screen"))?,
                 ],
@@ -351,25 +343,6 @@ pub fn run() {
                     })
                     .unwrap_or(false);
                 app.emit("menu:show-article-summary", checked).ok();
-            }
-            "show_original_site" => {
-                let checked = app
-                    .menu()
-                    .and_then(|menu| {
-                        menu.items().ok()?.into_iter().find_map(|item| match item {
-                            MenuItemKind::Submenu(sub) if sub.id().as_ref() == "view_menu" => {
-                                Some(sub)
-                            }
-                            _ => None,
-                        })
-                    })
-                    .and_then(|view| view.get("show_original_site"))
-                    .and_then(|item| match item {
-                        MenuItemKind::Check(c) => c.is_checked().ok(),
-                        _ => None,
-                    })
-                    .unwrap_or(false);
-                app.emit("menu:show-original-site", checked).ok();
             }
             "find" => {
                 app.emit("menu:find", ()).ok();
