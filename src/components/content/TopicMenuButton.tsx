@@ -20,6 +20,7 @@ import {
 import { motion } from "framer-motion";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
+import { useEvents } from "../../hooks/useEvents";
 import { useTopics } from "../../hooks/useTopics";
 import type { Annotation, Entry } from "../../types";
 import css from "./TopicMenuButton.module.css";
@@ -37,6 +38,7 @@ export interface TopicMenuButtonHandle {
 export const TopicMenuButton = forwardRef<TopicMenuButtonHandle, TopicMenuButtonProps>(
   function TopicMenuButton({ item }, ref) {
     const [, abortControllerRef] = useAbortController();
+    const { onAnnotationRemoved } = useEvents();
     const {
       topics,
       listEntryTopics,
@@ -59,6 +61,17 @@ export const TopicMenuButton = forwardRef<TopicMenuButtonHandle, TopicMenuButton
         setMemberIds(new Set(ids ?? []));
       });
     }, [item, listEntryTopics]);
+
+    useEffect(() => {
+      if (!item) return;
+      return onAnnotationRemoved((id) => {
+        if (id === item.id) {
+          setMemberIds(new Set());
+          setOpen(false);
+          setFilterText("");
+        }
+      });
+    }, [item, onAnnotationRemoved]);
 
     useImperativeHandle(ref, () => ({
       async saveToTopics(item: Entry | Annotation) {

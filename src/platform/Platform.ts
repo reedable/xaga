@@ -176,6 +176,7 @@ export interface Platform {
   onUnreadChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
   onBookmarkChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
   onAnnotationChanged(callback: (item: SavedItem) => void): Promise<UnlistenFn>;
+  onAnnotationRemoved(callback: (id: string) => void): Promise<UnlistenFn>;
   onEmbeddingsChanged(callback: () => void): Promise<UnlistenFn>;
   onImportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onExportBookmarks(callback: () => void): Promise<UnlistenFn>;

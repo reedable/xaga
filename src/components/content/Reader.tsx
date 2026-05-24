@@ -116,14 +116,14 @@ export function Reader({
 
   const handleChangeTooltip = useCallback(
     (color: string | null, note: string) => {
-      if (tooltip && tooltip.occurrence.length > 0) {
-        const id = tooltip.annotationId;
+      if (!tooltip) return;
 
+      if (tooltip.occurrence.length > 0) {
+        const id = tooltip.annotationId;
         iframeRef.current?.contentWindow?.postMessage(
           { type: "remove-highlight", annotationId: id },
           "*"
         );
-
         if (color !== null) {
           iframeRef.current?.contentWindow?.postMessage(
             {
@@ -143,9 +143,23 @@ export function Reader({
         }
       }
 
+      if (color !== null && color !== tooltip.color) {
+        onSaveAnnotation?.({
+          id: tooltip.annotationId,
+          title: tooltip.text.join(" "),
+          reference: entryId,
+          text: tooltip.text,
+          occurrence: tooltip.occurrence,
+          color,
+          note: note || undefined,
+        });
+      } else if (color === null && tooltip.color !== null) {
+        onRemoveAnnotation?.({ id: tooltip.annotationId, reference: entryId });
+      }
+
       setTooltip((prev) => (prev ? { ...prev, color, note } : null));
     },
-    [tooltip]
+    [tooltip, onSaveAnnotation, onRemoveAnnotation, entryId]
   );
 
   const handleCloseTooltip = useCallback(async () => {
@@ -252,7 +266,11 @@ export function Reader({
           );
           break;
         case SELECTION_CLEARED:
-          setTooltip(null);
+          // SELECTION_CLEARED normally means "no text is selected", but when a
+          // tooltip is open it must be properly closed: saving if color is set,
+          // or calling remove again (harmlessly) if color was already cleared.
+          // handleCloseTooltip() handles both; setTooltip(null) would not.
+          handleCloseTooltip();
           break;
         case HIGHLIGHT_CLICKED:
           handleClickHighlight(
@@ -280,7 +298,7 @@ export function Reader({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [onClickLink, handleSelectionMade, handleClickHighlight]);
+  }, [onClickLink, handleSelectionMade, handleClickHighlight, handleCloseTooltip]);
 
   return (
     <div className={cx(css.Reader, className)}>

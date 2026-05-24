@@ -43,6 +43,12 @@ export function useEvents() {
     [platform]
   );
 
+  const onAnnotationRemoved = useCallback(
+    (callback: (id: string) => void) =>
+      subscribe(() => platform.onAnnotationRemoved(callback)),
+    [platform]
+  );
+
   const onEmbeddingsChanged = useCallback(
     (callback: () => void) =>
       subscribe(() => platform.onEmbeddingsChanged(debounced(callback, { wait: 400 }))),
@@ -70,6 +76,7 @@ export function useEvents() {
     onUnreadChanged,
     onBookmarkChanged,
     onAnnotationChanged,
+    onAnnotationRemoved,
     onEmbeddingsChanged,
     onLoaderClosed,
     onFind,

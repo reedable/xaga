@@ -196,6 +196,8 @@ pub async fn remove_annotation(
         }
     }
 
+    window.emit("annotation:removed", &annotation_id).ok();
+
     Ok(result)
 }
 
