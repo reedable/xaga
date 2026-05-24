@@ -18,11 +18,12 @@
     align-items: flex-start;
     display: flex;
     flex-direction: column;
-    padding: 1rem;
+    padding: 0.25rem 0 0 0;
 
     .HeadingWrapper {
-      align-items: center;
+      align-items: flex-start;
       display: flex;
+      padding: 0 0.25rem 0 1rem;
       width: 100%;
 
       .Heading {
@@ -32,18 +33,10 @@
       }
     }
 
-    .FilterInput {
-      margin-top: 0.5em;
-
-      input {
-        font-size: 0.8125em;
-        padding: 5px 8px;
-      }
-    }
-
     .FilterButtonGroup {
       gap: 0.25em;
       margin: 0.25em 0 0 0;
+      padding: 0 1rem;
 
       button {
         border: var(--border);
@@ -52,6 +45,16 @@
         line-height: 1.5;
         padding: 2px 8px;
         text-transform: none;
+      }
+    }
+
+    .FilterInput {
+      margin-top: 0.5em;
+      padding: 0 1rem 0.5rem 1rem;
+
+      input {
+        font-size: 0.8125em;
+        padding: 5px 8px;
       }
     }
   }

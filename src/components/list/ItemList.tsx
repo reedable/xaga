@@ -97,14 +97,21 @@ export function ItemList({
   const { queryByBookmarks, queryByAnnotations, queryBySaved } =
     useRelatedItems(abortControllerRef);
 
-  const { onFeedRefreshed, onUnreadChanged, onBookmarkChanged, onAnnotationChanged, onAnnotationRemoved } = useEvents();
+  const {
+    onFeedRefreshed,
+    onUnreadChanged,
+    onBookmarkChanged,
+    onAnnotationChanged,
+    onAnnotationRemoved,
+  } = useEvents();
 
   const [items, setItems] = useState<Item[]>([]);
   const [filterText, setFilterText] = useState("");
 
   const handleEdit = useMemo(() => {
     if (isFeed(selectedCollection)) return () => onEditFeed(selectedCollection);
-    if (isTopic(selectedCollection)) return () => onEditTopic(selectedCollection);
+    if (isTopic(selectedCollection))
+      return () => onEditTopic(selectedCollection);
     return undefined;
   }, [selectedCollection, onEditFeed, onEditTopic]);
 
@@ -274,6 +281,7 @@ export function ItemList({
           placeholder="Filter…"
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
+          variant="standard"
           slotProps={{
             input: {
               endAdornment: filterText ? (
@@ -331,7 +339,12 @@ export function ItemList({
               >
                 <ListItemText
                   primary={
-                    <Quotes quoted={isAnnotation(item)} color={isAnnotation(item) ? item.color : undefined}>{item.title}</Quotes>
+                    <Quotes
+                      quoted={isAnnotation(item)}
+                      color={isAnnotation(item) ? item.color : undefined}
+                    >
+                      {item.title}
+                    </Quotes>
                   }
                   secondary={<ItemStatus item={item} />}
                   slotProps={{
