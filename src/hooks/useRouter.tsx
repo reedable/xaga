@@ -5,6 +5,7 @@ import {
   isAnnotation,
   isCollection,
   isEntry,
+  isTopic,
   type Annotation,
   type Collection,
   type Entry,
@@ -59,9 +60,19 @@ export default function useRouter() {
     [logged_navigate, searchParams, state]
   );
 
-  const showCollection = useCallback((collection: Collection) => {
-    logger.warn("Implement me!", collection);
-  }, []);
+  const showCollection = useCallback(
+    (collection: Collection) => {
+      if (isTopic(collection)) {
+        const params = new URLSearchParams(searchParams);
+        logged_navigate(`/?${params.toString()}`, {
+          state: { topicId: collection.id },
+        });
+      } else {
+        logger.warn("Unhandled collection type", collection);
+      }
+    },
+    [logged_navigate, searchParams]
+  );
 
   const show = useCallback(
     (item: Item) => {

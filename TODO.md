@@ -1,5 +1,6 @@
 ## Small (hours)
 
+- [x] [SearchResultList.tsx](src/components/search/SearchResultList.tsx): Add type filter (Entries, Topics, Annotations) to search results
 - [ ] Color code bookmarks and bookmark icons
 - [ ] [ItemList.tsx](src/components/list/ItemList.tsx): Item list does not reload after adding or removing a manual item via TopicMenuButton
 - [ ] [ItemList.tsx](src/components/list/ItemList.tsx): `onAnnotationChanged` does not add new annotations to the list

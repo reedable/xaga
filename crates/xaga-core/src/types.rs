@@ -169,6 +169,26 @@ impl std::ops::DerefMut for EmbeddedEntry {
     fn deref_mut(&mut self) -> &mut Entry { &mut self.entry }
 }
 
+// ── EmbeddedTopic ─────────────────────────────────────────────────────────────
+
+/// A `Topic` returned from an embedding similarity query, carrying its score.
+/// Shape mirrors `Topic` — no `url`, no `is_unread`, no `is_bookmarked`.
+#[derive(Debug, Serialize)]
+pub struct EmbeddedTopic {
+    #[serde(flatten)]
+    pub topic: Topic,
+    pub similarity: f32,
+}
+
+/// Untagged union of all possible embedded search result shapes.
+/// Serializes by shape alone — no discriminator field.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum EmbeddedItem {
+    Topic(EmbeddedTopic),
+    Entry(EmbeddedEntry),
+}
+
 // ── Annotation ────────────────────────────────────────────────────────────────
 
 /// A saved highlight or annotation on a span of text in an article.

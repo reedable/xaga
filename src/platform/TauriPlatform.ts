@@ -196,11 +196,18 @@ function toEmbedded(data: z.infer<typeof EmbeddedSchema>): Embedded {
 }
 
 const EmbeddedEntrySchema = EntrySchema.extend(EmbeddedSchema.shape);
+const EmbeddedTopicSchema = TopicSchema.extend(EmbeddedSchema.shape);
 const EmbeddedItemSchema = ItemSchema.extend(EmbeddedSchema.shape);
-// EmbeddedAnnotationResultSchema is checked first: it requires `color` and `reference`,
-// which regular entries never have, so it fails fast for non-annotation rows.
+// Detection order:
+// 1. Annotation: has `color` + `reference` (entries never have these)
+// 2. Entry: has `is_unread` (topics don't — they have no url/is_unread fields)
+// 3. Topic: has `content` + `entry_count` + `unread_count`
+// 4. Generic Item: fallback
 const AnyEmbeddedItemSchema =
-  EmbeddedAnnotationResultSchema.or(EmbeddedEntrySchema).or(EmbeddedItemSchema);
+  EmbeddedAnnotationResultSchema
+    .or(EmbeddedEntrySchema)
+    .or(EmbeddedTopicSchema)
+    .or(EmbeddedItemSchema);
 
 const toAnyEmbeddedItem = (data: z.infer<typeof AnyEmbeddedItemSchema>) => {
   if ("color" in data) {
@@ -211,6 +218,12 @@ const toAnyEmbeddedItem = (data: z.infer<typeof AnyEmbeddedItemSchema>) => {
   if ("is_unread" in data) {
     return {
       ...toEntry(data as z.infer<typeof EmbeddedEntrySchema>),
+      ...toEmbedded(data as z.infer<typeof EmbeddedSchema>),
+    };
+  }
+  if ("content" in data) {
+    return {
+      ...toTopic(data as z.infer<typeof TopicSchema>),
       ...toEmbedded(data as z.infer<typeof EmbeddedSchema>),
     };
   }

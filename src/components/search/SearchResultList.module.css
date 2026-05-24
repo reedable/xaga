@@ -24,11 +24,26 @@
     display: flex;
     flex-direction: column;
     padding: 0.75em 1em;
+
+    .FilterButtonGroup {
+      gap: 0.25em;
+      margin: 0.25em 0 0 0;
+
+      button {
+        border: var(--border);
+        border-radius: 1.5em;
+        font-size: 0.8125em;
+        line-height: 1.5;
+        padding: 2px 8px;
+        text-transform: none;
+      }
+    }
   }
 
   .List {
     flex: 1;
     overflow-y: auto;
+    width: 100%;
 
     .ListItem {
       border-bottom: var(--border);

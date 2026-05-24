@@ -6,7 +6,7 @@ use thiserror::Error;
 use crate::embeddings::{EmbeddingsDb, RowKind};
 use crate::feeds;
 use crate::filter;
-use crate::types::{EmbeddedEntry, Entry, ItemFilter};
+use crate::types::{EmbeddedEntry, EmbeddedItem, EmbeddedTopic, Entry, ItemFilter};
 
 // Forwarding shim — all types have moved to `crate::types`.
 pub use crate::types::{Document, Item};
@@ -172,4 +172,21 @@ pub async fn list_embedded_items(
                 .map_err(ItemError::Embeddings)
         }
     }
+}
+
+/// Enriches raw LanceDB results: rows with no URL are topic rows.
+/// For each, loads the full Topic from disk and wraps it as EmbeddedItem::Topic.
+/// Falls back to EmbeddedItem::Entry for any row that can't be resolved as a topic.
+pub async fn enrich_embedded(library: &Path, entries: Vec<EmbeddedEntry>) -> Vec<EmbeddedItem> {
+    let mut result = Vec::with_capacity(entries.len());
+    for entry in entries {
+        if entry.entry.url.is_empty() {
+            if let Ok(topic) = crate::topics::read_topic(library, &entry.entry.id).await {
+                result.push(EmbeddedItem::Topic(EmbeddedTopic { topic, similarity: entry.similarity }));
+                continue;
+            }
+        }
+        result.push(EmbeddedItem::Entry(entry));
+    }
+    result
 }

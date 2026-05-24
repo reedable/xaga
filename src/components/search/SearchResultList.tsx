@@ -5,18 +5,22 @@ import {
   List,
   ListItemButton,
   ListItemText,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
 import useSearch from "../../hooks/useSearch";
-import { isAnnotation, isEntry, type Embedded, type Item } from "../../types";
+import { isAnnotation, isEntry, isTopic, type Embedded, type Item } from "../../types";
 import cx from "../../utils/cx";
 import formatByline from "../../utils/formatByline";
 import Quotes from "../Quotes";
 import css from "./SearchResultList.module.css";
 import { SearchInput } from "../SearchInput";
+
+type TypeFilter = "all" | "entries" | "topics" | "annotations";
 
 interface SearchResultListProps {
   className?: string;
@@ -32,6 +36,14 @@ export function SearchResultList({
   const { loading, error, search } = useSearch();
   const { onUnreadChanged, onBookmarkChanged } = useEvents();
   const [results, setResults] = useState<(Embedded & Item)[]>([]);
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+
+  const visibleResults = useMemo(() => {
+    if (typeFilter === "entries") return results.filter(isEntry);
+    if (typeFilter === "topics") return results.filter(isTopic);
+    if (typeFilter === "annotations") return results.filter(isAnnotation);
+    return results;
+  }, [results, typeFilter]);
 
   useEffect(() => {
     (async () => {
@@ -69,6 +81,18 @@ export function SearchResultList({
           <Typography variant="overline" color="text.secondary">
             Results for: {searchQuery}
           </Typography>
+          <ToggleButtonGroup
+            aria-label="Filter by type"
+            className={css.FilterButtonGroup}
+            exclusive
+            value={typeFilter}
+            onChange={(_, v) => { if (v) setTypeFilter(v); }}
+          >
+            <ToggleButton size="small" value="all" aria-label="All">All</ToggleButton>
+            <ToggleButton size="small" value="entries" aria-label="Entries">Entries</ToggleButton>
+            <ToggleButton size="small" value="topics" aria-label="Topics">Topics</ToggleButton>
+            <ToggleButton size="small" value="annotations" aria-label="Annotations">Annotations</ToggleButton>
+          </ToggleButtonGroup>
         </div>
       )}
 
@@ -94,17 +118,19 @@ export function SearchResultList({
         </div>
       )}
 
-      {searchQuery && !error && !loading && results.length === 0 && (
+      {searchQuery && !error && !loading && visibleResults.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography variant="body2" color="text.disabled">
-            No results for "{searchQuery}"
+            {typeFilter === "all"
+              ? `No results for "${searchQuery}"`
+              : `No ${typeFilter} for "${searchQuery}"`}
           </Typography>
         </div>
       )}
 
-      {results.length > 0 && (
+      {visibleResults.length > 0 && (
         <List className={css.List} disablePadding>
-          {results.map((item) => (
+          {visibleResults.map((item) => (
             <div key={item.id} className={css.ListItem}>
               <ListItemButton
                 className={css.ListItemButton}
