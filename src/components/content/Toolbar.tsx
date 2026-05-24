@@ -5,6 +5,7 @@ import {
   Circle,
   CircleOutlined,
   Language,
+  OpenInNew,
   Refresh,
   Search,
 } from "@mui/icons-material";
@@ -90,6 +91,11 @@ export function Toolbar({ reload }: ToolbarProps) {
     if (!entry) return;
     await loadArticle(entry, true);
   }, [entry, loadArticle]);
+
+  const handleOpenInBrowser = useCallback(() => {
+    if (!url) return;
+    platform.openUrl(url);
+  }, [platform, url]);
 
   const getFavicon = useCallback(async (url?: string) => {
     if (!url) return null;
@@ -184,8 +190,20 @@ export function Toolbar({ reload }: ToolbarProps) {
 
             <AddressBar url={url ?? null} onNavigate={handleNavigate} />
 
+            <Tooltip title="Open in Browser">
+              <span className={css.RevealOnHover}>
+                <IconButton
+                  size="small"
+                  onClick={handleOpenInBrowser}
+                  disabled={!url}
+                >
+                  <OpenInNew fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+
             <Tooltip title="Refresh">
-              <span>
+              <span className={css.RevealOnHover}>
                 <IconButton
                   size="small"
                   onClick={reload ?? undefined}
@@ -199,7 +217,7 @@ export function Toolbar({ reload }: ToolbarProps) {
             <Tooltip
               title={entry?.isUnread ? "Mark as read" : "Mark as unread"}
             >
-              <span>
+              <span className={css.RevealOnHover}>
                 <IconButton size="small" onClick={toggleRead} disabled={!entry}>
                   {entry?.isUnread ? (
                     <Circle fontSize="small" color="primary" />

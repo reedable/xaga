@@ -37,6 +37,18 @@
   }
 }
 
+.RevealOnHover {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.AddressBar:hover .RevealOnHover,
+.AddressBar:focus-within .RevealOnHover {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .Favicon {
   background-color: white;
   border-radius: 4px;
