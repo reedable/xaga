@@ -97,7 +97,7 @@ export function ItemList({
   const { queryByBookmarks, queryByAnnotations, queryBySaved } =
     useRelatedItems(abortControllerRef);
 
-  const { onFeedRefreshed, onUnreadChanged, onBookmarkChanged, onAnnotationChanged } = useEvents();
+  const { onFeedRefreshed, onUnreadChanged, onBookmarkChanged, onAnnotationChanged, onAnnotationRemoved } = useEvents();
 
   const [items, setItems] = useState<Item[]>([]);
   const [filterText, setFilterText] = useState("");
@@ -217,6 +217,12 @@ export function ItemList({
       setItems((prev) => prev.map((p) => (p.id === item.id ? item : p)));
     });
   }, [onAnnotationChanged]);
+
+  useEffect(() => {
+    return onAnnotationRemoved((id) => {
+      setItems((prev) => prev.filter((p) => p.id !== id));
+    });
+  }, [onAnnotationRemoved]);
 
   useEffect(() => {
     return onFeedRefreshed(() => requestItems(selectedCollectionRef.current));
