@@ -36,6 +36,7 @@ const MotionListItem = motion(ListItem);
 
 interface TopicMenuButtonProps {
   item: Entry | Annotation | null;
+  disabled?: boolean;
 }
 
 export interface TopicMenuButtonHandle {
@@ -45,7 +46,7 @@ export interface TopicMenuButtonHandle {
 export const TopicMenuButton = forwardRef<
   TopicMenuButtonHandle,
   TopicMenuButtonProps
->(function TopicMenuButton({ item }, ref) {
+>(function TopicMenuButton({ item, disabled }, ref) {
   const [, abortControllerRef] = useAbortController();
   const { onAnnotationRemoved } = useEvents();
   const {
@@ -200,7 +201,7 @@ export const TopicMenuButton = forwardRef<
           <IconButton
             size="small"
             onClick={handleOpen}
-            disabled={topics.length === 0}
+            disabled={topics.length === 0 || disabled}
           >
             <Badge
               badgeContent={item ? memberIds.size : selectedTopicIds.size}

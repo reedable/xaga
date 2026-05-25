@@ -19,9 +19,9 @@ import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
 import { usePlatform } from "../../platform/Platform";
 import { isArticle, type Entry } from "../../types";
-import { TopicMenuButton } from "./TopicMenuButton";
 import { AddressBar } from "../AddressBar";
 import css from "./Toolbar.module.css";
+import { TopicMenuButton } from "./TopicMenuButton";
 
 interface ToolbarProps {
   reload: (() => void) | null;
@@ -129,6 +129,7 @@ export function Toolbar({ reload }: ToolbarProps) {
   useEffect(() => {
     (async () => {
       setFavicon(null);
+      if (!url) return;
       const faviconUrl = `${new URL(url).origin}/favicon.ico`;
       setFavicon(await getFavicon(faviconUrl));
     })();
@@ -245,7 +246,7 @@ export function Toolbar({ reload }: ToolbarProps) {
               </span>
             </Tooltip>
 
-            <TopicMenuButton item={entry} />
+            <TopicMenuButton item={entry} disabled={!url} />
           </div>
         </div>
 
