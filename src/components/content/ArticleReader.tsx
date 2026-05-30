@@ -1,4 +1,14 @@
-import { Collapse, LinearProgress, Typography } from "@mui/material";
+import {
+  Button,
+  Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  LinearProgress,
+  Typography,
+} from "@mui/material";
 import {
   forwardRef,
   useCallback,
@@ -84,8 +94,15 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       loadArticle,
       findArticleByUrl,
       loadArticleByUrl,
-      updateArticleFromHtml,
+      extractArticleFromHtml,
+      saveExtractedArticle,
     } = useArticles(abortControllerRef);
+
+    const [pendingUpdate, setPendingUpdate] = useState<{
+      title: string;
+      markdown: string;
+      favicon: string | null;
+    } | null>(null);
 
     const requestArticle = useCallback(
       async (id: Entry["id"]) => {
@@ -198,20 +215,33 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       if (!selectedEntry) return;
       return onLoaderClosed(async ({ url, html }) => {
         if (selectedEntry.url !== url) return;
-        const article = await updateArticleFromHtml(selectedEntry, html);
-        if (!article) return;
-        setSelectedEntry(article);
-        setAnnotationsFromArticle(article);
-        const markdown = article.content || article.summary;
-        if (markdown) {
-          const body = await markdownToHtml(markdown);
-          if (body) setBodyHtml(body);
+        const extracted = await extractArticleFromHtml(selectedEntry.url, html);
+        if (!extracted?.markdown) return;
+        if (
+          extracted.markdown.trim() === (selectedEntry.content ?? "").trim()
+        ) {
+          return;
         }
+        setPendingUpdate(extracted);
       });
+    }, [onLoaderClosed, selectedEntry, extractArticleFromHtml]);
+
+    const handleConfirmUpdate = useCallback(async () => {
+      if (!pendingUpdate || !selectedEntry) return;
+      setPendingUpdate(null);
+      const article = await saveExtractedArticle(selectedEntry, pendingUpdate);
+      if (!article) return;
+      setSelectedEntry(article);
+      setAnnotationsFromArticle(article);
+      const markdown = article.content || article.summary;
+      if (markdown) {
+        const body = await markdownToHtml(markdown);
+        if (body) setBodyHtml(body);
+      }
     }, [
-      onLoaderClosed,
+      pendingUpdate,
       selectedEntry,
-      updateArticleFromHtml,
+      saveExtractedArticle,
       setAnnotationsFromArticle,
     ]);
 
@@ -255,6 +285,21 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
             </aside>
           )}
         </div>
+
+        <Dialog open={pendingUpdate !== null} onClose={() => setPendingUpdate(null)}>
+          <DialogTitle>Update article?</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              The page content differs from your saved version.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setPendingUpdate(null)}>Keep old</Button>
+            <Button onClick={handleConfirmUpdate} variant="contained">
+              Update
+            </Button>
+          </DialogActions>
+        </Dialog>
       </>
     );
   }

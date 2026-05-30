@@ -1,10 +1,8 @@
 ## Small (hours)
 
-- [x] [SearchResultList.tsx](src/components/search/SearchResultList.tsx): Add type filter (Entries, Topics, Annotations) to search results
 - [ ] Color code bookmarks and bookmark icons
 - [ ] [ItemList.tsx](src/components/list/ItemList.tsx): Item list does not reload after adding or removing a manual item via TopicMenuButton
 - [ ] [ItemList.tsx](src/components/list/ItemList.tsx): `onAnnotationChanged` does not add new annotations to the list
-- [x] [ItemList.tsx](src/components/list/ItemList.tsx): `onAnnotationChanged` does not remove deleted annotations from the list
 - [ ] [topics.rs](crates/xaga-core/src/topics.rs): `list_entry_topics` scans all topic files O(n) — called on every annotation removal and every TopicMenuButton open; needs a reverse index
 
 ## Medium (days)
@@ -19,16 +17,18 @@
 - [ ] Settings: "Keep history" toggle (off by default) — persist navigation history across sessions (storage TBD); include a clear history action
 - [ ] Handle PDF display in ItemView/ArticleReader
 
-## Large / uncertain
+## Large (uncertain)
 
 - [ ] Back/forward button does not work well with filter (Unread/Saved/All) — consider taking filter out of routing
 - [ ] [entryWorker.ts](src/text/entryWorker.ts): Move back into a Web Worker once the `document` variable issue in the remark pipeline is resolved
 - [ ] Review UI → Tauri → xaga-core and xaga-cli → xaga-core call paths and identify unnecessary code
 - [ ] Export annotations and notes
 - [ ] Keyboard navigation
-- [ ] Support showing the original site (not reader mode) and let the user control when to use it
-- [ ] Give the user a chance to interact with the original site before running it through reader
 - [ ] Semantic search UI — LanceDB and embeddings are wired up but there's no search interface yet
 - [ ] Track centroid for saved items per Topic
 - [ ] Split the concept of "Saved" and "Relevant". Saved items are manually curated items, and relevant items are cosine similarity based on the running centroid of the topic + saved.
 - [ ] Reading progress and stats (time spent, articles read per feed, etc.)
+
+## Deferred
+
+- [ ] Support showing the original site (not reader mode) and let the user control when to use it

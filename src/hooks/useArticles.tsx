@@ -109,24 +109,36 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
     [abortControllerRef, loadArticle, platform]
   );
 
-  const updateArticleFromHtml = useCallback(
-    async (entry: Entry, html: string) => {
+  const extractArticleFromHtml = useCallback(
+    async (url: string, html: string) => {
+      try {
+        const result = await processEntry(url, html);
+        if (!result.markdown) return null;
+        return result;
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
+
+  const saveExtractedArticle = useCallback(
+    async (
+      entry: Entry,
+      extracted: { title: string; markdown: string; favicon: string | null }
+    ) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
 
       try {
         const article = await platform.readArticle(signal, entry.id);
-        const { title, markdown, favicon } = await processEntry(
-          article.url,
-          html
-        );
 
         await platform.saveArticle(signal, {
           ...article,
-          title,
-          content: markdown,
-          favicon: favicon ?? undefined,
+          title: extracted.title,
+          content: extracted.markdown,
+          favicon: extracted.favicon ?? undefined,
         });
 
         return await platform.readArticle(signal, article.id);
@@ -163,6 +175,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
     loadArticle,
     loadArticleByUrl,
     findArticleByUrl,
-    updateArticleFromHtml,
+    extractArticleFromHtml,
+    saveExtractedArticle,
   };
 }
