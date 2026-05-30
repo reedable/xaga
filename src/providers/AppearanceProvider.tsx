@@ -38,6 +38,8 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     READER_LINE_HEIGHT_DEFAULT,
   );
 
+  const [showSidebar, setShowSidebarState] = useState(true);
+
   const themeMode: ThemeMode =
     themeSetting === "auto" ? (systemDark ? "dark" : "light") : themeSetting;
 
@@ -82,11 +84,27 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     [platform],
   );
 
+  const setShowSidebar = useCallback(
+    (value: boolean) => {
+      platform.setShowSidebar(value).catch(console.error);
+      setShowSidebarState(value);
+    },
+    [platform],
+  );
+
   // Load persisted theme on startup.
   useEffect(() => {
     platform
       .getTheme()
       .then((t) => setThemeSetting(t as ThemeSetting))
+      .catch(console.error);
+  }, [platform]);
+
+  // Load persisted show_sidebar on startup.
+  useEffect(() => {
+    platform
+      .getShowSidebar()
+      .then(setShowSidebarState)
       .catch(console.error);
   }, [platform]);
 
@@ -122,12 +140,13 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       platform.onShowArticleSummary((showArticleSummary) =>
         setReaderView(showArticleSummary ? "summary" : "full"),
       ),
+      platform.onShowSidebar((show) => setShowSidebar(show)),
     ];
 
     return () => {
       unlistens.forEach((p) => p.then((fn) => fn()));
     };
-  }, [platform, changeThemeSetting]);
+  }, [platform, changeThemeSetting, setShowSidebar]);
 
   // Settings window sync — update state directly (Rust already persisted the value).
   useEffect(() => {
@@ -160,6 +179,8 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       setReaderFontSize,
       readerLineHeight,
       setReaderLineHeight,
+      showSidebar,
+      setShowSidebar,
     }),
     [
       readerView,
@@ -172,6 +193,8 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       setReaderFontSize,
       readerLineHeight,
       setReaderLineHeight,
+      showSidebar,
+      setShowSidebar,
     ],
   );
 

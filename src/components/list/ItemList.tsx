@@ -1,4 +1,4 @@
-import { Clear, Settings } from "@mui/icons-material";
+import { Clear, Refresh, Settings } from "@mui/icons-material";
 import {
   Button,
   Collapse,
@@ -7,10 +7,15 @@ import {
   LinearProgress,
   ListItemButton,
   ListItemText,
+  ListSubheader,
+  MenuItem,
+  Select,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
+  type SelectChangeEvent,
 } from "@mui/material";
 import {
   useCallback,
@@ -23,11 +28,12 @@ import {
 import { Virtuoso } from "react-virtuoso";
 import { RELATED_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
+import { useAppearance } from "../../hooks/useAppearance";
 import useEntries from "../../hooks/useEntries";
 import { useEvents } from "../../hooks/useEvents";
 import { useFeeds } from "../../hooks/useFeeds";
-import useRouter from "../../hooks/useRouter";
 import useRelatedItems from "../../hooks/useRelatedItems";
+import useRouter from "../../hooks/useRouter";
 import { useSaved } from "../../hooks/useSaved";
 import { useTopics } from "../../hooks/useTopics";
 import {
@@ -70,15 +76,21 @@ export function ItemList({
   onEditFeed,
   onEditTopic,
 }: ItemListProps) {
-  const { show, state, searchParams, setSearchParams } = useRouter();
+  const { show, navigate, state, searchParams, setSearchParams } = useRouter();
   const { feedId, topicId, shortcutId, entryId: selectedItemId } = state;
+  const { showSidebar } = useAppearance();
   const filterParam = searchParams.get("filter");
   const filter: Filter = isFilter(filterParam) ? filterParam : "unread";
 
   const [abort, abortControllerRef] = useAbortController();
   const { topics, listTopicItems } = useTopics(abortControllerRef);
-  const { feeds, loading: loadingFeeds } = useFeeds(abortControllerRef);
+  const {
+    feeds,
+    loading: loadingFeeds,
+    refreshAllFeeds,
+  } = useFeeds(abortControllerRef);
   const [loading, setLoading] = useState(false);
+  const [refreshSpin, setRefreshSpin] = useState(false);
 
   const selectedCollection = useMemo(
     () =>
@@ -114,6 +126,35 @@ export function ItemList({
       return () => onEditTopic(selectedCollection);
     return undefined;
   }, [selectedCollection, onEditFeed, onEditTopic]);
+
+  const handleCollectionChange = useCallback(
+    (event: SelectChangeEvent<string>) => {
+      const id = event.target.value;
+      const params = new URLSearchParams(searchParams);
+      const shortcut = SHORTCUTS.find((s) => s.id === id);
+      if (shortcut) {
+        navigate(`/?${params}`, { state: { shortcutId: id } });
+        return;
+      }
+      if (topics.find((t) => t.id === id)) {
+        navigate(`/?${params}`, { state: { topicId: id } });
+        return;
+      }
+      if (feeds.find((f) => f.id === id)) {
+        navigate(`/?${params}`, { state: { feedId: id } });
+      }
+    },
+    [navigate, searchParams, topics, feeds]
+  );
+
+  const handleRefresh = useCallback(() => {
+    refreshAllFeeds();
+    setRefreshSpin(true);
+  }, [refreshAllFeeds]);
+
+  useEffect(() => {
+    if (!loadingFeeds) setRefreshSpin(false);
+  }, [loadingFeeds]);
 
   const displayItems = useMemo(() => {
     if (!filterText) return items;
@@ -238,21 +279,76 @@ export function ItemList({
   return (
     <div className={cx(className, css.ItemList)}>
       <div className={css.Header}>
-        <div className={css.HeadingWrapper}>
-          <Typography
-            className={css.Heading}
-            component="div"
-            color="text.secondary"
-            variant="overline"
-            sx={{ userSelect: "none" }}
-          >
-            {selectedCollection?.title ?? "All items"}
-          </Typography>
+        <div className={cx(css.HeadingWrapper)}>
+          {showSidebar && (
+            <>
+              <Typography
+                className={css.Heading}
+                component="div"
+                color="text.secondary"
+                variant="overline"
+                sx={{ userSelect: "none" }}
+              >
+                {selectedCollection?.title ?? "All items"}
+              </Typography>
 
-          {handleEdit && (
-            <IconButton size="small" onClick={handleEdit}>
-              <Settings sx={{ fontSize: 16 }} />
-            </IconButton>
+              {handleEdit && (
+                <Tooltip title="Edit">
+                  <IconButton size="small" onClick={handleEdit}>
+                    <Settings sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Tooltip>
+              )}
+            </>
+          )}
+
+          {!showSidebar && (
+            <div className={css.HeadingControl}>
+              <Tooltip title="Refresh">
+                <IconButton
+                  className={cx(
+                    css.RefreshButton,
+                    refreshSpin && css.RefreshLoading
+                  )}
+                  size="small"
+                  onClick={handleRefresh}
+                >
+                  <Refresh sx={{ fontSize: 16 }} />
+                </IconButton>
+              </Tooltip>
+
+              <Select
+                className={css.CollectionSelect}
+                size="small"
+                value={selectedCollection.id}
+                onChange={handleCollectionChange}
+              >
+                <ListSubheader>Shortcuts</ListSubheader>
+                {SHORTCUTS.map((s) => (
+                  <MenuItem key={s.id} value={s.id}>
+                    <Typography component="span" variant="body2">
+                      {s.title}
+                    </Typography>
+                  </MenuItem>
+                ))}
+                {topics.length > 0 && <ListSubheader>Topics</ListSubheader>}
+                {topics.map((t) => (
+                  <MenuItem key={t.id} value={t.id}>
+                    <Typography component="span" variant="body2">
+                      {t.title}
+                    </Typography>
+                  </MenuItem>
+                ))}
+                {feeds.length > 0 && <ListSubheader>Feeds</ListSubheader>}
+                {feeds.map((f) => (
+                  <MenuItem key={f.id} value={f.id}>
+                    <Typography component="span" variant="body2">
+                      {f.title}
+                    </Typography>
+                  </MenuItem>
+                ))}
+              </Select>
+            </div>
           )}
         </div>
 
@@ -286,14 +382,16 @@ export function ItemList({
             input: {
               endAdornment: filterText ? (
                 <InputAdornment position="end">
-                  <IconButton
-                    size="small"
-                    aria-label="Clear filter"
-                    onClick={() => setFilterText("")}
-                    edge="end"
-                  >
-                    <Clear fontSize="small" />
-                  </IconButton>
+                  <Tooltip title="Clear Filter">
+                    <IconButton
+                      size="small"
+                      aria-label="Clear filter"
+                      onClick={() => setFilterText("")}
+                      edge="end"
+                    >
+                      <Clear fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                 </InputAdornment>
               ) : null,
             },

@@ -166,6 +166,8 @@ export interface Platform {
   setReaderFontFamily(value: string): Promise<void>;
   setReaderFontSize(value: number): Promise<void>;
   setReaderLineHeight(value: number): Promise<void>;
+  getShowSidebar(): Promise<boolean>;
+  setShowSidebar(value: boolean): Promise<void>;
 
   // Events
   onOpenLibrary(callback: () => void): Promise<UnlistenFn>;
@@ -182,6 +184,7 @@ export interface Platform {
   onExportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;
   onShowArticleSummary(callback: (show: boolean) => void): Promise<UnlistenFn>;
+  onShowSidebar(callback: (show: boolean) => void): Promise<UnlistenFn>;
   onLoaderClosed(callback: (data: { url: string; html: string }) => void): Promise<UnlistenFn>;
   onFind(callback: () => void): Promise<UnlistenFn>;
   setFindEnabled(enabled: boolean): Promise<void>;

@@ -10,6 +10,7 @@ import { SearchResultList } from "./components/search/SearchResultList";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { TitleBar } from "./components/titlebar/TitleBar";
 import useAbortController from "./hooks/useAbortController";
+import { useAppearance } from "./hooks/useAppearance";
 import { useFeeds } from "./hooks/useFeeds";
 import { useTopics } from "./hooks/useTopics";
 import { isFilter, type Feed, type Topic } from "./types";
@@ -26,6 +27,7 @@ const storedFilter = (() => {
 export function AppLayout() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { showSidebar } = useAppearance();
   const filterParam = searchParams.get("filter");
   const filter = isFilter(filterParam) ? filterParam : storedFilter;
   const search = searchParams.get("search");
@@ -158,11 +160,13 @@ export function AppLayout() {
       <TitleBar className={css.TitleBar} />
 
       <div className={css.App}>
-        <Sidebar
-          className={css.Sidebar}
-          onAddFeed={() => setIsAddingFeed(true)}
-          onAddTopic={() => setIsAddingTopic(true)}
-        />
+        <Collapse in={showSidebar} unmountOnExit orientation="horizontal">
+          <Sidebar
+            className={css.Sidebar}
+            onAddFeed={() => setIsAddingFeed(true)}
+            onAddTopic={() => setIsAddingTopic(true)}
+          />
+        </Collapse>
 
         <ItemList
           className={css.ItemList}

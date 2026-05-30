@@ -21,6 +21,7 @@ pub(crate) struct AppState {
     pub(crate) reader_font_family: Arc<RwLock<String>>,
     pub(crate) reader_font_size: Arc<RwLock<f64>>,
     pub(crate) reader_line_height: Arc<RwLock<f64>>,
+    pub(crate) show_sidebar: Arc<RwLock<bool>>,
     pub(crate) embedding_service: Arc<Mutex<Option<EmbeddingService>>>,
     pub(crate) http_client: reqwest::Client,
     pub(crate) entry_cache: Arc<Mutex<Option<EntryStateCache>>>,
@@ -52,6 +53,7 @@ pub(crate) struct UserSettings {
     pub(crate) reader_font_family: Option<String>,
     pub(crate) reader_font_size: Option<f64>,
     pub(crate) reader_line_height: Option<f64>,
+    pub(crate) show_sidebar: Option<bool>,
 }
 
 pub(crate) fn load_settings(path: &Path) -> UserSettings {
@@ -97,6 +99,22 @@ fn update_theme_checkmarks<R: Runtime>(app: &tauri::AppHandle<R>, selected: &str
     }
 }
 
+fn update_show_sidebar_checkmark<R: Runtime>(app: &tauri::AppHandle<R>, show: bool) {
+    let Some(menu) = app.menu() else { return };
+    let view = menu
+        .items()
+        .unwrap_or_default()
+        .into_iter()
+        .find_map(|item| match item {
+            MenuItemKind::Submenu(sub) if sub.id().as_ref() == "view_menu" => Some(sub),
+            _ => None,
+        });
+    let Some(view) = view else { return };
+    if let Some(MenuItemKind::Check(item)) = view.get("show_sidebar") {
+        item.set_checked(show).ok();
+    }
+}
+
 // ── Commands ───────────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -120,9 +138,11 @@ pub fn run() {
     let reader_font_family: Arc<RwLock<String>> = Arc::new(RwLock::new("system".to_string()));
     let reader_font_size: Arc<RwLock<f64>> = Arc::new(RwLock::new(16.0));
     let reader_line_height: Arc<RwLock<f64>> = Arc::new(RwLock::new(1.75));
+    let show_sidebar: Arc<RwLock<bool>> = Arc::new(RwLock::new(true));
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
     let entry_cache: Arc<Mutex<Option<EntryStateCache>>> = Arc::new(Mutex::new(None));
     let setup_entry_cache = Arc::clone(&entry_cache);
+    let setup_show_sidebar = Arc::clone(&show_sidebar);
     let setup_library = Arc::clone(&library);
     let setup_theme = Arc::clone(&theme);
     let setup_refresh_on_startup = Arc::clone(&refresh_on_startup);
@@ -142,6 +162,7 @@ pub fn run() {
             reader_font_family,
             reader_font_size,
             reader_line_height,
+            show_sidebar,
             embedding_service: embedding_service.clone(),
             http_client,
             entry_cache,
@@ -259,6 +280,14 @@ pub fn run() {
                     &PredefinedMenuItem::separator(app)?,
                     &CheckMenuItem::with_id(
                         app,
+                        "show_sidebar",
+                        "Show Sidebar",
+                        true,
+                        true,
+                        None::<&str>,
+                    )?,
+                    &CheckMenuItem::with_id(
+                        app,
                         "show_article_summary",
                         "Show Article Summary",
                         true,
@@ -325,6 +354,25 @@ pub fn run() {
                 update_theme_checkmarks(app, theme);
                 app.emit("menu:set-theme", theme).ok();
             }
+            "show_sidebar" => {
+                let checked = app
+                    .menu()
+                    .and_then(|menu| {
+                        menu.items().ok()?.into_iter().find_map(|item| match item {
+                            MenuItemKind::Submenu(sub) if sub.id().as_ref() == "view_menu" => {
+                                Some(sub)
+                            }
+                            _ => None,
+                        })
+                    })
+                    .and_then(|view| view.get("show_sidebar"))
+                    .and_then(|item| match item {
+                        MenuItemKind::Check(c) => c.is_checked().ok(),
+                        _ => None,
+                    })
+                    .unwrap_or(true);
+                app.emit("menu:show-sidebar", checked).ok();
+            }
             "show_article_summary" => {
                 let checked = app
                     .menu()
@@ -371,6 +419,7 @@ pub fn run() {
                 .unwrap_or_else(|| "system".to_string());
             let font_size = settings.reader_font_size.unwrap_or(16.0);
             let line_height = settings.reader_line_height.unwrap_or(1.75);
+            let show_sidebar = settings.show_sidebar.unwrap_or(true);
             *setup_library.write().unwrap() = lib_path.clone();
             *setup_theme.write().unwrap() = theme.clone();
             *setup_refresh_on_startup.write().unwrap() = refresh;
@@ -378,9 +427,11 @@ pub fn run() {
             *setup_reader_font_family.write().unwrap() = font_family;
             *setup_reader_font_size.write().unwrap() = font_size;
             *setup_reader_line_height.write().unwrap() = line_height;
+            *setup_show_sidebar.write().unwrap() = show_sidebar;
 
             // Correct the theme checkmarks now that we know the persisted value.
             update_theme_checkmarks(app.handle(), &theme);
+            update_show_sidebar_checkmark(app.handle(), show_sidebar);
 
             // Start the EmbeddingService; file watcher + recovery fire inside it.
             // If another instance already holds the library lock, we skip the
@@ -512,6 +563,8 @@ pub fn run() {
             commands::settings::set_reader_font_family,
             commands::settings::set_reader_font_size,
             commands::settings::set_reader_line_height,
+            commands::settings::get_show_sidebar,
+            commands::settings::set_show_sidebar,
             commands::feeds::list_feeds,
             commands::feeds::add_feed,
             commands::feeds::refresh_feed,

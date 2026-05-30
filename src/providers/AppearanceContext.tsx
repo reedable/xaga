@@ -25,6 +25,8 @@ export type AppearanceContextType = {
   setReaderFontSize: (value: number) => void;
   readerLineHeight: number;
   setReaderLineHeight: (value: number) => void;
+  showSidebar: boolean;
+  setShowSidebar: (value: boolean) => void;
 };
 
 const AppearanceContext = createContext<AppearanceContextType | null>(null);

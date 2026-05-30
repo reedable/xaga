@@ -168,3 +168,31 @@ pub async fn set_reader_line_height(
 
     Ok(())
 }
+
+#[tauri::command]
+pub async fn get_show_sidebar(state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(*state.show_sidebar.read().unwrap())
+}
+
+#[tauri::command]
+pub async fn set_show_sidebar(
+    window: tauri::Window,
+    value: bool,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    require_main_window(&window)?;
+    let settings_path = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| e.to_string())?
+        .join("settings.json");
+
+    let mut settings = load_settings(&settings_path);
+    settings.show_sidebar = Some(value);
+    save_settings(&settings_path, &settings).map_err(|e| e.to_string())?;
+
+    *state.show_sidebar.write().unwrap() = value;
+
+    Ok(())
+}

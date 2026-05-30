@@ -1060,6 +1060,18 @@ export class TauriPlatform implements Platform {
     return invoker<void>(name, { value });
   }
 
+  async getShowSidebar(): Promise<boolean> {
+    const name = "get_show_sidebar";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<boolean>(name);
+  }
+
+  async setShowSidebar(value: boolean): Promise<void> {
+    const name = "set_show_sidebar";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<void>(name, { value });
+  }
+
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn> {
     const name = "menu:set-theme";
     const listener = decorate((e: { payload: string }) =>
@@ -1070,6 +1082,14 @@ export class TauriPlatform implements Platform {
 
   onShowArticleSummary(callback: (show: boolean) => void): Promise<UnlistenFn> {
     const name = "menu:show-article-summary";
+    const listener = decorate((e: { payload: boolean }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
+    return listen<boolean>(name, listener);
+  }
+
+  onShowSidebar(callback: (show: boolean) => void): Promise<UnlistenFn> {
+    const name = "menu:show-sidebar";
     const listener = decorate((e: { payload: boolean }) =>
       callback(e.payload)
     ).with(logged, { logger, name });

@@ -20,5 +20,7 @@ export function useAppearance() {
     setReaderFontSize: context.setReaderFontSize,
     readerLineHeight: context.readerLineHeight,
     setReaderLineHeight: context.setReaderLineHeight,
+    showSidebar: context.showSidebar,
+    setShowSidebar: context.setShowSidebar,
   };
 }
