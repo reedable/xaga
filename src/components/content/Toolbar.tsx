@@ -47,7 +47,7 @@ export function Toolbar({ reload }: ToolbarProps) {
   const { addBookmark, removeBookmark } = useBookmarks(abortControllerRef);
   const { markEntryRead, markEntryUnread } = useEntries(abortControllerRef);
   const { onBookmarkChanged, onUnreadChanged } = useEvents();
-  const { findArticleByUrl, loadArticle, loadArticleByUrl, loading } =
+  const { findArticleByUrl, loadArticleByUrl, loading } =
     useArticles(abortControllerRef);
 
   const { url, entryId } = state;
@@ -88,9 +88,9 @@ export function Toolbar({ reload }: ToolbarProps) {
   );
 
   const handleShowOriginalSite = useCallback(async () => {
-    if (!entry) return;
-    await loadArticle(entry, true);
-  }, [entry, loadArticle]);
+    if (!url) return;
+    await loadArticleByUrl(url, true);
+  }, [url, loadArticleByUrl]);
 
   const handleOpenInBrowser = useCallback(() => {
     if (!url) return;

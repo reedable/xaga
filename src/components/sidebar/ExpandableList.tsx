@@ -6,6 +6,7 @@ import css from "./ExpandableList.module.css";
 
 export interface ExpandableListProps {
   children?: ReactNode;
+  className?: string;
   label: string;
   isExpanded: boolean;
   onClickHeader: () => void;
@@ -14,6 +15,7 @@ export interface ExpandableListProps {
 
 export default function ExpandableList({
   children,
+  className,
   label,
   isExpanded,
   onClickHeader,
@@ -21,7 +23,7 @@ export default function ExpandableList({
 }: ExpandableListProps) {
   return (
     <>
-      <div className={css.ExpanderHeaderWrapper}>
+      <div className={cx(className, css.ExpanderHeaderWrapper)}>
         <ToggleButton
           className={css.ExpanderHeader}
           selected={isExpanded}

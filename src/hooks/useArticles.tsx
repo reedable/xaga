@@ -1,7 +1,7 @@
 import { useCallback, useState, type RefObject } from "react";
 import { usePlatform } from "../platform/Platform";
 import { processEntry } from "../text/entryWorker";
-import type { Entry } from "../types";
+import { type Entry } from "../types";
 
 export function useArticles(abortControllerRef: RefObject<AbortController>) {
   const platform = usePlatform();
@@ -15,13 +15,13 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
    * object. To refresh an existing article, call `loadArticle` instead.
    */
   const loadArticleByUrl = useCallback(
-    async (url: string) => {
+    async (url: string, keepOpen = false) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
 
       try {
-        const html = await platform.loadArticle(signal, url);
+        const html = await platform.loadArticle(signal, url, keepOpen);
         const { title, markdown, favicon } = await processEntry(url, html);
 
         const article = await platform.createArticle(signal, {
@@ -53,9 +53,13 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       setLoading(true);
 
       try {
-        const article = await platform.readArticle(signal, entry.id);
         const html = await platform.loadArticle(signal, entry.url, keepOpen);
-        const { title, markdown, favicon } = await processEntry(article.url, html);
+        const { title, markdown, favicon } = await processEntry(
+          entry.url,
+          html
+        );
+
+        const article = await platform.readArticle(signal, entry.id);
 
         await platform.saveArticle(signal, {
           ...article,
@@ -113,7 +117,10 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
 
       try {
         const article = await platform.readArticle(signal, entry.id);
-        const { title, markdown, favicon } = await processEntry(article.url, html);
+        const { title, markdown, favicon } = await processEntry(
+          article.url,
+          html
+        );
 
         await platform.saveArticle(signal, {
           ...article,

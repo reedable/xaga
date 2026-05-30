@@ -93,8 +93,9 @@ export type Entry = Item & {
   isBookmarked?: boolean;
 };
 
-export function isEntry(item?: Item | null): item is Entry {
-  return !!item && "url" in item && typeof item.url === "string";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function isEntry(item?: any): item is Entry {
+  return isItem(item) && "url" in item && typeof item.url === "string";
 }
 
 /** Items that carry full content. */

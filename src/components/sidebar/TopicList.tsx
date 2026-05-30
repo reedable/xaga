@@ -42,6 +42,7 @@ export default function TopicList({
 
   return (
     <ExpandableList
+      className={css.TopicList}
       label="Topics"
       isExpanded={isExpanded}
       onClickHeader={onClickHeader}
@@ -59,7 +60,9 @@ export default function TopicList({
           loading={loadingFeedIds.size > 0}
           selected={topicId === topic.id}
           onSelectCollection={handleSelectTopic}
-          renderSecondaryAction={() => <UnreadCount count={topic.unreadCount} />}
+          renderSecondaryAction={() => (
+            <UnreadCount count={topic.unreadCount} />
+          )}
         />
       ))}
     </ExpandableList>

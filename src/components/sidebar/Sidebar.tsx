@@ -20,11 +20,7 @@ type SidebarProps = {
 
 type ListType = "SHORTCUTS" | "TOPICS" | "FEEDS";
 
-export function Sidebar({
-  className,
-  onAddFeed,
-  onAddTopic,
-}: SidebarProps) {
+export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
   const [, abortControllerRef] = useAbortController();
 
   const { topics, pinnedTopicIds } = useTopics(abortControllerRef);
@@ -81,15 +77,17 @@ export function Sidebar({
 
   return (
     <div className={cx(className, css.Sidebar)}>
-      <Tooltip title="Refresh">
-        <IconButton
-          className={cx(css.RefreshButton, spin && css.Loading)}
-          size="small"
-          onClick={() => handleRefreshAllFeeds()}
-        >
-          <Refresh fontSize="small" />
-        </IconButton>
-      </Tooltip>
+      <div className={css.Buttons}>
+        <Tooltip title="Refresh">
+          <IconButton
+            className={cx(css.RefreshButton, spin && css.Loading)}
+            size="small"
+            onClick={() => handleRefreshAllFeeds()}
+          >
+            <Refresh fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      </div>
 
       <ShortcutList
         shortcuts={pinnedCollections}
