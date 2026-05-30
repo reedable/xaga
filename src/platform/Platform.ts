@@ -189,6 +189,17 @@ export interface Platform {
   onFind(callback: () => void): Promise<UnlistenFn>;
   setFindEnabled(enabled: boolean): Promise<void>;
   onShutdown(callback: () => void): Promise<UnlistenFn>;
+  onClearHistory(callback: () => void): Promise<UnlistenFn>;
+  clearWebviewHistory(): Promise<void>;
+
+  // Privacy
+  getAllowedDomains(): Promise<string[]>;
+  setAllowedDomains(domains: string[]): Promise<void>;
+  onAllowedDomainsChanged(callback: (domains: string[]) => void): Promise<UnlistenFn>;
+
+  // UI preferences (persisted to settings.json, survives Clear History)
+  getUiPref<T>(key: string): Promise<T | null>;
+  setUiPref<T>(key: string, value: T): Promise<void>;
 
   // Settings sync (main window receives these when settings window saves)
   onThemeChangedFromSettings(

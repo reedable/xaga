@@ -1112,6 +1112,50 @@ export class TauriPlatform implements Platform {
     return listen(name, listener);
   }
 
+  onClearHistory(callback: () => void): Promise<UnlistenFn> {
+    const name = "menu:clear-history";
+    const listener = decorate(callback).with(logged, { logger, name });
+    return listen(name, listener);
+  }
+
+  clearWebviewHistory(): Promise<void> {
+    const name = "clear_webview_history";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<void>(name);
+  }
+
+  getUiPref<T>(key: string): Promise<T | null> {
+    const name = "get_ui_pref";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<T | null>(name, { key });
+  }
+
+  setUiPref<T>(key: string, value: T): Promise<void> {
+    const name = "set_ui_pref";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<void>(name, { key, value });
+  }
+
+  getAllowedDomains(): Promise<string[]> {
+    const name = "get_allowed_domains";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<string[]>(name);
+  }
+
+  setAllowedDomains(domains: string[]): Promise<void> {
+    const name = "set_allowed_domains";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<void>(name, { domains });
+  }
+
+  onAllowedDomainsChanged(callback: (domains: string[]) => void): Promise<UnlistenFn> {
+    const name = "settings:allowed-domains";
+    const listener = decorate((e: { payload: string[] }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
+    return listen<string[]>(name, listener);
+  }
+
   setFindEnabled(enabled: boolean): Promise<void> {
     const name = "set_find_enabled";
     const invoker = decorate(invoke).with(logged, { logger, name });

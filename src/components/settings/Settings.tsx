@@ -8,11 +8,13 @@ import {
 } from "react-router-dom";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { GeneralSettings } from "./GeneralSettings";
+import { PrivacySettings } from "./PrivacySettings";
 import css from "./Settings.module.css";
 
 const SECTIONS = [
   { path: "general", label: "General" },
   { path: "appearance", label: "Appearance" },
+  { path: "privacy", label: "Privacy" },
 ];
 
 export function Settings() {
@@ -42,6 +44,7 @@ export function Settings() {
             <Route index element={<Navigate to="general" replace />} />
             <Route path="general" element={<GeneralSettings />} />
             <Route path="appearance" element={<AppearanceSettings />} />
+            <Route path="privacy" element={<PrivacySettings />} />
           </Routes>
         </main>
       </div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { subscribe } from "../hooks/useEvents";
-import { useLocalStorage } from "../hooks/useLocalStorage";
+import { usePreference } from "../hooks/usePreference";
 import { usePlatform } from "../platform/Platform";
 import type { Feed } from "../types";
 import { debounced } from "../utils/Decorator";
@@ -13,7 +13,7 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [loadingSet, setLoadingSet] = useState<Set<string>>(new Set());
   const [feeds, setFeeds] = useState<Feed[]>([]);
-  const [pinnedFeedIds, setPinnedFeedIds] = useLocalStorage<Feed["id"][]>(
+  const [pinnedFeedIds, setPinnedFeedIds] = usePreference<Feed["id"][]>(
     "sidebar.pinnedFeeds",
     []
   );

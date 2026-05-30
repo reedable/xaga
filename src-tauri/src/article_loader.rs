@@ -8,12 +8,56 @@ pub type PendingRequests = Arc<Mutex<HashMap<String, (oneshot::Sender<String>, b
 
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// Returns true when WKWebsiteDataStore named identifiers are available (macOS 14+).
+/// Result is intended to be cached at startup in AppState.
+pub fn supports_named_data_stores() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("sw_vers")
+            .arg("-productVersion")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .and_then(|s| s.trim().split('.').next()?.parse::<u32>().ok())
+            .map(|major| major >= 14)
+            .unwrap_or(false)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+/// Deterministically maps a registered domain to a 16-byte WKWebsiteDataStore identifier.
+/// The versioned prefix ensures the namespace is unique to Xaga.
+fn domain_store_id(domain: &str) -> [u8; 16] {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(b"xaga-domain-store-v1:");
+    h.update(domain.as_bytes());
+    h.finalize()[..16].try_into().unwrap()
+}
+
+/// Returns the allow-listed domain entry that matches `host`, or None.
+/// An entry of "nytimes.com" matches both "nytimes.com" and "www.nytimes.com".
+fn matching_domain<'a>(host: &str, allowed: &'a [String]) -> Option<&'a str> {
+    allowed.iter().find_map(|domain| {
+        if host == domain.as_str() || host.ends_with(&format!(".{domain}")) {
+            Some(domain.as_str())
+        } else {
+            None
+        }
+    })
+}
+
 pub async fn load_via_webview(
     app: &AppHandle,
     pending: &PendingRequests,
     url: &str,
     timeout_secs: u64,
     keep_open: bool,
+    allowed_domains: &[String],
+    named_stores_supported: bool,
 ) -> Result<String, String> {
     let id = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed).to_string();
     let label = format!("loader-{}", id);
@@ -41,8 +85,20 @@ pub async fn load_via_webview(
         .parse()
         .map_err(|e: <tauri::Url as std::str::FromStr>::Err| e.to_string())?;
 
+    let host = parsed.host_str().unwrap_or("");
+    let matched = matching_domain(host, allowed_domains);
+
     let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(parsed))
         .initialization_script(&init_script);
+
+    // Default: incognito (ephemeral — no cookies written to disk).
+    // Allow-listed domains on macOS 14+ get a persistent, per-domain named store.
+    builder = match matched {
+        Some(domain) if named_stores_supported => {
+            builder.data_store_identifier(domain_store_id(domain))
+        }
+        _ => builder.incognito(true),
+    };
 
     builder = if keep_open {
         builder

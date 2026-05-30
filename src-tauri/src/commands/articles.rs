@@ -66,7 +66,9 @@ pub async fn load_article(
 ) -> Result<String, String> {
     require_main_window(&window)?;
     let timeout_secs = *state.loader_timeout_secs.read().unwrap();
-    article_loader::load_via_webview(&app, &pending, &url, timeout_secs, keep_open).await
+    let allowed_domains = state.allowed_domains.read().unwrap().clone();
+    let named_stores_supported = state.named_stores_supported;
+    article_loader::load_via_webview(&app, &pending, &url, timeout_secs, keep_open, &allowed_domains, named_stores_supported).await
 }
 
 #[tauri::command]
@@ -199,6 +201,17 @@ pub async fn remove_annotation(
     window.emit("annotation:removed", &annotation_id).ok();
 
     Ok(result)
+}
+
+#[tauri::command]
+pub fn clear_webview_history(app: AppHandle) -> Result<(), String> {
+    let home = app.path().home_dir().map_err(|e| e.to_string())?;
+    let webkit_name = app.config().product_name.as_deref().unwrap_or("xaga");
+    let webkit_dir = home.join("Library/WebKit").join(webkit_name);
+    if webkit_dir.exists() {
+        std::fs::remove_dir_all(&webkit_dir).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]

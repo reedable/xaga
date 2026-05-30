@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { useLocalStorage } from "../hooks/useLocalStorage";
+import { usePreference } from "../hooks/usePreference";
 import { usePlatform } from "../platform/Platform";
 import type { Topic } from "../types";
 import { debounced } from "../utils/Decorator";
@@ -10,7 +10,7 @@ import TopicsContext, { type TopicsContextType } from "./TopicsContext";
 export function TopicsProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [pinnedTopicIds, setPinnedTopicIds] = useLocalStorage<string[]>(
+  const [pinnedTopicIds, setPinnedTopicIds] = usePreference<string[]>(
     "sidebar.pinnedTopics",
     [],
   );

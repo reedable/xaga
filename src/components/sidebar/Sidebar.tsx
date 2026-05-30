@@ -3,7 +3,7 @@ import { IconButton, Tooltip } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
-import { useLocalStorage } from "../../hooks/useLocalStorage";
+import { usePreference } from "../../hooks/usePreference";
 import { useTopics } from "../../hooks/useTopics";
 import cx from "../../utils/cx";
 import sortByUnreadCount from "../../utils/sortByUnreadCount";
@@ -37,7 +37,7 @@ export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
     [feeds, pinnedFeedIds, pinnedTopicIds, topics]
   );
 
-  const [expandedList, setExpandedList] = useLocalStorage<ListType | null>(
+  const [expandedList, setExpandedList] = usePreference<ListType | null>(
     "sidebar.expander",
     "SHORTCUTS"
   );

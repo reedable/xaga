@@ -1,0 +1,29 @@
+.Section {
+  margin-top: 24px;
+}
+
+.InputRow {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.DomainInput {
+  flex: 1;
+}
+
+.AddButton {
+  white-space: nowrap;
+}
+
+.ChipList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.Note {
+  margin-top: 32px;
+}

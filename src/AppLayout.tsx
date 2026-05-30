@@ -1,4 +1,12 @@
-import { Collapse } from "@mui/material";
+import {
+  Button,
+  Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+} from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import css from "./AppLayout.module.css";
@@ -10,19 +18,12 @@ import { SearchResultList } from "./components/search/SearchResultList";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { TitleBar } from "./components/titlebar/TitleBar";
 import useAbortController from "./hooks/useAbortController";
+import { usePreference } from "./hooks/usePreference";
+import { usePlatform } from "./platform/Platform";
 import { useAppearance } from "./hooks/useAppearance";
 import { useFeeds } from "./hooks/useFeeds";
 import { useTopics } from "./hooks/useTopics";
 import { isFilter, type Feed, type Topic } from "./types";
-
-const storedFilter = (() => {
-  try {
-    const filter = localStorage.getItem("list.filter");
-    return isFilter(filter) ? filter : "unread";
-  } catch {
-    return "unread";
-  }
-})();
 
 export function AppLayout() {
   const navigate = useNavigate();
@@ -31,8 +32,12 @@ export function AppLayout() {
   const [autoHideSidebar, setAutoHideSidebar] = useState(false);
   const { showSidebar } = useAppearance();
   const filterParam = searchParams.get("filter");
+  const [storedFilter, setStoredFilter] = usePreference<string>("list.filter", "unread");
   const filter = isFilter(filterParam) ? filterParam : storedFilter;
   const search = searchParams.get("search");
+
+  const platform = usePlatform();
+  const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
 
   const [, abortControllerRef] = useAbortController();
   const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
@@ -157,8 +162,8 @@ export function AppLayout() {
   }, [search]);
 
   useEffect(() => {
-    if (filter) localStorage.setItem("list.filter", filter);
-  }, [filter]);
+    if (filter) setStoredFilter(filter);
+  }, [filter, setStoredFilter]);
 
   useEffect(() => {
     requestFeeds();
@@ -167,6 +172,14 @@ export function AppLayout() {
   useEffect(() => {
     requestTopics();
   }, [requestTopics]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    platform.onClearHistory(() => setClearHistoryOpen(true)).then((fn) => {
+      unlisten = fn;
+    });
+    return () => unlisten?.();
+  }, [platform]);
 
   return (
     <div className={css.Root}>
@@ -218,6 +231,32 @@ export function AppLayout() {
         onSave={handleSaveFeed}
         onDelete={handleDeleteFeed}
       />
+
+      <Dialog
+        open={clearHistoryOpen}
+        onClose={() => setClearHistoryOpen(false)}
+      >
+        <DialogTitle>Clear History</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This will clear all cookies and website data from external sites
+            visited in Xaga. Xaga&apos;s feeds, entries, and settings will not
+            be affected.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setClearHistoryOpen(false)}>Cancel</Button>
+          <Button
+            color="error"
+            onClick={async () => {
+              await platform.clearWebviewHistory();
+              setClearHistoryOpen(false);
+            }}
+          >
+            Clear History
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 }

@@ -2,6 +2,7 @@ mod article_loader;
 mod commands;
 mod file_watchers;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -25,6 +26,9 @@ pub(crate) struct AppState {
     pub(crate) embedding_service: Arc<Mutex<Option<EmbeddingService>>>,
     pub(crate) http_client: reqwest::Client,
     pub(crate) entry_cache: Arc<Mutex<Option<EntryStateCache>>>,
+    pub(crate) allowed_domains: Arc<RwLock<Vec<String>>>,
+    pub(crate) named_stores_supported: bool,
+    pub(crate) ui_prefs: Arc<RwLock<HashMap<String, serde_json::Value>>>,
 }
 
 pub(crate) fn feeds_dir(library: &Path) -> PathBuf {
@@ -54,6 +58,8 @@ pub(crate) struct UserSettings {
     pub(crate) reader_font_size: Option<f64>,
     pub(crate) reader_line_height: Option<f64>,
     pub(crate) show_sidebar: Option<bool>,
+    pub(crate) allowed_domains: Option<Vec<String>>,
+    pub(crate) ui_prefs: Option<HashMap<String, serde_json::Value>>,
 }
 
 pub(crate) fn load_settings(path: &Path) -> UserSettings {
@@ -129,6 +135,7 @@ fn set_find_enabled(app: tauri::AppHandle, enabled: bool) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let http_client = reqwest::Client::new();
+    let named_stores_supported = article_loader::supports_named_data_stores();
 
     // Pre-created Arcs shared between .manage() and the .setup() closure.
     let library: Arc<RwLock<PathBuf>> = Arc::new(RwLock::new(PathBuf::new()));
@@ -141,7 +148,11 @@ pub fn run() {
     let show_sidebar: Arc<RwLock<bool>> = Arc::new(RwLock::new(true));
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
     let entry_cache: Arc<Mutex<Option<EntryStateCache>>> = Arc::new(Mutex::new(None));
+    let allowed_domains: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
+    let ui_prefs: Arc<RwLock<HashMap<String, serde_json::Value>>> = Arc::new(RwLock::new(HashMap::new()));
     let setup_entry_cache = Arc::clone(&entry_cache);
+    let setup_allowed_domains = Arc::clone(&allowed_domains);
+    let setup_ui_prefs = Arc::clone(&ui_prefs);
     let setup_show_sidebar = Arc::clone(&show_sidebar);
     let setup_library = Arc::clone(&library);
     let setup_theme = Arc::clone(&theme);
@@ -166,6 +177,9 @@ pub fn run() {
             embedding_service: embedding_service.clone(),
             http_client,
             entry_cache,
+            allowed_domains,
+            named_stores_supported,
+            ui_prefs,
         })
         .manage(article_loader::PendingRequests::default())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -298,6 +312,18 @@ pub fn run() {
                     &PredefinedMenuItem::fullscreen(app, Some("Enter Full Screen"))?,
                 ],
             )?;
+            let history_menu = Submenu::with_items(
+                app,
+                "History",
+                true,
+                &[&MenuItem::with_id(
+                    app,
+                    "clear_history",
+                    "Clear History",
+                    true,
+                    None::<&str>,
+                )?],
+            )?;
             let window_menu = Submenu::with_items(
                 app,
                 "Window",
@@ -309,7 +335,14 @@ pub fn run() {
             )?;
             Menu::with_items(
                 app,
-                &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu],
+                &[
+                    &app_menu,
+                    &file_menu,
+                    &edit_menu,
+                    &view_menu,
+                    &history_menu,
+                    &window_menu,
+                ],
             )
         })
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -392,6 +425,9 @@ pub fn run() {
                     .unwrap_or(false);
                 app.emit("menu:show-article-summary", checked).ok();
             }
+            "clear_history" => {
+                app.emit("menu:clear-history", ()).ok();
+            }
             "find" => {
                 app.emit("menu:find", ()).ok();
             }
@@ -428,6 +464,8 @@ pub fn run() {
             *setup_reader_font_size.write().unwrap() = font_size;
             *setup_reader_line_height.write().unwrap() = line_height;
             *setup_show_sidebar.write().unwrap() = show_sidebar;
+            *setup_allowed_domains.write().unwrap() = settings.allowed_domains.unwrap_or_default();
+            *setup_ui_prefs.write().unwrap() = settings.ui_prefs.unwrap_or_default();
 
             // Correct the theme checkmarks now that we know the persisted value.
             update_theme_checkmarks(app.handle(), &theme);
@@ -540,6 +578,7 @@ pub fn run() {
             commands::articles::loader_will_unload,
             commands::articles::capture_and_close_loader,
             commands::articles::load_article,
+            commands::articles::clear_webview_history,
             commands::articles::save_article,
             commands::articles::find_article,
             commands::articles::read_article,
@@ -565,6 +604,10 @@ pub fn run() {
             commands::settings::set_reader_line_height,
             commands::settings::get_show_sidebar,
             commands::settings::set_show_sidebar,
+            commands::settings::get_allowed_domains,
+            commands::settings::set_allowed_domains,
+            commands::settings::get_ui_pref,
+            commands::settings::set_ui_pref,
             commands::feeds::list_feeds,
             commands::feeds::add_feed,
             commands::feeds::refresh_feed,
