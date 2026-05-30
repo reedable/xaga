@@ -26,24 +26,13 @@ import {
   type MouseEvent,
 } from "react";
 import { Virtuoso } from "react-virtuoso";
-import { RELATED_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
-import { useAppearance } from "../../hooks/useAppearance";
 import useEntries from "../../hooks/useEntries";
 import { useEvents } from "../../hooks/useEvents";
 import { useFeeds } from "../../hooks/useFeeds";
-import useRelatedItems from "../../hooks/useRelatedItems";
 import useRouter from "../../hooks/useRouter";
-import { useSaved } from "../../hooks/useSaved";
 import { useTopics } from "../../hooks/useTopics";
-import {
-  ALL_ITEMS,
-  ANNOTATION_ITEMS,
-  RECOMMENDED_ITEMS,
-  SAVED_ITEMS,
-  SHORTCUTS,
-  SIMILAR_TO_SAVED_ITEMS,
-} from "../../Shortcuts";
+import { ALL_ITEMS, SHORTCUTS } from "../../Shortcuts";
 import {
   isAnnotation,
   isEntry,
@@ -67,18 +56,19 @@ function getEmptyMessage(filter: Filter, filterText: string): string {
 
 type ItemListProps = {
   className?: string;
+  isSelectableHeader: boolean;
   onEditFeed: (feed: Feed) => void;
   onEditTopic: (topic: Topic) => void;
 };
 
 export function ItemList({
   className,
+  isSelectableHeader,
   onEditFeed,
   onEditTopic,
 }: ItemListProps) {
   const { show, navigate, state, searchParams, setSearchParams } = useRouter();
   const { feedId, topicId, shortcutId, entryId: selectedItemId } = state;
-  const { showSidebar } = useAppearance();
   const filterParam = searchParams.get("filter");
   const filter: Filter = isFilter(filterParam) ? filterParam : "unread";
 
@@ -103,11 +93,6 @@ export function ItemList({
 
   const { listEntries, listAllItems, markEntryRead } =
     useEntries(abortControllerRef);
-
-  const { listSaved } = useSaved(abortControllerRef);
-
-  const { queryByBookmarks, queryByAnnotations, queryBySaved } =
-    useRelatedItems(abortControllerRef);
 
   const {
     onFeedRefreshed,
@@ -174,19 +159,7 @@ export function ItemList({
       setLoading(true);
 
       try {
-        if (selectedList === RECOMMENDED_ITEMS) {
-          const entries = await queryByBookmarks(filter, 0.82);
-          if (entries) setItems(entries);
-        } else if (selectedList === SAVED_ITEMS) {
-          const entries = await listSaved();
-          if (entries) setItems(entries);
-        } else if (selectedList === ANNOTATION_ITEMS) {
-          const entries = await queryByAnnotations(filter, RELATED_THRESHOLD);
-          if (entries) setItems(entries);
-        } else if (selectedList === SIMILAR_TO_SAVED_ITEMS) {
-          const entries = await queryBySaved(filter, RELATED_THRESHOLD);
-          if (entries) setItems(entries);
-        } else if (isFeed(selectedList)) {
+        if (isFeed(selectedList)) {
           const entries = await listEntries(selectedList, filter);
           if (entries) setItems(entries);
         } else if (isTopic(selectedList)) {
@@ -200,16 +173,7 @@ export function ItemList({
         setLoading(false);
       }
     },
-    [
-      queryByBookmarks,
-      filter,
-      listSaved,
-      queryByAnnotations,
-      queryBySaved,
-      listEntries,
-      listTopicItems,
-      listAllItems,
-    ]
+    [filter, listEntries, listTopicItems, listAllItems]
   );
 
   const handleFilter = useCallback(
@@ -280,7 +244,7 @@ export function ItemList({
     <div className={cx(className, css.ItemList)}>
       <div className={css.Header}>
         <div className={cx(css.HeadingWrapper)}>
-          {showSidebar && (
+          {!isSelectableHeader && (
             <>
               <Typography
                 className={css.Heading}
@@ -302,7 +266,7 @@ export function ItemList({
             </>
           )}
 
-          {!showSidebar && (
+          {isSelectableHeader && (
             <div className={css.HeadingControl}>
               <Tooltip title="Refresh">
                 <IconButton
@@ -313,7 +277,7 @@ export function ItemList({
                   size="small"
                   onClick={handleRefresh}
                 >
-                  <Refresh sx={{ fontSize: 16 }} />
+                  <Refresh fontSize="small" />
                 </IconButton>
               </Tooltip>
 

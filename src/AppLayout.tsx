@@ -1,5 +1,5 @@
 import { Collapse } from "@mui/material";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import css from "./AppLayout.module.css";
 import { ItemView } from "./components/content/ItemView";
@@ -27,6 +27,8 @@ const storedFilter = (() => {
 export function AppLayout() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const appRef = useRef<HTMLDivElement>(null);
+  const [autoHideSidebar, setAutoHideSidebar] = useState(false);
   const { showSidebar } = useAppearance();
   const filterParam = searchParams.get("filter");
   const filter = isFilter(filterParam) ? filterParam : storedFilter;
@@ -144,6 +146,17 @@ export function AppLayout() {
   );
 
   useEffect(() => {
+    const el = appRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const threshold = search !== null ? 1300 : 980;
+      setAutoHideSidebar(entry.contentRect.width < threshold);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [search]);
+
+  useEffect(() => {
     if (filter) localStorage.setItem("list.filter", filter);
   }, [filter]);
 
@@ -159,8 +172,12 @@ export function AppLayout() {
     <div className={css.Root}>
       <TitleBar className={css.TitleBar} />
 
-      <div className={css.App}>
-        <Collapse in={showSidebar} unmountOnExit orientation="horizontal">
+      <div ref={appRef} className={css.App}>
+        <Collapse
+          in={showSidebar && !autoHideSidebar}
+          unmountOnExit
+          orientation="horizontal"
+        >
           <Sidebar
             className={css.Sidebar}
             onAddFeed={() => setIsAddingFeed(true)}
@@ -170,6 +187,7 @@ export function AppLayout() {
 
         <ItemList
           className={css.ItemList}
+          isSelectableHeader={autoHideSidebar || !showSidebar}
           onEditFeed={setEditingFeed}
           onEditTopic={setEditingTopic}
         />

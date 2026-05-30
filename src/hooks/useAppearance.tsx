@@ -5,7 +5,7 @@ export function useAppearance() {
   const context = useContext(AppearanceContext);
 
   if (!context) {
-    throw new TypeError("useView must be used within ViewProvider");
+    throw new TypeError("useView must be used within AppearanceProvider");
   }
 
   return {

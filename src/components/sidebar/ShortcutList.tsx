@@ -3,14 +3,13 @@ import {
   FolderOutlined,
   Newspaper,
   RssFeed,
-  Star,
 } from "@mui/icons-material";
 import { useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRouter from "../../hooks/useRouter";
-import { ALL_ITEMS, SAVED_ITEMS, SHORTCUTS } from "../../Shortcuts";
+import { ALL_ITEMS, SHORTCUTS } from "../../Shortcuts";
 import { isFeed, isFilter, isTopic, type Collection } from "../../types";
 import ExpandableList from "./ExpandableList";
 import css from "./ShortcutList.module.css";
@@ -73,14 +72,6 @@ export default function ShortcutList({
         collection={ALL_ITEMS}
         loading={loadingFeedIds.size > 0}
         selected={shortcutId === ALL_ITEMS.id}
-        onSelectCollection={handleSelectShortcut}
-      />
-
-      <SidebarItem
-        icon={Star}
-        collection={SAVED_ITEMS}
-        loading={loadingFeedIds.size > 0}
-        selected={shortcutId === SAVED_ITEMS.id}
         onSelectCollection={handleSelectShortcut}
       />
 
