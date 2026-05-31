@@ -31,7 +31,7 @@ export function isHtmlReaderView(value?: string | null): value is HtmlReaderView
   return !!value && HTML_READER_VIEWS.includes(value);
 }
 
-/** Minimal contract shared by every displayable item (entries, notes, …). */
+/** Minimal contract shared by every displayable item. */
 export type Item = {
   id: string;
   title: string;
@@ -197,15 +197,6 @@ export type Topic = Document & Collection & { threshold?: number };
 
 export function isTopic(item?: Item | null): item is Topic {
   return isDocument(item) && isCollection(item);
-}
-
-// ── Note ─────────────────────────────────────────────────────────────────────
-
-/** A user-written markdown note (not URL-derived). */
-export type Note = Document;
-
-export function isNote(item?: Item | null): item is Note {
-  return isDocument(item);
 }
 
 // ── Feed ─────────────────────────────────────────────────────────────────────
