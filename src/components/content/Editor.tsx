@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { markdownToHtml } from "../../text/markdownPipeline";
 import type { Note } from "../../types";
 import cx from "../../utils/cx";
-import { Reader } from "./Reader";
+import { HtmlReader } from "./HtmlReader";
 
 interface EditorProps {
   className?: string;
@@ -98,7 +98,7 @@ export function Editor({ className, note }: EditorProps) {
           }}
         />
       ) : (
-        html !== null && <Reader html={html} />
+        html !== null && <HtmlReader html={html} />
       )}
     </Box>
   );

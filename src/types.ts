@@ -23,12 +23,12 @@ export function isFilter(value?: unknown): value is Filter {
   return !!value && typeof value === "string" && FILTERS.includes(value);
 }
 
-const READER_VIEWS: string[] = ["full", "summary"] as const;
+const HTML_READER_VIEWS: string[] = ["full", "summary"] as const;
 
-export type ReaderView = (typeof READER_VIEWS)[number];
+export type HtmlReaderView = (typeof HTML_READER_VIEWS)[number];
 
-export function isReaderView(value?: string | null): value is ReaderView {
-  return !!value && READER_VIEWS.includes(value);
+export function isHtmlReaderView(value?: string | null): value is HtmlReaderView {
+  return !!value && HTML_READER_VIEWS.includes(value);
 }
 
 /** Minimal contract shared by every displayable item (entries, notes, …). */

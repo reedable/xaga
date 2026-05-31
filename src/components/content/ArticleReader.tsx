@@ -23,14 +23,14 @@ import { useAppearance } from "../../hooks/useAppearance";
 import { useArticles } from "../../hooks/useArticles";
 import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
-import { buildEntryHtml, type ReaderStyle } from "../../text/buildEntryHtml";
+import { buildEntryHtml, type HtmlReaderStyle } from "../../text/buildEntryHtml";
 import { markdownToHtml } from "../../text/markdownPipeline";
 import { type Article, type Entry } from "../../types";
 import cx from "../../utils/cx";
 import { FONT_FAMILY_CSS } from "../../utils/FontFamily";
 import Logger from "../../utils/Logger";
 import css from "./ArticleReader.module.css";
-import { Reader } from "./Reader";
+import { HtmlReader } from "./HtmlReader";
 import { RelatedItemList } from "./RelatedItemList";
 
 export interface ArticleReaderHandle {
@@ -49,11 +49,11 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     const { entryId, annotationId, url } = state;
 
     const {
-      readerView,
+      htmlReaderView,
       themeMode,
-      readerFontFamily,
-      readerFontSize,
-      readerLineHeight,
+      htmlReaderFontFamily,
+      htmlReaderFontSize,
+      htmlReaderLineHeight,
     } = useAppearance();
 
     const [abort, abortControllerRef] = useAbortController();
@@ -67,19 +67,19 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       removeAnnotation,
     } = useAnnotations(abortControllerRef);
 
-    const readerStyle: ReaderStyle = useMemo(
+    const htmlReaderStyle: HtmlReaderStyle = useMemo(
       () => ({
         themeMode,
-        fontFamily: readerFontFamily,
-        fontSize: readerFontSize,
-        lineHeight: readerLineHeight,
+        fontFamily: htmlReaderFontFamily,
+        fontSize: htmlReaderFontSize,
+        lineHeight: htmlReaderLineHeight,
       }),
-      [themeMode, readerFontFamily, readerFontSize, readerLineHeight]
+      [themeMode, htmlReaderFontFamily, htmlReaderFontSize, htmlReaderLineHeight]
     );
 
     const html = useMemo(
-      () => (bodyHtml ? buildEntryHtml(bodyHtml, readerStyle) : null),
-      [bodyHtml, readerStyle]
+      () => (bodyHtml ? buildEntryHtml(bodyHtml, htmlReaderStyle) : null),
+      [bodyHtml, htmlReaderStyle]
     );
 
     const {
@@ -195,7 +195,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       })();
 
       return abort;
-    }, [requestArticle, abort, entryId, readerView, annotationId]);
+    }, [requestArticle, abort, entryId, htmlReaderView, annotationId]);
 
     useEffect(() => {
       return onUnreadChanged((entry) => {
@@ -264,7 +264,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
               <Typography
                 component="h1"
                 variant="h5"
-                sx={{ fontFamily: FONT_FAMILY_CSS[readerFontFamily] }}
+                sx={{ fontFamily: FONT_FAMILY_CSS[htmlReaderFontFamily] }}
               >
                 {selectedEntry?.title || <>Loading...</>}
               </Typography>
@@ -277,7 +277,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
             </div>
 
             {selectedEntry && html && (
-              <Reader
+              <HtmlReader
                 className={cx(className)}
                 html={html}
                 entryId={selectedEntry.id}

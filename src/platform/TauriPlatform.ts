@@ -1028,12 +1028,12 @@ export class TauriPlatform implements Platform {
     return invoker<void>(name, { value });
   }
 
-  async getReaderPrefs(): Promise<{
+  async getHtmlReaderPrefs(): Promise<{
     fontFamily: string;
     fontSize: number;
     lineHeight: number;
   }> {
-    const name = "get_reader_prefs";
+    const name = "get_html_reader_prefs";
     const invoker = decorate(invoke).with(logged, { logger, name });
     return invoker<{
       fontFamily: string;
@@ -1042,20 +1042,20 @@ export class TauriPlatform implements Platform {
     }>(name);
   }
 
-  async setReaderFontFamily(value: string): Promise<void> {
-    const name = "set_reader_font_family";
+  async setHtmlReaderFontFamily(value: string): Promise<void> {
+    const name = "set_html_reader_font_family";
     const invoker = decorate(invoke).with(logged, { logger, name });
     return invoker<void>(name, { value });
   }
 
-  async setReaderFontSize(value: number): Promise<void> {
-    const name = "set_reader_font_size";
+  async setHtmlReaderFontSize(value: number): Promise<void> {
+    const name = "set_html_reader_font_size";
     const invoker = decorate(invoke).with(logged, { logger, name });
     return invoker<void>(name, { value });
   }
 
-  async setReaderLineHeight(value: number): Promise<void> {
-    const name = "set_reader_line_height";
+  async setHtmlReaderLineHeight(value: number): Promise<void> {
+    const name = "set_html_reader_line_height";
     const invoker = decorate(invoke).with(logged, { logger, name });
     return invoker<void>(name, { value });
   }
@@ -1188,30 +1188,30 @@ export class TauriPlatform implements Platform {
     return listen<string>(name, listener);
   }
 
-  onReaderFontFamilyChanged(
+  onHtmlReaderFontFamilyChanged(
     callback: (value: string) => void
   ): Promise<UnlistenFn> {
-    const name = "settings:reader-font-family";
+    const name = "settings:html-reader-font-family";
     const listener = decorate((e: { payload: string }) =>
       callback(e.payload)
     ).with(logged, { logger, name });
     return listen<string>(name, listener);
   }
 
-  onReaderFontSizeChanged(
+  onHtmlReaderFontSizeChanged(
     callback: (value: number) => void
   ): Promise<UnlistenFn> {
-    const name = "settings:reader-font-size";
+    const name = "settings:html-reader-font-size";
     const listener = decorate((e: { payload: number }) =>
       callback(e.payload)
     ).with(logged, { logger, name });
     return listen<number>(name, listener);
   }
 
-  onReaderLineHeightChanged(
+  onHtmlReaderLineHeightChanged(
     callback: (value: number) => void
   ): Promise<UnlistenFn> {
-    const name = "settings:reader-line-height";
+    const name = "settings:html-reader-line-height";
     const listener = decorate((e: { payload: number }) =>
       callback(e.payload)
     ).with(logged, { logger, name });

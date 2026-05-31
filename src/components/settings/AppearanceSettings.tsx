@@ -19,11 +19,11 @@ import type { ReactNode } from "react";
 import { useAppearance } from "../../hooks/useAppearance";
 import type { FontFamily } from "../../utils/FontFamily";
 import {
-  READER_FONT_SIZE_MAX,
-  READER_FONT_SIZE_MIN,
-  READER_LINE_HEIGHT_MAX,
-  READER_LINE_HEIGHT_MIN,
-  READER_LINE_HEIGHT_STEP,
+  HTML_READER_FONT_SIZE_MAX,
+  HTML_READER_FONT_SIZE_MIN,
+  HTML_READER_LINE_HEIGHT_MAX,
+  HTML_READER_LINE_HEIGHT_MIN,
+  HTML_READER_LINE_HEIGHT_STEP,
   type ThemeSetting,
 } from "../../providers/AppearanceContext";
 import css from "./AppearanceSettings.module.css";
@@ -41,7 +41,7 @@ interface StepperProps {
   onChange: (value: number) => void;
 }
 
-function ReaderStepper({
+function Stepper({
   value,
   display,
   min,
@@ -88,14 +88,14 @@ export function AppearanceSettings() {
   const {
     themeSetting,
     changeTheme,
-    readerView: view,
+    htmlReaderView: view,
     setView,
-    readerFontFamily,
-    setReaderFontFamily,
-    readerFontSize,
-    setReaderFontSize,
-    readerLineHeight,
-    setReaderLineHeight,
+    htmlReaderFontFamily,
+    setHtmlReaderFontFamily,
+    htmlReaderFontSize,
+    setHtmlReaderFontSize,
+    htmlReaderLineHeight,
+    setHtmlReaderLineHeight,
   } = useAppearance();
 
   return (
@@ -143,9 +143,9 @@ export function AppearanceSettings() {
         <FormControl size="small" className={css.SelectControl}>
           <InputLabel>Font</InputLabel>
           <Select
-            value={readerFontFamily}
+            value={htmlReaderFontFamily}
             label="Font"
-            onChange={(e) => setReaderFontFamily(e.target.value as FontFamily)}
+            onChange={(e) => setHtmlReaderFontFamily(e.target.value as FontFamily)}
           >
             <MenuItem value="system">System UI</MenuItem>
             <MenuItem value="serif">Serif</MenuItem>
@@ -163,17 +163,17 @@ export function AppearanceSettings() {
         >
           Font size
         </Typography>
-        <ReaderStepper
-          value={readerFontSize}
-          display={`${readerFontSize}px`}
-          min={READER_FONT_SIZE_MIN}
-          max={READER_FONT_SIZE_MAX}
+        <Stepper
+          value={htmlReaderFontSize}
+          display={`${htmlReaderFontSize}px`}
+          min={HTML_READER_FONT_SIZE_MIN}
+          max={HTML_READER_FONT_SIZE_MAX}
           step={1}
           decrementIcon={<TextDecrease fontSize="small" />}
           incrementIcon={<TextIncrease fontSize="small" />}
           decrementLabel="Decrease font size"
           incrementLabel="Increase font size"
-          onChange={setReaderFontSize}
+          onChange={setHtmlReaderFontSize}
         />
       </div>
 
@@ -185,17 +185,17 @@ export function AppearanceSettings() {
         >
           Line height
         </Typography>
-        <ReaderStepper
-          value={readerLineHeight}
-          display={readerLineHeight.toFixed(1)}
-          min={READER_LINE_HEIGHT_MIN}
-          max={READER_LINE_HEIGHT_MAX}
-          step={READER_LINE_HEIGHT_STEP}
+        <Stepper
+          value={htmlReaderLineHeight}
+          display={htmlReaderLineHeight.toFixed(1)}
+          min={HTML_READER_LINE_HEIGHT_MIN}
+          max={HTML_READER_LINE_HEIGHT_MAX}
+          step={HTML_READER_LINE_HEIGHT_STEP}
           decrementIcon={<DensitySmall fontSize="small" />}
           incrementIcon={<DensityLarge fontSize="small" />}
           decrementLabel="Tighten line height"
           incrementLabel="Loosen line height"
-          onChange={setReaderLineHeight}
+          onChange={setHtmlReaderLineHeight}
         />
       </div>
     </div>

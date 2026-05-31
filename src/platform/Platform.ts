@@ -158,14 +158,14 @@ export interface Platform {
   // Settings
   getRefreshOnStartup(): Promise<boolean>;
   setRefreshOnStartup(value: boolean): Promise<void>;
-  getReaderPrefs(): Promise<{
+  getHtmlReaderPrefs(): Promise<{
     fontFamily: string;
     fontSize: number;
     lineHeight: number;
   }>;
-  setReaderFontFamily(value: string): Promise<void>;
-  setReaderFontSize(value: number): Promise<void>;
-  setReaderLineHeight(value: number): Promise<void>;
+  setHtmlReaderFontFamily(value: string): Promise<void>;
+  setHtmlReaderFontSize(value: number): Promise<void>;
+  setHtmlReaderLineHeight(value: number): Promise<void>;
   getShowSidebar(): Promise<boolean>;
   setShowSidebar(value: boolean): Promise<void>;
 
@@ -206,13 +206,13 @@ export interface Platform {
   onThemeChangedFromSettings(
     callback: (theme: string) => void,
   ): Promise<UnlistenFn>;
-  onReaderFontFamilyChanged(
+  onHtmlReaderFontFamilyChanged(
     callback: (value: string) => void,
   ): Promise<UnlistenFn>;
-  onReaderFontSizeChanged(
+  onHtmlReaderFontSizeChanged(
     callback: (value: number) => void,
   ): Promise<UnlistenFn>;
-  onReaderLineHeightChanged(
+  onHtmlReaderLineHeightChanged(
     callback: (value: number) => void,
   ): Promise<UnlistenFn>;
   onRefreshOnStartupChanged(

@@ -9,17 +9,17 @@ export function useAppearance() {
   }
 
   return {
-    readerView: context.readerView,
-    setView: context.setReaderView,
+    htmlReaderView: context.htmlReaderView,
+    setView: context.setHtmlReaderView,
     themeSetting: context.themeSetting,
     changeTheme: context.changeThemeSetting,
     themeMode: context.themeMode,
-    readerFontFamily: context.readerFontFamily,
-    setReaderFontFamily: context.setReaderFontFamily,
-    readerFontSize: context.readerFontSize,
-    setReaderFontSize: context.setReaderFontSize,
-    readerLineHeight: context.readerLineHeight,
-    setReaderLineHeight: context.setReaderLineHeight,
+    htmlReaderFontFamily: context.htmlReaderFontFamily,
+    setHtmlReaderFontFamily: context.setHtmlReaderFontFamily,
+    htmlReaderFontSize: context.htmlReaderFontSize,
+    setHtmlReaderFontSize: context.setHtmlReaderFontSize,
+    htmlReaderLineHeight: context.htmlReaderLineHeight,
+    setHtmlReaderLineHeight: context.setHtmlReaderLineHeight,
     showSidebar: context.showSidebar,
     setShowSidebar: context.setShowSidebar,
   };

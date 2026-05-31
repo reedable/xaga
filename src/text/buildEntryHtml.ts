@@ -1,8 +1,4 @@
-import {
-  READER_FONT_SIZE_DEFAULT,
-  READER_LINE_HEIGHT_DEFAULT,
-  type ThemeMode,
-} from "../providers/AppearanceContext";
+import { type ThemeMode } from "../providers/AppearanceContext";
 import { FONT_FAMILY_CSS, type FontFamily } from "../utils/FontFamily";
 
 // Annotation highlight colours for the iframe document.
@@ -59,7 +55,7 @@ export const SCROLL_TO_ANNOTATION = "scroll-to-annotation";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export interface ReaderStyle {
+export interface HtmlReaderStyle {
   themeMode: ThemeMode;
   fontFamily: FontFamily;
   fontSize: number;
@@ -79,7 +75,7 @@ export interface SerializedAnnotation {
 
 export function buildEntryHtml(
   bodyHtml: string,
-  style: ReaderStyle,
+  style: HtmlReaderStyle,
   annotations: SerializedAnnotation[] = []
 ): string {
   const { themeMode, fontFamily, fontSize, lineHeight } = style;
@@ -450,13 +446,4 @@ export function buildEntryHtml(
       }
     });
   </script></body></html>`;
-}
-
-export function defaultReaderStyle(themeMode: ThemeMode): ReaderStyle {
-  return {
-    themeMode,
-    fontFamily: "system",
-    fontSize: READER_FONT_SIZE_DEFAULT,
-    lineHeight: READER_LINE_HEIGHT_DEFAULT,
-  };
 }

@@ -7,11 +7,11 @@ import {
   type ReactNode,
 } from "react";
 import { usePlatform } from "../platform/Platform";
-import type { ReaderView } from "../types";
+import type { HtmlReaderView } from "../types";
 import type { FontFamily } from "../utils/FontFamily";
 import AppearanceContext, {
-  READER_FONT_SIZE_DEFAULT,
-  READER_LINE_HEIGHT_DEFAULT,
+  HTML_READER_FONT_SIZE_DEFAULT,
+  HTML_READER_LINE_HEIGHT_DEFAULT,
   type ThemeMode,
   type ThemeSetting,
 } from "./AppearanceContext";
@@ -25,17 +25,17 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
   const [themeSetting, setThemeSetting] = useState<ThemeSetting>("auto");
 
-  const [readerView, setReaderView] = useState<ReaderView>("full");
+  const [htmlReaderView, setHtmlReaderView] = useState<HtmlReaderView>("full");
 
-  const [readerFontFamily, setReaderFontFamilyState] =
+  const [htmlReaderFontFamily, setHtmlReaderFontFamilyState] =
     useState<FontFamily>("system");
 
-  const [readerFontSize, setReaderFontSizeState] = useState(
-    READER_FONT_SIZE_DEFAULT,
+  const [htmlReaderFontSize, setHtmlReaderFontSizeState] = useState(
+    HTML_READER_FONT_SIZE_DEFAULT,
   );
 
-  const [readerLineHeight, setReaderLineHeightState] = useState(
-    READER_LINE_HEIGHT_DEFAULT,
+  const [htmlReaderLineHeight, setHtmlReaderLineHeightState] = useState(
+    HTML_READER_LINE_HEIGHT_DEFAULT,
   );
 
   const [showSidebar, setShowSidebarState] = useState(true);
@@ -47,8 +47,8 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     palette: { mode: themeMode },
     // TODO Consider adding systemFontFamily and systemFontSize
     // typography: {
-    //   fontFamily: readerFontFamily,
-    //   fontSize: readerFontSize,
+    //   fontFamily: htmlReaderFontFamily,
+    //   fontSize: htmlReaderFontSize,
     // },
   });
 
@@ -60,26 +60,26 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     [platform],
   );
 
-  const setReaderFontFamily = useCallback(
+  const setHtmlReaderFontFamily = useCallback(
     (value: FontFamily) => {
-      platform.setReaderFontFamily(value).catch(console.error);
-      setReaderFontFamilyState(value);
+      platform.setHtmlReaderFontFamily(value).catch(console.error);
+      setHtmlReaderFontFamilyState(value);
     },
     [platform],
   );
 
-  const setReaderFontSize = useCallback(
+  const setHtmlReaderFontSize = useCallback(
     (value: number) => {
-      platform.setReaderFontSize(value).catch(console.error);
-      setReaderFontSizeState(value);
+      platform.setHtmlReaderFontSize(value).catch(console.error);
+      setHtmlReaderFontSizeState(value);
     },
     [platform],
   );
 
-  const setReaderLineHeight = useCallback(
+  const setHtmlReaderLineHeight = useCallback(
     (value: number) => {
-      platform.setReaderLineHeight(value).catch(console.error);
-      setReaderLineHeightState(value);
+      platform.setHtmlReaderLineHeight(value).catch(console.error);
+      setHtmlReaderLineHeightState(value);
     },
     [platform],
   );
@@ -108,14 +108,14 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       .catch(console.error);
   }, [platform]);
 
-  // Load persisted reader prefs on startup.
+  // Load persisted html reader prefs on startup.
   useEffect(() => {
     platform
-      .getReaderPrefs()
+      .getHtmlReaderPrefs()
       .then(({ fontFamily, fontSize, lineHeight }) => {
-        setReaderFontFamilyState(fontFamily as FontFamily);
-        setReaderFontSizeState(fontSize);
-        setReaderLineHeightState(lineHeight);
+        setHtmlReaderFontFamilyState(fontFamily as FontFamily);
+        setHtmlReaderFontSizeState(fontSize);
+        setHtmlReaderLineHeightState(lineHeight);
       })
       .catch(console.error);
   }, [platform]);
@@ -138,7 +138,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     const unlistens = [
       platform.onSetTheme((t) => changeThemeSetting(t as ThemeSetting)),
       platform.onShowArticleSummary((showArticleSummary) =>
-        setReaderView(showArticleSummary ? "summary" : "full"),
+        setHtmlReaderView(showArticleSummary ? "summary" : "full"),
       ),
       platform.onShowSidebar((show) => setShowSidebar(show)),
     ];
@@ -154,11 +154,11 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       platform.onThemeChangedFromSettings((t) =>
         setThemeSetting(t as ThemeSetting),
       ),
-      platform.onReaderFontFamilyChanged((v) =>
-        setReaderFontFamilyState(v as FontFamily),
+      platform.onHtmlReaderFontFamilyChanged((v) =>
+        setHtmlReaderFontFamilyState(v as FontFamily),
       ),
-      platform.onReaderFontSizeChanged(setReaderFontSizeState),
-      platform.onReaderLineHeightChanged(setReaderLineHeightState),
+      platform.onHtmlReaderFontSizeChanged(setHtmlReaderFontSizeState),
+      platform.onHtmlReaderLineHeightChanged(setHtmlReaderLineHeightState),
     ];
 
     return () => {
@@ -168,31 +168,31 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      readerView,
-      setReaderView,
+      htmlReaderView,
+      setHtmlReaderView,
       themeSetting,
       changeThemeSetting,
       themeMode,
-      readerFontFamily,
-      setReaderFontFamily,
-      readerFontSize,
-      setReaderFontSize,
-      readerLineHeight,
-      setReaderLineHeight,
+      htmlReaderFontFamily,
+      setHtmlReaderFontFamily,
+      htmlReaderFontSize,
+      setHtmlReaderFontSize,
+      htmlReaderLineHeight,
+      setHtmlReaderLineHeight,
       showSidebar,
       setShowSidebar,
     }),
     [
-      readerView,
+      htmlReaderView,
       themeSetting,
       changeThemeSetting,
       themeMode,
-      readerFontFamily,
-      setReaderFontFamily,
-      readerFontSize,
-      setReaderFontSize,
-      readerLineHeight,
-      setReaderLineHeight,
+      htmlReaderFontFamily,
+      setHtmlReaderFontFamily,
+      htmlReaderFontSize,
+      setHtmlReaderFontSize,
+      htmlReaderLineHeight,
+      setHtmlReaderLineHeight,
       showSidebar,
       setShowSidebar,
     ],

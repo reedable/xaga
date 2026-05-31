@@ -17,11 +17,11 @@ export function ItemView({ className }: ItemViewProps) {
   const { state } = useRouter();
   const { entryId, url } = state;
 
-  const readerRef = useRef<ArticleReaderHandle>(null);
+  const articleReaderRef = useRef<ArticleReaderHandle>(null);
 
   const handleReload = useCallback(() => {
-    logger.debug("handleReload", entryId, url, readerRef.current);
-    readerRef.current?.reload();
+    logger.debug("handleReload", entryId, url, articleReaderRef.current);
+    articleReaderRef.current?.reload();
   }, [entryId, url]);
 
   return (
@@ -30,7 +30,7 @@ export function ItemView({ className }: ItemViewProps) {
         <Toolbar reload={entryId || url ? handleReload : null} />
 
         {entryId ? (
-          <ArticleReader ref={readerRef} />
+          <ArticleReader ref={articleReaderRef} />
         ) : (
           <div className={css.Placeholder}>
             <Typography variant="body2" color="text.disabled">

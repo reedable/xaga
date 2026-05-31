@@ -21,9 +21,9 @@ import {
   type AnnotationTooltipHandle,
 } from "./AnnotationTooltip";
 import { FindBar } from "./FindBar";
-import css from "./Reader.module.css";
+import css from "./HtmlReader.module.css";
 
-export interface SelectionRect {
+export interface HtmlReaderHtmlReaderSelectionRect {
   top: number;
   left: number;
   width: number;
@@ -39,7 +39,7 @@ interface TooltipState {
   position: { x: number; y: number };
 }
 
-interface ReaderProps {
+interface HtmlReaderProps {
   annotations?: Annotation[];
   className?: string;
   entryId: string;
@@ -54,7 +54,7 @@ interface ReaderProps {
   ) => void;
 }
 
-export function Reader({
+export function HtmlReader({
   annotations,
   className,
   entryId,
@@ -63,7 +63,7 @@ export function Reader({
   onClickLink,
   onSaveAnnotation,
   onRemoveAnnotation,
-}: ReaderProps) {
+}: HtmlReaderProps) {
   const { onFind } = useEvents();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const tooltipRef = useRef<AnnotationTooltipHandle | null>(null);
@@ -76,7 +76,7 @@ export function Reader({
   } | null>(null);
 
   /** Convert iframe-local rect to fixed viewport coords, positioned below selection. */
-  const toViewportPosition = useCallback((rect: SelectionRect) => {
+  const toViewportPosition = useCallback((rect: HtmlReaderSelectionRect) => {
     const iframeBounds = iframeRef.current?.getBoundingClientRect();
     if (!iframeBounds) return { x: rect.left, y: rect.top + rect.height + 6 };
     return {
@@ -86,7 +86,7 @@ export function Reader({
   }, []);
 
   const handleSelectionMade = useCallback(
-    (texts: string[], occurrences: number[], rect: SelectionRect) => {
+    (texts: string[], occurrences: number[], rect: HtmlReaderSelectionRect) => {
       setTooltip({
         annotationId: uuidv4(),
         text: texts,
@@ -99,7 +99,7 @@ export function Reader({
   );
 
   const handleClickHighlight = useCallback(
-    (annotationId: string, _text: string, rect: SelectionRect) => {
+    (annotationId: string, _text: string, rect: HtmlReaderSelectionRect) => {
       const ann = annotations?.find((a) => a.id === annotationId);
       if (!ann) return;
       setTooltip({
@@ -262,7 +262,7 @@ export function Reader({
           handleSelectionMade(
             msg.texts as string[],
             msg.occurrences as number[],
-            msg.rect as SelectionRect
+            msg.rect as HtmlReaderSelectionRect
           );
           break;
         case SELECTION_CLEARED:
@@ -276,7 +276,7 @@ export function Reader({
           handleClickHighlight(
             msg.annotationId,
             msg.text,
-            msg.rect as SelectionRect
+            msg.rect as HtmlReaderSelectionRect
           );
           break;
         case FIND_OPEN:
@@ -301,13 +301,12 @@ export function Reader({
   }, [onClickLink, handleSelectionMade, handleClickHighlight, handleCloseTooltip]);
 
   return (
-    <div className={cx(css.Reader, className)}>
+    <div className={cx(css.HtmlReader, className)}>
       <iframe
         ref={iframeRef}
         onLoad={handleIframeLoad}
         sandbox="allow-scripts"
         allow="autoplay 'none'"
-        className={css.Iframe}
         title="Entry reader"
       />
 
