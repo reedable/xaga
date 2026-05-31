@@ -1,3 +1,4 @@
+import { parse } from "tldts";
 import { isEntry, type Item } from "../types";
 import formatDate from "./formatDate";
 
@@ -14,9 +15,7 @@ export default function formatByline(item: Item) {
 
 function formatHost(item: Item) {
   if (isEntry(item)) {
-    return item.url
-      ? new URL(item.url).hostname.split(".").slice(-2).join(".")
-      : null;
+    return item.url ? (parse(item.url).domain ?? null) : null;
   }
 
   return null;

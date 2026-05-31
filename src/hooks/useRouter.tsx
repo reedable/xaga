@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ALL_ITEMS } from "../Shortcuts";
 import {
   isAnnotation,
+  isAnnotationSummary,
   isCollection,
   isEntry,
   isTopic,
@@ -48,6 +49,7 @@ export default function useRouter() {
       if (isAnnotation(item)) {
         annotationId = item.id;
         entryId = item.reference;
+        if (isAnnotationSummary(item)) url = item.url;
       } else {
         entryId = item.id;
         if (isEntry(item)) url = item.url;
