@@ -186,6 +186,7 @@ export interface Platform {
   onShowArticleSummary(callback: (show: boolean) => void): Promise<UnlistenFn>;
   onShowSidebar(callback: (show: boolean) => void): Promise<UnlistenFn>;
   onLoaderClosed(callback: (data: { url: string; html: string }) => void): Promise<UnlistenFn>;
+  onLoaderPageLoaded(callback: (data: { url: string; html: string }) => void): Promise<UnlistenFn>;
   onFind(callback: () => void): Promise<UnlistenFn>;
   setFindEnabled(enabled: boolean): Promise<void>;
   onShutdown(callback: () => void): Promise<UnlistenFn>;

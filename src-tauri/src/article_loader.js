@@ -21,15 +21,32 @@ window.addEventListener('load', function() {
     var debounceTimer = null;
     var sent = false;
 
+    function notifyPageLoaded(url, html) {
+        try {
+            window.__TAURI_INTERNALS__.invoke('loader_page_loaded', {
+                url: url,
+                html: html
+            });
+        } catch(e) {}
+    }
+
     function send() {
         if (sent) return;
         sent = true;
         observer.disconnect();
+        var html = document.documentElement.outerHTML;
         try {
             window.__TAURI_INTERNALS__.invoke('receive_html', {
                 id: window.__LOADER_ID__,
-                html: document.documentElement.outerHTML
-            });
+                html: html
+            }).then(function(consumed) {
+                // For subsequent page loads (consumed=false), the pending request
+                // was already resolved by a prior load, so notify the main window
+                // directly with the captured URL and HTML.
+                if (window.__LOADER_KEEP_OPEN__ && !consumed) {
+                    notifyPageLoaded(window.location.href, html);
+                }
+            }).catch(function() {});
         } catch(e) {}
     }
 
@@ -45,4 +62,28 @@ window.addEventListener('load', function() {
     });
 
     debounceTimer = setTimeout(send, 300);
+
+    // Intercept SPA navigation (pushState/replaceState/hashchange) so that
+    // in-page URL changes without a full reload also notify the main window.
+    if (window.__LOADER_KEEP_OPEN__) {
+        var spaTimer = null;
+        function notifySpaNavigation() {
+            clearTimeout(spaTimer);
+            spaTimer = setTimeout(function() {
+                notifyPageLoaded(window.location.href, document.documentElement.outerHTML);
+            }, 300);
+        }
+
+        var origPush = history.pushState.bind(history);
+        var origReplace = history.replaceState.bind(history);
+        history.pushState = function() {
+            origPush.apply(history, arguments);
+            notifySpaNavigation();
+        };
+        history.replaceState = function() {
+            origReplace.apply(history, arguments);
+            notifySpaNavigation();
+        };
+        window.addEventListener('hashchange', notifySpaNavigation);
+    }
 });

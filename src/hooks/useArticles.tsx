@@ -168,6 +168,31 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
     [abortControllerRef, platform]
   );
 
+  const createArticleFromHtml = useCallback(
+    async (url: string, html: string) => {
+      const signal = abortControllerRef.current.signal;
+      setError(null);
+      setLoading(true);
+
+      try {
+        const { title, markdown, favicon } = await processEntry(url, html);
+        const article = await platform.createArticle(signal, {
+          title,
+          content: markdown,
+          url,
+          annotations: [],
+          favicon: favicon ?? undefined,
+        });
+        return await platform.readArticle(signal, article.id);
+      } catch (e) {
+        setError(e);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [abortControllerRef, platform]
+  );
+
   return {
     error,
     loading,
@@ -175,6 +200,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
     loadArticle,
     loadArticleByUrl,
     findArticleByUrl,
+    createArticleFromHtml,
     extractArticleFromHtml,
     saveExtractedArticle,
   };

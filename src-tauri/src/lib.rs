@@ -576,6 +576,7 @@ pub fn run() {
             set_find_enabled,
             commands::articles::receive_html,
             commands::articles::loader_will_unload,
+            commands::articles::loader_page_loaded,
             commands::articles::capture_and_close_loader,
             commands::articles::load_article,
             commands::articles::clear_webview_history,

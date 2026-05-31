@@ -87,6 +87,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       onUnreadChanged,
       onBookmarkChanged,
       onLoaderClosed,
+      onLoaderPageLoaded,
     } = useEvents();
 
     const {
@@ -94,6 +95,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       loadArticle,
       findArticleByUrl,
       loadArticleByUrl,
+      createArticleFromHtml,
       extractArticleFromHtml,
       saveExtractedArticle,
     } = useArticles(abortControllerRef);
@@ -225,6 +227,15 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
         setPendingUpdate(extracted);
       });
     }, [onLoaderClosed, selectedEntry, extractArticleFromHtml]);
+
+    useEffect(() => {
+      return onLoaderPageLoaded(async ({ url: newUrl, html }) => {
+        let article = await findArticleByUrl(newUrl);
+        if (!article) article = await createArticleFromHtml(newUrl, html);
+        if (!article) return;
+        show(article);
+      });
+    }, [onLoaderPageLoaded, findArticleByUrl, createArticleFromHtml, show]);
 
     const handleConfirmUpdate = useCallback(async () => {
       if (!pendingUpdate || !selectedEntry) return;

@@ -14,6 +14,24 @@ pub async fn loader_will_unload(app: AppHandle, url: String) {
 }
 
 #[derive(serde::Serialize, Clone)]
+struct LoaderPageLoaded {
+    url: String,
+    html: String,
+}
+
+#[tauri::command]
+pub async fn loader_page_loaded(
+    window: tauri::Window,
+    app: AppHandle,
+    url: String,
+    html: String,
+) -> Result<(), String> {
+    require_loader_window(&window)?;
+    app.emit("loader:page-loaded", LoaderPageLoaded { url, html }).ok();
+    Ok(())
+}
+
+#[derive(serde::Serialize, Clone)]
 struct LoaderClosed {
     url: String,
     html: String,
@@ -41,7 +59,7 @@ pub async fn receive_html(
     pending: State<'_, article_loader::PendingRequests>,
     id: String,
     html: String,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     require_loader_window(&window)?;
     let mut map = pending.lock().map_err(|e| e.to_string())?;
     if let Some((tx, keep_open)) = map.remove(&id) {
@@ -51,8 +69,10 @@ pub async fn receive_html(
             // continue running or spamming IPC.
             let _ = window.close();
         }
+        Ok(true)
+    } else {
+        Ok(false)
     }
-    Ok(())
 }
 
 #[tauri::command]

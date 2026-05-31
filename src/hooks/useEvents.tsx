@@ -61,6 +61,12 @@ export function useEvents() {
     [platform]
   );
 
+  const onLoaderPageLoaded = useCallback(
+    (callback: (data: { url: string; html: string }) => void) =>
+      subscribe(() => platform.onLoaderPageLoaded(callback)),
+    [platform]
+  );
+
   const onFind = useCallback(
     (callback: () => void) => subscribe(() => platform.onFind(callback)),
     [platform]
@@ -79,6 +85,7 @@ export function useEvents() {
     onAnnotationRemoved,
     onEmbeddingsChanged,
     onLoaderClosed,
+    onLoaderPageLoaded,
     onFind,
     setFindEnabled,
   };

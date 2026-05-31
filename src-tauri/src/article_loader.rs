@@ -73,10 +73,11 @@ pub async fn load_via_webview(
     // serde_json::to_string produces valid JSON string literals, preventing
     // any injection via special characters in id, label, or url.
     let vars = format!(
-        "window.__LOADER_ID__={id};window.__LOADER_LABEL__={label};window.__LOADER_URL__={url};",
+        "window.__LOADER_ID__={id};window.__LOADER_LABEL__={label};window.__LOADER_URL__={url};window.__LOADER_KEEP_OPEN__={keep_open};",
         id = serde_json::to_string(&id).unwrap_or_default(),
         label = serde_json::to_string(&label).unwrap_or_default(),
         url = serde_json::to_string(url).unwrap_or_default(),
+        keep_open = keep_open,
     );
 
     let init_script = format!("{}\n{}", vars, include_str!("article_loader.js"));

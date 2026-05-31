@@ -1106,6 +1106,16 @@ export class TauriPlatform implements Platform {
     return listen<{ url: string; html: string }>(name, listener);
   }
 
+  onLoaderPageLoaded(
+    callback: (data: { url: string; html: string }) => void
+  ): Promise<UnlistenFn> {
+    const name = "loader:page-loaded";
+    const listener = decorate((e: { payload: { url: string; html: string } }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
+    return listen<{ url: string; html: string }>(name, listener);
+  }
+
   onFind(callback: () => void): Promise<UnlistenFn> {
     const name = "menu:find";
     const listener = decorate(callback).with(logged, { logger, name });
