@@ -17,6 +17,8 @@ pub async fn loader_will_unload(app: AppHandle, url: String) {
 struct LoaderPageLoaded {
     url: String,
     html: String,
+    #[serde(rename = "mimeType")]
+    mime_type: String,
 }
 
 #[tauri::command]
@@ -25,9 +27,10 @@ pub async fn loader_page_loaded(
     app: AppHandle,
     url: String,
     html: String,
+    mime_type: String,
 ) -> Result<(), String> {
     require_loader_window(&window)?;
-    app.emit("loader:page-loaded", LoaderPageLoaded { url, html }).ok();
+    app.emit("loader:page-loaded", LoaderPageLoaded { url, html, mime_type }).ok();
     Ok(())
 }
 
@@ -35,6 +38,8 @@ pub async fn loader_page_loaded(
 struct LoaderClosed {
     url: String,
     html: String,
+    #[serde(rename = "mimeType")]
+    mime_type: String,
 }
 
 #[tauri::command]
@@ -44,9 +49,10 @@ pub async fn capture_and_close_loader(
     label: String,
     html: String,
     url: String,
+    mime_type: String,
 ) -> Result<(), String> {
     require_loader_window(&window)?;
-    app.emit("loader:closed", LoaderClosed { url, html }).ok();
+    app.emit("loader:closed", LoaderClosed { url, html, mime_type }).ok();
     if let Some(w) = app.get_webview_window(&label) {
         let _ = w.close();
     }
@@ -59,11 +65,12 @@ pub async fn receive_html(
     pending: State<'_, article_loader::PendingRequests>,
     id: String,
     html: String,
+    mime_type: String,
 ) -> Result<bool, String> {
     require_loader_window(&window)?;
     let mut map = pending.lock().map_err(|e| e.to_string())?;
     if let Some((tx, keep_open)) = map.remove(&id) {
-        let _ = tx.send(html);
+        let _ = tx.send((mime_type, html));
         if !keep_open {
             // Terminate the webview immediately so untrusted scripts cannot
             // continue running or spamming IPC.
@@ -75,6 +82,13 @@ pub async fn receive_html(
     }
 }
 
+#[derive(serde::Serialize)]
+pub struct LoadArticleResult {
+    #[serde(rename = "mimeType")]
+    pub mime_type: String,
+    pub html: String,
+}
+
 #[tauri::command]
 pub async fn load_article(
     window: tauri::Window,
@@ -83,12 +97,13 @@ pub async fn load_article(
     app: AppHandle,
     pending: State<'_, article_loader::PendingRequests>,
     state: State<'_, AppState>,
-) -> Result<String, String> {
+) -> Result<LoadArticleResult, String> {
     require_main_window(&window)?;
     let timeout_secs = *state.loader_timeout_secs.read().unwrap();
     let allowed_domains = state.allowed_domains.read().unwrap().clone();
     let named_stores_supported = state.named_stores_supported;
-    article_loader::load_via_webview(&app, &pending, &url, timeout_secs, keep_open, &allowed_domains, named_stores_supported).await
+    let (mime_type, html) = article_loader::load_via_webview(&app, &pending, &url, timeout_secs, keep_open, &allowed_domains, named_stores_supported).await?;
+    Ok(LoadArticleResult { mime_type, html })
 }
 
 #[tauri::command]

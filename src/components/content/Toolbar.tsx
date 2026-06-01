@@ -13,6 +13,7 @@ import { Collapse, IconButton, LinearProgress, Tooltip } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useArticles } from "../../hooks/useArticles";
+import { useContentLoader } from "../../hooks/useContentLoader";
 import { useBookmarks } from "../../hooks/useBookmarks";
 import useEntries from "../../hooks/useEntries";
 import { useEvents } from "../../hooks/useEvents";
@@ -30,7 +31,6 @@ interface ToolbarProps {
 export function Toolbar({ reload }: ToolbarProps) {
   const platform = usePlatform();
   const {
-    navigate,
     back,
     forward,
     canGoBack,
@@ -47,8 +47,8 @@ export function Toolbar({ reload }: ToolbarProps) {
   const { addBookmark, removeBookmark } = useBookmarks(abortControllerRef);
   const { markEntryRead, markEntryUnread } = useEntries(abortControllerRef);
   const { onBookmarkChanged, onUnreadChanged } = useEvents();
-  const { findArticleByUrl, loadArticleByUrl, loading } =
-    useArticles(abortControllerRef);
+  const { loadUrl, loading } = useContentLoader(abortControllerRef);
+  const { loadArticleByUrl } = useArticles(abortControllerRef);
 
   const { url, entryId } = state;
   const [latestEntry, setLatestEntry] = useState<Entry | null>(null);
@@ -76,15 +76,9 @@ export function Toolbar({ reload }: ToolbarProps) {
     async (inputUrl: string) => {
       if (!/^https?:\/\//i.test(inputUrl)) inputUrl = `https://${inputUrl}`;
       openUrl(inputUrl);
-      let article = await findArticleByUrl(inputUrl);
-      if (!article) article = await loadArticleByUrl(inputUrl);
-      if (!article) return;
-      const params = new URLSearchParams(searchParams);
-      navigate(`/?${params.toString()}`, {
-        state: { ...state, entryId: article.id, url: inputUrl },
-      });
+      await loadUrl(inputUrl);
     },
-    [findArticleByUrl, loadArticleByUrl, openUrl, navigate, state, searchParams]
+    [loadUrl, openUrl]
   );
 
   const handleShowOriginalSite = useCallback(async () => {

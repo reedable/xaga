@@ -6,7 +6,7 @@ use crate::{AppState, load_settings, save_settings, update_theme_checkmarks};
 use super::require_main_window;
 
 #[derive(Serialize)]
-pub struct ReaderPrefs {
+pub struct HtmlReaderPrefs {
     #[serde(rename = "fontFamily")]
     pub font_family: String,
     #[serde(rename = "fontSize")]
@@ -81,16 +81,16 @@ pub async fn set_refresh_on_startup(
 }
 
 #[tauri::command]
-pub async fn get_reader_prefs(state: State<'_, AppState>) -> Result<ReaderPrefs, String> {
-    Ok(ReaderPrefs {
-        font_family: state.reader_font_family.read().unwrap().clone(),
-        font_size: *state.reader_font_size.read().unwrap(),
-        line_height: *state.reader_line_height.read().unwrap(),
+pub async fn get_html_reader_prefs(state: State<'_, AppState>) -> Result<HtmlReaderPrefs, String> {
+    Ok(HtmlReaderPrefs {
+        font_family: state.html_reader_font_family.read().unwrap().clone(),
+        font_size: *state.html_reader_font_size.read().unwrap(),
+        line_height: *state.html_reader_line_height.read().unwrap(),
     })
 }
 
 #[tauri::command]
-pub async fn set_reader_font_family(
+pub async fn set_html_reader_font_family(
     window: tauri::Window,
     value: String,
     state: State<'_, AppState>,
@@ -104,20 +104,20 @@ pub async fn set_reader_font_family(
         .join("settings.json");
 
     let mut settings = load_settings(&settings_path);
-    settings.reader_font_family = Some(value.clone());
+    settings.html_reader_font_family = Some(value.clone());
     save_settings(&settings_path, &settings).map_err(|e| e.to_string())?;
 
-    *state.reader_font_family.write().unwrap() = value.clone();
+    *state.html_reader_font_family.write().unwrap() = value.clone();
 
     if let Some(main) = app.get_webview_window("main") {
-        main.emit("settings:reader-font-family", &value).ok();
+        main.emit("settings:html-reader-font-family", &value).ok();
     }
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn set_reader_font_size(
+pub async fn set_html_reader_font_size(
     window: tauri::Window,
     value: f64,
     state: State<'_, AppState>,
@@ -131,20 +131,20 @@ pub async fn set_reader_font_size(
         .join("settings.json");
 
     let mut settings = load_settings(&settings_path);
-    settings.reader_font_size = Some(value);
+    settings.html_reader_font_size = Some(value);
     save_settings(&settings_path, &settings).map_err(|e| e.to_string())?;
 
-    *state.reader_font_size.write().unwrap() = value;
+    *state.html_reader_font_size.write().unwrap() = value;
 
     if let Some(main) = app.get_webview_window("main") {
-        main.emit("settings:reader-font-size", value).ok();
+        main.emit("settings:html-reader-font-size", value).ok();
     }
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn set_reader_line_height(
+pub async fn set_html_reader_line_height(
     window: tauri::Window,
     value: f64,
     state: State<'_, AppState>,
@@ -158,13 +158,13 @@ pub async fn set_reader_line_height(
         .join("settings.json");
 
     let mut settings = load_settings(&settings_path);
-    settings.reader_line_height = Some(value);
+    settings.html_reader_line_height = Some(value);
     save_settings(&settings_path, &settings).map_err(|e| e.to_string())?;
 
-    *state.reader_line_height.write().unwrap() = value;
+    *state.html_reader_line_height.write().unwrap() = value;
 
     if let Some(main) = app.get_webview_window("main") {
-        main.emit("settings:reader-line-height", value).ok();
+        main.emit("settings:html-reader-line-height", value).ok();
     }
 
     Ok(())

@@ -1,13 +1,16 @@
 import { Close } from "@mui/icons-material";
 import {
   Button,
+  Checkbox,
   Chip,
+  FormControlLabel,
   IconButton,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
 import { useEffect, useState } from "react";
+import { usePreference } from "../../hooks/usePreference";
 import { usePlatform } from "../../platform/Platform";
 import css from "./PrivacySettings.module.css";
 
@@ -18,6 +21,7 @@ export function PrivacySettings() {
   const [domains, setDomains] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [inputError, setInputError] = useState(false);
+  const [inlinePdfViewer, setInlinePdfViewer] = usePreference("inlinePdfViewer", false);
 
   useEffect(() => {
     platform.getAllowedDomains().then(setDomains);
@@ -53,10 +57,11 @@ export function PrivacySettings() {
           Allowed Domains
         </Typography>
         <Typography variant="body2" color="text.secondary" gutterBottom>
-          By default, every article loader session is incognito — no cookies or
-          site data are saved. Add domains here to keep persistent sessions
-          (e.g. to stay logged in). Each domain gets its own isolated cookie
-          jar.
+          By default, every browsing session is incognito — no cookies or site
+          data are saved. Add domains here to keep persistent sessions (e.g. to
+          stay logged in). Each domain gets its own isolated cookie jar.
+          Persistent sessions require macOS 14 or later; on older systems, all
+          sessions remain incognito.
         </Typography>
 
         <div className={css.InputRow}>
@@ -99,12 +104,22 @@ export function PrivacySettings() {
             ))}
           </div>
         )}
+
       </div>
 
-      <div className={css.Note}>
-        <Typography variant="caption" color="text.secondary">
-          Persistent sessions for allow-listed domains require macOS 14 or
-          later. On older macOS, all sessions remain incognito.
+      <div className={css.Section}>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={inlinePdfViewer}
+              onChange={(e) => setInlinePdfViewer(e.target.checked)}
+            />
+          }
+          label="Allow inline PDF viewing"
+        />
+        <Typography variant="body2" color="text.secondary">
+          PDFs open in the system viewer by default. Enabling this shows them
+          in the reading pane but runs the PDF in the same process as the app.
         </Typography>
       </div>
     </div>

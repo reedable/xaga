@@ -23,7 +23,7 @@ import {
 import { FindBar } from "./FindBar";
 import css from "./HtmlReader.module.css";
 
-export interface HtmlReaderHtmlReaderSelectionRect {
+export interface HtmlReaderSelectionRect {
   top: number;
   left: number;
   width: number;

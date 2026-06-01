@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::oneshot;
 
-pub type PendingRequests = Arc<Mutex<HashMap<String, (oneshot::Sender<String>, bool)>>>;
+pub type PendingRequests = Arc<Mutex<HashMap<String, (oneshot::Sender<(String, String)>, bool)>>>;
 
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -58,11 +58,11 @@ pub async fn load_via_webview(
     keep_open: bool,
     allowed_domains: &[String],
     named_stores_supported: bool,
-) -> Result<String, String> {
+) -> Result<(String, String), String> {
     let id = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed).to_string();
     let label = format!("loader-{}", id);
 
-    let (tx, rx) = oneshot::channel::<String>();
+    let (tx, rx) = oneshot::channel::<(String, String)>();
 
     pending
         .lock()
@@ -152,7 +152,7 @@ pub async fn load_via_webview(
     }
 
     match result {
-        Ok(Ok(html)) => Ok(html),
+        Ok(Ok((mime_type, html))) => Ok((mime_type, html)),
         Ok(Err(_)) => Err("channel closed before HTML was received".to_string()),
         Err(_) => Err("timed out waiting for page to load".to_string()),
     }

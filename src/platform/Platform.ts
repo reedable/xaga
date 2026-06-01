@@ -53,7 +53,7 @@ export interface Platform {
   markEntryUnread(signal: AbortSignal, id: string): Promise<Entry>;
 
   // Articles
-  loadArticle(signal: AbortSignal, url: string, keepOpen?: boolean): Promise<string>;
+  loadArticle(signal: AbortSignal, url: string, keepOpen?: boolean): Promise<{ mimeType: string; html: string }>;
   findArticle(signal: AbortSignal, url: string): Promise<Article | null>;
   saveArticle(signal: AbortSignal, article: Article): Promise<Article>;
   readArticle(signal: AbortSignal, id: string): Promise<Article>;
@@ -185,8 +185,8 @@ export interface Platform {
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;
   onShowArticleSummary(callback: (show: boolean) => void): Promise<UnlistenFn>;
   onShowSidebar(callback: (show: boolean) => void): Promise<UnlistenFn>;
-  onLoaderClosed(callback: (data: { url: string; html: string }) => void): Promise<UnlistenFn>;
-  onLoaderPageLoaded(callback: (data: { url: string; html: string }) => void): Promise<UnlistenFn>;
+  onLoaderClosed(callback: (data: { url: string; html: string; mimeType: string }) => void): Promise<UnlistenFn>;
+  onLoaderPageLoaded(callback: (data: { url: string; html: string; mimeType: string }) => void): Promise<UnlistenFn>;
   onFind(callback: () => void): Promise<UnlistenFn>;
   setFindEnabled(enabled: boolean): Promise<void>;
   onShutdown(callback: () => void): Promise<UnlistenFn>;

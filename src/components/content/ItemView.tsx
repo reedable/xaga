@@ -4,6 +4,7 @@ import useRouter from "../../hooks/useRouter";
 import cx from "../../utils/cx";
 import ArticleReader, { type ArticleReaderHandle } from "./ArticleReader";
 import css from "./ItemView.module.css";
+import { PdfReader } from "./PdfReader";
 import { Toolbar } from "./Toolbar";
 import Logger from "../../utils/Logger";
 
@@ -15,7 +16,7 @@ const logger = Logger.getLogger("ItemView");
 
 export function ItemView({ className }: ItemViewProps) {
   const { state } = useRouter();
-  const { entryId, url } = state;
+  const { entryId, url, mimeType } = state;
 
   const articleReaderRef = useRef<ArticleReaderHandle>(null);
 
@@ -24,12 +25,16 @@ export function ItemView({ className }: ItemViewProps) {
     articleReaderRef.current?.reload();
   }, [entryId, url]);
 
+  const isPdf = mimeType === "application/pdf" && !!url && !entryId;
+
   return (
     <div className={cx(className, css.LayoutContainer)}>
       <div className={css.Layout}>
         <Toolbar reload={entryId || url ? handleReload : null} />
 
-        {entryId ? (
+        {isPdf ? (
+          <PdfReader src={url} />
+        ) : entryId ? (
           <ArticleReader ref={articleReaderRef} />
         ) : (
           <div className={css.Placeholder}>

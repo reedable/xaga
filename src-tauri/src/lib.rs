@@ -19,9 +19,9 @@ pub(crate) struct AppState {
     pub(crate) theme: Arc<RwLock<String>>,
     pub(crate) refresh_on_startup: Arc<RwLock<bool>>,
     pub(crate) loader_timeout_secs: Arc<RwLock<u64>>,
-    pub(crate) reader_font_family: Arc<RwLock<String>>,
-    pub(crate) reader_font_size: Arc<RwLock<f64>>,
-    pub(crate) reader_line_height: Arc<RwLock<f64>>,
+    pub(crate) html_reader_font_family: Arc<RwLock<String>>,
+    pub(crate) html_reader_font_size: Arc<RwLock<f64>>,
+    pub(crate) html_reader_line_height: Arc<RwLock<f64>>,
     pub(crate) show_sidebar: Arc<RwLock<bool>>,
     pub(crate) embedding_service: Arc<Mutex<Option<EmbeddingService>>>,
     pub(crate) http_client: reqwest::Client,
@@ -54,9 +54,12 @@ pub(crate) struct UserSettings {
     /// the webview is force-closed. Lower values shrink the window available to
     /// malicious scripts. Defaults to 10 seconds if absent.
     pub(crate) loader_timeout_secs: Option<u64>,
-    pub(crate) reader_font_family: Option<String>,
-    pub(crate) reader_font_size: Option<f64>,
-    pub(crate) reader_line_height: Option<f64>,
+    #[serde(alias = "reader_font_family")]
+    pub(crate) html_reader_font_family: Option<String>,
+    #[serde(alias = "reader_font_size")]
+    pub(crate) html_reader_font_size: Option<f64>,
+    #[serde(alias = "reader_line_height")]
+    pub(crate) html_reader_line_height: Option<f64>,
     pub(crate) show_sidebar: Option<bool>,
     pub(crate) allowed_domains: Option<Vec<String>>,
     pub(crate) ui_prefs: Option<HashMap<String, serde_json::Value>>,
@@ -142,9 +145,9 @@ pub fn run() {
     let theme: Arc<RwLock<String>> = Arc::new(RwLock::new("auto".to_string()));
     let refresh_on_startup: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let loader_timeout_secs: Arc<RwLock<u64>> = Arc::new(RwLock::new(DEFAULT_LOADER_TIMEOUT_SECS));
-    let reader_font_family: Arc<RwLock<String>> = Arc::new(RwLock::new("system".to_string()));
-    let reader_font_size: Arc<RwLock<f64>> = Arc::new(RwLock::new(16.0));
-    let reader_line_height: Arc<RwLock<f64>> = Arc::new(RwLock::new(1.75));
+    let html_reader_font_family: Arc<RwLock<String>> = Arc::new(RwLock::new("system".to_string()));
+    let html_reader_font_size: Arc<RwLock<f64>> = Arc::new(RwLock::new(16.0));
+    let html_reader_line_height: Arc<RwLock<f64>> = Arc::new(RwLock::new(1.75));
     let show_sidebar: Arc<RwLock<bool>> = Arc::new(RwLock::new(true));
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
     let entry_cache: Arc<Mutex<Option<EntryStateCache>>> = Arc::new(Mutex::new(None));
@@ -158,9 +161,9 @@ pub fn run() {
     let setup_theme = Arc::clone(&theme);
     let setup_refresh_on_startup = Arc::clone(&refresh_on_startup);
     let setup_loader_timeout = Arc::clone(&loader_timeout_secs);
-    let setup_reader_font_family = Arc::clone(&reader_font_family);
-    let setup_reader_font_size = Arc::clone(&reader_font_size);
-    let setup_reader_line_height = Arc::clone(&reader_line_height);
+    let setup_reader_font_family = Arc::clone(&html_reader_font_family);
+    let setup_reader_font_size = Arc::clone(&html_reader_font_size);
+    let setup_reader_line_height = Arc::clone(&html_reader_line_height);
     let setup_svc = Arc::clone(&embedding_service);
     let setup_http_client = http_client.clone();
 
@@ -170,9 +173,9 @@ pub fn run() {
             theme: theme.clone(),
             refresh_on_startup,
             loader_timeout_secs,
-            reader_font_family,
-            reader_font_size,
-            reader_line_height,
+            html_reader_font_family,
+            html_reader_font_size,
+            html_reader_line_height,
             show_sidebar,
             embedding_service: embedding_service.clone(),
             http_client,
@@ -373,7 +376,6 @@ pub fn run() {
                     )
                     .title("Settings")
                     .inner_size(680.0, 520.0)
-                    .resizable(false)
                     .build()
                     .ok();
                 }
@@ -451,10 +453,10 @@ pub fn run() {
                 .loader_timeout_secs
                 .unwrap_or(DEFAULT_LOADER_TIMEOUT_SECS);
             let font_family = settings
-                .reader_font_family
+                .html_reader_font_family
                 .unwrap_or_else(|| "system".to_string());
-            let font_size = settings.reader_font_size.unwrap_or(16.0);
-            let line_height = settings.reader_line_height.unwrap_or(1.75);
+            let font_size = settings.html_reader_font_size.unwrap_or(16.0);
+            let line_height = settings.html_reader_line_height.unwrap_or(1.75);
             let show_sidebar = settings.show_sidebar.unwrap_or(true);
             *setup_library.write().unwrap() = lib_path.clone();
             *setup_theme.write().unwrap() = theme.clone();
@@ -599,10 +601,10 @@ pub fn run() {
             commands::settings::set_theme,
             commands::settings::get_refresh_on_startup,
             commands::settings::set_refresh_on_startup,
-            commands::settings::get_reader_prefs,
-            commands::settings::set_reader_font_family,
-            commands::settings::set_reader_font_size,
-            commands::settings::set_reader_line_height,
+            commands::settings::get_html_reader_prefs,
+            commands::settings::set_html_reader_font_family,
+            commands::settings::set_html_reader_font_size,
+            commands::settings::set_html_reader_line_height,
             commands::settings::get_show_sidebar,
             commands::settings::set_show_sidebar,
             commands::settings::get_allowed_domains,

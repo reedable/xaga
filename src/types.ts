@@ -235,4 +235,5 @@ export type NavigationState = {
   entryId?: Entry["id"];
   annotationId?: Annotation["id"];
   url?: Entry["url"];
+  mimeType?: string;
 };

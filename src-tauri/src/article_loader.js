@@ -10,10 +10,12 @@ window.addEventListener('beforeunload', function() {
 });
 
 window.__captureAndClose = function() {
+    var mimeType = document.contentType || 'text/html';
     window.__TAURI_INTERNALS__.invoke('capture_and_close_loader', {
         label: window.__LOADER_LABEL__,
-        html: document.documentElement.outerHTML,
-        url: window.__LOADER_URL__
+        html: mimeType === 'application/pdf' ? '' : document.documentElement.outerHTML,
+        url: window.__LOADER_URL__,
+        mimeType: mimeType
     });
 };
 
@@ -21,11 +23,12 @@ window.addEventListener('load', function() {
     var debounceTimer = null;
     var sent = false;
 
-    function notifyPageLoaded(url, html) {
+    function notifyPageLoaded(url, html, mimeType) {
         try {
             window.__TAURI_INTERNALS__.invoke('loader_page_loaded', {
                 url: url,
-                html: html
+                html: html,
+                mimeType: mimeType
             });
         } catch(e) {}
     }
@@ -34,17 +37,19 @@ window.addEventListener('load', function() {
         if (sent) return;
         sent = true;
         observer.disconnect();
-        var html = document.documentElement.outerHTML;
+        var mimeType = document.contentType || 'text/html';
+        var html = mimeType === 'application/pdf' ? '' : document.documentElement.outerHTML;
         try {
             window.__TAURI_INTERNALS__.invoke('receive_html', {
                 id: window.__LOADER_ID__,
-                html: html
+                html: html,
+                mimeType: mimeType
             }).then(function(consumed) {
                 // For subsequent page loads (consumed=false), the pending request
                 // was already resolved by a prior load, so notify the main window
                 // directly with the captured URL and HTML.
                 if (window.__LOADER_KEEP_OPEN__ && !consumed) {
-                    notifyPageLoaded(window.location.href, html);
+                    notifyPageLoaded(window.location.href, html, mimeType);
                 }
             }).catch(function() {});
         } catch(e) {}
@@ -70,7 +75,8 @@ window.addEventListener('load', function() {
         function notifySpaNavigation() {
             clearTimeout(spaTimer);
             spaTimer = setTimeout(function() {
-                notifyPageLoaded(window.location.href, document.documentElement.outerHTML);
+                var spaMimeType = document.contentType || 'text/html';
+            notifyPageLoaded(window.location.href, spaMimeType === 'application/pdf' ? '' : document.documentElement.outerHTML, spaMimeType);
             }, 300);
         }
 

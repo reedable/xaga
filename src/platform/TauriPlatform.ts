@@ -428,12 +428,12 @@ export class TauriPlatform implements Platform {
     signal: AbortSignal,
     url: string,
     keepOpen?: boolean
-  ): Promise<string> {
+  ): Promise<{ mimeType: string; html: string }> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "load_article" });
 
-    return invoker<string>("load_article", {
+    return invoker<{ mimeType: string; html: string }>("load_article", {
       url,
       keepOpen: keepOpen ?? false,
     });
@@ -1097,23 +1097,23 @@ export class TauriPlatform implements Platform {
   }
 
   onLoaderClosed(
-    callback: (data: { url: string; html: string }) => void
+    callback: (data: { url: string; html: string; mimeType: string }) => void
   ): Promise<UnlistenFn> {
     const name = "loader:closed";
-    const listener = decorate((e: { payload: { url: string; html: string } }) =>
+    const listener = decorate((e: { payload: { url: string; html: string; mimeType: string } }) =>
       callback(e.payload)
     ).with(logged, { logger, name });
-    return listen<{ url: string; html: string }>(name, listener);
+    return listen<{ url: string; html: string; mimeType: string }>(name, listener);
   }
 
   onLoaderPageLoaded(
-    callback: (data: { url: string; html: string }) => void
+    callback: (data: { url: string; html: string; mimeType: string }) => void
   ): Promise<UnlistenFn> {
     const name = "loader:page-loaded";
-    const listener = decorate((e: { payload: { url: string; html: string } }) =>
+    const listener = decorate((e: { payload: { url: string; html: string; mimeType: string } }) =>
       callback(e.payload)
     ).with(logged, { logger, name });
-    return listen<{ url: string; html: string }>(name, listener);
+    return listen<{ url: string; html: string; mimeType: string }>(name, listener);
   }
 
   onFind(callback: () => void): Promise<UnlistenFn> {

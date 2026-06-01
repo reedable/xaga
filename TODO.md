@@ -15,18 +15,17 @@
 - [ ] Favicon deduplication — currently stored per-entry in frontmatter, could bloat `.md` files over time
 - [ ] Tag and Collection concepts are not clearly defined, and neither is bookmarks
 - [ ] Settings: "Keep history" toggle (off by default) — persist navigation history across sessions (storage TBD); include a clear history action
-- [ ] Handle PDF display in ItemView/ArticleReader
 
 ## Large (uncertain)
 
 - [ ] Back/forward button does not work well with filter (Unread/Saved/All) — consider taking filter out of routing
 - [ ] [entryWorker.ts](src/text/entryWorker.ts): Move back into a Web Worker once the `document` variable issue in the remark pipeline is resolved
 - [ ] Review UI → Tauri → xaga-core and xaga-cli → xaga-core call paths and identify unnecessary code
-- [ ] Export annotations and notes
+- [ ] Export annotations
 - [ ] Keyboard navigation
 - [ ] Semantic search UI — LanceDB and embeddings are wired up but there's no search interface yet
 - [ ] Track centroid for saved items per Topic
-- [ ] Split the concept of "Saved" and "Relevant". Saved items are manually curated items, and relevant items are cosine similarity based on the running centroid of the topic + saved.
+- [ ] Split the concept of "Saved" and "Similar/Relevant"? Saved items are manually curated items, and relevant items are cosine similarity based on the running centroid of the topic + saved.
 - [ ] Reading progress and stats (time spent, articles read per feed, etc.)
 
 ## Deferred

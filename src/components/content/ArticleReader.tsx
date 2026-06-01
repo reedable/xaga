@@ -21,6 +21,7 @@ import useAbortController from "../../hooks/useAbortController";
 import { useAnnotations } from "../../hooks/useAnnotations";
 import { useAppearance } from "../../hooks/useAppearance";
 import { useArticles } from "../../hooks/useArticles";
+import { useContentLoader } from "../../hooks/useContentLoader";
 import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
 import { buildEntryHtml, type HtmlReaderStyle } from "../../text/buildEntryHtml";
@@ -94,11 +95,12 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       readArticle,
       loadArticle,
       findArticleByUrl,
-      loadArticleByUrl,
       createArticleFromHtml,
       extractArticleFromHtml,
       saveExtractedArticle,
     } = useArticles(abortControllerRef);
+
+    const { loadUrl } = useContentLoader(abortControllerRef);
 
     const [pendingUpdate, setPendingUpdate] = useState<{
       title: string;
@@ -149,18 +151,9 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
         setSelectedEntry(null);
         setBodyHtml(null);
         openUrl(clickedUrl);
-
-        let article = await findArticleByUrl(clickedUrl);
-        if (!article) article = await loadArticleByUrl(clickedUrl);
-
-        if (article?.content) {
-          const body = await markdownToHtml(article.content);
-          if (body) setBodyHtml(body);
-        }
-
-        if (article) show(article);
+        await loadUrl(clickedUrl);
       },
-      [findArticleByUrl, loadArticleByUrl, openUrl, show]
+      [loadUrl, openUrl]
     );
 
     useImperativeHandle(
@@ -215,8 +208,9 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
     useEffect(() => {
       if (!selectedEntry) return;
-      return onLoaderClosed(async ({ url, html }) => {
+      return onLoaderClosed(async ({ url, html, mimeType }) => {
         if (selectedEntry.url !== url) return;
+        if (mimeType === "application/pdf") return;
         const extracted = await extractArticleFromHtml(selectedEntry.url, html);
         if (!extracted?.markdown) return;
         if (
@@ -229,13 +223,18 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     }, [onLoaderClosed, selectedEntry, extractArticleFromHtml]);
 
     useEffect(() => {
-      return onLoaderPageLoaded(async ({ url: newUrl, html }) => {
+      return onLoaderPageLoaded(async ({ url: newUrl, html, mimeType }) => {
+        if (mimeType === "application/pdf") {
+          openUrl(newUrl);
+          await loadUrl(newUrl);
+          return;
+        }
         let article = await findArticleByUrl(newUrl);
         if (!article) article = await createArticleFromHtml(newUrl, html);
         if (!article) return;
         show(article);
       });
-    }, [onLoaderPageLoaded, findArticleByUrl, createArticleFromHtml, show]);
+    }, [onLoaderPageLoaded, openUrl, loadUrl, findArticleByUrl, createArticleFromHtml, show]);
 
     const handleConfirmUpdate = useCallback(async () => {
       if (!pendingUpdate || !selectedEntry) return;
