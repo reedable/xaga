@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode, type SetStateAction } from "react";
 import { subscribe } from "../hooks/useEvents";
-import { usePreference } from "../hooks/usePreference";
 import { usePlatform } from "../platform/Platform";
 import type { Feed } from "../types";
 import { debounced } from "../utils/Decorator";
@@ -13,9 +12,21 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [loadingSet, setLoadingSet] = useState<Set<string>>(new Set());
   const [feeds, setFeeds] = useState<Feed[]>([]);
-  const [pinnedFeedIds, setPinnedFeedIds] = usePreference<Feed["id"][]>(
-    "sidebar.pinnedFeeds",
-    []
+  const [pinnedFeedIds, setPinnedFeedIdsState] = useState<Feed["id"][]>([]);
+
+  useEffect(() => {
+    platform.getPinnedFeedIds().then(setPinnedFeedIdsState).catch(console.error);
+  }, [platform]);
+
+  const setPinnedFeedIds = useCallback(
+    (updater: SetStateAction<Feed["id"][]>) => {
+      setPinnedFeedIdsState((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        platform.setPinnedFeedIds(next).catch(console.error);
+        return next;
+      });
+    },
+    [platform],
   );
 
   const refreshFeeds = useCallback(async () => {

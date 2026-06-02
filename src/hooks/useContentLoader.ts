@@ -2,13 +2,13 @@ import { useCallback, type RefObject } from "react";
 import { usePlatform } from "../platform/Platform";
 import useRouter from "./useRouter";
 import { useArticles } from "./useArticles";
-import { usePreference } from "./usePreference";
+import { useSettings } from "./useSettings";
 
 export function useContentLoader(abortControllerRef: RefObject<AbortController>) {
   const platform = usePlatform();
   const { navigate, state, searchParams } = useRouter();
   const { findArticleByUrl, loadArticleByUrl, loading } = useArticles(abortControllerRef);
-  const [inlinePdfViewer] = usePreference("inlinePdfViewer", false);
+  const { inlinePdfReader } = useSettings();
 
   const loadUrl = useCallback(
     async (url: string) => {
@@ -28,7 +28,7 @@ export function useContentLoader(abortControllerRef: RefObject<AbortController>)
       const { article, mimeType } = result;
 
       if (mimeType === "application/pdf") {
-        if (inlinePdfViewer) {
+        if (inlinePdfReader) {
           navigate(`/?${params.toString()}`, {
             state: { ...state, url, mimeType, entryId: undefined, annotationId: undefined },
           });
@@ -44,7 +44,7 @@ export function useContentLoader(abortControllerRef: RefObject<AbortController>)
         state: { ...state, entryId: article.id, url, mimeType },
       });
     },
-    [platform, navigate, state, searchParams, findArticleByUrl, loadArticleByUrl, inlinePdfViewer]
+    [platform, navigate, state, searchParams, findArticleByUrl, loadArticleByUrl, inlinePdfReader]
   );
 
   return { loadUrl, loading };

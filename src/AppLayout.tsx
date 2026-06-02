@@ -18,7 +18,6 @@ import { SearchResultList } from "./components/search/SearchResultList";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { TitleBar } from "./components/titlebar/TitleBar";
 import useAbortController from "./hooks/useAbortController";
-import { usePreference } from "./hooks/usePreference";
 import { usePlatform } from "./platform/Platform";
 import { useAppearance } from "./hooks/useAppearance";
 import { useFeeds } from "./hooks/useFeeds";
@@ -32,7 +31,7 @@ export function AppLayout() {
   const [autoHideSidebar, setAutoHideSidebar] = useState(false);
   const { showSidebar } = useAppearance();
   const filterParam = searchParams.get("filter");
-  const [storedFilter, setStoredFilter] = usePreference<string>("list.filter", "unread");
+  const [storedFilter] = useState<string>("unread");
   const filter = isFilter(filterParam) ? filterParam : storedFilter;
   const search = searchParams.get("search");
 
@@ -160,10 +159,6 @@ export function AppLayout() {
     observer.observe(el);
     return () => observer.disconnect();
   }, [search]);
-
-  useEffect(() => {
-    if (filter) setStoredFilter(filter);
-  }, [filter, setStoredFilter]);
 
   useEffect(() => {
     requestFeeds();

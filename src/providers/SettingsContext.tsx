@@ -5,6 +5,8 @@ export type SettingsContextType = {
   switchLibrary: () => Promise<void>;
   refreshOnStartup: boolean;
   setRefreshOnStartup: (value: boolean) => void;
+  inlinePdfReader: boolean;
+  setInlinePdfReader: (value: boolean) => void;
   settingsLoaded: boolean;
 };
 

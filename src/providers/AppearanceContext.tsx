@@ -1,5 +1,6 @@
 import { createContext } from "react";
 import type { HtmlReaderView } from "../types";
+
 import type { FontFamily } from "../utils/FontFamily";
 
 export type ThemeMode = "light" | "dark";
@@ -16,6 +17,7 @@ export const HTML_READER_LINE_HEIGHT_DEFAULT = 1.75;
 export type AppearanceContextType = {
   htmlReaderView: HtmlReaderView;
   setHtmlReaderView: (htmlReaderView: HtmlReaderView) => void;
+  changeHtmlReaderView: (view: HtmlReaderView) => void;
   themeSetting: ThemeSetting;
   changeThemeSetting: (mode: ThemeSetting) => void;
   themeMode: ThemeMode;

@@ -8,6 +8,7 @@ import type {
   Entry,
   Feed,
   Filter,
+  HtmlReaderView,
   ImportResult,
   Item,
   SavedItem,
@@ -52,6 +53,7 @@ export interface Platform {
   markEntryUnread(signal: AbortSignal, id: string): Promise<Entry>;
 
   // Articles
+  readEntry(signal: AbortSignal, id: string): Promise<Entry>;
   loadArticle(signal: AbortSignal, url: string, keepOpen?: boolean): Promise<{ mimeType: string; html: string }>;
   findArticle(signal: AbortSignal, url: string): Promise<Article | null>;
   saveArticle(signal: AbortSignal, article: Article): Promise<Article>;
@@ -150,7 +152,6 @@ export interface Platform {
   onImportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onExportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;
-  onShowArticleSummary(callback: (show: boolean) => void): Promise<UnlistenFn>;
   onShowSidebar(callback: (show: boolean) => void): Promise<UnlistenFn>;
   onLoaderClosed(callback: (data: { url: string; html: string; mimeType: string }) => void): Promise<UnlistenFn>;
   onLoaderPageLoaded(callback: (data: { url: string; html: string; mimeType: string }) => void): Promise<UnlistenFn>;
@@ -165,9 +166,22 @@ export interface Platform {
   setAllowedDomains(domains: string[]): Promise<void>;
   onAllowedDomainsChanged(callback: (domains: string[]) => void): Promise<UnlistenFn>;
 
-  // UI preferences (persisted to settings.json, survives Clear History)
-  getUiPref<T>(key: string): Promise<T | null>;
-  setUiPref<T>(key: string, value: T): Promise<void>;
+  // HTML reader view preference
+  getHtmlReaderView(): Promise<string>;
+  setHtmlReaderView(view: HtmlReaderView): Promise<void>;
+  onHtmlReaderView(callback: (view: HtmlReaderView) => void): Promise<UnlistenFn>;
+  onHtmlReaderViewChangedFromSettings(callback: (view: HtmlReaderView) => void): Promise<UnlistenFn>;
+
+  // Persisted preferences
+  getPinnedFeedIds(): Promise<string[]>;
+  setPinnedFeedIds(value: string[]): Promise<void>;
+  getPinnedTopicIds(): Promise<string[]>;
+  setPinnedTopicIds(value: string[]): Promise<void>;
+  getExpandedSidebarList(): Promise<string | null>;
+  setExpandedSidebarList(value: string | null): Promise<void>;
+  getInlinePdfReader(): Promise<boolean>;
+  setInlinePdfReader(value: boolean): Promise<void>;
+  onInlinePdfReaderChanged(callback: (value: boolean) => void): Promise<UnlistenFn>;
 
   // Settings sync (main window receives these when settings window saves)
   onThemeChangedFromSettings(

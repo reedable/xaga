@@ -10,7 +10,7 @@ import {
   Typography,
 } from "@mui/material";
 import { useEffect, useState } from "react";
-import { usePreference } from "../../hooks/usePreference";
+import { useSettings } from "../../hooks/useSettings";
 import { usePlatform } from "../../platform/Platform";
 import css from "./PrivacySettings.module.css";
 
@@ -18,10 +18,10 @@ const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])
 
 export function PrivacySettings() {
   const platform = usePlatform();
+  const { inlinePdfReader, setInlinePdfReader } = useSettings();
   const [domains, setDomains] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [inputError, setInputError] = useState(false);
-  const [inlinePdfViewer, setInlinePdfViewer] = usePreference("inlinePdfViewer", false);
 
   useEffect(() => {
     platform.getAllowedDomains().then(setDomains);
@@ -111,8 +111,8 @@ export function PrivacySettings() {
         <FormControlLabel
           control={
             <Checkbox
-              checked={inlinePdfViewer}
-              onChange={(e) => setInlinePdfViewer(e.target.checked)}
+              checked={inlinePdfReader}
+              onChange={(e) => setInlinePdfReader(e.target.checked)}
             />
           }
           label="Allow inline PDF viewing"

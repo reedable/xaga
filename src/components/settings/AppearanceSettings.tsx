@@ -5,12 +5,13 @@ import {
   TextIncrease,
 } from "@mui/icons-material";
 import {
-  Checkbox,
   FormControl,
   FormControlLabel,
   IconButton,
   InputLabel,
   MenuItem,
+  Radio,
+  RadioGroup,
   Select,
   Tooltip,
   Typography,
@@ -89,7 +90,7 @@ export function AppearanceSettings() {
     themeSetting,
     changeTheme,
     htmlReaderView: view,
-    setView,
+    changeHtmlReaderView,
     htmlReaderFontFamily,
     setHtmlReaderFontFamily,
     htmlReaderFontSize,
@@ -120,15 +121,13 @@ export function AppearanceSettings() {
       </div>
 
       <div className={css.SummarySection}>
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={view === "summary"}
-              onChange={(e) => setView(e.target.checked ? "summary" : "full")}
-            />
-          }
-          label="Show Article Summary"
-        />
+        <RadioGroup
+          value={view}
+          onChange={(e) => changeHtmlReaderView(e.target.value as typeof view)}
+        >
+          <FormControlLabel value="summary" control={<Radio size="small" />} label="Summary" />
+          <FormControlLabel value="reader"  control={<Radio size="small" />} label="Reader"  />
+        </RadioGroup>
       </div>
 
       <Typography

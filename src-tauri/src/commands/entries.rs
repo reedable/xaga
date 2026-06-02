@@ -7,6 +7,12 @@ use crate::AppState;
 use super::{parse_item_filter, require_main_window};
 
 #[tauri::command]
+pub async fn read_entry(id: String, state: State<'_, AppState>) -> Result<entries::Entry, String> {
+    let data_dir = state.library.read().unwrap().clone();
+    entries::read_entry(&data_dir, &id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn mark_entry_read(window: tauri::Window, id: String, state: State<'_, AppState>) -> Result<Entry, String> {
     require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();

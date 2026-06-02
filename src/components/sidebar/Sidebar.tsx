@@ -3,7 +3,7 @@ import { IconButton, Tooltip } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
-import { usePreference } from "../../hooks/usePreference";
+import { useSidebar } from "../../hooks/useSidebar";
 import { useTopics } from "../../hooks/useTopics";
 import cx from "../../utils/cx";
 import sortByUnreadCount from "../../utils/sortByUnreadCount";
@@ -18,8 +18,6 @@ type SidebarProps = {
   onAddTopic: () => void;
 };
 
-type ListType = "SHORTCUTS" | "TOPICS" | "FEEDS";
-
 export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
   const [, abortControllerRef] = useAbortController();
 
@@ -27,6 +25,8 @@ export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
 
   const { loading, feeds, pinnedFeedIds, refreshAllFeeds } =
     useFeeds(abortControllerRef);
+
+  const { expandedList, setExpandedList } = useSidebar(abortControllerRef);
 
   const pinnedCollections = useMemo(
     () =>
@@ -37,13 +37,8 @@ export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
     [feeds, pinnedFeedIds, pinnedTopicIds, topics]
   );
 
-  const [expandedList, setExpandedList] = usePreference<ListType | null>(
-    "sidebar.expander",
-    "SHORTCUTS"
-  );
-
   const handleExpandedList = useCallback(
-    (listType: ListType) => {
+    (listType: typeof expandedList) => {
       setExpandedList((prev) => (prev === listType ? null : listType));
     },
     [setExpandedList]

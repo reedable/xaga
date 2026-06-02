@@ -84,9 +84,25 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
   );
 
   /**
-   * Reads the locally saved content and returns if found. Otherwise, it loads
-   * the remote content and returns the fresh content. Call `loadArticle`
-   * instead if you need the fresh content every time.
+   * Reads the entry from disk. Fast, no loading state.
+   */
+  const readEntry = useCallback(
+    async (entryId: Entry["id"]) => {
+      const signal = abortControllerRef.current.signal;
+      setError(null);
+      try {
+        return await platform.readEntry(signal, entryId);
+      } catch (e) {
+        setError(e);
+      }
+    },
+    [abortControllerRef, platform]
+  );
+
+  /**
+   * Reads the locally saved article and returns it if content is present.
+   * Otherwise loads from the network and returns the fresh content.
+   * Call `loadArticle` instead if you need the fresh content every time.
    *
    * WARNING: `loadArticle` implicitly calls `save_article`, which moves the
    * md file from unread/ to read/ directory, i.e. marks the item read.
@@ -95,7 +111,6 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
     async (entryId: Entry["id"]) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
-      setLoading(true);
 
       try {
         const article = await platform.readArticle(signal, entryId);
@@ -104,11 +119,10 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           return article;
         }
 
+        // Content missing — fetch from network. loadArticle manages loading state.
         return await loadArticle(article);
       } catch (e) {
         setError(e);
-      } finally {
-        setLoading(false);
       }
     },
     [abortControllerRef, loadArticle, platform]
@@ -201,6 +215,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
   return {
     error,
     loading,
+    readEntry,
     readArticle,
     loadArticle,
     loadArticleByUrl,

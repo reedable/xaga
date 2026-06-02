@@ -23,7 +23,7 @@ export function isFilter(value?: unknown): value is Filter {
   return !!value && typeof value === "string" && FILTERS.includes(value);
 }
 
-const HTML_READER_VIEWS: string[] = ["full", "summary"] as const;
+const HTML_READER_VIEWS: string[] = ["reader", "summary"] as const;
 
 export type HtmlReaderView = (typeof HTML_READER_VIEWS)[number];
 

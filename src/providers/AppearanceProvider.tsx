@@ -25,7 +25,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
   const [themeSetting, setThemeSetting] = useState<ThemeSetting>("auto");
 
-  const [htmlReaderView, setHtmlReaderView] = useState<HtmlReaderView>("full");
+  const [htmlReaderView, setHtmlReaderView] = useState<HtmlReaderView>("reader");
 
   const [htmlReaderFontFamily, setHtmlReaderFontFamilyState] =
     useState<FontFamily>("system");
@@ -51,6 +51,14 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     (t: ThemeSetting) => {
       platform.setTheme(t).catch(console.error);
       setThemeSetting(t);
+    },
+    [platform],
+  );
+
+  const changeHtmlReaderView = useCallback(
+    (v: HtmlReaderView) => {
+      platform.setHtmlReaderView(v).catch(console.error);
+      setHtmlReaderView(v);
     },
     [platform],
   );
@@ -103,6 +111,14 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       .catch(console.error);
   }, [platform]);
 
+  // Load persisted html reader view on startup.
+  useEffect(() => {
+    platform
+      .getHtmlReaderView()
+      .then((v) => setHtmlReaderView(v as HtmlReaderView))
+      .catch(console.error);
+  }, [platform]);
+
   // Load persisted html reader prefs on startup.
   useEffect(() => {
     platform
@@ -132,22 +148,23 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unlistens = [
       platform.onSetTheme((t) => changeThemeSetting(t as ThemeSetting)),
-      platform.onShowArticleSummary((showArticleSummary) =>
-        setHtmlReaderView(showArticleSummary ? "summary" : "full"),
-      ),
+      platform.onHtmlReaderView((v) => changeHtmlReaderView(v)),
       platform.onShowSidebar((show) => setShowSidebar(show)),
     ];
 
     return () => {
       unlistens.forEach((p) => p.then((fn) => fn()));
     };
-  }, [platform, changeThemeSetting, setShowSidebar]);
+  }, [platform, changeThemeSetting, changeHtmlReaderView, setShowSidebar]);
 
   // Settings window sync — update state directly (Rust already persisted the value).
   useEffect(() => {
     const unlistens = [
       platform.onThemeChangedFromSettings((t) =>
         setThemeSetting(t as ThemeSetting),
+      ),
+      platform.onHtmlReaderViewChangedFromSettings((v) =>
+        setHtmlReaderView(v),
       ),
       platform.onHtmlReaderFontFamilyChanged((v) =>
         setHtmlReaderFontFamilyState(v as FontFamily),
@@ -165,6 +182,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     () => ({
       htmlReaderView,
       setHtmlReaderView,
+      changeHtmlReaderView,
       themeSetting,
       changeThemeSetting,
       themeMode,
@@ -179,6 +197,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     }),
     [
       htmlReaderView,
+      changeHtmlReaderView,
       themeSetting,
       changeThemeSetting,
       themeMode,

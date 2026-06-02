@@ -2,7 +2,6 @@ mod article_loader;
 mod commands;
 mod file_watchers;
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -28,7 +27,11 @@ pub(crate) struct AppState {
     pub(crate) entry_cache: Arc<Mutex<Option<EntryStateCache>>>,
     pub(crate) allowed_domains: Arc<RwLock<Vec<String>>>,
     pub(crate) named_stores_supported: bool,
-    pub(crate) ui_prefs: Arc<RwLock<HashMap<String, serde_json::Value>>>,
+    pub(crate) pinned_feed_ids: Arc<RwLock<Vec<String>>>,
+    pub(crate) pinned_topic_ids: Arc<RwLock<Vec<String>>>,
+    pub(crate) expanded_sidebar_list: Arc<RwLock<Option<String>>>,
+    pub(crate) inline_pdf_reader: Arc<RwLock<bool>>,
+    pub(crate) html_reader_view: Arc<RwLock<String>>,
 }
 
 pub(crate) fn feeds_dir(library: &Path) -> PathBuf {
@@ -62,7 +65,11 @@ pub(crate) struct UserSettings {
     pub(crate) html_reader_line_height: Option<f64>,
     pub(crate) show_sidebar: Option<bool>,
     pub(crate) allowed_domains: Option<Vec<String>>,
-    pub(crate) ui_prefs: Option<HashMap<String, serde_json::Value>>,
+    pub(crate) pinned_feed_ids: Option<Vec<String>>,
+    pub(crate) pinned_topic_ids: Option<Vec<String>>,
+    pub(crate) expanded_sidebar_list: Option<String>,
+    pub(crate) inline_pdf_reader: Option<bool>,
+    pub(crate) html_reader_view: Option<String>,
 }
 
 pub(crate) fn load_settings(path: &Path) -> UserSettings {
@@ -81,6 +88,30 @@ pub(crate) fn save_settings(path: &Path, settings: &UserSettings) -> std::io::Re
 }
 
 // ── Menu helpers ───────────────────────────────────────────────────────────────
+
+/// Move the checkmark to `selected` ("summary" | "reader").
+fn update_view_checkmarks<R: Runtime>(app: &tauri::AppHandle<R>, selected: &str) {
+    let Some(menu) = app.menu() else { return };
+    let view = menu
+        .items()
+        .unwrap_or_default()
+        .into_iter()
+        .find_map(|item| match item {
+            MenuItemKind::Submenu(sub) if sub.id().as_ref() == "view_menu" => Some(sub),
+            _ => None,
+        });
+
+    let Some(view) = view else { return };
+
+    for (item_id, value) in [
+        ("html_reader_view:summary", "summary"),
+        ("html_reader_view:reader", "reader"),
+    ] {
+        if let Some(MenuItemKind::Check(item)) = view.get(item_id) {
+            item.set_checked(value == selected).ok();
+        }
+    }
+}
 
 /// Move the checkmark to `selected` ("auto" | "light" | "dark").
 fn update_theme_checkmarks<R: Runtime>(app: &tauri::AppHandle<R>, selected: &str) {
@@ -152,10 +183,18 @@ pub fn run() {
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
     let entry_cache: Arc<Mutex<Option<EntryStateCache>>> = Arc::new(Mutex::new(None));
     let allowed_domains: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
-    let ui_prefs: Arc<RwLock<HashMap<String, serde_json::Value>>> = Arc::new(RwLock::new(HashMap::new()));
+    let pinned_feed_ids: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
+    let pinned_topic_ids: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
+    let expanded_sidebar_list: Arc<RwLock<Option<String>>> = Arc::new(RwLock::new(None));
+    let inline_pdf_reader: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
+    let html_reader_view: Arc<RwLock<String>> = Arc::new(RwLock::new("reader".to_string()));
     let setup_entry_cache = Arc::clone(&entry_cache);
     let setup_allowed_domains = Arc::clone(&allowed_domains);
-    let setup_ui_prefs = Arc::clone(&ui_prefs);
+    let setup_pinned_feed_ids = Arc::clone(&pinned_feed_ids);
+    let setup_pinned_topic_ids = Arc::clone(&pinned_topic_ids);
+    let setup_expanded_sidebar_list = Arc::clone(&expanded_sidebar_list);
+    let setup_inline_pdf_reader = Arc::clone(&inline_pdf_reader);
+    let setup_html_reader_view = Arc::clone(&html_reader_view);
     let setup_show_sidebar = Arc::clone(&show_sidebar);
     let setup_library = Arc::clone(&library);
     let setup_theme = Arc::clone(&theme);
@@ -182,15 +221,20 @@ pub fn run() {
             entry_cache,
             allowed_domains,
             named_stores_supported,
-            ui_prefs,
+            pinned_feed_ids,
+            pinned_topic_ids,
+            expanded_sidebar_list,
+            inline_pdf_reader,
+            html_reader_view,
         })
         .manage(article_loader::PendingRequests::default())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .menu(|app| {
-            // Default to "auto" checked; setup() corrects this once settings are loaded.
+            // Defaults corrected by setup() once settings are loaded.
             let initial_theme = "auto";
+            let initial_html_reader_view = "reader";
 
             let app_menu = Submenu::with_items(
                 app,
@@ -303,12 +347,21 @@ pub fn run() {
                         true,
                         None::<&str>,
                     )?,
+                    &PredefinedMenuItem::separator(app)?,
                     &CheckMenuItem::with_id(
                         app,
-                        "show_article_summary",
-                        "Show Article Summary",
+                        "html_reader_view:summary",
+                        "Summary",
                         true,
-                        false,
+                        initial_html_reader_view == "summary",
+                        None::<&str>,
+                    )?,
+                    &CheckMenuItem::with_id(
+                        app,
+                        "html_reader_view:reader",
+                        "Reader",
+                        true,
+                        initial_html_reader_view == "reader",
                         None::<&str>,
                     )?,
                     &PredefinedMenuItem::separator(app)?,
@@ -408,24 +461,10 @@ pub fn run() {
                     .unwrap_or(true);
                 app.emit("menu:show-sidebar", checked).ok();
             }
-            "show_article_summary" => {
-                let checked = app
-                    .menu()
-                    .and_then(|menu| {
-                        menu.items().ok()?.into_iter().find_map(|item| match item {
-                            MenuItemKind::Submenu(sub) if sub.id().as_ref() == "view_menu" => {
-                                Some(sub)
-                            }
-                            _ => None,
-                        })
-                    })
-                    .and_then(|view| view.get("show_article_summary"))
-                    .and_then(|item| match item {
-                        MenuItemKind::Check(c) => c.is_checked().ok(),
-                        _ => None,
-                    })
-                    .unwrap_or(false);
-                app.emit("menu:show-article-summary", checked).ok();
+            id @ ("html_reader_view:summary" | "html_reader_view:reader") => {
+                let view = id.split(':').nth(1).unwrap_or("");
+                update_view_checkmarks(app, view);
+                app.emit("menu:html-reader-view", view).ok();
             }
             "clear_history" => {
                 app.emit("menu:clear-history", ()).ok();
@@ -467,11 +506,17 @@ pub fn run() {
             *setup_reader_line_height.write().unwrap() = line_height;
             *setup_show_sidebar.write().unwrap() = show_sidebar;
             *setup_allowed_domains.write().unwrap() = settings.allowed_domains.unwrap_or_default();
-            *setup_ui_prefs.write().unwrap() = settings.ui_prefs.unwrap_or_default();
+            *setup_pinned_feed_ids.write().unwrap() = settings.pinned_feed_ids.unwrap_or_default();
+            *setup_pinned_topic_ids.write().unwrap() = settings.pinned_topic_ids.unwrap_or_default();
+            *setup_expanded_sidebar_list.write().unwrap() = settings.expanded_sidebar_list;
+            *setup_inline_pdf_reader.write().unwrap() = settings.inline_pdf_reader.unwrap_or(false);
+            let html_reader_view_str = settings.html_reader_view.unwrap_or_else(|| "reader".to_string());
+            *setup_html_reader_view.write().unwrap() = html_reader_view_str.clone();
 
-            // Correct the theme checkmarks now that we know the persisted value.
+            // Correct the menu checkmarks now that we know the persisted values.
             update_theme_checkmarks(app.handle(), &theme);
             update_show_sidebar_checkmark(app.handle(), show_sidebar);
+            update_view_checkmarks(app.handle(), &html_reader_view_str);
 
             // Start the EmbeddingService; file watcher + recovery fire inside it.
             // If another instance already holds the library lock, we skip the
@@ -591,6 +636,7 @@ pub fn run() {
             commands::articles::list_annotations,
             commands::saved::list_saved,
             commands::entries::is_cache_seeded,
+            commands::entries::read_entry,
             commands::entries::mark_entry_read,
             commands::entries::mark_entry_unread,
             commands::entries::list_all_articles,
@@ -609,8 +655,16 @@ pub fn run() {
             commands::settings::set_show_sidebar,
             commands::settings::get_allowed_domains,
             commands::settings::set_allowed_domains,
-            commands::settings::get_ui_pref,
-            commands::settings::set_ui_pref,
+            commands::settings::get_html_reader_view,
+            commands::settings::set_html_reader_view,
+            commands::settings::get_pinned_feed_ids,
+            commands::settings::set_pinned_feed_ids,
+            commands::settings::get_pinned_topic_ids,
+            commands::settings::set_pinned_topic_ids,
+            commands::settings::get_expanded_sidebar_list,
+            commands::settings::set_expanded_sidebar_list,
+            commands::settings::get_inline_pdf_reader,
+            commands::settings::set_inline_pdf_reader,
             commands::feeds::list_feeds,
             commands::feeds::add_feed,
             commands::feeds::refresh_feed,

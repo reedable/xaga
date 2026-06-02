@@ -15,6 +15,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
   const [library, setLibrary] = useState<string>("");
   const [refreshOnStartup, setRefreshOnStartupState] = useState<boolean>(false);
+  const [inlinePdfReader, setInlinePdfReaderState] = useState<boolean>(false);
   const [settingsLoaded, setSettingsLoaded] = useState<boolean>(false);
 
   const switchLibrary = useCallback(async () => {
@@ -33,13 +34,27 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     [platform]
   );
 
+  const setInlinePdfReader = useCallback(
+    (value: boolean) => {
+      platform.setInlinePdfReader(value).catch(logger.error);
+      setInlinePdfReaderState(value);
+    },
+    [platform]
+  );
+
   useEffect(() => {
     Promise.all([
       platform.getLibrary().then(setLibrary),
       platform.getRefreshOnStartup().then(setRefreshOnStartupState),
+      platform.getInlinePdfReader().then(setInlinePdfReaderState),
     ])
       .catch(logger.error)
       .finally(() => setSettingsLoaded(true));
+  }, [platform]);
+
+  useEffect(() => {
+    const unlisten = platform.onInlinePdfReaderChanged(setInlinePdfReaderState);
+    return () => { unlisten.then((fn) => fn()); };
   }, [platform]);
 
   useEffect(() => {
@@ -64,6 +79,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       switchLibrary,
       refreshOnStartup,
       setRefreshOnStartup,
+      inlinePdfReader,
+      setInlinePdfReader,
       settingsLoaded,
     }),
     [
@@ -71,6 +88,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       switchLibrary,
       refreshOnStartup,
       setRefreshOnStartup,
+      inlinePdfReader,
+      setInlinePdfReader,
       settingsLoaded,
     ]
   );

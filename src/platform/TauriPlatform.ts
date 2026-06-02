@@ -13,6 +13,7 @@ import type {
   Entry,
   Feed,
   Filter,
+  HtmlReaderView,
   ImportResult,
   Item,
   SavedItem,
@@ -466,6 +467,15 @@ export class TauriPlatform implements Platform {
     });
 
     return ArticleSchema.transform(toArticle).parse(result);
+  }
+
+  async readEntry(signal: AbortSignal, id: string): Promise<Entry> {
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "read_entry" });
+
+    const result = await invoker<unknown>("read_entry", { id });
+    return EntrySchema.transform(toEntry).parse(result);
   }
 
   async readArticle(signal: AbortSignal, id: string): Promise<Article> {
@@ -976,12 +986,24 @@ export class TauriPlatform implements Platform {
     return listen<string>(name, listener);
   }
 
-  onShowArticleSummary(callback: (show: boolean) => void): Promise<UnlistenFn> {
-    const name = "menu:show-article-summary";
-    const listener = decorate((e: { payload: boolean }) =>
-      callback(e.payload)
-    ).with(logged, { logger, name });
-    return listen<boolean>(name, listener);
+  getHtmlReaderView(): Promise<string> {
+    return decorate(invoke).with(logged, { logger, name: "get_html_reader_view" })<string>("get_html_reader_view");
+  }
+
+  setHtmlReaderView(view: HtmlReaderView): Promise<void> {
+    return decorate(invoke).with(logged, { logger, name: "set_html_reader_view" })<void>("set_html_reader_view", { value: view });
+  }
+
+  onHtmlReaderView(callback: (view: HtmlReaderView) => void): Promise<UnlistenFn> {
+    const name = "menu:html-reader-view";
+    const listener = decorate(callback).with(logged, { logger, name });
+    return listen(name, (e) => listener(e.payload as HtmlReaderView));
+  }
+
+  onHtmlReaderViewChangedFromSettings(callback: (view: HtmlReaderView) => void): Promise<UnlistenFn> {
+    const name = "settings:html-reader-view";
+    const listener = decorate(callback).with(logged, { logger, name });
+    return listen(name, (e) => listener(e.payload as HtmlReaderView));
   }
 
   onShowSidebar(callback: (show: boolean) => void): Promise<UnlistenFn> {
@@ -1030,16 +1052,42 @@ export class TauriPlatform implements Platform {
     return invoker<void>(name);
   }
 
-  getUiPref<T>(key: string): Promise<T | null> {
-    const name = "get_ui_pref";
-    const invoker = decorate(invoke).with(logged, { logger, name });
-    return invoker<T | null>(name, { key });
+  getPinnedFeedIds(): Promise<string[]> {
+    return decorate(invoke).with(logged, { logger, name: "get_pinned_feed_ids" })<string[]>("get_pinned_feed_ids");
   }
 
-  setUiPref<T>(key: string, value: T): Promise<void> {
-    const name = "set_ui_pref";
-    const invoker = decorate(invoke).with(logged, { logger, name });
-    return invoker<void>(name, { key, value });
+  setPinnedFeedIds(value: string[]): Promise<void> {
+    return decorate(invoke).with(logged, { logger, name: "set_pinned_feed_ids" })<void>("set_pinned_feed_ids", { value });
+  }
+
+  getPinnedTopicIds(): Promise<string[]> {
+    return decorate(invoke).with(logged, { logger, name: "get_pinned_topic_ids" })<string[]>("get_pinned_topic_ids");
+  }
+
+  setPinnedTopicIds(value: string[]): Promise<void> {
+    return decorate(invoke).with(logged, { logger, name: "set_pinned_topic_ids" })<void>("set_pinned_topic_ids", { value });
+  }
+
+  getExpandedSidebarList(): Promise<string | null> {
+    return decorate(invoke).with(logged, { logger, name: "get_expanded_sidebar_list" })<string | null>("get_expanded_sidebar_list");
+  }
+
+  setExpandedSidebarList(value: string | null): Promise<void> {
+    return decorate(invoke).with(logged, { logger, name: "set_expanded_sidebar_list" })<void>("set_expanded_sidebar_list", { value });
+  }
+
+  getInlinePdfReader(): Promise<boolean> {
+    return decorate(invoke).with(logged, { logger, name: "get_inline_pdf_reader" })<boolean>("get_inline_pdf_reader");
+  }
+
+  setInlinePdfReader(value: boolean): Promise<void> {
+    return decorate(invoke).with(logged, { logger, name: "set_inline_pdf_reader" })<void>("set_inline_pdf_reader", { value });
+  }
+
+  onInlinePdfReaderChanged(callback: (value: boolean) => void): Promise<UnlistenFn> {
+    const name = "settings:inline-pdf-reader";
+    const listener = decorate(callback).with(logged, { logger, name });
+    return listen(name, (e) => listener(e.payload as boolean));
   }
 
   getAllowedDomains(): Promise<string[]> {

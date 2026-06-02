@@ -26,7 +26,7 @@ import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
 import { buildEntryHtml, type HtmlReaderStyle } from "../../text/buildEntryHtml";
 import { markdownToHtml } from "../../text/markdownPipeline";
-import { type Article, type Entry } from "../../types";
+import { isArticle, type Article, type Entry } from "../../types";
 import cx from "../../utils/cx";
 import { FONT_FAMILY_CSS } from "../../utils/FontFamily";
 import Logger from "../../utils/Logger";
@@ -58,8 +58,9 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     } = useAppearance();
 
     const [abort, abortControllerRef] = useAbortController();
-    const [selectedEntry, setSelectedEntry] = useState<Article | null>(null);
-    const [bodyHtml, setBodyHtml] = useState<string | null>(null);
+    const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
+    const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+    const [html, setHtml] = useState<string | null>(null);
 
     const {
       annotations,
@@ -78,9 +79,9 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       [themeMode, htmlReaderFontFamily, htmlReaderFontSize, htmlReaderLineHeight]
     );
 
-    const html = useMemo(
-      () => (bodyHtml ? buildEntryHtml(bodyHtml, htmlReaderStyle) : null),
-      [bodyHtml, htmlReaderStyle]
+    const entryHtml = useMemo(
+      () => (html ? buildEntryHtml(html, htmlReaderStyle) : null),
+      [html, htmlReaderStyle]
     );
 
     const {
@@ -92,6 +93,8 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     } = useEvents();
 
     const {
+      loading,
+      readEntry,
       readArticle,
       loadArticle,
       findArticleByUrl,
@@ -108,48 +111,89 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       favicon: string | null;
     } | null>(null);
 
-    const requestArticle = useCallback(
-      async (id: Entry["id"]) => {
-        setSelectedEntry(null);
-        setBodyHtml(null);
-
-        const article = await readArticle(id);
-
-        if (article) {
-          setSelectedEntry(article);
-          setAnnotationsFromArticle(article);
-        }
-
-        const markdown = article?.content || article?.summary;
-
-        if (markdown) {
-          const body = await markdownToHtml(markdown);
-          if (body) setBodyHtml(body);
-        }
+    // Applies a loaded Article to display state.
+    const showArticle = useCallback(
+      async (article: Article) => {
+        setAnnotationsFromArticle(article);
+        setHtml(await markdownToHtml(article.content) ?? null);
       },
-      [readArticle, setAnnotationsFromArticle]
+      [setAnnotationsFromArticle]
     );
+
+    // Effect 1 — fires when the selected entry changes.
+    useEffect(() => {
+      if (!entryId) return;
+      abort();
+
+      (async () => {
+        setSelectedEntry(null);
+        setSelectedArticle(null);
+        setHtml(null);
+
+        const entry = await readEntry(entryId);
+        if (!entry) return;
+        setSelectedEntry(entry);
+
+        if (htmlReaderView === "summary") {
+          setHtml(entry.summary ? await markdownToHtml(entry.summary) ?? null : null);
+        } else {
+          if (entry.summary) setHtml(await markdownToHtml(entry.summary) ?? null);
+          const article = await readArticle(entryId);
+          if (article) {
+            setSelectedArticle(article);
+            await showArticle(article);
+          } else if (!entry.summary) {
+            setHtml(null);
+          }
+        }
+      })();
+
+      return abort;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [entryId, annotationId, abort]);
+
+    // Effect 2 — fires when the view mode changes; re-renders from loaded data.
+    useEffect(() => {
+      if (!selectedEntry) return;
+
+      (async () => {
+        if (htmlReaderView === "summary") {
+          setHtml(selectedEntry.summary ? await markdownToHtml(selectedEntry.summary) ?? null : null);
+        } else if (selectedArticle) {
+          await showArticle(selectedArticle);
+        } else {
+          if (selectedEntry.summary) setHtml(await markdownToHtml(selectedEntry.summary) ?? null);
+          const article = await readArticle(selectedEntry.id);
+          if (article) {
+            setSelectedArticle(article);
+            await showArticle(article);
+          }
+        }
+      })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [htmlReaderView, selectedEntry]);
 
     const reloadArticle = useCallback(
       async (entry: Entry) => {
         logger.debug("reloadArticle", entry);
-        setBodyHtml(null);
+        setHtml(null);
 
         const article = await loadArticle(entry);
 
         if (article?.content) {
-          const body = await markdownToHtml(article.content);
-          if (body) setBodyHtml(body);
+          setSelectedArticle(article);
+          await showArticle(article);
         }
       },
-      [loadArticle]
+      [loadArticle, showArticle]
     );
 
     const handleLoadArticleByUrl = useCallback(
       async (clickedUrl: string) => {
         logger.debug("reloadArticleByUrl", clickedUrl);
         setSelectedEntry(null);
-        setBodyHtml(null);
+        setSelectedArticle(null);
+        setHtml(null);
         openUrl(clickedUrl);
         await loadUrl(clickedUrl);
       },
@@ -173,22 +217,11 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     );
 
     useEffect(() => {
-      setFindEnabled(!!html);
+      setFindEnabled(!!entryHtml);
       return () => {
         setFindEnabled(false);
       };
-    }, [html, setFindEnabled]);
-
-    useEffect(() => {
-      if (!entryId) return;
-      abort();
-
-      (async () => {
-        requestArticle(entryId);
-      })();
-
-      return abort;
-    }, [requestArticle, abort, entryId, htmlReaderView, annotationId]);
+    }, [entryHtml, setFindEnabled]);
 
     useEffect(() => {
       return onUnreadChanged((entry) => {
@@ -208,29 +241,29 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
     useEffect(() => {
       if (!selectedEntry) return;
-      return onLoaderClosed(async ({ url, html, mimeType }) => {
-        if (selectedEntry.url !== url) return;
+      return onLoaderClosed(async ({ url: loaderUrl, html: loaderHtml, mimeType }) => {
+        if (selectedEntry.url !== loaderUrl) return;
         if (mimeType === "application/pdf") return;
-        const extracted = await extractArticleFromHtml(selectedEntry.url, html);
+        const extracted = await extractArticleFromHtml(selectedEntry.url, loaderHtml);
         if (!extracted?.markdown) return;
         if (
-          extracted.markdown.trim() === (selectedEntry.content ?? "").trim()
+          extracted.markdown.trim() === (selectedArticle?.content ?? "").trim()
         ) {
           return;
         }
         setPendingUpdate(extracted);
       });
-    }, [onLoaderClosed, selectedEntry, extractArticleFromHtml]);
+    }, [onLoaderClosed, selectedEntry, selectedArticle, extractArticleFromHtml]);
 
     useEffect(() => {
-      return onLoaderPageLoaded(async ({ url: newUrl, html, mimeType }) => {
+      return onLoaderPageLoaded(async ({ url: newUrl, html: loaderHtml, mimeType }) => {
         if (mimeType === "application/pdf") {
           openUrl(newUrl);
           await loadUrl(newUrl);
           return;
         }
         let article = await findArticleByUrl(newUrl);
-        if (!article) article = await createArticleFromHtml(newUrl, html);
+        if (!article) article = await createArticleFromHtml(newUrl, loaderHtml);
         if (!article) return;
         show(article);
       });
@@ -241,19 +274,20 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       setPendingUpdate(null);
       const article = await saveExtractedArticle(selectedEntry, pendingUpdate);
       if (!article) return;
-      setSelectedEntry(article);
+      setSelectedArticle(article);
       setAnnotationsFromArticle(article);
-      const markdown = article.content || article.summary;
-      if (markdown) {
-        const body = await markdownToHtml(markdown);
-        if (body) setBodyHtml(body);
-      }
+      const body = await markdownToHtml(article.content || article.summary || "");
+      if (body) setHtml(body);
     }, [
       pendingUpdate,
       selectedEntry,
       saveExtractedArticle,
       setAnnotationsFromArticle,
     ]);
+
+    const placeholderText = selectedEntry && !loading && !entryHtml
+      ? htmlReaderView === "summary" ? "No summary available." : "No content available."
+      : null;
 
     return (
       <>
@@ -269,16 +303,22 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
               </Typography>
             </div>
 
-            <div className={cx(css.ProgressBar, html && css.ProgressBarLoaded)}>
-              <Collapse in={Boolean(url && !html)}>
+            <div className={cx(css.ProgressBar, entryHtml && css.ProgressBarLoaded)}>
+              <Collapse in={Boolean(url && loading)}>
                 <LinearProgress variant="indeterminate" />
               </Collapse>
             </div>
 
-            {selectedEntry && html && (
+            {placeholderText && (
+              <Typography variant="body2" color="text.secondary" sx={{ p: 2 }}>
+                {placeholderText}
+              </Typography>
+            )}
+
+            {selectedEntry && entryHtml && (
               <HtmlReader
                 className={cx(className)}
-                html={html}
+                html={entryHtml}
                 entryId={selectedEntry.id}
                 annotations={annotations}
                 scrollToAnnotationId={annotationId}
