@@ -36,7 +36,6 @@ export interface Platform {
   exportFeeds(signal: AbortSignal): Promise<void>;
   refreshFeed(signal: AbortSignal, feedId: string): Promise<Feed>;
   renameFeed(signal: AbortSignal, feedId: string, title: string): Promise<Feed>;
-  // refreshAllFeeds(signal: AbortSignal): Promise<PromiseSettledResult<Feed>[]>;
   removeFeed(signal: AbortSignal, feedUrl: string): Promise<string>;
 
   // Startup
@@ -104,38 +103,6 @@ export interface Platform {
   queryByItem(
     signal: AbortSignal,
     id: string,
-    filter?: Filter,
-    minSimilarity?: number | null,
-    maxSimilarity?: number | null,
-    limit?: number | null,
-  ): Promise<(Embedded & Item)[]>;
-
-  queryByBookmarks(
-    signal: AbortSignal,
-    filter?: Filter,
-    minSimilarity?: number | null,
-    maxSimilarity?: number | null,
-    limit?: number | null,
-  ): Promise<(Embedded & Item)[]>;
-
-  queryByTopics(
-    signal: AbortSignal,
-    filter?: Filter,
-    minSimilarity?: number | null,
-    maxSimilarity?: number | null,
-    limit?: number | null,
-  ): Promise<(Embedded & Item)[]>;
-
-  queryByAnnotations(
-    signal: AbortSignal,
-    filter?: Filter,
-    minSimilarity?: number | null,
-    maxSimilarity?: number | null,
-    limit?: number | null,
-  ): Promise<(Embedded & Item)[]>;
-
-  queryBySaved(
-    signal: AbortSignal,
     filter?: Filter,
     minSimilarity?: number | null,
     maxSimilarity?: number | null,

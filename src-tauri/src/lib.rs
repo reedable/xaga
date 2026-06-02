@@ -635,10 +635,6 @@ pub fn run() {
             commands::topics::list_entry_topics,
             commands::topics::rank_topics_by_item,
             commands::embeddings::query_by_item,
-            commands::embeddings::query_by_bookmarks,
-            commands::embeddings::query_by_annotations,
-            commands::embeddings::query_by_saved,
-            commands::embeddings::query_by_topics,
             commands::embeddings::query_by_text,
             commands::embeddings::reset_embeddings,
         ])

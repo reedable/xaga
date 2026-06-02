@@ -45,11 +45,6 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
 
   const muiTheme = createTheme({
     palette: { mode: themeMode },
-    // TODO Consider adding systemFontFamily and systemFontSize
-    // typography: {
-    //   fontFamily: htmlReaderFontFamily,
-    //   fontSize: htmlReaderFontSize,
-    // },
   });
 
   const changeThemeSetting = useCallback(
