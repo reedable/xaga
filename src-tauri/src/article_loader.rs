@@ -86,6 +86,18 @@ pub async fn load_via_webview(
         .parse()
         .map_err(|e: <tauri::Url as std::str::FromStr>::Err| e.to_string())?;
 
+    // Only ever drive the loader webview to real remote web content. Without this
+    // guard a crafted feed/article link (file://, data:, custom schemes, …) would
+    // be loaded and its DOM shipped back by the init script, enabling local-file
+    // and intranet disclosure. Clean up the pending entry on rejection.
+    if !matches!(parsed.scheme(), "http" | "https") {
+        pending.lock().map_err(|e| e.to_string())?.remove(&id);
+        return Err(format!(
+            "refusing to load non-web URL scheme: {}",
+            parsed.scheme()
+        ));
+    }
+
     let host = parsed.host_str().unwrap_or("");
     let matched = matching_domain(host, allowed_domains);
 

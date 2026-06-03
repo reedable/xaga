@@ -262,6 +262,14 @@ export class TauriPlatform implements Platform {
 
   async openUrl(url: string) {
     try {
+      // Hand only web/mail URLs to the system opener. file:, javascript:, data:
+      // and custom app schemes must never reach `open`, which would launch
+      // Finder or a registered handler for attacker-controlled links.
+      const scheme = new URL(url).protocol;
+      if (scheme !== "http:" && scheme !== "https:" && scheme !== "mailto:") {
+        logger.error(`refusing to open URL with disallowed scheme: ${scheme}`);
+        return;
+      }
       return openUrl(url);
     } catch (e) {
       logger.error(e);

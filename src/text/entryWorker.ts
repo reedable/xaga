@@ -4,6 +4,7 @@
 // accesses the global `document` inside the worker context where it doesn't exist.
 
 import { Readability } from "@mozilla/readability";
+import DOMPurify from "dompurify";
 import { unified } from "unified";
 import rehypeParse from "rehype-parse";
 import rehypeRemark from "rehype-remark";
@@ -62,12 +63,25 @@ export async function processEntry(
     throw new Error("Readability could not extract an entry");
   }
 
+  // Sanitize Readability's HTML output before anything else consumes it. This is
+  // the explicit security boundary for article bodies: DOMPurify strips <script>,
+  // event-handler attributes, javascript:/data: URIs, etc. We do NOT rely on the
+  // downstream HTML→markdown→HTML round-trip to incidentally drop dangerous
+  // markup — that behavior is a side effect, not a guarantee, and a dependency
+  // upgrade could quietly change it.
+  //
+  // ASSUMPTION: neither DOMParser (above) nor Readability ever executes scripts
+  // or fires event handlers — both operate on an inert, non-rendered document, so
+  // sanitizing the *output* here is sufficient. If that ever stops holding, the
+  // untrusted HTML would need to be sanitized *before* it is parsed instead.
+  const sanitizedContent = DOMPurify.sanitize(entry.content ?? "");
+
   const file = await unified()
     .use(rehypeParse, { fragment: true })
     .use(rehypeRemark)
     .use(remarkGfm)
     .use(remarkStringify)
-    .process(entry.content ?? "");
+    .process(sanitizedContent);
 
   const readabilityTitle = entry.title?.trim();
   const title = readabilityTitle || extractHeadingTitle(doc);

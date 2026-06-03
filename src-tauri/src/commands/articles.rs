@@ -6,11 +6,14 @@ use xaga_core::topics;
 use xaga_core::types::AnnotationSummary;
 
 use crate::{article_loader, AppState};
-use super::{require_loader_window, require_main_window};
 
 #[tauri::command]
-pub async fn loader_will_unload(app: AppHandle, url: String) {
+pub async fn loader_will_unload(
+    app: AppHandle,
+    url: String,
+) -> Result<(), String> {
     app.emit("loader:will-unload", url).ok();
+    Ok(())
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -23,13 +26,11 @@ struct LoaderPageLoaded {
 
 #[tauri::command]
 pub async fn loader_page_loaded(
-    window: tauri::Window,
     app: AppHandle,
     url: String,
     html: String,
     mime_type: String,
 ) -> Result<(), String> {
-    require_loader_window(&window)?;
     app.emit("loader:page-loaded", LoaderPageLoaded { url, html, mime_type }).ok();
     Ok(())
 }
@@ -44,14 +45,12 @@ struct LoaderClosed {
 
 #[tauri::command]
 pub async fn capture_and_close_loader(
-    window: tauri::Window,
     app: AppHandle,
     label: String,
     html: String,
     url: String,
     mime_type: String,
 ) -> Result<(), String> {
-    require_loader_window(&window)?;
     app.emit("loader:closed", LoaderClosed { url, html, mime_type }).ok();
     if let Some(w) = app.get_webview_window(&label) {
         let _ = w.close();
@@ -67,7 +66,6 @@ pub async fn receive_html(
     html: String,
     mime_type: String,
 ) -> Result<bool, String> {
-    require_loader_window(&window)?;
     let mut map = pending.lock().map_err(|e| e.to_string())?;
     if let Some((tx, keep_open)) = map.remove(&id) {
         let _ = tx.send((mime_type, html));
@@ -91,14 +89,12 @@ pub struct LoadArticleResult {
 
 #[tauri::command]
 pub async fn load_article(
-    window: tauri::Window,
     url: String,
     keep_open: bool,
     app: AppHandle,
     pending: State<'_, article_loader::PendingRequests>,
     state: State<'_, AppState>,
 ) -> Result<LoadArticleResult, String> {
-    require_main_window(&window)?;
     let timeout_secs = *state.loader_timeout_secs.read().unwrap();
     let allowed_domains = state.allowed_domains.read().unwrap().clone();
     let named_stores_supported = state.named_stores_supported;
@@ -108,7 +104,6 @@ pub async fn load_article(
 
 #[tauri::command]
 pub async fn save_article(
-    window: tauri::Window,
     id: String,
     url: String,
     title: String,
@@ -119,7 +114,6 @@ pub async fn save_article(
     markdown: String,
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
-    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     articles::save_article(
         &data_dir,
@@ -138,7 +132,6 @@ pub async fn save_article(
 
 #[tauri::command]
 pub async fn create_article(
-    window: tauri::Window,
     url: String,
     title: String,
     published_at: Option<String>,
@@ -148,7 +141,6 @@ pub async fn create_article(
     markdown: String,
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
-    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     articles::create_article(
         &data_dir,
@@ -195,7 +187,6 @@ pub async fn read_article(
 
 #[tauri::command]
 pub async fn add_annotation(
-    window: tauri::Window,
     article_id: String,
     id: String,
     text: Vec<String>,
@@ -204,7 +195,6 @@ pub async fn add_annotation(
     note: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
-    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     let annotation = xaga_core::types::Annotation { id, reference: article_id.clone(), text, occurrence, color, note, created_at: String::new() };
     articles::add_annotation(&data_dir, &article_id, annotation)
@@ -219,7 +209,6 @@ pub async fn remove_annotation(
     annotation_id: String,
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
-    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     let result = articles::remove_annotation(&data_dir, &article_id, &annotation_id)
         .await

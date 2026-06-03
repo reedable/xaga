@@ -13,8 +13,22 @@ pub enum EntryError {
     Io(#[from] std::io::Error),
     #[error("Invalid URL: {0}")]
     InvalidUrl(#[from] url::ParseError),
+    #[error("Invalid id")]
+    InvalidId,
     #[error("Entry not found")]
     NotFound,
+}
+
+/// Returns true when `id` is safe to interpolate into a file path: a single
+/// path component with no separators or parent-directory references. Entry and
+/// article ids are URL hashes (`url_hash12`) or Atom ids — never paths — so a
+/// value containing `/`, `\`, `..` or a NUL byte is an attempted traversal.
+pub fn is_safe_id(id: &str) -> bool {
+    !id.is_empty()
+        && !id.contains('/')
+        && !id.contains('\\')
+        && !id.contains("..")
+        && !id.contains('\0')
 }
 
 // ── Frontmatter rendering ─────────────────────────────────────────────────────
@@ -105,6 +119,9 @@ pub fn entry_dirs(library: &Path) -> Vec<PathBuf> {
 /// Finds the current path of an entry by id, checking all entry directories in order.
 /// Returns `None` if the file does not exist in any of them.
 pub async fn find_entry_path(data_dir: &Path, id: &str) -> Option<PathBuf> {
+    if !is_safe_id(id) {
+        return None;
+    }
     for dir in entry_dirs(data_dir) {
         let path = dir.join(format!("{id}.md"));
         if tokio::fs::try_exists(&path).await.unwrap_or(false) {

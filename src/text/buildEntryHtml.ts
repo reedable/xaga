@@ -86,8 +86,11 @@ export function buildEntryHtml(
   const codeBg = prefersDark ? "#1e1e1e" : "#f5f5f5";
   const fontStack = FONT_FAMILY_CSS[fontFamily];
 
-  // Safely embed annotations as a JSON literal inside the script.
-  const annotationsJson = JSON.stringify(annotations);
+  // Safely embed annotations as a JSON literal inside the script. JSON.stringify
+  // does NOT escape "</script>" or "<!--", so annotation text containing those
+  // sequences would otherwise break out of the <script> element. Escaping "<"
+  // as its < unicode form keeps the value an inert JS string.
+  const annotationsJson = JSON.stringify(annotations).replace(/</g, "\\u003c");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
     *{box-sizing:border-box}

@@ -4,18 +4,16 @@ use xaga_core::topics::{self, Topic};
 use xaga_core::types::{CollectionItem, ItemFilter, RankedItem, SavedItem};
 
 use crate::{get_unread, AppState};
-use super::{parse_item_filter, require_main_window};
+use super::parse_item_filter;
 
 #[tauri::command]
 pub async fn save_topic(
-    window: tauri::Window,
     id: String,
     title: String,
     content: String,
     threshold: Option<f32>,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
-    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     // Preserve existing manual items when editing from the UI
     let existing_items = topics::read_topic(&data_dir, &id).await
@@ -28,13 +26,11 @@ pub async fn save_topic(
 
 #[tauri::command]
 pub async fn create_topic(
-    window: tauri::Window,
     title: String,
     content: String,
     threshold: Option<f32>,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
-    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     topics::create_topic(&data_dir, &title, &content, threshold)
         .await
@@ -95,8 +91,7 @@ pub async fn read_topic(id: String, state: State<'_, AppState>) -> Result<Topic,
 }
 
 #[tauri::command]
-pub async fn delete_topic(window: tauri::Window, id: String, state: State<'_, AppState>) -> Result<(), String> {
-    require_main_window(&window)?;
+pub async fn delete_topic(id: String, state: State<'_, AppState>) -> Result<(), String> {
     let data_dir = state.library.read().unwrap().clone();
     topics::delete_topic(&data_dir, &id)
         .await
@@ -105,12 +100,10 @@ pub async fn delete_topic(window: tauri::Window, id: String, state: State<'_, Ap
 
 #[tauri::command]
 pub async fn add_topic_item(
-    window: tauri::Window,
     topic_id: String,
     item: CollectionItem,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
-    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     topics::add_topic_item(&data_dir, &topic_id, item)
         .await
@@ -119,12 +112,10 @@ pub async fn add_topic_item(
 
 #[tauri::command]
 pub async fn remove_topic_item(
-    window: tauri::Window,
     topic_id: String,
     item_id: String,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
-    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     topics::remove_topic_item(&data_dir, &topic_id, &item_id)
         .await

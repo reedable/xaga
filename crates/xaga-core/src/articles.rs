@@ -40,6 +40,9 @@ pub async fn save_article(
     favicon: Option<&str>,
     markdown: &str,
 ) -> Result<Article, EntryError> {
+    if !crate::entries::is_safe_id(id) {
+        return Err(EntryError::InvalidId);
+    }
     let normalized = normalize_url(url)?;
 
     let (path, file_exists) = match find_entry_path(data_dir, id).await {

@@ -4,7 +4,7 @@ use xaga_core::entries;
 use xaga_core::types::{Entry, ItemFilter, SavedItem};
 
 use crate::AppState;
-use super::{parse_item_filter, require_main_window};
+use super::parse_item_filter;
 
 #[tauri::command]
 pub async fn read_entry(id: String, state: State<'_, AppState>) -> Result<entries::Entry, String> {
@@ -13,8 +13,7 @@ pub async fn read_entry(id: String, state: State<'_, AppState>) -> Result<entrie
 }
 
 #[tauri::command]
-pub async fn mark_entry_read(window: tauri::Window, id: String, state: State<'_, AppState>) -> Result<Entry, String> {
-    require_main_window(&window)?;
+pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
     let data_dir = state.library.read().unwrap().clone();
     let current = entries::read_entry(&data_dir, &id).await.map_err(|e| e.to_string())?;
     let tags = current.tags.into_iter().filter(|t| t != "unread").collect();
@@ -22,8 +21,7 @@ pub async fn mark_entry_read(window: tauri::Window, id: String, state: State<'_,
 }
 
 #[tauri::command]
-pub async fn mark_entry_unread(window: tauri::Window, id: String, state: State<'_, AppState>) -> Result<Entry, String> {
-    require_main_window(&window)?;
+pub async fn mark_entry_unread(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
     let data_dir = state.library.read().unwrap().clone();
     let current = entries::read_entry(&data_dir, &id).await.map_err(|e| e.to_string())?;
     let mut tags = current.tags;

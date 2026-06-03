@@ -248,6 +248,12 @@ export function HtmlReader({
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
       const log = Logger.getLogger("handleMessage");
+
+      // Only accept messages from our own reader iframe. Without this an
+      // unsandboxed sibling frame (e.g. the PDF viewer) or any window holding a
+      // reference to this one could spoof OPEN_LINK_URL and drive link loading.
+      if (e.source !== iframeRef.current?.contentWindow) return;
+
       log.log("handleMessage", e.data);
 
       const msg = e.data;

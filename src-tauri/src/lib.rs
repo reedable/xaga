@@ -619,7 +619,12 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler({
+            // Central IPC gate: a single allowlist check runs before dispatch,
+            // so loader (untrusted) webviews can reach only the loader callbacks
+            // and every other command is protected without a per-command guard.
+            let app_commands: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> =
+                Box::new(tauri::generate_handler![
             set_find_enabled,
             commands::articles::receive_html,
             commands::articles::loader_will_unload,
@@ -691,7 +696,21 @@ pub fn run() {
             commands::embeddings::query_by_item,
             commands::embeddings::query_by_text,
             commands::embeddings::reset_embeddings,
-        ])
+            ]);
+            move |invoke: tauri::ipc::Invoke| {
+                let allowed = {
+                    let label = invoke.message.webview_ref().label();
+                    commands::is_invoke_allowed(label, invoke.message.command())
+                };
+                if !allowed {
+                    invoke
+                        .resolver
+                        .reject("unauthorized: command not available from this window");
+                    return true;
+                }
+                app_commands(invoke)
+            }
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 

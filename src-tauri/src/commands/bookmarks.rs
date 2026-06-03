@@ -6,7 +6,6 @@ use xaga_core::entries;
 use xaga_core::types::Entry;
 
 use crate::AppState;
-use super::require_main_window;
 
 #[derive(Serialize)]
 pub struct BookmarkImportResult {
@@ -17,11 +16,9 @@ pub struct BookmarkImportResult {
 
 #[tauri::command]
 pub async fn add_bookmark(
-    window: tauri::Window,
     id: String,
     state: State<'_, AppState>,
 ) -> Result<Entry, String> {
-    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     let current = entries::read_entry(&data_dir, &id)
         .await
@@ -37,11 +34,9 @@ pub async fn add_bookmark(
 
 #[tauri::command]
 pub async fn remove_bookmark(
-    window: tauri::Window,
     id: String,
     state: State<'_, AppState>,
 ) -> Result<entries::Entry, String> {
-    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     let current = entries::read_entry(&data_dir, &id)
         .await
@@ -64,11 +59,9 @@ pub async fn list_bookmarks(state: State<'_, AppState>) -> Result<Vec<Entry>, St
 
 #[tauri::command]
 pub async fn import_bookmarks(
-    window: tauri::Window,
     file_path: String,
     state: State<'_, AppState>,
 ) -> Result<BookmarkImportResult, String> {
-    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     let html = tokio::fs::read_to_string(&file_path)
         .await
@@ -99,11 +92,9 @@ pub async fn import_bookmarks(
 
 #[tauri::command]
 pub async fn export_bookmarks(
-    window: tauri::Window,
     file_path: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    require_main_window(&window)?;
     let data_dir = state.library.read().unwrap().clone();
     bookmarks::export_bookmarks(&data_dir, std::path::Path::new(&file_path))
         .await

@@ -2,7 +2,6 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{AppState, load_settings, save_settings, update_theme_checkmarks, update_view_checkmarks};
-use super::require_main_window;
 
 #[derive(Serialize)]
 pub struct HtmlReaderPrefs {
@@ -21,12 +20,10 @@ pub async fn get_theme(state: State<'_, AppState>) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn set_theme(
-    window: tauri::Window,
     theme: String,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    require_main_window(&window)?;
     let settings_path = app
         .path()
         .app_config_dir()
@@ -54,12 +51,10 @@ pub async fn get_refresh_on_startup(state: State<'_, AppState>) -> Result<bool, 
 
 #[tauri::command]
 pub async fn set_refresh_on_startup(
-    window: tauri::Window,
     value: bool,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    require_main_window(&window)?;
     let settings_path = app
         .path()
         .app_config_dir()
@@ -90,12 +85,10 @@ pub async fn get_html_reader_prefs(state: State<'_, AppState>) -> Result<HtmlRea
 
 #[tauri::command]
 pub async fn set_html_reader_font_family(
-    window: tauri::Window,
     value: String,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    require_main_window(&window)?;
     let settings_path = app
         .path()
         .app_config_dir()
@@ -117,12 +110,10 @@ pub async fn set_html_reader_font_family(
 
 #[tauri::command]
 pub async fn set_html_reader_font_size(
-    window: tauri::Window,
     value: f64,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    require_main_window(&window)?;
     let settings_path = app
         .path()
         .app_config_dir()
@@ -144,12 +135,10 @@ pub async fn set_html_reader_font_size(
 
 #[tauri::command]
 pub async fn set_html_reader_line_height(
-    window: tauri::Window,
     value: f64,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    require_main_window(&window)?;
     let settings_path = app
         .path()
         .app_config_dir()
@@ -181,12 +170,10 @@ pub async fn get_html_reader_view(state: State<'_, AppState>) -> Result<String, 
 
 #[tauri::command]
 pub async fn set_html_reader_view(
-    window: tauri::Window,
     value: String,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    require_main_window(&window)?;
     let settings_path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("settings.json");
     let mut settings = load_settings(&settings_path);
     settings.html_reader_view = Some(value.clone());
@@ -206,12 +193,10 @@ pub async fn get_pinned_feed_ids(state: State<'_, AppState>) -> Result<Vec<Strin
 
 #[tauri::command]
 pub async fn set_pinned_feed_ids(
-    window: tauri::Window,
     value: Vec<String>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    require_main_window(&window)?;
     let settings_path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("settings.json");
     let mut settings = load_settings(&settings_path);
     settings.pinned_feed_ids = Some(value.clone());
@@ -227,12 +212,10 @@ pub async fn get_pinned_topic_ids(state: State<'_, AppState>) -> Result<Vec<Stri
 
 #[tauri::command]
 pub async fn set_pinned_topic_ids(
-    window: tauri::Window,
     value: Vec<String>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    require_main_window(&window)?;
     let settings_path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("settings.json");
     let mut settings = load_settings(&settings_path);
     settings.pinned_topic_ids = Some(value.clone());
@@ -248,12 +231,10 @@ pub async fn get_expanded_sidebar_list(state: State<'_, AppState>) -> Result<Opt
 
 #[tauri::command]
 pub async fn set_expanded_sidebar_list(
-    window: tauri::Window,
     value: Option<String>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    require_main_window(&window)?;
     let settings_path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("settings.json");
     let mut settings = load_settings(&settings_path);
     settings.expanded_sidebar_list = value.clone();
@@ -269,12 +250,10 @@ pub async fn get_inline_pdf_reader(state: State<'_, AppState>) -> Result<bool, S
 
 #[tauri::command]
 pub async fn set_inline_pdf_reader(
-    window: tauri::Window,
     value: bool,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    require_main_window(&window)?;
     let settings_path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("settings.json");
     let mut settings = load_settings(&settings_path);
     settings.inline_pdf_reader = Some(value);
@@ -293,12 +272,10 @@ pub async fn get_allowed_domains(state: State<'_, AppState>) -> Result<Vec<Strin
 
 #[tauri::command]
 pub async fn set_allowed_domains(
-    window: tauri::Window,
     domains: Vec<String>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    require_main_window(&window)?;
     let settings_path = app
         .path()
         .app_config_dir()
@@ -320,12 +297,10 @@ pub async fn set_allowed_domains(
 
 #[tauri::command]
 pub async fn set_show_sidebar(
-    window: tauri::Window,
     value: bool,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    require_main_window(&window)?;
     let settings_path = app
         .path()
         .app_config_dir()
