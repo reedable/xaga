@@ -8,24 +8,14 @@ pub type PendingRequests = Arc<Mutex<HashMap<String, (oneshot::Sender<(String, S
 
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// Returns true when WKWebsiteDataStore named identifiers are available (macOS 14+).
-/// Result is intended to be cached at startup in AppState.
+/// Returns true when WKWebsiteDataStore named identifiers are available.
+///
+/// Named data stores require macOS 14+, which is the app's minimum supported
+/// version (`bundle.macOS.minimumSystemVersion`), so on macOS this is always
+/// true; other platforms don't support them. This is now a compile-time
+/// constant — no runtime version probe needed.
 pub fn supports_named_data_stores() -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("sw_vers")
-            .arg("-productVersion")
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-            .and_then(|s| s.trim().split('.').next()?.parse::<u32>().ok())
-            .map(|major| major >= 14)
-            .unwrap_or(false)
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        false
-    }
+    cfg!(target_os = "macos")
 }
 
 /// Deterministically maps a registered domain to a 16-byte WKWebsiteDataStore identifier.
@@ -58,6 +48,7 @@ pub async fn load_via_webview(
     keep_open: bool,
     allowed_domains: &[String],
     named_stores_supported: bool,
+    ssrf_proxy_port: u16,
 ) -> Result<(String, String), String> {
     let id = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed).to_string();
     let label = format!("loader-{}", id);
@@ -104,8 +95,16 @@ pub async fn load_via_webview(
     let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(parsed))
         .initialization_script(&init_script);
 
+    // Route all loader traffic through the local SSRF-filtering proxy: the
+    // webview never resolves DNS or connects directly, so it cannot reach
+    // private/loopback/intranet hosts and DNS rebinding / redirect-based SSRF
+    // are defeated. Requires the `macos-proxy` feature to take effect on macOS.
+    if let Ok(proxy) = format!("http://127.0.0.1:{ssrf_proxy_port}").parse::<tauri::Url>() {
+        builder = builder.proxy_url(proxy);
+    }
+
     // Default: incognito (ephemeral — no cookies written to disk).
-    // Allow-listed domains on macOS 14+ get a persistent, per-domain named store.
+    // Allow-listed domains on macOS get a persistent, per-domain named store.
     builder = match matched {
         Some(domain) if named_stores_supported => {
             builder.data_store_identifier(domain_store_id(domain))

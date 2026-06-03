@@ -98,7 +98,8 @@ pub async fn load_article(
     let timeout_secs = *state.loader_timeout_secs.read().unwrap();
     let allowed_domains = state.allowed_domains.read().unwrap().clone();
     let named_stores_supported = state.named_stores_supported;
-    let (mime_type, html) = article_loader::load_via_webview(&app, &pending, &url, timeout_secs, keep_open, &allowed_domains, named_stores_supported).await?;
+    let ssrf_proxy_port = state.ssrf_proxy_port;
+    let (mime_type, html) = article_loader::load_via_webview(&app, &pending, &url, timeout_secs, keep_open, &allowed_domains, named_stores_supported, ssrf_proxy_port).await?;
     Ok(LoadArticleResult { mime_type, html })
 }
 

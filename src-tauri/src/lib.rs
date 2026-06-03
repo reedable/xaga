@@ -1,6 +1,7 @@
 mod article_loader;
 mod commands;
 mod file_watchers;
+mod ssrf_proxy;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
@@ -32,6 +33,9 @@ pub(crate) struct AppState {
     pub(crate) expanded_sidebar_list: Arc<RwLock<Option<String>>>,
     pub(crate) inline_pdf_reader: Arc<RwLock<bool>>,
     pub(crate) html_reader_view: Arc<RwLock<String>>,
+    /// Port of the local SSRF-filtering proxy that loader webviews are routed
+    /// through (see [`ssrf_proxy`]).
+    pub(crate) ssrf_proxy_port: u16,
 }
 
 pub(crate) fn feeds_dir(library: &Path) -> PathBuf {
@@ -171,6 +175,13 @@ pub fn run() {
     let http_client = reqwest::Client::new();
     let named_stores_supported = article_loader::supports_named_data_stores();
 
+    // Start the local SSRF-filtering proxy that every loader webview is routed
+    // through. Fail fast: binding 127.0.0.1:0 essentially never fails, and
+    // running the loader without this proxy would silently reopen the SSRF hole.
+    let ssrf_proxy_port =
+        tauri::async_runtime::block_on(ssrf_proxy::start(ssrf_proxy::ProxyConfig::new()))
+            .expect("failed to start SSRF filtering proxy for the article loader");
+
     // Pre-created Arcs shared between .manage() and the .setup() closure.
     let library: Arc<RwLock<PathBuf>> = Arc::new(RwLock::new(PathBuf::new()));
     let theme: Arc<RwLock<String>> = Arc::new(RwLock::new("auto".to_string()));
@@ -226,6 +237,7 @@ pub fn run() {
             expanded_sidebar_list,
             inline_pdf_reader,
             html_reader_view,
+            ssrf_proxy_port,
         })
         .manage(article_loader::PendingRequests::default())
         .plugin(tauri_plugin_window_state::Builder::default().build())

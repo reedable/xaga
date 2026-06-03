@@ -1,0 +1,555 @@
+//! Local SSRF-filtering HTTP proxy for the article loader webviews.
+//!
+//! The loader navigates an off-screen WKWebView to untrusted, attacker-influenced
+//! URLs (links found in feeds/articles). A URL-string check can't stop SSRF
+//! because the WebView does its own DNS resolution and follows redirects in its
+//! own network stack — so a hostname that looks public can resolve to
+//! `127.0.0.1` / `169.254.169.254` / an intranet host (DNS rebinding), and
+//! redirects are never seen by the app.
+//!
+//! This proxy moves name resolution *out* of the WebView. The loader webview is
+//! pointed at this proxy (`WebviewWindowBuilder::proxy_url`), and the proxy:
+//!   1. resolves the target host itself,
+//!   2. rejects the request if *any* resolved address is private/loopback/etc.,
+//!   3. dials the validated IP it just resolved (pinning).
+//!
+//! Because the WebView never resolves or connects directly, DNS rebinding is
+//! defeated (there is no second lookup to rebind) and every redirect/subresource
+//! re-enters the proxy and is re-validated.
+//!
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
+use std::sync::Arc;
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+
+/// Maximum number of header bytes read before the request line + headers must be
+/// complete. Bounds memory and rejects slow/oversized header floods.
+const MAX_HEAD_BYTES: usize = 16 * 1024;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ProxyError {
+    /// The request could not be parsed (bad request line / target).
+    BadRequest,
+    /// DNS resolution failed or returned no addresses.
+    Dns,
+    /// The target resolved to a disallowed (private/loopback/etc.) address.
+    Blocked,
+}
+
+// ── Address policy ──────────────────────────────────────────────────────────────
+
+/// Returns true when `v4` is in a range the loader must never reach.
+fn is_blocked_v4(v4: Ipv4Addr) -> bool {
+    let o = v4.octets();
+    v4.is_loopback()              // 127.0.0.0/8
+        || v4.is_private()        // 10/8, 172.16/12, 192.168/16
+        || v4.is_link_local()     // 169.254.0.0/16 (incl. 169.254.169.254 cloud metadata)
+        || v4.is_unspecified()    // 0.0.0.0
+        || v4.is_broadcast()      // 255.255.255.255
+        || v4.is_documentation()  // 192.0.2/24, 198.51.100/24, 203.0.113/24
+        || (o[0] == 100 && (o[1] & 0xc0) == 64)        // 100.64.0.0/10 CGNAT (RFC 6598)
+        || (o[0] == 192 && o[1] == 0 && o[2] == 0)     // 192.0.0.0/24 IETF protocol assignments
+}
+
+/// Returns true when `ip` is in a range the loader must never reach. This is the
+/// security-critical allow/deny core: only globally-routable addresses pass.
+fn is_blocked(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => is_blocked_v4(v4),
+        IpAddr::V6(v6) => {
+            // IPv4-mapped (::ffff:a.b.c.d) — judge by the embedded v4 address.
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_blocked_v4(v4);
+            }
+            let seg0 = v6.segments()[0];
+            v6.is_loopback()                 // ::1
+                || v6.is_unspecified()       // ::
+                || (seg0 & 0xfe00) == 0xfc00 // fc00::/7 unique-local (incl. fd00:ec2::254 IMDS)
+                || (seg0 & 0xffc0) == 0xfe80 // fe80::/10 link-local
+        }
+    }
+}
+
+// ── Resolution (injectable for tests) ───────────────────────────────────────────
+
+/// Resolves a host to socket addresses. Abstracted so tests can simulate DNS
+/// (including rebinding) deterministically and offline.
+pub trait HostResolver: Send + Sync {
+    fn resolve(&self, host: &str, port: u16) -> std::io::Result<Vec<SocketAddr>>;
+}
+
+/// Production resolver backed by the system resolver.
+pub struct SystemResolver;
+
+impl HostResolver for SystemResolver {
+    fn resolve(&self, host: &str, port: u16) -> std::io::Result<Vec<SocketAddr>> {
+        // The `(&str, u16)` ToSocketAddrs impl parses IP literals (v4 and v6
+        // without brackets) and resolves hostnames.
+        Ok((host, port).to_socket_addrs()?.collect())
+    }
+}
+
+/// Resolves `host:port` and returns a single validated address to dial, or an
+/// error if resolution failed or *any* resolved address is disallowed.
+///
+/// Rejecting when *any* address is blocked (rather than filtering to the allowed
+/// ones) prevents a host that publishes both a public and a private record from
+/// being reachable at all.
+fn validate_target(
+    host: &str,
+    port: u16,
+    resolver: &dyn HostResolver,
+    is_blocked_fn: fn(IpAddr) -> bool,
+) -> Result<SocketAddr, ProxyError> {
+    let addrs = resolver.resolve(host, port).map_err(|_| ProxyError::Dns)?;
+    if addrs.is_empty() {
+        return Err(ProxyError::Dns);
+    }
+    if addrs.iter().any(|a| is_blocked_fn(a.ip())) {
+        return Err(ProxyError::Blocked);
+    }
+    // Pin to a concrete, already-validated address — the WebView never resolves.
+    Ok(addrs[0])
+}
+
+// ── Request parsing ──────────────────────────────────────────────────────────────
+
+/// Splits an authority (`example.com:443`, `127.0.0.1:443`, `[::1]:443`) into
+/// `(host, port)`, stripping brackets from IPv6 literals.
+fn split_authority(authority: &str, default_port: u16) -> Option<(String, u16)> {
+    if let Some(rest) = authority.strip_prefix('[') {
+        // [ipv6]:port  or  [ipv6]
+        let (host, after) = rest.split_once(']')?;
+        let port = match after.strip_prefix(':') {
+            Some(p) => p.parse().ok()?,
+            None if after.is_empty() => default_port,
+            None => return None,
+        };
+        return Some((host.to_string(), port));
+    }
+    match authority.rsplit_once(':') {
+        Some((host, port)) if !host.is_empty() => Some((host.to_string(), port.parse().ok()?)),
+        _ => Some((authority.to_string(), default_port)),
+    }
+}
+
+/// The parsed first line of a proxied request.
+enum Target {
+    /// `CONNECT host:port` — establish a tunnel (used for HTTPS).
+    Connect { host: String, port: u16 },
+    /// Absolute-form `GET http://host/path` — plain HTTP through the proxy.
+    Http { host: String, port: u16 },
+}
+
+/// Parses the request line (first line, without CRLF).
+fn parse_request_line(line: &str) -> Result<Target, ProxyError> {
+    let mut parts = line.split_whitespace();
+    let method = parts.next().ok_or(ProxyError::BadRequest)?;
+    let target = parts.next().ok_or(ProxyError::BadRequest)?;
+
+    if method.eq_ignore_ascii_case("CONNECT") {
+        let (host, port) = split_authority(target, 443).ok_or(ProxyError::BadRequest)?;
+        return Ok(Target::Connect { host, port });
+    }
+
+    // Absolute-form: scheme://authority/path. We only proxy http here (https
+    // arrives via CONNECT).
+    let rest = target
+        .strip_prefix("http://")
+        .ok_or(ProxyError::BadRequest)?;
+    let authority = rest.split('/').next().unwrap_or(rest);
+    let (host, port) = split_authority(authority, 80).ok_or(ProxyError::BadRequest)?;
+    Ok(Target::Http { host, port })
+}
+
+// ── Connection handling ──────────────────────────────────────────────────────────
+
+/// Reads the request line + headers (up to the blank `\r\n\r\n`). Returns the
+/// head bytes (including the terminator) and any bytes already read past it.
+async fn read_head(stream: &mut TcpStream) -> std::io::Result<Option<(Vec<u8>, Vec<u8>)>> {
+    let mut buf = Vec::with_capacity(1024);
+    let mut chunk = [0u8; 1024];
+    loop {
+        let n = stream.read(&mut chunk).await?;
+        if n == 0 {
+            return Ok(None); // client closed before sending a full head
+        }
+        buf.extend_from_slice(&chunk[..n]);
+        if let Some(pos) = find_subslice(&buf, b"\r\n\r\n") {
+            let head = buf[..pos + 4].to_vec();
+            let leftover = buf[pos + 4..].to_vec();
+            return Ok(Some((head, leftover)));
+        }
+        if buf.len() > MAX_HEAD_BYTES {
+            return Ok(None);
+        }
+    }
+}
+
+fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|w| w == needle)
+}
+
+#[derive(Clone)]
+pub struct ProxyConfig {
+    resolver: Arc<dyn HostResolver>,
+    is_blocked_fn: fn(IpAddr) -> bool,
+}
+
+impl ProxyConfig {
+    /// Production configuration: system DNS + the real address policy.
+    pub fn new() -> Self {
+        Self {
+            resolver: Arc::new(SystemResolver),
+            is_blocked_fn: is_blocked,
+        }
+    }
+}
+
+impl Default for ProxyConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Binds the proxy to `127.0.0.1:0` and spawns its accept loop. Returns the
+/// chosen local port to hand to `proxy_url`.
+pub async fn start(config: ProxyConfig) -> std::io::Result<u16> {
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
+    let port = listener.local_addr()?.port();
+    tokio::spawn(async move {
+        loop {
+            match listener.accept().await {
+                Ok((stream, _)) => {
+                    let cfg = config.clone();
+                    tokio::spawn(async move {
+                        let _ = handle_conn(stream, cfg).await;
+                    });
+                }
+                Err(_) => break,
+            }
+        }
+    });
+    Ok(port)
+}
+
+async fn write_status(stream: &mut TcpStream, status: &str) -> std::io::Result<()> {
+    stream
+        .write_all(format!("HTTP/1.1 {status}\r\nConnection: close\r\n\r\n").as_bytes())
+        .await
+}
+
+async fn handle_conn(mut client: TcpStream, cfg: ProxyConfig) -> std::io::Result<()> {
+    let Some((head, leftover)) = read_head(&mut client).await? else {
+        return Ok(());
+    };
+    let head_str = String::from_utf8_lossy(&head);
+    let first_line = head_str.lines().next().unwrap_or("");
+
+    let target = match parse_request_line(first_line) {
+        Ok(t) => t,
+        Err(_) => return write_status(&mut client, "400 Bad Request").await,
+    };
+
+    match target {
+        Target::Connect { host, port } => {
+            let addr = match validate_target(&host, port, cfg.resolver.as_ref(), cfg.is_blocked_fn) {
+                Ok(addr) => addr,
+                Err(ProxyError::Blocked) => return write_status(&mut client, "403 Forbidden").await,
+                Err(_) => return write_status(&mut client, "502 Bad Gateway").await,
+            };
+            let mut upstream = match TcpStream::connect(addr).await {
+                Ok(s) => s,
+                Err(_) => return write_status(&mut client, "502 Bad Gateway").await,
+            };
+            client
+                .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                .await?;
+            // Any bytes already read past the CONNECT head belong to the tunnel.
+            if !leftover.is_empty() {
+                upstream.write_all(&leftover).await?;
+            }
+            let _ = tokio::io::copy_bidirectional(&mut client, &mut upstream).await;
+            Ok(())
+        }
+        Target::Http { host, port } => {
+            let addr = match validate_target(&host, port, cfg.resolver.as_ref(), cfg.is_blocked_fn) {
+                Ok(addr) => addr,
+                Err(ProxyError::Blocked) => return write_status(&mut client, "403 Forbidden").await,
+                Err(_) => return write_status(&mut client, "502 Bad Gateway").await,
+            };
+            let mut upstream = match TcpStream::connect(addr).await {
+                Ok(s) => s,
+                Err(_) => return write_status(&mut client, "502 Bad Gateway").await,
+            };
+            // Rewrite the absolute-form request line to origin-form and forward.
+            // NOTE: this handles one request per proxy connection (sufficient for
+            // the WebView, which opens a fresh connection per origin); pipelined
+            // requests for a *different* host on the same connection are not
+            // re-validated — acceptable because the connection is pinned to the
+            // already-validated upstream IP.
+            let rewritten = rewrite_http_head(&head, &host, port);
+            upstream.write_all(&rewritten).await?;
+            if !leftover.is_empty() {
+                upstream.write_all(&leftover).await?;
+            }
+            let _ = tokio::io::copy_bidirectional(&mut client, &mut upstream).await;
+            Ok(())
+        }
+    }
+}
+
+/// Rewrites an absolute-form request head (`GET http://host/path HTTP/1.1`) to
+/// origin-form (`GET /path HTTP/1.1`) so the upstream origin server accepts it.
+fn rewrite_http_head(head: &[u8], host: &str, port: u16) -> Vec<u8> {
+    let text = String::from_utf8_lossy(head);
+    let mut lines = text.split("\r\n");
+    let first = lines.next().unwrap_or("");
+    let mut parts = first.splitn(3, ' ');
+    let method = parts.next().unwrap_or("GET");
+    let target = parts.next().unwrap_or("/");
+    let version = parts.next().unwrap_or("HTTP/1.1");
+
+    // Derive the origin-form path from the absolute URL.
+    let path = target
+        .strip_prefix("http://")
+        .and_then(|rest| rest.find('/').map(|i| rest[i..].to_string()))
+        .unwrap_or_else(|| "/".to_string());
+
+    let authority = if port == 80 {
+        host.to_string()
+    } else {
+        format!("{host}:{port}")
+    };
+
+    let mut out = format!("{method} {path} {version}\r\n");
+    let mut has_host = false;
+    for line in lines {
+        if line.is_empty() {
+            continue;
+        }
+        if line.to_ascii_lowercase().starts_with("host:") {
+            has_host = true;
+        }
+        out.push_str(line);
+        out.push_str("\r\n");
+    }
+    if !has_host {
+        out.push_str(&format!("Host: {authority}\r\n"));
+    }
+    out.push_str("\r\n");
+    out.into_bytes()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::net::Ipv6Addr;
+
+    // ── is_blocked: address policy ──────────────────────────────────────────────
+
+    fn v4(s: &str) -> IpAddr {
+        IpAddr::V4(s.parse::<Ipv4Addr>().unwrap())
+    }
+    fn v6(s: &str) -> IpAddr {
+        IpAddr::V6(s.parse::<Ipv6Addr>().unwrap())
+    }
+
+    #[test]
+    fn blocks_private_and_local_ipv4() {
+        for s in [
+            "127.0.0.1",         // loopback
+            "10.0.0.5",          // RFC1918
+            "172.16.3.4",        // RFC1918
+            "192.168.1.1",       // RFC1918
+            "169.254.169.254",   // cloud metadata (link-local)
+            "0.0.0.0",           // unspecified
+            "255.255.255.255",   // broadcast
+            "100.64.1.1",        // CGNAT
+            "192.0.0.1",         // IETF protocol assignments
+        ] {
+            assert!(is_blocked(v4(s)), "{s} should be blocked");
+        }
+    }
+
+    #[test]
+    fn allows_public_ipv4() {
+        for s in ["8.8.8.8", "1.1.1.1", "93.184.216.34"] {
+            assert!(!is_blocked(v4(s)), "{s} should be allowed");
+        }
+    }
+
+    #[test]
+    fn blocks_private_and_local_ipv6() {
+        for s in [
+            "::1",               // loopback
+            "::",                // unspecified
+            "fc00::1",           // ULA
+            "fd00:ec2::254",     // AWS IMDS over IPv6 (within fc00::/7)
+            "fe80::1",           // link-local
+            "::ffff:127.0.0.1",  // IPv4-mapped loopback
+            "::ffff:169.254.169.254", // IPv4-mapped metadata
+        ] {
+            assert!(is_blocked(v6(s)), "{s} should be blocked");
+        }
+    }
+
+    #[test]
+    fn allows_public_ipv6() {
+        for s in ["2606:4700:4700::1111", "2001:4860:4860::8888"] {
+            assert!(!is_blocked(v6(s)), "{s} should be allowed");
+        }
+    }
+
+    // ── validate_target: resolution + rebinding ─────────────────────────────────
+
+    struct FakeResolver(HashMap<String, Vec<SocketAddr>>);
+    impl HostResolver for FakeResolver {
+        fn resolve(&self, host: &str, _port: u16) -> std::io::Result<Vec<SocketAddr>> {
+            Ok(self.0.get(host).cloned().unwrap_or_default())
+        }
+    }
+    fn sa(s: &str) -> SocketAddr {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn rejects_host_that_resolves_to_loopback() {
+        // The anti-rebinding case: hostname looks fine, resolves to 127.0.0.1.
+        let r = FakeResolver(HashMap::from([("rebind.test".into(), vec![sa("127.0.0.1:443")])]));
+        assert_eq!(
+            validate_target("rebind.test", 443, &r, is_blocked),
+            Err(ProxyError::Blocked)
+        );
+    }
+
+    #[test]
+    fn rejects_host_with_any_private_record() {
+        // Resolves to both a public and a private address → refused entirely.
+        let r = FakeResolver(HashMap::from([(
+            "mixed.test".into(),
+            vec![sa("8.8.8.8:443"), sa("10.0.0.1:443")],
+        )]));
+        assert_eq!(
+            validate_target("mixed.test", 443, &r, is_blocked),
+            Err(ProxyError::Blocked)
+        );
+    }
+
+    #[test]
+    fn allows_public_host_and_pins_address() {
+        let r = FakeResolver(HashMap::from([("good.test".into(), vec![sa("93.184.216.34:443")])]));
+        assert_eq!(
+            validate_target("good.test", 443, &r, is_blocked),
+            Ok(sa("93.184.216.34:443"))
+        );
+    }
+
+    #[test]
+    fn errors_when_no_addresses() {
+        let r = FakeResolver(HashMap::new());
+        assert_eq!(
+            validate_target("nx.test", 443, &r, is_blocked),
+            Err(ProxyError::Dns)
+        );
+    }
+
+    // ── request parsing ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn parses_connect_with_ipv6_authority() {
+        match parse_request_line("CONNECT [::1]:8443 HTTP/1.1").unwrap() {
+            Target::Connect { host, port } => {
+                assert_eq!(host, "::1");
+                assert_eq!(port, 8443);
+            }
+            _ => panic!("expected CONNECT"),
+        }
+    }
+
+    #[test]
+    fn parses_connect_default_port_and_http_absolute() {
+        match parse_request_line("CONNECT example.com:443 HTTP/1.1").unwrap() {
+            Target::Connect { host, port } => {
+                assert_eq!(host, "example.com");
+                assert_eq!(port, 443);
+            }
+            _ => panic!("expected CONNECT"),
+        }
+        match parse_request_line("GET http://example.com/feed HTTP/1.1").unwrap() {
+            Target::Http { host, port } => {
+                assert_eq!(host, "example.com");
+                assert_eq!(port, 80);
+            }
+            _ => panic!("expected HTTP"),
+        }
+    }
+
+    // ── end-to-end tunnel ───────────────────────────────────────────────────────
+
+    fn permissive() -> ProxyConfig {
+        // Real resolver, but nothing blocked — lets us tunnel to a loopback test
+        // server (which the real policy would correctly refuse).
+        ProxyConfig {
+            resolver: Arc::new(SystemResolver),
+            is_blocked_fn: |_| false,
+        }
+    }
+
+    #[tokio::test]
+    async fn connect_tunnels_to_allowed_upstream() {
+        // Echo server on loopback.
+        let echo = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let echo_port = echo.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut s, _) = echo.accept().await.unwrap();
+            let mut b = [0u8; 5];
+            s.read_exact(&mut b).await.unwrap();
+            s.write_all(&b).await.unwrap();
+        });
+
+        let port = start(permissive()).await.unwrap();
+        let mut c = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).await.unwrap();
+        c.write_all(format!("CONNECT 127.0.0.1:{echo_port} HTTP/1.1\r\n\r\n").as_bytes())
+            .await
+            .unwrap();
+
+        // Consume the full CONNECT response head before tunneling, otherwise its
+        // trailing bytes would be mistaken for tunnel data.
+        let status = read_http_head(&mut c).await;
+        assert!(status.starts_with("HTTP/1.1 200"), "got: {status:?}");
+
+        c.write_all(b"hello").await.unwrap();
+        let mut echoed = [0u8; 5];
+        c.read_exact(&mut echoed).await.unwrap();
+        assert_eq!(&echoed, b"hello");
+    }
+
+    /// Reads a response up to and including the blank `\r\n\r\n`.
+    async fn read_http_head(stream: &mut TcpStream) -> String {
+        let mut buf = Vec::new();
+        let mut one = [0u8; 1];
+        while stream.read_exact(&mut one).await.is_ok() {
+            buf.push(one[0]);
+            if buf.ends_with(b"\r\n\r\n") {
+                break;
+            }
+        }
+        String::from_utf8_lossy(&buf).into_owned()
+    }
+
+    #[tokio::test]
+    async fn connect_to_blocked_target_is_refused() {
+        // Real policy: a CONNECT to loopback must be rejected with 403.
+        let port = start(ProxyConfig::new()).await.unwrap();
+        let mut c = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).await.unwrap();
+        c.write_all(b"CONNECT 127.0.0.1:80 HTTP/1.1\r\n\r\n").await.unwrap();
+
+        let status = read_http_head(&mut c).await;
+        assert!(status.starts_with("HTTP/1.1 403"), "got: {status:?}");
+    }
+}
