@@ -1,8 +1,4 @@
-import {
-  createContext,
-  type Dispatch,
-  type SetStateAction,
-} from "react";
+import { createContext, type Dispatch, type SetStateAction } from "react";
 import type { Topic } from "../types";
 
 export type TopicsContextType = {

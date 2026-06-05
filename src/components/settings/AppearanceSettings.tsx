@@ -18,7 +18,6 @@ import {
 } from "@mui/material";
 import type { ReactNode } from "react";
 import { useAppearance } from "../../hooks/useAppearance";
-import type { FontFamily } from "../../utils/FontFamily";
 import {
   HTML_READER_FONT_SIZE_MAX,
   HTML_READER_FONT_SIZE_MIN,
@@ -27,6 +26,7 @@ import {
   HTML_READER_LINE_HEIGHT_STEP,
   type ThemeSetting,
 } from "../../providers/AppearanceContext";
+import type { FontFamily } from "../../utils/FontFamily";
 import css from "./AppearanceSettings.module.css";
 
 interface StepperProps {
@@ -57,29 +57,27 @@ function Stepper({
   return (
     <div className={css.Stepper}>
       <Tooltip title={decrementLabel}>
-        <span>
-          <IconButton
-            size="small"
-            disabled={value <= min}
-            onClick={() => onChange(Math.round((value - step) * 10) / 10)}
-          >
-            {decrementIcon}
-          </IconButton>
-        </span>
+        <IconButton
+          size="small"
+          disabled={value <= min}
+          onClick={() => onChange(Math.round((value - step) * 10) / 10)}
+          aria-label={decrementLabel}
+        >
+          {decrementIcon}
+        </IconButton>
       </Tooltip>
       <Typography variant="body2" className={css.StepperLabel}>
         {display}
       </Typography>
       <Tooltip title={incrementLabel}>
-        <span>
-          <IconButton
-            size="small"
-            disabled={value >= max}
-            onClick={() => onChange(Math.round((value + step) * 10) / 10)}
-          >
-            {incrementIcon}
-          </IconButton>
-        </span>
+        <IconButton
+          size="small"
+          disabled={value >= max}
+          onClick={() => onChange(Math.round((value + step) * 10) / 10)}
+          aria-label={incrementLabel}
+        >
+          {incrementIcon}
+        </IconButton>
       </Tooltip>
     </div>
   );
@@ -125,8 +123,16 @@ export function AppearanceSettings() {
           value={view}
           onChange={(e) => changeHtmlReaderView(e.target.value as typeof view)}
         >
-          <FormControlLabel value="summary" control={<Radio size="small" />} label="Summary" />
-          <FormControlLabel value="reader"  control={<Radio size="small" />} label="Reader"  />
+          <FormControlLabel
+            value="summary"
+            control={<Radio size="small" />}
+            label="Summary"
+          />
+          <FormControlLabel
+            value="reader"
+            control={<Radio size="small" />}
+            label="Reader"
+          />
         </RadioGroup>
       </div>
 
@@ -144,7 +150,9 @@ export function AppearanceSettings() {
           <Select
             value={htmlReaderFontFamily}
             label="Font"
-            onChange={(e) => setHtmlReaderFontFamily(e.target.value as FontFamily)}
+            onChange={(e) =>
+              setHtmlReaderFontFamily(e.target.value as FontFamily)
+            }
           >
             <MenuItem value="system">System UI</MenuItem>
             <MenuItem value="serif">Serif</MenuItem>

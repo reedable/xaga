@@ -8,7 +8,9 @@ export function useSidebar(abortControllerRef: RefObject<AbortController>) {
   const platform = usePlatform();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [expandedList, setExpandedListState] = useState<ListType | null>("SHORTCUTS");
+  const [expandedList, setExpandedListState] = useState<ListType | null>(
+    "SHORTCUTS"
+  );
 
   useEffect(() => {
     platform
@@ -18,14 +20,16 @@ export function useSidebar(abortControllerRef: RefObject<AbortController>) {
   }, [platform]);
 
   const setExpandedList = useCallback(
-    (updater: ((prev: ListType | null) => ListType | null) | (ListType | null)) => {
+    (
+      updater: ((prev: ListType | null) => ListType | null) | (ListType | null)
+    ) => {
       setExpandedListState((prev) => {
         const next = typeof updater === "function" ? updater(prev) : updater;
         platform.setExpandedSidebarList(next).catch(console.error);
         return next;
       });
     },
-    [platform],
+    [platform]
   );
 
   const listFeeds = useCallback(
@@ -62,5 +66,12 @@ export function useSidebar(abortControllerRef: RefObject<AbortController>) {
     [abortControllerRef, platform]
   );
 
-  return { loading, error, listFeeds, listTopics, expandedList, setExpandedList };
+  return {
+    loading,
+    error,
+    listFeeds,
+    listTopics,
+    expandedList,
+    setExpandedList,
+  };
 }

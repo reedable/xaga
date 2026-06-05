@@ -51,19 +51,23 @@ export function useEvents() {
 
   const onEmbeddingsChanged = useCallback(
     (callback: () => void) =>
-      subscribe(() => platform.onEmbeddingsChanged(debounced(callback, { wait: 400 }))),
+      subscribe(() =>
+        platform.onEmbeddingsChanged(debounced(callback, { wait: 400 }))
+      ),
     [platform]
   );
 
   const onLoaderClosed = useCallback(
-    (callback: (data: { url: string; html: string }) => void) =>
-      subscribe(() => platform.onLoaderClosed(callback)),
+    (
+      callback: (data: { url: string; html: string; mimeType: string }) => void
+    ) => subscribe(() => platform.onLoaderClosed(callback)),
     [platform]
   );
 
   const onLoaderPageLoaded = useCallback(
-    (callback: (data: { url: string; html: string }) => void) =>
-      subscribe(() => platform.onLoaderPageLoaded(callback)),
+    (
+      callback: (data: { url: string; html: string; mimeType: string }) => void
+    ) => subscribe(() => platform.onLoaderPageLoaded(callback)),
     [platform]
   );
 

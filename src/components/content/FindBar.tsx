@@ -1,5 +1,11 @@
 import { ArrowDownward, ArrowUpward, Close } from "@mui/icons-material";
-import { IconButton, InputBase, Paper, Typography } from "@mui/material";
+import {
+  IconButton,
+  InputBase,
+  Paper,
+  Tooltip,
+  Typography,
+} from "@mui/material";
 import { useEffect, useRef } from "react";
 import cx from "../../utils/cx";
 import css from "./FindBar.module.css";
@@ -13,7 +19,14 @@ interface FindBarProps {
   onClose: () => void;
 }
 
-export function FindBar({ query, current, total, onChange, onNavigate, onClose }: FindBarProps) {
+export function FindBar({
+  query,
+  current,
+  total,
+  onChange,
+  onNavigate,
+  onClose,
+}: FindBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -52,15 +65,31 @@ export function FindBar({ query, current, total, onChange, onNavigate, onClose }
         {noResults ? "No results" : total > 0 ? `${current} / ${total}` : ""}
       </Typography>
 
-      <IconButton size="small" onClick={() => onNavigate(-1)} disabled={total === 0} aria-label="Previous match">
-        <ArrowUpward fontSize="inherit" />
-      </IconButton>
-      <IconButton size="small" onClick={() => onNavigate(1)} disabled={total === 0} aria-label="Next match">
-        <ArrowDownward fontSize="inherit" />
-      </IconButton>
-      <IconButton size="small" onClick={onClose} aria-label="Close find bar">
-        <Close fontSize="inherit" />
-      </IconButton>
+      <Tooltip title="Previous match">
+        <IconButton
+          size="small"
+          onClick={() => onNavigate(-1)}
+          disabled={total === 0}
+          aria-label="Previous match"
+        >
+          <ArrowUpward fontSize="inherit" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Next match">
+        <IconButton
+          size="small"
+          onClick={() => onNavigate(1)}
+          disabled={total === 0}
+          aria-label="Next match"
+        >
+          <ArrowDownward fontSize="inherit" />
+        </IconButton>
+      </Tooltip>
+      <Tooltip title="Close find bar">
+        <IconButton size="small" onClick={onClose} aria-label="Close find bar">
+          <Close fontSize="inherit" />
+        </IconButton>
+      </Tooltip>
     </Paper>
   );
 }

@@ -13,8 +13,8 @@ import { Collapse, IconButton, LinearProgress, Tooltip } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useArticles } from "../../hooks/useArticles";
-import { useContentLoader } from "../../hooks/useContentLoader";
 import { useBookmarks } from "../../hooks/useBookmarks";
+import { useContentLoader } from "../../hooks/useContentLoader";
 import useEntries from "../../hooks/useEntries";
 import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
@@ -143,101 +143,111 @@ export function Toolbar({ reload }: ToolbarProps) {
   return (
     <div className={css.Toolbar}>
       <Tooltip title="Back">
-        <span>
-          <IconButton size="small" onClick={back} disabled={!canGoBack}>
-            <ArrowBack fontSize="small" />
-          </IconButton>
-        </span>
+        <IconButton
+          size="small"
+          onClick={back}
+          disabled={!canGoBack}
+          aria-label="Back"
+        >
+          <ArrowBack fontSize="small" />
+        </IconButton>
       </Tooltip>
       <Tooltip title="Forward">
-        <span>
-          <IconButton size="small" onClick={forward} disabled={!canGoForward}>
-            <ArrowForward fontSize="small" />
-          </IconButton>
-        </span>
+        <IconButton
+          size="small"
+          onClick={forward}
+          disabled={!canGoForward}
+          aria-label="Forward"
+        >
+          <ArrowForward fontSize="small" />
+        </IconButton>
       </Tooltip>
       <div className={css.AddressBarContainer}>
         <div>
           <div className={css.AddressBar}>
             <Tooltip title="Show Original Site">
-              <span>
-                <IconButton
-                  size="small"
-                  onClick={handleShowOriginalSite}
-                  disabled={!entry}
-                >
-                  {favicon ? (
-                    <div className={css.Favicon}>
-                      <img
-                        src={favicon}
-                        width={16}
-                        height={16}
-                        alt="Show original site"
-                        style={{ margin: "0 2px" }}
-                      />
-                    </div>
-                  ) : (
-                    <Language fontSize="small" />
-                  )}
-                </IconButton>
-              </span>
+              <IconButton
+                size="small"
+                onClick={handleShowOriginalSite}
+                disabled={!entry}
+                aria-label="Show Original Site"
+              >
+                {favicon ? (
+                  <div className={css.Favicon}>
+                    <img
+                      src={favicon}
+                      width={16}
+                      height={16}
+                      alt="Show original site"
+                      style={{ margin: "0 2px" }}
+                    />
+                  </div>
+                ) : (
+                  <Language fontSize="small" />
+                )}
+              </IconButton>
             </Tooltip>
 
             <AddressBar url={url ?? null} onNavigate={handleNavigate} />
 
             <Tooltip title="Open in Browser">
-              <span className={css.RevealOnHover}>
-                <IconButton
-                  size="small"
-                  onClick={handleOpenInBrowser}
-                  disabled={!url}
-                >
-                  <OpenInNew fontSize="small" />
-                </IconButton>
-              </span>
+              <IconButton
+                size="small"
+                onClick={handleOpenInBrowser}
+                disabled={!url}
+                aria-label="Open in Browser"
+                className={css.RevealOnHover}
+              >
+                <OpenInNew fontSize="small" />
+              </IconButton>
             </Tooltip>
 
             <Tooltip title="Refresh">
-              <span className={css.RevealOnHover}>
-                <IconButton
-                  size="small"
-                  onClick={reload ?? undefined}
-                  disabled={!reload}
-                >
-                  <Refresh fontSize="small" />
-                </IconButton>
-              </span>
+              <IconButton
+                size="small"
+                onClick={reload ?? undefined}
+                disabled={!reload}
+                aria-label="Refresh"
+                className={css.RevealOnHover}
+              >
+                <Refresh fontSize="small" />
+              </IconButton>
             </Tooltip>
 
             <Tooltip
               title={entry?.isUnread ? "Mark as read" : "Mark as unread"}
             >
-              <span className={css.RevealOnHover}>
-                <IconButton size="small" onClick={toggleRead} disabled={!entry}>
-                  {entry?.isUnread ? (
-                    <Circle fontSize="small" color="primary" />
-                  ) : (
-                    <CircleOutlined fontSize="small" />
-                  )}
-                </IconButton>
-              </span>
+              <IconButton
+                size="small"
+                onClick={toggleRead}
+                disabled={!entry}
+                aria-label={entry?.isUnread ? "Mark as read" : "Mark as unread"}
+                className={css.RevealOnHover}
+              >
+                {entry?.isUnread ? (
+                  <Circle fontSize="small" color="primary" />
+                ) : (
+                  <CircleOutlined fontSize="small" />
+                )}
+              </IconButton>
             </Tooltip>
 
             <Tooltip
               title={entry?.isBookmarked ? "Remove bookmark" : "Add bookmark"}
             >
-              <span>
-                <IconButton
-                  size="small"
-                  onClick={toggleBookmark}
-                  disabled={!entry}
-                >
-                  <Bookmark
-                    fontSize="small"
-                    color={entry?.isBookmarked ? "primary" : undefined}
-                  />
-                </IconButton>
-              </span>
+              <IconButton
+                size="small"
+                onClick={toggleBookmark}
+                disabled={!entry}
+                aria-label={
+                  entry?.isBookmarked ? "Remove bookmark" : "Add bookmark"
+                }
+              >
+                <Bookmark
+                  fontSize="small"
+                  color={entry?.isBookmarked ? "primary" : undefined}
+                />
+              </IconButton>
             </Tooltip>
 
             <TopicMenuButton item={entry} disabled={!url} />

@@ -4,7 +4,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { z } from "zod";
-import { isAnnotation } from "../types";
 import type {
   Annotation,
   AnnotationSummary,
@@ -19,6 +18,7 @@ import type {
   SavedItem,
   Topic,
 } from "../types";
+import { isAnnotation } from "../types";
 import { abortable, decorate, logged } from "../utils/Decorator";
 import Logger from "../utils/Logger";
 import type { Platform } from "./Platform";
@@ -204,11 +204,11 @@ const EmbeddedItemSchema = ItemSchema.extend(EmbeddedSchema.shape);
 // 2. Entry: has `is_unread` (topics don't — they have no url/is_unread fields)
 // 3. Topic: has `content` + `entry_count` + `unread_count`
 // 4. Generic Item: fallback
-const AnyEmbeddedItemSchema =
-  EmbeddedAnnotationResultSchema
-    .or(EmbeddedEntrySchema)
-    .or(EmbeddedTopicSchema)
-    .or(EmbeddedItemSchema);
+const AnyEmbeddedItemSchema = EmbeddedAnnotationResultSchema.or(
+  EmbeddedEntrySchema
+)
+  .or(EmbeddedTopicSchema)
+  .or(EmbeddedItemSchema);
 
 const toAnyEmbeddedItem = (data: z.infer<typeof AnyEmbeddedItemSchema>) => {
   if ("color" in data) {
@@ -648,7 +648,10 @@ export class TauriPlatform implements Platform {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "list_topic_items" });
-    const results = await invoker<unknown[]>("list_topic_items", { id, itemFilter: filter });
+    const results = await invoker<unknown[]>("list_topic_items", {
+      id,
+      itemFilter: filter,
+    });
     return results
       .map((e) => SavedItemSchema.transform(toSavedItem).safeParse(e))
       .filter((e) => !e.error)
@@ -666,7 +669,10 @@ export class TauriPlatform implements Platform {
     const topicItem = isAnnotation(item)
       ? { type: "annotation", id: item.id, reference: item.reference }
       : { type: "entry", id: item.id };
-    const result = await invoker<unknown>("add_topic_item", { topicId, item: topicItem });
+    const result = await invoker<unknown>("add_topic_item", {
+      topicId,
+      item: topicItem,
+    });
     return TopicSchema.transform(toTopic).parse(result);
   }
 
@@ -678,11 +684,17 @@ export class TauriPlatform implements Platform {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "remove_topic_item" });
-    const result = await invoker<unknown>("remove_topic_item", { topicId, itemId });
+    const result = await invoker<unknown>("remove_topic_item", {
+      topicId,
+      itemId,
+    });
     return TopicSchema.transform(toTopic).parse(result);
   }
 
-  async listEntryTopics(signal: AbortSignal, entryId: string): Promise<string[]> {
+  async listEntryTopics(
+    signal: AbortSignal,
+    entryId: string
+  ): Promise<string[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "list_entry_topics" });
@@ -692,7 +704,7 @@ export class TauriPlatform implements Platform {
   async rankTopicsRelatedToItem(
     signal: AbortSignal,
     itemId: string,
-    minSimilarity?: number,
+    minSimilarity?: number
   ): Promise<Array<{ id: string } & Embedded>> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -895,8 +907,9 @@ export class TauriPlatform implements Platform {
 
   onAnnotationRemoved(callback: (id: string) => void): Promise<UnlistenFn> {
     const name = "annotation:removed";
-    const listener = decorate((e: { payload: string }) => callback(e.payload))
-      .with(logged, { logger, name });
+    const listener = decorate((e: { payload: string }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
     return listen<string>(name, listener);
   }
 
@@ -995,20 +1008,30 @@ export class TauriPlatform implements Platform {
   }
 
   getHtmlReaderView(): Promise<string> {
-    return decorate(invoke).with(logged, { logger, name: "get_html_reader_view" })<string>("get_html_reader_view");
+    return decorate(invoke).with(logged, {
+      logger,
+      name: "get_html_reader_view",
+    })<string>("get_html_reader_view");
   }
 
   setHtmlReaderView(view: HtmlReaderView): Promise<void> {
-    return decorate(invoke).with(logged, { logger, name: "set_html_reader_view" })<void>("set_html_reader_view", { value: view });
+    return decorate(invoke).with(logged, {
+      logger,
+      name: "set_html_reader_view",
+    })<void>("set_html_reader_view", { value: view });
   }
 
-  onHtmlReaderView(callback: (view: HtmlReaderView) => void): Promise<UnlistenFn> {
+  onHtmlReaderView(
+    callback: (view: HtmlReaderView) => void
+  ): Promise<UnlistenFn> {
     const name = "menu:html-reader-view";
     const listener = decorate(callback).with(logged, { logger, name });
     return listen(name, (e) => listener(e.payload as HtmlReaderView));
   }
 
-  onHtmlReaderViewChangedFromSettings(callback: (view: HtmlReaderView) => void): Promise<UnlistenFn> {
+  onHtmlReaderViewChangedFromSettings(
+    callback: (view: HtmlReaderView) => void
+  ): Promise<UnlistenFn> {
     const name = "settings:html-reader-view";
     const listener = decorate(callback).with(logged, { logger, name });
     return listen(name, (e) => listener(e.payload as HtmlReaderView));
@@ -1026,20 +1049,28 @@ export class TauriPlatform implements Platform {
     callback: (data: { url: string; html: string; mimeType: string }) => void
   ): Promise<UnlistenFn> {
     const name = "loader:closed";
-    const listener = decorate((e: { payload: { url: string; html: string; mimeType: string } }) =>
-      callback(e.payload)
+    const listener = decorate(
+      (e: { payload: { url: string; html: string; mimeType: string } }) =>
+        callback(e.payload)
     ).with(logged, { logger, name });
-    return listen<{ url: string; html: string; mimeType: string }>(name, listener);
+    return listen<{ url: string; html: string; mimeType: string }>(
+      name,
+      listener
+    );
   }
 
   onLoaderPageLoaded(
     callback: (data: { url: string; html: string; mimeType: string }) => void
   ): Promise<UnlistenFn> {
     const name = "loader:page-loaded";
-    const listener = decorate((e: { payload: { url: string; html: string; mimeType: string } }) =>
-      callback(e.payload)
+    const listener = decorate(
+      (e: { payload: { url: string; html: string; mimeType: string } }) =>
+        callback(e.payload)
     ).with(logged, { logger, name });
-    return listen<{ url: string; html: string; mimeType: string }>(name, listener);
+    return listen<{ url: string; html: string; mimeType: string }>(
+      name,
+      listener
+    );
   }
 
   onFind(callback: () => void): Promise<UnlistenFn> {
@@ -1061,38 +1092,64 @@ export class TauriPlatform implements Platform {
   }
 
   getPinnedFeedIds(): Promise<string[]> {
-    return decorate(invoke).with(logged, { logger, name: "get_pinned_feed_ids" })<string[]>("get_pinned_feed_ids");
+    return decorate(invoke).with(logged, {
+      logger,
+      name: "get_pinned_feed_ids",
+    })<string[]>("get_pinned_feed_ids");
   }
 
   setPinnedFeedIds(value: string[]): Promise<void> {
-    return decorate(invoke).with(logged, { logger, name: "set_pinned_feed_ids" })<void>("set_pinned_feed_ids", { value });
+    return decorate(invoke).with(logged, {
+      logger,
+      name: "set_pinned_feed_ids",
+    })<void>("set_pinned_feed_ids", { value });
   }
 
   getPinnedTopicIds(): Promise<string[]> {
-    return decorate(invoke).with(logged, { logger, name: "get_pinned_topic_ids" })<string[]>("get_pinned_topic_ids");
+    return decorate(invoke).with(logged, {
+      logger,
+      name: "get_pinned_topic_ids",
+    })<string[]>("get_pinned_topic_ids");
   }
 
   setPinnedTopicIds(value: string[]): Promise<void> {
-    return decorate(invoke).with(logged, { logger, name: "set_pinned_topic_ids" })<void>("set_pinned_topic_ids", { value });
+    return decorate(invoke).with(logged, {
+      logger,
+      name: "set_pinned_topic_ids",
+    })<void>("set_pinned_topic_ids", { value });
   }
 
   getExpandedSidebarList(): Promise<string | null> {
-    return decorate(invoke).with(logged, { logger, name: "get_expanded_sidebar_list" })<string | null>("get_expanded_sidebar_list");
+    return decorate(invoke).with(logged, {
+      logger,
+      name: "get_expanded_sidebar_list",
+    })<string | null>("get_expanded_sidebar_list");
   }
 
   setExpandedSidebarList(value: string | null): Promise<void> {
-    return decorate(invoke).with(logged, { logger, name: "set_expanded_sidebar_list" })<void>("set_expanded_sidebar_list", { value });
+    return decorate(invoke).with(logged, {
+      logger,
+      name: "set_expanded_sidebar_list",
+    })<void>("set_expanded_sidebar_list", { value });
   }
 
   getInlinePdfReader(): Promise<boolean> {
-    return decorate(invoke).with(logged, { logger, name: "get_inline_pdf_reader" })<boolean>("get_inline_pdf_reader");
+    return decorate(invoke).with(logged, {
+      logger,
+      name: "get_inline_pdf_reader",
+    })<boolean>("get_inline_pdf_reader");
   }
 
   setInlinePdfReader(value: boolean): Promise<void> {
-    return decorate(invoke).with(logged, { logger, name: "set_inline_pdf_reader" })<void>("set_inline_pdf_reader", { value });
+    return decorate(invoke).with(logged, {
+      logger,
+      name: "set_inline_pdf_reader",
+    })<void>("set_inline_pdf_reader", { value });
   }
 
-  onInlinePdfReaderChanged(callback: (value: boolean) => void): Promise<UnlistenFn> {
+  onInlinePdfReaderChanged(
+    callback: (value: boolean) => void
+  ): Promise<UnlistenFn> {
     const name = "settings:inline-pdf-reader";
     const listener = decorate(callback).with(logged, { logger, name });
     return listen(name, (e) => listener(e.payload as boolean));
@@ -1110,7 +1167,9 @@ export class TauriPlatform implements Platform {
     return invoker<void>(name, { domains });
   }
 
-  onAllowedDomainsChanged(callback: (domains: string[]) => void): Promise<UnlistenFn> {
+  onAllowedDomainsChanged(
+    callback: (domains: string[]) => void
+  ): Promise<UnlistenFn> {
     const name = "settings:allowed-domains";
     const listener = decorate((e: { payload: string[] }) =>
       callback(e.payload)

@@ -3,7 +3,7 @@ import { usePlatform } from "../platform/Platform";
 import type { Filter } from "../types";
 
 export default function useRelatedItems(
-  abortControllerRef: RefObject<AbortController>,
+  abortControllerRef: RefObject<AbortController>
 ) {
   const platform = usePlatform();
   const [loading, setLoading] = useState(false);
@@ -15,7 +15,7 @@ export default function useRelatedItems(
       filter: Filter = "all",
       minSimilarity: number = 0.5,
       maxSimilarity?: number | null,
-      max?: number,
+      max?: number
     ) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
@@ -28,7 +28,7 @@ export default function useRelatedItems(
           filter,
           minSimilarity,
           maxSimilarity ?? null,
-          max ?? null,
+          max ?? null
         );
       } catch (e) {
         setError(e);
@@ -36,7 +36,7 @@ export default function useRelatedItems(
         setLoading(false);
       }
     },
-    [abortControllerRef, platform],
+    [abortControllerRef, platform]
   );
 
   return { loading, error, queryByItem };

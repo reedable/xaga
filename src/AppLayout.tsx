@@ -18,11 +18,11 @@ import { SearchResultList } from "./components/search/SearchResultList";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { TitleBar } from "./components/titlebar/TitleBar";
 import useAbortController from "./hooks/useAbortController";
-import { usePlatform } from "./platform/Platform";
 import { useAppearance } from "./hooks/useAppearance";
 import { useFeeds } from "./hooks/useFeeds";
 import { useTopics } from "./hooks/useTopics";
-import { isFilter, type Feed, type Topic } from "./types";
+import { usePlatform } from "./platform/Platform";
+import { type Feed, type Topic } from "./types";
 
 export function AppLayout() {
   const navigate = useNavigate();
@@ -30,9 +30,6 @@ export function AppLayout() {
   const appRef = useRef<HTMLDivElement>(null);
   const [autoHideSidebar, setAutoHideSidebar] = useState(false);
   const { showSidebar } = useAppearance();
-  const filterParam = searchParams.get("filter");
-  const [storedFilter] = useState<string>("unread");
-  const filter = isFilter(filterParam) ? filterParam : storedFilter;
   const search = searchParams.get("search");
 
   const platform = usePlatform();
@@ -170,9 +167,11 @@ export function AppLayout() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    platform.onClearHistory(() => setClearHistoryOpen(true)).then((fn) => {
-      unlisten = fn;
-    });
+    platform
+      .onClearHistory(() => setClearHistoryOpen(true))
+      .then((fn) => {
+        unlisten = fn;
+      });
     return () => unlisten?.();
   }, [platform]);
 

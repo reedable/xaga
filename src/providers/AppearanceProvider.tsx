@@ -25,17 +25,18 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
   const [themeSetting, setThemeSetting] = useState<ThemeSetting>("auto");
 
-  const [htmlReaderView, setHtmlReaderView] = useState<HtmlReaderView>("reader");
+  const [htmlReaderView, setHtmlReaderView] =
+    useState<HtmlReaderView>("reader");
 
   const [htmlReaderFontFamily, setHtmlReaderFontFamilyState] =
     useState<FontFamily>("system");
 
   const [htmlReaderFontSize, setHtmlReaderFontSizeState] = useState(
-    HTML_READER_FONT_SIZE_DEFAULT,
+    HTML_READER_FONT_SIZE_DEFAULT
   );
 
   const [htmlReaderLineHeight, setHtmlReaderLineHeightState] = useState(
-    HTML_READER_LINE_HEIGHT_DEFAULT,
+    HTML_READER_LINE_HEIGHT_DEFAULT
   );
 
   const [showSidebar, setShowSidebarState] = useState(true);
@@ -52,7 +53,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       platform.setTheme(t).catch(console.error);
       setThemeSetting(t);
     },
-    [platform],
+    [platform]
   );
 
   const changeHtmlReaderView = useCallback(
@@ -60,7 +61,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       platform.setHtmlReaderView(v).catch(console.error);
       setHtmlReaderView(v);
     },
-    [platform],
+    [platform]
   );
 
   const setHtmlReaderFontFamily = useCallback(
@@ -68,7 +69,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       platform.setHtmlReaderFontFamily(value).catch(console.error);
       setHtmlReaderFontFamilyState(value);
     },
-    [platform],
+    [platform]
   );
 
   const setHtmlReaderFontSize = useCallback(
@@ -76,7 +77,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       platform.setHtmlReaderFontSize(value).catch(console.error);
       setHtmlReaderFontSizeState(value);
     },
-    [platform],
+    [platform]
   );
 
   const setHtmlReaderLineHeight = useCallback(
@@ -84,7 +85,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       platform.setHtmlReaderLineHeight(value).catch(console.error);
       setHtmlReaderLineHeightState(value);
     },
-    [platform],
+    [platform]
   );
 
   const setShowSidebar = useCallback(
@@ -92,7 +93,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       platform.setShowSidebar(value).catch(console.error);
       setShowSidebarState(value);
     },
-    [platform],
+    [platform]
   );
 
   // Load persisted theme on startup.
@@ -105,10 +106,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
 
   // Load persisted show_sidebar on startup.
   useEffect(() => {
-    platform
-      .getShowSidebar()
-      .then(setShowSidebarState)
-      .catch(console.error);
+    platform.getShowSidebar().then(setShowSidebarState).catch(console.error);
   }, [platform]);
 
   // Load persisted html reader view on startup.
@@ -161,13 +159,11 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unlistens = [
       platform.onThemeChangedFromSettings((t) =>
-        setThemeSetting(t as ThemeSetting),
+        setThemeSetting(t as ThemeSetting)
       ),
-      platform.onHtmlReaderViewChangedFromSettings((v) =>
-        setHtmlReaderView(v),
-      ),
+      platform.onHtmlReaderViewChangedFromSettings((v) => setHtmlReaderView(v)),
       platform.onHtmlReaderFontFamilyChanged((v) =>
-        setHtmlReaderFontFamilyState(v as FontFamily),
+        setHtmlReaderFontFamilyState(v as FontFamily)
       ),
       platform.onHtmlReaderFontSizeChanged(setHtmlReaderFontSizeState),
       platform.onHtmlReaderLineHeightChanged(setHtmlReaderLineHeightState),
@@ -209,7 +205,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       setHtmlReaderLineHeight,
       showSidebar,
       setShowSidebar,
-    ],
+    ]
   );
 
   return (

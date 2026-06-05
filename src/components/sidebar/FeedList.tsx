@@ -1,5 +1,5 @@
 import { Add, RssFeed } from "@mui/icons-material";
-import { IconButton } from "@mui/material";
+import { IconButton, Tooltip } from "@mui/material";
 import { useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import useAbortController from "../../hooks/useAbortController";
@@ -7,8 +7,8 @@ import { useFeeds } from "../../hooks/useFeeds";
 import useRouter from "../../hooks/useRouter";
 import { isFilter, type Feed } from "../../types";
 import ExpandableList from "./ExpandableList";
-import SidebarItem from "./SidebarItem";
 import css from "./FeedList.module.css";
+import SidebarItem from "./SidebarItem";
 import UnreadCount from "./UnreadCount";
 
 type FeedListProps = {
@@ -47,9 +47,11 @@ export default function FeedList({
       isExpanded={isExpanded}
       onClickHeader={onClickHeader}
       renderHeaderAction={() => (
-        <IconButton size="small" onClick={onAddFeed}>
-          <Add className={css.AddIcon} />
-        </IconButton>
+        <Tooltip title="Add feed">
+          <IconButton size="small" onClick={onAddFeed} aria-label="Add feed">
+            <Add className={css.AddIcon} />
+          </IconButton>
+        </Tooltip>
       )}
     >
       {feeds.map((feed) => (

@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ALL_ITEMS } from "../Shortcuts";
 import {
@@ -23,14 +23,17 @@ let maxHistoryIdx = 0;
 export default function useRouter() {
   const navigate = useNavigate();
   const { state: rawState } = useLocation();
-  const state: NavigationState = (rawState as NavigationState | null) ?? {
-    shortcutId: ALL_ITEMS.id,
-  };
+  const state: NavigationState = useMemo(
+    () => (rawState as NavigationState | null) ?? { shortcutId: ALL_ITEMS.id },
+    [rawState]
+  );
   const [searchParams, setSearchParams] = useSearchParams();
 
   const currentIdx =
     (window.history.state as { idx?: number } | null)?.idx ?? 0;
-  maxHistoryIdx = Math.max(maxHistoryIdx, currentIdx);
+  useEffect(() => {
+    maxHistoryIdx = Math.max(maxHistoryIdx, currentIdx);
+  }, [currentIdx]);
   const canGoBack = currentIdx > 0;
   const canGoForward = currentIdx < maxHistoryIdx;
 

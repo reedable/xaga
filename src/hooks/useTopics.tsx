@@ -104,7 +104,11 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     async (itemId: string, minSimilarity?: number) => {
       const signal = abortControllerRef.current.signal;
       try {
-        return await platform.rankTopicsRelatedToItem(signal, itemId, minSimilarity);
+        return await platform.rankTopicsRelatedToItem(
+          signal,
+          itemId,
+          minSimilarity
+        );
       } catch {
         return undefined;
       }

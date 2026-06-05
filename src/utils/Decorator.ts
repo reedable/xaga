@@ -10,7 +10,7 @@ export type Fn<T extends unknown[] = any[], R = any> = (
 
 export type Decorator<O extends Opts = undefined> = <F extends Fn>(
   fn: F,
-  opts?: O,
+  opts?: O
 ) => F;
 
 export type DecoratedFn<F extends Fn> = F & {
@@ -94,7 +94,7 @@ export const retriable: Decorator<{
 
 export const logged: Decorator<{ logger: Logger; name: string }> = (
   fn,
-  opts,
+  opts
 ) => {
   return async function (
     this: ThisParameterType<typeof fn>,

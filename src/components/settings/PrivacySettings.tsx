@@ -14,7 +14,8 @@ import { useSettings } from "../../hooks/useSettings";
 import { usePlatform } from "../../platform/Platform";
 import css from "./PrivacySettings.module.css";
 
-const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
+const DOMAIN_RE =
+  /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 
 export function PrivacySettings() {
   const platform = usePlatform();
@@ -70,7 +71,11 @@ export function PrivacySettings() {
             placeholder="example.com"
             value={input}
             error={inputError}
-            helperText={inputError ? "Enter a valid domain not already in the list." : undefined}
+            helperText={
+              inputError
+                ? "Enter a valid domain not already in the list."
+                : undefined
+            }
             onChange={(e) => {
               setInput(e.target.value);
               setInputError(false);
@@ -80,7 +85,11 @@ export function PrivacySettings() {
             }}
             className={css.DomainInput}
           />
-          <Button variant="outlined" onClick={handleAdd} className={css.AddButton}>
+          <Button
+            variant="outlined"
+            onClick={handleAdd}
+            className={css.AddButton}
+          >
             Add
           </Button>
         </div>
@@ -104,7 +113,6 @@ export function PrivacySettings() {
             ))}
           </div>
         )}
-
       </div>
 
       <div className={css.Section}>
@@ -118,8 +126,8 @@ export function PrivacySettings() {
           label="Allow inline PDF viewing"
         />
         <Typography variant="body2" color="text.secondary">
-          PDFs open in the system viewer by default. Enabling this shows them
-          in the reading pane but runs the PDF in the same process as the app.
+          PDFs open in the system viewer by default. Enabling this shows them in
+          the reading pane but runs the PDF in the same process as the app.
         </Typography>
       </div>
     </div>

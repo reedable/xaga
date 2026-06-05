@@ -21,7 +21,11 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       setLoading(true);
 
       try {
-        const { mimeType, html } = await platform.loadArticle(signal, url, keepOpen);
+        const { mimeType, html } = await platform.loadArticle(
+          signal,
+          url,
+          keepOpen
+        );
 
         if (mimeType === "application/pdf") {
           return { article: null, mimeType };
@@ -37,7 +41,10 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           favicon: favicon ?? undefined,
         });
 
-        return { article: await platform.readArticle(signal, article.id), mimeType };
+        return {
+          article: await platform.readArticle(signal, article.id),
+          mimeType,
+        };
       } catch (e) {
         setError(e);
       } finally {
@@ -58,7 +65,11 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       setLoading(true);
 
       try {
-        const { html } = await platform.loadArticle(signal, entry.url, keepOpen);
+        const { html } = await platform.loadArticle(
+          signal,
+          entry.url,
+          keepOpen
+        );
         const { title, markdown, favicon } = await processEntry(
           entry.url,
           html

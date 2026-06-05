@@ -14,12 +14,15 @@ export function useCacheReady(): boolean {
           if (!cancelled) setReady(true);
           return;
         }
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise((r) => setTimeout(r, 100));
       }
     };
 
     poll();
-    return () => { cancelled = true; };
+
+    return () => {
+      cancelled = true;
+    };
   }, [platform]);
 
   return ready;

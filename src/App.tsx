@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter, MemoryRouter, Navigate, Route, Routes } from "react-router-dom";
+import {
+  BrowserRouter,
+  MemoryRouter,
+  Navigate,
+  Route,
+  Routes,
+} from "react-router-dom";
 import css from "./App.module.css";
 import { AppLayout } from "./AppLayout";
 import { Settings } from "./components/settings/Settings";

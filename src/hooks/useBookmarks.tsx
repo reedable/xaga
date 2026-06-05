@@ -20,7 +20,7 @@ export function useBookmarks(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform],
+    [abortControllerRef, platform]
   );
 
   const removeBookmark = useCallback(
@@ -36,7 +36,7 @@ export function useBookmarks(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform],
+    [abortControllerRef, platform]
   );
 
   return { loading, error, addBookmark, removeBookmark };

@@ -21,7 +21,7 @@ export interface Platform {
 
   openFileDialog(
     directory: boolean,
-    multiple?: boolean,
+    multiple?: boolean
   ): Promise<string | null>;
 
   openUrl(url: string): Promise<void>;
@@ -46,7 +46,7 @@ export interface Platform {
   listEntries(
     signal: AbortSignal,
     feedUrl: string,
-    filter: Filter,
+    filter: Filter
   ): Promise<Entry[]>;
   listAllItems(signal: AbortSignal, filter: Filter): Promise<SavedItem[]>;
   markEntryRead(signal: AbortSignal, id: string): Promise<Entry>;
@@ -54,23 +54,27 @@ export interface Platform {
 
   // Articles
   readEntry(signal: AbortSignal, id: string): Promise<Entry>;
-  loadArticle(signal: AbortSignal, url: string, keepOpen?: boolean): Promise<{ mimeType: string; html: string }>;
+  loadArticle(
+    signal: AbortSignal,
+    url: string,
+    keepOpen?: boolean
+  ): Promise<{ mimeType: string; html: string }>;
   findArticle(signal: AbortSignal, url: string): Promise<Article | null>;
   saveArticle(signal: AbortSignal, article: Article): Promise<Article>;
   readArticle(signal: AbortSignal, id: string): Promise<Article>;
   createArticle(
     signal: AbortSignal,
-    article: Omit<Article, "id" | "createdAt">,
+    article: Omit<Article, "id" | "createdAt">
   ): Promise<Article>;
 
   // Annotations
   addAnnotation(
     signal: AbortSignal,
-    annotation: Omit<Annotation, "createdAt" | "updatedAt">,
+    annotation: Omit<Annotation, "createdAt" | "updatedAt">
   ): Promise<Article>;
   removeAnnotation(
     signal: AbortSignal,
-    annotation: Pick<Annotation, "id" | "reference">,
+    annotation: Pick<Annotation, "id" | "reference">
   ): Promise<Article>;
   listAnnotations(signal: AbortSignal): Promise<AnnotationSummary[]>;
   listSaved(signal: AbortSignal): Promise<SavedItem[]>;
@@ -78,20 +82,32 @@ export interface Platform {
   // Topics
   createTopic(
     signal: AbortSignal,
-    topic: Omit<Topic, "id" | "createdAt" | "unreadCount" | "entryCount">,
+    topic: Omit<Topic, "id" | "createdAt" | "unreadCount" | "entryCount">
   ): Promise<Topic>;
   saveTopic(signal: AbortSignal, topic: Topic): Promise<Topic>;
   deleteTopic(signal: AbortSignal, id: string): Promise<void>;
   listTopics(signal: AbortSignal): Promise<Topic[]>;
   readTopic(signal: AbortSignal, id: string): Promise<Topic>;
-  listTopicItems(signal: AbortSignal, id: string, filter: Filter): Promise<SavedItem[]>;
-  addTopicItem(signal: AbortSignal, topicId: string, item: Entry | Annotation): Promise<Topic>;
-  removeTopicItem(signal: AbortSignal, topicId: string, itemId: string): Promise<Topic>;
+  listTopicItems(
+    signal: AbortSignal,
+    id: string,
+    filter: Filter
+  ): Promise<SavedItem[]>;
+  addTopicItem(
+    signal: AbortSignal,
+    topicId: string,
+    item: Entry | Annotation
+  ): Promise<Topic>;
+  removeTopicItem(
+    signal: AbortSignal,
+    topicId: string,
+    itemId: string
+  ): Promise<Topic>;
   listEntryTopics(signal: AbortSignal, entryId: string): Promise<string[]>;
   rankTopicsRelatedToItem(
     signal: AbortSignal,
     itemId: string,
-    minSimilarity?: number,
+    minSimilarity?: number
   ): Promise<Array<{ id: string } & Embedded>>;
 
   // Bookmarks
@@ -108,7 +124,7 @@ export interface Platform {
     filter?: Filter,
     minSimilarity?: number | null,
     maxSimilarity?: number | null,
-    limit?: number | null,
+    limit?: number | null
   ): Promise<(Embedded & Item)[]>;
 
   queryByText(
@@ -117,7 +133,7 @@ export interface Platform {
     filter?: Filter,
     minSimilarity?: number | null,
     maxSimilarity?: number | null,
-    limit?: number | null,
+    limit?: number | null
   ): Promise<(Embedded & Item)[]>;
 
   // Theme
@@ -153,8 +169,12 @@ export interface Platform {
   onExportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;
   onShowSidebar(callback: (show: boolean) => void): Promise<UnlistenFn>;
-  onLoaderClosed(callback: (data: { url: string; html: string; mimeType: string }) => void): Promise<UnlistenFn>;
-  onLoaderPageLoaded(callback: (data: { url: string; html: string; mimeType: string }) => void): Promise<UnlistenFn>;
+  onLoaderClosed(
+    callback: (data: { url: string; html: string; mimeType: string }) => void
+  ): Promise<UnlistenFn>;
+  onLoaderPageLoaded(
+    callback: (data: { url: string; html: string; mimeType: string }) => void
+  ): Promise<UnlistenFn>;
   onFind(callback: () => void): Promise<UnlistenFn>;
   setFindEnabled(enabled: boolean): Promise<void>;
   onShutdown(callback: () => void): Promise<UnlistenFn>;
@@ -164,13 +184,19 @@ export interface Platform {
   // Privacy
   getAllowedDomains(): Promise<string[]>;
   setAllowedDomains(domains: string[]): Promise<void>;
-  onAllowedDomainsChanged(callback: (domains: string[]) => void): Promise<UnlistenFn>;
+  onAllowedDomainsChanged(
+    callback: (domains: string[]) => void
+  ): Promise<UnlistenFn>;
 
   // HTML reader view preference
   getHtmlReaderView(): Promise<string>;
   setHtmlReaderView(view: HtmlReaderView): Promise<void>;
-  onHtmlReaderView(callback: (view: HtmlReaderView) => void): Promise<UnlistenFn>;
-  onHtmlReaderViewChangedFromSettings(callback: (view: HtmlReaderView) => void): Promise<UnlistenFn>;
+  onHtmlReaderView(
+    callback: (view: HtmlReaderView) => void
+  ): Promise<UnlistenFn>;
+  onHtmlReaderViewChangedFromSettings(
+    callback: (view: HtmlReaderView) => void
+  ): Promise<UnlistenFn>;
 
   // Persisted preferences
   getPinnedFeedIds(): Promise<string[]>;
@@ -181,23 +207,25 @@ export interface Platform {
   setExpandedSidebarList(value: string | null): Promise<void>;
   getInlinePdfReader(): Promise<boolean>;
   setInlinePdfReader(value: boolean): Promise<void>;
-  onInlinePdfReaderChanged(callback: (value: boolean) => void): Promise<UnlistenFn>;
+  onInlinePdfReaderChanged(
+    callback: (value: boolean) => void
+  ): Promise<UnlistenFn>;
 
   // Settings sync (main window receives these when settings window saves)
   onThemeChangedFromSettings(
-    callback: (theme: string) => void,
+    callback: (theme: string) => void
   ): Promise<UnlistenFn>;
   onHtmlReaderFontFamilyChanged(
-    callback: (value: string) => void,
+    callback: (value: string) => void
   ): Promise<UnlistenFn>;
   onHtmlReaderFontSizeChanged(
-    callback: (value: number) => void,
+    callback: (value: number) => void
   ): Promise<UnlistenFn>;
   onHtmlReaderLineHeightChanged(
-    callback: (value: number) => void,
+    callback: (value: number) => void
   ): Promise<UnlistenFn>;
   onRefreshOnStartupChanged(
-    callback: (value: boolean) => void,
+    callback: (value: boolean) => void
   ): Promise<UnlistenFn>;
 }
 

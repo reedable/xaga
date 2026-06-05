@@ -27,7 +27,9 @@ const HTML_READER_VIEWS: string[] = ["reader", "summary"] as const;
 
 export type HtmlReaderView = (typeof HTML_READER_VIEWS)[number];
 
-export function isHtmlReaderView(value?: string | null): value is HtmlReaderView {
+export function isHtmlReaderView(
+  value?: string | null
+): value is HtmlReaderView {
   return !!value && HTML_READER_VIEWS.includes(value);
 }
 

@@ -4,6 +4,7 @@
 - [ ] [ItemList.tsx](src/components/list/ItemList.tsx): Item list does not reload after adding or removing a manual item via TopicMenuButton
 - [ ] [ItemList.tsx](src/components/list/ItemList.tsx): `onAnnotationChanged` does not add new annotations to the list
 - [ ] [topics.rs](crates/xaga-core/src/topics.rs): `list_entry_topics` scans all topic files O(n) — called on every annotation removal and every TopicMenuButton open; needs a reverse index
+- [ ] [Shortcuts.ts](src/Shortcuts.ts): `ALL_ITEMS` has hardcoded `entryCount: 0` / `unreadCount: 0` placeholders to satisfy the `Collection` type — replace with real counts or restructure the type
 
 ## Medium (days)
 

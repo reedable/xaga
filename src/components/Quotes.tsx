@@ -13,7 +13,9 @@ export interface QuotesProps {
 export default function Quotes({ children, quoted, color }: QuotesProps) {
   if (!quoted) return children;
 
-  const colorClass = color ? colorCss[color as keyof typeof colorCss] : undefined;
+  const colorClass = color
+    ? colorCss[color as keyof typeof colorCss]
+    : undefined;
 
   return (
     <span className={cx(css.Quotes, colorClass)}>

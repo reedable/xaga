@@ -7,7 +7,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 import iconButtonNeedsTooltip from './eslint-rules/icon-button-needs-tooltip.js'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'target']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

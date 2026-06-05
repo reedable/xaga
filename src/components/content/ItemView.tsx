@@ -2,11 +2,11 @@ import { Typography } from "@mui/material";
 import { useCallback, useRef } from "react";
 import useRouter from "../../hooks/useRouter";
 import cx from "../../utils/cx";
+import Logger from "../../utils/Logger";
 import ArticleReader, { type ArticleReaderHandle } from "./ArticleReader";
 import css from "./ItemView.module.css";
 import { PdfReader } from "./PdfReader";
 import { Toolbar } from "./Toolbar";
-import Logger from "../../utils/Logger";
 
 type ItemViewProps = {
   className?: string;

@@ -4,11 +4,12 @@ import {
   IconButton,
   InputAdornment,
   TextField,
+  Tooltip,
 } from "@mui/material";
 import { useCallback, useRef, useState } from "react";
 import useRouter from "../hooks/useRouter";
-import css from "./SearchInput.module.css";
 import cx from "../utils/cx";
+import css from "./SearchInput.module.css";
 
 const DEBOUNCE_MS = 300;
 
@@ -90,9 +91,16 @@ export function SearchInput({ className, onClear }: SearchInputProps) {
             ),
             endAdornment: (
               <InputAdornment position="end">
-                <IconButton size="small" onClick={handleClear} edge="end">
-                  <Clear fontSize="small" />
-                </IconButton>
+                <Tooltip title="Clear">
+                  <IconButton
+                    size="small"
+                    onClick={handleClear}
+                    edge="end"
+                    aria-label="Clear"
+                  >
+                    <Clear fontSize="small" />
+                  </IconButton>
+                </Tooltip>
               </InputAdornment>
             ),
           },

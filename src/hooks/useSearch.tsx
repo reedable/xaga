@@ -25,7 +25,7 @@ export default function useSearch() {
           "all",
           SEARCH_THRESHOLD,
           null,
-          100,
+          100
         );
       } catch (e) {
         if (isAbortError(e)) return;
@@ -34,7 +34,7 @@ export default function useSearch() {
         setLoading(false);
       }
     },
-    [platform],
+    [platform]
   );
 
   return { loading, error, search };

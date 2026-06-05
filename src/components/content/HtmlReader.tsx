@@ -304,7 +304,12 @@ export function HtmlReader({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [onClickLink, handleSelectionMade, handleClickHighlight, handleCloseTooltip]);
+  }, [
+    onClickLink,
+    handleSelectionMade,
+    handleClickHighlight,
+    handleCloseTooltip,
+  ]);
 
   return (
     <div className={cx(css.HtmlReader, className)}>

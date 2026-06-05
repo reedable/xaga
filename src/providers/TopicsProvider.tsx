@@ -1,9 +1,16 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
+import { subscribe } from "../hooks/useEvents";
 import { usePlatform } from "../platform/Platform";
 import type { Topic } from "../types";
 import { debounced } from "../utils/Decorator";
 import sortByUnreadCount from "../utils/sortByUnreadCount";
-import { subscribe } from "../hooks/useEvents";
 import TopicsContext, { type TopicsContextType } from "./TopicsContext";
 
 export function TopicsProvider({ children }: { children: ReactNode }) {
@@ -12,7 +19,10 @@ export function TopicsProvider({ children }: { children: ReactNode }) {
   const [pinnedTopicIds, setPinnedTopicIdsState] = useState<string[]>([]);
 
   useEffect(() => {
-    platform.getPinnedTopicIds().then(setPinnedTopicIdsState).catch(console.error);
+    platform
+      .getPinnedTopicIds()
+      .then(setPinnedTopicIdsState)
+      .catch(console.error);
   }, [platform]);
 
   const setPinnedTopicIds = useCallback(
@@ -23,7 +33,7 @@ export function TopicsProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [platform],
+    [platform]
   );
 
   const refreshTopics = useCallback(async () => {
@@ -43,12 +53,10 @@ export function TopicsProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<TopicsContextType>(
     () => ({ topics, pinnedTopicIds, setTopics, setPinnedTopicIds }),
-    [topics, pinnedTopicIds, setPinnedTopicIds],
+    [topics, pinnedTopicIds, setPinnedTopicIds]
   );
 
   return (
-    <TopicsContext.Provider value={value}>
-      {children}
-    </TopicsContext.Provider>
+    <TopicsContext.Provider value={value}>{children}</TopicsContext.Provider>
   );
 }

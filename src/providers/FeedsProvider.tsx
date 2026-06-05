@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
 import { subscribe } from "../hooks/useEvents";
 import { usePlatform } from "../platform/Platform";
 import type { Feed } from "../types";
@@ -15,7 +22,10 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
   const [pinnedFeedIds, setPinnedFeedIdsState] = useState<Feed["id"][]>([]);
 
   useEffect(() => {
-    platform.getPinnedFeedIds().then(setPinnedFeedIdsState).catch(console.error);
+    platform
+      .getPinnedFeedIds()
+      .then(setPinnedFeedIdsState)
+      .catch(console.error);
   }, [platform]);
 
   const setPinnedFeedIds = useCallback(
@@ -26,7 +36,7 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [platform],
+    [platform]
   );
 
   const refreshFeeds = useCallback(async () => {

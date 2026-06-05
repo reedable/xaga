@@ -24,9 +24,12 @@ import { useArticles } from "../../hooks/useArticles";
 import { useContentLoader } from "../../hooks/useContentLoader";
 import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
-import { buildEntryHtml, type HtmlReaderStyle } from "../../text/buildEntryHtml";
+import {
+  buildEntryHtml,
+  type HtmlReaderStyle,
+} from "../../text/buildEntryHtml";
 import { markdownToHtml } from "../../text/markdownPipeline";
-import { isArticle, type Article, type Entry } from "../../types";
+import { type Article, type Entry } from "../../types";
 import cx from "../../utils/cx";
 import { FONT_FAMILY_CSS } from "../../utils/FontFamily";
 import Logger from "../../utils/Logger";
@@ -59,7 +62,9 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
     const [abort, abortControllerRef] = useAbortController();
     const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
-    const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
+    const [selectedArticle, setSelectedArticle] = useState<Article | null>(
+      null
+    );
     const [html, setHtml] = useState<string | null>(null);
 
     const {
@@ -76,7 +81,12 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
         fontSize: htmlReaderFontSize,
         lineHeight: htmlReaderLineHeight,
       }),
-      [themeMode, htmlReaderFontFamily, htmlReaderFontSize, htmlReaderLineHeight]
+      [
+        themeMode,
+        htmlReaderFontFamily,
+        htmlReaderFontSize,
+        htmlReaderLineHeight,
+      ]
     );
 
     const entryHtml = useMemo(
@@ -115,7 +125,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     const showArticle = useCallback(
       async (article: Article) => {
         setAnnotationsFromArticle(article);
-        setHtml(await markdownToHtml(article.content) ?? null);
+        setHtml((await markdownToHtml(article.content)) ?? null);
       },
       [setAnnotationsFromArticle]
     );
@@ -135,9 +145,14 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
         setSelectedEntry(entry);
 
         if (htmlReaderView === "summary") {
-          setHtml(entry.summary ? await markdownToHtml(entry.summary) ?? null : null);
+          setHtml(
+            entry.summary
+              ? ((await markdownToHtml(entry.summary)) ?? null)
+              : null
+          );
         } else {
-          if (entry.summary) setHtml(await markdownToHtml(entry.summary) ?? null);
+          if (entry.summary)
+            setHtml((await markdownToHtml(entry.summary)) ?? null);
           const article = await readArticle(entryId);
           if (article) {
             setSelectedArticle(article);
@@ -149,7 +164,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       })();
 
       return abort;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [entryId, annotationId, abort]);
 
     // Effect 2 — fires when the view mode changes; re-renders from loaded data.
@@ -158,11 +173,16 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
       (async () => {
         if (htmlReaderView === "summary") {
-          setHtml(selectedEntry.summary ? await markdownToHtml(selectedEntry.summary) ?? null : null);
+          setHtml(
+            selectedEntry.summary
+              ? ((await markdownToHtml(selectedEntry.summary)) ?? null)
+              : null
+          );
         } else if (selectedArticle) {
           await showArticle(selectedArticle);
         } else {
-          if (selectedEntry.summary) setHtml(await markdownToHtml(selectedEntry.summary) ?? null);
+          if (selectedEntry.summary)
+            setHtml((await markdownToHtml(selectedEntry.summary)) ?? null);
           const article = await readArticle(selectedEntry.id);
           if (article) {
             setSelectedArticle(article);
@@ -170,7 +190,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
           }
         }
       })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [htmlReaderView, selectedEntry]);
 
     const reloadArticle = useCallback(
@@ -241,33 +261,54 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
     useEffect(() => {
       if (!selectedEntry) return;
-      return onLoaderClosed(async ({ url: loaderUrl, html: loaderHtml, mimeType }) => {
-        if (selectedEntry.url !== loaderUrl) return;
-        if (mimeType === "application/pdf") return;
-        const extracted = await extractArticleFromHtml(selectedEntry.url, loaderHtml);
-        if (!extracted?.markdown) return;
-        if (
-          extracted.markdown.trim() === (selectedArticle?.content ?? "").trim()
-        ) {
-          return;
+      return onLoaderClosed(
+        async ({ url: loaderUrl, html: loaderHtml, mimeType }) => {
+          if (selectedEntry.url !== loaderUrl) return;
+          if (mimeType === "application/pdf") return;
+          const extracted = await extractArticleFromHtml(
+            selectedEntry.url,
+            loaderHtml
+          );
+          if (!extracted?.markdown) return;
+          if (
+            extracted.markdown.trim() ===
+            (selectedArticle?.content ?? "").trim()
+          ) {
+            return;
+          }
+          setPendingUpdate(extracted);
         }
-        setPendingUpdate(extracted);
-      });
-    }, [onLoaderClosed, selectedEntry, selectedArticle, extractArticleFromHtml]);
+      );
+    }, [
+      onLoaderClosed,
+      selectedEntry,
+      selectedArticle,
+      extractArticleFromHtml,
+    ]);
 
     useEffect(() => {
-      return onLoaderPageLoaded(async ({ url: newUrl, html: loaderHtml, mimeType }) => {
-        if (mimeType === "application/pdf") {
-          openUrl(newUrl);
-          await loadUrl(newUrl);
-          return;
+      return onLoaderPageLoaded(
+        async ({ url: newUrl, html: loaderHtml, mimeType }) => {
+          if (mimeType === "application/pdf") {
+            openUrl(newUrl);
+            await loadUrl(newUrl);
+            return;
+          }
+          let article = await findArticleByUrl(newUrl);
+          if (!article)
+            article = await createArticleFromHtml(newUrl, loaderHtml);
+          if (!article) return;
+          show(article);
         }
-        let article = await findArticleByUrl(newUrl);
-        if (!article) article = await createArticleFromHtml(newUrl, loaderHtml);
-        if (!article) return;
-        show(article);
-      });
-    }, [onLoaderPageLoaded, openUrl, loadUrl, findArticleByUrl, createArticleFromHtml, show]);
+      );
+    }, [
+      onLoaderPageLoaded,
+      openUrl,
+      loadUrl,
+      findArticleByUrl,
+      createArticleFromHtml,
+      show,
+    ]);
 
     const handleConfirmUpdate = useCallback(async () => {
       if (!pendingUpdate || !selectedEntry) return;
@@ -276,7 +317,9 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       if (!article) return;
       setSelectedArticle(article);
       setAnnotationsFromArticle(article);
-      const body = await markdownToHtml(article.content || article.summary || "");
+      const body = await markdownToHtml(
+        article.content || article.summary || ""
+      );
       if (body) setHtml(body);
     }, [
       pendingUpdate,
@@ -285,9 +328,12 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       setAnnotationsFromArticle,
     ]);
 
-    const placeholderText = selectedEntry && !loading && !entryHtml
-      ? htmlReaderView === "summary" ? "No summary available." : "No content available."
-      : null;
+    const placeholderText =
+      selectedEntry && !loading && !entryHtml
+        ? htmlReaderView === "summary"
+          ? "No summary available."
+          : "No content available."
+        : null;
 
     return (
       <>
@@ -303,7 +349,12 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
               </Typography>
             </div>
 
-            <div className={cx(css.ProgressBar, entryHtml && css.ProgressBarLoaded)}>
+            <div
+              className={cx(
+                css.ProgressBar,
+                entryHtml && css.ProgressBarLoaded
+              )}
+            >
               <Collapse in={Boolean(url && loading)}>
                 <LinearProgress variant="indeterminate" />
               </Collapse>
@@ -336,7 +387,10 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
           )}
         </div>
 
-        <Dialog open={pendingUpdate !== null} onClose={() => setPendingUpdate(null)}>
+        <Dialog
+          open={pendingUpdate !== null}
+          onClose={() => setPendingUpdate(null)}
+        >
           <DialogTitle>Update article?</DialogTitle>
           <DialogContent>
             <DialogContentText>

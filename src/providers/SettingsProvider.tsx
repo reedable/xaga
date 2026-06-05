@@ -54,7 +54,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const unlisten = platform.onInlinePdfReaderChanged(setInlinePdfReaderState);
-    return () => { unlisten.then((fn) => fn()); };
+    return () => {
+      unlisten.then((fn) => fn());
+    };
   }, [platform]);
 
   useEffect(() => {

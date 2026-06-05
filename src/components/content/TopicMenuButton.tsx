@@ -197,29 +197,28 @@ export const TopicMenuButton = forwardRef<
   return (
     <>
       <Tooltip title="Add to Topic">
-        <span>
-          <IconButton
-            size="small"
-            onClick={handleOpen}
-            disabled={topics.length === 0 || disabled}
+        <IconButton
+          size="small"
+          onClick={handleOpen}
+          disabled={topics.length === 0 || disabled}
+          aria-label="Add to Topic"
+        >
+          <Badge
+            badgeContent={item ? memberIds.size : selectedTopicIds.size}
+            color="primary"
+            overlap="circular"
+            sx={{
+              "& .MuiBadge-badge": {
+                fontSize: "0.6rem",
+                height: 13,
+                minWidth: 13,
+                padding: "0 2px",
+              },
+            }}
           >
-            <Badge
-              badgeContent={item ? memberIds.size : selectedTopicIds.size}
-              color="primary"
-              overlap="circular"
-              sx={{
-                "& .MuiBadge-badge": {
-                  fontSize: "0.6rem",
-                  height: 13,
-                  minWidth: 13,
-                  padding: "0 2px",
-                },
-              }}
-            >
-              <CreateNewFolder fontSize="small" />
-            </Badge>
-          </IconButton>
-        </span>
+            <CreateNewFolder fontSize="small" />
+          </Badge>
+        </IconButton>
       </Tooltip>
 
       <Drawer anchor="right" open={open} onClose={handleClose}>
@@ -250,9 +249,15 @@ export const TopicMenuButton = forwardRef<
                 </MenuItem>
               </Select>
 
-              <IconButton size="small" onClick={handleClose}>
-                <Close fontSize="small" />
-              </IconButton>
+              <Tooltip title="Close">
+                <IconButton
+                  size="small"
+                  onClick={handleClose}
+                  aria-label="Close"
+                >
+                  <Close fontSize="small" />
+                </IconButton>
+              </Tooltip>
             </div>
           </div>
 
@@ -273,13 +278,16 @@ export const TopicMenuButton = forwardRef<
                 input: {
                   endAdornment: filterText && (
                     <InputAdornment position="end">
-                      <IconButton
-                        size="small"
-                        edge="end"
-                        onClick={() => setFilterText("")}
-                      >
-                        <Close fontSize="small" />
-                      </IconButton>
+                      <Tooltip title="Clear">
+                        <IconButton
+                          size="small"
+                          edge="end"
+                          onClick={() => setFilterText("")}
+                          aria-label="Clear"
+                        >
+                          <Close fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
                     </InputAdornment>
                   ),
                 },

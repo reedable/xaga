@@ -10,6 +10,7 @@ import {
   FormControlLabel,
   IconButton,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useState, type SubmitEvent } from "react";
@@ -162,13 +163,16 @@ export default function EditTopicDialog({
             </Typography>
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <IconButton
-                size="small"
-                onClick={handleDecrement}
-                disabled={busy}
-              >
-                <Remove fontSize="small" />
-              </IconButton>
+              <Tooltip title="Decrease threshold">
+                <IconButton
+                  size="small"
+                  onClick={handleDecrement}
+                  disabled={busy}
+                  aria-label="Decrease threshold"
+                >
+                  <Remove fontSize="small" />
+                </IconButton>
+              </Tooltip>
 
               <TextField
                 value={thresholdString}
@@ -179,13 +183,16 @@ export default function EditTopicDialog({
                 slotProps={{ htmlInput: { style: { textAlign: "center" } } }}
               />
 
-              <IconButton
-                size="small"
-                onClick={handleIncrement}
-                disabled={busy}
-              >
-                <Add fontSize="small" />
-              </IconButton>
+              <Tooltip title="Increase threshold">
+                <IconButton
+                  size="small"
+                  onClick={handleIncrement}
+                  disabled={busy}
+                  aria-label="Increase threshold"
+                >
+                  <Add fontSize="small" />
+                </IconButton>
+              </Tooltip>
             </Box>
           </Box>
         </DialogContent>

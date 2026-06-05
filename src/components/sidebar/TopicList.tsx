@@ -1,5 +1,5 @@
 import { Add, Feed as FeedIcon } from "@mui/icons-material";
-import { IconButton } from "@mui/material";
+import { IconButton, Tooltip } from "@mui/material";
 import { useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import useAbortController from "../../hooks/useAbortController";
@@ -47,9 +47,11 @@ export default function TopicList({
       isExpanded={isExpanded}
       onClickHeader={onClickHeader}
       renderHeaderAction={() => (
-        <IconButton size="small" onClick={onAddTopic}>
-          <Add className={css.AddIcon} />
-        </IconButton>
+        <Tooltip title="Add topic">
+          <IconButton size="small" onClick={onAddTopic} aria-label="Add topic">
+            <Add className={css.AddIcon} />
+          </IconButton>
+        </Tooltip>
       )}
     >
       {topics.map((topic) => (
