@@ -42,7 +42,7 @@ interface TooltipState {
 interface HtmlReaderProps {
   annotations?: Annotation[];
   className?: string;
-  entryId: string;
+  entryId?: string;
   html: string;
   scrollToAnnotationId?: string;
   onClickLink?: (url: string) => void; //outgoing links in the html content
@@ -87,6 +87,8 @@ export function HtmlReader({
 
   const handleSelectionMade = useCallback(
     (texts: string[], occurrences: number[], rect: HtmlReaderSelectionRect) => {
+      // Annotation UI is unavailable until the Entry exists.
+      if (!entryId) return;
       setTooltip({
         annotationId: uuidv4(),
         text: texts,
@@ -95,11 +97,12 @@ export function HtmlReader({
         position: toViewportPosition(rect),
       });
     },
-    [toViewportPosition]
+    [entryId, toViewportPosition]
   );
 
   const handleClickHighlight = useCallback(
     (annotationId: string, _text: string, rect: HtmlReaderSelectionRect) => {
+      if (!entryId) return;
       const ann = annotations?.find((a) => a.id === annotationId);
       if (!ann) return;
       setTooltip({
@@ -111,12 +114,12 @@ export function HtmlReader({
         position: toViewportPosition(rect),
       });
     },
-    [annotations, toViewportPosition]
+    [annotations, entryId, toViewportPosition]
   );
 
   const handleChangeTooltip = useCallback(
     (color: string | null, note: string) => {
-      if (!tooltip) return;
+      if (!tooltip || !entryId) return;
 
       if (tooltip.occurrence.length > 0) {
         const id = tooltip.annotationId;
@@ -163,8 +166,8 @@ export function HtmlReader({
   );
 
   const handleCloseTooltip = useCallback(async () => {
-    if (!tooltip) {
-      // nothing to do
+    if (!tooltip || !entryId) {
+      // nothing to do (or Entry not ready)
     } else if (tooltip.color === null) {
       onRemoveAnnotation?.({ id: tooltip.annotationId, reference: entryId });
     } else {

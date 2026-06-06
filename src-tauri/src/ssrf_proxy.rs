@@ -58,15 +58,48 @@ fn is_blocked(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => is_blocked_v4(v4),
         IpAddr::V6(v6) => {
+            // ::1 / :: — handle before any embedded-v4 extraction, since their
+            // trailing hextets (0.0.0.1 / 0.0.0.0) don't both read as blocked v4.
+            if v6.is_loopback() || v6.is_unspecified() {
+                return true;
+            }
             // IPv4-mapped (::ffff:a.b.c.d) — judge by the embedded v4 address.
             if let Some(v4) = v6.to_ipv4_mapped() {
                 return is_blocked_v4(v4);
             }
-            let seg0 = v6.segments()[0];
-            v6.is_loopback()                 // ::1
-                || v6.is_unspecified()       // ::
-                || (seg0 & 0xfe00) == 0xfc00 // fc00::/7 unique-local (incl. fd00:ec2::254 IMDS)
-                || (seg0 & 0xffc0) == 0xfe80 // fe80::/10 link-local
+            let seg = v6.segments();
+            // Addresses that *carry* an IPv4 destination: the kernel routes them
+            // to the embedded v4, so a public-looking IPv6 wrapper can otherwise
+            // smuggle a private/loopback IPv4 past the filter. Judge by the
+            // embedded address.
+            //   NAT64        64:ff9b::/96  — well-known prefix, commonly routed
+            //   IPv4-compat  ::/96         — deprecated ::a.b.c.d
+            // Both carry the v4 in the final two hextets.
+            let nat64 = seg[0] == 0x0064
+                && seg[1] == 0xff9b
+                && seg[2..6].iter().all(|&s| s == 0);
+            let v4_compat = seg[..6].iter().all(|&s| s == 0);
+            if nat64 || v4_compat {
+                let v4 = Ipv4Addr::new(
+                    (seg[6] >> 8) as u8,
+                    (seg[6] & 0xff) as u8,
+                    (seg[7] >> 8) as u8,
+                    (seg[7] & 0xff) as u8,
+                );
+                return is_blocked_v4(v4);
+            }
+            //   6to4         2002::/16     — v4 in the 2nd/3rd hextets
+            if seg[0] == 0x2002 {
+                let v4 = Ipv4Addr::new(
+                    (seg[1] >> 8) as u8,
+                    (seg[1] & 0xff) as u8,
+                    (seg[2] >> 8) as u8,
+                    (seg[2] & 0xff) as u8,
+                );
+                return is_blocked_v4(v4);
+            }
+            (seg[0] & 0xfe00) == 0xfc00 // fc00::/7 unique-local (incl. fd00:ec2::254 IMDS)
+                || (seg[0] & 0xffc0) == 0xfe80 // fe80::/10 link-local
         }
     }
 }
@@ -111,6 +144,22 @@ fn validate_target(
     }
     // Pin to a concrete, already-validated address — the WebView never resolves.
     Ok(addrs[0])
+}
+
+/// Async wrapper around [`validate_target`]. `to_socket_addrs` performs blocking
+/// DNS, so it is run on the blocking pool to avoid stalling a runtime worker
+/// while a lookup is in flight.
+async fn validate_target_async(
+    host: String,
+    port: u16,
+    resolver: Arc<dyn HostResolver>,
+    is_blocked_fn: fn(IpAddr) -> bool,
+) -> Result<SocketAddr, ProxyError> {
+    tokio::task::spawn_blocking(move || {
+        validate_target(&host, port, resolver.as_ref(), is_blocked_fn)
+    })
+    .await
+    .map_err(|_| ProxyError::Dns)?
 }
 
 // ── Request parsing ──────────────────────────────────────────────────────────────
@@ -256,7 +305,14 @@ async fn handle_conn(mut client: TcpStream, cfg: ProxyConfig) -> std::io::Result
 
     match target {
         Target::Connect { host, port } => {
-            let addr = match validate_target(&host, port, cfg.resolver.as_ref(), cfg.is_blocked_fn) {
+            let addr = match validate_target_async(
+                host.clone(),
+                port,
+                cfg.resolver.clone(),
+                cfg.is_blocked_fn,
+            )
+            .await
+            {
                 Ok(addr) => addr,
                 Err(ProxyError::Blocked) => return write_status(&mut client, "403 Forbidden").await,
                 Err(_) => return write_status(&mut client, "502 Bad Gateway").await,
@@ -276,7 +332,14 @@ async fn handle_conn(mut client: TcpStream, cfg: ProxyConfig) -> std::io::Result
             Ok(())
         }
         Target::Http { host, port } => {
-            let addr = match validate_target(&host, port, cfg.resolver.as_ref(), cfg.is_blocked_fn) {
+            let addr = match validate_target_async(
+                host.clone(),
+                port,
+                cfg.resolver.clone(),
+                cfg.is_blocked_fn,
+            )
+            .await
+            {
                 Ok(addr) => addr,
                 Err(ProxyError::Blocked) => return write_status(&mut client, "403 Forbidden").await,
                 Err(_) => return write_status(&mut client, "502 Bad Gateway").await,
@@ -401,6 +464,31 @@ mod tests {
     #[test]
     fn allows_public_ipv6() {
         for s in ["2606:4700:4700::1111", "2001:4860:4860::8888"] {
+            assert!(!is_blocked(v6(s)), "{s} should be allowed");
+        }
+    }
+
+    #[test]
+    fn blocks_ipv6_embedding_private_ipv4() {
+        // NAT64 / 6to4 / IPv4-compatible wrappers around a private or loopback
+        // IPv4 must be judged by the embedded address, not allowed as "public".
+        for s in [
+            "64:ff9b::7f00:1",   // NAT64    → 127.0.0.1
+            "64:ff9b::a9fe:a9fe", // NAT64    → 169.254.169.254 (metadata)
+            "64:ff9b::a00:1",    // NAT64    → 10.0.0.1
+            "2002:7f00:1::",     // 6to4     → 127.0.0.1
+            "2002:a00:1::",      // 6to4     → 10.0.0.1
+            "::7f00:1",          // ::a.b.c.d → 127.0.0.1
+            "::a00:1",           // ::a.b.c.d → 10.0.0.1
+        ] {
+            assert!(is_blocked(v6(s)), "{s} should be blocked");
+        }
+    }
+
+    #[test]
+    fn allows_ipv6_embedding_public_ipv4() {
+        // The same wrappers around a genuinely public IPv4 stay allowed.
+        for s in ["64:ff9b::808:808", "2002:808:808::"] {
             assert!(!is_blocked(v6(s)), "{s} should be allowed");
         }
     }

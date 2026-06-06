@@ -37,10 +37,17 @@ export default function useRouter() {
   const canGoBack = currentIdx > 0;
   const canGoForward = currentIdx < maxHistoryIdx;
 
-  const logged_navigate = decorate(navigate).with(logged, {
-    logger,
-    name: "navigate",
-  });
+  // Memoized so navigate (and everything derived from it: openUrl, loadUrl,
+  // show, …) keeps a stable identity across renders. Without this, route-driven
+  // effects that depend on these re-run every render.
+  const logged_navigate = useMemo(
+    () =>
+      decorate(navigate).with(logged, {
+        logger,
+        name: "navigate",
+      }),
+    [navigate]
+  );
 
   const showItem = useCallback(
     (item: Item) => {
@@ -93,8 +100,16 @@ export default function useRouter() {
   const openUrl = useCallback(
     (url: string) => {
       const params = new URLSearchParams(searchParams);
+      // "Open a URL" is an unresolved destination: set the url and clear the
+      // entry/annotation/mime state so ItemView re-resolves it from scratch.
       logged_navigate(`/?${params.toString()}`, {
-        state: { ...state, url },
+        state: {
+          ...state,
+          url,
+          entryId: undefined,
+          annotationId: undefined,
+          mimeType: undefined,
+        },
       });
     },
     [logged_navigate, searchParams, state]
