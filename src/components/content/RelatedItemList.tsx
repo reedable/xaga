@@ -25,7 +25,7 @@ interface RelatedItemListProps {
 }
 
 export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
-  const { show } = useRouter();
+  const { selectItem } = useRouter();
   const [abort, abortControllerRef] = useAbortController();
   const { queryByItem } = useRelatedItems(abortControllerRef);
   const [embeddedItems, setEmbeddedItems] = useState<(Embedded & Item)[]>([]);
@@ -54,7 +54,10 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
     [abortControllerRef, queryByItem]
   );
 
-  const handleSelectItem = useCallback((item: Item) => show(item), [show]);
+  const handleSelectItem = useCallback(
+    (item: Item) => selectItem(item),
+    [selectItem]
+  );
 
   useEffect(() => {
     abort();

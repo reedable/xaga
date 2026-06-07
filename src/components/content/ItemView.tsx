@@ -34,7 +34,7 @@ export function ItemView({ className }: ItemViewProps) {
 
         {isPdf ? (
           <PdfReader src={url} />
-        ) : entryId ? (
+        ) : entryId || url ? (
           <ArticleReader ref={articleReaderRef} />
         ) : (
           <div className={css.Placeholder}>

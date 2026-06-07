@@ -44,7 +44,7 @@ interface HtmlReaderProps {
   className?: string;
   entryId?: string;
   html: string;
-  scrollToAnnotationId?: string;
+  annotationId?: string;
   onClickLink?: (url: string) => void; //outgoing links in the html content
   onSaveAnnotation?: (
     annotation: Omit<Annotation, "createdAt" | "updatedAt">
@@ -59,7 +59,7 @@ export function HtmlReader({
   className,
   entryId,
   html,
-  scrollToAnnotationId,
+  annotationId,
   onClickLink,
   onSaveAnnotation,
   onRemoveAnnotation,
@@ -196,9 +196,9 @@ export function HtmlReader({
         "*"
       );
     }
-    if (scrollToAnnotationId) {
+    if (annotationId) {
       iframeRef.current?.contentWindow?.postMessage(
-        { type: SCROLL_TO_ANNOTATION, annotationId: scrollToAnnotationId },
+        { type: SCROLL_TO_ANNOTATION, annotationId },
         "*"
       );
     }
@@ -208,7 +208,7 @@ export function HtmlReader({
         "*"
       );
     }
-  }, [annotations, scrollToAnnotationId, findOpen, findQuery]);
+  }, [annotations, annotationId, findOpen, findQuery]);
 
   const handleFindClose = useCallback(() => {
     setFindOpen(false);
@@ -232,6 +232,17 @@ export function HtmlReader({
       "*"
     );
   }, [findQuery, findOpen]);
+
+  // Reveal the annotation when it changes within an already-loaded article. The
+  // initial load is handled by handleIframeLoad; a pre-load run here is a
+  // harmless no-op (the message is dropped before the iframe doc is ready).
+  useEffect(() => {
+    if (!annotationId) return;
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: SCROLL_TO_ANNOTATION, annotationId },
+      "*"
+    );
+  }, [annotationId]);
 
   // Clear stale result count when switching to a different entry.
   useEffect(() => {

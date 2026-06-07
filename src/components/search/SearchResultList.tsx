@@ -37,7 +37,7 @@ export function SearchResultList({
   className,
   searchQuery,
 }: SearchResultListProps) {
-  const { show, state, clearSearch } = useRouter();
+  const { selectItem, state, clearSearch } = useRouter();
   const { entryId } = state;
   const { loading, error, search } = useSearch();
   const { onUnreadChanged, onBookmarkChanged } = useEvents();
@@ -155,7 +155,7 @@ export function SearchResultList({
               <ListItemButton
                 className={css.ListItemButton}
                 selected={entryId === item.id}
-                onClick={() => show(item)}
+                onClick={() => selectItem(item)}
               >
                 <ListItemText
                   primary={

@@ -14,7 +14,6 @@ import { useCallback, useEffect, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useArticles } from "../../hooks/useArticles";
 import { useBookmarks } from "../../hooks/useBookmarks";
-import { useContentLoader } from "../../hooks/useContentLoader";
 import useEntries from "../../hooks/useEntries";
 import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
@@ -31,24 +30,22 @@ interface ToolbarProps {
 export function Toolbar({ reload }: ToolbarProps) {
   const platform = usePlatform();
   const {
-    back,
-    forward,
+    goBack: back,
+    goForward: forward,
     canGoBack,
     canGoForward,
-    openUrl,
+    selectUrl,
     state,
-    search,
+    invokeSearch,
     clearSearch,
-    searchParams,
+    search,
   } = useRouter();
-  const isSearchOpen = searchParams.get("search") !== null;
-
+  const isSearchOpen = typeof search === "string";
   const [, abortControllerRef] = useAbortController();
   const { addBookmark, removeBookmark } = useBookmarks(abortControllerRef);
   const { markEntryRead, markEntryUnread } = useEntries(abortControllerRef);
   const { onBookmarkChanged, onUnreadChanged } = useEvents();
-  const { loadUrl, loading } = useContentLoader(abortControllerRef);
-  const { loadArticleByUrl } = useArticles(abortControllerRef);
+  const { loadArticleByUrl, loading } = useArticles(abortControllerRef);
 
   const { url, entryId } = state;
   const [latestEntry, setLatestEntry] = useState<Entry | null>(null);
@@ -57,8 +54,8 @@ export function Toolbar({ reload }: ToolbarProps) {
 
   const handleSearchToggle = useCallback(() => {
     if (isSearchOpen) clearSearch();
-    else search("");
-  }, [isSearchOpen, search, clearSearch]);
+    else invokeSearch("");
+  }, [isSearchOpen, invokeSearch, clearSearch]);
 
   const toggleBookmark = useCallback(async () => {
     if (!entry) return;
@@ -73,12 +70,11 @@ export function Toolbar({ reload }: ToolbarProps) {
   }, [entry, markEntryRead, markEntryUnread]);
 
   const handleNavigate = useCallback(
-    async (inputUrl: string) => {
+    (inputUrl: string) => {
       if (!/^https?:\/\//i.test(inputUrl)) inputUrl = `https://${inputUrl}`;
-      openUrl(inputUrl);
-      await loadUrl(inputUrl);
+      selectUrl(inputUrl);
     },
-    [loadUrl, openUrl]
+    [selectUrl]
   );
 
   const handleShowOriginalSite = useCallback(async () => {

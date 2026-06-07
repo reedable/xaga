@@ -37,7 +37,6 @@ import {
   isAnnotation,
   isEntry,
   isFeed,
-  isFilter,
   isTopic,
   type Feed,
   type Filter,
@@ -67,18 +66,17 @@ export function ItemList({
   onEditFeed,
   onEditTopic,
 }: ItemListProps) {
-  const { show, navigate, state, searchParams, setSearchParams } = useRouter();
+  const { filter, selectItem, state, selectFilter } = useRouter();
   const { feedId, topicId, shortcutId, entryId: selectedItemId } = state;
-  const filterParam = searchParams.get("filter");
-  const filter: Filter = isFilter(filterParam) ? filterParam : "unread";
-
   const [abort, abortControllerRef] = useAbortController();
   const { topics, listTopicItems } = useTopics(abortControllerRef);
+
   const {
     feeds,
     loading: loadingFeeds,
     refreshAllFeeds,
   } = useFeeds(abortControllerRef);
+
   const [loading, setLoading] = useState(false);
   const [refreshSpin, setRefreshSpin] = useState(false);
 
@@ -115,21 +113,10 @@ export function ItemList({
   const handleCollectionChange = useCallback(
     (event: SelectChangeEvent<string>) => {
       const id = event.target.value;
-      const params = new URLSearchParams(searchParams);
-      const shortcut = SHORTCUTS.find((s) => s.id === id);
-      if (shortcut) {
-        navigate(`/?${params}`, { state: { shortcutId: id } });
-        return;
-      }
-      if (topics.find((t) => t.id === id)) {
-        navigate(`/?${params}`, { state: { topicId: id } });
-        return;
-      }
-      if (feeds.find((f) => f.id === id)) {
-        navigate(`/?${params}`, { state: { feedId: id } });
-      }
+      const item = items.find((i) => i.id === id);
+      if (item) selectItem(item);
     },
-    [navigate, searchParams, topics, feeds]
+    [items, selectItem]
   );
 
   const handleRefresh = useCallback(() => {
@@ -163,7 +150,10 @@ export function ItemList({
           const entries = await listEntries(selectedList, filter);
           if (entries) setItems(entries);
         } else if (isTopic(selectedList)) {
-          const items = await listTopicItems(selectedList.id, filter);
+          const items = await listTopicItems(
+            selectedList.id,
+            filter ?? "unread"
+          );
           if (items) setItems(items);
         } else {
           const entries = await listAllItems(filter);
@@ -178,17 +168,9 @@ export function ItemList({
 
   const handleFilter = useCallback(
     (_event: MouseEvent<HTMLElement>, value: string) => {
-      if (isFilter(value)) {
-        setSearchParams(
-          (prev) => {
-            prev.set("filter", value);
-            return prev;
-          },
-          { state }
-        );
-      }
+      selectFilter(value);
     },
-    [setSearchParams, state]
+    [selectFilter]
   );
 
   const handleMarkEntriesRead = useCallback(async () => {
@@ -375,7 +357,7 @@ export function ItemList({
       {!loading && items.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography component="div" variant="body2" color="text.disabled">
-            {getEmptyMessage(filter, "")}
+            {getEmptyMessage(filter ?? "unread", "")}
           </Typography>
         </div>
       )}
@@ -383,7 +365,7 @@ export function ItemList({
       {items.length > 0 && displayItems.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography component="div" variant="body2" color="text.disabled">
-            {getEmptyMessage(filter, filterText)}
+            {getEmptyMessage(filter ?? "unread", filterText)}
           </Typography>
         </div>
       )}
@@ -397,7 +379,7 @@ export function ItemList({
               <ListItemButton
                 className={css.ListItemButton}
                 selected={selectedItemId === item.id}
-                onClick={() => show(item)}
+                onClick={() => selectItem(item)}
               >
                 <ListItemText
                   primary={

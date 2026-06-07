@@ -21,6 +21,10 @@ export default class Logger {
     console.warn(`[${this.names.join(":")}]`, ...args);
   }
 
+  info(...args: unknown[]) {
+    console.info(`[${this.names.join(":")}]`, ...args);
+  }
+
   log(...args: unknown[]) {
     console.log(`[${this.names.join(":")}]`, ...args);
   }

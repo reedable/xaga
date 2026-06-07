@@ -23,9 +23,9 @@ export default function ExpandableList({
 }: ExpandableListProps) {
   return (
     <>
-      <div className={cx(className, css.ExpanderHeaderWrapper)}>
+      <div className={cx(className, css.ExpandableListHeaderWrapper)}>
         <ToggleButton
-          className={css.ExpanderHeader}
+          className={css.ExpandableListHeader}
           selected={isExpanded}
           value="checked"
           onClick={onClickHeader}
@@ -41,7 +41,7 @@ export default function ExpandableList({
         {renderHeaderAction && (
           <span
             onClick={(e) => e.stopPropagation()}
-            className={css.ExpanderHeaderAction}
+            className={css.ExpandableListHeaderAction}
           >
             {renderHeaderAction()}
           </span>

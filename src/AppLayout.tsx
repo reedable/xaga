@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import css from "./AppLayout.module.css";
 import { ItemView } from "./components/content/ItemView";
 import EditFeedDialog from "./components/dialogs/EditFeedDialog";
@@ -20,12 +20,13 @@ import { TitleBar } from "./components/titlebar/TitleBar";
 import useAbortController from "./hooks/useAbortController";
 import { useAppearance } from "./hooks/useAppearance";
 import { useFeeds } from "./hooks/useFeeds";
+import useRouter from "./hooks/useRouter";
 import { useTopics } from "./hooks/useTopics";
 import { usePlatform } from "./platform/Platform";
 import { type Feed, type Topic } from "./types";
 
 export function AppLayout() {
-  const navigate = useNavigate();
+  const { selectTopic, selectFeed } = useRouter();
   const [searchParams] = useSearchParams();
   const appRef = useRef<HTMLDivElement>(null);
   const [autoHideSidebar, setAutoHideSidebar] = useState(false);
@@ -80,8 +81,9 @@ export function AppLayout() {
               : [...prev, topic.id]
             : prev.filter((id) => id !== topic.id)
         );
+
         await requestTopics();
-        navigate("/?filter=unread", { state: { topicId: topic.id } });
+        selectTopic(topic, "undread");
       }
     },
     [
@@ -90,7 +92,7 @@ export function AppLayout() {
       createTopic,
       setPinnedTopicIds,
       requestTopics,
-      navigate,
+      selectTopic,
     ]
   );
 
@@ -111,20 +113,22 @@ export function AppLayout() {
   const handleAddFeed = useCallback(
     async (url: string, title: string, pinned: boolean) => {
       const feed = await addFeed(url);
+
       if (feed) {
         if (title) await renameFeed(feed.id, title);
         if (pinned) setPinnedFeedIds((prev) => [...prev, feed.id]);
         await requestFeeds();
-        navigate("/?filter=unread", { state: { feedId: feed.id } });
+        selectFeed(feed);
       }
     },
-    [addFeed, renameFeed, setPinnedFeedIds, requestFeeds, navigate]
+    [addFeed, renameFeed, setPinnedFeedIds, requestFeeds, selectFeed]
   );
 
   const handleSaveFeed = useCallback(
     async (title: string, pinned: boolean) => {
       if (!editingFeed) return;
       await renameFeed(editingFeed.id, title);
+
       setPinnedFeedIds((prev) =>
         pinned
           ? prev.includes(editingFeed.id)
@@ -132,6 +136,7 @@ export function AppLayout() {
             : [...prev, editingFeed.id]
           : prev.filter((id) => id !== editingFeed.id)
       );
+
       await requestFeeds();
     },
     [editingFeed, renameFeed, setPinnedFeedIds, requestFeeds]

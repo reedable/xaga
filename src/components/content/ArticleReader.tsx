@@ -21,7 +21,6 @@ import useAbortController from "../../hooks/useAbortController";
 import { useAnnotations } from "../../hooks/useAnnotations";
 import { useAppearance } from "../../hooks/useAppearance";
 import { useArticles } from "../../hooks/useArticles";
-import { useContentLoader } from "../../hooks/useContentLoader";
 import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
 import {
@@ -29,8 +28,10 @@ import {
   type HtmlReaderStyle,
 } from "../../text/buildEntryHtml";
 import { markdownToHtml } from "../../text/markdownPipeline";
+import type { Entry } from "../../types";
 import cx from "../../utils/cx";
 import { FONT_FAMILY_CSS } from "../../utils/FontFamily";
+import Logger from "../../utils/Logger";
 import css from "./ArticleReader.module.css";
 import { HtmlReader } from "./HtmlReader";
 import { RelatedItemList } from "./RelatedItemList";
@@ -43,9 +44,11 @@ export interface ArticleReaderProps {
   className?: string;
 }
 
+const logger = Logger.getLogger("ArticleReader");
+
 const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
   function ArticleReader({ className }, ref) {
-    const { show, openUrl, state } = useRouter();
+    const { selectUrl, replaceEntry, replaceUrl, state } = useRouter();
     const { entryId, annotationId, url } = state;
 
     const {
@@ -60,6 +63,10 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     const [title, setTitle] = useState<string | null>(null);
     const [summaryHtml, setSummaryHtml] = useState<string | null>(null);
     const [contentHtml, setContentHtml] = useState<string | null>(null);
+    // The Entry currently loaded into the reader. Drives the replaceEntry effect
+    // below, which reconciles the route's entryId when a followed link cleared
+    // it (whether the target was freshly fetched or already saved).
+    const [loadedEntry, setLoadedEntry] = useState<Entry | null>(null);
 
     const html = useMemo(() => {
       if (htmlReaderView === "summary") {
@@ -95,20 +102,17 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       onUnreadChanged,
       onBookmarkChanged,
       onLoaderClosed,
-      onLoaderPageLoaded,
     } = useEvents();
 
     const {
       loading,
       readEntry,
       loadArticle,
+      loadArticleByUrl,
       findArticleByUrl,
-      createArticleFromHtml,
       extractArticleFromHtml,
       saveExtractedArticle,
     } = useArticles(abortControllerRef);
-
-    const { loadUrl } = useContentLoader(abortControllerRef);
 
     const [pendingUpdate, setPendingUpdate] = useState<{
       title: string;
@@ -118,17 +122,25 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
     const requestContent = useCallback(
       async (reload = false) => {
+        logger.info("requestContent", url);
         if (!url) return;
         setTitle(null);
         setSummaryHtml(null);
         setContentHtml(null);
+        setLoadedEntry(null);
 
-        const article = await findArticleByUrl(url);
+        // A saved article (selected Entry). For a link followed within the
+        // reader there may be no saved article yet, so fall back to fetching the
+        // remote content by URL, which also persists it as a new article.
+        const article =
+          (await findArticleByUrl(url)) ??
+          (await loadArticleByUrl(url))?.article;
+        if (!article) return;
 
-        if (!article) {
-          // await loadUrl(url);
-          return;
-        }
+        // Record the loaded Entry so the effect below can reconcile the route's
+        // entryId with it. This covers both a freshly fetched article and a
+        // previously saved one reached via a link (which cleared the entryId).
+        setLoadedEntry(article);
 
         setTitle(article.title ?? "Untitled");
 
@@ -151,6 +163,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
         findArticleByUrl,
         htmlReaderStyle,
         loadArticle,
+        loadArticleByUrl,
         setAnnotationsFromArticle,
         url,
       ]
@@ -197,6 +210,26 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       return abort;
     }, [abort, requestContent]);
 
+    // When a link followed within the reader is loaded by URL, the route lacks
+    // its entryId. Reflect it here rather than in requestContent so the route
+    // patch does not re-trigger a content reload. Kept off requestContent's deps
+    // for the same reason.
+    useEffect(() => {
+      if (loadedEntry && loadedEntry.id !== entryId) {
+        replaceEntry(loadedEntry);
+      }
+    }, [loadedEntry, entryId, replaceEntry]);
+
+    useEffect(() => {
+      if (!annotationId) return;
+      if (!entryId) return;
+
+      (async () => {
+        const entry = await readEntry(entryId);
+        if (entry) replaceUrl(entry.url);
+      })();
+    }, [annotationId, entryId, readEntry, replaceUrl, selectUrl]);
+
     useEffect(() => {
       setFindEnabled(!!(summaryHtml || contentHtml));
 
@@ -232,34 +265,6 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       );
     }, [onLoaderClosed, extractArticleFromHtml, url]);
 
-    useEffect(() => {
-      return onLoaderPageLoaded(
-        async ({ url: newUrl, html: loaderHtml, mimeType }) => {
-          if (mimeType === "application/pdf") {
-            openUrl(newUrl);
-            await loadUrl(newUrl);
-            return;
-          }
-
-          let article = await findArticleByUrl(newUrl);
-
-          if (!article) {
-            article = await createArticleFromHtml(newUrl, loaderHtml);
-          }
-
-          if (!article) return;
-          show(article);
-        }
-      );
-    }, [
-      onLoaderPageLoaded,
-      openUrl,
-      loadUrl,
-      findArticleByUrl,
-      createArticleFromHtml,
-      show,
-    ]);
-
     return (
       <>
         <div className={css.Content}>
@@ -291,8 +296,8 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
                 html={html}
                 entryId={entryId}
                 annotations={annotations}
-                scrollToAnnotationId={annotationId}
-                onClickLink={openUrl}
+                annotationId={annotationId}
+                onClickLink={selectUrl}
                 onSaveAnnotation={saveAnnotation}
                 onRemoveAnnotation={removeAnnotation}
               />

@@ -1,11 +1,10 @@
 import { Add, Feed as FeedIcon } from "@mui/icons-material";
 import { IconButton, Tooltip } from "@mui/material";
 import { useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRouter from "../../hooks/useRouter";
-import { isFilter, type Topic } from "../../types";
+import { type Topic } from "../../types";
 import ExpandableList from "./ExpandableList";
 import SidebarItem from "./SidebarItem";
 import css from "./TopicList.module.css";
@@ -24,20 +23,14 @@ export default function TopicList({
   onAddTopic,
   onClickHeader,
 }: TopicListProps) {
-  const { navigate, state } = useRouter();
+  const { selectTopic, state } = useRouter();
   const { topicId } = state;
-  const [searchParams] = useSearchParams();
-  const filterParam = searchParams.get("filter");
-
   const [, abortControllerRef] = useAbortController();
   const { loadingFeedIds } = useFeeds(abortControllerRef);
 
   const handleSelectTopic = useCallback(
-    (topic: Topic) => {
-      const filter = isFilter(filterParam) ? filterParam : "unread";
-      navigate(`/?filter=${filter}`, { state: { topicId: topic.id } });
-    },
-    [filterParam, navigate]
+    (topic: Topic) => selectTopic(topic),
+    [selectTopic]
   );
 
   return (

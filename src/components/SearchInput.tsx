@@ -19,17 +19,17 @@ export type SearchInputProps = {
 };
 
 export function SearchInput({ className, onClear }: SearchInputProps) {
-  const { search, searchParams } = useRouter();
-  const [inputValue, setInputValue] = useState(searchParams.get("search"));
+  const { invokeSearch, search } = useRouter();
+  const [inputValue, setInputValue] = useState(search ?? "");
   const [isPending, setIsPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const commitSearch = useCallback(
     (value: string) => {
       setIsPending(false);
-      search(value);
+      invokeSearch(value);
     },
-    [search]
+    [invokeSearch]
   );
 
   const handleChange = useCallback(
@@ -39,22 +39,22 @@ export function SearchInput({ className, onClear }: SearchInputProps) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       if (!value) {
         setIsPending(false);
-        search("");
+        invokeSearch("");
         return;
       }
       setIsPending(true);
       debounceRef.current = setTimeout(() => commitSearch(value), DEBOUNCE_MS);
     },
-    [commitSearch, search]
+    [commitSearch, invokeSearch]
   );
 
   const handleClear = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setInputValue("");
     setIsPending(false);
-    search("");
+    invokeSearch("");
     onClear?.();
-  }, [search, onClear]);
+  }, [invokeSearch, onClear]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
