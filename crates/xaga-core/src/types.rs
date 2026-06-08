@@ -29,6 +29,29 @@ impl std::str::FromStr for ItemFilter {
     }
 }
 
+// ── ItemSort ──────────────────────────────────────────────────────────────────
+
+/// Ordering for a topic's item list. Mirrors the TypeScript sort options.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ItemSort {
+    /// Unified similarity ranking, descending. Default.
+    #[default]
+    Relevance,
+    /// Most-recent timestamp, descending.
+    Timestamp,
+}
+
+impl std::str::FromStr for ItemSort {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "relevance" => Ok(Self::Relevance),
+            "timestamp" => Ok(Self::Timestamp),
+            other => Err(format!("unknown item sort: {other}")),
+        }
+    }
+}
+
 // ── Traits ────────────────────────────────────────────────────────────────────
 
 /// Minimal display contract shared by every item (articles, notes, …).
@@ -102,6 +125,17 @@ pub struct SavedItem {
     /// Highlight color — present for annotations, absent for bookmarks.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+}
+
+impl Item for SavedItem {
+    fn id(&self) -> &str { &self.id }
+    fn title(&self) -> &str { &self.title }
+    fn created_at(&self) -> &str { &self.created_at }
+    fn updated_at(&self) -> Option<&str> { None }
+    fn url(&self) -> Option<&str> { Some(&self.url) }
+    fn is_unread(&self) -> bool { self.is_unread }
+    fn is_bookmarked(&self) -> bool { self.is_bookmarked }
+    fn reference(&self) -> &str { self.reference.as_deref().unwrap_or("") }
 }
 
 // ── AnnotationSummary ─────────────────────────────────────────────────────────

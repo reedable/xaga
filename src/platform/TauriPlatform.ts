@@ -17,6 +17,7 @@ import type {
   Item,
   SavedItem,
   Topic,
+  TopicSort,
 } from "../types";
 import { isAnnotation } from "../types";
 import { abortable, decorate, logged } from "../utils/Decorator";
@@ -643,7 +644,8 @@ export class TauriPlatform implements Platform {
   async listTopicItems(
     signal: AbortSignal,
     id: string,
-    filter: Filter
+    filter: Filter,
+    sort: TopicSort = "relevance"
   ): Promise<SavedItem[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -651,6 +653,7 @@ export class TauriPlatform implements Platform {
     const results = await invoker<unknown[]>("list_topic_items", {
       id,
       itemFilter: filter,
+      sort,
     });
     return results
       .map((e) => SavedItemSchema.transform(toSavedItem).safeParse(e))

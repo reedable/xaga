@@ -23,6 +23,14 @@ export function isFilter(value?: unknown): value is Filter {
   return !!value && typeof value === "string" && FILTERS.includes(value);
 }
 
+const TOPIC_SORTS: string[] = ["relevance", "timestamp"] as const;
+
+export type TopicSort = (typeof TOPIC_SORTS)[number];
+
+export function isTopicSort(value?: unknown): value is TopicSort {
+  return !!value && typeof value === "string" && TOPIC_SORTS.includes(value);
+}
+
 const HTML_READER_VIEWS: string[] = ["reader", "summary"] as const;
 
 export type HtmlReaderView = (typeof HTML_READER_VIEWS)[number];

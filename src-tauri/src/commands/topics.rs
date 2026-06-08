@@ -4,7 +4,7 @@ use xaga_core::topics::{self, Topic};
 use xaga_core::types::{CollectionItem, ItemFilter, RankedItem, SavedItem};
 
 use crate::{get_unread, AppState};
-use super::parse_item_filter;
+use super::{parse_item_filter, parse_item_sort};
 
 #[tauri::command]
 pub async fn save_topic(
@@ -126,11 +126,13 @@ pub async fn remove_topic_item(
 pub async fn list_topic_items(
     id: String,
     item_filter: Option<String>,
+    sort: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<SavedItem>, String> {
     let data_dir = state.library.read().unwrap().clone();
     let item_filter = parse_item_filter(item_filter)?;
-    topics::list_topic_items(&data_dir, &id, item_filter)
+    let sort = parse_item_sort(sort)?;
+    topics::list_topic_items(&data_dir, &id, item_filter, sort)
         .await
         .map_err(|e| e.to_string())
 }

@@ -13,6 +13,7 @@ import type {
   Item,
   SavedItem,
   Topic,
+  TopicSort,
 } from "../types";
 
 export interface Platform {
@@ -91,7 +92,8 @@ export interface Platform {
   listTopicItems(
     signal: AbortSignal,
     id: string,
-    filter: Filter
+    filter: Filter,
+    sort: TopicSort
   ): Promise<SavedItem[]>;
   addTopicItem(
     signal: AbortSignal,

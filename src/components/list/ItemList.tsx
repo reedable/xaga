@@ -42,6 +42,7 @@ import {
   type Filter,
   type Item,
   type Topic,
+  type TopicSort,
 } from "../../types";
 import cx from "../../utils/cx";
 import ItemStatus from "../ItemStatus";
@@ -102,6 +103,7 @@ export function ItemList({
 
   const [items, setItems] = useState<Item[]>([]);
   const [filterText, setFilterText] = useState("");
+  const [topicSort, setTopicSort] = useState<TopicSort>("relevance");
 
   const handleEdit = useMemo(() => {
     if (isFeed(selectedCollection)) return () => onEditFeed(selectedCollection);
@@ -152,7 +154,8 @@ export function ItemList({
         } else if (isTopic(selectedList)) {
           const items = await listTopicItems(
             selectedList.id,
-            filter ?? "unread"
+            filter ?? "unread",
+            topicSort
           );
           if (items) setItems(items);
         } else {
@@ -163,7 +166,7 @@ export function ItemList({
         setLoading(false);
       }
     },
-    [filter, listEntries, listTopicItems, listAllItems]
+    [filter, listEntries, listTopicItems, listAllItems, topicSort]
   );
 
   const handleFilter = useCallback(
@@ -315,6 +318,19 @@ export function ItemList({
             All
           </ToggleButton>
         </ToggleButtonGroup>
+
+        {isTopic(selectedCollection) && (
+          <Select
+            className={css.SortSelect}
+            size="small"
+            value={topicSort}
+            variant="standard"
+            onChange={(e) => setTopicSort(e.target.value as TopicSort)}
+          >
+            <MenuItem value="relevance">Most relevant</MenuItem>
+            <MenuItem value="timestamp">Most recent</MenuItem>
+          </Select>
+        )}
 
         <TextField
           className={css.FilterInput}

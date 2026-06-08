@@ -55,6 +55,17 @@ pub(crate) fn parse_item_filter(
         .map_or(Ok(Default::default()), Ok)
 }
 
+pub(crate) fn parse_item_sort(
+    sort: Option<String>,
+) -> Result<xaga_core::types::ItemSort, String> {
+    sort
+        .as_deref()
+        .map(|s| s.parse::<xaga_core::types::ItemSort>())
+        .transpose()
+        .map_err(|e| e)?
+        .map_or(Ok(Default::default()), Ok)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

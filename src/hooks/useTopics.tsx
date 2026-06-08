@@ -1,7 +1,7 @@
 import { useCallback, useContext, type RefObject } from "react";
 import { usePlatform } from "../platform/Platform";
 import TopicsContext from "../providers/TopicsContext";
-import type { Annotation, Entry, Filter, Topic } from "../types";
+import type { Annotation, Entry, Filter, Topic, TopicSort } from "../types";
 import sortByUnreadCount from "../utils/sortByUnreadCount";
 import { useSidebar } from "./useSidebar";
 
@@ -53,10 +53,10 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
   );
 
   const listTopicItems = useCallback(
-    async (id: string, filter: Filter) => {
+    async (id: string, filter: Filter, sort: TopicSort) => {
       const signal = abortControllerRef.current.signal;
       try {
-        return await platform.listTopicItems(signal, id, filter);
+        return await platform.listTopicItems(signal, id, filter, sort);
       } catch {
         return undefined;
       }
