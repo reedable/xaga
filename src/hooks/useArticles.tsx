@@ -3,6 +3,14 @@ import { usePlatform } from "../platform/Platform";
 import { processEntry } from "../text/entryWorker";
 import { type Entry } from "../types";
 
+/** Decode base64 (PDF bytes from the Rust inline-PDF path) into a byte array. */
+function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 export function useArticles(abortControllerRef: RefObject<AbortController>) {
   const platform = usePlatform();
   const [loading, setLoading] = useState(false);
@@ -21,14 +29,15 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       setLoading(true);
 
       try {
-        const { mimeType, html } = await platform.loadArticle(
+        const { mimeType, html, pdfBase64 } = await platform.loadArticle(
           signal,
           url,
           keepOpen
         );
 
         if (mimeType === "application/pdf") {
-          return { article: null, mimeType };
+          const pdfBytes = pdfBase64 ? base64ToBytes(pdfBase64) : null;
+          return { article: null, mimeType, pdfBytes };
         }
 
         const { title, markdown, favicon } = await processEntry(url, html);
@@ -46,6 +55,12 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           mimeType,
         };
       } catch (e) {
+        // The inline-PDF probe rejected the URL as a spoof (Content-Type claimed
+        // PDF, body isn't). Surface it so the reader pane can show a block
+        // message rather than swallowing it as a generic failure.
+        if (String(e).includes("E_SPOOFED_PDF")) {
+          return { article: null, blockedSpoof: true };
+        }
         setError(e);
       } finally {
         setLoading(false);

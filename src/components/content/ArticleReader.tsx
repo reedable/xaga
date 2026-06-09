@@ -28,7 +28,6 @@ import {
   type HtmlReaderStyle,
 } from "../../text/buildEntryHtml";
 import { markdownToHtml } from "../../text/markdownPipeline";
-import type { Entry } from "../../types";
 import cx from "../../utils/cx";
 import { FONT_FAMILY_CSS } from "../../utils/FontFamily";
 import Logger from "../../utils/Logger";
@@ -48,7 +47,7 @@ const logger = Logger.getLogger("ArticleReader");
 
 const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
   function ArticleReader({ className }, ref) {
-    const { selectUrl, replaceEntry, replaceUrl, state } = useRouter();
+    const { selectUrl, replaceUrl, state } = useRouter();
     const { entryId, annotationId, url } = state;
 
     const {
@@ -63,10 +62,6 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     const [title, setTitle] = useState<string | null>(null);
     const [summaryHtml, setSummaryHtml] = useState<string | null>(null);
     const [contentHtml, setContentHtml] = useState<string | null>(null);
-    // The Entry currently loaded into the reader. Drives the replaceEntry effect
-    // below, which reconciles the route's entryId when a followed link cleared
-    // it (whether the target was freshly fetched or already saved).
-    const [loadedEntry, setLoadedEntry] = useState<Entry | null>(null);
 
     const html = useMemo(() => {
       if (htmlReaderView === "summary") {
@@ -108,7 +103,6 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       loading,
       readEntry,
       loadArticle,
-      loadArticleByUrl,
       findArticleByUrl,
       extractArticleFromHtml,
       saveExtractedArticle,
@@ -120,6 +114,10 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       favicon: string | null;
     } | null>(null);
 
+    // Reads and renders the already-resolved article for the current route.
+    // useContentLoader has classified the URL and persisted any new article
+    // before navigating here, so this only reads + renders (and reloads the
+    // body from the network when it's missing or a reload was requested).
     const requestContent = useCallback(
       async (reload = false) => {
         logger.info("requestContent", url);
@@ -127,20 +125,9 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
         setTitle(null);
         setSummaryHtml(null);
         setContentHtml(null);
-        setLoadedEntry(null);
 
-        // A saved article (selected Entry). For a link followed within the
-        // reader there may be no saved article yet, so fall back to fetching the
-        // remote content by URL, which also persists it as a new article.
-        const article =
-          (await findArticleByUrl(url)) ??
-          (await loadArticleByUrl(url))?.article;
+        const article = await findArticleByUrl(url);
         if (!article) return;
-
-        // Record the loaded Entry so the effect below can reconcile the route's
-        // entryId with it. This covers both a freshly fetched article and a
-        // previously saved one reached via a link (which cleared the entryId).
-        setLoadedEntry(article);
 
         setTitle(article.title ?? "Untitled");
 
@@ -163,7 +150,6 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
         findArticleByUrl,
         htmlReaderStyle,
         loadArticle,
-        loadArticleByUrl,
         setAnnotationsFromArticle,
         url,
       ]
@@ -210,25 +196,18 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       return abort;
     }, [abort, requestContent]);
 
-    // When a link followed within the reader is loaded by URL, the route lacks
-    // its entryId. Reflect it here rather than in requestContent so the route
-    // patch does not re-trigger a content reload. Kept off requestContent's deps
-    // for the same reason.
-    useEffect(() => {
-      if (loadedEntry && loadedEntry.id !== entryId) {
-        replaceEntry(loadedEntry);
-      }
-    }, [loadedEntry, entryId, replaceEntry]);
-
+    // An annotation selected from a list carries entryId but no url, which
+    // requestContent needs to read the article. Backfill it onto the route.
     useEffect(() => {
       if (!annotationId) return;
       if (!entryId) return;
+      if (url) return;
 
       (async () => {
         const entry = await readEntry(entryId);
         if (entry) replaceUrl(entry.url);
       })();
-    }, [annotationId, entryId, readEntry, replaceUrl, selectUrl]);
+    }, [annotationId, entryId, url, readEntry, replaceUrl]);
 
     useEffect(() => {
       setFindEnabled(!!(summaryHtml || contentHtml));

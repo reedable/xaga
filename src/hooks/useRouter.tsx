@@ -153,6 +153,17 @@ export default function useRouter() {
     [logged_navigate, searchParams, state]
   );
 
+  const replaceMimeType = useCallback(
+    (mimeType: string) => {
+      if (mimeType === state.mimeType) return;
+      logged_navigate(`/?${searchParams.toString()}`, {
+        replace: true,
+        state: { ...state, mimeType },
+      });
+    },
+    [logged_navigate, searchParams, state]
+  );
+
   const selectItem = useCallback(
     (item: Item) => {
       if (isCollection(item)) return selectCollection(item);
@@ -219,6 +230,7 @@ export default function useRouter() {
     goForward,
     invokeSearch,
     replaceEntry,
+    replaceMimeType,
     replaceUrl,
     selectAnnotation,
     selectItem,

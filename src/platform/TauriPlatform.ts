@@ -438,12 +438,20 @@ export class TauriPlatform implements Platform {
     signal: AbortSignal,
     url: string,
     keepOpen?: boolean
-  ): Promise<{ mimeType: string; html: string }> {
+  ): Promise<{
+    mimeType: string;
+    html: string;
+    pdfBase64?: string | null;
+  }> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "load_article" });
 
-    return invoker<{ mimeType: string; html: string }>("load_article", {
+    return invoker<{
+      mimeType: string;
+      html: string;
+      pdfBase64?: string | null;
+    }>("load_article", {
       url,
       keepOpen: keepOpen ?? false,
     });

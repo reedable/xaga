@@ -59,7 +59,11 @@ export interface Platform {
     signal: AbortSignal,
     url: string,
     keepOpen?: boolean
-  ): Promise<{ mimeType: string; html: string }>;
+  ): Promise<{
+    mimeType: string;
+    html: string;
+    pdfBase64?: string | null;
+  }>;
   findArticle(signal: AbortSignal, url: string): Promise<Article | null>;
   saveArticle(signal: AbortSignal, article: Article): Promise<Article>;
   readArticle(signal: AbortSignal, id: string): Promise<Article>;

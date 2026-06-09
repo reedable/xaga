@@ -36,6 +36,11 @@ pub(crate) struct AppState {
     /// Port of the local SSRF-filtering proxy that loader webviews are routed
     /// through (see [`ssrf_proxy`]).
     pub(crate) ssrf_proxy_port: u16,
+    /// HTTP client routed through the SSRF-filtering proxy. Used to fetch remote
+    /// content directly (e.g. inline PDF bytes) with the same private/loopback/
+    /// DNS-rebind protection the loader webview gets. Distinct from `http_client`,
+    /// which is unproxied and used for feeds/embeddings.
+    pub(crate) ssrf_http_client: reqwest::Client,
 }
 
 pub(crate) fn feeds_dir(library: &Path) -> PathBuf {
@@ -182,6 +187,16 @@ pub fn run() {
         tauri::async_runtime::block_on(ssrf_proxy::start(ssrf_proxy::ProxyConfig::new()))
             .expect("failed to start SSRF filtering proxy for the article loader");
 
+    // HTTP client that dials only through the SSRF proxy, so direct fetches of
+    // remote content (inline PDF bytes) get the same protection as the webview.
+    let ssrf_http_client = reqwest::Client::builder()
+        .proxy(
+            reqwest::Proxy::all(format!("http://127.0.0.1:{ssrf_proxy_port}"))
+                .expect("valid SSRF proxy URL"),
+        )
+        .build()
+        .expect("failed to build SSRF-proxied HTTP client");
+
     // Pre-created Arcs shared between .manage() and the .setup() closure.
     let library: Arc<RwLock<PathBuf>> = Arc::new(RwLock::new(PathBuf::new()));
     let theme: Arc<RwLock<String>> = Arc::new(RwLock::new("auto".to_string()));
@@ -238,6 +253,7 @@ pub fn run() {
             inline_pdf_reader,
             html_reader_view,
             ssrf_proxy_port,
+            ssrf_http_client,
         })
         .manage(article_loader::PendingRequests::default())
         .plugin(tauri_plugin_window_state::Builder::default().build())

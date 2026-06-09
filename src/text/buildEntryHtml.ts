@@ -86,10 +86,19 @@ export function buildEntryHtml(
   const codeBg = prefersDark ? "#1e1e1e" : "#f5f5f5";
   const fontStack = FONT_FAMILY_CSS[fontFamily];
 
-  // Safely embed annotations as a JSON literal inside the script. JSON.stringify
-  // does NOT escape "</script>" or "<!--", so annotation text containing those
-  // sequences would otherwise break out of the <script> element. Escaping "<"
-  // as its < unicode form keeps the value an inert JS string.
+  // Embed annotations in a non-executed <script type="application/json"> data
+  // island (see the return below) that the reader script reads at runtime.
+  // Keeping the data out of the executable <script> is what lets that script stay
+  // byte-stable, so its sha256 can be allow-listed in the bundled CSP (where
+  // script-src has no 'unsafe-inline'). Data blocks are not subject to script-src.
+  //
+  // If you change anything inside the executable <script> below, the bundled CSP
+  // hash MUST be regenerated: run `node scripts/csp-hash.mjs` and paste the
+  // printed value into app.security.csp (script-src) in src-tauri/tauri.conf.json.
+  //
+  // JSON.stringify does NOT escape "</script>" or "<!--", so annotation text
+  // containing those sequences would otherwise break out of the island element;
+  // replacing every "<" (so no literal "<" survives) keeps the value inert.
   const annotationsJson = JSON.stringify(annotations).replace(/</g, "\\u003c");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
@@ -115,8 +124,8 @@ export function buildEntryHtml(
       .join("")}
     mark.xf{background:${prefersDark ? "#7b6200" : "#fff176"};border-radius:2px;color:inherit}
     mark.xf.xfa{background:${prefersDark ? "#e65100" : "#ff9800"};border-radius:2px;color:${prefersDark ? "#fff" : "#000"};outline:2px solid ${prefersDark ? "#ff6d00" : "#e65100"}}
-  </style></head><body><article>${bodyHtml}</article><script>
-    var __ANNOTATIONS__ = ${annotationsJson};
+  </style></head><body><article>${bodyHtml}</article><script type="application/json" id="__xaga_annotations__">${annotationsJson}</script><script>
+    var __ANNOTATIONS__ = JSON.parse(document.getElementById('__xaga_annotations__').textContent || '[]');
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 

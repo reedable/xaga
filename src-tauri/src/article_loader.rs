@@ -4,7 +4,12 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::oneshot;
 
-pub type PendingRequests = Arc<Mutex<HashMap<String, (oneshot::Sender<(String, String)>, bool)>>>;
+/// Pending loader request: the channel to deliver `(mimeType, html)` back, the
+/// caller's `keep_open`, and whether the inline-PDF reqwest probe errored
+/// (`reqwest_error`) — the latter defers the close decision to `load_via_webview`
+/// so the window can be kept open and shown when the content turns out to be a PDF.
+pub type PendingRequests =
+    Arc<Mutex<HashMap<String, (oneshot::Sender<(String, String)>, bool, bool)>>>;
 
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -46,6 +51,7 @@ pub async fn load_via_webview(
     url: &str,
     timeout_secs: u64,
     keep_open: bool,
+    reqwest_error: bool,
     allowed_domains: &[String],
     named_stores_supported: bool,
     ssrf_proxy_port: u16,
@@ -58,7 +64,7 @@ pub async fn load_via_webview(
     pending
         .lock()
         .map_err(|e| e.to_string())?
-        .insert(id.clone(), (tx, keep_open));
+        .insert(id.clone(), (tx, keep_open, reqwest_error));
 
     // Prepend window globals so the static init script can reference them.
     // serde_json::to_string produces valid JSON string literals, preventing
@@ -123,6 +129,11 @@ pub async fn load_via_webview(
 
     let loader = builder.build().map_err(|e| e.to_string())?;
 
+    // Set when an inline-PDF reqwest error is followed by the loader detecting a
+    // PDF: the hidden window is then shown to the user (only the webview can fetch
+    // it), so it must not be hidden-on-focus or closed.
+    let keep_open_on_error = Arc::new(AtomicBool::new(false));
+
     if keep_open {
         let _ = loader.show();
         let _ = loader.set_focus();
@@ -142,11 +153,15 @@ pub async fn load_via_webview(
         });
     } else {
         // Prevent the native window from ever becoming visible regardless of what
-        // the remote page does (e.g. WKWebView-level focus/show callbacks).
+        // the remote page does (e.g. WKWebView-level focus/show callbacks) — unless
+        // we deliberately show it for the reqwest-error PDF case.
         let loader_handle = loader.clone();
+        let suppress_hide = Arc::clone(&keep_open_on_error);
 
         loader.on_window_event(move |event| {
-            if matches!(event, tauri::WindowEvent::Focused(true)) {
+            if matches!(event, tauri::WindowEvent::Focused(true))
+                && !suppress_hide.load(Ordering::Acquire)
+            {
                 let _ = loader_handle.hide();
             }
         });
@@ -156,7 +171,22 @@ pub async fn load_via_webview(
 
     pending.lock().map_err(|e| e.to_string())?.remove(&id);
 
-    if !keep_open {
+    // If the reqwest probe errored and the loader resolved the content as a PDF,
+    // show the existing (hidden) window to the user instead of closing it: the
+    // real browser got past whatever refused reqwest, and a PDF can only be
+    // presented this way.
+    let show_pdf = reqwest_error
+        && matches!(&result, Ok(Ok((mime, _))) if mime.as_str() == "application/pdf");
+
+    if show_pdf {
+        keep_open_on_error.store(true, Ordering::Release);
+        if let Some(w) = app.get_webview_window(&label) {
+            let _ = w.set_size(tauri::LogicalSize::new(1200.0, 900.0));
+            let _ = w.set_position(tauri::LogicalPosition::new(100.0, 100.0));
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    } else if !keep_open {
         if let Some(w) = app.get_webview_window(&label) {
             let _ = w.close();
         }

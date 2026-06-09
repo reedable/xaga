@@ -5,13 +5,12 @@ use xaga_core::entries;
 use xaga_core::topics;
 use xaga_core::types::AnnotationSummary;
 
-use crate::{article_loader, AppState};
+use base64::Engine as _;
+
+use crate::{AppState, article_loader};
 
 #[tauri::command]
-pub async fn loader_will_unload(
-    app: AppHandle,
-    url: String,
-) -> Result<(), String> {
+pub async fn loader_will_unload(app: AppHandle, url: String) -> Result<(), String> {
     app.emit("loader:will-unload", url).ok();
     Ok(())
 }
@@ -31,7 +30,15 @@ pub async fn loader_page_loaded(
     html: String,
     mime_type: String,
 ) -> Result<(), String> {
-    app.emit("loader:page-loaded", LoaderPageLoaded { url, html, mime_type }).ok();
+    app.emit(
+        "loader:page-loaded",
+        LoaderPageLoaded {
+            url,
+            html,
+            mime_type,
+        },
+    )
+    .ok();
     Ok(())
 }
 
@@ -51,7 +58,15 @@ pub async fn capture_and_close_loader(
     url: String,
     mime_type: String,
 ) -> Result<(), String> {
-    app.emit("loader:closed", LoaderClosed { url, html, mime_type }).ok();
+    app.emit(
+        "loader:closed",
+        LoaderClosed {
+            url,
+            html,
+            mime_type,
+        },
+    )
+    .ok();
     if let Some(w) = app.get_webview_window(&label) {
         let _ = w.close();
     }
@@ -67,11 +82,13 @@ pub async fn receive_html(
     mime_type: String,
 ) -> Result<bool, String> {
     let mut map = pending.lock().map_err(|e| e.to_string())?;
-    if let Some((tx, keep_open)) = map.remove(&id) {
+    if let Some((tx, keep_open, reqwest_error)) = map.remove(&id) {
         let _ = tx.send((mime_type, html));
-        if !keep_open {
+        if !keep_open && !reqwest_error {
             // Terminate the webview immediately so untrusted scripts cannot
-            // continue running or spamming IPC.
+            // continue running or spamming IPC. When the inline-PDF reqwest
+            // probe errored, defer the close to load_via_webview, which keeps
+            // the window alive to show it if the content is a PDF.
             let _ = window.close();
         }
         Ok(true)
@@ -85,6 +102,77 @@ pub struct LoadArticleResult {
     #[serde(rename = "mimeType")]
     pub mime_type: String,
     pub html: String,
+    /// Base64-encoded PDF bytes, present only on the inline-PDF fast path.
+    #[serde(rename = "pdfBase64")]
+    pub pdf_base64: Option<String>,
+}
+
+enum PdfProbe {
+    /// A valid PDF (`application/pdf` Content-Type + `%PDF-` signature); bytes read.
+    Pdf(Vec<u8>),
+    /// Not a PDF; the body was NOT read, so the caller lets the loader webview
+    /// perform the real load without a double download.
+    NotPdf,
+    /// `application/pdf` Content-Type but the body is not a PDF. This is a
+    /// spoofed response — dead-end it; do NOT render it in a webview.
+    Invalid(String),
+}
+
+/// Fetches `url` through the SSRF proxy to decide whether it is a PDF.
+/// `Err(_)` is a transport/timeout error only (the caller may fall back to the
+/// visible loader webview); content mismatches are reported via [`PdfProbe`].
+async fn try_fetch_pdf(
+    client: &reqwest::Client,
+    url: &str,
+    timeout_secs: u64,
+) -> Result<PdfProbe, String> {
+    // Only ever fetch real remote web content (mirror the loader's scheme guard).
+    let parsed = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err(format!(
+            "refusing to fetch non-web URL scheme: {}",
+            parsed.scheme()
+        ));
+    }
+
+    let resp = client
+        .get(parsed)
+        .timeout(std::time::Duration::from_secs(timeout_secs))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // MIME type only — ignore parameters like charset.
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+
+    if content_type != "application/pdf" {
+        // Not a PDF — drop the response without reading the body; the webview
+        // (any status) performs the real load as today.
+        return Ok(PdfProbe::NotPdf);
+    }
+
+    if !resp.status().is_success() {
+        return Err(format!("PDF request returned HTTP {}", resp.status()));
+    }
+
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+
+    if !bytes.starts_with(b"%PDF-") {
+        return Ok(PdfProbe::Invalid(
+            "Content-Type was application/pdf but body is not a PDF".to_string(),
+        ));
+    }
+
+    Ok(PdfProbe::Pdf(bytes.to_vec()))
 }
 
 #[tauri::command]
@@ -99,8 +187,57 @@ pub async fn load_article(
     let allowed_domains = state.allowed_domains.read().unwrap().clone();
     let named_stores_supported = state.named_stores_supported;
     let ssrf_proxy_port = state.ssrf_proxy_port;
-    let (mime_type, html) = article_loader::load_via_webview(&app, &pending, &url, timeout_secs, keep_open, &allowed_domains, named_stores_supported, ssrf_proxy_port).await?;
-    Ok(LoadArticleResult { mime_type, html })
+    let inline_pdf_reader = *state.inline_pdf_reader.read().unwrap();
+
+    let mut reqwest_error = false;
+
+    // Inline-PDF fast path: only when the setting is on and the caller isn't
+    // explicitly asking for the visible webview. Fetch the URL through the SSRF
+    // proxy; a PDF is returned as bytes for inline rendering and skips the
+    // webview entirely. Not making this request when the setting is off avoids
+    // letting servers profile us.
+    if inline_pdf_reader && !keep_open {
+        match try_fetch_pdf(&state.ssrf_http_client, &url, timeout_secs).await {
+            Ok(PdfProbe::Pdf(bytes)) => {
+                return Ok(LoadArticleResult {
+                    mime_type: "application/pdf".to_string(),
+                    html: String::new(),
+                    pdf_base64: Some(base64::engine::general_purpose::STANDARD.encode(&bytes)),
+                });
+            }
+            // Not a PDF — fall through to the webview unchanged.
+            Ok(PdfProbe::NotPdf) => {}
+            // Spoofed: Content-Type claimed PDF but the body isn't one. Dead-end;
+            // do NOT render it in a webview. The `E_SPOOFED_PDF` code lets the
+            // frontend show a "blocked" message instead of a generic failure.
+            Ok(PdfProbe::Invalid(msg)) => return Err(format!("E_SPOOFED_PDF: {msg}")),
+            // Transport error (e.g. the site refused the non-browser client). We
+            // can't confirm it's a PDF; hand it to the loader with reqwest_error so
+            // the close decision is deferred until the webview reports the type.
+            Err(e) => {
+                log::warn!("inline PDF probe failed for {url}: {e}");
+                reqwest_error = true;
+            }
+        }
+    }
+
+    let (mime_type, html) = article_loader::load_via_webview(
+        &app,
+        &pending,
+        &url,
+        timeout_secs,
+        keep_open,
+        reqwest_error,
+        &allowed_domains,
+        named_stores_supported,
+        ssrf_proxy_port,
+    )
+    .await?;
+    Ok(LoadArticleResult {
+        mime_type,
+        html,
+        pdf_base64: None,
+    })
 }
 
 #[tauri::command]
@@ -197,7 +334,15 @@ pub async fn add_annotation(
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
     let data_dir = state.library.read().unwrap().clone();
-    let annotation = xaga_core::types::Annotation { id, reference: article_id.clone(), text, occurrence, color, note, created_at: String::new() };
+    let annotation = xaga_core::types::Annotation {
+        id,
+        reference: article_id.clone(),
+        text,
+        occurrence,
+        color,
+        note,
+        created_at: String::new(),
+    };
     articles::add_annotation(&data_dir, &article_id, annotation)
         .await
         .map_err(|e| e.to_string())
@@ -240,12 +385,12 @@ pub fn clear_webview_history(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn list_annotations(state: State<'_, AppState>) -> Result<Vec<AnnotationSummary>, String> {
+pub async fn list_annotations(
+    state: State<'_, AppState>,
+) -> Result<Vec<AnnotationSummary>, String> {
     let data_dir = state.library.read().unwrap().clone();
     let db = EmbeddingsDb::open(&data_dir)
         .await
         .map_err(|e| e.to_string())?;
-    db.list_annotations()
-        .await
-        .map_err(|e| e.to_string())
+    db.list_annotations().await.map_err(|e| e.to_string())
 }
