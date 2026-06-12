@@ -14,7 +14,8 @@ window.__captureAndClose = function() {
     window.__TAURI_INTERNALS__.invoke('capture_and_close_loader', {
         label: window.__LOADER_LABEL__,
         html: mimeType === 'application/pdf' ? '' : document.documentElement.outerHTML,
-        url: window.__LOADER_URL__,
+        loaderUrl: window.__LOADER_URL__,
+        pageUrl: window.location.href,
         mimeType: mimeType
     });
 };

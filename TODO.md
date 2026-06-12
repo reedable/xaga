@@ -7,10 +7,11 @@
 
 ## Medium (days)
 
+- [x] [util.rs](crates/xaga-core/src/util.rs): `normalize_url` now also strips the fragment, rewrites http→https, and strips a leading `www.` — `url_hash12` IDs no longer match entry/feed/bookmark files saved under the old rules; add an xaga-cli migration command that re-keys existing files to the new normalization (done: `xaga-cli migrate [--dry-run]`; remove the command after running it against the real library)
+- [ ] [util.rs](crates/xaga-core/src/util.rs): Reevaluate the forced https in `normalize_url` — its output isn't just hashed for IDs, it's also stored and fetched (`import_feeds` fetches the normalized URL; entries store it as `source`), so an http-only site would now be fetched over https and fail
 - [ ] [topics.rs](crates/xaga-core/src/topics.rs): `list_entry_topics` scans all topic files O(n) — called on every annotation removal and every TopicMenuButton open; needs a reverse index
 - [ ] [TauriPlatform.ts](src/platform/TauriPlatform.ts): Invalid items silently dropped in ~10 list operations — add unified error reporting
 - [ ] [feed_entry.rs](crates/xaga-core/src/feeds/feed_entry.rs): `created_at` should come from the `.md` Entry on disk, not derived elsewhere
-- [ ] [AppearanceProvider.tsx](src/providers/AppearanceProvider.tsx): Add `systemFontFamily` and `systemFontSize` support
 - [ ] [articles.rs](crates/xaga-core/src/articles.rs): Trigger annotation embedding for semantic search
 - [ ] Favicon deduplication — currently stored per-entry in frontmatter, could bloat `.md` files over time
 - [ ] Settings: "Keep history" toggle (off by default) — persist navigation history across sessions (storage TBD); include a clear history action

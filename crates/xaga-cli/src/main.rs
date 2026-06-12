@@ -28,6 +28,8 @@ enum Command {
     Bookmarks(cmd::bookmarks::BookmarksArgs),
     /// Query the embeddings index
     Embeddings(cmd::embeddings::EmbeddingsArgs),
+    /// Re-key library files after the normalize_url change (one-time; remove after use)
+    Migrate(cmd::migrate::MigrateArgs),
     /// Read or write ~/.xagarc
     Config(cmd::config::ConfigArgs),
 }
@@ -52,6 +54,7 @@ async fn main() {
         Command::Topics(args) => cmd::topics::handle(args.subcommand, &data_dir).await,
         Command::Bookmarks(args) => cmd::bookmarks::handle(args.subcommand, &data_dir).await,
         Command::Embeddings(args) => cmd::embeddings::handle(args.subcommand, &data_dir).await,
+        Command::Migrate(args) => cmd::migrate::handle(args, &feeds_dir, &data_dir).await,
         Command::Config(args) => cmd::config::handle(args.subcommand, &rc, &data_dir),
     }
 }

@@ -44,7 +44,18 @@ pub async fn loader_page_loaded(
 
 #[derive(serde::Serialize, Clone)]
 struct LoaderClosed {
-    url: String,
+    /// The URL the loader window was opened with (the main window's request).
+    #[serde(rename = "loaderUrl")]
+    loader_url: String,
+    /// The URL the page was actually on when the window closed (redirects,
+    /// SPA canonicalization, or user navigation may have moved it).
+    #[serde(rename = "pageUrl")]
+    page_url: String,
+    /// Whether `pageUrl` still denotes the same page as `loaderUrl` under
+    /// `normalize_url` — the captured `html` belongs to `pageUrl`, so a
+    /// mismatch means it must not be treated as content for `loaderUrl`.
+    #[serde(rename = "samePage")]
+    same_page: bool,
     html: String,
     #[serde(rename = "mimeType")]
     mime_type: String,
@@ -55,13 +66,24 @@ pub async fn capture_and_close_loader(
     app: AppHandle,
     label: String,
     html: String,
-    url: String,
+    loader_url: String,
+    page_url: String,
     mime_type: String,
 ) -> Result<(), String> {
+    let same_page = match (
+        xaga_core::util::normalize_url(&loader_url),
+        xaga_core::util::normalize_url(&page_url),
+    ) {
+        (Ok(a), Ok(b)) => a == b,
+        // Unparseable URL on either side: fall back to exact equality.
+        _ => loader_url == page_url,
+    };
     app.emit(
         "loader:closed",
         LoaderClosed {
-            url,
+            loader_url,
+            page_url,
+            same_page,
             html,
             mime_type,
         },

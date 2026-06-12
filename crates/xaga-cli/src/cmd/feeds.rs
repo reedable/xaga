@@ -119,63 +119,69 @@ pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &Pat
                 println!("No feed files found.");
                 return;
             }
-            let mut n_ok = 0usize;
-            let mut n_repaired = 0usize;
-            let mut n_skipped = 0usize;
-            for r in &results {
-                match &r.outcome {
-                    RepairOutcome::Ok => {
-                        n_ok += 1;
-                    }
-                    RepairOutcome::ParseError(msg) => {
-                        eprintln!("  err  [{}] parse error: {}", r.id, msg);
-                        n_skipped += 1;
-                    }
-                    RepairOutcome::NoId => {
-                        eprintln!("  skip [{}] no <id> element", r.id);
-                        n_skipped += 1;
-                    }
-                    RepairOutcome::NoRepairableUrl => {
-                        eprintln!(
-                            "  skip [{}] no <link rel=\"self\"> and <id> is not an HTTP(S) URL",
-                            r.id
-                        );
-                        n_skipped += 1;
-                    }
-                    RepairOutcome::RenameConflict { target } => {
-                        eprintln!(
-                            "  skip [{}] rename conflict: target [{}] already exists",
-                            r.id, target
-                        );
-                        n_skipped += 1;
-                    }
-                    RepairOutcome::Repaired { feed_id_synthesized, self_link_added, renamed_to, entry_links_normalized, entry_ids_synthesized } => {
-                        let mut parts = Vec::new();
-                        if *feed_id_synthesized {
-                            parts.push("synthesised feed <id>".to_string());
-                        }
-                        if *self_link_added {
-                            parts.push("added <link rel=\"self\">".to_string());
-                        }
-                        if *entry_links_normalized {
-                            parts.push("normalised entry links".to_string());
-                        }
-                        if *entry_ids_synthesized {
-                            parts.push("synthesised missing entry <id>s".to_string());
-                        }
-                        if let Some(new_id) = renamed_to {
-                            parts.push(format!("renamed → [{}]", new_id));
-                        }
-                        println!("  fix  [{}] {}", r.id, parts.join(", "));
-                        n_repaired += 1;
-                    }
-                }
-            }
-            println!();
-            println!(
-                "Done: {} ok, {} repaired, {} skipped.",
-                n_ok, n_repaired, n_skipped
-            );
+            print_repair_results(&results);
         }
     }
+}
+
+/// Prints one line per repair result and a final count summary.
+/// Shared by `feeds repair` and `migrate`.
+pub(crate) fn print_repair_results(results: &[feeds::RepairResult]) {
+    let mut n_ok = 0usize;
+    let mut n_repaired = 0usize;
+    let mut n_skipped = 0usize;
+    for r in results {
+        match &r.outcome {
+            RepairOutcome::Ok => {
+                n_ok += 1;
+            }
+            RepairOutcome::ParseError(msg) => {
+                eprintln!("  err  [{}] parse error: {}", r.id, msg);
+                n_skipped += 1;
+            }
+            RepairOutcome::NoId => {
+                eprintln!("  skip [{}] no <id> element", r.id);
+                n_skipped += 1;
+            }
+            RepairOutcome::NoRepairableUrl => {
+                eprintln!(
+                    "  skip [{}] no <link rel=\"self\"> and <id> is not an HTTP(S) URL",
+                    r.id
+                );
+                n_skipped += 1;
+            }
+            RepairOutcome::RenameConflict { target } => {
+                eprintln!(
+                    "  skip [{}] rename conflict: target [{}] already exists",
+                    r.id, target
+                );
+                n_skipped += 1;
+            }
+            RepairOutcome::Repaired { feed_id_synthesized, self_link_added, renamed_to, entry_links_normalized, entry_ids_synthesized } => {
+                let mut parts = Vec::new();
+                if *feed_id_synthesized {
+                    parts.push("synthesised feed <id>".to_string());
+                }
+                if *self_link_added {
+                    parts.push("added <link rel=\"self\">".to_string());
+                }
+                if *entry_links_normalized {
+                    parts.push("normalised entry links".to_string());
+                }
+                if *entry_ids_synthesized {
+                    parts.push("synthesised missing entry <id>s".to_string());
+                }
+                if let Some(new_id) = renamed_to {
+                    parts.push(format!("renamed → [{}]", new_id));
+                }
+                println!("  fix  [{}] {}", r.id, parts.join(", "));
+                n_repaired += 1;
+            }
+        }
+    }
+    println!();
+    println!(
+        "Done: {} ok, {} repaired, {} skipped.",
+        n_ok, n_repaired, n_skipped
+    );
 }

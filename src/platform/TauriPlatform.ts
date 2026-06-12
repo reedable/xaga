@@ -1057,17 +1057,33 @@ export class TauriPlatform implements Platform {
   }
 
   onLoaderClosed(
-    callback: (data: { url: string; html: string; mimeType: string }) => void
+    callback: (data: {
+      loaderUrl: string;
+      pageUrl: string;
+      samePage: boolean;
+      html: string;
+      mimeType: string;
+    }) => void
   ): Promise<UnlistenFn> {
     const name = "loader:closed";
     const listener = decorate(
-      (e: { payload: { url: string; html: string; mimeType: string } }) =>
-        callback(e.payload)
+      (e: {
+        payload: {
+          loaderUrl: string;
+          pageUrl: string;
+          samePage: boolean;
+          html: string;
+          mimeType: string;
+        };
+      }) => callback(e.payload)
     ).with(logged, { logger, name });
-    return listen<{ url: string; html: string; mimeType: string }>(
-      name,
-      listener
-    );
+    return listen<{
+      loaderUrl: string;
+      pageUrl: string;
+      samePage: boolean;
+      html: string;
+      mimeType: string;
+    }>(name, listener);
   }
 
   onLoaderPageLoaded(

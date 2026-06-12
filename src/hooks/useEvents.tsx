@@ -59,7 +59,13 @@ export function useEvents() {
 
   const onLoaderClosed = useCallback(
     (
-      callback: (data: { url: string; html: string; mimeType: string }) => void
+      callback: (data: {
+        loaderUrl: string;
+        pageUrl: string;
+        samePage: boolean;
+        html: string;
+        mimeType: string;
+      }) => void
     ) => subscribe(() => platform.onLoaderClosed(callback)),
     [platform]
   );

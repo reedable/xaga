@@ -232,8 +232,12 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
     useEffect(() => {
       return onLoaderClosed(
-        async ({ url: loaderUrl, html: loaderHtml, mimeType }) => {
+        async ({ loaderUrl, samePage, html: loaderHtml, mimeType }) => {
           if (url !== loaderUrl) return;
+          // The captured html belongs to pageUrl; when the loader was
+          // redirected or navigated to a different page, it must not be
+          // offered as an update for this article.
+          if (!samePage) return;
           if (mimeType === "application/pdf") return;
 
           const extracted = await extractArticleFromHtml(url, loaderHtml);

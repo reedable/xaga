@@ -176,7 +176,13 @@ export interface Platform {
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;
   onShowSidebar(callback: (show: boolean) => void): Promise<UnlistenFn>;
   onLoaderClosed(
-    callback: (data: { url: string; html: string; mimeType: string }) => void
+    callback: (data: {
+      loaderUrl: string;
+      pageUrl: string;
+      samePage: boolean;
+      html: string;
+      mimeType: string;
+    }) => void
   ): Promise<UnlistenFn>;
   onLoaderPageLoaded(
     callback: (data: { url: string; html: string; mimeType: string }) => void
