@@ -252,10 +252,16 @@ export function HtmlReader({
   // Edit → Find… menu item (Cmd-F).
   useEffect(() => onFind(() => setFindOpen(true)), [onFind]);
 
+  // Navigate via location.replace, never by setting src: loading an iframe
+  // through src leaves it an about:blank → document history pair that WebKit
+  // counts in the webview's joint session history, so Back first un-navigates
+  // the iframe (blanking the content) before it moves the router. replace()
+  // creates no entry and is one of the few cross-origin-permitted operations,
+  // so it works on the sandboxed (opaque-origin) frame.
   useEffect(() => {
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
-    if (iframeRef.current) iframeRef.current.src = url;
+    iframeRef.current?.contentWindow?.location.replace(url);
     return () => URL.revokeObjectURL(url);
   }, [html]);
 

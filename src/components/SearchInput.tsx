@@ -3,6 +3,8 @@ import {
   CircularProgress,
   IconButton,
   InputAdornment,
+  Menu,
+  MenuItem,
   TextField,
   Tooltip,
 } from "@mui/material";
@@ -16,12 +18,18 @@ const DEBOUNCE_MS = 300;
 export type SearchInputProps = {
   className?: string;
   onClear?: () => void;
+  onSaveAsTopic?: (title: string) => void;
 };
 
-export function SearchInput({ className, onClear }: SearchInputProps) {
+export function SearchInput({
+  className,
+  onClear,
+  onSaveAsTopic,
+}: SearchInputProps) {
   const { invokeSearch, search } = useRouter();
   const [inputValue, setInputValue] = useState(search ?? "");
   const [isPending, setIsPending] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const commitSearch = useCallback(
@@ -63,6 +71,22 @@ export function SearchInput({ className, onClear }: SearchInputProps) {
     [handleClear]
   );
 
+  const handleMenuOpen = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      setMenuAnchor(e.currentTarget);
+    },
+    []
+  );
+
+  const handleMenuClose = useCallback(() => {
+    setMenuAnchor(null);
+  }, []);
+
+  const handleSaveAsTopic = useCallback(() => {
+    setMenuAnchor(null);
+    onSaveAsTopic?.(inputValue.trim());
+  }, [inputValue, onSaveAsTopic]);
+
   return (
     <div className={cx(className, css.SearchInput)}>
       <TextField
@@ -85,7 +109,16 @@ export function SearchInput({ className, onClear }: SearchInputProps) {
                 {isPending ? (
                   <CircularProgress size={14} />
                 ) : (
-                  <SearchIcon fontSize="small" />
+                  <Tooltip title="Search menu">
+                    <IconButton
+                      size="small"
+                      edge="start"
+                      onClick={handleMenuOpen}
+                      aria-label="Search menu"
+                    >
+                      <SearchIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                 )}
               </InputAdornment>
             ),
@@ -106,6 +139,16 @@ export function SearchInput({ className, onClear }: SearchInputProps) {
           },
         }}
       />
+
+      <Menu
+        anchorEl={menuAnchor}
+        open={menuAnchor !== null}
+        onClose={handleMenuClose}
+      >
+        <MenuItem disabled={!inputValue.trim()} onClick={handleSaveAsTopic}>
+          Save as Topic
+        </MenuItem>
+      </Menu>
     </div>
   );
 }

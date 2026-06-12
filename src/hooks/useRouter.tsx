@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ALL_ITEMS } from "../Shortcuts";
 import {
@@ -12,23 +12,41 @@ import {
   type Collection,
   type Entry,
   type Feed,
+  type Filter,
   type Item,
   type NavigationState,
   type Topic,
 } from "../types";
 import { decorate, logged } from "../utils/Decorator";
 import Logger from "../utils/Logger";
+import validateSearchInput from "../utils/validateSearchInput";
 
 const logger = Logger.getLogger("useRouter");
 
 let maxHistoryIdx = 0;
 
+// True when two routes would show the same content, so navigating from one to
+// the other is a no-op that should not grow the history. mimeType is excluded:
+// it is derived by the content loader and restored via replaceMimeType, so two
+// routes differing only in mimeType point at the same content.
+function isSameNavigation(a: NavigationState, b: NavigationState) {
+  return (
+    a.topicId === b.topicId &&
+    a.feedId === b.feedId &&
+    a.shortcutId === b.shortcutId &&
+    a.entryId === b.entryId &&
+    a.annotationId === b.annotationId &&
+    a.url === b.url &&
+    a.filter === b.filter
+  );
+}
+
 export default function useRouter() {
   const navigate = useNavigate();
   const { state: rawState } = useLocation();
   const [searchParams] = useSearchParams();
-  const [filter, setFilter] = useState(searchParams.get("filter") ?? undefined);
-  const [search, setSearch] = useState(searchParams.get("search") ?? undefined);
+  const rawSearch = searchParams.get("search");
+  const search = useMemo(() => validateSearchInput(rawSearch), [rawSearch]);
 
   const state: NavigationState = useMemo(
     () => (rawState as NavigationState | null) ?? { shortcutId: ALL_ITEMS.id },
@@ -50,79 +68,87 @@ export default function useRouter() {
   }, [navigate]);
 
   const selectTopic = useCallback(
-    (topic: Topic, filter?: string) => {
-      if (isFilter(filter)) searchParams.set("filter", filter);
-      return logged_navigate(`/?${searchParams.toString()}`, {
-        state: { topicId: topic.id },
-      });
+    (topic: Topic, filter?: Filter) => {
+      // Carry the active filter forward so it stays sticky across
+      // collection switches.
+      const next: NavigationState = {
+        topicId: topic.id,
+        filter: filter ?? state.filter,
+      };
+      if (isSameNavigation(state, next)) return;
+      return logged_navigate(`/?${searchParams.toString()}`, { state: next });
     },
-    [logged_navigate, searchParams]
+    [logged_navigate, searchParams, state]
   );
 
   const selectFeed = useCallback(
-    (feed: Feed, filter?: string) => {
-      if (isFilter(filter)) searchParams.set("filter", filter);
-      return logged_navigate(`/?${searchParams.toString()}`, {
-        state: { feedId: feed.id },
-      });
+    (feed: Feed, filter?: Filter) => {
+      const next: NavigationState = {
+        feedId: feed.id,
+        filter: filter ?? state.filter,
+      };
+      if (isSameNavigation(state, next)) return;
+      return logged_navigate(`/?${searchParams.toString()}`, { state: next });
     },
-    [logged_navigate, searchParams]
+    [logged_navigate, searchParams, state]
   );
 
   const selectCollection = useCallback(
-    (collection: Collection, filter?: string) => {
+    (collection: Collection, filter?: Filter) => {
       if (isFeed(collection)) return selectFeed(collection, filter);
       if (isTopic(collection)) return selectTopic(collection, filter);
 
-      if (isFilter(filter)) searchParams.set("filter", filter);
-      return logged_navigate(`/?${searchParams.toString()}`, {
-        state: { shortcutId: collection.id },
-      });
+      const next: NavigationState = {
+        shortcutId: collection.id,
+        filter: filter ?? state.filter,
+      };
+      if (isSameNavigation(state, next)) return;
+      return logged_navigate(`/?${searchParams.toString()}`, { state: next });
     },
-    [logged_navigate, searchParams, selectFeed, selectTopic]
+    [logged_navigate, searchParams, selectFeed, selectTopic, state]
   );
 
   const selectEntry = useCallback(
     (entry: Entry) => {
-      return logged_navigate(`/?${searchParams.toString()}`, {
-        state: {
-          ...state,
-          entryId: entry.id,
-          url: entry.url,
-          annotationId: undefined,
-          mimeType: undefined, // article_loader to determine mimeType
-        },
-      });
+      const next: NavigationState = {
+        ...state,
+        entryId: entry.id,
+        url: entry.url,
+        annotationId: undefined,
+        mimeType: undefined, // article_loader to determine mimeType
+      };
+      if (isSameNavigation(state, next)) return;
+      return logged_navigate(`/?${searchParams.toString()}`, { state: next });
     },
     [logged_navigate, searchParams, state]
   );
 
   const selectAnnotation = useCallback(
     (annotation: Annotation) => {
-      return logged_navigate(`/?${searchParams.toString()}`, {
-        state: {
-          ...state,
-          annotationId: annotation.id,
-          entryId: annotation.reference,
-          url: undefined,
-          mimeType: undefined, // article_loader to determine mimeType
-        },
-      });
+      const next: NavigationState = {
+        ...state,
+        annotationId: annotation.id,
+        entryId: annotation.reference,
+        url: undefined,
+        mimeType: undefined, // article_loader to determine mimeType
+      };
+      if (isSameNavigation(state, next)) return;
+      return logged_navigate(`/?${searchParams.toString()}`, { state: next });
     },
     [logged_navigate, searchParams, state]
   );
 
   const selectUrl = useCallback(
     (url: string) => {
-      logged_navigate(`/?${searchParams.toString()}`, {
-        state: {
-          ...state,
-          url,
-          entryId: undefined,
-          annotationId: undefined,
-          mimeType: undefined, // article_loader to determine mimeType
-        },
-      });
+      const next: NavigationState = {
+        ...state,
+        url,
+        entryId: undefined,
+        annotationId: undefined,
+        mimeType: undefined, // article_loader to determine mimeType
+      };
+      if (isSameNavigation(state, next)) return;
+      logged_navigate(`/?${searchParams.toString()}`, { state: next });
     },
     [logged_navigate, searchParams, state]
   );
@@ -176,13 +202,9 @@ export default function useRouter() {
 
   const applyFilter = useCallback(
     (filter: string) => {
-      if (isFilter(filter)) {
-        searchParams.set("filter", filter);
-      }
-
-      logged_navigate(`/?${searchParams.toString()}`, {
-        state,
-      });
+      const next = isFilter(filter) ? { ...state, filter } : state;
+      if (isSameNavigation(state, next)) return;
+      logged_navigate(`/?${searchParams.toString()}`, { state: next });
     },
     [logged_navigate, searchParams, state]
   );
@@ -191,7 +213,7 @@ export default function useRouter() {
     (searchQuery: string) => {
       const params = new URLSearchParams(searchParams);
       params.set("search", searchQuery);
-      logged_navigate(`/?${params.toString()}`, { state });
+      logged_navigate(`/?${params.toString()}`, { replace: true, state });
     },
     [logged_navigate, searchParams, state]
   );
@@ -199,7 +221,7 @@ export default function useRouter() {
   const clearSearch = useCallback(() => {
     const params = new URLSearchParams(searchParams);
     params.delete("search");
-    logged_navigate(`/?${params.toString()}`, { state });
+    logged_navigate(`/?${params.toString()}`, { replace: true, state });
   }, [logged_navigate, searchParams, state]);
 
   const goBack = useCallback(() => navigate(-1), [navigate]);
@@ -209,17 +231,8 @@ export default function useRouter() {
     maxHistoryIdx = Math.max(maxHistoryIdx, currentIdx);
   }, [currentIdx]);
 
-  useEffect(() => {
-    (async () => {
-      const filterParam = searchParams.get("filter");
-      const searchParam = searchParams.get("search");
-      if (isFilter(filterParam)) setFilter(filterParam);
-      if (searchParam) setSearch(searchParam);
-    })();
-  }, [searchParams]);
-
   return {
-    filter,
+    filter: state.filter,
     canGoBack,
     canGoForward,
     search,

@@ -6,11 +6,19 @@ import {
   CircleOutlined,
   Language,
   OpenInNew,
+  QrCode2,
   Refresh,
   Search,
 } from "@mui/icons-material";
-import { Collapse, IconButton, LinearProgress, Tooltip } from "@mui/material";
-import { useCallback, useEffect, useState } from "react";
+import {
+  Collapse,
+  IconButton,
+  LinearProgress,
+  Popover,
+  Tooltip,
+} from "@mui/material";
+import { useCallback, useEffect, useRef, useState } from "react";
+import QRCode from "react-qr-code";
 import useAbortController from "../../hooks/useAbortController";
 import { useArticles } from "../../hooks/useArticles";
 import { useBookmarks } from "../../hooks/useBookmarks";
@@ -49,8 +57,20 @@ export function Toolbar({ reload }: ToolbarProps) {
 
   const { url, entryId } = state;
   const [latestEntry, setLatestEntry] = useState<Entry | null>(null);
+
+  // Reset on navigation so button states stay cleared until the current
+  // entry is loaded; a lingering latestEntry from a previous visit to the
+  // same entry may hold stale flags.
+  const [lastEntryId, setLastEntryId] = useState(entryId);
+  if (lastEntryId !== entryId) {
+    setLastEntryId(entryId);
+    setLatestEntry(null);
+  }
+
   const entry = latestEntry?.id === entryId ? latestEntry : null;
   const [favicon, setFavicon] = useState<string | null>(null);
+  const qrButtonRef = useRef<HTMLButtonElement>(null);
+  const [qrOpen, setQrOpen] = useState(false);
 
   const handleSearchToggle = useCallback(() => {
     if (isSearchOpen) clearSearch();
@@ -87,6 +107,9 @@ export function Toolbar({ reload }: ToolbarProps) {
     platform.openUrl(url);
   }, [platform, url]);
 
+  const handleQrOpen = useCallback(() => setQrOpen(true), []);
+  const handleQrClose = useCallback(() => setQrOpen(false), []);
+
   const getFavicon = useCallback(async (url?: string) => {
     if (!url) return null;
 
@@ -109,9 +132,10 @@ export function Toolbar({ reload }: ToolbarProps) {
     const controller = new AbortController();
     platform
       .readArticle(controller.signal, entryId)
-      .then((article) =>
-        setLatestEntry((prev) => (prev?.id === entryId ? prev : article))
-      )
+      .then((article) => {
+        if (controller.signal.aborted) return;
+        setLatestEntry((prev) => (prev?.id === entryId ? prev : article));
+      })
       .catch(() => {});
     return () => controller.abort();
   }, [entryId, platform]);
@@ -133,8 +157,20 @@ export function Toolbar({ reload }: ToolbarProps) {
     })();
   }, [getFavicon, entry]);
 
-  useEffect(() => onBookmarkChanged(setLatestEntry), [onBookmarkChanged]);
-  useEffect(() => onUnreadChanged(setLatestEntry), [onUnreadChanged]);
+  useEffect(
+    () =>
+      onBookmarkChanged((entry) => {
+        if (entry.id === entryId) setLatestEntry(entry);
+      }),
+    [onBookmarkChanged, entryId]
+  );
+  useEffect(
+    () =>
+      onUnreadChanged((entry) => {
+        if (entry.id === entryId) setLatestEntry(entry);
+      }),
+    [onUnreadChanged, entryId]
+  );
 
   return (
     <div className={css.Toolbar}>
@@ -186,6 +222,18 @@ export function Toolbar({ reload }: ToolbarProps) {
 
             <AddressBar url={url ?? null} onNavigate={handleNavigate} />
 
+            <Tooltip title="Refresh">
+              <IconButton
+                size="small"
+                onClick={reload ?? undefined}
+                disabled={!reload}
+                aria-label="Refresh"
+                className={css.RevealOnHover}
+              >
+                <Refresh fontSize="small" />
+              </IconButton>
+            </Tooltip>
+
             <Tooltip title="Open in Browser">
               <IconButton
                 size="small"
@@ -198,15 +246,16 @@ export function Toolbar({ reload }: ToolbarProps) {
               </IconButton>
             </Tooltip>
 
-            <Tooltip title="Refresh">
+            <Tooltip title="Show QR Code">
               <IconButton
+                ref={qrButtonRef}
                 size="small"
-                onClick={reload ?? undefined}
-                disabled={!reload}
-                aria-label="Refresh"
+                onClick={handleQrOpen}
+                disabled={!url}
+                aria-label="Show QR Code"
                 className={css.RevealOnHover}
               >
-                <Refresh fontSize="small" />
+                <QrCode2 fontSize="small" />
               </IconButton>
             </Tooltip>
 
@@ -246,8 +295,22 @@ export function Toolbar({ reload }: ToolbarProps) {
               </IconButton>
             </Tooltip>
 
-            <TopicMenuButton item={entry} disabled={!url} />
+            <TopicMenuButton item={entry} disabled={!entry} />
           </div>
+
+          <Popover
+            open={qrOpen}
+            anchorEl={() => qrButtonRef.current}
+            onClose={handleQrClose}
+            anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+            transformOrigin={{ vertical: "top", horizontal: "center" }}
+          >
+            {url && (
+              <div className={css.QrPopover}>
+                <QRCode value={url} size={160} />
+              </div>
+            )}
+          </Popover>
         </div>
 
         <Collapse in={loading} unmountOnExit>

@@ -32,18 +32,29 @@ fn render_topic(
     items: &[CollectionItem],
     content: &str,
 ) -> String {
-    let threshold_line = threshold
-        .map(|t| format!("threshold: {:.2}\n", t))
-        .unwrap_or_default();
-    let items_block = if items.is_empty() {
-        String::new()
-    } else {
-        let yaml = serde_yaml::to_string(items).unwrap_or_default();
-        format!("items:\n{yaml}")
+    #[derive(serde::Serialize)]
+    struct Fm<'a> {
+        id: &'a str,
+        title: &'a str,
+        created: &'a str,
+        updated: &'a str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        threshold: Option<f32>,
+        #[serde(skip_serializing_if = "<[_]>::is_empty")]
+        items: &'a [CollectionItem],
+    }
+
+    let fm = Fm {
+        id,
+        title,
+        created: created_at,
+        updated: updated_at,
+        threshold,
+        items,
     };
-    format!(
-        "---\nid: {id}\ntitle: {title}\ncreated: {created_at}\nupdated: {updated_at}\n{threshold_line}{items_block}---\n\n{content}\n"
-    )
+
+    let yaml = serde_yaml::to_string(&fm).expect("frontmatter serialization is infallible");
+    format!("---\n{yaml}---\n\n{content}\n")
 }
 
 /// Creates or updates a topic at `topics/{id}.md`.

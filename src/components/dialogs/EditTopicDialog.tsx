@@ -13,7 +13,13 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useCallback, useEffect, useState, type SubmitEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type SubmitEvent,
+} from "react";
 import { TOPIC_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
 import { useTopics } from "../../hooks/useTopics";
@@ -22,6 +28,8 @@ import type { Topic } from "../../types";
 type EditTopicDialogProps = {
   open: boolean;
   topic: Topic | null;
+  // Prefills the title field when adding a new topic (ignored when editing).
+  initialTitle?: string;
   onClose: () => void;
   onSave: (
     title: string,
@@ -35,6 +43,7 @@ type EditTopicDialogProps = {
 export default function EditTopicDialog({
   open,
   topic,
+  initialTitle,
   onClose,
   onSave,
   onDelete,
@@ -51,14 +60,19 @@ export default function EditTopicDialog({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Initialize the form only on the closed->open transition; re-running on
+  // dep changes while open would revert in-progress edits (e.g. during save).
+  const wasOpen = useRef(false);
+
   useEffect(() => {
-    if (open) {
-      setTitle(topic?.title ?? "");
+    if (open && !wasOpen.current) {
+      setTitle(topic?.title ?? initialTitle ?? "");
       setDescription(topic?.content ?? "");
       setThresholdString((topic?.threshold ?? TOPIC_THRESHOLD).toFixed(2));
       setPinnedState(pinnedTopicIds.includes(topic?.id ?? ""));
     }
-  }, [open, pinnedTopicIds, topic]);
+    wasOpen.current = open;
+  }, [open, pinnedTopicIds, topic, initialTitle]);
 
   const parseThreshold = useCallback(() => {
     const thresholdNumber = parseFloat(thresholdString);

@@ -8,7 +8,6 @@ import {
   DialogTitle,
 } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import css from "./AppLayout.module.css";
 import { ItemView } from "./components/content/ItemView";
 import EditFeedDialog from "./components/dialogs/EditFeedDialog";
@@ -26,12 +25,10 @@ import { usePlatform } from "./platform/Platform";
 import { type Feed, type Topic } from "./types";
 
 export function AppLayout() {
-  const { selectTopic, selectFeed } = useRouter();
-  const [searchParams] = useSearchParams();
+  const { selectTopic, selectFeed, search } = useRouter();
   const appRef = useRef<HTMLDivElement>(null);
   const [autoHideSidebar, setAutoHideSidebar] = useState(false);
   const { showSidebar } = useAppearance();
-  const search = searchParams.get("search");
 
   const platform = usePlatform();
   const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
@@ -39,6 +36,7 @@ export function AppLayout() {
   const [, abortControllerRef] = useAbortController();
   const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
   const [isAddingTopic, setIsAddingTopic] = useState(false);
+  const [addTopicTitle, setAddTopicTitle] = useState("");
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
   const [isAddingFeed, setIsAddingFeed] = useState(false);
 
@@ -56,6 +54,12 @@ export function AppLayout() {
   const closeEditTopic = useCallback(() => {
     setEditingTopic(null);
     setIsAddingTopic(false);
+    setAddTopicTitle("");
+  }, []);
+
+  const handleSaveSearchAsTopic = useCallback((title: string) => {
+    setAddTopicTitle(title);
+    setIsAddingTopic(true);
   }, []);
 
   const handleSaveTopic = useCallback(
@@ -83,7 +87,7 @@ export function AppLayout() {
         );
 
         await requestTopics();
-        selectTopic(topic, "undread");
+        selectTopic(topic, "unread");
       }
     },
     [
@@ -155,7 +159,7 @@ export function AppLayout() {
     const el = appRef.current;
     if (!el) return;
     const observer = new ResizeObserver(([entry]) => {
-      const threshold = search !== null ? 1300 : 980;
+      const threshold = search !== undefined ? 1300 : 980;
       setAutoHideSidebar(entry.contentRect.width < threshold);
     });
     observer.observe(el);
@@ -206,10 +210,11 @@ export function AppLayout() {
 
         <ItemView className={css.ItemView} />
 
-        <Collapse in={search !== null} unmountOnExit orientation="horizontal">
+        <Collapse in={search !== undefined} unmountOnExit orientation="horizontal">
           <SearchResultList
             className={css.SearchResultList}
             searchQuery={search ?? ""}
+            onSaveAsTopic={handleSaveSearchAsTopic}
           />
         </Collapse>
       </div>
@@ -217,6 +222,7 @@ export function AppLayout() {
       <EditTopicDialog
         open={editingTopic !== null || isAddingTopic}
         topic={editingTopic}
+        initialTitle={addTopicTitle}
         onClose={closeEditTopic}
         onSave={handleSaveTopic}
         onDelete={handleDeleteTopic}

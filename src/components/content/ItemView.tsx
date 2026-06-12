@@ -22,9 +22,10 @@ export function ItemView({ className }: ItemViewProps) {
 
   const [abort, abortControllerRef] = useAbortController();
   // Resolves a bare URL (link / URL bar) into a presentation and writes the
-  // result back onto the route. Returns the inline-PDF bytes, and the URL (if
-  // any) whose probe was blocked as a spoofed PDF.
-  const { pdfBytes, blockedUrl, resolve } = useContentLoader(abortControllerRef);
+  // result back onto the route. Returns the inline-PDF blob URL, and the URL
+  // (if any) whose probe was blocked as a spoofed PDF.
+  const { pdfBlobUrl, blockedUrl, resolve } =
+    useContentLoader(abortControllerRef);
 
   // Only a bare, unclassified URL needs resolving; entryId means a saved item is
   // selected, and a set mimeType means it's already resolved.
@@ -60,7 +61,7 @@ export function ItemView({ className }: ItemViewProps) {
             </Typography>
           </div>
         ) : isPdf ? (
-          <PdfReader bytes={pdfBytes} />
+          <PdfReader src={pdfBlobUrl} />
         ) : entryId ? (
           <ArticleReader ref={articleReaderRef} />
         ) : (

@@ -10,7 +10,9 @@ import {
   Typography,
 } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
+import useAbortController from "../../hooks/useAbortController";
 import { useEvents } from "../../hooks/useEvents";
+import { useFeeds } from "../../hooks/useFeeds";
 import useRouter from "../../hooks/useRouter";
 import useSearch from "../../hooks/useSearch";
 import {
@@ -26,30 +28,43 @@ import Quotes from "../Quotes";
 import { SearchInput } from "../SearchInput";
 import css from "./SearchResultList.module.css";
 
-type TypeFilter = "all" | "entries" | "topics" | "annotations";
+type TypeFilter = "entries" | "topics" | "annotations" | "feeds";
 
 interface SearchResultListProps {
   className?: string;
   searchQuery: string;
+  onSaveAsTopic?: (title: string) => void;
 }
 
 export function SearchResultList({
   className,
   searchQuery,
+  onSaveAsTopic,
 }: SearchResultListProps) {
   const { selectItem, state, clearSearch } = useRouter();
   const { entryId } = state;
   const { loading, error, search } = useSearch();
   const { onUnreadChanged, onBookmarkChanged } = useEvents();
+  const [, abortControllerRef] = useAbortController();
+  const { feeds } = useFeeds(abortControllerRef);
   const [results, setResults] = useState<(Embedded & Item)[]>([]);
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("entries");
 
-  const visibleResults = useMemo(() => {
-    if (typeFilter === "entries") return results.filter(isEntry);
+  const visibleResults = useMemo((): Item[] => {
     if (typeFilter === "topics") return results.filter(isTopic);
     if (typeFilter === "annotations") return results.filter(isAnnotation);
-    return results;
-  }, [results, typeFilter]);
+    if (typeFilter === "feeds") {
+      // Feeds are not in the embeddings index; match them locally by title/URL.
+      const query = searchQuery.trim().toLowerCase();
+      if (!query) return [];
+      return feeds.filter(
+        (feed) =>
+          feed.title.toLowerCase().includes(query) ||
+          feed.url.toLowerCase().includes(query)
+      );
+    }
+    return results.filter(isEntry);
+  }, [results, typeFilter, feeds, searchQuery]);
 
   useEffect(() => {
     (async () => {
@@ -80,7 +95,11 @@ export function SearchResultList({
 
   return (
     <div className={cx(className, css.ItemList)}>
-      <SearchInput className={css.SearchInput} onClear={clearSearch} />
+      <SearchInput
+        className={css.SearchInput}
+        onClear={clearSearch}
+        onSaveAsTopic={onSaveAsTopic}
+      />
 
       {searchQuery && (
         <div className={css.Header}>
@@ -96,9 +115,6 @@ export function SearchResultList({
               if (v) setTypeFilter(v);
             }}
           >
-            <ToggleButton size="small" value="all" aria-label="All">
-              All
-            </ToggleButton>
             <ToggleButton size="small" value="entries" aria-label="Entries">
               Entries
             </ToggleButton>
@@ -111,6 +127,9 @@ export function SearchResultList({
               aria-label="Annotations"
             >
               Annotations
+            </ToggleButton>
+            <ToggleButton size="small" value="feeds" aria-label="Feeds">
+              Feeds
             </ToggleButton>
           </ToggleButtonGroup>
         </div>
@@ -141,9 +160,7 @@ export function SearchResultList({
       {searchQuery && !error && !loading && visibleResults.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography variant="body2" color="text.disabled">
-            {typeFilter === "all"
-              ? `No results for "${searchQuery}"`
-              : `No ${typeFilter} for "${searchQuery}"`}
+            {`No ${typeFilter} for "${searchQuery}"`}
           </Typography>
         </div>
       )}

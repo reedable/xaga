@@ -8,7 +8,7 @@ export function isAbortError(value?: unknown): value is AbortError {
 
 // ── Presentation ─────────────────────────────────────────────────────────────
 
-const FILTERS: string[] = [
+const FILTERS = [
   "recommended",
   "all",
   "unread",
@@ -20,7 +20,11 @@ const FILTERS: string[] = [
 export type Filter = (typeof FILTERS)[number];
 
 export function isFilter(value?: unknown): value is Filter {
-  return !!value && typeof value === "string" && FILTERS.includes(value);
+  return (
+    !!value &&
+    typeof value === "string" &&
+    (FILTERS as readonly string[]).includes(value)
+  );
 }
 
 const TOPIC_SORTS: string[] = ["relevance", "timestamp"] as const;
@@ -246,4 +250,5 @@ export type NavigationState = {
   annotationId?: Annotation["id"];
   url?: Entry["url"];
   mimeType?: string;
+  filter?: Filter;
 };

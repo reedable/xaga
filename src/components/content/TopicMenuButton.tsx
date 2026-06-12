@@ -69,12 +69,26 @@ export const TopicMenuButton = forwardRef<
   );
   const [relevanceLoading, setRelevanceLoading] = useState(false);
 
+  const itemId = item?.id;
+
+  // Reset on item change so the badge stays cleared until the new item's
+  // memberships load; keyed on the id so entry object identity churn from
+  // bookmark/unread events doesn't wipe and refetch the same memberships.
+  const [lastItemId, setLastItemId] = useState(itemId);
+  if (lastItemId !== itemId) {
+    setLastItemId(itemId);
+    setMemberIds(new Set());
+  }
+
   useEffect(() => {
-    if (!item) return;
-    listEntryTopics(item.id).then((ids) => {
+    if (!itemId) return;
+    const controller = new AbortController();
+    listEntryTopics(itemId).then((ids) => {
+      if (controller.signal.aborted) return;
       setMemberIds(new Set(ids ?? []));
     });
-  }, [item, listEntryTopics]);
+    return () => controller.abort();
+  }, [itemId, listEntryTopics]);
 
   useEffect(() => {
     if (!item) return;
