@@ -1,5 +1,7 @@
 ## Small (hours)
 
+- [ ] Pins aren't cleaned up when their target is removed — manually removed feeds (and likely topics) leave stale ids in `settings.json` `pinned_feed_ids`/`pinned_topic_ids` (surfaced by `migrate-pins`: 4 stale feed pins pointing at non-existent `.atom` files). Investigate dropping the pin when a feed/topic/etc. is deleted. Out-of-scope for the LanceDB read-source work — investigation only.
+
 - [ ] [ItemList.tsx](src/components/list/ItemList.tsx): Item list does not reload after adding or removing a manual item via TopicMenuButton
 - [ ] [ItemList.tsx](src/components/list/ItemList.tsx): `onAnnotationChanged` does not add new annotations to the list
 - [ ] [Shortcuts.ts](src/Shortcuts.ts): `ALL_ITEMS` has hardcoded `entryCount: 0` / `unreadCount: 0` placeholders to satisfy the `Collection` type — replace with real counts or restructure the type

@@ -11,7 +11,7 @@ use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType, Field, Schema};
 use futures::TryStreamExt;
 use lancedb::DistanceType;
-use lancedb::query::{ExecutableQuery, QueryBase};
+use lancedb::query::{ExecutableQuery, QueryBase, Select};
 
 use super::EmbeddingsError;
 use crate::types::{AnnotationSummary, EmbeddedEntry, Entry};
@@ -253,6 +253,7 @@ struct BatchSummaryColumns<'a> {
     updated_ats: Option<&'a StringArray>,
     references: Option<&'a StringArray>,
     colors: Option<&'a StringArray>,
+    summaries: Option<&'a StringArray>,
     tags: Option<&'a ListArray>,
 }
 
@@ -287,6 +288,9 @@ impl<'a> BatchSummaryColumns<'a> {
             colors: batch
                 .column_by_name("color")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>()),
+            summaries: batch
+                .column_by_name("summary")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>()),
             tags: batch
                 .column_by_name("tags")
                 .and_then(|c| c.as_any().downcast_ref::<ListArray>()),
@@ -317,7 +321,7 @@ impl<'a> BatchSummaryColumns<'a> {
             created_at: self.created_ats.value(i).to_string(),
             published_at: opt_str(self.published_ats, i),
             updated_at: opt_str(self.updated_ats, i),
-            summary: None,
+            summary: opt_str(self.summaries, i),
             is_unread,
             is_bookmarked,
             tags,
@@ -331,6 +335,19 @@ impl<'a> BatchSummaryColumns<'a> {
     fn color_at(&self, i: usize) -> String {
         self.colors.map_or(String::new(), |a| a.value(i).to_string())
     }
+}
+
+/// Builds `Entry` values from query result batches (used by the list-read API).
+fn entries_from_batches(batches: &[RecordBatch]) -> Vec<Entry> {
+    let mut out = Vec::new();
+    for batch in batches {
+        if let Some(cols) = BatchSummaryColumns::from_batch(batch) {
+            for i in 0..batch.num_rows() {
+                out.push(cols.summary_at(i));
+            }
+        }
+    }
+    out
 }
 
 // ── EmbeddingsDb ──────────────────────────────────────────────────────────────
@@ -444,6 +461,66 @@ impl EmbeddingsDb {
             log::info!("EmbeddingsDb: created BTree index on `{col}`");
         }
         Ok(())
+    }
+
+    /// Columns needed to build an `Entry` — everything except the vector, so these
+    /// list reads never touch the large embedding column.
+    const SUMMARY_COLUMNS: [&'static str; 11] = [
+        "id", "kind", "source", "title", "created_at", "published_at", "updated_at",
+        "reference", "color", "summary", "tags",
+    ];
+
+    /// Fetches entry rows for the given ids (e.g. a feed's atom-supplied id set),
+    /// served by the scalar `id` index. Order is not guaranteed; callers sort.
+    pub async fn entries_by_ids(&self, ids: &[String]) -> Result<Vec<Entry>, EmbeddingsError> {
+        if ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let in_list: Vec<String> = ids
+            .iter()
+            .map(|id| format!("'{}'", id.replace('\'', "''")))
+            .collect();
+        let batches: Vec<RecordBatch> = self
+            .table
+            .query()
+            .select(Select::columns(&Self::SUMMARY_COLUMNS))
+            .only_if(format!("id IN ({})", in_list.join(", ")))
+            .execute()
+            .await?
+            .try_collect()
+            .await
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+        Ok(entries_from_batches(&batches))
+    }
+
+    /// All entry rows (`kind = 'entry'`).
+    pub async fn all_entries(&self) -> Result<Vec<Entry>, EmbeddingsError> {
+        let batches: Vec<RecordBatch> = self
+            .table
+            .query()
+            .select(Select::columns(&Self::SUMMARY_COLUMNS))
+            .only_if(RowKind::Entry.predicate())
+            .execute()
+            .await?
+            .try_collect()
+            .await
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+        Ok(entries_from_batches(&batches))
+    }
+
+    /// Entry rows that are bookmarked.
+    pub async fn bookmarked_entries(&self) -> Result<Vec<Entry>, EmbeddingsError> {
+        let batches: Vec<RecordBatch> = self
+            .table
+            .query()
+            .select(Select::columns(&Self::SUMMARY_COLUMNS))
+            .only_if(format!("{} AND is_bookmarked = true", RowKind::Entry.predicate()))
+            .execute()
+            .await?
+            .try_collect()
+            .await
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+        Ok(entries_from_batches(&batches))
     }
 
     /// Inserts an embedding row, replacing any existing row with the same id.
@@ -1452,5 +1529,55 @@ mod tests {
             .await
             .unwrap();
         assert!(related.iter().any(|e| e.entry.id == "a"));
+    }
+
+    /// The list-read API returns only the right rows: all_entries excludes feed and
+    /// annotation rows, bookmarked_entries filters on state, entries_by_ids fetches a
+    /// set, and projected reads still carry summary + state.
+    #[tokio::test]
+    async fn read_api_filters_by_kind_and_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        let mut e1 = sample("e1", "entry", Some(vec![0.1f32; EMBEDDING_DIM as usize]));
+        e1.is_bookmarked = true;
+        e1.tags = vec!["bookmark".to_string()];
+        e1.summary = "s1".to_string();
+        let e2 = sample("e2", "entry", Some(vec![0.2f32; EMBEDDING_DIM as usize]));
+        let feed = sample("feed1", "feed", Some(vec![0.3f32; EMBEDDING_DIM as usize]));
+        let mut ann = sample("ann1", "annotation", Some(vec![0.4f32; EMBEDDING_DIM as usize]));
+        ann.reference = "e1".to_string();
+
+        db.upsert(e1).await.unwrap();
+        db.upsert(e2).await.unwrap();
+        db.upsert(feed).await.unwrap();
+        db.upsert(ann).await.unwrap();
+
+        let mut all: Vec<String> =
+            db.all_entries().await.unwrap().into_iter().map(|e| e.id).collect();
+        all.sort();
+        assert_eq!(all, vec!["e1".to_string(), "e2".to_string()]);
+
+        let bm: Vec<String> = db
+            .bookmarked_entries()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        assert_eq!(bm, vec!["e1".to_string()]);
+
+        let by_id: Vec<String> = db
+            .entries_by_ids(&["e2".to_string()])
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        assert_eq!(by_id, vec!["e2".to_string()]);
+
+        let e1_read = db.entries_by_ids(&["e1".to_string()]).await.unwrap();
+        assert_eq!(e1_read[0].summary.as_deref(), Some("s1"));
+        assert!(e1_read[0].is_bookmarked);
     }
 }
