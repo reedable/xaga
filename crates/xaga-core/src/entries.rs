@@ -254,3 +254,45 @@ pub async fn list_entries(data_dir: &Path) -> Result<Vec<Entry>, EntryError> {
     entries.sort_by(|a, b| a.url.cmp(&b.url));
     Ok(entries)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Annotation;
+
+    /// The SoT migration writes `topics` into entry and annotation frontmatter via
+    /// `render_entry`. This guards that both round-trip through parse without loss.
+    #[test]
+    fn render_entry_round_trips_entry_and_annotation_topics() {
+        let ann = Annotation {
+            id: "ann1".into(),
+            reference: String::new(),
+            text: vec!["highlighted".into()],
+            occurrence: vec![0],
+            color: "yellow".into(),
+            note: None,
+            created_at: "2026-01-01T00:00:00Z".into(),
+            topics: vec!["topic-a".into()],
+        };
+        let rendered = render_entry(
+            "https://example.com/x",
+            "Title",
+            "2026-01-01T00:00:00Z",
+            None,
+            None,
+            None,
+            std::slice::from_ref(&ann),
+            &["unread".to_string()],
+            &["topic-1".to_string(), "topic-2".to_string()],
+            None,
+            "body text",
+        );
+
+        let (fm, body) = crate::util::parse_document(&rendered).expect("parse");
+        assert_eq!(body, "body text");
+        assert_eq!(fm.topics, vec!["topic-1".to_string(), "topic-2".to_string()]);
+        assert_eq!(fm.tags, vec!["unread".to_string()]);
+        assert_eq!(fm.annotations.len(), 1);
+        assert_eq!(fm.annotations[0].topics, vec!["topic-a".to_string()]);
+    }
+}

@@ -364,6 +364,7 @@ pub async fn add_annotation(
         color,
         note,
         created_at: String::new(),
+        topics: vec![],
     };
     articles::add_annotation(&data_dir, &article_id, annotation)
         .await

@@ -161,7 +161,7 @@ async fn embed_annotations(
             color: annotation.color.clone(),
             summary: String::new(),
             tags: vec![],
-            topics: vec![],
+            topics: annotation.topics.clone(),
             is_unread: false,
             is_bookmarked: false,
             is_pinned: false,
