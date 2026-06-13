@@ -49,12 +49,17 @@ pub async fn remove_bookmark(
 
 #[tauri::command]
 pub async fn list_bookmarks(state: State<'_, AppState>) -> Result<Vec<Entry>, String> {
-    let data_dir = state.library.read().unwrap().clone();
-    let mut entries = entries::list_entries(&data_dir)
-        .await
-        .map_err(|e| e.to_string())?;
-    entries.retain(|e| e.is_bookmarked);
-    Ok(entries)
+    // Phase C: read bookmarks from LanceDB instead of scanning entries/ .md files.
+    // The read handle is version-pinned, so reload() before querying to see the
+    // service's latest writes. Match the previous list_entries url ordering.
+    let db = state.embeddings_read.lock().unwrap().clone();
+    let Some(db) = db else {
+        return Err("embeddings read handle unavailable".to_string());
+    };
+    db.reload().await.map_err(|e| e.to_string())?;
+    let mut bookmarked = db.bookmarked_entries().await.map_err(|e| e.to_string())?;
+    bookmarked.sort_by(|a, b| a.url.cmp(&b.url));
+    Ok(bookmarked)
 }
 
 #[tauri::command]

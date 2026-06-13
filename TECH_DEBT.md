@@ -62,6 +62,15 @@ locations — severity and ordering are not assigned here.
   [cmd/migrate_sot.rs](crates/xaga-cli/src/cmd/migrate_sot.rs),
   [cmd/migrate_pins.rs](crates/xaga-cli/src/cmd/migrate_pins.rs).
 
+## Phase C cutover — decided tradeoffs to revisit
+
+- [ ] **Read handle reloads before every read.** Each repointed command calls
+  `EmbeddingsDb::reload()` (`checkout_latest`) before querying, so reads are always current
+  (handles are version-pinned). Chosen for simplicity/correctness over a per-read cost;
+  `reload` re-reads the latest manifest (version + fragment list) on every read, even when
+  nothing changed. Revisit (e.g. reload-on-`embedding:changed`) if read latency becomes a
+  problem at the design scale. ([commands](src-tauri/src/commands/), `db.rs` `reload`.)
+
 ## Phase C cutover — assumptions to resolve when building it
 
 Forward-looking; the read-side cutover isn't built yet. Excluded here because they're
