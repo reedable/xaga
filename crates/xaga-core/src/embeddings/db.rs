@@ -27,12 +27,28 @@ pub enum RowKind {
 }
 
 impl RowKind {
-    fn predicate(&self) -> &'static str {
+    /// Canonical discriminator string stored in the `kind` column. These match the
+    /// `CollectionItem` serde tags ("entry"/"annotation"), so the two never need
+    /// translation between each other or the DB.
+    pub fn as_str(&self) -> &'static str {
         match self {
-            RowKind::Entry => "kind = 'entry'",
-            RowKind::Annotation => "kind = 'annotation'",
-            RowKind::Topic => "kind = 'topic'",
-            RowKind::Feed => "kind = 'feed'",
+            RowKind::Entry => "entry",
+            RowKind::Annotation => "annotation",
+            RowKind::Topic => "topic",
+            RowKind::Feed => "feed",
+        }
+    }
+
+    fn predicate(&self) -> String {
+        format!("kind = '{}'", self.as_str())
+    }
+}
+
+impl From<&crate::types::CollectionItem> for RowKind {
+    fn from(item: &crate::types::CollectionItem) -> Self {
+        match item {
+            crate::types::CollectionItem::Entry { .. } => RowKind::Entry,
+            crate::types::CollectionItem::Annotation { .. } => RowKind::Annotation,
         }
     }
 }
@@ -400,7 +416,7 @@ impl EmbeddingsDb {
     pub async fn all_checksums(
         &self,
     ) -> Result<std::collections::HashSet<String>, EmbeddingsError> {
-        Ok(self.all_entries_meta().await?.into_values().map(|(checksum, _, _)| checksum).collect())
+        Ok(self.all_entries_meta().await?.into_values().map(|(checksum, _, _, _)| checksum).collect())
     }
 
     /// Creates scalar BTree indexes on `id` (id-set retrieval for per-feed listing)
@@ -475,13 +491,14 @@ impl EmbeddingsDb {
         Ok(n)
     }
 
-    /// Returns a map of `id → (checksum, reference, has_vector)` for every row.
+    /// Returns a map of `id → (checksum, reference, has_vector, kind)` for every row.
     /// `reference` is non-empty only for annotation rows (it holds the parent article ID).
     /// `has_vector` is false for rows inserted before their embedding was computed.
+    /// `kind` is the row-kind discriminator ("entry" | "annotation" | "topic" | "feed").
     /// Used by recovery to determine which files need (re-)embedding.
     pub async fn all_entries_meta(
         &self,
-    ) -> Result<HashMap<String, (String, String, bool)>, EmbeddingsError> {
+    ) -> Result<HashMap<String, (String, String, bool, String)>, EmbeddingsError> {
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -506,14 +523,18 @@ impl EmbeddingsDb {
             let vectors = batch
                 .column_by_name("vector")
                 .and_then(|c| c.as_any().downcast_ref::<FixedSizeListArray>());
+            let kinds = batch
+                .column_by_name("kind")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
             if let (Some(ids), Some(checksums)) = (ids, checksums) {
                 for i in 0..batch.num_rows() {
                     let reference = references.map_or(String::new(), |a| a.value(i).to_string());
                     let has_vector = vectors.map_or(false, |v| !v.is_null(i));
+                    let kind = kinds.map_or(String::new(), |a| a.value(i).to_string());
                     map.insert(
                         ids.value(i).to_string(),
-                        (checksums.value(i).to_string(), reference, has_vector),
+                        (checksums.value(i).to_string(), reference, has_vector, kind),
                     );
                 }
             }
@@ -749,7 +770,7 @@ impl EmbeddingsDb {
         let batches: Vec<RecordBatch> = self
             .table
             .query()
-            .only_if("kind = 'annotation'")
+            .only_if(RowKind::Annotation.predicate())
             .execute()
             .await?
             .try_collect()

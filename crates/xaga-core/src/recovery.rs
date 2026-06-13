@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::embeddings::{Embedder, EmbeddingsDb, EmbeddingsError, embed_file};
+use crate::embeddings::{Embedder, EmbeddingsDb, EmbeddingsError, RowKind, embed_file};
 use crate::types::{Entry, SavedItem};
 use flume;
 use crate::util::parse_document;
@@ -92,7 +92,7 @@ pub async fn build_recovery_plan(
                 // still pending (the row was inserted before the embedding was computed).
                 match db_meta.get(id.as_str()) {
                     None => true,
-                    Some((stored_checksum, _, has_vector)) => {
+                    Some((stored_checksum, _, has_vector, _)) => {
                         stored_checksum != checksum || !has_vector
                     }
                 }
@@ -120,7 +120,12 @@ pub async fn build_recovery_plan(
     // rows, check the row's own ID.
     let to_delete: Vec<String> = db_meta
         .into_iter()
-        .filter(|(id, (_, reference, _))| {
+        .filter(|(id, (_, reference, _, kind))| {
+            // Feed rows are managed by embed_feeds, not the entry/topic plan — never
+            // delete them here (their ids are not in the entries/topics filesystem scan).
+            if kind == RowKind::Feed.as_str() {
+                return false;
+            }
             let file_id = if reference.is_empty() {
                 id.as_str()
             } else {

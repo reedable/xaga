@@ -91,9 +91,14 @@ impl Frontmatter {
     ) -> crate::embeddings::db::EmbeddingEntry {
         crate::embeddings::db::EmbeddingEntry {
             id,
-            // Topics carry no `source`; entries always do. Matches the discriminator
-            // the DB previously derived (`source = ''` ⇒ topic).
-            kind: if self.source.is_empty() { "topic" } else { "entry" }.to_string(),
+            // Topics carry no `source`; entries always do.
+            kind: if self.source.is_empty() {
+                crate::embeddings::db::RowKind::Topic
+            } else {
+                crate::embeddings::db::RowKind::Entry
+            }
+            .as_str()
+            .to_string(),
             source: self.source.clone(),
             title: self.title.clone(),
             created_at: self.created_at.clone(),

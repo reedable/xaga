@@ -11,8 +11,9 @@ pub use crate::types::Feed;
 
 pub use feed_entry::list_entries;
 pub use feed::{
-    add_feed, feed_id_from_url, list_feeds, refresh_all_feeds, refresh_feed, remove_feed,
-    rename_feed, repair_feeds, FeedId, RepairOutcome, RepairResult,
+    add_feed, feed_embedding_meta, feed_id_from_url, list_feeds, refresh_all_feeds, refresh_feed,
+    remove_feed, rename_feed, repair_feeds, FeedId, FeedMeta, RepairOutcome, RepairResult,
+    TAG_CATEGORY_SCHEME,
 };
 
 // ── Shared error + result ────────────────────────────────────────────────────

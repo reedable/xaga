@@ -6,7 +6,7 @@ use sha2::Digest;
 
 use crate::types::{Annotation, Entry, SavedItem};
 use crate::util::Frontmatter;
-use super::db::EmbeddingEntry;
+use super::db::{EmbeddingEntry, RowKind};
 use super::model::Embedder;
 use super::{EmbeddingsDb, EmbeddingsError};
 
@@ -150,7 +150,7 @@ async fn embed_annotations(
 
         db.upsert(EmbeddingEntry {
             id: annotation.id.clone(),
-            kind: "annotation".to_string(),
+            kind: RowKind::Annotation.as_str().to_string(),
             source: fm.source.clone(),
             title: title.clone(),
             created_at: annotation.created_at.clone(),
@@ -285,5 +285,72 @@ pub async fn embed_file(
 ) -> Result<(), EmbeddingsError> {
     sync_row(path, db, unread_tx, bookmarked_tx).await?;
     embed_vector(path, embedder, db, annotation_tx).await?;
+    Ok(())
+}
+
+/// SHA-256 of a feed's embeddable content (its title).
+fn feed_checksum(title: &str) -> String {
+    let mut h = sha2::Sha256::new();
+    h.update(title.as_bytes());
+    hex::encode(h.finalize())
+}
+
+/// Embeds feed rows (`kind = 'feed'`) from the `.atom` files so feeds are searchable and
+/// carry their pinned state. Feeds are few (sidebar-scale), so this runs in one pass.
+/// Re-embeds a feed only when its title or pinned state changed, or its vector is missing.
+pub async fn embed_feeds(
+    feeds_dir: &Path,
+    embedder: &Arc<Embedder>,
+    db: &EmbeddingsDb,
+) -> Result<(), EmbeddingsError> {
+    let metas = crate::feeds::feed_embedding_meta(feeds_dir).await;
+    let current: HashSet<String> = metas.iter().map(|m| m.id.clone()).collect();
+
+    for meta in metas {
+        let checksum = feed_checksum(&meta.title);
+        let existing = db.get_entry(&meta.id).await?;
+        let up_to_date = matches!(
+            &existing,
+            Some(e) if e.vector.is_some() && e.checksum == checksum && e.is_pinned == meta.is_pinned
+        );
+        if up_to_date {
+            continue;
+        }
+
+        log::debug!("embed_feeds: embedding feed id={} title={:?}", meta.id, meta.title);
+        let vector = compute_vector(embedder, meta.title.clone(), String::new()).await?;
+        db.upsert(EmbeddingEntry {
+            id: meta.id,
+            kind: RowKind::Feed.as_str().to_string(),
+            source: meta.url,
+            title: meta.title,
+            created_at: String::new(),
+            published_at: String::new(),
+            updated_at: String::new(),
+            checksum,
+            reference: String::new(),
+            color: String::new(),
+            summary: String::new(),
+            tags: vec![],
+            topics: vec![],
+            is_unread: false,
+            is_bookmarked: false,
+            is_pinned: meta.is_pinned,
+            vector: Some(vector),
+        })
+        .await?;
+    }
+
+    // Delete feed rows whose `.atom` no longer exists.
+    let stale: Vec<String> = db
+        .all_entries_meta()
+        .await?
+        .into_iter()
+        .filter(|(id, (_, _, _, kind))| kind == "feed" && !current.contains(id))
+        .map(|(id, _)| id)
+        .collect();
+    if !stale.is_empty() {
+        db.delete_by_ids(&stale).await?;
+    }
     Ok(())
 }

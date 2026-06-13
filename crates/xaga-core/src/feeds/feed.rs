@@ -214,6 +214,47 @@ pub async fn list_feeds(feeds_dir: &Path, unread: &HashSet<String>, bookmarked: 
     Ok(feeds)
 }
 
+/// Atom `<category>` scheme that namespaces xaga's own app-local categories (e.g. the
+/// `pinned` flag) so they never collide with publisher-supplied categories.
+pub const TAG_CATEGORY_SCHEME: &str = "https://xaga.app/ns/tag";
+
+/// Per-feed metadata for embedding feeds into LanceDB as `kind = 'feed'` rows.
+pub struct FeedMeta {
+    pub id: String,
+    pub url: String,
+    pub title: String,
+    pub is_pinned: bool,
+}
+
+/// Reads every feed's `.atom` and returns the metadata needed to embed feed rows.
+/// `is_pinned` reflects a feed-level `<category term="pinned">` under [`TAG_CATEGORY_SCHEME`].
+pub async fn feed_embedding_meta(feeds_dir: &Path) -> Vec<FeedMeta> {
+    let Ok(ids) = list_feed_ids(feeds_dir).await else {
+        return vec![];
+    };
+    let mut metas = Vec::with_capacity(ids.len());
+    for id in ids {
+        let path = xml_path(feeds_dir, &id);
+        let Ok(xml) = tokio::fs::read_to_string(&path).await else {
+            continue;
+        };
+        let Ok(feed) = parse_atom(&xml) else {
+            continue;
+        };
+        let is_pinned = feed
+            .categories()
+            .iter()
+            .any(|c| c.term() == "pinned" && c.scheme() == Some(TAG_CATEGORY_SCHEME));
+        metas.push(FeedMeta {
+            id: id.to_string(),
+            url: self_link_url(&feed).unwrap_or_default(),
+            title: feed.title().value.clone(),
+            is_pinned,
+        });
+    }
+    metas
+}
+
 /// Scan `feeds_dir` and repair inconsistencies:
 ///
 /// * Missing `<link rel="self">` — synthesised from `<id>` when `<id>` is an HTTP(S) URL.

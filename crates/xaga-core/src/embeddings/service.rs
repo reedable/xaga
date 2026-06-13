@@ -13,7 +13,7 @@ pub enum ShutdownReason {
 
 use super::lock::LockFile;
 use super::model::{Embedder, load_default_embedder};
-use super::pipeline::{embed_vector, sync_row};
+use super::pipeline::{embed_feeds, embed_vector, sync_row};
 use super::{EmbeddingsDb, EmbeddingsError};
 
 /// Application-level control messages (low volume, high significance).
@@ -308,7 +308,7 @@ async fn run_loop(
             result = service_rx.recv_async() => match result {
                 Ok(ServiceMsg::StartRecovery { data_dir: dir }) => {
                     log::info!("embedding service: starting recovery for {}", dir.display());
-                    dispatch_recovery(&dir, &db, &priority_tx, &background_tx).await;
+                    dispatch_recovery(&dir, &db, &embedder, &priority_tx, &background_tx).await;
                     log::info!("embedding service: recovery dispatch complete");
                 }
                 Ok(ServiceMsg::RecoverCache { cache, data_dir: dir }) => {
@@ -476,6 +476,7 @@ async fn run_loop(
 async fn dispatch_recovery(
     data_dir: &Path,
     db: &EmbeddingsDb,
+    embedder: &Arc<Embedder>,
     priority_tx: &flume::Sender<PriorityMsg>,
     background_tx: &flume::Sender<BackgroundMsg>,
 ) {
@@ -493,6 +494,12 @@ async fn dispatch_recovery(
     // synchronously to ensure this ordering; however, this comes with one drawback, which is that
     // the run_loop thread is block while we reconcile the atom feed entries.
     crate::recovery::reconcile_feed_entries(data_dir).await;
+
+    // Embed feed rows (kind = 'feed') from the .atom files. Feeds are few, so this runs
+    // synchronously here alongside reconcile.
+    if let Err(e) = embed_feeds(&data_dir.join("feeds"), embedder, db).await {
+        log::error!("embedding service: embed_feeds failed: {e}");
+    }
 
     match crate::recovery::build_recovery_plan(data_dir, db).await {
         Ok(plan) => {
