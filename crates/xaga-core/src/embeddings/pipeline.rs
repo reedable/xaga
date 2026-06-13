@@ -184,15 +184,97 @@ async fn embed_annotations(
     Ok(())
 }
 
-/// Reads a `.md` file and brings LanceDB in sync with its current content:
-///
-/// 1. Re-embeds the article if its checksum (title + body/summary) changed.
-/// 2. Updates tags without re-embedding if only tags changed.
-/// 3. Reconciles annotation rows if the file has annotations.
-/// 4. Sends `Entry` to `unread_tx`/`bookmarked_tx` when those states change.
-/// 5. Sends `SavedItem` to `annotation_tx` when annotation color or content changes.
-///
-/// Shared by both the Tauri embedding service and `xaga-cli embeddings recover`.
+/// Fast path: brings the row's metadata, tags, and denormalized state in sync with
+/// the `.md` file *without* running the embedder. The vector is preserved when the
+/// content is unchanged, or left `None` (pending) when the row is new or its content
+/// changed — `None` ⟺ still needs embedding. Annotations are reconciled separately by
+/// [`embed_vector`].
+pub async fn sync_row(
+    path: &Path,
+    db: &EmbeddingsDb,
+    unread_tx: &flume::Sender<Entry>,
+    bookmarked_tx: &flume::Sender<Entry>,
+) -> Result<(), EmbeddingsError> {
+    let raw = tokio::fs::read_to_string(path)
+        .await
+        .map_err(EmbeddingsError::Io)?;
+    let (fm, body) = crate::util::parse_document(&raw)
+        .ok_or_else(|| EmbeddingsError::Parse(path.display().to_string()))?;
+    let id = crate::util::item_id(path);
+
+    let existing = db.get_entry(&id).await?;
+    let checksum = fm.content_checksum(&body);
+    let content_unchanged =
+        existing.as_ref().map(|e| e.checksum.as_str()) == Some(checksum.as_str());
+
+    // Preserve the existing vector only when content is unchanged; otherwise leave it
+    // pending so the embed pass recomputes it.
+    let vector = if content_unchanged {
+        existing.as_ref().and_then(|e| e.vector.clone())
+    } else {
+        None
+    };
+
+    // Write only when something the row stores actually changed (state derives from tags).
+    let changed = match &existing {
+        None => true,
+        Some(e) => {
+            !content_unchanged
+                || e.tags != fm.tags
+                || e.topics != fm.topics
+                || e.summary != fm.summary.clone().unwrap_or_default()
+        }
+    };
+
+    if changed {
+        let old_tags = existing.as_ref().map(|e| e.tags.clone());
+        db.upsert(fm.to_embedding_entry(id.clone(), &body, vector)).await?;
+        emit_entry_changes(&id, &fm, old_tags.as_deref(), unread_tx, bookmarked_tx);
+    }
+
+    Ok(())
+}
+
+/// Slow path: computes and stores the embedding vector for `id` when it is missing or
+/// stale, then reconciles annotation rows. Runs the embedder.
+pub async fn embed_vector(
+    path: &Path,
+    embedder: &Arc<Embedder>,
+    db: &EmbeddingsDb,
+    annotation_tx: &flume::Sender<SavedItem>,
+) -> Result<(), EmbeddingsError> {
+    let raw = tokio::fs::read_to_string(path)
+        .await
+        .map_err(EmbeddingsError::Io)?;
+    let (fm, body) = crate::util::parse_document(&raw)
+        .ok_or_else(|| EmbeddingsError::Parse(path.display().to_string()))?;
+    let id = crate::util::item_id(path);
+
+    let existing = db.get_entry(&id).await?;
+    let checksum = fm.content_checksum(&body);
+    let needs_vector = match &existing {
+        None => true,
+        Some(e) => e.vector.is_none() || e.checksum != checksum,
+    };
+
+    if needs_vector {
+        log::debug!("embed_vector: embedding id={id} title={:?}", fm.title);
+        let vector =
+            compute_vector(embedder, fm.title.clone(), fm.embed_text(&body).to_string()).await?;
+        db.upsert(fm.to_embedding_entry(id.clone(), &body, Some(vector))).await?;
+    }
+
+    // Always reconcile annotation rows — even when fm.annotations is empty — so that
+    // removing the last annotation from an article deletes its stale LanceDB row.
+    // No-op when both the file and the DB have zero annotations for this article.
+    embed_annotations(&id, &fm, embedder, db, annotation_tx).await?;
+
+    Ok(())
+}
+
+/// Synchronous full sync: metadata/state (`sync_row`) then vector + annotations
+/// (`embed_vector`) in one pass. Used by `xaga-cli embeddings recover`, which wants a
+/// finished index rather than the service's deferred two-phase behaviour.
 pub async fn embed_file(
     path: &Path,
     embedder: &Arc<Embedder>,
@@ -201,58 +283,7 @@ pub async fn embed_file(
     bookmarked_tx: &flume::Sender<Entry>,
     annotation_tx: &flume::Sender<SavedItem>,
 ) -> Result<(), EmbeddingsError> {
-    let raw = tokio::fs::read_to_string(path)
-        .await
-        .map_err(EmbeddingsError::Io)?;
-
-    let (fm, body) = crate::util::parse_document(&raw)
-        .ok_or_else(|| EmbeddingsError::Parse(path.display().to_string()))?;
-
-    let id = crate::util::item_id(path);
-
-    // ── Article ──────────────────────────────────────────────────────────────
-
-    // Single DB read covers both checksum comparison and tag comparison.
-    let existing = db.get_entry(&id).await?;
-    let checksum = fm.content_checksum(&body);
-
-    log::debug!(
-        "embed_file: id={id} stored_checksum={:?} computed_checksum={checksum:?}",
-        existing.as_ref().map(|e| e.checksum.as_str())
-    );
-
-    if existing.as_ref().map(|e| e.checksum.as_str()) != Some(checksum.as_str()) {
-        if existing.is_some() {
-            log::debug!("embed_file: id={id} checksum changed — re-embedding");
-        } else {
-            log::debug!("embed_file: id={id} not in db — embedding");
-        }
-        log::debug!("embed_file: embedding id={id} title={:?}", fm.title);
-        let vector =
-            compute_vector(embedder, fm.title.clone(), fm.embed_text(&body).to_string()).await?;
-        db.upsert(fm.to_embedding_entry(id.clone(), &body, Some(vector))).await?;
-        emit_entry_changes(&id, &fm, existing.as_ref().map(|e| e.tags.as_slice()), unread_tx, bookmarked_tx);
-    } else {
-        log::debug!("embed_file: id={id} checksum unchanged — checking tags");
-        if let Some(existing_entry) = existing {
-            if existing_entry.tags != fm.tags {
-                log::debug!("embed_file: id={id} tags changed — upserting without re-embedding");
-                let old_tags = existing_entry.tags.clone();
-                // Rebuild from frontmatter so the denormalized state/topics columns
-                // track the new tags, while preserving the already-computed vector.
-                db.upsert(fm.to_embedding_entry(id.clone(), &body, existing_entry.vector)).await?;
-                emit_entry_changes(&id, &fm, Some(&old_tags), unread_tx, bookmarked_tx);
-            }
-        }
-    }
-
-    // ── Annotations ──────────────────────────────────────────────────────────
-
-    // Always reconcile annotation rows — even when fm.annotations is empty —
-    // so that removing the last annotation from an article deletes its stale
-    // LanceDB row.  The function is a no-op when both the file and the DB have
-    // zero annotations for this article.
-    embed_annotations(&id, &fm, embedder, db, annotation_tx).await?;
-
+    sync_row(path, db, unread_tx, bookmarked_tx).await?;
+    embed_vector(path, embedder, db, annotation_tx).await?;
     Ok(())
 }

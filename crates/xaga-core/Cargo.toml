@@ -32,3 +32,7 @@ lancedb             = "0.27"
 arrow-array         = "57"
 arrow-buffer        = "57"
 arrow-schema        = "57"
+
+[dev-dependencies]
+tokio               = { version = "1", features = ["rt-multi-thread", "macros"] }
+tempfile            = "3"

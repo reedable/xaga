@@ -13,7 +13,7 @@ pub enum ShutdownReason {
 
 use super::lock::LockFile;
 use super::model::{Embedder, load_default_embedder};
-use super::pipeline::embed_file;
+use super::pipeline::{embed_vector, sync_row};
 use super::{EmbeddingsDb, EmbeddingsError};
 
 /// Application-level control messages (low volume, high significance).
@@ -102,6 +102,8 @@ impl EmbeddingService {
         let (unread_changed_tx, unread_changed_rx) = flume::unbounded::<Entry>();
         let (bookmarked_changed_tx, bookmarked_changed_rx) = flume::unbounded::<Entry>();
         let (annotation_changed_tx, annotation_changed_rx) = flume::unbounded::<SavedItem>();
+        // Lowest-priority queue: ids whose embedding (ONNX) is deferred by sync_row.
+        let (embed_vector_tx, embed_vector_rx) = flume::unbounded::<String>();
 
         let loop_service_tx = service_tx.clone();
         let loop_priority_tx = priority_tx.clone();
@@ -129,6 +131,8 @@ impl EmbeddingService {
                         loop_service_tx,
                         background_rx,
                         loop_background_tx,
+                        embed_vector_tx,
+                        embed_vector_rx,
                         priority_drained_tx,
                         background_drained_tx,
                         unread_changed_tx,
@@ -273,6 +277,8 @@ async fn run_loop(
     service_tx: flume::Sender<ServiceMsg>,
     background_rx: flume::Receiver<BackgroundMsg>,
     background_tx: flume::Sender<BackgroundMsg>,
+    embed_vector_tx: flume::Sender<String>,
+    embed_vector_rx: flume::Receiver<String>,
     priority_drained_tx: flume::Sender<()>,
     background_drained_tx: flume::Sender<()>,
     unread_changed_tx: flume::Sender<Entry>,
@@ -332,15 +338,17 @@ async fn run_loop(
 
                 match result {
                     Ok(PriorityMsg::Embed(id)) => {
-                        log::debug!("priority_rx: embed id={id}");
+                        log::debug!("priority_rx: sync id={id}");
 
                         match find_item_path(&data_dir, &id).await {
                             Some(path) => {
                                 log::debug!("priority_rx: path={}", path.display());
 
-                                if let Err(e) = embed_file(&path, &embedder, &db, &unread_changed_tx, &bookmarked_changed_tx, &annotation_changed_tx).await {
-                                    log::error!("priority_rx: embed_file failed id={id}: {e}");
+                                if let Err(e) = sync_row(&path, &db, &unread_changed_tx, &bookmarked_changed_tx).await {
+                                    log::error!("priority_rx: sync_row failed id={id}: {e}");
                                 }
+                                // Defer the embedding (ONNX) to the lowest-priority queue.
+                                let _ = embed_vector_tx.send(id);
                             }
                             None => log::warn!("priority_rx: file not found id={id}"),
                         }
@@ -372,15 +380,17 @@ async fn run_loop(
 
                 match result {
                 Ok(BackgroundMsg::Embed(id)) => {
-                    log::debug!("background_rx: embed id={id}");
+                    log::debug!("background_rx: sync id={id}");
 
                     match find_item_path(&data_dir, &id).await {
                         Some(path) => {
                             log::debug!("background_rx: path={}", path.display());
 
-                            if let Err(e) = embed_file(&path, &embedder, &db, &unread_changed_tx, &bookmarked_changed_tx, &annotation_changed_tx).await {
-                                log::error!("background_rx: embed_file failed id={id}: {e}");
+                            if let Err(e) = sync_row(&path, &db, &unread_changed_tx, &bookmarked_changed_tx).await {
+                                log::error!("background_rx: sync_row failed id={id}: {e}");
                             }
+                            // Defer the embedding (ONNX) to the lowest-priority queue.
+                            let _ = embed_vector_tx.send(id);
                         }
                         None => log::warn!("background_rx: file not found id={id}"),
                     }
@@ -418,6 +428,35 @@ async fn run_loop(
 
                 if background_rx.is_empty() {
                     let _ = background_drained_tx.send(());
+                }
+            },
+
+            // Lowest priority: embeddings deferred by sync_row. Because the select is
+            // `biased`, this drains only when priority and background are empty, so all
+            // row + state writes across the backlog land before any ONNX work.
+            result = embed_vector_rx.recv_async() => {
+                match result {
+                    Ok(id) => {
+                        log::debug!("embed_vector_rx: embed id={id}");
+                        match find_item_path(&data_dir, &id).await {
+                            Some(path) => {
+                                if let Err(e) = embed_vector(&path, &embedder, &db, &annotation_changed_tx).await {
+                                    log::error!("embed_vector_rx: embed_vector failed id={id}: {e}");
+                                }
+                            }
+                            None => log::warn!("embed_vector_rx: file not found id={id}"),
+                        }
+
+                        background_since_compact += 1;
+                        if background_since_compact >= BACKGROUND_COMPACT_INTERVAL {
+                            background_since_compact = 0;
+                            log::info!("embed_vector_rx: {BACKGROUND_COMPACT_INTERVAL}-item interval — compacting");
+                            if let Err(e) = db.compact().await {
+                                log::error!("embed_vector_rx: interval compact failed: {e}");
+                            }
+                        }
+                    }
+                    Err(_) => { log::warn!("embed_vector_rx: disconnected"); break; }
                 }
             },
         }

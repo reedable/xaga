@@ -150,6 +150,7 @@ fn reparse_legacy_template(raw: &str) -> Option<String> {
         summary.as_deref(),
         &[],
         &tags,
+        &[],
         favicon.as_deref(),
         body,
     ))
@@ -311,6 +312,7 @@ pub async fn handle(args: MigrateArgs, feeds_dir: &Path, data_dir: &Path) {
             winner.fm.summary.as_deref(),
             &annotations,
             &tags,
+            &winner.fm.topics,
             winner.fm.favicon.as_deref(),
             &winner.body,
         );

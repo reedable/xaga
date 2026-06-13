@@ -796,6 +796,10 @@ impl EmbeddingsDb {
                 if exclude_ids.contains(id_col.value(i)) {
                     continue;
                 }
+                // Skip rows whose embedding hasn't been computed yet (null vector).
+                if vec_col.is_null(i) {
+                    continue;
+                }
 
                 let Some(vec_values) = vec_col
                     .value(i)
@@ -889,6 +893,10 @@ impl EmbeddingsDb {
             };
 
             for i in 0..batch.num_rows() {
+                // Skip rows whose embedding hasn't been computed yet (null vector).
+                if vec_col.is_null(i) {
+                    continue;
+                }
                 let Some(vec_values) = vec_col
                     .value(i)
                     .as_any()
@@ -992,6 +1000,9 @@ impl EmbeddingsDb {
                 continue;
             };
             for i in 0..batch.num_rows() {
+                if list.is_null(i) {
+                    continue;
+                }
                 if let Some(values) = list
                     .value(i)
                     .as_any()
@@ -1048,6 +1059,9 @@ impl EmbeddingsDb {
 
             for i in 0..batch.num_rows() {
                 if exclude.contains(id_col.value(i)) {
+                    continue;
+                }
+                if vec_col.is_null(i) {
                     continue;
                 }
 
@@ -1126,6 +1140,10 @@ impl EmbeddingsDb {
                 use arrow_array::Array;
                 let col = b.column_by_name("vector")?;
                 let list = col.as_any().downcast_ref::<FixedSizeListArray>()?;
+                // A pending (null-vector) query row has no usable vector to search by.
+                if list.is_null(0) {
+                    return None;
+                }
                 let values = list
                     .value(0)
                     .as_any()
@@ -1166,8 +1184,8 @@ impl EmbeddingsDb {
             .distance_type(DistanceType::Cosine)
             .distance_range(None, upper_distance)
             .only_if(match &row_kind {
-                Some(k) => format!("id != '{escaped}' AND {}", k.predicate()),
-                None => format!("id != '{escaped}'"),
+                Some(k) => format!("id != '{escaped}' AND {} AND vector IS NOT NULL", k.predicate()),
+                None => format!("id != '{escaped}' AND vector IS NOT NULL"),
             })
             .limit(effective_limit)
             .execute()
@@ -1230,6 +1248,7 @@ impl EmbeddingsDb {
             .bypass_vector_index()
             .distance_type(DistanceType::Cosine)
             .distance_range(None, upper_distance)
+            .only_if("vector IS NOT NULL")
             .limit(effective_limit)
             .execute()
             .await?
@@ -1257,5 +1276,99 @@ impl EmbeddingsDb {
             }
         }
         Ok(results)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample(id: &str, kind: &str, vector: Option<Vec<f32>>) -> EmbeddingEntry {
+        EmbeddingEntry {
+            id: id.to_string(),
+            kind: kind.to_string(),
+            source: "https://example.com/a".to_string(),
+            title: "Title".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            published_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-01T00:00:00Z".to_string(),
+            checksum: "abc".to_string(),
+            reference: String::new(),
+            color: String::new(),
+            summary: "a summary".to_string(),
+            tags: vec!["unread".to_string()],
+            topics: vec!["topic-1".to_string(), "topic-2".to_string()],
+            is_unread: true,
+            is_bookmarked: false,
+            is_pinned: true,
+            vector,
+        }
+    }
+
+    /// The schema round-trips a row both with a vector and with a null vector,
+    /// preserving the new `kind`/state/`summary`/`topics` columns. This guards the
+    /// Arrow null-validity buffer and column ordering before the single DB reset.
+    #[tokio::test]
+    async fn schema_round_trips_with_and_without_vector() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        db.upsert(sample("with-vec", "entry", Some(vec![0.5f32; EMBEDDING_DIM as usize])))
+            .await
+            .unwrap();
+        db.upsert(sample("no-vec", "entry", None)).await.unwrap();
+
+        assert_eq!(db.count().await.unwrap(), 2);
+
+        let got = db.get_entry("with-vec").await.unwrap().expect("row present");
+        assert_eq!(got.kind, "entry");
+        assert_eq!(got.summary, "a summary");
+        assert_eq!(got.topics, vec!["topic-1".to_string(), "topic-2".to_string()]);
+        assert!(got.is_unread && got.is_pinned && !got.is_bookmarked);
+        let v = got.vector.expect("vector present");
+        assert_eq!(v.len(), EMBEDDING_DIM as usize);
+        assert_eq!(v[0], 0.5);
+
+        let pending = db.get_entry("no-vec").await.unwrap().expect("row present");
+        assert!(pending.vector.is_none(), "null-vector row must read back as None");
+        assert_eq!(pending.topics, vec!["topic-1".to_string(), "topic-2".to_string()]);
+        assert!(pending.is_pinned);
+    }
+
+    /// Null-vector rows must be excluded from both similarity paths: the `nearest_to`
+    /// ANN branch (via `vector IS NOT NULL`) and the full-scan branch (via `is_null`).
+    /// Also verifies lancedb 0.27 accepts `vector IS NOT NULL` on a FixedSizeList column.
+    #[tokio::test]
+    async fn null_vector_rows_excluded_from_similarity() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        db.upsert(sample("embedded", "entry", Some(vec![1.0f32; EMBEDDING_DIM as usize])))
+            .await
+            .unwrap();
+        db.upsert(sample("pending", "entry", None)).await.unwrap();
+
+        // ANN path: nearest_to + `vector IS NOT NULL`.
+        let ann = db
+            .find_by_vector(vec![1.0f32; EMBEDDING_DIM as usize], None, None, None)
+            .await
+            .unwrap();
+        let ann_ids: Vec<&str> = ann.iter().map(|e| e.entry.id.as_str()).collect();
+        assert!(ann_ids.contains(&"embedded"), "embedded row should match");
+        assert!(
+            !ann_ids.contains(&"pending"),
+            "null-vector row must be excluded from ANN search"
+        );
+
+        // Full-scan path: max_similarity set routes through full_scan_scored.
+        let scan = db
+            .find_by_vector(vec![1.0f32; EMBEDDING_DIM as usize], None, Some(-1.0), Some(1.0))
+            .await
+            .unwrap();
+        let scan_ids: Vec<&str> = scan.iter().map(|e| e.entry.id.as_str()).collect();
+        assert!(
+            !scan_ids.contains(&"pending"),
+            "null-vector row must be excluded from full scan"
+        );
     }
 }
