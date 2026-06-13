@@ -344,7 +344,7 @@ async fn run_loop(
                             Some(path) => {
                                 log::debug!("priority_rx: path={}", path.display());
 
-                                if let Err(e) = sync_row(&path, &db, &unread_changed_tx, &bookmarked_changed_tx).await {
+                                if let Err(e) = sync_row(&path, &db, &unread_changed_tx, &bookmarked_changed_tx, &annotation_changed_tx).await {
                                     log::error!("priority_rx: sync_row failed id={id}: {e}");
                                 }
                                 // Defer the embedding (ONNX) to the lowest-priority queue.
@@ -386,7 +386,7 @@ async fn run_loop(
                         Some(path) => {
                             log::debug!("background_rx: path={}", path.display());
 
-                            if let Err(e) = sync_row(&path, &db, &unread_changed_tx, &bookmarked_changed_tx).await {
+                            if let Err(e) = sync_row(&path, &db, &unread_changed_tx, &bookmarked_changed_tx, &annotation_changed_tx).await {
                                 log::error!("background_rx: sync_row failed id={id}: {e}");
                             }
                             // Defer the embedding (ONNX) to the lowest-priority queue.
@@ -445,7 +445,7 @@ async fn run_loop(
                         log::debug!("embed_vector_rx: embed id={id}");
                         match find_item_path(&data_dir, &id).await {
                             Some(path) => {
-                                if let Err(e) = embed_vector(&path, &embedder, &db, &annotation_changed_tx).await {
+                                if let Err(e) = embed_vector(&path, &embedder, &db).await {
                                     log::error!("embed_vector_rx: embed_vector failed id={id}: {e}");
                                 }
                             }

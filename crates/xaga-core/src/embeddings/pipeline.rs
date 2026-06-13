@@ -74,28 +74,72 @@ fn annotation_checksum(annotation: &Annotation) -> String {
     hex::encode(h.finalize())
 }
 
-/// Reconciles annotation rows in LanceDB against the annotations currently in `fm`.
+/// Builds the LanceDB row for an annotation. `vector` is `None` while the embedding is
+/// still pending (row inserted by [`sync_annotations`]); `Some` once [`embed_annotations`]
+/// has computed it.
 ///
-/// - Deletes rows for annotations removed from the file.
-/// - Upserts rows for annotations that are new or whose checksum changed.
-///
-/// Each annotation row uses the annotation's own UUID as its DB ID.
-/// The title is the highlighted text; the note (if present) is the embedding body.
-/// The `reference` column holds the parent article ID; `color` holds the highlight color.
-async fn embed_annotations(
+/// Each annotation row uses the annotation's own UUID as its DB ID. The title is the
+/// highlighted text; the note (if present) is the embedding body. The `reference` column
+/// holds the parent article ID; `color` holds the highlight color.
+fn annotation_embedding_entry(
     article_id: &str,
     fm: &Frontmatter,
-    embedder: &Arc<Embedder>,
+    annotation: &Annotation,
+    vector: Option<Vec<f32>>,
+) -> EmbeddingEntry {
+    EmbeddingEntry {
+        id: annotation.id.clone(),
+        kind: RowKind::Annotation.as_str().to_string(),
+        source: fm.source.clone(),
+        title: annotation.text.join(" "),
+        created_at: annotation.created_at.clone(),
+        published_at: fm.published_at.clone().unwrap_or_default(),
+        updated_at: fm.updated_at.clone().unwrap_or_default(),
+        checksum: annotation_checksum(annotation),
+        reference: article_id.to_string(),
+        color: annotation.color.clone(),
+        summary: String::new(),
+        tags: vec![],
+        topics: annotation.topics.clone(),
+        is_unread: false,
+        is_bookmarked: false,
+        is_pinned: false,
+        vector,
+    }
+}
+
+/// The live-update payload the UI consumes to add/refresh a saved annotation.
+fn annotation_saved_item(article_id: &str, fm: &Frontmatter, annotation: &Annotation) -> SavedItem {
+    SavedItem {
+        id: annotation.id.clone(),
+        title: annotation.text.join(" "),
+        created_at: annotation.created_at.clone(),
+        url: fm.source.clone(),
+        is_unread: false,
+        is_bookmarked: false,
+        reference: Some(article_id.to_string()),
+        color: Some(annotation.color.clone()),
+    }
+}
+
+/// Fast path: reconciles annotation *rows* against `fm` **without** running the embedder, so a
+/// newly added annotation is listable immediately (the vector is deferred to
+/// [`embed_annotations`]). Row insert is decoupled from embedding, mirroring entries' [`sync_row`].
+///
+/// - Deletes rows for annotations removed from the file.
+/// - Inserts new / content-changed annotations with a `None` (pending) vector.
+/// - Applies a color-only change in place, preserving the existing vector.
+///
+/// Emits the live `annotation_tx` event for inserted/updated rows.
+async fn sync_annotations(
+    article_id: &str,
+    fm: &Frontmatter,
     db: &EmbeddingsDb,
     annotation_tx: &flume::Sender<SavedItem>,
 ) -> Result<(), EmbeddingsError> {
     let existing = db.annotation_meta_for_article(article_id).await?;
 
-    let current_ids: HashSet<String> = fm
-        .annotations
-        .iter()
-        .map(|a| a.id.clone())
-        .collect();
+    let current_ids: HashSet<String> = fm.annotations.iter().map(|a| a.id.clone()).collect();
 
     let to_delete: Vec<String> = existing
         .keys()
@@ -104,7 +148,7 @@ async fn embed_annotations(
         .collect();
     if !to_delete.is_empty() {
         log::debug!(
-            "embed_file: removing {} stale annotation(s) for {article_id}",
+            "sync_annotations: removing {} stale annotation(s) for {article_id}",
             to_delete.len()
         );
         db.delete_by_ids(&to_delete).await?;
@@ -112,73 +156,61 @@ async fn embed_annotations(
 
     for annotation in &fm.annotations {
         let checksum = annotation_checksum(annotation);
-        let title = annotation.text.join(" ");
 
         match existing.get(&annotation.id) {
             Some((stored_checksum, stored_color))
                 if stored_checksum == &checksum && stored_color == &annotation.color =>
             {
-                log::debug!("embed_file: annotation {} unchanged — skipping", annotation.id);
+                // Unchanged — row and vector already current.
                 continue;
             }
-            Some((stored_checksum, stored_color)) if stored_checksum == &checksum => {
-                // Color-only change: re-upsert with existing vector, no ML inference.
-                log::debug!("embed_file: annotation {} color changed — upserting without re-embedding", annotation.id);
-                let _ = stored_color; // suppress warning
+            Some((stored_checksum, _)) if stored_checksum == &checksum => {
+                // Color-only change: update in place, preserving the existing vector — no embed.
                 if let Some(mut existing_entry) = db.get_entry(&annotation.id).await? {
                     existing_entry.color = annotation.color.clone();
                     db.upsert(existing_entry).await?;
-                    let _ = annotation_tx.send(SavedItem {
-                        id: annotation.id.clone(),
-                        title: title.clone(),
-                        created_at: annotation.created_at.clone(),
-                        url: fm.source.clone(),
-                        is_unread: false,
-                        is_bookmarked: false,
-                        reference: Some(article_id.to_string()),
-                        color: Some(annotation.color.clone()),
-                    });
+                    let _ = annotation_tx.send(annotation_saved_item(article_id, fm, annotation));
                 }
                 continue;
             }
             _ => {}
         }
 
-        log::debug!("embed_file: embedding annotation {}", annotation.id);
+        // New or content-changed: insert/refresh the row now with a pending (`None`) vector so it
+        // is immediately listable; embed_vector fills the vector later.
+        db.upsert(annotation_embedding_entry(article_id, fm, annotation, None))
+            .await?;
+        let _ = annotation_tx.send(annotation_saved_item(article_id, fm, annotation));
+    }
+
+    Ok(())
+}
+
+/// Slow path: computes and stores embedding vectors for this article's annotation rows whose
+/// vector is missing or stale. Also creates any annotation row that does not yet exist — the
+/// recovery path inserts entry rows via `bulk_insert` but not annotation rows. Runs the embedder.
+async fn embed_annotations(
+    article_id: &str,
+    fm: &Frontmatter,
+    embedder: &Arc<Embedder>,
+    db: &EmbeddingsDb,
+) -> Result<(), EmbeddingsError> {
+    for annotation in &fm.annotations {
+        let checksum = annotation_checksum(annotation);
+        let needs_vector = match db.get_entry(&annotation.id).await? {
+            None => true,
+            Some(e) => e.vector.is_none() || e.checksum != checksum,
+        };
+        if !needs_vector {
+            continue;
+        }
+
+        log::debug!("embed_annotations: embedding annotation {}", annotation.id);
+        let title = annotation.text.join(" ");
         let body = annotation.note.clone().unwrap_or_default();
-        let vector = compute_vector(embedder, title.clone(), body).await?;
-
-        db.upsert(EmbeddingEntry {
-            id: annotation.id.clone(),
-            kind: RowKind::Annotation.as_str().to_string(),
-            source: fm.source.clone(),
-            title: title.clone(),
-            created_at: annotation.created_at.clone(),
-            published_at: fm.published_at.clone().unwrap_or_default(),
-            updated_at: fm.updated_at.clone().unwrap_or_default(),
-            checksum,
-            reference: article_id.to_string(),
-            color: annotation.color.clone(),
-            summary: String::new(),
-            tags: vec![],
-            topics: annotation.topics.clone(),
-            is_unread: false,
-            is_bookmarked: false,
-            is_pinned: false,
-            vector: Some(vector),
-        })
-        .await?;
-
-        let _ = annotation_tx.send(SavedItem {
-            id: annotation.id.clone(),
-            title,
-            created_at: annotation.created_at.clone(),
-            url: fm.source.clone(),
-            is_unread: false,
-            is_bookmarked: false,
-            reference: Some(article_id.to_string()),
-            color: Some(annotation.color.clone()),
-        });
+        let vector = compute_vector(embedder, title, body).await?;
+        db.upsert(annotation_embedding_entry(article_id, fm, annotation, Some(vector)))
+            .await?;
     }
 
     Ok(())
@@ -187,13 +219,14 @@ async fn embed_annotations(
 /// Fast path: brings the row's metadata, tags, and denormalized state in sync with
 /// the `.md` file *without* running the embedder. The vector is preserved when the
 /// content is unchanged, or left `None` (pending) when the row is new or its content
-/// changed — `None` ⟺ still needs embedding. Annotations are reconciled separately by
-/// [`embed_vector`].
+/// changed — `None` ⟺ still needs embedding. Annotation rows are reconciled here too
+/// (also embedder-free) by [`sync_annotations`]; their vectors are filled by [`embed_vector`].
 pub async fn sync_row(
     path: &Path,
     db: &EmbeddingsDb,
     unread_tx: &flume::Sender<Entry>,
     bookmarked_tx: &flume::Sender<Entry>,
+    annotation_tx: &flume::Sender<SavedItem>,
 ) -> Result<(), EmbeddingsError> {
     let raw = tokio::fs::read_to_string(path)
         .await
@@ -232,16 +265,19 @@ pub async fn sync_row(
         emit_entry_changes(&id, &fm, old_tags.as_deref(), unread_tx, bookmarked_tx);
     }
 
+    // Always reconcile annotation rows (embedder-free) so a new/removed annotation is
+    // listable immediately, even when the entry body itself is unchanged.
+    sync_annotations(&id, &fm, db, annotation_tx).await?;
+
     Ok(())
 }
 
 /// Slow path: computes and stores the embedding vector for `id` when it is missing or
-/// stale, then reconciles annotation rows. Runs the embedder.
+/// stale, then fills any pending annotation vectors. Runs the embedder.
 pub async fn embed_vector(
     path: &Path,
     embedder: &Arc<Embedder>,
     db: &EmbeddingsDb,
-    annotation_tx: &flume::Sender<SavedItem>,
 ) -> Result<(), EmbeddingsError> {
     let raw = tokio::fs::read_to_string(path)
         .await
@@ -264,10 +300,9 @@ pub async fn embed_vector(
         db.upsert(fm.to_embedding_entry(id.clone(), &body, Some(vector))).await?;
     }
 
-    // Always reconcile annotation rows — even when fm.annotations is empty — so that
-    // removing the last annotation from an article deletes its stale LanceDB row.
-    // No-op when both the file and the DB have zero annotations for this article.
-    embed_annotations(&id, &fm, embedder, db, annotation_tx).await?;
+    // Fill any pending annotation vectors. Rows (incl. stale-row deletes) were already
+    // reconciled by sync_annotations; this also creates rows the recovery path skipped.
+    embed_annotations(&id, &fm, embedder, db).await?;
 
     Ok(())
 }
@@ -283,8 +318,8 @@ pub async fn embed_file(
     bookmarked_tx: &flume::Sender<Entry>,
     annotation_tx: &flume::Sender<SavedItem>,
 ) -> Result<(), EmbeddingsError> {
-    sync_row(path, db, unread_tx, bookmarked_tx).await?;
-    embed_vector(path, embedder, db, annotation_tx).await?;
+    sync_row(path, db, unread_tx, bookmarked_tx, annotation_tx).await?;
+    embed_vector(path, embedder, db).await?;
     Ok(())
 }
 

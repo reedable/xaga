@@ -1,15 +1,10 @@
-use std::path::Path;
-
 use thiserror::Error;
 
 use crate::embeddings::{EmbeddingsDb, EmbeddingsError};
-use crate::entries::EntryError;
 use crate::types::SavedItem;
 
 #[derive(Debug, Error)]
 pub enum SavedError {
-    #[error("Entry error: {0}")]
-    Entry(#[from] EntryError),
     #[error("Embeddings error: {0}")]
     Embeddings(#[from] EmbeddingsError),
 }
@@ -18,21 +13,17 @@ pub enum SavedError {
 /// `created_at` descending (newest first).
 ///
 /// Bookmarks have `reference` and `color` absent; annotations have both set.
-pub async fn list_saved(data_dir: &Path) -> Result<Vec<SavedItem>, SavedError> {
-    let (entries_result, annotations_result) = tokio::join!(
-        crate::entries::list_entries(data_dir),
-        async {
-            let db = EmbeddingsDb::open(data_dir).await?;
-            db.list_annotations().await
-        },
-    );
+/// Both halves are read from the shared LanceDB read handle; the caller is
+/// responsible for reloading it to the latest version before calling.
+pub async fn list_saved(db: &EmbeddingsDb) -> Result<Vec<SavedItem>, SavedError> {
+    let (bookmarks_result, annotations_result) =
+        tokio::join!(db.bookmarked_entries(), db.list_annotations());
 
-    let bookmarks = entries_result?
-        .into_iter()
-        .filter(|e| e.is_bookmarked);
+    let bookmarks = bookmarks_result?;
     let annotations = annotations_result?;
 
     let mut items: Vec<SavedItem> = bookmarks
+        .into_iter()
         .map(|e| SavedItem {
             id: e.id,
             title: e.title,
