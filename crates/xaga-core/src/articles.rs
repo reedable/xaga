@@ -55,14 +55,14 @@ pub async fn save_article(
         }
     };
 
-    let (created_at, existing_annotations, existing_tags) = if file_exists {
+    let (created_at, existing_annotations, existing_tags, existing_topics) = if file_exists {
         let raw = tokio::fs::read_to_string(&path).await?;
         match parse_document(&raw) {
-            Some((fm, _)) => (fm.created_at, fm.annotations, fm.tags),
-            None => (chrono::Utc::now().to_rfc3339(), vec![], vec![]),
+            Some((fm, _)) => (fm.created_at, fm.annotations, fm.tags, fm.topics),
+            None => (chrono::Utc::now().to_rfc3339(), vec![], vec![], vec![]),
         }
     } else {
-        (chrono::Utc::now().to_rfc3339(), vec![], vec![])
+        (chrono::Utc::now().to_rfc3339(), vec![], vec![], vec![])
     };
 
     let content = render_entry(
@@ -74,6 +74,7 @@ pub async fn save_article(
         summary,
         &existing_annotations,
         &existing_tags,
+        &existing_topics,
         favicon,
         markdown,
     );
@@ -184,6 +185,7 @@ pub async fn add_annotation(
         fm.summary.as_deref(),
         &annotations,
         &fm.tags,
+        &fm.topics,
         favicon.as_deref(),
         &body,
     );
@@ -227,6 +229,7 @@ pub async fn remove_annotation(
         fm.summary.as_deref(),
         &annotations,
         &fm.tags,
+        &fm.topics,
         favicon.as_deref(),
         &body,
     );

@@ -150,16 +150,22 @@ async fn embed_annotations(
 
         db.upsert(EmbeddingEntry {
             id: annotation.id.clone(),
+            kind: "annotation".to_string(),
             source: fm.source.clone(),
             title: title.clone(),
             created_at: annotation.created_at.clone(),
             published_at: fm.published_at.clone().unwrap_or_default(),
             updated_at: fm.updated_at.clone().unwrap_or_default(),
             checksum,
-            vector,
             reference: article_id.to_string(),
             color: annotation.color.clone(),
+            summary: String::new(),
             tags: vec![],
+            topics: vec![],
+            is_unread: false,
+            is_bookmarked: false,
+            is_pinned: false,
+            vector: Some(vector),
         })
         .await?;
 
@@ -224,15 +230,17 @@ pub async fn embed_file(
         log::debug!("embed_file: embedding id={id} title={:?}", fm.title);
         let vector =
             compute_vector(embedder, fm.title.clone(), fm.embed_text(&body).to_string()).await?;
-        db.upsert(fm.to_embedding_entry(id.clone(), &body, vector)).await?;
+        db.upsert(fm.to_embedding_entry(id.clone(), &body, Some(vector))).await?;
         emit_entry_changes(&id, &fm, existing.as_ref().map(|e| e.tags.as_slice()), unread_tx, bookmarked_tx);
     } else {
         log::debug!("embed_file: id={id} checksum unchanged — checking tags");
-        if let Some(mut existing_entry) = existing {
+        if let Some(existing_entry) = existing {
             if existing_entry.tags != fm.tags {
                 log::debug!("embed_file: id={id} tags changed — upserting without re-embedding");
-                let old_tags = std::mem::replace(&mut existing_entry.tags, fm.tags.clone());
-                db.upsert(existing_entry).await?;
+                let old_tags = existing_entry.tags.clone();
+                // Rebuild from frontmatter so the denormalized state/topics columns
+                // track the new tags, while preserving the already-computed vector.
+                db.upsert(fm.to_embedding_entry(id.clone(), &body, existing_entry.vector)).await?;
                 emit_entry_changes(&id, &fm, Some(&old_tags), unread_tx, bookmarked_tx);
             }
         }

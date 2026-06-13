@@ -3,10 +3,11 @@ use std::path::Path;
 use std::sync::Arc;
 
 use arrow_array::{
-    Array, FixedSizeListArray, Float32Array, ListArray, RecordBatch, RecordBatchIterator,
-    RecordBatchReader, StringArray,
+    Array, BooleanArray, FixedSizeListArray, Float32Array, ListArray, RecordBatch,
+    RecordBatchIterator, RecordBatchReader, StringArray,
 };
 use arrow_array::builder::{ListBuilder, StringBuilder};
+use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType, Field, Schema};
 use futures::TryStreamExt;
 use lancedb::DistanceType;
@@ -17,21 +18,21 @@ use crate::types::{AnnotationSummary, EmbeddedEntry, Entry};
 
 const EMBEDDING_DIM: i32 = 384;
 
-/// Restricts a similarity query to rows of a specific type.
-/// Row type is derivable from field shape — the same principle used by
-/// `list_annotations()` (`only_if("reference != ''")`).
+/// Restricts a similarity query to rows of a specific type, via the `kind` column.
 pub enum RowKind {
     Entry,
     Annotation,
     Topic,
+    Feed,
 }
 
 impl RowKind {
     fn predicate(&self) -> &'static str {
         match self {
-            RowKind::Entry => "source != ''",
-            RowKind::Annotation => "reference != ''",
-            RowKind::Topic => "source = '' AND reference = ''",
+            RowKind::Entry => "kind = 'entry'",
+            RowKind::Annotation => "kind = 'annotation'",
+            RowKind::Topic => "kind = 'topic'",
+            RowKind::Feed => "kind = 'feed'",
         }
     }
 }
@@ -62,18 +63,26 @@ fn similarity_bounds(
 
 pub struct EmbeddingEntry {
     pub id: String,
+    /// Row kind discriminator: "entry" | "annotation" | "topic" | "feed".
+    pub kind: String,
     pub source: String,
     pub title: String,
     pub created_at: String,
     pub published_at: String,
     pub updated_at: String,
     pub checksum: String,
-    pub vector: Vec<f32>,
     /// For annotation rows: the parent article ID. Empty for regular entries.
     pub reference: String,
     /// For annotation rows: the highlight color. Empty for regular entries.
     pub color: String,
+    pub summary: String,
     pub tags: Vec<String>,
+    pub topics: Vec<String>,
+    pub is_unread: bool,
+    pub is_bookmarked: bool,
+    pub is_pinned: bool,
+    /// `None` until the embedding is computed (row may be inserted before embedding).
+    pub vector: Option<Vec<f32>>,
 }
 
 // ── Arrow helpers ─────────────────────────────────────────────────────────────
@@ -81,6 +90,7 @@ pub struct EmbeddingEntry {
 fn make_schema() -> Arc<Schema> {
     Arc::new(Schema::new(vec![
         Field::new("id", DataType::Utf8, false),
+        Field::new("kind", DataType::Utf8, false),
         Field::new("source", DataType::Utf8, false),
         Field::new("title", DataType::Utf8, false),
         Field::new("created_at", DataType::Utf8, false),
@@ -89,18 +99,27 @@ fn make_schema() -> Arc<Schema> {
         Field::new("checksum", DataType::Utf8, false),
         Field::new("reference", DataType::Utf8, false),
         Field::new("color", DataType::Utf8, false),
+        Field::new("summary", DataType::Utf8, false),
         Field::new(
             "tags",
             DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
             false,
         ),
         Field::new(
+            "topics",
+            DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
+            false,
+        ),
+        Field::new("is_unread", DataType::Boolean, false),
+        Field::new("is_bookmarked", DataType::Boolean, false),
+        Field::new("is_pinned", DataType::Boolean, false),
+        Field::new(
             "vector",
             DataType::FixedSizeList(
                 Arc::new(Field::new("item", DataType::Float32, true)),
                 EMBEDDING_DIM,
             ),
-            false,
+            true,
         ),
     ]))
 }
@@ -110,9 +129,19 @@ fn entry_to_batch(
     schema: &Arc<Schema>,
 ) -> Result<RecordBatch, EmbeddingsError> {
     let vector_field = Arc::new(Field::new("item", DataType::Float32, true));
-    let vector_values = Arc::new(Float32Array::from(entry.vector));
-    let vector_array =
-        FixedSizeListArray::try_new(vector_field, EMBEDDING_DIM, vector_values, None)?;
+    let vector_array = match entry.vector {
+        Some(v) => {
+            let values = Arc::new(Float32Array::from(v));
+            FixedSizeListArray::try_new(vector_field, EMBEDDING_DIM, values, None)?
+        }
+        None => {
+            // A null FixedSizeList entry still needs EMBEDDING_DIM child slots;
+            // the validity bit marks the row itself as null.
+            let values = Arc::new(Float32Array::from(vec![0.0f32; EMBEDDING_DIM as usize]));
+            let nulls = NullBuffer::from(vec![false]);
+            FixedSizeListArray::try_new(vector_field, EMBEDDING_DIM, values, Some(nulls))?
+        }
+    };
 
     let mut tags_builder = ListBuilder::new(StringBuilder::new());
     for tag in &entry.tags {
@@ -121,10 +150,18 @@ fn entry_to_batch(
     tags_builder.append(true);
     let tags_array = tags_builder.finish();
 
+    let mut topics_builder = ListBuilder::new(StringBuilder::new());
+    for topic in &entry.topics {
+        topics_builder.values().append_value(topic);
+    }
+    topics_builder.append(true);
+    let topics_array = topics_builder.finish();
+
     Ok(RecordBatch::try_new(
         schema.clone(),
         vec![
             Arc::new(StringArray::from(vec![entry.id])),
+            Arc::new(StringArray::from(vec![entry.kind])),
             Arc::new(StringArray::from(vec![entry.source])),
             Arc::new(StringArray::from(vec![entry.title])),
             Arc::new(StringArray::from(vec![entry.created_at])),
@@ -133,7 +170,12 @@ fn entry_to_batch(
             Arc::new(StringArray::from(vec![entry.checksum])),
             Arc::new(StringArray::from(vec![entry.reference])),
             Arc::new(StringArray::from(vec![entry.color])),
+            Arc::new(StringArray::from(vec![entry.summary])),
             Arc::new(tags_array),
+            Arc::new(topics_array),
+            Arc::new(BooleanArray::from(vec![entry.is_unread])),
+            Arc::new(BooleanArray::from(vec![entry.is_bookmarked])),
+            Arc::new(BooleanArray::from(vec![entry.is_pinned])),
             Arc::new(vector_array),
         ],
     )?)
@@ -150,10 +192,12 @@ async fn create_empty_documents_table(
         None,
     )?;
     let empty_tags = ListBuilder::new(StringBuilder::new()).finish();
+    let empty_topics = ListBuilder::new(StringBuilder::new()).finish();
     let empty_batch = RecordBatch::try_new(
         schema.clone(),
         vec![
             Arc::new(StringArray::from(Vec::<&str>::new())), // id
+            Arc::new(StringArray::from(Vec::<&str>::new())), // kind
             Arc::new(StringArray::from(Vec::<&str>::new())), // source
             Arc::new(StringArray::from(Vec::<&str>::new())), // title
             Arc::new(StringArray::from(Vec::<&str>::new())), // created_at
@@ -162,7 +206,12 @@ async fn create_empty_documents_table(
             Arc::new(StringArray::from(Vec::<&str>::new())), // checksum
             Arc::new(StringArray::from(Vec::<&str>::new())), // reference
             Arc::new(StringArray::from(Vec::<&str>::new())), // color
+            Arc::new(StringArray::from(Vec::<&str>::new())), // summary
             Arc::new(empty_tags),                            // tags
+            Arc::new(empty_topics),                          // topics
+            Arc::new(BooleanArray::from(Vec::<bool>::new())), // is_unread
+            Arc::new(BooleanArray::from(Vec::<bool>::new())), // is_bookmarked
+            Arc::new(BooleanArray::from(Vec::<bool>::new())), // is_pinned
             Arc::new(empty_vector),
         ],
     )?;
@@ -525,28 +574,42 @@ impl EmbeddingsDb {
                     .map(|a| a.value(0).to_string())
                     .unwrap_or_default()
             };
-            let tags = batch
-                .column_by_name("tags")
-                .and_then(|c| c.as_any().downcast_ref::<ListArray>())
-                .map(|arr| {
-                    let item = arr.value(0);
-                    item.as_any().downcast_ref::<StringArray>()
-                        .map(|s| (0..s.len()).map(|j| s.value(j).to_string()).collect())
-                        .unwrap_or_default()
-                })
-                .unwrap_or_default();
+            let read_list = |name: &str| -> Vec<String> {
+                batch
+                    .column_by_name(name)
+                    .and_then(|c| c.as_any().downcast_ref::<ListArray>())
+                    .map(|arr| {
+                        let item = arr.value(0);
+                        item.as_any().downcast_ref::<StringArray>()
+                            .map(|s| (0..s.len()).map(|j| s.value(j).to_string()).collect())
+                            .unwrap_or_default()
+                    })
+                    .unwrap_or_default()
+            };
+            let get_bool = |name: &str| -> bool {
+                batch
+                    .column_by_name(name)
+                    .and_then(|c| c.as_any().downcast_ref::<BooleanArray>())
+                    .map(|a| a.value(0))
+                    .unwrap_or(false)
+            };
+            // `None` when the vector column is null for this row (not yet embedded).
             let vector = batch
                 .column_by_name("vector")
                 .and_then(|c| c.as_any().downcast_ref::<FixedSizeListArray>())
-                .map(|arr| {
+                .and_then(|arr| {
+                    if arr.is_null(0) {
+                        return None;
+                    }
                     let values = arr.value(0);
-                    values.as_any().downcast_ref::<Float32Array>()
+                    values
+                        .as_any()
+                        .downcast_ref::<Float32Array>()
                         .map(|f| f.values().to_vec())
-                        .unwrap_or_default()
-                })
-                .unwrap_or_default();
+                });
             return Ok(Some(EmbeddingEntry {
                 id: get_str("id"),
+                kind: get_str("kind"),
                 source: get_str("source"),
                 title: get_str("title"),
                 created_at: get_str("created_at"),
@@ -555,7 +618,12 @@ impl EmbeddingsDb {
                 checksum: get_str("checksum"),
                 reference: get_str("reference"),
                 color: get_str("color"),
-                tags,
+                summary: get_str("summary"),
+                tags: read_list("tags"),
+                topics: read_list("topics"),
+                is_unread: get_bool("is_unread"),
+                is_bookmarked: get_bool("is_bookmarked"),
+                is_pinned: get_bool("is_pinned"),
                 vector,
             }));
         }
@@ -645,7 +713,7 @@ impl EmbeddingsDb {
         let batches: Vec<RecordBatch> = self
             .table
             .query()
-            .only_if("reference != ''")
+            .only_if("kind = 'annotation'")
             .execute()
             .await?
             .try_collect()

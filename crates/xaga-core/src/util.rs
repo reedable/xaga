@@ -61,6 +61,8 @@ pub struct Frontmatter {
     pub tags: Vec<String>,
     pub favicon: Option<String>,
     pub items: Vec<crate::types::CollectionItem>,
+    /// Topic ids this entry belongs to (membership source of truth; empty for topic files).
+    pub topics: Vec<String>,
 }
 
 impl Frontmatter {
@@ -85,20 +87,26 @@ impl Frontmatter {
         &self,
         id: String,
         body: &str,
-        vector: Vec<f32>,
+        vector: Option<Vec<f32>>,
     ) -> crate::embeddings::db::EmbeddingEntry {
         crate::embeddings::db::EmbeddingEntry {
             id,
+            kind: "entry".to_string(),
             source: self.source.clone(),
             title: self.title.clone(),
             created_at: self.created_at.clone(),
             published_at: self.published_at.clone().unwrap_or_default(),
             updated_at: self.updated_at.clone().unwrap_or_default(),
             checksum: self.content_checksum(body),
-            vector,
             reference: String::new(),
             color: String::new(),
+            summary: self.summary.clone().unwrap_or_default(),
             tags: self.tags.clone(),
+            topics: self.topics.clone(),
+            is_unread: self.tags.contains(&"unread".to_string()),
+            is_bookmarked: self.tags.contains(&"bookmark".to_string()),
+            is_pinned: self.tags.contains(&"pinned".to_string()),
+            vector,
         }
     }
 }
@@ -147,6 +155,8 @@ struct FrontmatterRaw {
     favicon: Option<String>,
     #[serde(default)]
     items: Vec<crate::types::CollectionItem>,
+    #[serde(default)]
+    topics: Vec<String>,
 }
 
 fn split_document(raw: &str) -> Option<(Frontmatter, String)> {
@@ -171,6 +181,7 @@ fn split_document(raw: &str) -> Option<(Frontmatter, String)> {
             tags: fm.tags,
             favicon: fm.favicon,
             items: fm.items,
+            topics: fm.topics,
         },
         body,
     ))

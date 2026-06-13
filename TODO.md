@@ -13,7 +13,7 @@
 - [ ] [TauriPlatform.ts](src/platform/TauriPlatform.ts): Invalid items silently dropped in ~10 list operations — add unified error reporting
 - [ ] [feed_entry.rs](crates/xaga-core/src/feeds/feed_entry.rs): `created_at` should come from the `.md` Entry on disk, not derived elsewhere
 - [ ] [articles.rs](crates/xaga-core/src/articles.rs): Trigger annotation embedding for semantic search
-- [ ] Favicon deduplication — currently stored per-entry in frontmatter, could bloat `.md` files over time
+- [ ] [embeddings.rs](src-tauri/src/commands/embeddings.rs): Query-time inheritance (late fusion / graph expansion) in semantic search — items inherit relevance from curated Topic memberships, so an annotation whose own embedding is meaningless (e.g. highlight "#$%^&*" filed under "Prompt Injection") surfaces for a query like "prompt engineering". Mechanism: `query_by_text` already retrieves topic rows; for topics above the similarity floor, expand `topic.items` into candidates with `inherited = topic_sim × λ` (λ = per-edge-class damping: annotation-member vs entry-member vs annotation→source-article), then merge with direct hits by max + dedupe. No re-embedding, no stored-vector changes, no `rank_topics_by_item` circularity. For now this answers the magnitude/weak-signal question (see Large): the weight comes from curation edges, not vector magnitude
 - [ ] Settings: "Keep history" toggle (off by default) — persist navigation history across sessions (storage TBD); include a clear history action
 
 ## Large (uncertain)
