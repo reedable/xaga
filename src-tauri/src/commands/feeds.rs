@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use serde::Serialize;
 use tauri::{Emitter, State};
 use xaga_core::feeds;
-use xaga_core::item::{self, ItemSource};
 use xaga_core::types::Entry;
 
 use crate::{feeds_dir, get_bookmarked, get_unread, AppState};
@@ -144,8 +143,24 @@ pub async fn list_entries(
 ) -> Result<Vec<Entry>, String> {
     let library = state.library.read().unwrap().clone();
     let item_filter = parse_item_filter(item_filter)?;
-    let (unread, bookmarked) = (get_unread(&state), get_bookmarked(&state));
-    item::list_items(&library, ItemSource::FeedEntries { url }, item_filter, &unread, &bookmarked)
+
+    // Phase C: the .atom is the source of truth for feed membership (the id-set); LanceDB
+    // returns those entries with their state. Reload the read handle so state reflects the
+    // service's latest writes, then filter/sort as before.
+    let ids = feeds::list_entry_ids(&library, url.as_deref())
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    let db = state.embeddings_read.lock().unwrap().clone();
+    let Some(db) = db else {
+        return Err("embeddings read handle unavailable".to_string());
+    };
+    db.reload().await.map_err(|e| e.to_string())?;
+
+    let entries = db.entries_by_ids(&ids).await.map_err(|e| e.to_string())?;
+    let mut items = xaga_core::filter::filter_items(entries, &item_filter)
+        .await
+        .map_err(|e| e.to_string())?;
+    xaga_core::filter::sort_items(&mut items);
+    Ok(items)
 }

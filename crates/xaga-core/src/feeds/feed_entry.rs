@@ -64,6 +64,53 @@ pub async fn list_entries(
     Ok(items)
 }
 
+/// Returns the membership id-set for `url` (one feed) or all feeds (`None`),
+/// deduplicated. The `.atom` is the source of truth for feed membership; entry data
+/// and state are fetched from LanceDB by the caller (see the `list_entries` command).
+pub async fn list_entry_ids(library: &Path, url: Option<&str>) -> Result<Vec<String>> {
+    let feeds_dir = library.join("feeds");
+    let mut ids = Vec::new();
+    let mut seen = HashSet::new();
+
+    match url {
+        Some(url) => {
+            let normalized = normalize_url(url)?;
+            let id = super::feed::feed_id_from_url(&normalized)?;
+            let path = xml_path(&feeds_dir, &id);
+
+            if !tokio::fs::try_exists(&path).await? {
+                return Err(FeedError::NotFound(id));
+            }
+
+            let xml = tokio::fs::read_to_string(&path).await?;
+            let feed = parse_atom(&xml)?;
+            for e in feed.entries() {
+                let id = atom_entry_to_entry(e).id;
+                if seen.insert(id.clone()) {
+                    ids.push(id);
+                }
+            }
+        }
+        None => {
+            let feed_ids = list_feed_ids(&feeds_dir).await?;
+            for fid in feed_ids {
+                if let Ok(xml) = tokio::fs::read_to_string(xml_path(&feeds_dir, &fid)).await {
+                    if let Ok(feed) = parse_atom(&xml) {
+                        for e in feed.entries() {
+                            let id = atom_entry_to_entry(e).id;
+                            if seen.insert(id.clone()) {
+                                ids.push(id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(ids)
+}
+
 /// Read a single `.atom` file and return its entries.
 pub(crate) async fn entries_from_path(path: &Path) -> Result<Vec<Entry>> {
     let xml = tokio::fs::read_to_string(path).await?;
