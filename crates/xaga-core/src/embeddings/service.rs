@@ -422,6 +422,11 @@ async fn run_loop(
                     if let Err(e) = db.compact().await {
                         log::error!("background_rx: compact failed: {e}");
                     }
+                    // Build scalar indexes once rows are populated (id/published_at are
+                    // written by sync_row, which has drained by the time Compact fires).
+                    if let Err(e) = db.ensure_indexes().await {
+                        log::error!("background_rx: ensure_indexes failed: {e}");
+                    }
                 }
                 Err(_) => { log::warn!("background_rx: disconnected"); break; }
                 }

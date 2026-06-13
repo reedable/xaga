@@ -400,7 +400,34 @@ impl EmbeddingsDb {
     pub async fn all_checksums(
         &self,
     ) -> Result<std::collections::HashSet<String>, EmbeddingsError> {
-        Ok(self.all_entries_meta().await?.into_values().map(|(checksum, _)| checksum).collect())
+        Ok(self.all_entries_meta().await?.into_values().map(|(checksum, _, _)| checksum).collect())
+    }
+
+    /// Creates scalar BTree indexes on `id` (id-set retrieval for per-feed listing)
+    /// and `published_at` (ordered pagination) when absent. Idempotent — intended to
+    /// run after recovery has populated the rows, so the index trains over real data.
+    pub async fn ensure_indexes(&self) -> Result<(), EmbeddingsError> {
+        let indexed: HashSet<String> = self
+            .table
+            .list_indices()
+            .await
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?
+            .into_iter()
+            .flat_map(|idx| idx.columns)
+            .collect();
+
+        for col in ["id", "published_at"] {
+            if indexed.contains(col) {
+                continue;
+            }
+            self.table
+                .create_index(&[col], lancedb::index::Index::BTree(Default::default()))
+                .execute()
+                .await
+                .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+            log::info!("EmbeddingsDb: created BTree index on `{col}`");
+        }
+        Ok(())
     }
 
     /// Inserts an embedding row, replacing any existing row with the same id.
@@ -448,11 +475,13 @@ impl EmbeddingsDb {
         Ok(n)
     }
 
-    /// Returns a map of `id → (checksum, reference)` for every row in the database.
+    /// Returns a map of `id → (checksum, reference, has_vector)` for every row.
     /// `reference` is non-empty only for annotation rows (it holds the parent article ID).
-    /// Used by recovery to determine which files are already embedded and whether
-    /// content has changed.
-    pub async fn all_entries_meta(&self) -> Result<HashMap<String, (String, String)>, EmbeddingsError> {
+    /// `has_vector` is false for rows inserted before their embedding was computed.
+    /// Used by recovery to determine which files need (re-)embedding.
+    pub async fn all_entries_meta(
+        &self,
+    ) -> Result<HashMap<String, (String, String, bool)>, EmbeddingsError> {
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -474,11 +503,18 @@ impl EmbeddingsDb {
             let references = batch
                 .column_by_name("reference")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+            let vectors = batch
+                .column_by_name("vector")
+                .and_then(|c| c.as_any().downcast_ref::<FixedSizeListArray>());
 
             if let (Some(ids), Some(checksums)) = (ids, checksums) {
                 for i in 0..batch.num_rows() {
                     let reference = references.map_or(String::new(), |a| a.value(i).to_string());
-                    map.insert(ids.value(i).to_string(), (checksums.value(i).to_string(), reference));
+                    let has_vector = vectors.map_or(false, |v| !v.is_null(i));
+                    map.insert(
+                        ids.value(i).to_string(),
+                        (checksums.value(i).to_string(), reference, has_vector),
+                    );
                 }
             }
         }
@@ -1370,5 +1406,30 @@ mod tests {
             !scan_ids.contains(&"pending"),
             "null-vector row must be excluded from full scan"
         );
+    }
+
+    /// `ensure_indexes` builds the scalar indexes, is safe to call twice, and leaves
+    /// id lookups and similarity queries working.
+    #[tokio::test]
+    async fn ensure_indexes_idempotent_and_queryable() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        db.upsert(sample("a", "entry", Some(vec![1.0f32; EMBEDDING_DIM as usize])))
+            .await
+            .unwrap();
+        db.upsert(sample("b", "entry", Some(vec![0.2f32; EMBEDDING_DIM as usize])))
+            .await
+            .unwrap();
+
+        db.ensure_indexes().await.unwrap();
+        // Second call is a no-op (indexes already present).
+        db.ensure_indexes().await.unwrap();
+
+        assert!(db.get_entry("a").await.unwrap().is_some());
+        let related = db
+            .find_by_vector(vec![1.0f32; EMBEDDING_DIM as usize], None, None, None)
+            .await
+            .unwrap();
+        assert!(related.iter().any(|e| e.entry.id == "a"));
     }
 }

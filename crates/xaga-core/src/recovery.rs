@@ -88,9 +88,14 @@ pub async fn build_recovery_plan(
         let mut batch: Vec<(&String, &PathBuf)> = entries
             .iter()
             .filter(|(id, (_, checksum))| {
-                db_meta
-                    .get(id.as_str())
-                    .map_or(true, |(s, _)| s != checksum)
+                // Re-embed when the row is absent, its content changed, or its vector is
+                // still pending (the row was inserted before the embedding was computed).
+                match db_meta.get(id.as_str()) {
+                    None => true,
+                    Some((stored_checksum, _, has_vector)) => {
+                        stored_checksum != checksum || !has_vector
+                    }
+                }
             })
             .map(|(id, (path, _))| (id, path))
             .collect();
@@ -115,7 +120,7 @@ pub async fn build_recovery_plan(
     // rows, check the row's own ID.
     let to_delete: Vec<String> = db_meta
         .into_iter()
-        .filter(|(id, (_, reference))| {
+        .filter(|(id, (_, reference, _))| {
             let file_id = if reference.is_empty() {
                 id.as_str()
             } else {
