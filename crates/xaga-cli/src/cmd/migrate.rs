@@ -436,6 +436,7 @@ pub async fn handle(args: MigrateArgs, feeds_dir: &Path, data_dir: &Path) {
                     &body,
                     fm.threshold,
                     items,
+                    &fm.tags,
                     &fm.created_at,
                     &updated_at,
                 )

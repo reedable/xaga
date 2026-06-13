@@ -32,6 +32,8 @@ enum Command {
     Migrate(cmd::migrate::MigrateArgs),
     /// Move topic membership into each member's `.md` frontmatter (one-time; use --dry-run first)
     MigrateSot(cmd::migrate_sot::MigrateSotArgs),
+    /// Move pins from settings.json into topic `.md` tags + feed `.atom` categories (one-time)
+    MigratePins(cmd::migrate_pins::MigratePinsArgs),
     /// Read or write ~/.xagarc
     Config(cmd::config::ConfigArgs),
 }
@@ -58,6 +60,7 @@ async fn main() {
         Command::Embeddings(args) => cmd::embeddings::handle(args.subcommand, &data_dir).await,
         Command::Migrate(args) => cmd::migrate::handle(args, &feeds_dir, &data_dir).await,
         Command::MigrateSot(args) => cmd::migrate_sot::handle(args, &data_dir).await,
+        Command::MigratePins(args) => cmd::migrate_pins::handle(args, &data_dir, &feeds_dir).await,
         Command::Config(args) => cmd::config::handle(args.subcommand, &rc, &data_dir),
     }
 }

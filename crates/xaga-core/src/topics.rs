@@ -23,13 +23,14 @@ pub(crate) fn topic_path(data_dir: &Path, id: &str) -> PathBuf {
     data_dir.join("topics").join(format!("{id}.md"))
 }
 
-fn render_topic(
+pub fn render_topic(
     id: &str,
     title: &str,
     created_at: &str,
     updated_at: &str,
     threshold: Option<f32>,
     items: &[CollectionItem],
+    tags: &[String],
     content: &str,
 ) -> String {
     #[derive(serde::Serialize)]
@@ -42,6 +43,8 @@ fn render_topic(
         threshold: Option<f32>,
         #[serde(skip_serializing_if = "<[_]>::is_empty")]
         items: &'a [CollectionItem],
+        #[serde(skip_serializing_if = "<[_]>::is_empty")]
+        tags: &'a [String],
     }
 
     let fm = Fm {
@@ -51,6 +54,7 @@ fn render_topic(
         updated: updated_at,
         threshold,
         items,
+        tags,
     };
 
     let yaml = serde_yaml::to_string(&fm).expect("frontmatter serialization is infallible");
@@ -72,13 +76,15 @@ pub async fn save_topic(
     tokio::fs::create_dir_all(&dir).await?;
     let path = topic_path(data_dir, id);
 
-    let created_at = if tokio::fs::try_exists(&path).await? {
+    // Preserve created_at and any existing tags (e.g. "pinned") across the rewrite.
+    let (created_at, tags) = if tokio::fs::try_exists(&path).await? {
         let raw = tokio::fs::read_to_string(&path).await?;
-        parse_frontmatter(&raw)
-            .map(|fm| fm.created_at)
-            .unwrap_or_else(|| Utc::now().to_rfc3339())
+        match parse_frontmatter(&raw) {
+            Some(fm) => (fm.created_at, fm.tags),
+            None => (Utc::now().to_rfc3339(), vec![]),
+        }
     } else {
-        Utc::now().to_rfc3339()
+        (Utc::now().to_rfc3339(), vec![])
     };
 
     let updated_at = Utc::now().to_rfc3339();
@@ -92,6 +98,7 @@ pub async fn save_topic(
             &updated_at,
             threshold,
             &items,
+            &tags,
             content,
         )
         .as_bytes(),
@@ -106,6 +113,7 @@ pub async fn save_topic(
         content: content.to_string(),
         threshold,
         items,
+        tags,
         entry_count: 0,
         unread_count: 0,
     })
@@ -120,6 +128,7 @@ pub async fn save_topic_with_timestamps(
     content: &str,
     threshold: Option<f32>,
     items: Vec<CollectionItem>,
+    tags: &[String],
     created_at: &str,
     updated_at: &str,
 ) -> Result<Topic, TopicsError> {
@@ -129,7 +138,7 @@ pub async fn save_topic_with_timestamps(
 
     tokio::fs::write(
         &path,
-        render_topic(id, title, created_at, updated_at, threshold, &items, content).as_bytes(),
+        render_topic(id, title, created_at, updated_at, threshold, &items, tags, content).as_bytes(),
     )
     .await?;
 
@@ -141,6 +150,7 @@ pub async fn save_topic_with_timestamps(
         content: content.to_string(),
         threshold,
         items,
+        tags: tags.to_vec(),
         entry_count: 0,
         unread_count: 0,
     })
@@ -173,6 +183,7 @@ pub async fn read_topic(data_dir: &Path, id: &str) -> Result<Topic, TopicsError>
         content: body,
         threshold: fm.threshold,
         items: fm.items,
+        tags: fm.tags,
         entry_count: 0,
         unread_count: 0,
     })
@@ -213,6 +224,7 @@ pub async fn list_topics(data_dir: &Path) -> Result<Vec<Topic>, TopicsError> {
                 content: body,
                 threshold: fm.threshold,
                 items: fm.items,
+                tags: fm.tags,
                 entry_count: 0,
                 unread_count: 0,
             });

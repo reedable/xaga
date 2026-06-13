@@ -306,6 +306,9 @@ pub struct Topic {
     /// Storage only — never serialized to JSON sent to the frontend.
     #[serde(skip)]
     pub items: Vec<CollectionItem>,
+    /// Storage only — frontmatter tags (e.g. "pinned"); not sent to the frontend.
+    #[serde(skip)]
+    pub tags: Vec<String>,
     pub entry_count: usize,
     pub unread_count: usize,
 }

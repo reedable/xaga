@@ -255,6 +255,7 @@ async fn migrate(data_dir: &Path, dry_run: bool) {
                 "",
                 None,
                 resolved_items,
+                &[],
                 &collection.created,
                 &collection.updated,
             )

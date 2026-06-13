@@ -255,6 +255,45 @@ pub async fn feed_embedding_meta(feeds_dir: &Path) -> Vec<FeedMeta> {
     metas
 }
 
+/// Adds (or removes) the app-local `pinned` category on a feed's `.atom`, under
+/// [`TAG_CATEGORY_SCHEME`]. Idempotent. With `dry_run`, reports whether it *would*
+/// change without writing. Returns whether the file changed (or would change).
+pub async fn set_feed_pinned(
+    feeds_dir: &Path,
+    id: &FeedId,
+    pinned: bool,
+    dry_run: bool,
+) -> Result<bool> {
+    let path = xml_path(feeds_dir, id);
+    let xml = tokio::fs::read_to_string(&path).await?;
+    let mut feed = parse_atom(&xml)?;
+
+    let has = feed
+        .categories()
+        .iter()
+        .any(|c| c.term() == "pinned" && c.scheme() == Some(TAG_CATEGORY_SCHEME));
+    if has == pinned {
+        return Ok(false);
+    }
+
+    let mut categories = feed.categories().to_vec();
+    if pinned {
+        let mut cat = atom::Category::default();
+        cat.set_term("pinned");
+        cat.set_scheme(Some(TAG_CATEGORY_SCHEME.to_string()));
+        categories.push(cat);
+    } else {
+        categories.retain(|c| !(c.term() == "pinned" && c.scheme() == Some(TAG_CATEGORY_SCHEME)));
+    }
+    feed.set_categories(categories);
+
+    if dry_run {
+        return Ok(true);
+    }
+    write_atom_atomic(feeds_dir, id, &feed).await?;
+    Ok(true)
+}
+
 /// Scan `feeds_dir` and repair inconsistencies:
 ///
 /// * Missing `<link rel="self">` — synthesised from `<id>` when `<id>` is an HTTP(S) URL.
