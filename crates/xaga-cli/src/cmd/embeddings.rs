@@ -77,8 +77,21 @@ fn require_write_lock(data_dir: &Path) -> LockFile {
 pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
     match cmd {
         EmbeddingsCommand::Status => match EmbeddingsDb::open(data_dir).await {
-            Ok(db) => match db.count().await {
-                Ok(n) => println!("{n} document(s) embedded"),
+            Ok(db) => match db.embedding_status().await {
+                Ok(rows) => {
+                    let total: usize = rows.iter().map(|r| r.total).sum();
+                    let embedded: usize = rows.iter().map(|r| r.embedded).sum();
+                    println!("{total} row(s): {embedded} embedded, {} pending", total - embedded);
+                    for r in &rows {
+                        println!(
+                            "  {:<11} {:>7} total  {:>7} embedded  {:>7} pending",
+                            r.kind,
+                            r.total,
+                            r.embedded,
+                            r.total - r.embedded,
+                        );
+                    }
+                }
                 Err(e) => die(e),
             },
             Err(e) => die(e),

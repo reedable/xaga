@@ -1,5 +1,7 @@
 ## Small (hours)
 
+- [ ] Revisit the embeddings write lock so every xaga writer (UI + CLI) participates. The `flock` guard ([lock.rs](crates/xaga-core/src/embeddings/lock.rs)) is sound but advisory — it only protects parties that call `require_write_lock`. Today `xaga-cli topics migrate` ([cmd/topics.rs](crates/xaga-cli/src/cmd/topics.rs)) opens `EmbeddingsDb` and deletes rows without taking the lock, bypassing the guard. Audit all `EmbeddingsDb` write paths and gate them behind the lock. Scope: xaga's own UI + CLI only — not supporting third-party tools modifying LanceDB.
+
 - [ ] Pins aren't cleaned up when their target is removed — manually removed feeds (and likely topics) leave stale ids in `settings.json` `pinned_feed_ids`/`pinned_topic_ids` (surfaced by `migrate-pins`: 4 stale feed pins pointing at non-existent `.atom` files). Investigate dropping the pin when a feed/topic/etc. is deleted. Out-of-scope for the LanceDB read-source work — investigation only.
 
 - [ ] [ItemList.tsx](src/components/list/ItemList.tsx): Item list does not reload after adding or removing a manual item via TopicMenuButton
@@ -8,6 +10,10 @@
 - [ ] [csp-hash.mjs](scripts/csp-hash.mjs): Fail the build on CSP hash drift — add an npm script (run in `beforeBuildCommand`) that recomputes the reader script's sha256 and errors if it doesn't match `script-src` in [tauri.conf.json](src-tauri/tauri.conf.json); currently the hash is regenerated/pasted by hand and rot is silent (blank reader in the bundle)
 
 ## Medium (days)
+
+- [ ] List rendering via windowed LanceDB reads — use the collection counts (total / entry / unread already carried on Feed/Topic) together with Virtuoso to render only the visible window and fetch the matching row range from LanceDB on demand, instead of loading whole lists. The Phase C read API should be shaped to serve a window (row range + total count), not full result sets (see `all_entries` / `entries_by_ids` in [TECH_DEBT.md](TECH_DEBT.md)). [ItemList.tsx](src/components/list/ItemList.tsx) + the LanceDB read commands. (Idea has been pending ~2 months.)
+
+- [ ] [service.rs](crates/xaga-core/src/embeddings/service.rs): Review and refactor the embedding-service flume queue priorities. Priority should be assigned by the **nature/urgency of the work** — user interaction takes precedence over maintenance — not by *what kind* of operation it is. Tiers: system-level (shutdown/reset) → UI-level (live, user-driven edits) → regular → background/maintenance (recovery bulk, embedding backfill, compaction). Today it's an ad-hoc biased `select!` over `service_rx`/`priority_rx`/`background_rx`/`embed_vector_rx` keyed by message source; reclassify by meaning and formalize the tiers. Out-of-scope for now — capturing the idea.
 
 - [x] [util.rs](crates/xaga-core/src/util.rs): `normalize_url` now also strips the fragment, rewrites http→https, and strips a leading `www.` — `url_hash12` IDs no longer match entry/feed/bookmark files saved under the old rules; add an xaga-cli migration command that re-keys existing files to the new normalization (done: `xaga-cli migrate [--dry-run]`; remove the command after running it against the real library)
 - [ ] [util.rs](crates/xaga-core/src/util.rs): Reevaluate the forced https in `normalize_url` — its output isn't just hashed for IDs, it's also stored and fetched (`import_feeds` fetches the normalized URL; entries store it as `source`), so an http-only site would now be fetched over https and fail

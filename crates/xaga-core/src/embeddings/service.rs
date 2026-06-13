@@ -14,7 +14,7 @@ pub enum ShutdownReason {
 use super::lock::LockFile;
 use super::model::{Embedder, load_default_embedder};
 use super::pipeline::{embed_feeds, embed_vector, sync_row};
-use super::{EmbeddingsDb, EmbeddingsError};
+use super::{EmbeddingEntry, EmbeddingsDb, EmbeddingsError};
 
 /// Application-level control messages (low volume, high significance).
 enum ServiceMsg {
@@ -308,7 +308,7 @@ async fn run_loop(
             result = service_rx.recv_async() => match result {
                 Ok(ServiceMsg::StartRecovery { data_dir: dir }) => {
                     log::info!("embedding service: starting recovery for {}", dir.display());
-                    dispatch_recovery(&dir, &db, &embedder, &priority_tx, &background_tx).await;
+                    dispatch_recovery(&dir, &db, &embedder, &embed_vector_tx, &priority_tx, &background_tx).await;
                     log::info!("embedding service: recovery dispatch complete");
                 }
                 Ok(ServiceMsg::RecoverCache { cache, data_dir: dir }) => {
@@ -477,6 +477,7 @@ async fn dispatch_recovery(
     data_dir: &Path,
     db: &EmbeddingsDb,
     embedder: &Arc<Embedder>,
+    embed_vector_tx: &flume::Sender<String>,
     priority_tx: &flume::Sender<PriorityMsg>,
     background_tx: &flume::Sender<BackgroundMsg>,
 ) {
@@ -487,6 +488,10 @@ async fn dispatch_recovery(
     if let Err(e) = db.compact().await {
         log::error!("embedding service: pre-recovery compact failed: {e}");
     }
+
+    // Capture emptiness *before* embed_feeds inserts feed rows, so a fresh post-reset
+    // recovery can use the fast bulk-insert path below instead of per-row upserts.
+    let fresh = db.count().await.unwrap_or(1) == 0;
 
     // The entries that are already in atom files that are not yet in the file system are
     // presumably recent entries. These should get indexed ahead of those *.md files that are
@@ -513,12 +518,18 @@ async fn dispatch_recovery(
             // Send all deletes as a single batch (one LanceDB version instead of N).
             let _ = background_tx.send(BackgroundMsg::DeleteBatch(plan.to_delete));
 
-            for id in plan.to_embed_topics {
-                let _ = priority_tx.send(PriorityMsg::Embed(id));
-            }
-
-            for id in plan.to_embed_articles {
-                let _ = background_tx.send(BackgroundMsg::Embed(id));
+            if fresh {
+                // Empty table: bulk-insert rows (no per-row get_entry/delete), then queue
+                // each id for the vector pass. Topics first so they embed before articles.
+                bulk_insert(data_dir, db, &plan.to_embed_topics, embed_vector_tx).await;
+                bulk_insert(data_dir, db, &plan.to_embed_articles, embed_vector_tx).await;
+            } else {
+                for id in plan.to_embed_topics {
+                    let _ = priority_tx.send(PriorityMsg::Embed(id));
+                }
+                for id in plan.to_embed_articles {
+                    let _ = background_tx.send(BackgroundMsg::Embed(id));
+                }
             }
 
             // After all background work drains, compact fragments and prune old
@@ -527,5 +538,46 @@ async fn dispatch_recovery(
         }
 
         Err(e) => log::error!("embedding service: recovery plan failed: {e}"),
+    }
+}
+
+/// Bulk path for fresh recovery: reads each id's `.md`, builds a null-vector row, and
+/// inserts in batches with a single `add` per batch — no per-row `get_entry`/`delete`.
+/// Each id is queued onto the vector channel for the (lowest-priority) embed pass.
+/// Safe only when the table has no pre-existing rows for these ids.
+async fn bulk_insert(
+    data_dir: &Path,
+    db: &EmbeddingsDb,
+    ids: &[String],
+    embed_vector_tx: &flume::Sender<String>,
+) {
+    const BULK_BATCH: usize = 1024;
+    let mut buf: Vec<EmbeddingEntry> = Vec::with_capacity(BULK_BATCH);
+
+    for id in ids {
+        let Some(path) = find_item_path(data_dir, id).await else {
+            log::warn!("bulk_insert: file not found id={id}");
+            continue;
+        };
+        let Ok(raw) = tokio::fs::read_to_string(&path).await else {
+            log::warn!("bulk_insert: unreadable {}", path.display());
+            continue;
+        };
+        let Some((fm, body)) = crate::util::parse_document(&raw) else {
+            log::warn!("bulk_insert: bad frontmatter {}", path.display());
+            continue;
+        };
+
+        buf.push(fm.to_embedding_entry(id.clone(), &body, None));
+        let _ = embed_vector_tx.send(id.clone());
+
+        if buf.len() >= BULK_BATCH {
+            if let Err(e) = db.add_batch(std::mem::take(&mut buf)).await {
+                log::error!("bulk_insert: add_batch failed: {e}");
+            }
+        }
+    }
+    if let Err(e) = db.add_batch(buf).await {
+        log::error!("bulk_insert: add_batch failed: {e}");
     }
 }

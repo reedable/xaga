@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use xaga_core::entry_cache::EntryStateCache;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
-use xaga_core::embeddings::{EmbeddingService, EmbeddingsError, ShutdownReason};
+use xaga_core::embeddings::{EmbeddingService, EmbeddingsDb, EmbeddingsError, ShutdownReason};
 
 pub(crate) const DEFAULT_LOADER_TIMEOUT_SECS: u64 = 10;
 
@@ -26,6 +26,9 @@ pub(crate) struct AppState {
     pub(crate) embedding_service: Arc<Mutex<Option<EmbeddingService>>>,
     pub(crate) http_client: reqwest::Client,
     pub(crate) entry_cache: Arc<Mutex<Option<EntryStateCache>>>,
+    /// Read-only LanceDB handle for command reads (Phase C). Distinct connection from
+    /// the embedding service's writer; reads must `reload()` to see the service's writes.
+    pub(crate) embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>>,
     pub(crate) allowed_domains: Arc<RwLock<Vec<String>>>,
     pub(crate) named_stores_supported: bool,
     pub(crate) pinned_feed_ids: Arc<RwLock<Vec<String>>>,
@@ -208,6 +211,7 @@ pub fn run() {
     let show_sidebar: Arc<RwLock<bool>> = Arc::new(RwLock::new(true));
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
     let entry_cache: Arc<Mutex<Option<EntryStateCache>>> = Arc::new(Mutex::new(None));
+    let embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>> = Arc::new(Mutex::new(None));
     let allowed_domains: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
     let pinned_feed_ids: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
     let pinned_topic_ids: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
@@ -215,6 +219,7 @@ pub fn run() {
     let inline_pdf_reader: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let html_reader_view: Arc<RwLock<String>> = Arc::new(RwLock::new("reader".to_string()));
     let setup_entry_cache = Arc::clone(&entry_cache);
+    let setup_embeddings_read = Arc::clone(&embeddings_read);
     let setup_allowed_domains = Arc::clone(&allowed_domains);
     let setup_pinned_feed_ids = Arc::clone(&pinned_feed_ids);
     let setup_pinned_topic_ids = Arc::clone(&pinned_topic_ids);
@@ -245,6 +250,7 @@ pub fn run() {
             embedding_service: embedding_service.clone(),
             http_client,
             entry_cache,
+            embeddings_read,
             allowed_domains,
             named_stores_supported,
             pinned_feed_ids,
@@ -561,6 +567,14 @@ pub fn run() {
 
                 match EmbeddingService::start(lib_path.clone()).await {
                     Ok(svc) => {
+                        // Phase C: open a read handle for command reads, after the service
+                        // so it attaches to the existing table. Reads call reload() to see
+                        // the service's writes (handles are version-pinned).
+                        match EmbeddingsDb::open(&lib_path).await {
+                            Ok(rdb) => *setup_embeddings_read.lock().unwrap() = Some(rdb),
+                            Err(e) => log::error!("startup: read handle open failed: {e}"),
+                        }
+
                         file_watchers::watch(
                             lib_path.clone(),
                             svc.priority_sender(),

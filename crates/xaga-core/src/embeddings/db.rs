@@ -53,6 +53,15 @@ impl From<&crate::types::CollectionItem> for RowKind {
     }
 }
 
+/// Per-kind row counts for `embeddings status`: how many rows of each kind exist
+/// and how many already have a computed vector. `total - embedded` is the count of
+/// rows inserted but still awaiting embedding (null vector).
+pub struct KindStatus {
+    pub kind: String,
+    pub total: usize,
+    pub embedded: usize,
+}
+
 /// Cosine distance threshold used when the caller does not specify one.
 /// Cosine distance = 1 − cosine_similarity; range [0, 1] for unit vectors.
 /// 0.5 corresponds to cosine similarity ≥ 0.5.
@@ -144,54 +153,105 @@ fn entry_to_batch(
     entry: EmbeddingEntry,
     schema: &Arc<Schema>,
 ) -> Result<RecordBatch, EmbeddingsError> {
-    let vector_field = Arc::new(Field::new("item", DataType::Float32, true));
-    let vector_array = match entry.vector {
-        Some(v) => {
-            let values = Arc::new(Float32Array::from(v));
-            FixedSizeListArray::try_new(vector_field, EMBEDDING_DIM, values, None)?
-        }
-        None => {
-            // A null FixedSizeList entry still needs EMBEDDING_DIM child slots;
-            // the validity bit marks the row itself as null.
-            let values = Arc::new(Float32Array::from(vec![0.0f32; EMBEDDING_DIM as usize]));
-            let nulls = NullBuffer::from(vec![false]);
-            FixedSizeListArray::try_new(vector_field, EMBEDDING_DIM, values, Some(nulls))?
-        }
-    };
+    entries_to_batch(vec![entry], schema)
+}
+
+/// Builds a record batch from many entries: one column per field, one row per entry.
+/// A null vector is stored as `EMBEDDING_DIM` placeholder slots marked invalid via the
+/// validity bitmap.
+fn entries_to_batch(
+    entries: Vec<EmbeddingEntry>,
+    schema: &Arc<Schema>,
+) -> Result<RecordBatch, EmbeddingsError> {
+    let n = entries.len();
+    let dim = EMBEDDING_DIM as usize;
+
+    let mut ids = Vec::with_capacity(n);
+    let mut kinds = Vec::with_capacity(n);
+    let mut sources = Vec::with_capacity(n);
+    let mut titles = Vec::with_capacity(n);
+    let mut created_ats = Vec::with_capacity(n);
+    let mut published_ats = Vec::with_capacity(n);
+    let mut updated_ats = Vec::with_capacity(n);
+    let mut checksums = Vec::with_capacity(n);
+    let mut references = Vec::with_capacity(n);
+    let mut colors = Vec::with_capacity(n);
+    let mut summaries = Vec::with_capacity(n);
+    let mut unread = Vec::with_capacity(n);
+    let mut bookmarked = Vec::with_capacity(n);
+    let mut pinned = Vec::with_capacity(n);
 
     let mut tags_builder = ListBuilder::new(StringBuilder::new());
-    for tag in &entry.tags {
-        tags_builder.values().append_value(tag);
-    }
-    tags_builder.append(true);
-    let tags_array = tags_builder.finish();
-
     let mut topics_builder = ListBuilder::new(StringBuilder::new());
-    for topic in &entry.topics {
-        topics_builder.values().append_value(topic);
+
+    let mut vec_values: Vec<f32> = Vec::with_capacity(n * dim);
+    let mut vec_validity: Vec<bool> = Vec::with_capacity(n);
+
+    for entry in entries {
+        ids.push(entry.id);
+        kinds.push(entry.kind);
+        sources.push(entry.source);
+        titles.push(entry.title);
+        created_ats.push(entry.created_at);
+        published_ats.push(entry.published_at);
+        updated_ats.push(entry.updated_at);
+        checksums.push(entry.checksum);
+        references.push(entry.reference);
+        colors.push(entry.color);
+        summaries.push(entry.summary);
+        unread.push(entry.is_unread);
+        bookmarked.push(entry.is_bookmarked);
+        pinned.push(entry.is_pinned);
+
+        for tag in &entry.tags {
+            tags_builder.values().append_value(tag);
+        }
+        tags_builder.append(true);
+
+        for topic in &entry.topics {
+            topics_builder.values().append_value(topic);
+        }
+        topics_builder.append(true);
+
+        match entry.vector {
+            Some(v) => {
+                vec_values.extend_from_slice(&v);
+                vec_validity.push(true);
+            }
+            None => {
+                vec_values.extend(std::iter::repeat(0.0f32).take(dim));
+                vec_validity.push(false);
+            }
+        }
     }
-    topics_builder.append(true);
-    let topics_array = topics_builder.finish();
+
+    let vector_field = Arc::new(Field::new("item", DataType::Float32, true));
+    let vector_array = FixedSizeListArray::try_new(
+        vector_field,
+        EMBEDDING_DIM,
+        Arc::new(Float32Array::from(vec_values)),
+        Some(NullBuffer::from(vec_validity)),
+    )?;
 
     Ok(RecordBatch::try_new(
         schema.clone(),
         vec![
-            Arc::new(StringArray::from(vec![entry.id])),
-            Arc::new(StringArray::from(vec![entry.kind])),
-            Arc::new(StringArray::from(vec![entry.source])),
-            Arc::new(StringArray::from(vec![entry.title])),
-            Arc::new(StringArray::from(vec![entry.created_at])),
-            Arc::new(StringArray::from(vec![entry.published_at])),
-            Arc::new(StringArray::from(vec![entry.updated_at])),
-            Arc::new(StringArray::from(vec![entry.checksum])),
-            Arc::new(StringArray::from(vec![entry.reference])),
-            Arc::new(StringArray::from(vec![entry.color])),
-            Arc::new(StringArray::from(vec![entry.summary])),
-            Arc::new(tags_array),
-            Arc::new(topics_array),
-            Arc::new(BooleanArray::from(vec![entry.is_unread])),
-            Arc::new(BooleanArray::from(vec![entry.is_bookmarked])),
-            Arc::new(BooleanArray::from(vec![entry.is_pinned])),
+            Arc::new(StringArray::from(ids)),
+            Arc::new(StringArray::from(kinds)),
+            Arc::new(StringArray::from(sources)),
+            Arc::new(StringArray::from(titles)),
+            Arc::new(StringArray::from(created_ats)),
+            Arc::new(StringArray::from(published_ats)),
+            Arc::new(StringArray::from(updated_ats)),
+            Arc::new(StringArray::from(checksums)),
+            Arc::new(StringArray::from(references)),
+            Arc::new(StringArray::from(colors)),
+            Arc::new(StringArray::from(summaries)),
+            Arc::new(tags_builder.finish()),
+            Arc::new(topics_builder.finish()),
+            Arc::new(BooleanArray::from(unread)),
+            Arc::new(BooleanArray::from(bookmarked)),
+            Arc::new(BooleanArray::from(pinned)),
             Arc::new(vector_array),
         ],
     )?)
@@ -523,6 +583,34 @@ impl EmbeddingsDb {
         Ok(entries_from_batches(&batches))
     }
 
+    /// Read-only per-kind summary: total rows and how many are embedded (non-null
+    /// vector). Counts are pushed down to LanceDB (no row materialization). Kinds
+    /// with zero rows are omitted.
+    pub async fn embedding_status(&self) -> Result<Vec<KindStatus>, EmbeddingsError> {
+        let mut out = Vec::new();
+        for kind in [RowKind::Entry, RowKind::Annotation, RowKind::Topic, RowKind::Feed] {
+            let total = self
+                .table
+                .count_rows(Some(kind.predicate()))
+                .await
+                .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+            if total == 0 {
+                continue;
+            }
+            let embedded = self
+                .table
+                .count_rows(Some(format!("{} AND vector IS NOT NULL", kind.predicate())))
+                .await
+                .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+            out.push(KindStatus {
+                kind: kind.as_str().to_string(),
+                total,
+                embedded,
+            });
+        }
+        Ok(out)
+    }
+
     /// Inserts an embedding row, replacing any existing row with the same id.
     pub async fn upsert(&self, entry: EmbeddingEntry) -> Result<(), EmbeddingsError> {
         // Delete before insert rather than using merge_insert.
@@ -555,6 +643,36 @@ impl EmbeddingsDb {
             .execute()
             .await
             .map(|_| ())
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))
+    }
+
+    /// Inserts many rows in a single `add`, with no per-row `get_entry`/`delete`.
+    /// Intended for bulk recovery into a table that has no pre-existing rows for
+    /// these ids (e.g. a fresh post-`reset` recovery); it does not de-duplicate.
+    pub async fn add_batch(&self, entries: Vec<EmbeddingEntry>) -> Result<(), EmbeddingsError> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let batch = entries_to_batch(entries, &self.schema)?;
+        let reader: Box<dyn RecordBatchReader + Send> = Box::new(RecordBatchIterator::new(
+            vec![Ok(batch)],
+            self.schema.clone(),
+        ));
+        self.table
+            .add(reader)
+            .execute()
+            .await
+            .map(|_| ())
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))
+    }
+
+    /// Refreshes this handle to the latest committed table version, so reads see writes
+    /// made by another connection (e.g. the embedding service). LanceDB table handles are
+    /// pinned to the version they opened at until checked out.
+    pub async fn reload(&self) -> Result<(), EmbeddingsError> {
+        self.table
+            .checkout_latest()
+            .await
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))
     }
 
@@ -1579,5 +1697,86 @@ mod tests {
         let e1_read = db.entries_by_ids(&["e1".to_string()]).await.unwrap();
         assert_eq!(e1_read[0].summary.as_deref(), Some("s1"));
         assert!(e1_read[0].is_bookmarked);
+    }
+
+    /// `embedding_status` counts per kind and distinguishes embedded from pending
+    /// (null-vector) rows; kinds with no rows are omitted.
+    #[tokio::test]
+    async fn embedding_status_counts_by_kind_and_vector() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        db.upsert(sample("e1", "entry", Some(vec![0.1f32; EMBEDDING_DIM as usize])))
+            .await
+            .unwrap();
+        db.upsert(sample("e2", "entry", None)).await.unwrap(); // pending
+        db.upsert(sample("f1", "feed", Some(vec![0.2f32; EMBEDDING_DIM as usize])))
+            .await
+            .unwrap();
+
+        let status = db.embedding_status().await.unwrap();
+
+        let entry = status.iter().find(|s| s.kind == "entry").expect("entry kind");
+        assert_eq!(entry.total, 2);
+        assert_eq!(entry.embedded, 1);
+
+        let feed = status.iter().find(|s| s.kind == "feed").expect("feed kind");
+        assert_eq!(feed.total, 1);
+        assert_eq!(feed.embedded, 1);
+
+        assert!(status.iter().all(|s| s.kind != "annotation" && s.kind != "topic"));
+    }
+
+    /// `add_batch` inserts many rows in one call, round-tripping mixed Some/None
+    /// vectors, and the null-vector rows stay excluded from similarity.
+    #[tokio::test]
+    async fn add_batch_inserts_many_rows_with_mixed_vectors() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        db.add_batch(vec![
+            sample("a", "entry", Some(vec![0.1f32; EMBEDDING_DIM as usize])),
+            sample("b", "entry", None),
+            sample("c", "topic", Some(vec![0.3f32; EMBEDDING_DIM as usize])),
+        ])
+        .await
+        .unwrap();
+
+        assert_eq!(db.count().await.unwrap(), 3);
+        assert!(db.get_entry("a").await.unwrap().unwrap().vector.is_some());
+        assert!(db.get_entry("b").await.unwrap().unwrap().vector.is_none());
+        assert_eq!(db.get_entry("c").await.unwrap().unwrap().kind, "topic");
+
+        let related = db
+            .find_by_vector(vec![0.1f32; EMBEDDING_DIM as usize], None, None, None)
+            .await
+            .unwrap();
+        assert!(related.iter().any(|e| e.entry.id == "a"));
+        assert!(!related.iter().any(|e| e.entry.id == "b"));
+    }
+
+    /// Ground-truth for the read-side cutover: does a second handle (e.g. AppState's
+    /// read handle) see writes made by the service's handle? Establishes whether a
+    /// handle is version-pinned (needs `reload`) or auto-tracks latest.
+    #[tokio::test]
+    async fn read_handle_visibility_across_connections() {
+        let dir = tempfile::tempdir().unwrap();
+        let writer = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let reader = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        writer
+            .add_batch(vec![sample("x", "entry", None)])
+            .await
+            .unwrap();
+
+        let before = reader.count().await.unwrap();
+        reader.reload().await.unwrap();
+        let after = reader.count().await.unwrap();
+
+        // The guarantee the cutover relies on: after reload, the reader sees the commit.
+        assert_eq!(after, 1, "reader must see writer's commit after reload");
+        // Baseline hypothesis: a handle is pinned until reloaded. If this assert fails,
+        // handles auto-track latest and `reload` is unnecessary — adjust accordingly.
+        assert_eq!(before, 0, "handle is pinned to its open-version until reloaded");
     }
 }

@@ -44,7 +44,7 @@ impl From<arrow_schema::ArrowError> for EmbeddingsError {
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
-pub use db::{EmbeddingEntry, EmbeddingsDb, RowKind};
+pub use db::{EmbeddingEntry, EmbeddingsDb, KindStatus, RowKind};
 pub use lock::LockFile;
 pub use model::{default_model_dir, download_model_if_missing, load_default_embedder, model_files_present, Embedder, DEFAULT_MODEL_REPO, MODEL_FILES};
 pub use pipeline::embed_file;
