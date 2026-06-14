@@ -185,7 +185,11 @@ entry-only, so the user-facing command is unaffected.
   startup no longer does the cache scan/seed (state is read on-demand from LanceDB). Possible dead-code
   follow-up: `annotate_*` / `filter::unread_ids`/`bookmarked_ids` ([filter.rs](crates/xaga-core/src/filter.rs))
   if now unused.
-- **Retire the feed-search hack** (cutover step 7).
+- **Feed-search hack** (cutover step 7) — in progress; decided **hybrid (C)**: feeds searchable both semantically and by name.
+  - ✅ **Part 1 done** (compiles, not yet relaunch-verified): feeds now embed **title + `atom:subtitle`** for real semantic content — `FeedMeta.subtitle`, `feed_embedding_meta` reads `feed.subtitle()`, `embed_feeds` embeds title+subtitle, folds subtitle into `feed_checksum`, and stores it in `summary`. Re-embeds all feeds on next recovery (cheap). **Verify on relaunch.**
+  - **Part 2 blocked on the type model:** the unified vector search returns feed rows, but `enrich_embedded` ([item.rs](crates/xaga-core/src/item.rs)) classifies them as **Entries** (no Feed concept — it only splits topic-vs-entry by url-emptiness). Feeds leak into entry results, worse now that they rank higher.
+  - **➡️ NEXT STEP — brand `Feed` and `Entry` with `__kind`.** Feed and Entry overlap structurally (both `WebResource = Item & url`; a Feed is Entry-shaped **+ Collection counts**), so `isEntry(feed)` is structurally true. The distinction is **extrinsic** (role/`kind`), not intrinsic — shape alone can't separate them. Plan: branded TS types `WebResource & { readonly __kind: "feed" | "entry" }`; **mint `__kind` at the one wire boundary from the backend `RowKind`/`kind`** (thread it through `enrich_embedded`), never cast loosely. Gives compile-time mixing protection + projection-robust runtime classification, and fixes the feed-as-entry bug. Then Part 2 hybrid filter: `results.filter(isFeed)` (semantic) ∪ name-match, deduped.
+  - Design rule from the long discussion: **shape is SoT for *intrinsic* types** (no discriminator); **`__kind` is a *derived distillation*, legitimate only for *extrinsic* role distinctions** (mint from SoT, never trust over shape). Brand the `RowKind` set; for the *intrinsic* kinds (Annotation, Topic) cross-validate `__kind` against shape at the boundary. Don't brand composite/view types.
 - **End-to-end verification** at the design scale (cutover step 8) — see TECH_DEBT note; currently
   planned as functional only.
 
