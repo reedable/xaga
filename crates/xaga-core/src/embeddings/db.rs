@@ -14,42 +14,15 @@ use lancedb::DistanceType;
 use lancedb::query::{ExecutableQuery, QueryBase, Select};
 
 use super::EmbeddingsError;
-use crate::types::{AnnotationSummary, EmbeddedEntry, Entry};
+use crate::types::{AnnotationSummary, EmbeddedEntry, Entry, Kind};
 
 const EMBEDDING_DIM: i32 = 384;
 
-/// Restricts a similarity query to rows of a specific type, via the `kind` column.
-pub enum RowKind {
-    Entry,
-    Annotation,
-    Topic,
-    Feed,
-}
-
-impl RowKind {
-    /// Canonical discriminator string stored in the `kind` column. These match the
-    /// `CollectionItem` serde tags ("entry"/"annotation"), so the two never need
-    /// translation between each other or the DB.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            RowKind::Entry => "entry",
-            RowKind::Annotation => "annotation",
-            RowKind::Topic => "topic",
-            RowKind::Feed => "feed",
-        }
-    }
-
-    fn predicate(&self) -> String {
+impl Kind {
+    /// SQL predicate selecting rows of this kind via the `kind` column. A DB-layer
+    /// concern, kept here rather than on the domain type in `types.rs`.
+    pub(crate) fn predicate(&self) -> String {
         format!("kind = '{}'", self.as_str())
-    }
-}
-
-impl From<&crate::types::CollectionItem> for RowKind {
-    fn from(item: &crate::types::CollectionItem) -> Self {
-        match item {
-            crate::types::CollectionItem::Entry { .. } => RowKind::Entry,
-            crate::types::CollectionItem::Annotation { .. } => RowKind::Annotation,
-        }
     }
 }
 
@@ -88,8 +61,8 @@ fn similarity_bounds(
 
 pub struct EmbeddingEntry {
     pub id: String,
-    /// Row kind discriminator: "entry" | "annotation" | "topic" | "feed".
-    pub kind: String,
+    /// Row kind discriminator. Stored as the `kind` Utf8 column via `Kind::as_str`.
+    pub kind: Kind,
     pub source: String,
     pub title: String,
     pub created_at: String,
@@ -201,7 +174,7 @@ fn entries_to_batch(
 
     for entry in entries {
         ids.push(entry.id);
-        kinds.push(entry.kind);
+        kinds.push(entry.kind.as_str().to_string());
         sources.push(entry.source);
         titles.push(entry.title);
         created_ats.push(entry.created_at);
@@ -335,6 +308,7 @@ struct BatchSummaryColumns<'a> {
     colors: Option<&'a StringArray>,
     summaries: Option<&'a StringArray>,
     tags: Option<&'a ListArray>,
+    kinds: Option<&'a StringArray>,
 }
 
 impl<'a> BatchSummaryColumns<'a> {
@@ -374,7 +348,18 @@ impl<'a> BatchSummaryColumns<'a> {
             tags: batch
                 .column_by_name("tags")
                 .and_then(|c| c.as_any().downcast_ref::<ListArray>()),
+            kinds: batch
+                .column_by_name("kind")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>()),
         })
+    }
+
+    /// The row's domain kind. Defaults to `Entry` if the column is absent (it is
+    /// part of `SUMMARY_COLUMNS` and the full row, so this should not occur).
+    fn kind_at(&self, i: usize) -> Kind {
+        self.kinds
+            .and_then(|a| a.value(i).parse().ok())
+            .unwrap_or(Kind::Entry)
     }
 
     fn tags_at(&self, i: usize) -> Vec<String> {
@@ -652,7 +637,7 @@ impl EmbeddingsDb {
             .table
             .query()
             .select(Select::columns(&Self::SUMMARY_COLUMNS))
-            .only_if(RowKind::Entry.predicate())
+            .only_if(Kind::Entry.predicate())
             .execute()
             .await?
             .try_collect()
@@ -667,7 +652,7 @@ impl EmbeddingsDb {
             .table
             .query()
             .select(Select::columns(&Self::SUMMARY_COLUMNS))
-            .only_if(format!("{} AND is_bookmarked = true", RowKind::Entry.predicate()))
+            .only_if(format!("{} AND is_bookmarked = true", Kind::Entry.predicate()))
             .execute()
             .await?
             .try_collect()
@@ -681,7 +666,7 @@ impl EmbeddingsDb {
     /// with zero rows are omitted.
     pub async fn embedding_status(&self) -> Result<Vec<KindStatus>, EmbeddingsError> {
         let mut out = Vec::new();
-        for kind in [RowKind::Entry, RowKind::Annotation, RowKind::Topic, RowKind::Feed] {
+        for kind in [Kind::Entry, Kind::Annotation, Kind::Topic, Kind::Feed] {
             let total = self
                 .table
                 .count_rows(Some(kind.predicate()))
@@ -954,7 +939,7 @@ impl EmbeddingsDb {
                 });
             return Ok(Some(EmbeddingEntry {
                 id: get_str("id"),
-                kind: get_str("kind"),
+                kind: get_str("kind").parse().unwrap_or(Kind::Entry),
                 source: get_str("source"),
                 title: get_str("title"),
                 created_at: get_str("created_at"),
@@ -1059,7 +1044,7 @@ impl EmbeddingsDb {
         let batches: Vec<RecordBatch> = self
             .table
             .query()
-            .only_if(RowKind::Annotation.predicate())
+            .only_if(Kind::Annotation.predicate())
             .execute()
             .await?
             .try_collect()
@@ -1103,8 +1088,8 @@ impl EmbeddingsDb {
         min_similarity: f32,
         max_similarity: f32,
         limit: Option<usize>,
-        row_kind: Option<&RowKind>,
-    ) -> Result<Vec<(f32, Entry, String, String)>, EmbeddingsError> {
+        row_kind: Option<&Kind>,
+    ) -> Result<Vec<(f32, Entry, Kind, String, String)>, EmbeddingsError> {
         use arrow_array::Array;
 
         let mut q = self.table.query();
@@ -1120,7 +1105,7 @@ impl EmbeddingsDb {
 
         let query_norm: f32 = query_vector.iter().map(|x| x * x).sum::<f32>().sqrt();
 
-        let mut scored: Vec<(f32, Entry, String, String)> = Vec::new();
+        let mut scored: Vec<(f32, Entry, Kind, String, String)> = Vec::new();
         for batch in &batches {
             let Some(id_col) = batch
                 .column_by_name("id")
@@ -1169,7 +1154,7 @@ impl EmbeddingsDb {
                 };
 
                 if similarity >= min_similarity && similarity <= max_similarity {
-                    scored.push((similarity, cols.summary_at(i), cols.reference_at(i), cols.color_at(i)));
+                    scored.push((similarity, cols.summary_at(i), cols.kind_at(i), cols.reference_at(i), cols.color_at(i)));
                 }
             }
         }
@@ -1189,7 +1174,7 @@ impl EmbeddingsDb {
         min_similarity: f32,
         max_similarity: f32,
         limit: Option<usize>,
-        row_kind: Option<&RowKind>,
+        row_kind: Option<&Kind>,
     ) -> Result<Vec<EmbeddedEntry>, EmbeddingsError> {
         Ok(self
             .full_scan_scored(
@@ -1202,7 +1187,7 @@ impl EmbeddingsDb {
             )
             .await?
             .into_iter()
-            .map(|(similarity, entry, reference, color)| EmbeddedEntry { entry, similarity, reference, color })
+            .map(|(similarity, entry, kind, reference, color)| EmbeddedEntry { entry, kind, similarity, reference, color })
             .collect())
     }
 
@@ -1384,7 +1369,7 @@ impl EmbeddingsDb {
             .await
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
-        let mut scored: Vec<(f32, Entry, String, String)> = Vec::new();
+        let mut scored: Vec<(f32, Entry, Kind, String, String)> = Vec::new();
         for batch in &batches {
             use arrow_array::Array;
             let Some(id_col) = batch
@@ -1438,7 +1423,7 @@ impl EmbeddingsDb {
                     .fold(f32::NEG_INFINITY, f32::max);
 
                 if max_sim >= effective_min && max_sim <= effective_max {
-                    scored.push((max_sim, cols.summary_at(i), cols.reference_at(i), cols.color_at(i)));
+                    scored.push((max_sim, cols.summary_at(i), cols.kind_at(i), cols.reference_at(i), cols.color_at(i)));
                 }
             }
         }
@@ -1449,7 +1434,7 @@ impl EmbeddingsDb {
 
         Ok(scored
             .into_iter()
-            .map(|(similarity, entry, reference, color)| EmbeddedEntry { entry, similarity, reference, color })
+            .map(|(similarity, entry, kind, reference, color)| EmbeddedEntry { entry, kind, similarity, reference, color })
             .collect())
     }
 
@@ -1465,7 +1450,7 @@ impl EmbeddingsDb {
         limit: Option<usize>,
         min_similarity: Option<f32>,
         max_similarity: Option<f32>,
-        row_kind: Option<RowKind>,
+        row_kind: Option<Kind>,
     ) -> Result<Vec<EmbeddedEntry>, EmbeddingsError> {
         // 1. Fetch the query vector for this id.
         let escaped = id.replace('\'', "''");
@@ -1551,7 +1536,7 @@ impl EmbeddingsDb {
             for i in 0..batch.num_rows() {
                 let entry = cols.summary_at(i);
                 let similarity = distances.map_or(0.0, |d| 1.0 - d.value(i));
-                results.push(EmbeddedEntry { entry, similarity, reference: cols.reference_at(i), color: cols.color_at(i) });
+                results.push(EmbeddedEntry { entry, kind: cols.kind_at(i), similarity, reference: cols.reference_at(i), color: cols.color_at(i) });
             }
         }
 
@@ -1615,6 +1600,7 @@ impl EmbeddingsDb {
                 let similarity = distances.map_or(0.0, |d| 1.0 - d.value(i));
                 results.push(EmbeddedEntry {
                     entry,
+                    kind: cols.kind_at(i),
                     similarity,
                     reference: cols.reference_at(i),
                     color: cols.color_at(i),
@@ -1632,7 +1618,7 @@ mod tests {
     fn sample(id: &str, kind: &str, vector: Option<Vec<f32>>) -> EmbeddingEntry {
         EmbeddingEntry {
             id: id.to_string(),
-            kind: kind.to_string(),
+            kind: kind.parse().expect("valid kind"),
             source: "https://example.com/a".to_string(),
             title: "Title".to_string(),
             created_at: "2026-01-01T00:00:00Z".to_string(),
@@ -1668,7 +1654,7 @@ mod tests {
         assert_eq!(db.count().await.unwrap(), 2);
 
         let got = db.get_entry("with-vec").await.unwrap().expect("row present");
-        assert_eq!(got.kind, "entry");
+        assert_eq!(got.kind, Kind::Entry);
         assert_eq!(got.summary, "a summary");
         assert_eq!(got.topics, vec!["topic-1".to_string(), "topic-2".to_string()]);
         assert!(got.is_unread && got.is_pinned && !got.is_bookmarked);
@@ -1774,7 +1760,7 @@ mod tests {
             .unwrap();
 
         let got = db.get_entry("anno-1").await.unwrap().expect("annotation row present");
-        assert_eq!(got.kind, "annotation");
+        assert_eq!(got.kind, Kind::Annotation);
         assert!(got.topics.contains(&"topic-a".to_string()), "annotation member gets the topic");
     }
 
@@ -1936,7 +1922,7 @@ mod tests {
         assert_eq!(db.count().await.unwrap(), 3);
         assert!(db.get_entry("a").await.unwrap().unwrap().vector.is_some());
         assert!(db.get_entry("b").await.unwrap().unwrap().vector.is_none());
-        assert_eq!(db.get_entry("c").await.unwrap().unwrap().kind, "topic");
+        assert_eq!(db.get_entry("c").await.unwrap().unwrap().kind, Kind::Topic);
 
         let related = db
             .find_by_vector(vec![0.1f32; EMBEDDING_DIM as usize], None, None, None)

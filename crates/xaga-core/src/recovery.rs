@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::embeddings::{Embedder, EmbeddingsDb, EmbeddingsError, RowKind, embed_file};
-use crate::types::{Entry, SavedItem};
+use crate::embeddings::{Embedder, EmbeddingsDb, EmbeddingsError, embed_file};
+use crate::types::{Entry, Kind, SavedItem};
 use flume;
 use crate::util::parse_document;
 
@@ -123,7 +123,7 @@ pub async fn build_recovery_plan(
         .filter(|(id, (_, reference, _, kind))| {
             // Feed rows are managed by embed_feeds, not the entry/topic plan — never
             // delete them here (their ids are not in the entries/topics filesystem scan).
-            if kind == RowKind::Feed.as_str() {
+            if kind == Kind::Feed.as_str() {
                 return false;
             }
             let file_id = if reference.is_empty() {

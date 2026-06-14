@@ -74,6 +74,52 @@ pub trait Item {
     fn reference(&self) -> &str { "" }
 }
 
+// ── Kind ──────────────────────────────────────────────────────────────────────
+
+/// The domain type discriminator for the four kinds the system distinguishes.
+///
+/// In the Rust layer the kind is encoded structurally by the distinct domain
+/// structs (`Entry`, `Feed`, `Topic`, `Annotation`); this enum is the single
+/// source of truth for the discriminator as an explicit value, needed only at
+/// type-erasure boundaries — the LanceDB `kind` column and the embedded-result
+/// wire payload. The serde representation matches `as_str()` and the
+/// `CollectionItem` serde tags, so the value never needs translation between the
+/// wire, the DB column, and `CollectionItem`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Kind {
+    Entry,
+    Annotation,
+    Topic,
+    Feed,
+}
+
+impl Kind {
+    /// Canonical discriminator string stored in the DB `kind` column and sent on
+    /// the wire. Kept in sync with the serde representation above.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Kind::Entry => "entry",
+            Kind::Annotation => "annotation",
+            Kind::Topic => "topic",
+            Kind::Feed => "feed",
+        }
+    }
+}
+
+impl std::str::FromStr for Kind {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "entry" => Ok(Kind::Entry),
+            "annotation" => Ok(Kind::Annotation),
+            "topic" => Ok(Kind::Topic),
+            "feed" => Ok(Kind::Feed),
+            other => Err(format!("unknown kind: {other}")),
+        }
+    }
+}
+
 // ── Entry ─────────────────────────────────────────────────────────────────────
 
 /// Metadata for a feed entry. Mirrors the TypeScript `Entry` type.
@@ -175,6 +221,10 @@ pub struct RankedItem {
 pub struct EmbeddedEntry {
     #[serde(flatten)]
     pub entry: Entry,
+    /// Domain discriminator minted from the row's `kind` column. The wire
+    /// distillation the frontend brands into `__kind` — the only thing that
+    /// separates a feed result from an entry result, since both are URL-bearing.
+    pub kind: Kind,
     pub similarity: f32,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub reference: String,
@@ -214,12 +264,24 @@ pub struct EmbeddedTopic {
     pub similarity: f32,
 }
 
+/// A `Feed` returned from an embedding similarity query, carrying its score and the
+/// `kind` discriminator (minted into `__kind` at the TS boundary).
+#[derive(Debug, Serialize)]
+pub struct EmbeddedFeed {
+    #[serde(flatten)]
+    pub feed: Feed,
+    pub kind: Kind,
+    pub similarity: f32,
+}
+
 /// Untagged union of all possible embedded search result shapes.
-/// Serializes by shape alone — no discriminator field.
+/// Serializes by shape alone — the `kind` field on entry/feed variants is the
+/// discriminator the frontend brands into `__kind`.
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum EmbeddedItem {
     Topic(EmbeddedTopic),
+    Feed(EmbeddedFeed),
     Entry(EmbeddedEntry),
 }
 
@@ -362,6 +424,15 @@ impl CollectionItem {
     pub fn id(&self) -> &str {
         match self {
             Self::Entry { id } | Self::Annotation { id, .. } => id,
+        }
+    }
+}
+
+impl From<&CollectionItem> for Kind {
+    fn from(item: &CollectionItem) -> Self {
+        match item {
+            CollectionItem::Entry { .. } => Kind::Entry,
+            CollectionItem::Annotation { .. } => Kind::Annotation,
         }
     }
 }

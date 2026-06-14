@@ -91,12 +91,10 @@ impl Frontmatter {
             id,
             // Topics carry no `source`; entries always do.
             kind: if self.source.is_empty() {
-                crate::embeddings::db::RowKind::Topic
+                crate::types::Kind::Topic
             } else {
-                crate::embeddings::db::RowKind::Entry
-            }
-            .as_str()
-            .to_string(),
+                crate::types::Kind::Entry
+            },
             source: self.source.clone(),
             title: self.title.clone(),
             created_at: self.created_at.clone(),

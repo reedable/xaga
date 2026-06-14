@@ -47,6 +47,13 @@ locations — severity and ordering are not assigned here.
 - [ ] **`all_entries_meta` materializes the whole table** (id/checksum/reference/
   has_vector/kind for every row) into a `HashMap` on every recovery.
   [db.rs](crates/xaga-core/src/embeddings/db.rs).
+- [ ] **Embedded feed results return `entry_count`/`unread_count`/`bookmarked_count` = 0.**
+  `enrich_embedded` builds `EmbeddedItem::Feed` without real stats; the server-side lookup
+  (read the feed's `.atom` membership + intersect with the unread/bookmarked id-sets via
+  `feed_summary`) was deferred. Decided design when picked up: thread `feeds_dir` + unread/
+  bookmarked sets from the `query_by_text` command (same source as `list_feeds`), or open the
+  db inside `enrich_embedded` only when a feed hit is present. Counts are O(U)+O(M) (see the
+  per-feed count discussion). [item.rs](crates/xaga-core/src/item.rs) `enrich_embedded`.
 
 ## Feed ingestion
 
@@ -91,3 +98,25 @@ listed above.
   unprojected read. ([db.rs](crates/xaga-core/src/embeddings/db.rs).)
 - [ ] **Cutover verification (cutover step 8).** Planned as functional verification on the
   running app, with no load/scale verification at the design target.
+
+## Frontend type branding (`__kind`)
+
+- [ ] **`toSavedItem` does not mint `__kind`, so the guards can't yet require brand *and*
+  shape.** The intended model: an `Entry` or `Feed` is identified by **both** the shape
+  *and* the brand matching — neither alone is sufficient. The shape check is the shared
+  `isWebResource` (`Item & url`), the structural foundation common to Entry and Feed; it is
+  never removed. `__kind` layers on top to resolve the role (feed vs entry) that the shared
+  shape cannot. Target guards:
+  - `isEntry(item)  = isWebResource(item) && item.__kind === "entry"`
+  - `isFeed(item)   = isWebResource(item) && item.__kind === "feed"`
+  (`isWebResource` is not yet extracted as a helper — extract it and have both guards call it.)
+
+  Blocker: `Entry`/`Feed` are branded and minted at the wire boundary
+  (`toEntry`/`toFeed`/`toAnyEmbeddedItem`), but `SavedItem` (the DTO for `listAllItems` /
+  `listTopicItems` — the All-items and Topic lists) is **not** branded. So requiring the brand
+  would drop every saved row. Until `toSavedItem` mints `__kind:"entry"` on its bookmark/entry
+  rows (annotation rows stay detected by `isAnnotation`'s shape), the guards run an interim
+  **brand-first, shape-fallback** (a present brand decides; absent a brand, shape alone). Once
+  `toSavedItem` mints, switch the guards to the brand-**and**-shape form above.
+  [TauriPlatform.ts](src/platform/TauriPlatform.ts) `toSavedItem`,
+  [types.ts](src/types.ts) `isEntry`/`isFeed`/`isWebResource`.

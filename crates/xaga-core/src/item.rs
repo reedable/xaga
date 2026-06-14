@@ -3,10 +3,10 @@ use std::path::Path;
 
 use thiserror::Error;
 
-use crate::embeddings::{EmbeddingsDb, RowKind};
+use crate::embeddings::EmbeddingsDb;
 use crate::feeds;
 use crate::filter;
-use crate::types::{EmbeddedEntry, EmbeddedItem, EmbeddedTopic, Entry, ItemFilter};
+use crate::types::{EmbeddedEntry, EmbeddedFeed, EmbeddedItem, EmbeddedTopic, Entry, Feed, ItemFilter, Kind};
 
 // Forwarding shim — all types have moved to `crate::types`.
 pub use crate::types::{Document, Item};
@@ -86,7 +86,7 @@ pub async fn list_embedded_items(
         }
         EmbeddedItemSource::TopicsRelatedTo { id, limit, min_similarity } => {
             let db = EmbeddingsDb::open(library).await?;
-            db.find_related(&id, limit, min_similarity, None, Some(RowKind::Topic))
+            db.find_related(&id, limit, min_similarity, None, Some(Kind::Topic))
                 .await
                 .map_err(ItemError::Embeddings)
         }
@@ -99,6 +99,27 @@ pub async fn list_embedded_items(
 pub async fn enrich_embedded(library: &Path, entries: Vec<EmbeddedEntry>) -> Vec<EmbeddedItem> {
     let mut result = Vec::with_capacity(entries.len());
     for entry in entries {
+        if entry.kind == Kind::Feed {
+            // Feed stats are deferred: counts returned as 0. The server-side lookup
+            // (read the feed `.atom` membership + intersect the unread/bookmarked id-sets
+            // via `feeds::feed_summary`) is TECH_DEBT.md "Search and counts" → embedded
+            // feed results return counts = 0.
+            result.push(EmbeddedItem::Feed(EmbeddedFeed {
+                feed: Feed {
+                    id: entry.entry.id.clone(),
+                    url: entry.entry.url.clone(),
+                    title: entry.entry.title.clone(),
+                    entry_count: 0,
+                    unread_count: 0,
+                    bookmarked_count: 0,
+                    created_at: entry.entry.created_at.clone(),
+                    updated_at: entry.entry.updated_at.clone(),
+                },
+                kind: entry.kind,
+                similarity: entry.similarity,
+            }));
+            continue;
+        }
         if entry.entry.url.is_empty() {
             if let Ok(topic) = crate::topics::read_topic(library, &entry.entry.id).await {
                 result.push(EmbeddedItem::Topic(EmbeddedTopic { topic, similarity: entry.similarity }));

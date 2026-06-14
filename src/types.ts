@@ -96,20 +96,35 @@ export function isShortcut(item: Item): item is Shortcut {
   return isItem(item) && "filter" in item && isFilter(item.filter);
 }
 
+// ── WebResource ──────────────────────────────────────────────────────────────
+
+/** Any item fetched from a URL — the structural base shared by Entry and Feed.
+ *  Entry and Feed overlap structurally (a Feed is Entry-shaped plus Collection
+ *  counts), so shape alone cannot separate them; the `__kind` brand does. */
+export type WebResource = Item & {
+  url: string;
+};
+
 // ── Entry ────────────────────────────────────────────────────────────────────
 
 /** Abstract representation of any feed entry, regardless of source. */
-export type Entry = Item & {
-  url: string;
+export type Entry = WebResource & {
+  readonly __kind: "entry";
   publishedAt?: string;
   summary?: string;
   isUnread?: boolean;
   isBookmarked?: boolean;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function isEntry(item?: any): item is Entry {
-  return isItem(item) && "url" in item && typeof item.url === "string";
+// Shape is the foundation and is never removed; `__kind` only layers on top to
+// distinguish role (an entry from a same-shaped feed). A present non-"entry" brand
+// (e.g. a feed) is excluded; absent a brand, fall back to the structural test.
+// SavedItem rows are not yet branded — see TECH_DEBT.md "Frontend type branding".
+export function isEntry(item?: Item | null): item is Entry {
+  const kind = (item as { __kind?: unknown } | null | undefined)?.__kind;
+  if (kind === "entry") return true;
+  if (kind !== undefined) return false;
+  return isItem(item) && "url" in item && typeof (item as { url?: unknown }).url === "string";
 }
 
 /** Items that carry full content. */
@@ -215,13 +230,19 @@ export function isTopic(item?: Item | null): item is Topic {
 
 // ── Feed ─────────────────────────────────────────────────────────────────────
 
-/** A subscribed RSS/Atom feed. */
-export type Feed = Collection & {
-  url: string;
+/** A subscribed RSS/Atom feed. Entry-shaped plus Collection counts; the `__kind`
+ *  brand is what distinguishes it from an Entry. */
+export type Feed = Collection & WebResource & {
+  readonly __kind: "feed";
 };
 
+// Brand-first, then the shape foundation (Collection & url). The brand resolves the
+// feed-vs-entry ambiguity that shape alone cannot; a present non-"feed" brand is excluded.
 export function isFeed(item?: Item | null): item is Feed {
-  return isCollection(item) && "url" in item && typeof item.url === "string";
+  const kind = (item as { __kind?: unknown } | null | undefined)?.__kind;
+  if (kind === "feed") return true;
+  if (kind !== undefined) return false;
+  return isCollection(item) && "url" in item && typeof (item as { url?: unknown }).url === "string";
 }
 
 // ── Import ───────────────────────────────────────────────────────────────────

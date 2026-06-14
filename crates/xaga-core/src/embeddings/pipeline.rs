@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use sha2::Digest;
 
-use crate::types::{Annotation, Entry, SavedItem};
+use crate::types::{Annotation, Entry, Kind, SavedItem};
 use crate::util::Frontmatter;
-use super::db::{EmbeddingEntry, RowKind};
+use super::db::EmbeddingEntry;
 use super::model::Embedder;
 use super::{EmbeddingsDb, EmbeddingsError};
 
@@ -91,7 +91,7 @@ pub(crate) fn annotation_embedding_entry(
 ) -> EmbeddingEntry {
     EmbeddingEntry {
         id: annotation.id.clone(),
-        kind: RowKind::Annotation.as_str().to_string(),
+        kind: Kind::Annotation,
         source: fm.source.clone(),
         title: annotation.text.join(" "),
         created_at: annotation.created_at.clone(),
@@ -427,7 +427,7 @@ pub async fn embed_feeds(
         let vector = compute_vector(embedder, meta.title.clone(), meta.subtitle.clone()).await?;
         db.upsert(EmbeddingEntry {
             id: meta.id,
-            kind: RowKind::Feed.as_str().to_string(),
+            kind: Kind::Feed,
             source: meta.url,
             title: meta.title,
             created_at: String::new(),

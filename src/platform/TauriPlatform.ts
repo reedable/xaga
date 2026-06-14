@@ -49,6 +49,7 @@ const FeedSchema = ItemSchema.extend({
 const toFeed = (data: z.infer<typeof FeedSchema>): Feed => {
   return {
     ...toItem(data),
+    __kind: "feed",
     url: data.url,
     entryCount: data.entry_count,
     unreadCount: data.unread_count,
@@ -66,6 +67,7 @@ const EntrySchema = ItemSchema.extend({
 const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
   return {
     ...toItem(data),
+    __kind: "entry",
     url: data.url,
     publishedAt: data.published_at ?? undefined,
     summary: data.summary ?? undefined,
@@ -197,17 +199,24 @@ function toEmbedded(data: z.infer<typeof EmbeddedSchema>): Embedded {
   return { similarity: data.similarity };
 }
 
-const EmbeddedEntrySchema = EntrySchema.extend(EmbeddedSchema.shape);
+// `kind` is the backend discriminator (RowKind::as_str); minted into `__kind` by
+// toEntry/toFeed at this boundary.
+const EmbeddedEntrySchema = EntrySchema.extend(EmbeddedSchema.shape).extend({
+  kind: z.string(),
+});
+const EmbeddedFeedSchema = FeedSchema.extend(EmbeddedSchema.shape).extend({
+  kind: z.string(),
+});
 const EmbeddedTopicSchema = TopicSchema.extend(EmbeddedSchema.shape);
 const EmbeddedItemSchema = ItemSchema.extend(EmbeddedSchema.shape);
 // Detection order:
 // 1. Annotation: has `color` + `reference` (entries never have these)
-// 2. Entry: has `is_unread` (topics don't — they have no url/is_unread fields)
-// 3. Topic: has `content` + `entry_count` + `unread_count`
-// 4. Generic Item: fallback
-const AnyEmbeddedItemSchema = EmbeddedAnnotationResultSchema.or(
-  EmbeddedEntrySchema
-)
+// 2. Feed: `kind === "feed"` (feed/entry share shape — only the brand separates them)
+// 3. Entry: has `is_unread` (topics don't — they have no url/is_unread fields)
+// 4. Topic: has `content` + `entry_count` + `unread_count`
+// 5. Generic Item: fallback
+const AnyEmbeddedItemSchema = EmbeddedAnnotationResultSchema.or(EmbeddedFeedSchema)
+  .or(EmbeddedEntrySchema)
   .or(EmbeddedTopicSchema)
   .or(EmbeddedItemSchema);
 
@@ -216,6 +225,12 @@ const toAnyEmbeddedItem = (data: z.infer<typeof AnyEmbeddedItemSchema>) => {
     return toEmbeddedAnnotationResult(
       data as z.infer<typeof EmbeddedAnnotationResultSchema>
     );
+  }
+  if ("kind" in data && data.kind === "feed") {
+    return {
+      ...toFeed(data as z.infer<typeof EmbeddedFeedSchema>),
+      ...toEmbedded(data as z.infer<typeof EmbeddedSchema>),
+    };
   }
   if ("is_unread" in data) {
     return {
