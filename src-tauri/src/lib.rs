@@ -50,12 +50,25 @@ pub(crate) fn feeds_dir(library: &Path) -> PathBuf {
     library.join("feeds")
 }
 
-pub(crate) fn get_unread(state: &AppState) -> std::collections::HashSet<String> {
-    state.entry_cache.lock().unwrap().as_ref().map(|c| c.unread_snapshot()).unwrap_or_default()
+/// The set of unread entry ids, read from LanceDB (the `is_unread` Bitmap index) via the shared
+/// read handle. Reloads first (handles are version-pinned); empty if the handle isn't ready.
+pub(crate) async fn get_unread(state: &AppState) -> std::collections::HashSet<String> {
+    let db = state.embeddings_read.lock().unwrap().clone();
+    let Some(db) = db else {
+        return Default::default();
+    };
+    let _ = db.reload().await;
+    db.unread_ids().await.unwrap_or_default()
 }
 
-pub(crate) fn get_bookmarked(state: &AppState) -> std::collections::HashSet<String> {
-    state.entry_cache.lock().unwrap().as_ref().map(|c| c.bookmarked_snapshot()).unwrap_or_default()
+/// The set of bookmarked entry ids, read from LanceDB (the `is_bookmarked` Bitmap index).
+pub(crate) async fn get_bookmarked(state: &AppState) -> std::collections::HashSet<String> {
+    let db = state.embeddings_read.lock().unwrap().clone();
+    let Some(db) = db else {
+        return Default::default();
+    };
+    let _ = db.reload().await;
+    db.bookmarked_ids().await.unwrap_or_default()
 }
 
 // ── Settings helpers ───────────────────────────────────────────────────────────

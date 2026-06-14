@@ -76,15 +76,17 @@ fn annotation_checksum(annotation: &Annotation) -> String {
 
 /// Builds the LanceDB row for an annotation. `vector` is `None` while the embedding is
 /// still pending (row inserted by [`sync_annotations`]); `Some` once [`embed_annotations`]
-/// has computed it.
+/// has computed it. `topics` is the reverse index, owned by the topic membership path — the
+/// caller passes the row's *existing* topics forward so this write never clobbers it.
 ///
 /// Each annotation row uses the annotation's own UUID as its DB ID. The title is the
 /// highlighted text; the note (if present) is the embedding body. The `reference` column
 /// holds the parent article ID; `color` holds the highlight color.
-fn annotation_embedding_entry(
+pub(crate) fn annotation_embedding_entry(
     article_id: &str,
     fm: &Frontmatter,
     annotation: &Annotation,
+    topics: Vec<String>,
     vector: Option<Vec<f32>>,
 ) -> EmbeddingEntry {
     EmbeddingEntry {
@@ -100,7 +102,8 @@ fn annotation_embedding_entry(
         color: annotation.color.clone(),
         summary: String::new(),
         tags: vec![],
-        topics: annotation.topics.clone(),
+        topics,
+        items: vec![],
         is_unread: false,
         is_bookmarked: false,
         is_pinned: false,
@@ -177,8 +180,14 @@ async fn sync_annotations(
         }
 
         // New or content-changed: insert/refresh the row now with a pending (`None`) vector so it
-        // is immediately listable; embed_vector fills the vector later.
-        db.upsert(annotation_embedding_entry(article_id, fm, annotation, None))
+        // is immediately listable; embed_vector fills the vector later. Carry the existing row's
+        // topics forward (the topic path owns that column) so this write never clobbers the index.
+        let topics = if existing.contains_key(&annotation.id) {
+            db.get_entry(&annotation.id).await?.map(|e| e.topics).unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        db.upsert(annotation_embedding_entry(article_id, fm, annotation, topics, None))
             .await?;
         let _ = annotation_tx.send(annotation_saved_item(article_id, fm, annotation));
     }
@@ -197,7 +206,8 @@ async fn embed_annotations(
 ) -> Result<(), EmbeddingsError> {
     for annotation in &fm.annotations {
         let checksum = annotation_checksum(annotation);
-        let needs_vector = match db.get_entry(&annotation.id).await? {
+        let existing = db.get_entry(&annotation.id).await?;
+        let needs_vector = match &existing {
             None => true,
             Some(e) => e.vector.is_none() || e.checksum != checksum,
         };
@@ -209,7 +219,9 @@ async fn embed_annotations(
         let title = annotation.text.join(" ");
         let body = annotation.note.clone().unwrap_or_default();
         let vector = compute_vector(embedder, title, body).await?;
-        db.upsert(annotation_embedding_entry(article_id, fm, annotation, Some(vector)))
+        // Carry the existing row's topics forward — the topic path owns that column.
+        let topics = existing.map(|e| e.topics).unwrap_or_default();
+        db.upsert(annotation_embedding_entry(article_id, fm, annotation, topics, Some(vector)))
             .await?;
     }
 
@@ -249,19 +261,25 @@ pub async fn sync_row(
     };
 
     // Write only when something the row stores actually changed (state derives from tags).
+    // `topics` is excluded: it's the reverse index owned by the topic membership path, not the
+    // entry frontmatter, so it neither triggers a write nor is sourced from `fm` here.
     let changed = match &existing {
         None => true,
         Some(e) => {
             !content_unchanged
                 || e.tags != fm.tags
-                || e.topics != fm.topics
                 || e.summary != fm.summary.clone().unwrap_or_default()
         }
     };
 
     if changed {
         let old_tags = existing.as_ref().map(|e| e.tags.clone());
-        db.upsert(fm.to_embedding_entry(id.clone(), &body, vector)).await?;
+        // Carry the existing row's topics + items forward so this write never clobbers the
+        // reverse index — both columns are owned by the topic-membership reconcile path.
+        let mut row = fm.to_embedding_entry(id.clone(), &body, vector);
+        row.topics = existing.as_ref().map(|e| e.topics.clone()).unwrap_or_default();
+        row.items = existing.as_ref().map(|e| e.items.clone()).unwrap_or_default();
+        db.upsert(row).await?;
         emit_entry_changes(&id, &fm, old_tags.as_deref(), unread_tx, bookmarked_tx);
     }
 
@@ -297,7 +315,11 @@ pub async fn embed_vector(
         log::debug!("embed_vector: embedding id={id} title={:?}", fm.title);
         let vector =
             compute_vector(embedder, fm.title.clone(), fm.embed_text(&body).to_string()).await?;
-        db.upsert(fm.to_embedding_entry(id.clone(), &body, Some(vector))).await?;
+        // Carry the existing row's topics + items forward — owned by the topic reconcile path.
+        let mut row = fm.to_embedding_entry(id.clone(), &body, Some(vector));
+        row.topics = existing.as_ref().map(|e| e.topics.clone()).unwrap_or_default();
+        row.items = existing.as_ref().map(|e| e.items.clone()).unwrap_or_default();
+        db.upsert(row).await?;
     }
 
     // Fill any pending annotation vectors. Rows (incl. stale-row deletes) were already
@@ -320,6 +342,55 @@ pub async fn embed_file(
 ) -> Result<(), EmbeddingsError> {
     sync_row(path, db, unread_tx, bookmarked_tx, annotation_tx).await?;
     embed_vector(path, embedder, db).await?;
+    Ok(())
+}
+
+/// Reconciles one topic's member→topic reverse index. Diffs `member_ids` (the topic's members from
+/// its `.md`) against the topic row's recorded `items` (the last-propagated base), then adds/removes
+/// `topic_id` on the **delta** members' `topics` columns and updates `items` to the propagated set so
+/// the next diff is correct. Work is bounded by the delta, not the table size.
+///
+/// This is the sole writer of the `topics` (member) and `items` (topic) columns — entry/annotation
+/// sync carry them forward untouched. Members whose rows don't exist yet are skipped (reconciled on a
+/// later run once they exist). Scoped to whatever ids the caller passes — entries only for now;
+/// annotation members are created later by the embed pass (see WIP.md, Scheduled follow-up).
+pub async fn reconcile_topic_membership(
+    db: &EmbeddingsDb,
+    topic_id: &str,
+    member_ids: &[String],
+) -> Result<(), EmbeddingsError> {
+    let topic_row = db.get_entry(topic_id).await?;
+    let prior: Vec<String> = topic_row.as_ref().map(|e| e.items.clone()).unwrap_or_default();
+    let new_set: HashSet<&str> = member_ids.iter().map(|s| s.as_str()).collect();
+    let prior_set: HashSet<&str> = prior.iter().map(|s| s.as_str()).collect();
+
+    // Add `topic_id` to members newly present in the file.
+    for member_id in member_ids.iter().filter(|id| !prior_set.contains(id.as_str())) {
+        if let Some(mut m) = db.get_entry(member_id).await? {
+            if !m.topics.iter().any(|t| t == topic_id) {
+                m.topics.push(topic_id.to_string());
+                db.upsert(m).await?;
+            }
+        }
+    }
+    // Remove `topic_id` from members no longer present in the file.
+    for member_id in prior.iter().filter(|id| !new_set.contains(id.as_str())) {
+        if let Some(mut m) = db.get_entry(member_id).await? {
+            if m.topics.iter().any(|t| t == topic_id) {
+                m.topics.retain(|t| t != topic_id);
+                db.upsert(m).await?;
+            }
+        }
+    }
+
+    // Update the base to the propagated set so the next diff is meaningful.
+    if prior_set != new_set {
+        if let Some(mut t) = topic_row {
+            t.items = member_ids.to_vec();
+            db.upsert(t).await?;
+        }
+    }
+
     Ok(())
 }
 
@@ -368,6 +439,7 @@ pub async fn embed_feeds(
             summary: String::new(),
             tags: vec![],
             topics: vec![],
+            items: vec![],
             is_unread: false,
             is_bookmarked: false,
             is_pinned: meta.is_pinned,

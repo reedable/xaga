@@ -61,8 +61,6 @@ pub struct Frontmatter {
     pub tags: Vec<String>,
     pub favicon: Option<String>,
     pub items: Vec<crate::types::CollectionItem>,
-    /// Topic ids this entry belongs to (membership source of truth; empty for topic files).
-    pub topics: Vec<String>,
 }
 
 impl Frontmatter {
@@ -109,7 +107,11 @@ impl Frontmatter {
             color: String::new(),
             summary: self.summary.clone().unwrap_or_default(),
             tags: self.tags.clone(),
-            topics: self.topics.clone(),
+            // `topics` (the entry→topic reverse index) and `items` (the topic-membership base) are
+            // both reconcile-managed — sourced from the topic files by `reconcile_topic_membership`,
+            // not from this frontmatter. Written empty here; sync_row/embed_vector carry them forward.
+            topics: vec![],
+            items: vec![],
             is_unread: self.tags.contains(&"unread".to_string()),
             is_bookmarked: self.tags.contains(&"bookmark".to_string()),
             is_pinned: self.tags.contains(&"pinned".to_string()),
@@ -162,8 +164,6 @@ struct FrontmatterRaw {
     favicon: Option<String>,
     #[serde(default)]
     items: Vec<crate::types::CollectionItem>,
-    #[serde(default)]
-    topics: Vec<String>,
 }
 
 fn split_document(raw: &str) -> Option<(Frontmatter, String)> {
@@ -188,7 +188,6 @@ fn split_document(raw: &str) -> Option<(Frontmatter, String)> {
             tags: fm.tags,
             favicon: fm.favicon,
             items: fm.items,
-            topics: fm.topics,
         },
         body,
     ))

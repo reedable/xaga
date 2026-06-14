@@ -246,9 +246,6 @@ pub struct Annotation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
     pub created_at: String,
-    /// Topic ids this annotation belongs to (membership source of truth; mirrored to LanceDB).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub topics: Vec<String>,
 }
 
 // ── Article ───────────────────────────────────────────────────────────────────

@@ -103,6 +103,10 @@ pub struct EmbeddingEntry {
     pub summary: String,
     pub tags: Vec<String>,
     pub topics: Vec<String>,
+    /// For topic rows: the ids of the topic's members (entries/annotations) — the prior-membership
+    /// base for the reverse-index delta, mirroring the topic `.md` `items:` field (the SoT). Empty
+    /// for entry/annotation/feed rows. Nullable in storage; reads back empty when absent/null.
+    pub items: Vec<String>,
     pub is_unread: bool,
     pub is_bookmarked: bool,
     pub is_pinned: bool,
@@ -134,6 +138,13 @@ fn make_schema() -> Arc<Schema> {
             "topics",
             DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
             false,
+        ),
+        // Nullable so it can be added to a pre-existing table via `add_columns(AllNulls)`
+        // (metadata-only); existing rows read back empty.
+        Field::new(
+            "items",
+            DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
+            true,
         ),
         Field::new("is_unread", DataType::Boolean, false),
         Field::new("is_bookmarked", DataType::Boolean, false),
@@ -183,6 +194,7 @@ fn entries_to_batch(
 
     let mut tags_builder = ListBuilder::new(StringBuilder::new());
     let mut topics_builder = ListBuilder::new(StringBuilder::new());
+    let mut items_builder = ListBuilder::new(StringBuilder::new());
 
     let mut vec_values: Vec<f32> = Vec::with_capacity(n * dim);
     let mut vec_validity: Vec<bool> = Vec::with_capacity(n);
@@ -212,6 +224,11 @@ fn entries_to_batch(
             topics_builder.values().append_value(topic);
         }
         topics_builder.append(true);
+
+        for item in &entry.items {
+            items_builder.values().append_value(item);
+        }
+        items_builder.append(true);
 
         match entry.vector {
             Some(v) => {
@@ -249,6 +266,7 @@ fn entries_to_batch(
             Arc::new(StringArray::from(summaries)),
             Arc::new(tags_builder.finish()),
             Arc::new(topics_builder.finish()),
+            Arc::new(items_builder.finish()),
             Arc::new(BooleanArray::from(unread)),
             Arc::new(BooleanArray::from(bookmarked)),
             Arc::new(BooleanArray::from(pinned)),
@@ -269,6 +287,7 @@ async fn create_empty_documents_table(
     )?;
     let empty_tags = ListBuilder::new(StringBuilder::new()).finish();
     let empty_topics = ListBuilder::new(StringBuilder::new()).finish();
+    let empty_items = ListBuilder::new(StringBuilder::new()).finish();
     let empty_batch = RecordBatch::try_new(
         schema.clone(),
         vec![
@@ -285,6 +304,7 @@ async fn create_empty_documents_table(
             Arc::new(StringArray::from(Vec::<&str>::new())), // summary
             Arc::new(empty_tags),                            // tags
             Arc::new(empty_topics),                          // topics
+            Arc::new(empty_items),                           // items
             Arc::new(BooleanArray::from(Vec::<bool>::new())), // is_unread
             Arc::new(BooleanArray::from(Vec::<bool>::new())), // is_bookmarked
             Arc::new(BooleanArray::from(Vec::<bool>::new())), // is_pinned
@@ -439,6 +459,24 @@ impl EmbeddingsDb {
 
             match connection.open_table("documents").execute().await {
                 Ok(table) => {
+                    // Roll the `items` column onto a table created before it existed. `AllNulls`
+                    // is metadata-only (no fragment rewrite, no re-embed) — see lance schema_evolution.
+                    if table.schema().await?.field_with_name("items").is_err() {
+                        log::info!(
+                            "EmbeddingsDb::open: adding 'items' column to existing table (metadata-only)"
+                        );
+                        let items_schema = Arc::new(Schema::new(vec![Field::new(
+                            "items",
+                            DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
+                            true,
+                        )]));
+                        table
+                            .add_columns(
+                                lancedb::table::NewColumnTransform::AllNulls(items_schema),
+                                None,
+                            )
+                            .await?;
+                    }
                     return Ok(EmbeddingsDb {
                         _connection: connection,
                         table,
@@ -496,9 +534,11 @@ impl EmbeddingsDb {
         Ok(self.all_entries_meta().await?.into_values().map(|(checksum, _, _, _)| checksum).collect())
     }
 
-    /// Creates scalar BTree indexes on `id` (id-set retrieval for per-feed listing)
-    /// and `published_at` (ordered pagination) when absent. Idempotent — intended to
-    /// run after recovery has populated the rows, so the index trains over real data.
+    /// Creates scalar indexes when absent, idempotently: BTree on `id` (id-set retrieval) and
+    /// `published_at` (ordered reads); Bitmap on the low-cardinality state booleans
+    /// `is_unread`/`is_bookmarked`/`is_pinned` so state filters and counts are index-driven rather
+    /// than full scans. Intended to run after recovery has populated the rows, so indexes train
+    /// over real data.
     pub async fn ensure_indexes(&self) -> Result<(), EmbeddingsError> {
         let indexed: HashSet<String> = self
             .table
@@ -520,7 +560,60 @@ impl EmbeddingsDb {
                 .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
             log::info!("EmbeddingsDb: created BTree index on `{col}`");
         }
+
+        // Low-cardinality state booleans: Bitmap is the right index (the unread/bookmarked id-sets
+        // for sidebar counts, and `list_bookmarks`/`list_saved`, become index-driven not scans).
+        for col in ["is_unread", "is_bookmarked", "is_pinned"] {
+            if indexed.contains(col) {
+                continue;
+            }
+            self.table
+                .create_index(&[col], lancedb::index::Index::Bitmap(Default::default()))
+                .execute()
+                .await
+                .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+            log::info!("EmbeddingsDb: created Bitmap index on `{col}`");
+        }
         Ok(())
+    }
+
+    /// The set of entry ids currently marked unread — read via the `is_unread` Bitmap index
+    /// (no full scan), selecting only `id`. Used for sidebar unread counts.
+    pub async fn unread_ids(&self) -> Result<HashSet<String>, EmbeddingsError> {
+        self.state_ids("is_unread = true").await
+    }
+
+    /// The set of entry ids currently bookmarked — read via the `is_bookmarked` Bitmap index.
+    pub async fn bookmarked_ids(&self) -> Result<HashSet<String>, EmbeddingsError> {
+        self.state_ids("is_bookmarked = true").await
+    }
+
+    /// Projects entry-row ids matching a state `predicate` into a set, selecting only the `id`
+    /// column so the read never touches the vector.
+    async fn state_ids(&self, predicate: &str) -> Result<HashSet<String>, EmbeddingsError> {
+        let batches: Vec<RecordBatch> = self
+            .table
+            .query()
+            .only_if(format!("kind = 'entry' AND {predicate}"))
+            .select(Select::columns(&["id"]))
+            .execute()
+            .await?
+            .try_collect()
+            .await
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
+        let mut ids = HashSet::new();
+        for batch in &batches {
+            if let Some(col) = batch
+                .column_by_name("id")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>())
+            {
+                for i in 0..col.len() {
+                    ids.insert(col.value(i).to_string());
+                }
+            }
+        }
+        Ok(ids)
     }
 
     /// Columns needed to build an `Entry` — everything except the vector, so these
@@ -873,6 +966,7 @@ impl EmbeddingsDb {
                 summary: get_str("summary"),
                 tags: read_list("tags"),
                 topics: read_list("topics"),
+                items: read_list("items"),
                 is_unread: get_bool("is_unread"),
                 is_bookmarked: get_bool("is_bookmarked"),
                 is_pinned: get_bool("is_pinned"),
@@ -1550,6 +1644,7 @@ mod tests {
             summary: "a summary".to_string(),
             tags: vec!["unread".to_string()],
             topics: vec!["topic-1".to_string(), "topic-2".to_string()],
+            items: vec![],
             is_unread: true,
             is_bookmarked: false,
             is_pinned: true,
@@ -1585,6 +1680,102 @@ mod tests {
         assert!(pending.vector.is_none(), "null-vector row must read back as None");
         assert_eq!(pending.topics, vec!["topic-1".to_string(), "topic-2".to_string()]);
         assert!(pending.is_pinned);
+    }
+
+    /// The `items` column (the topic-membership reverse-index base) round-trips, and an
+    /// empty `items` reads back empty — guards the new column's Arrow building and ordering.
+    #[tokio::test]
+    async fn items_column_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        let mut topic = sample("topic-x", "topic", None);
+        topic.items = vec!["m1".to_string(), "m2".to_string(), "m3".to_string()];
+        db.upsert(topic).await.unwrap();
+        db.upsert(sample("entry-x", "entry", None)).await.unwrap();
+
+        let got = db.get_entry("topic-x").await.unwrap().expect("topic row present");
+        assert_eq!(
+            got.items,
+            vec!["m1".to_string(), "m2".to_string(), "m3".to_string()]
+        );
+
+        let entry = db.get_entry("entry-x").await.unwrap().expect("entry row present");
+        assert!(entry.items.is_empty(), "entry rows carry no items");
+    }
+
+    /// `reconcile_topic_membership` adds the topic to newly-listed members, removes it from
+    /// dropped members (via the topic-row `items` base), and tracks the base for the next diff.
+    #[tokio::test]
+    async fn reconcile_topic_membership_adds_removes_and_tracks_base() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        // Topic row with empty base; two entry rows with empty topics.
+        let mut topic = sample("topic-1", "topic", None);
+        topic.topics = vec![];
+        db.upsert(topic).await.unwrap();
+        for id in ["entry-1", "entry-2"] {
+            let mut e = sample(id, "entry", None);
+            e.topics = vec![];
+            db.upsert(e).await.unwrap();
+        }
+
+        // First reconcile: both entries become members.
+        crate::embeddings::pipeline::reconcile_topic_membership(
+            &db,
+            "topic-1",
+            &["entry-1".to_string(), "entry-2".to_string()],
+        )
+        .await
+        .unwrap();
+
+        assert!(db.get_entry("entry-1").await.unwrap().unwrap().topics.contains(&"topic-1".to_string()));
+        assert!(db.get_entry("entry-2").await.unwrap().unwrap().topics.contains(&"topic-1".to_string()));
+        assert_eq!(
+            db.get_entry("topic-1").await.unwrap().unwrap().items,
+            vec!["entry-1".to_string(), "entry-2".to_string()],
+            "base tracks the propagated members"
+        );
+
+        // Second reconcile: entry-2 dropped from the topic.
+        crate::embeddings::pipeline::reconcile_topic_membership(
+            &db,
+            "topic-1",
+            &["entry-1".to_string()],
+        )
+        .await
+        .unwrap();
+
+        assert!(db.get_entry("entry-1").await.unwrap().unwrap().topics.contains(&"topic-1".to_string()));
+        assert!(
+            !db.get_entry("entry-2").await.unwrap().unwrap().topics.contains(&"topic-1".to_string()),
+            "dropped member loses the topic"
+        );
+        assert_eq!(db.get_entry("topic-1").await.unwrap().unwrap().items, vec!["entry-1".to_string()]);
+    }
+
+    /// The reconcile is member-type-agnostic: an annotation-kind member gets its `topics`
+    /// updated exactly like an entry (covers W2 — callers now pass annotation members too).
+    #[tokio::test]
+    async fn reconcile_handles_annotation_members() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        let mut topic = sample("topic-a", "topic", None);
+        topic.topics = vec![];
+        db.upsert(topic).await.unwrap();
+        let mut anno = sample("anno-1", "annotation", None);
+        anno.topics = vec![];
+        db.upsert(anno).await.unwrap();
+
+        crate::embeddings::pipeline::reconcile_topic_membership(&db, "topic-a", &["anno-1".to_string()])
+            .await
+            .unwrap();
+
+        let got = db.get_entry("anno-1").await.unwrap().expect("annotation row present");
+        assert_eq!(got.kind, "annotation");
+        assert!(got.topics.contains(&"topic-a".to_string()), "annotation member gets the topic");
     }
 
     /// Null-vector rows must be excluded from both similarity paths: the `nearest_to`

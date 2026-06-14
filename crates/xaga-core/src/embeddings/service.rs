@@ -13,7 +13,9 @@ pub enum ShutdownReason {
 
 use super::lock::LockFile;
 use super::model::{Embedder, load_default_embedder};
-use super::pipeline::{embed_feeds, embed_vector, sync_row};
+use super::pipeline::{
+    annotation_embedding_entry, embed_feeds, embed_vector, reconcile_topic_membership, sync_row,
+};
 use super::{EmbeddingEntry, EmbeddingsDb, EmbeddingsError};
 
 /// Application-level control messages (low volume, high significance).
@@ -347,6 +349,33 @@ async fn run_loop(
                                 if let Err(e) = sync_row(&path, &db, &unread_changed_tx, &bookmarked_changed_tx, &annotation_changed_tx).await {
                                     log::error!("priority_rx: sync_row failed id={id}: {e}");
                                 }
+
+                                // Topic `.md` change: reconcile its member→topic reverse index inline.
+                                // The member-row updates stay off the queue, so they're atomic w.r.t.
+                                // graceful shutdown (the biased select only re-checks between turns).
+                                // Covers entries + annotations.
+                                if path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str())
+                                    == Some("topics")
+                                {
+                                    match crate::topics::read_topic(&data_dir, &id).await {
+                                        Ok(topic) => {
+                                            let member_ids: Vec<String> = topic
+                                                .items
+                                                .iter()
+                                                .map(|i| i.id().to_string())
+                                                .collect();
+                                            if let Err(e) =
+                                                reconcile_topic_membership(&db, &id, &member_ids).await
+                                            {
+                                                log::error!("priority_rx: reconcile topic {id} failed: {e}");
+                                            }
+                                        }
+                                        Err(e) => log::error!(
+                                            "priority_rx: read_topic {id} for reconcile failed: {e}"
+                                        ),
+                                    }
+                                }
+
                                 // Defer the embedding (ONNX) to the lowest-priority queue.
                                 let _ = embed_vector_tx.send(id);
                             }
@@ -532,6 +561,28 @@ async fn dispatch_recovery(
                 }
             }
 
+            // Rebuild the member→topic reverse index from the topic files. Unconditional: a
+            // membership-only change doesn't alter a member's checksum, so build_recovery_plan
+            // would skip it. Covers entries + annotations (annotation rows exist post bulk_insert).
+            // Bounded by drift via the topic-row `items` base.
+            match crate::topics::list_topics(data_dir).await {
+                Ok(topics) => {
+                    for topic in &topics {
+                        let member_ids: Vec<String> =
+                            topic.items.iter().map(|i| i.id().to_string()).collect();
+                        if let Err(e) =
+                            reconcile_topic_membership(db, &topic.id, &member_ids).await
+                        {
+                            log::error!(
+                                "recovery: reverse-index reconcile for topic {} failed: {e}",
+                                topic.id
+                            );
+                        }
+                    }
+                }
+                Err(e) => log::error!("recovery: list_topics for reverse-index rebuild failed: {e}"),
+            }
+
             // After all background work drains, compact fragments and prune old
             // versions so the on-disk layout stays tidy for future commits.
             let _ = background_tx.send(BackgroundMsg::Compact);
@@ -541,9 +592,10 @@ async fn dispatch_recovery(
     }
 }
 
-/// Bulk path for fresh recovery: reads each id's `.md`, builds a null-vector row, and
-/// inserts in batches with a single `add` per batch — no per-row `get_entry`/`delete`.
-/// Each id is queued onto the vector channel for the (lowest-priority) embed pass.
+/// Bulk path for fresh recovery: reads each id's `.md`, builds a null-vector row (plus a
+/// null-vector row for each of the entry's annotations), and inserts in batches with a single
+/// `add` per batch — no per-row `get_entry`/`delete`. Each id is queued onto the vector channel
+/// for the (lowest-priority) embed pass, which fills the entry's and its annotations' vectors.
 /// Safe only when the table has no pre-existing rows for these ids.
 async fn bulk_insert(
     data_dir: &Path,
@@ -569,6 +621,12 @@ async fn bulk_insert(
         };
 
         buf.push(fm.to_embedding_entry(id.clone(), &body, None));
+        // Create annotation rows (null-vector) in the bulk phase too, so they're listable
+        // immediately and exist before the reverse-index reconcile (W2). Topics empty for now;
+        // the entry's embed pass fills annotation vectors via embed_annotations.
+        for annotation in &fm.annotations {
+            buf.push(annotation_embedding_entry(id, &fm, annotation, Vec::new(), None));
+        }
         let _ = embed_vector_tx.send(id.clone());
 
         if buf.len() >= BULK_BATCH {

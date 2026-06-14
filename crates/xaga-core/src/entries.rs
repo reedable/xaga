@@ -42,7 +42,6 @@ pub fn render_entry(
     summary: Option<&str>,
     annotations: &[crate::types::Annotation],
     tags: &[String],
-    topics: &[String],
     favicon: Option<&str>,
     markdown: &str,
 ) -> String {
@@ -62,8 +61,6 @@ pub fn render_entry(
         annotations: &'a [crate::types::Annotation],
         #[serde(skip_serializing_if = "<[_]>::is_empty")]
         tags: &'a [String],
-        #[serde(skip_serializing_if = "<[_]>::is_empty")]
-        topics: &'a [String],
         #[serde(skip_serializing_if = "Option::is_none")]
         favicon: Option<&'a str>,
     }
@@ -80,7 +77,6 @@ pub fn render_entry(
         summary: clean_summary.as_deref().map(str::to_string),
         annotations,
         tags,
-        topics,
         favicon,
     };
 
@@ -151,7 +147,7 @@ pub async fn write_entry(
 
     let created_at = Utc::now().to_rfc3339();
     let tags = vec!["unread".to_string()];
-    let content = render_entry(&normalized, title, &created_at, published_at, updated_at, summary, &[], &tags, &[], None, "");
+    let content = render_entry(&normalized, title, &created_at, published_at, updated_at, summary, &[], &tags, None, "");
     tokio::fs::create_dir_all(path.parent().unwrap()).await?;
     tokio::fs::write(&path, content.as_bytes()).await?;
     Ok(path)
@@ -175,7 +171,7 @@ pub async fn write_read_entry(
     let path = entry_path(data_dir, &hash12);
 
     if !tokio::fs::try_exists(&path).await? {
-        let content = render_entry(&normalized, title, created_at, published_at, updated_at, summary, &[], tags, &[], None, "");
+        let content = render_entry(&normalized, title, created_at, published_at, updated_at, summary, &[], tags, None, "");
         tokio::fs::create_dir_all(path.parent().unwrap()).await?;
         tokio::fs::write(&path, content.as_bytes()).await?;
     }
@@ -208,7 +204,6 @@ pub async fn set_entry_tags(data_dir: &Path, id: &str, tags: Vec<String>) -> Res
         fm.summary.as_deref(),
         &fm.annotations,
         &tags,
-        &fm.topics,
         fm.favicon.as_deref(),
         &body,
     );
@@ -255,44 +250,4 @@ pub async fn list_entries(data_dir: &Path) -> Result<Vec<Entry>, EntryError> {
     Ok(entries)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::types::Annotation;
-
-    /// The SoT migration writes `topics` into entry and annotation frontmatter via
-    /// `render_entry`. This guards that both round-trip through parse without loss.
-    #[test]
-    fn render_entry_round_trips_entry_and_annotation_topics() {
-        let ann = Annotation {
-            id: "ann1".into(),
-            reference: String::new(),
-            text: vec!["highlighted".into()],
-            occurrence: vec![0],
-            color: "yellow".into(),
-            note: None,
-            created_at: "2026-01-01T00:00:00Z".into(),
-            topics: vec!["topic-a".into()],
-        };
-        let rendered = render_entry(
-            "https://example.com/x",
-            "Title",
-            "2026-01-01T00:00:00Z",
-            None,
-            None,
-            None,
-            std::slice::from_ref(&ann),
-            &["unread".to_string()],
-            &["topic-1".to_string(), "topic-2".to_string()],
-            None,
-            "body text",
-        );
-
-        let (fm, body) = crate::util::parse_document(&rendered).expect("parse");
-        assert_eq!(body, "body text");
-        assert_eq!(fm.topics, vec!["topic-1".to_string(), "topic-2".to_string()]);
-        assert_eq!(fm.tags, vec!["unread".to_string()]);
-        assert_eq!(fm.annotations.len(), 1);
-        assert_eq!(fm.annotations[0].topics, vec!["topic-a".to_string()]);
-    }
-}
+// (The `render_entry` topics round-trip test was removed with the `topics:` frontmatter field.)

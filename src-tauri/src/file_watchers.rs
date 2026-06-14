@@ -312,7 +312,6 @@ fn process_import(
         doc_fm.summary.as_deref(),
         &doc_fm.annotations,
         &tags,
-        &doc_fm.topics,
         doc_fm.favicon.as_deref(),
         &body,
     );

@@ -44,7 +44,7 @@ pub async fn list_topics(state: State<'_, AppState>) -> Result<Vec<Topic>, Strin
         .await
         .map_err(|e| e.to_string())?;
 
-    let unread = get_unread(&state);
+    let unread = get_unread(&state).await;
 
     for topic in &mut topics {
         let mut all_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -142,10 +142,19 @@ pub async fn list_entry_topics(
     entry_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, String> {
-    let data_dir = state.library.read().unwrap().clone();
-    topics::list_entry_topics(&data_dir, &entry_id)
+    // Phase C: read the entry's topics from the LanceDB reverse index (the `topics` column,
+    // maintained by the topic-membership reconcile) instead of scanning every topic file.
+    let db = state.embeddings_read.lock().unwrap().clone();
+    let Some(db) = db else {
+        return Err("embeddings read handle unavailable".to_string());
+    };
+    db.reload().await.map_err(|e| e.to_string())?;
+    Ok(db
+        .get_entry(&entry_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?
+        .map(|e| e.topics)
+        .unwrap_or_default())
 }
 
 #[tauri::command]
