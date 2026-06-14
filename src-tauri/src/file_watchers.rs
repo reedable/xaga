@@ -4,7 +4,6 @@ use std::time::Duration;
 use notify_debouncer_full::new_debouncer;
 use notify_debouncer_full::notify::{EventKind, RecursiveMode, Watcher};
 use xaga_core::embeddings::{BackgroundMsg, PriorityMsg};
-use xaga_core::entry_cache::EntryStateCache;
 
 /// Spawns one watcher thread per directory.
 ///
@@ -20,14 +19,12 @@ pub fn watch(
     data_dir: PathBuf,
     priority_tx: flume::Sender<PriorityMsg>,
     background_tx: flume::Sender<BackgroundMsg>,
-    cache: EntryStateCache,
 ) {
     watch_import(data_dir.clone());
     watch_entries(
         data_dir.join("entries"),
         priority_tx.clone(),
         background_tx.clone(),
-        cache,
     );
     watch_topics(data_dir.join("topics"), priority_tx, background_tx.clone());
     watch_archived(data_dir.join("archived"), background_tx);
@@ -37,7 +34,6 @@ fn watch_entries(
     dir: PathBuf,
     priority_tx: flume::Sender<PriorityMsg>,
     background_tx: flume::Sender<BackgroundMsg>,
-    cache: EntryStateCache,
 ) {
     std::thread::spawn(move || {
         if let Err(e) = std::fs::create_dir_all(&dir) {
@@ -62,26 +58,11 @@ fn watch_entries(
                         match event.kind {
                             EventKind::Create(_) => {
                                 log::debug!("file_watchers: entries create → background embed {id}");
-                                if let Ok(raw) = std::fs::read_to_string(path) {
-                                    cache.update_from_raw(id, &raw);
-                                }
                                 let _ = background_tx.send(BackgroundMsg::Embed(id.to_string()));
                             }
-                            EventKind::Modify(_) => {
-                                if path.exists() {
-                                    log::debug!("file_watchers: entries modify → priority embed {id}");
-                                    if let Ok(raw) = std::fs::read_to_string(path) {
-                                        cache.update_from_raw(id, &raw);
-                                    }
-                                    let _ = priority_tx.send(PriorityMsg::Embed(id.to_string()));
-                                } else {
-                                    log::debug!("file_watchers: entries rename-out → cache remove {id}");
-                                    cache.remove(id);
-                                }
-                            }
-                            EventKind::Remove(_) => {
-                                log::debug!("file_watchers: entries remove → cache remove {id}");
-                                cache.remove(id);
+                            EventKind::Modify(_) if path.exists() => {
+                                log::debug!("file_watchers: entries modify → priority embed {id}");
+                                let _ = priority_tx.send(PriorityMsg::Embed(id.to_string()));
                             }
                             _ => {}
                         }

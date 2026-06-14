@@ -223,6 +223,9 @@ pub struct FeedMeta {
     pub id: String,
     pub url: String,
     pub title: String,
+    /// The feed's `atom:subtitle` (description/tagline), empty if absent. Embedded alongside the
+    /// title so feeds have real content for semantic search.
+    pub subtitle: String,
     pub is_pinned: bool,
 }
 
@@ -249,6 +252,7 @@ pub async fn feed_embedding_meta(feeds_dir: &Path) -> Vec<FeedMeta> {
             id: id.to_string(),
             url: self_link_url(&feed).unwrap_or_default(),
             title: feed.title().value.clone(),
+            subtitle: feed.subtitle().map(|s| s.value.clone()).unwrap_or_default(),
             is_pinned,
         });
     }

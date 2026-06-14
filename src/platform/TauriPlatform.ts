@@ -280,8 +280,8 @@ export class TauriPlatform implements Platform {
 
   // Library -------------------------------------------------------------------
 
-  async isCacheSeeded(): Promise<boolean> {
-    const name = "is_cache_seeded";
+  async isCacheReady(): Promise<boolean> {
+    const name = "is_cache_ready";
     const invoker = decorate(invoke).with(logged, { logger, name });
     return invoker<boolean>(name);
   }

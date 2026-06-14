@@ -41,7 +41,7 @@ export interface Platform {
   removeFeed(signal: AbortSignal, feedUrl: string): Promise<string>;
 
   // Startup
-  isCacheSeeded(): Promise<boolean>;
+  isCacheReady(): Promise<boolean>;
 
   // Entries
   listEntries(

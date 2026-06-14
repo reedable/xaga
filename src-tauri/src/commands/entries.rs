@@ -32,8 +32,8 @@ pub async fn mark_entry_unread(id: String, state: State<'_, AppState>) -> Result
 }
 
 #[tauri::command]
-pub fn is_cache_seeded(state: State<'_, AppState>) -> bool {
-    state.entry_cache.lock().unwrap().is_some()
+pub fn is_cache_ready(state: State<'_, AppState>) -> bool {
+    state.embeddings_read.lock().unwrap().is_some()
 }
 
 #[tauri::command]

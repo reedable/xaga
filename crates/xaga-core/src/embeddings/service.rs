@@ -26,10 +26,6 @@ enum ServiceMsg {
     ResetDatabase {
         data_dir: PathBuf,
     },
-    RecoverCache {
-        cache: crate::entry_cache::EntryStateCache,
-        data_dir: PathBuf,
-    },
     Shutdown,
 }
 
@@ -207,18 +203,6 @@ impl EmbeddingService {
         let _ = self.service_tx.send(ServiceMsg::StartRecovery { data_dir });
     }
 
-    /// Enqueues a non-blocking cache recovery pass that updates and broadcasts
-    /// any entries that changed since the snapshot was written.
-    pub fn trigger_cache_recovery(
-        &self,
-        cache: crate::entry_cache::EntryStateCache,
-        data_dir: PathBuf,
-    ) {
-        let _ = self
-            .service_tx
-            .send(ServiceMsg::RecoverCache { cache, data_dir });
-    }
-
     /// Returns a clone of the Arc<Embedder> for on-demand text embedding outside the service loop.
     pub fn embedder(&self) -> Arc<Embedder> {
         Arc::clone(&self.embedder)
@@ -235,17 +219,10 @@ impl EmbeddingService {
         self.restart_requested.store(true, Ordering::SeqCst);
     }
 
-    /// Persists the cache, sends `Shutdown` through the service channel, waits
-    /// for the run loop to finish the current in-flight LanceDB write and exit,
-    /// then returns the reason so the caller can restart or exit cleanly.
-    pub async fn shutdown(
-        self,
-        cache: Option<&crate::entry_cache::EntryStateCache>,
-        data_dir: &Path,
-    ) -> ShutdownReason {
-        if let Some(cache) = cache {
-            cache.persist(data_dir).await;
-        }
+    /// Sends `Shutdown` through the service channel, waits for the run loop to finish the
+    /// current in-flight LanceDB write and exit, then returns the reason so the caller can
+    /// restart or exit cleanly.
+    pub async fn shutdown(self) -> ShutdownReason {
         let _ = self.service_tx.send(ServiceMsg::Shutdown);
         let _ = self.done_rx.recv_async().await;
         if self.restart_requested.load(Ordering::SeqCst) {
@@ -312,12 +289,6 @@ async fn run_loop(
                     log::info!("embedding service: starting recovery for {}", dir.display());
                     dispatch_recovery(&dir, &db, &embedder, &embed_vector_tx, &priority_tx, &background_tx).await;
                     log::info!("embedding service: recovery dispatch complete");
-                }
-                Ok(ServiceMsg::RecoverCache { cache, data_dir: dir }) => {
-                    log::info!("embedding service: recovering cache for {}", dir.display());
-                    cache.recover(&dir).await;
-                    cache.persist(&dir).await;
-                    log::info!("embedding service: cache recovery complete");
                 }
                 Ok(ServiceMsg::ResetDatabase { data_dir: dir }) => {
                     if let Err(e) = db.reset().await {

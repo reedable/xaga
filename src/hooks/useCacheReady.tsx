@@ -10,7 +10,7 @@ export function useCacheReady(): boolean {
 
     const poll = async () => {
       while (!cancelled) {
-        if (await platform.isCacheSeeded()) {
+        if (await platform.isCacheReady()) {
           if (!cancelled) setReady(true);
           return;
         }

@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
 use serde::{Deserialize, Serialize};
-use xaga_core::entry_cache::EntryStateCache;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 use xaga_core::embeddings::{EmbeddingService, EmbeddingsDb, EmbeddingsError, ShutdownReason};
@@ -25,7 +24,6 @@ pub(crate) struct AppState {
     pub(crate) show_sidebar: Arc<RwLock<bool>>,
     pub(crate) embedding_service: Arc<Mutex<Option<EmbeddingService>>>,
     pub(crate) http_client: reqwest::Client,
-    pub(crate) entry_cache: Arc<Mutex<Option<EntryStateCache>>>,
     /// Read-only LanceDB handle for command reads (Phase C). Distinct connection from
     /// the embedding service's writer; reads must `reload()` to see the service's writes.
     pub(crate) embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>>,
@@ -223,7 +221,6 @@ pub fn run() {
     let html_reader_line_height: Arc<RwLock<f64>> = Arc::new(RwLock::new(1.75));
     let show_sidebar: Arc<RwLock<bool>> = Arc::new(RwLock::new(true));
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
-    let entry_cache: Arc<Mutex<Option<EntryStateCache>>> = Arc::new(Mutex::new(None));
     let embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>> = Arc::new(Mutex::new(None));
     let allowed_domains: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
     let pinned_feed_ids: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
@@ -231,7 +228,6 @@ pub fn run() {
     let expanded_sidebar_list: Arc<RwLock<Option<String>>> = Arc::new(RwLock::new(None));
     let inline_pdf_reader: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let html_reader_view: Arc<RwLock<String>> = Arc::new(RwLock::new("reader".to_string()));
-    let setup_entry_cache = Arc::clone(&entry_cache);
     let setup_embeddings_read = Arc::clone(&embeddings_read);
     let setup_allowed_domains = Arc::clone(&allowed_domains);
     let setup_pinned_feed_ids = Arc::clone(&pinned_feed_ids);
@@ -262,7 +258,6 @@ pub fn run() {
             show_sidebar,
             embedding_service: embedding_service.clone(),
             http_client,
-            entry_cache,
             embeddings_read,
             allowed_domains,
             named_stores_supported,
@@ -575,9 +570,6 @@ pub fn run() {
                     log::error!("startup: model download failed: {e}");
                 }
 
-                let (cache, needs_recovery) = EntryStateCache::new(&lib_path).await;
-                *setup_entry_cache.lock().unwrap() = Some(cache.clone());
-
                 match EmbeddingService::start(lib_path.clone()).await {
                     Ok(svc) => {
                         // Phase C: open a read handle for command reads, after the service
@@ -592,7 +584,6 @@ pub fn run() {
                             lib_path.clone(),
                             svc.priority_sender(),
                             svc.background_sender(),
-                            cache.clone(),
                         );
 
                         let embeddings_app_handle = app_handle.clone();
@@ -651,9 +642,6 @@ pub fn run() {
                         });
 
                         svc.trigger_recovery(lib_path.clone());
-                        if needs_recovery {
-                            svc.trigger_cache_recovery(cache.clone(), lib_path.clone());
-                        }
                         *setup_svc.lock().unwrap() = Some(svc);
                     }
                     Err(EmbeddingsError::LockNotAcquired) => {
@@ -695,7 +683,7 @@ pub fn run() {
             commands::articles::remove_annotation,
             commands::articles::list_annotations,
             commands::saved::list_saved,
-            commands::entries::is_cache_seeded,
+            commands::entries::is_cache_ready,
             commands::entries::read_entry,
             commands::entries::mark_entry_read,
             commands::entries::mark_entry_unread,
@@ -782,12 +770,8 @@ pub fn run() {
                 if let Some(w) = app.get_webview_window("main") {
                     w.hide().ok();
                 }
-                let app_handle = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    let state = app_handle.state::<AppState>();
-                    let cache = state.entry_cache.lock().unwrap().clone();
-                    let data_dir = state.library.read().unwrap().clone();
-                    match svc.shutdown(cache.as_ref(), &data_dir).await {
+                    match svc.shutdown().await {
                         ShutdownReason::Restart => restart_process(),
                         ShutdownReason::Exit => std::process::exit(0),
                     }
@@ -830,12 +814,8 @@ fn take_service(app: &tauri::AppHandle) -> Option<EmbeddingService> {
 fn shutdown_with_overlay(app: &tauri::AppHandle, svc: EmbeddingService) {
     log::info!("shutdown: waiting for embedding service to drain");
     app.emit("embedding:shutdown", ()).ok();
-    let app_handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        let state = app_handle.state::<AppState>();
-        let cache = state.entry_cache.lock().unwrap().clone();
-        let data_dir = state.library.read().unwrap().clone();
-        match svc.shutdown(cache.as_ref(), &data_dir).await {
+        match svc.shutdown().await {
             ShutdownReason::Restart => restart_process(),
             ShutdownReason::Exit => std::process::exit(0),
         }
@@ -852,10 +832,7 @@ fn install_signal_handler(
         if let Some(svc) = svc {
             log::info!("signal: waiting for embedding service to drain");
             app_handle.emit("embedding:shutdown", ()).ok();
-            let state = app_handle.state::<AppState>();
-            let cache = state.entry_cache.lock().unwrap().clone();
-            let data_dir = state.library.read().unwrap().clone();
-            tauri::async_runtime::block_on(svc.shutdown(cache.as_ref(), &data_dir));
+            tauri::async_runtime::block_on(svc.shutdown());
             // Signals always exit — restart flag is intentionally ignored.
         }
         std::process::exit(0);

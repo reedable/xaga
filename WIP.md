@@ -176,11 +176,15 @@ entry-only, so the user-facing command is unaffected.
   unread id-set per refresh — the Bitmap makes *finding* unread rows index-fast, but the set size is
   inherent; revisit if the sidebar lags at the design scale (denormalized counts / per-collection
   `count_rows`).
-- **Retire `EntryStateCache`** (cutover step 6) — `get_unread`/`get_bookmarked` are now off it, but
-  it's still written by the file watchers and used for shutdown persistence + a readiness check
-  ([entries.rs](src-tauri/src/commands/entries.rs)) + [library.rs](src-tauri/src/commands/library.rs).
-  Fully removing it (and the `annotate_*` helpers in [filter.rs](crates/xaga-core/src/filter.rs) if
-  now unused) is the remaining step.
+- ✅ **Retired `EntryStateCache`** (cutover step 6). Deleted the `entry_cache` module +
+  `ServiceMsg::RecoverCache` + `trigger_cache_recovery`; simplified `EmbeddingService::shutdown` (no
+  cache/persist arg); removed the `AppState` field + all wiring; file watchers no longer touch it;
+  `is_cache_seeded` → **`is_cache_ready`** (repointed to the read handle; frontend `isCacheReady`,
+  `useCacheReady` kept). Workspace compiles + 17 tests; **rebuild the frontend** (TS rename) and verify
+  on relaunch. Notes: the `.entry_state_cache.json` snapshot is now an orphaned file (harmless);
+  startup no longer does the cache scan/seed (state is read on-demand from LanceDB). Possible dead-code
+  follow-up: `annotate_*` / `filter::unread_ids`/`bookmarked_ids` ([filter.rs](crates/xaga-core/src/filter.rs))
+  if now unused.
 - **Retire the feed-search hack** (cutover step 7).
 - **End-to-end verification** at the design scale (cutover step 8) — see TECH_DEBT note; currently
   planned as functional only.

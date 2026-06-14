@@ -38,12 +38,8 @@ pub async fn set_library(
     if let Some(svc) = state.embedding_service.lock().unwrap().take() {
         svc.request_restart();
         app.emit("embedding:shutdown", ()).ok();
-        let app_handle = app.clone();
         tauri::async_runtime::spawn(async move {
-            let state = app_handle.state::<AppState>();
-            let cache = state.entry_cache.lock().unwrap().clone();
-            let data_dir = state.library.read().unwrap().clone();
-            match svc.shutdown(cache.as_ref(), &data_dir).await {
+            match svc.shutdown().await {
                 ShutdownReason::Restart => restart_process(),
                 ShutdownReason::Exit => std::process::exit(0),
             }

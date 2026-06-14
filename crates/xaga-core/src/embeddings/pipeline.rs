@@ -403,7 +403,7 @@ fn feed_checksum(title: &str) -> String {
 
 /// Embeds feed rows (`kind = 'feed'`) from the `.atom` files so feeds are searchable and
 /// carry their pinned state. Feeds are few (sidebar-scale), so this runs in one pass.
-/// Re-embeds a feed only when its title or pinned state changed, or its vector is missing.
+/// Re-embeds a feed only when its title/subtitle or pinned state changed, or its vector is missing.
 pub async fn embed_feeds(
     feeds_dir: &Path,
     embedder: &Arc<Embedder>,
@@ -413,7 +413,7 @@ pub async fn embed_feeds(
     let current: HashSet<String> = metas.iter().map(|m| m.id.clone()).collect();
 
     for meta in metas {
-        let checksum = feed_checksum(&meta.title);
+        let checksum = feed_checksum(&format!("{}\n{}", meta.title, meta.subtitle));
         let existing = db.get_entry(&meta.id).await?;
         let up_to_date = matches!(
             &existing,
@@ -424,7 +424,7 @@ pub async fn embed_feeds(
         }
 
         log::debug!("embed_feeds: embedding feed id={} title={:?}", meta.id, meta.title);
-        let vector = compute_vector(embedder, meta.title.clone(), String::new()).await?;
+        let vector = compute_vector(embedder, meta.title.clone(), meta.subtitle.clone()).await?;
         db.upsert(EmbeddingEntry {
             id: meta.id,
             kind: RowKind::Feed.as_str().to_string(),
@@ -436,7 +436,7 @@ pub async fn embed_feeds(
             checksum,
             reference: String::new(),
             color: String::new(),
-            summary: String::new(),
+            summary: meta.subtitle,
             tags: vec![],
             topics: vec![],
             items: vec![],
