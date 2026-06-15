@@ -1764,6 +1764,100 @@ mod tests {
         assert!(got.topics.contains(&"topic-a".to_string()), "annotation member gets the topic");
     }
 
+    /// A membership change larger than the chunk size is applied across multiple chunks: every
+    /// member ends in the right state and the topic-row `items` base tracks the propagated set,
+    /// for both the add and the remove direction.
+    #[tokio::test]
+    async fn reconcile_chunked_multi_chunk_add_and_remove() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        let mut topic = sample("topic-1", "topic", None);
+        topic.topics = vec![];
+        db.upsert(topic).await.unwrap();
+        let members: Vec<String> = (0..5).map(|i| format!("entry-{i}")).collect();
+        for id in &members {
+            let mut e = sample(id, "entry", None);
+            e.topics = vec![];
+            db.upsert(e).await.unwrap();
+        }
+
+        // Add all 5 with chunk size 2 -> 3 chunks.
+        crate::embeddings::pipeline::reconcile_topic_membership_chunked(&db, "topic-1", &members, 2)
+            .await
+            .unwrap();
+        for id in &members {
+            assert!(
+                db.get_entry(id).await.unwrap().unwrap().topics.contains(&"topic-1".to_string()),
+                "{id} tagged after multi-chunk add"
+            );
+        }
+        let mut base = db.get_entry("topic-1").await.unwrap().unwrap().items;
+        base.sort();
+        assert_eq!(base, members, "base = all members after multi-chunk add");
+
+        // Drop 3, keep 2 (removals span 2 chunks at chunk size 2).
+        let keep = vec!["entry-0".to_string(), "entry-1".to_string()];
+        crate::embeddings::pipeline::reconcile_topic_membership_chunked(&db, "topic-1", &keep, 2)
+            .await
+            .unwrap();
+        for id in &keep {
+            assert!(db.get_entry(id).await.unwrap().unwrap().topics.contains(&"topic-1".to_string()));
+        }
+        for id in ["entry-2", "entry-3", "entry-4"] {
+            assert!(
+                !db.get_entry(id).await.unwrap().unwrap().topics.contains(&"topic-1".to_string()),
+                "{id} untagged after multi-chunk remove"
+            );
+        }
+        let mut base = db.get_entry("topic-1").await.unwrap().unwrap().items;
+        base.sort();
+        assert_eq!(base, keep, "base = kept members after multi-chunk remove");
+    }
+
+    /// Simulates a crash mid-fan-out: some members already carry the topic and the base is only
+    /// partially advanced. A re-run converges (all members tagged, base complete) and the
+    /// already-correct members are not double-tagged (the per-member idempotency skip).
+    #[tokio::test]
+    async fn reconcile_chunked_resumes_from_partial_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        let members: Vec<String> = (0..4).map(|i| format!("entry-{i}")).collect();
+        for id in &members {
+            let mut e = sample(id, "entry", None);
+            // Pretend chunk 1 (entry-0, entry-1) was written before the crash.
+            e.topics = if id == "entry-0" || id == "entry-1" {
+                vec!["topic-1".to_string()]
+            } else {
+                vec![]
+            };
+            db.upsert(e).await.unwrap();
+        }
+        // Base advanced for only entry-0 (crash between entry-1's add and its base checkpoint).
+        let mut topic = sample("topic-1", "topic", None);
+        topic.topics = vec![];
+        topic.items = vec!["entry-0".to_string()];
+        db.upsert(topic).await.unwrap();
+
+        // Re-run with the full membership, chunk size 2.
+        crate::embeddings::pipeline::reconcile_topic_membership_chunked(&db, "topic-1", &members, 2)
+            .await
+            .unwrap();
+
+        for id in &members {
+            let topics = db.get_entry(id).await.unwrap().unwrap().topics;
+            assert_eq!(
+                topics.iter().filter(|t| t.as_str() == "topic-1").count(),
+                1,
+                "{id} ends tagged exactly once (no duplicate from the re-run)"
+            );
+        }
+        let mut base = db.get_entry("topic-1").await.unwrap().unwrap().items;
+        base.sort();
+        assert_eq!(base, members, "base converges to the full membership");
+    }
+
     /// Null-vector rows must be excluded from both similarity paths: the `nearest_to`
     /// ANN branch (via `vector IS NOT NULL`) and the full-scan branch (via `is_null`).
     /// Also verifies lancedb 0.27 accepts `vector IS NOT NULL` on a FixedSizeList column.

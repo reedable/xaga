@@ -123,7 +123,7 @@ Two directions, treated differently (the key insight):
   (`render_entry` + `Frontmatter`/`FrontmatterRaw` + `Annotation`). Parsing ignores any leftover
   `topics:` key in existing `.md`.
 
-### Open verification items (before/while building)
+### Reverse-index verification & hardening (resolved)
 
 - **Shutdown semantics — ✅ resolved: it aborts.** `svc.shutdown()` sends `ServiceMsg::Shutdown`; the
   biased `run_loop` `select!` takes it ahead of pending priority/background work and `break`s out of
@@ -132,8 +132,20 @@ Two directions, treated differently (the key insight):
   `Embed(topic_id)` still queued at shutdown is dropped → the recovery backstop (point 5) rebuilds the
   index on next launch. The inline per-turn reconcile keeps each turn atomic, so a kill can't leave a
   half-applied delta.
-- **Optional hardening:** batch the member-row updates into a **single `merge_insert` commit** per
-  topic change, shrinking the hard-crash window toward zero.
+- **Reverse-index fan-out batching — ✅ DONE (this was needed, not optional).**
+  `reconcile_topic_membership` now writes the membership delta in **chunks of 1024** (`delete_by_ids`
+  + `add_batch` per chunk, not a per-row upsert) and **checkpoints the topic-row `items` base after
+  each chunk**, so a crash mid-fan-out resumes from the remaining members instead of re-scanning the
+  whole set. Chunked `delete_by_ids`+`add_batch` was chosen over `merge_insert` (keeps `upsert`'s
+  duplicate self-healing; accepted tradeoff is a per-chunk delete-then-add row-loss window on a hard
+  kill). Covered by `reconcile_chunked_multi_chunk_add_and_remove` and
+  `reconcile_chunked_resumes_from_partial_state`. [pipeline.rs](crates/xaga-core/src/embeddings/pipeline.rs)
+  `reconcile_topic_membership`.
+  **Why it mattered:** the earlier per-row fan-out (one upsert/member, base written only at the end)
+  degrades badly when a single topic grows to **thousands of members — well within our design
+  assumptions**: it explodes fragments, blocks the loop, and on a crash re-scans the full membership
+  on every relaunch — a potential recovery crash/stall loop. The "usually 1" framing held only for
+  small live edits, not bulk membership (topic delete, bulk import, fresh-recovery rebuild).
 
 ### `annotation → topics` reverse-index — ✅ DONE (W1–W4 + follow-up)
 

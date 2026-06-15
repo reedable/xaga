@@ -346,10 +346,23 @@ pub async fn embed_file(
     Ok(())
 }
 
+/// Number of member rows written per batch in the reverse-index fan-out. A bulk membership
+/// change (topic delete, bulk import, fresh-recovery rebuild of a large topic) is processed
+/// `MEMBERSHIP_CHUNK` members at a time rather than one upsert per member — bounding fragment
+/// churn and the work done per loop turn. Matches `bulk_insert`'s batch size.
+const MEMBERSHIP_CHUNK: usize = 1024;
+
 /// Reconciles one topic's member→topic reverse index. Diffs `member_ids` (the topic's members from
 /// its `.md`) against the topic row's recorded `items` (the last-propagated base), then adds/removes
 /// `topic_id` on the **delta** members' `topics` columns and updates `items` to the propagated set so
 /// the next diff is correct. Work is bounded by the delta, not the table size.
+///
+/// The delta is written in chunks of `MEMBERSHIP_CHUNK` — each chunk is one `delete_by_ids` +
+/// `add_batch` (not a per-row upsert), and the topic-row `items` base is **checkpointed after each
+/// chunk**. So a crash mid-fan-out resumes from the remaining members (the next diff sees the
+/// advanced base) instead of re-scanning the whole membership, and large changes don't explode
+/// fragments or block the loop. Crash window: a hard kill between a chunk's delete and its add loses
+/// that chunk's member rows until a later sync/recovery (accepted tradeoff of delete-then-add).
 ///
 /// This is the sole writer of the `topics` (member) and `items` (topic) columns — entry/annotation
 /// sync carry them forward untouched. Members whose rows don't exist yet are skipped (reconciled on a
@@ -361,38 +374,101 @@ pub async fn reconcile_topic_membership(
     topic_id: &str,
     member_ids: &[String],
 ) -> Result<(), EmbeddingsError> {
-    let topic_row = db.get_entry(topic_id).await?;
-    let prior: Vec<String> = topic_row.as_ref().map(|e| e.items.clone()).unwrap_or_default();
+    reconcile_topic_membership_chunked(db, topic_id, member_ids, MEMBERSHIP_CHUNK).await
+}
+
+/// Core of [`reconcile_topic_membership`] with an injectable `chunk_size`, so tests can exercise the
+/// multi-chunk and resume paths with a handful of rows instead of thousands. Production always calls
+/// it with `MEMBERSHIP_CHUNK`.
+pub(crate) async fn reconcile_topic_membership_chunked(
+    db: &EmbeddingsDb,
+    topic_id: &str,
+    member_ids: &[String],
+    chunk_size: usize,
+) -> Result<(), EmbeddingsError> {
+    let prior: Vec<String> = db.get_entry(topic_id).await?.map(|t| t.items).unwrap_or_default();
     let new_set: HashSet<&str> = member_ids.iter().map(|s| s.as_str()).collect();
     let prior_set: HashSet<&str> = prior.iter().map(|s| s.as_str()).collect();
 
-    // Add `topic_id` to members newly present in the file.
-    for member_id in member_ids.iter().filter(|id| !prior_set.contains(id.as_str())) {
-        if let Some(mut m) = db.get_entry(member_id).await? {
-            if !m.topics.iter().any(|t| t == topic_id) {
-                m.topics.push(topic_id.to_string());
-                db.upsert(m).await?;
-            }
-        }
-    }
-    // Remove `topic_id` from members no longer present in the file.
-    for member_id in prior.iter().filter(|id| !new_set.contains(id.as_str())) {
-        if let Some(mut m) = db.get_entry(member_id).await? {
-            if m.topics.iter().any(|t| t == topic_id) {
-                m.topics.retain(|t| t != topic_id);
-                db.upsert(m).await?;
-            }
-        }
+    let added: Vec<&str> = member_ids
+        .iter()
+        .map(|s| s.as_str())
+        .filter(|id| !prior_set.contains(id))
+        .collect();
+    let removed: Vec<&str> = prior
+        .iter()
+        .map(|s| s.as_str())
+        .filter(|id| !new_set.contains(id))
+        .collect();
+    if added.is_empty() && removed.is_empty() {
+        return Ok(());
     }
 
-    // Update the base to the propagated set so the next diff is meaningful.
-    if prior_set != new_set {
-        if let Some(mut t) = topic_row {
-            t.items = member_ids.to_vec();
-            db.upsert(t).await?;
-        }
+    // Running base, persisted after each chunk so a crash resumes from the remainder. Starts at the
+    // prior membership and ends at the file membership; intermediate values are valid because the
+    // base is only ever diffed as a set on the next reconcile (order/content of `items` is not relied
+    // on for anything else).
+    let mut base: Vec<String> = prior.clone();
+
+    for chunk in added.chunks(chunk_size) {
+        write_topic_delta(db, topic_id, chunk, true).await?;
+        base.extend(chunk.iter().map(|id| id.to_string()));
+        set_topic_base(db, topic_id, &base).await?;
+    }
+    for chunk in removed.chunks(chunk_size) {
+        write_topic_delta(db, topic_id, chunk, false).await?;
+        let drop: HashSet<&str> = chunk.iter().copied().collect();
+        base.retain(|id| !drop.contains(id.as_str()));
+        set_topic_base(db, topic_id, &base).await?;
     }
 
+    Ok(())
+}
+
+/// Adds (`add = true`) or removes (`add = false`) `topic_id` on a chunk of member rows in a single
+/// `delete_by_ids` + `add_batch`. Only rows that actually change are rewritten; members already in
+/// the desired state are skipped (covers a resume after a crash between a chunk's add and its base
+/// checkpoint). Members whose rows don't exist are skipped.
+async fn write_topic_delta(
+    db: &EmbeddingsDb,
+    topic_id: &str,
+    member_ids: &[&str],
+    add: bool,
+) -> Result<(), EmbeddingsError> {
+    let mut ids: Vec<String> = Vec::with_capacity(member_ids.len());
+    let mut rows: Vec<EmbeddingEntry> = Vec::with_capacity(member_ids.len());
+    for member_id in member_ids {
+        let Some(mut m) = db.get_entry(member_id).await? else { continue };
+        let has = m.topics.iter().any(|t| t == topic_id);
+        if add && !has {
+            m.topics.push(topic_id.to_string());
+        } else if !add && has {
+            m.topics.retain(|t| t != topic_id);
+        } else {
+            continue; // already in the desired state
+        }
+        ids.push((*member_id).to_string());
+        rows.push(m);
+    }
+    if rows.is_empty() {
+        return Ok(());
+    }
+    db.delete_by_ids(&ids).await?;
+    db.add_batch(rows).await?;
+    Ok(())
+}
+
+/// Persists the topic row's `items` base (the prior-membership base for the next diff). No-op if the
+/// topic row doesn't exist (nothing to anchor the base on).
+async fn set_topic_base(
+    db: &EmbeddingsDb,
+    topic_id: &str,
+    base: &[String],
+) -> Result<(), EmbeddingsError> {
+    if let Some(mut t) = db.get_entry(topic_id).await? {
+        t.items = base.to_vec();
+        db.upsert(t).await?;
+    }
     Ok(())
 }
 
