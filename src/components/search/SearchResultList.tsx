@@ -18,6 +18,7 @@ import useSearch from "../../hooks/useSearch";
 import {
   isAnnotation,
   isEntry,
+  isFeed,
   isTopic,
   type Embedded,
   type Item,
@@ -54,14 +55,19 @@ export function SearchResultList({
     if (typeFilter === "topics") return results.filter(isTopic);
     if (typeFilter === "annotations") return results.filter(isAnnotation);
     if (typeFilter === "feeds") {
-      // Feeds are not in the embeddings index; match them locally by title/URL.
+      // Hybrid: name-matches first (local title/URL filter over all feeds), then the
+      // semantic feed hits from the unified search appended after, deduped by id.
       const query = searchQuery.trim().toLowerCase();
-      if (!query) return [];
-      return feeds.filter(
-        (feed) =>
-          feed.title.toLowerCase().includes(query) ||
-          feed.url.toLowerCase().includes(query)
-      );
+      const nameMatched = query
+        ? feeds.filter(
+            (feed) =>
+              feed.title.toLowerCase().includes(query) ||
+              feed.url.toLowerCase().includes(query)
+          )
+        : [];
+      const seen = new Set(nameMatched.map((feed) => feed.id));
+      const semantic = results.filter(isFeed).filter((feed) => !seen.has(feed.id));
+      return [...nameMatched, ...semantic];
     }
     return results.filter(isEntry);
   }, [results, typeFilter, feeds, searchQuery]);

@@ -382,12 +382,29 @@ pub async fn remove_annotation(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Evict the deleted annotation from any topic items lists immediately,
-    // so topic item lists don't serve stale data before LanceDB catches up.
-    if let Ok(topic_ids) = topics::list_entry_topics(&data_dir, &annotation_id).await {
-        for topic_id in topic_ids {
-            let _ = topics::remove_topic_item(&data_dir, &topic_id, &annotation_id).await;
+    // Evict the deleted annotation from any topic items lists immediately, so topic item
+    // lists don't serve stale data before LanceDB catches up. Read the annotation's topics
+    // from the LanceDB reverse index (the `topics` column, maintained by the topic-membership
+    // reconcile) instead of scanning every topic file — mirrors `list_entry_topics`. Best-effort:
+    // a missing read handle or read error just skips the eviction (the reconcile still corrects it).
+    let topic_ids: Vec<String> = {
+        let db = state.embeddings_read.lock().unwrap().clone();
+        match db {
+            Some(db) => match db.reload().await {
+                Ok(()) => db
+                    .get_entry(&annotation_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|e| e.topics)
+                    .unwrap_or_default(),
+                Err(_) => Vec::new(),
+            },
+            None => Vec::new(),
         }
+    };
+    for topic_id in topic_ids {
+        let _ = topics::remove_topic_item(&data_dir, &topic_id, &annotation_id).await;
     }
 
     window.emit("annotation:removed", &annotation_id).ok();

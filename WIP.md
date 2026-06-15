@@ -20,7 +20,7 @@ the list commands to read from LanceDB and then retires `EntryStateCache` and th
 | `list_entries` per-feed ([feeds.rs](src-tauri/src/commands/feeds.rs)) | ✅ compiles; pending relaunch verify | `.atom` id-set → `entries_by_ids` → filter/sort; **first command off `EntryStateCache` for reads** |
 | `list_all_articles` ([entries.rs](src-tauri/src/commands/entries.rs)) | ✅ compiles; pending relaunch verify | `all_entries()` + url sort |
 | `list_entry_topics` ([topics.rs](src-tauri/src/commands/topics.rs)) | ✅ done + user-verified (entries + annotations) | reads LanceDB `topics` reverse index; maintained by the reconcile (T1–T6 + W1–W4) |
-| sidebar feed/topic counts | ⬜ not started | cutover step 4; see TECH_DEBT counts items |
+| sidebar feed/topic counts | ✅ repointed; verify on relaunch | cutover step 4 — Bitmap indexes + `unread_ids`/`bookmarked_ids`; see "Remaining cutover steps" + TECH_DEBT counts items |
 
 Supporting work done:
 - **AppState read handle** ([lib.rs](src-tauri/src/lib.rs)) — shared LanceDB read connection opened
@@ -104,12 +104,12 @@ Two directions, treated differently (the key insight):
   `add_columns(AllNulls)` — verified metadata-only (no rewrite, no re-embed); no reset needed.**
 - **T3 — Live fan-out. ✅ DONE** (compiles, 17/17). The priority-queue topic `Embed` handler
   ([service.rs](crates/xaga-core/src/embeddings/service.rs)) calls `reconcile_topic_membership`
-  inline after `sync_row` when the changed file is under `topics/` — synchronous, off the queue,
-  entries-only.
+  inline after `sync_row` when the changed file is under `topics/` — synchronous, off the queue;
+  covers entries + annotations (the reconcile is member-type-agnostic; it's fed `topic.items`).
 - **T4 — Unconditional recovery rebuild. ✅ DONE** (compiles, 17/17 incl. the reconcile test). From
   topic files (point 5), decoupled from the checksum
-  gate. **Scoped to ENTRY members** (entry rows exist post-`bulk_insert`; annotation rows are created
-  later by the async embed pass → see Scheduled follow-up). Shares the reconcile core with T3: per
+  gate. **Covers entries and annotations** (annotation rows exist post-`bulk_insert`; W1/W2 widened
+  this from the original entries-only scope). Shares the reconcile core with T3: per
   topic, diff file members vs the topic-row `items` base → add/remove `topic_id` on the delta members'
   `topics` → set `items` = file members; bounded by drift (first run O(total memberships),
   column-writes only). **Refines T2:** `items` is reconcile-managed — `to_embedding_entry` writes it
@@ -146,24 +146,19 @@ updated all callers. Parsing safely ignores the now-unknown `topics:` key in exi
 has been deleted (workspace compiles). The dead entry-level and per-annotation `topics:` frontmatter
 is gone.
 
-Scoped out of the entries-only T4, but **scheduled here, not deferred indefinitely.**
+**✅ DONE** — the scheduled follow-up (originally scoped out of the entries-only T4) is complete.
+`bulk_insert` now creates each `.md`'s annotation rows (null-vector) in the bulk phase
+([service.rs](crates/xaga-core/src/embeddings/service.rs) `bulk_insert`), so all member rows
+(entries + annotations) exist before the recovery reconcile — which iterates `topic.items` (entries
+**and** annotations) into `reconcile_topic_membership` (the reconcile core is member-type-agnostic;
+test `reconcile_handles_annotation_members`). So the `annotation → topics` reverse index is built for
+both kinds, and the bulk-insert annotation-row parity (also the from-reset listability fix) is done.
 
-Topics contain entries **and** annotations (`CollectionItem`), so each annotation row's `topics`
-column (the `annotation → topics` reverse index) must also be built. But at recovery-dispatch time
-annotation rows don't exist yet — `bulk_insert` creates entry rows only; annotation rows are created
-later by the async `embed_vector`/`embed_annotations` pass — so the T4 reconcile can't reach them.
-
-- **Prerequisite (this is what couples them):** give `bulk_insert` annotation-row parity — create
-  each `.md`'s annotation rows (null-vector) in the bulk phase, mirroring `sync_annotations`, so all
-  member rows (entries + annotations) exist *before* the reconcile runs. This is also the from-reset
-  listability fix originally filed in [TODO.md](TODO.md).
-- **Then:** extend the T4 reconcile to annotation members — identical delta logic, just also
-  add/remove `topic_id` on annotation rows' `topics`. The reconcile core (shared with T3) already
-  treats members uniformly by id, so it's largely dropping the entries-only filter once annotation
-  rows are guaranteed to exist.
-
-Until done: `annotation → topics` stays on the old topic-file path. `list_entry_topics` is
-entry-only, so the user-facing command is unaffected.
+**Stale references to clean up elsewhere:** [TODO.md](TODO.md) still lists "`bulk_insert`
+annotation-row parity + coupled annotation→topics" as open; the `embed_annotations` doc-comment
+([pipeline.rs:199](crates/xaga-core/src/embeddings/pipeline.rs#L199)) still says "`bulk_insert`
+inserts entry rows … but not annotation rows"; and the T4 note above still reads "Scoped to ENTRY
+members." All three predate this completion.
 
 ## Remaining cutover steps (after the blocker)
 
@@ -185,11 +180,26 @@ entry-only, so the user-facing command is unaffected.
   startup no longer does the cache scan/seed (state is read on-demand from LanceDB). Possible dead-code
   follow-up: `annotate_*` / `filter::unread_ids`/`bookmarked_ids` ([filter.rs](crates/xaga-core/src/filter.rs))
   if now unused.
-- **Feed-search hack** (cutover step 7) — in progress; decided **hybrid (C)**: feeds searchable both semantically and by name.
-  - ✅ **Part 1 done** (compiles, not yet relaunch-verified): feeds now embed **title + `atom:subtitle`** for real semantic content — `FeedMeta.subtitle`, `feed_embedding_meta` reads `feed.subtitle()`, `embed_feeds` embeds title+subtitle, folds subtitle into `feed_checksum`, and stores it in `summary`. Re-embeds all feeds on next recovery (cheap). **Verify on relaunch.**
-  - **Part 2 blocked on the type model:** the unified vector search returns feed rows, but `enrich_embedded` ([item.rs](crates/xaga-core/src/item.rs)) classifies them as **Entries** (no Feed concept — it only splits topic-vs-entry by url-emptiness). Feeds leak into entry results, worse now that they rank higher.
-  - **➡️ NEXT STEP — brand `Feed` and `Entry` with `__kind`.** Feed and Entry overlap structurally (both `WebResource = Item & url`; a Feed is Entry-shaped **+ Collection counts**), so `isEntry(feed)` is structurally true. The distinction is **extrinsic** (role/`kind`), not intrinsic — shape alone can't separate them. Plan: branded TS types `WebResource & { readonly __kind: "feed" | "entry" }`; **mint `__kind` at the one wire boundary from the backend `RowKind`/`kind`** (thread it through `enrich_embedded`), never cast loosely. Gives compile-time mixing protection + projection-robust runtime classification, and fixes the feed-as-entry bug. Then Part 2 hybrid filter: `results.filter(isFeed)` (semantic) ∪ name-match, deduped.
-  - Design rule from the long discussion: **shape is SoT for *intrinsic* types** (no discriminator); **`__kind` is a *derived distillation*, legitimate only for *extrinsic* role distinctions** (mint from SoT, never trust over shape). Brand the `RowKind` set; for the *intrinsic* kinds (Annotation, Topic) cross-validate `__kind` against shape at the boundary. Don't brand composite/view types.
+- ✅ **Feed-search hack** (cutover step 7) — **DONE** (compiles + tsc clean; not yet relaunch-verified).
+  Decided **hybrid (C)**: feeds searchable both semantically and by name.
+  - ✅ **Part 1** — feeds embed **title + `atom:subtitle`** for real semantic content (`FeedMeta.subtitle`,
+    `feed_embedding_meta` reads `feed.subtitle()`, `embed_feeds` embeds title+subtitle, folds subtitle into
+    `feed_checksum`, stores it in `summary`). Re-embeds all feeds on next recovery. **Verify on relaunch.**
+  - ✅ **Part 2 — `Feed`/`Entry` branding + hybrid tab.**
+    - **Backend:** promoted `Kind` to [types.rs](crates/xaga-core/src/types.rs) (serde lowercase, `as_str`,
+      `FromStr`, `From<&CollectionItem>`), retired `RowKind`, `predicate()` kept as `impl Kind` in db.rs;
+      `EmbeddingEntry.kind: Kind` (Arrow-converted at edges); `EmbeddedEntry` gained `kind: Kind` threaded
+      through all four query paths via `BatchSummaryColumns::kind_at`; new `EmbeddedFeed` + `EmbeddedItem::Feed`;
+      `enrich_embedded` routes feed hits to `EmbeddedItem::Feed`.
+    - **Frontend:** `WebResource`, branded `Entry`/`Feed` (`readonly __kind`), minted in `toEntry`/`toFeed`/
+      `toAnyEmbeddedItem` (`EmbeddedFeedSchema`, `kind` on `EmbeddedEntrySchema`). `isEntry`/`isFeed` are
+      **interim brand-first / shape-fallback** (shape is the foundation, never removed; `__kind` only resolves
+      the feed-vs-entry role). Hybrid feeds tab in [SearchResultList.tsx](src/components/search/SearchResultList.tsx):
+      name-matches first, then `results.filter(isFeed)` semantic hits appended, deduped by id.
+  - **Deferred (in [TECH_DEBT.md](TECH_DEBT.md)):** embedded feed counts return **0** (server-side stats lookup
+    in `enrich_embedded` deferred); `toSavedItem` does **not** mint `__kind` yet → once it does, extract
+    `isWebResource` and switch guards to the brand-**and**-shape form.
+  - Design rule from the long discussion: **shape is SoT for *intrinsic* types** (no discriminator); **`__kind` is a *derived distillation*, legitimate only for *extrinsic* role distinctions** (mint from SoT, never trust over shape). For the *intrinsic* kinds (Annotation, Topic) cross-validate `__kind` against shape at the boundary. Don't brand composite/view types.
 - **End-to-end verification** at the design scale (cutover step 8) — see TECH_DEBT note; currently
   planned as functional only.
 

@@ -271,19 +271,6 @@ pub async fn remove_topic_item(
     save_topic(data_dir, topic_id, &title, &content, threshold, items).await
 }
 
-/// Returns the IDs of all topics whose manual items list contains the given entry/annotation ID.
-pub async fn list_entry_topics(
-    data_dir: &Path,
-    entry_id: &str,
-) -> Result<Vec<String>, TopicsError> {
-    let topics = list_topics(data_dir).await?;
-    Ok(topics
-        .into_iter()
-        .filter(|t| t.items.iter().any(|i| i.id() == entry_id))
-        .map(|t| t.id)
-        .collect())
-}
-
 /// Returns the union of embedding-matched items and manually curated items for a topic,
 /// with the given filter applied and ordered by `sort`. Deduplicates by ID.
 pub async fn list_topic_items(

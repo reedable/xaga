@@ -196,8 +196,9 @@ async fn sync_annotations(
 }
 
 /// Slow path: computes and stores embedding vectors for this article's annotation rows whose
-/// vector is missing or stale. Also creates any annotation row that does not yet exist — the
-/// recovery path inserts entry rows via `bulk_insert` but not annotation rows. Runs the embedder.
+/// vector is missing or stale. Also creates any annotation row that does not yet exist as a
+/// safety net — annotation rows are normally created earlier (fresh recovery via `bulk_insert`,
+/// live edits via `sync_annotations`). Runs the embedder.
 async fn embed_annotations(
     article_id: &str,
     fm: &Frontmatter,
@@ -352,8 +353,9 @@ pub async fn embed_file(
 ///
 /// This is the sole writer of the `topics` (member) and `items` (topic) columns — entry/annotation
 /// sync carry them forward untouched. Members whose rows don't exist yet are skipped (reconciled on a
-/// later run once they exist). Scoped to whatever ids the caller passes — entries only for now;
-/// annotation members are created later by the embed pass (see WIP.md, Scheduled follow-up).
+/// later run once they exist). Member-type-agnostic — operates on whatever ids the caller passes
+/// (entries **and** annotations); annotation rows exist by this point (created by `bulk_insert` on
+/// fresh recovery, `sync_annotations` on live edits).
 pub async fn reconcile_topic_membership(
     db: &EmbeddingsDb,
     topic_id: &str,
