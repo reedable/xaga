@@ -36,10 +36,6 @@ locations — severity and ordering are not assigned here.
 
 ## Search and counts
 
-- [ ] **No vector/ANN index.** `find_related`, `find_by_vector`, `find_related_to_many`,
-  `sample_similarities`, `full_scan_scored` all `bypass_vector_index()` — every semantic
-  query is an O(N) cosine scan over all rows. Scalar indexes were added; a vector index
-  was not. [db.rs](crates/xaga-core/src/embeddings/db.rs).
 - [ ] **`embedding_status` runs 2 `count_rows` per kind** (up to 8 filtered counts);
   filtered `count_rows` without supporting indexes scans.
   [db.rs](crates/xaga-core/src/embeddings/db.rs),

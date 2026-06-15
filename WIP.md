@@ -38,8 +38,9 @@ entries; the `annotation → topics` index is built; the dead `topics:` frontmat
 by the user on relaunch (entries + annotations) and the data migration was run + confirmed. Manual
 topic-filing can be re-enabled.**
 
-`list_entry_topics(entry_id)` returns the **topic ids** an entry belongs to. Old impl
-([topics.rs:275](crates/xaga-core/src/topics.rs#L275)) reads `topic.items` from the topic `.md`.
+`list_entry_topics(entry_id)` returns the **topic ids** an entry belongs to — now read from the
+LanceDB `topics` reverse index (T5). The old topic-file scan (`topics.rs` `list_entry_topics`) has
+been removed.
 
 ### Why the naive repoint was rejected
 
@@ -117,21 +118,24 @@ Two directions, treated differently (the key insight):
   writer, so the column *lags* the file and the diff is meaningful.
 - **T5 — Repoint `list_entry_topics`. ✅ DONE.** Reads the entry's `topics` column via the AppState
   read handle (`reload` + `get_entry`) — pulls the full vector (TECH_DEBT; projected read later).
-- **T6 — Stop sourcing `topics` from frontmatter. ✅ CORE DONE.** `to_embedding_entry` writes `topics`
-  empty (reconcile-managed). **Full removal of the `topics:` field from render/parse is DEFERRED** to
-  the annotation follow-up — it's entangled with annotation `topics` (annotations stay on the old
-  path for now). The dead field in entry `.md` is inert (ignored).
+- **T6 — Stop sourcing `topics` from frontmatter. ✅ DONE.** `to_embedding_entry` writes `topics`
+  empty (reconcile-managed); the `topics:` field was fully removed from render/parse via W3/W4
+  (`render_entry` + `Frontmatter`/`FrontmatterRaw` + `Annotation`). Parsing ignores any leftover
+  `topics:` key in existing `.md`.
 
 ### Open verification items (before/while building)
 
-- **Shutdown semantics:** does `svc.shutdown()` **drain** the queue or **abort** it? Determines
-  whether a queued `Embed(topic_id)` can be lost (→ relies on the recovery backstop) vs. always runs.
+- **Shutdown semantics — ✅ resolved: it aborts.** `svc.shutdown()` sends `ServiceMsg::Shutdown`; the
+  biased `run_loop` `select!` takes it ahead of pending priority/background work and `break`s out of
+  the loop with no drain phase ([service.rs:283-304](crates/xaga-core/src/embeddings/service.rs#L283);
+  loop ends [:468](crates/xaga-core/src/embeddings/service.rs#L468)). So a topic-trigger
+  `Embed(topic_id)` still queued at shutdown is dropped → the recovery backstop (point 5) rebuilds the
+  index on next launch. The inline per-turn reconcile keeps each turn atomic, so a kill can't leave a
+  half-applied delta.
 - **Optional hardening:** batch the member-row updates into a **single `merge_insert` commit** per
   topic change, shrinking the hard-crash window toward zero.
-- **`LabelList` index:** only relevant if we ever reverse-scan the `topics` column; the point-read base
-  avoids it. Verify `lancedb` 0.27 support only if that path is ever needed.
 
-### `annotation → topics` reverse-index — ✅ W1 + W2 DONE (compiles, 18 tests)
+### `annotation → topics` reverse-index — ✅ DONE (W1–W4 + follow-up)
 
 - **W1 ✅** — `bulk_insert` now creates annotation rows (null-vector) alongside entries, so all
   members exist at recovery time.
@@ -154,13 +158,7 @@ is gone.
 test `reconcile_handles_annotation_members`). So the `annotation → topics` reverse index is built for
 both kinds, and the bulk-insert annotation-row parity (also the from-reset listability fix) is done.
 
-**Stale references to clean up elsewhere:** [TODO.md](TODO.md) still lists "`bulk_insert`
-annotation-row parity + coupled annotation→topics" as open; the `embed_annotations` doc-comment
-([pipeline.rs:199](crates/xaga-core/src/embeddings/pipeline.rs#L199)) still says "`bulk_insert`
-inserts entry rows … but not annotation rows"; and the T4 note above still reads "Scoped to ENTRY
-members." All three predate this completion.
-
-## Remaining cutover steps (after the blocker)
+## Remaining cutover steps
 
 - ✅ **Sidebar feed/topic counts** repointed to LanceDB (cutover step 4). Added **Bitmap** indexes on
   `is_unread`/`is_bookmarked`/`is_pinned` ([db.rs](crates/xaga-core/src/embeddings/db.rs)
@@ -180,11 +178,13 @@ members." All three predate this completion.
   startup no longer does the cache scan/seed (state is read on-demand from LanceDB). Possible dead-code
   follow-up: `annotate_*` / `filter::unread_ids`/`bookmarked_ids` ([filter.rs](crates/xaga-core/src/filter.rs))
   if now unused.
-- ✅ **Feed-search hack** (cutover step 7) — **DONE** (compiles + tsc clean; not yet relaunch-verified).
+- ✅ **Feed-search hack** (cutover step 7) — **DONE + user-verified on relaunch** (searching "New York
+  Times" surfaced the **NYT** and **BBC** feeds — semantic feed hits, not name matches).
   Decided **hybrid (C)**: feeds searchable both semantically and by name.
   - ✅ **Part 1** — feeds embed **title + `atom:subtitle`** for real semantic content (`FeedMeta.subtitle`,
     `feed_embedding_meta` reads `feed.subtitle()`, `embed_feeds` embeds title+subtitle, folds subtitle into
-    `feed_checksum`, stores it in `summary`). Re-embeds all feeds on next recovery. **Verify on relaunch.**
+    `feed_checksum`, stores it in `summary`). Re-embeds all feeds on recovery. Verified (the semantic
+    matches above confirm feeds carry real embedded content).
   - ✅ **Part 2 — `Feed`/`Entry` branding + hybrid tab.**
     - **Backend:** promoted `Kind` to [types.rs](crates/xaga-core/src/types.rs) (serde lowercase, `as_str`,
       `FromStr`, `From<&CollectionItem>`), retired `RowKind`, `predicate()` kept as `impl Kind` in db.rs;
@@ -200,15 +200,21 @@ members." All three predate this completion.
     in `enrich_embedded` deferred); `toSavedItem` does **not** mint `__kind` yet → once it does, extract
     `isWebResource` and switch guards to the brand-**and**-shape form.
   - Design rule from the long discussion: **shape is SoT for *intrinsic* types** (no discriminator); **`__kind` is a *derived distillation*, legitimate only for *extrinsic* role distinctions** (mint from SoT, never trust over shape). For the *intrinsic* kinds (Annotation, Topic) cross-validate `__kind` against shape at the boundary. Don't brand composite/view types.
-- **End-to-end verification** at the design scale (cutover step 8) — see TECH_DEBT note; currently
-  planned as functional only.
+- **End-to-end verification (cutover step 8).** Not a discrete remaining task:
+  - **Functional:** verified incrementally throughout — the user has used the app at each step and
+    confirmed behavior, including this session's feed-search work on relaunch. No separate functional
+    deliverable remains.
+  - **Performance / design scale:** deferred by design. There is no standalone "verify at scale"
+    exercise; the actual work is the named perf items in [TECH_DEBT.md](TECH_DEBT.md)
+    (reload-before-every-read, unpaginated `all_entries`/`entries_by_ids`, count-scan costs), gated
+    behind related TODOs (e.g. Virtuoso windowed reads). The early design-scale
+    pressure-test is a sunk cost and is not being re-run.
 
 ## Related open tasks (already filed)
 
-In [TODO.md](TODO.md): `bulk_insert` annotation-row parity (from-reset listability); Rust-layer
-symbol-naming review (`sync`/`reconcile` overload); embeddings write-lock audit; queue-priority
-refactor; Virtuoso windowed LanceDB reads; pins cleanup on target removal.
+In [TODO.md](TODO.md): Rust-layer symbol-naming review (`sync`/`reconcile` overload); embeddings
+write-lock audit; queue-priority refactor; Virtuoso windowed LanceDB reads; pins cleanup on target
+removal.
 
 In [TECH_DEBT.md](TECH_DEBT.md): reload-before-every-read cost; `all_entries`/`entries_by_ids`
-unpaginated/unchunked; no ANN index; count-scan costs; `list_entry_topics` via `get_entry` reads
-the vector.
+unpaginated/unchunked; count-scan costs; `list_entry_topics` via `get_entry` reads the vector.
