@@ -65,6 +65,25 @@ locations — severity and ordering are not assigned here.
   [cmd/migrate_sot.rs](crates/xaga-cli/src/cmd/migrate_sot.rs),
   [cmd/migrate_pins.rs](crates/xaga-cli/src/cmd/migrate_pins.rs).
 
+## CLI review — parallel state path not used by the UI
+
+- [ ] **The CLI reads unread/bookmark state by scanning the `.md` files, a path the UI no longer
+  uses.** `cmd/feeds.rs` calls `filter::unread_ids`/`filter::bookmarked_ids`
+  ([filter.rs](crates/xaga-core/src/filter.rs)) in its `Add`/`List`/`Refresh {id}`/`Refresh {none}`
+  arms ([cmd/feeds.rs](crates/xaga-cli/src/cmd/feeds.rs)); those scan `entries/*.md` frontmatter for
+  the `unread`/`bookmark` tags. After the `EntryStateCache` retirement the UI reads the same state
+  from LanceDB (`db.unread_ids()`/`db.bookmarked_ids()`, [lib.rs](src-tauri/src/lib.rs)); the CLI was
+  not repointed and still owns a second, file-scanning implementation. (Discovered during the
+  `EntryStateCache` dead-code follow-up: `filter::unread_ids`/`bookmarked_ids` looked dead until this
+  CLI caller surfaced.)
+  - General principle to apply: the CLI should not need anything the UI does not also use; a
+    second state path is a divergence risk (the two can disagree, and both must be maintained).
+  - Not decided. Needs a review pass over the whole CLI surface (not just this path) to analyze what
+    it actually requires vs. what duplicates UI/LanceDB functionality, then decide per case
+    (e.g. converge the CLI onto the LanceDB read handle, keep the file-scan as a deliberately
+    db-independent path, or drop CLI commands the UI supersedes). Tradeoffs to be worked out at that
+    point, not pre-judged here.
+
 ## Phase C cutover — decided tradeoffs to revisit
 
 - [ ] **Read handle reloads before every read.** Each repointed command calls

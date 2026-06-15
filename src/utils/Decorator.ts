@@ -100,6 +100,7 @@ export const logged: Decorator<{ logger: Logger; name: string }> = (
     this: ThisParameterType<typeof fn>,
     ...args: unknown[]
   ) {
+    const now = Date.now();
     const logger = opts?.logger.getLogger(opts?.name);
     logger?.debug("entering", ...args);
     let result: unknown;
@@ -112,7 +113,7 @@ export const logged: Decorator<{ logger: Logger; name: string }> = (
       result = e;
       throw e; // Caller must handle the error
     } finally {
-      logger?.debug("exiting", result);
+      logger?.debug("exiting", `(${Date.now() - now}ms)`, result);
     }
   } as typeof fn;
 };

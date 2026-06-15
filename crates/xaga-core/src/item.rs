@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::path::Path;
 
 use thiserror::Error;
@@ -6,18 +5,12 @@ use thiserror::Error;
 use crate::embeddings::EmbeddingsDb;
 use crate::feeds;
 use crate::filter;
-use crate::types::{EmbeddedEntry, EmbeddedFeed, EmbeddedItem, EmbeddedTopic, Entry, Feed, ItemFilter, Kind};
+use crate::types::{EmbeddedEntry, EmbeddedFeed, EmbeddedItem, EmbeddedTopic, Feed, ItemFilter, Kind};
 
 // Forwarding shim — all types have moved to `crate::types`.
 pub use crate::types::{Document, Item};
 
-// ── ItemSource ────────────────────────────────────────────────────────────────
-
-/// Describes where to fetch the candidate items before filtering.
-pub enum ItemSource {
-    /// Items that are feed entries, optionally scoped to one feed URL.
-    FeedEntries { url: Option<String> },
-}
+// ── EmbeddedItemSource ──────────────────────────────────────────────────────────
 
 /// Describes the source for an embedding similarity query.
 pub enum EmbeddedItemSource {
@@ -44,23 +37,6 @@ pub enum ItemError {
 pub type Result<T> = std::result::Result<T, ItemError>;
 
 // ── Public API ────────────────────────────────────────────────────────────────
-
-/// Fetch items from `source`, then filter and annotate them.
-pub async fn list_items(
-    library: &Path,
-    source: ItemSource,
-    item_filter: ItemFilter,
-    unread: &HashSet<String>,
-    bookmarked: &HashSet<String>,
-) -> Result<Vec<Entry>> {
-    match source {
-        ItemSource::FeedEntries { url } => {
-            feeds::list_entries(library, url.as_deref(), item_filter, unread, bookmarked)
-                .await
-                .map_err(ItemError::Feed)
-        }
-    }
-}
 
 /// Fetch embedded items from `source`, preserving similarity rank, then filter.
 /// `is_unread` and `is_bookmarked` are read directly from LanceDB tags.

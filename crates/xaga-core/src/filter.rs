@@ -3,7 +3,7 @@ use std::path::Path;
 
 use chrono::{DateTime, Utc};
 
-use crate::types::{Entry, Item, ItemFilter};
+use crate::types::{Item, ItemFilter};
 
 /// Scans `library/entries/` and returns the set of IDs whose frontmatter contains the `unread` tag.
 pub async fn unread_ids(library: &Path) -> HashSet<String> {
@@ -46,21 +46,6 @@ pub async fn bookmarked_ids(library: &Path) -> HashSet<String> {
     }
     ids
 }
-
-/// Sets `is_unread` on each entry based on the provided unread ID set.
-pub fn annotate_unread_status(unread: &HashSet<String>, entries: &mut Vec<Entry>) {
-    for entry in entries.iter_mut() {
-        entry.is_unread = unread.contains(&entry.id);
-    }
-}
-
-/// Sets `is_bookmarked` on each entry based on the provided bookmarked ID set.
-pub fn annotate_bookmarked_status(bookmarked: &HashSet<String>, entries: &mut Vec<Entry>) {
-    for entry in entries.iter_mut() {
-        entry.is_bookmarked = bookmarked.contains(&entry.id);
-    }
-}
-
 
 /// Filter `items` according to `item_filter` — predicate only, no sorting.
 ///

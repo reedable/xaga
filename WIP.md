@@ -187,9 +187,16 @@ both kinds, and the bulk-insert annotation-row parity (also the from-reset lista
   `is_cache_seeded` → **`is_cache_ready`** (repointed to the read handle; frontend `isCacheReady`,
   `useCacheReady` kept). Workspace compiles + 17 tests; **rebuild the frontend** (TS rename) and verify
   on relaunch. Notes: the `.entry_state_cache.json` snapshot is now an orphaned file (harmless);
-  startup no longer does the cache scan/seed (state is read on-demand from LanceDB). Possible dead-code
-  follow-up: `annotate_*` / `filter::unread_ids`/`bookmarked_ids` ([filter.rs](crates/xaga-core/src/filter.rs))
-  if now unused.
+  startup no longer does the cache scan/seed (state is read on-demand from LanceDB).
+  - ✅ **Dead-code follow-up resolved.** `filter::unread_ids`/`bookmarked_ids`
+    ([filter.rs](crates/xaga-core/src/filter.rs)) are **not** dead — the CLI still uses them
+    (`cmd/feeds.rs` Add/List/Refresh). Only the `item::list_items` → `feeds::list_entries` →
+    `annotate_unread_status`/`annotate_bookmarked_status` chain was dead (the Tauri `list_entries`
+    command was repointed to `list_entry_ids` + LanceDB); that chain + `ItemSource` + the now-unused
+    imports were removed, and the stale `created_at` FIXME in `atom_entry_to_entry`
+    ([feed_entry.rs](crates/xaga-core/src/feeds/feed_entry.rs)) was deleted (it described a bug the
+    current code doesn't have). Workspace builds clean, 19 tests pass. See TECH_DEBT.md
+    "CLI review" for the CLI's separate `.md`-scanning state path.
 - ✅ **Feed-search hack** (cutover step 7) — **DONE + user-verified on relaunch** (searching "New York
   Times" surfaced the **NYT** and **BBC** feeds — semantic feed hits, not name matches).
   Decided **hybrid (C)**: feeds searchable both semantically and by name.
