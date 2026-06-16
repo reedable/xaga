@@ -16,7 +16,12 @@ xaga-core        = { path = "../crates/xaga-core" }
 # `macos-proxy` makes `WebviewWindowBuilder::proxy_url` take effect on macOS
 # (needs macOS 14+, enforced via bundle.macOS.minimumSystemVersion). Without it,
 # the loader's SSRF proxy wiring is a silent no-op on macOS.
-tauri            = { version = "2", features = ["macos-proxy"] }
+# `macos-private-api` enables wry's `transparent` feature, which lets
+# `set_background_color` disable WKWebView's white `drawsBackground` so the
+# window's theme color shows until the frontend paints (avoids the startup
+# white flash). Uses a private API; macos-proxy already does, so this changes
+# nothing about distribution (already not Mac App Store eligible).
+tauri            = { version = "2", features = ["macos-proxy", "macos-private-api"] }
 tauri-plugin-log = "2"
 serde            = { version = "1", features = ["derive"] }
 serde_json       = "1"

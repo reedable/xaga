@@ -187,44 +187,6 @@ pub async fn set_html_reader_view(
 }
 
 #[tauri::command]
-pub async fn get_pinned_feed_ids(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    Ok(state.pinned_feed_ids.read().unwrap().clone())
-}
-
-#[tauri::command]
-pub async fn set_pinned_feed_ids(
-    value: Vec<String>,
-    state: State<'_, AppState>,
-    app: AppHandle,
-) -> Result<(), String> {
-    let settings_path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("settings.json");
-    let mut settings = load_settings(&settings_path);
-    settings.pinned_feed_ids = Some(value.clone());
-    save_settings(&settings_path, &settings).map_err(|e| e.to_string())?;
-    *state.pinned_feed_ids.write().unwrap() = value;
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn get_pinned_topic_ids(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    Ok(state.pinned_topic_ids.read().unwrap().clone())
-}
-
-#[tauri::command]
-pub async fn set_pinned_topic_ids(
-    value: Vec<String>,
-    state: State<'_, AppState>,
-    app: AppHandle,
-) -> Result<(), String> {
-    let settings_path = app.path().app_config_dir().map_err(|e| e.to_string())?.join("settings.json");
-    let mut settings = load_settings(&settings_path);
-    settings.pinned_topic_ids = Some(value.clone());
-    save_settings(&settings_path, &settings).map_err(|e| e.to_string())?;
-    *state.pinned_topic_ids.write().unwrap() = value;
-    Ok(())
-}
-
-#[tauri::command]
 pub async fn get_expanded_sidebar_list(state: State<'_, AppState>) -> Result<Option<String>, String> {
     Ok(state.expanded_sidebar_list.read().unwrap().clone())
 }

@@ -1,6 +1,8 @@
-use std::path::PathBuf;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
+use xaga_core::embeddings::EmbeddingsDb;
 use xaga_core::feeds::{self, FeedId, RepairOutcome};
 
 use crate::die;
@@ -30,10 +32,7 @@ pub enum FeedsCommand {
 pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &PathBuf, data_dir: &PathBuf) {
     match cmd {
         FeedsCommand::Add { url } => {
-            let (unread, bookmarked) = tokio::join!(
-                xaga_core::filter::unread_ids(data_dir),
-                xaga_core::filter::bookmarked_ids(data_dir),
-            );
+            let (unread, bookmarked) = read_state_sets(data_dir).await;
             eprint!("Fetching {url} ... ");
             match feeds::add_feed(client, feeds_dir, data_dir, &url, &unread, &bookmarked).await {
                 Ok(feed) => {
@@ -50,10 +49,7 @@ pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &Pat
         },
 
         FeedsCommand::List => {
-            let (unread, bookmarked) = tokio::join!(
-                xaga_core::filter::unread_ids(data_dir),
-                xaga_core::filter::bookmarked_ids(data_dir),
-            );
+            let (unread, bookmarked) = read_state_sets(data_dir).await;
             match feeds::list_feeds(feeds_dir, &unread, &bookmarked).await {
                 Ok(feeds) if feeds.is_empty() => {
                     println!("No feeds saved. Use `feeds add <url>` to add one.");
@@ -71,10 +67,7 @@ pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &Pat
         }
 
         FeedsCommand::Refresh { id: Some(id) } => {
-            let (unread, bookmarked) = tokio::join!(
-                xaga_core::filter::unread_ids(data_dir),
-                xaga_core::filter::bookmarked_ids(data_dir),
-            );
+            let (unread, bookmarked) = read_state_sets(data_dir).await;
             eprint!("Refreshing {id} ... ");
             match feeds::refresh_feed(client, feeds_dir, data_dir, &id, &unread, &bookmarked).await {
                 Ok(feed) => {
@@ -86,10 +79,7 @@ pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &Pat
         }
 
         FeedsCommand::Refresh { id: None } => {
-            let (unread, bookmarked) = tokio::join!(
-                xaga_core::filter::unread_ids(data_dir),
-                xaga_core::filter::bookmarked_ids(data_dir),
-            );
+            let (unread, bookmarked) = read_state_sets(data_dir).await;
             let results = feeds::refresh_all_feeds(client, feeds_dir, data_dir, &unread, &bookmarked).await;
             if results.is_empty() {
                 println!("No feeds saved. Use `feeds add <url>` to add one.");
@@ -122,6 +112,18 @@ pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &Pat
             print_repair_results(&results);
         }
     }
+}
+
+/// Reads the unread and bookmarked entry-id sets from LanceDB — the same source the UI uses
+/// (`db.unread_ids()` / `db.bookmarked_ids()` via the read handle). Dies on db open/read error.
+async fn read_state_sets(data_dir: &Path) -> (HashSet<String>, HashSet<String>) {
+    let db = match EmbeddingsDb::open(data_dir).await {
+        Ok(db) => db,
+        Err(e) => die(e),
+    };
+    let unread = db.unread_ids().await.unwrap_or_else(|e| die(e));
+    let bookmarked = db.bookmarked_ids().await.unwrap_or_else(|e| die(e));
+    (unread, bookmarked)
 }
 
 /// Prints one line per repair result and a final count summary.

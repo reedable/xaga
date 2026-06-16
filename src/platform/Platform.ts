@@ -67,9 +67,12 @@ export interface Platform {
   findArticle(signal: AbortSignal, url: string): Promise<Article | null>;
   saveArticle(signal: AbortSignal, article: Article): Promise<Article>;
   readArticle(signal: AbortSignal, id: string): Promise<Article>;
+  // `__kind` is minted at the wire boundary (toArticle), not caller-supplied,
+  // so it's omitted from the input. Tactical fix — see TECH_DEBT.md
+  // "Frontend type branding (`__kind`)".
   createArticle(
     signal: AbortSignal,
-    article: Omit<Article, "id" | "createdAt">
+    article: Omit<Article, "id" | "createdAt" | "__kind">
   ): Promise<Article>;
 
   // Annotations
@@ -82,12 +85,14 @@ export interface Platform {
     annotation: Pick<Annotation, "id" | "reference">
   ): Promise<Article>;
   listAnnotations(signal: AbortSignal): Promise<AnnotationSummary[]>;
-  listSaved(signal: AbortSignal): Promise<SavedItem[]>;
 
   // Topics
   createTopic(
     signal: AbortSignal,
-    topic: Omit<Topic, "id" | "createdAt" | "unreadCount" | "entryCount">
+    topic: Omit<
+      Topic,
+      "id" | "createdAt" | "unreadCount" | "entryCount" | "isPinned"
+    >
   ): Promise<Topic>;
   saveTopic(signal: AbortSignal, topic: Topic): Promise<Topic>;
   deleteTopic(signal: AbortSignal, id: string): Promise<void>;
@@ -119,7 +124,6 @@ export interface Platform {
   // Bookmarks
   addBookmark(signal: AbortSignal, id: string): Promise<Entry>;
   removeBookmark(signal: AbortSignal, id: string): Promise<Entry>;
-  listBookmarks(signal: AbortSignal): Promise<Entry[]>;
   importBookmarks(signal: AbortSignal): Promise<ImportResult<Entry> | null>;
   exportBookmarks(signal: AbortSignal): Promise<void>;
 
@@ -210,11 +214,12 @@ export interface Platform {
     callback: (view: HtmlReaderView) => void
   ): Promise<UnlistenFn>;
 
+  // Pinned state lives in the content files (feed `.atom` category / topic `.md` tag);
+  // surfaced on the Feed/Topic DTOs (`isPinned`) and toggled per-item here.
+  setFeedPinned(id: string, pinned: boolean): Promise<void>;
+  setTopicPinned(id: string, pinned: boolean): Promise<void>;
+
   // Persisted preferences
-  getPinnedFeedIds(): Promise<string[]>;
-  setPinnedFeedIds(value: string[]): Promise<void>;
-  getPinnedTopicIds(): Promise<string[]>;
-  setPinnedTopicIds(value: string[]): Promise<void>;
   getExpandedSidebarList(): Promise<string | null>;
   setExpandedSidebarList(value: string | null): Promise<void>;
   getInlinePdfReader(): Promise<boolean>;

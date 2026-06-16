@@ -6,12 +6,13 @@ export type FeedsContextType = {
   loading: boolean;
   loadingFeedIds: Set<string>;
   feeds: Feed[];
+  /** Derived from `feeds` (those with `isPinned`); the content files own pinned state. */
   pinnedFeedIds: Feed["id"][];
   setError: Dispatch<SetStateAction<unknown>>;
   setLoading: Dispatch<SetStateAction<boolean>>;
   setLoadingSet: Dispatch<SetStateAction<Set<string>>>;
   setFeeds: Dispatch<SetStateAction<Feed[]>>;
-  setPinnedFeedIds: Dispatch<SetStateAction<Feed["id"][]>>;
+  setFeedPinned: (id: Feed["id"], pinned: boolean) => void;
 };
 
 const FeedsContext = createContext<FeedsContextType | null>(null);

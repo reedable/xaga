@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use serde::{Deserialize, Serialize};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
-use tauri::{Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
+use tauri::window::Color;
+use tauri::{Emitter, Manager, Runtime, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri_plugin_window_state::StateFlags;
 use xaga_core::embeddings::{EmbeddingService, EmbeddingsDb, EmbeddingsError, ShutdownReason};
 
 pub(crate) const DEFAULT_LOADER_TIMEOUT_SECS: u64 = 10;
@@ -29,8 +31,6 @@ pub(crate) struct AppState {
     pub(crate) embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>>,
     pub(crate) allowed_domains: Arc<RwLock<Vec<String>>>,
     pub(crate) named_stores_supported: bool,
-    pub(crate) pinned_feed_ids: Arc<RwLock<Vec<String>>>,
-    pub(crate) pinned_topic_ids: Arc<RwLock<Vec<String>>>,
     pub(crate) expanded_sidebar_list: Arc<RwLock<Option<String>>>,
     pub(crate) inline_pdf_reader: Arc<RwLock<bool>>,
     pub(crate) html_reader_view: Arc<RwLock<String>>,
@@ -88,8 +88,6 @@ pub(crate) struct UserSettings {
     pub(crate) html_reader_line_height: Option<f64>,
     pub(crate) show_sidebar: Option<bool>,
     pub(crate) allowed_domains: Option<Vec<String>>,
-    pub(crate) pinned_feed_ids: Option<Vec<String>>,
-    pub(crate) pinned_topic_ids: Option<Vec<String>>,
     pub(crate) expanded_sidebar_list: Option<String>,
     pub(crate) inline_pdf_reader: Option<bool>,
     pub(crate) html_reader_view: Option<String>,
@@ -108,6 +106,27 @@ pub(crate) fn save_settings(path: &Path, settings: &UserSettings) -> std::io::Re
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(path, serde_json::to_string_pretty(settings).unwrap())
+}
+
+// ── Appearance helpers ───────────────────────────────────────────────────────────
+
+/// Native background color matching the resolved theme, used to pre-paint the
+/// window so it doesn't flash white before the frontend's CSS loads.
+///
+/// `theme_setting` is the persisted "auto" | "light" | "dark" value. "auto"
+/// (and any unexpected value) follows the OS via the window's reported theme.
+/// Colors mirror `--background-color` in `src/index.css`.
+fn theme_background_color<R: Runtime>(theme_setting: &str, window: &WebviewWindow<R>) -> Color {
+    const LIGHT: Color = Color(0xFF, 0xFF, 0xFF, 0xFF); // #ffffff
+    const DARK: Color = Color(0x12, 0x12, 0x12, 0xFF); // #121212
+
+    let dark = match theme_setting {
+        "dark" => true,
+        "light" => false,
+        _ => window.theme().map(|t| t == Theme::Dark).unwrap_or(false),
+    };
+
+    if dark { DARK } else { LIGHT }
 }
 
 // ── Menu helpers ───────────────────────────────────────────────────────────────
@@ -223,15 +242,11 @@ pub fn run() {
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
     let embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>> = Arc::new(Mutex::new(None));
     let allowed_domains: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
-    let pinned_feed_ids: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
-    let pinned_topic_ids: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
     let expanded_sidebar_list: Arc<RwLock<Option<String>>> = Arc::new(RwLock::new(None));
     let inline_pdf_reader: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let html_reader_view: Arc<RwLock<String>> = Arc::new(RwLock::new("reader".to_string()));
     let setup_embeddings_read = Arc::clone(&embeddings_read);
     let setup_allowed_domains = Arc::clone(&allowed_domains);
-    let setup_pinned_feed_ids = Arc::clone(&pinned_feed_ids);
-    let setup_pinned_topic_ids = Arc::clone(&pinned_topic_ids);
     let setup_expanded_sidebar_list = Arc::clone(&expanded_sidebar_list);
     let setup_inline_pdf_reader = Arc::clone(&inline_pdf_reader);
     let setup_html_reader_view = Arc::clone(&html_reader_view);
@@ -261,8 +276,6 @@ pub fn run() {
             embeddings_read,
             allowed_domains,
             named_stores_supported,
-            pinned_feed_ids,
-            pinned_topic_ids,
             expanded_sidebar_list,
             inline_pdf_reader,
             html_reader_view,
@@ -270,7 +283,21 @@ pub fn run() {
             ssrf_http_client,
         })
         .manage(article_loader::PendingRequests::default())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(
+            // Transient article-loader webviews (label "loader-{id}", see
+            // article_loader.rs) are created and closed constantly; persisting
+            // their geometry bloats .window-state.json without ever being
+            // reused. Skip them; "main"/"settings" are still tracked.
+            // (Returns true to save, false to skip.)
+            // VISIBLE is dropped so the plugin does not show() the window on
+            // restore — `setup()` reveals the main window itself, only after
+            // painting it the theme color, to avoid the white startup flash
+            // (A3). Geometry (size/position/maximized) is still restored.
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(StateFlags::all().difference(StateFlags::VISIBLE))
+                .with_filter(|label| !label.starts_with("loader-"))
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .menu(|app| {
@@ -463,16 +490,23 @@ pub fn run() {
                 if let Some(win) = app.get_webview_window("settings") {
                     win.show().ok();
                     win.set_focus().ok();
-                } else {
-                    WebviewWindowBuilder::new(
-                        app,
-                        "settings",
-                        WebviewUrl::App("index.html".into()),
-                    )
-                    .title("Settings")
-                    .inner_size(680.0, 520.0)
-                    .build()
-                    .ok();
+                } else if let Ok(win) = WebviewWindowBuilder::new(
+                    app,
+                    "settings",
+                    WebviewUrl::App("index.html".into()),
+                )
+                .title("Settings")
+                .inner_size(680.0, 520.0)
+                .visible(false)
+                .build()
+                {
+                    // Build hidden, paint the theme color, then reveal — same
+                    // anti-flash treatment as the main window (A3).
+                    let theme = app.state::<AppState>().theme.read().unwrap().clone();
+                    let color = theme_background_color(&theme, &win);
+                    let _ = win.set_background_color(Some(color));
+                    let _ = win.show();
+                    let _ = win.set_focus();
                 }
             }
             id @ ("theme_auto" | "theme_light" | "theme_dark") => {
@@ -548,8 +582,6 @@ pub fn run() {
             *setup_reader_line_height.write().unwrap() = line_height;
             *setup_show_sidebar.write().unwrap() = show_sidebar;
             *setup_allowed_domains.write().unwrap() = settings.allowed_domains.unwrap_or_default();
-            *setup_pinned_feed_ids.write().unwrap() = settings.pinned_feed_ids.unwrap_or_default();
-            *setup_pinned_topic_ids.write().unwrap() = settings.pinned_topic_ids.unwrap_or_default();
             *setup_expanded_sidebar_list.write().unwrap() = settings.expanded_sidebar_list;
             *setup_inline_pdf_reader.write().unwrap() = settings.inline_pdf_reader.unwrap_or(false);
             let html_reader_view_str = settings.html_reader_view.unwrap_or_else(|| "reader".to_string());
@@ -559,6 +591,15 @@ pub fn run() {
             update_theme_checkmarks(app.handle(), &theme);
             update_show_sidebar_checkmark(app.handle(), show_sidebar);
             update_view_checkmarks(app.handle(), &html_reader_view_str);
+
+            // The main window is created hidden ("visible": false in
+            // tauri.conf.json). Paint it the theme color, then reveal it, so it
+            // never shows the white default frame before the frontend loads (A3).
+            if let Some(main) = app.get_webview_window("main") {
+                let color = theme_background_color(&theme, &main);
+                let _ = main.set_background_color(Some(color));
+                let _ = main.show();
+            }
 
             // Start the EmbeddingService; file watcher + recovery fire inside it.
             // If another instance already holds the library lock, we skip the
@@ -682,12 +723,10 @@ pub fn run() {
             commands::articles::add_annotation,
             commands::articles::remove_annotation,
             commands::articles::list_annotations,
-            commands::saved::list_saved,
             commands::entries::is_cache_ready,
             commands::entries::read_entry,
             commands::entries::mark_entry_read,
             commands::entries::mark_entry_unread,
-            commands::entries::list_all_articles,
             commands::entries::list_all_items,
             commands::library::get_library,
             commands::library::set_library,
@@ -705,10 +744,8 @@ pub fn run() {
             commands::settings::set_allowed_domains,
             commands::settings::get_html_reader_view,
             commands::settings::set_html_reader_view,
-            commands::settings::get_pinned_feed_ids,
-            commands::settings::set_pinned_feed_ids,
-            commands::settings::get_pinned_topic_ids,
-            commands::settings::set_pinned_topic_ids,
+            commands::feeds::set_feed_pinned,
+            commands::topics::set_topic_pinned,
             commands::settings::get_expanded_sidebar_list,
             commands::settings::set_expanded_sidebar_list,
             commands::settings::get_inline_pdf_reader,
@@ -723,7 +760,6 @@ pub fn run() {
             commands::feeds::list_entries,
             commands::bookmarks::add_bookmark,
             commands::bookmarks::remove_bookmark,
-            commands::bookmarks::list_bookmarks,
             commands::bookmarks::import_bookmarks,
             commands::bookmarks::export_bookmarks,
             commands::topics::create_topic,

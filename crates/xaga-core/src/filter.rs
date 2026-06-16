@@ -1,51 +1,6 @@
-use std::collections::HashSet;
-use std::path::Path;
-
 use chrono::{DateTime, Utc};
 
 use crate::types::{Item, ItemFilter};
-
-/// Scans `library/entries/` and returns the set of IDs whose frontmatter contains the `unread` tag.
-pub async fn unread_ids(library: &Path) -> HashSet<String> {
-    let mut ids = HashSet::new();
-    if let Ok(mut dir) = tokio::fs::read_dir(library.join("entries")).await {
-        while let Ok(Some(dirent)) = dir.next_entry().await {
-            let path = dirent.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("md") { continue; }
-            if let Ok(raw) = tokio::fs::read_to_string(&path).await {
-                if let Some(fm) = crate::util::parse_frontmatter(&raw) {
-                    if fm.tags.contains(&"unread".to_string()) {
-                        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                            ids.insert(stem.to_string());
-                        }
-                    }
-                }
-            }
-        }
-    }
-    ids
-}
-
-/// Scans `library/entries/` and returns the set of IDs whose frontmatter contains the `bookmark` tag.
-pub async fn bookmarked_ids(library: &Path) -> HashSet<String> {
-    let mut ids = HashSet::new();
-    if let Ok(mut dir) = tokio::fs::read_dir(library.join("entries")).await {
-        while let Ok(Some(dirent)) = dir.next_entry().await {
-            let path = dirent.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("md") { continue; }
-            if let Ok(raw) = tokio::fs::read_to_string(&path).await {
-                if let Some(fm) = crate::util::parse_frontmatter(&raw) {
-                    if fm.tags.contains(&"bookmark".to_string()) {
-                        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                            ids.insert(stem.to_string());
-                        }
-                    }
-                }
-            }
-        }
-    }
-    ids
-}
 
 /// Filter `items` according to `item_filter` — predicate only, no sorting.
 ///

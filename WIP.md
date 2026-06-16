@@ -15,10 +15,10 @@ the list commands to read from LanceDB and then retires `EntryStateCache` and th
 
 | Command | Status | Notes |
 | --- | --- | --- |
-| `list_bookmarks` ([bookmarks.rs](src-tauri/src/commands/bookmarks.rs)) | ✅ user-verified | `bookmarked_entries()` + url sort |
+| `list_bookmarks` ([bookmarks.rs](src-tauri/src/commands/bookmarks.rs)) | ❌ removed as dead code | never called by the UI (covered by `list_saved` / `list_all_items`); command + `listBookmarks` plumbing deleted, url sort removed |
 | `list_saved` ([saved.rs](src-tauri/src/commands/saved.rs)) | ✅ repointed; re-verify on relaunch | bookmarks + annotations from LanceDB; see annotation fix below |
 | `list_entries` per-feed ([feeds.rs](src-tauri/src/commands/feeds.rs)) | ✅ compiles; pending relaunch verify | `.atom` id-set → `entries_by_ids` → filter/sort; **first command off `EntryStateCache` for reads** |
-| `list_all_articles` ([entries.rs](src-tauri/src/commands/entries.rs)) | ✅ compiles; pending relaunch verify | `all_entries()` + url sort |
+| `list_all_articles` ([entries.rs](src-tauri/src/commands/entries.rs)) | ❌ removed as dead code | never called by the UI (covered by `list_all_items`); command deleted, url sort removed |
 | `list_entry_topics` ([topics.rs](src-tauri/src/commands/topics.rs)) | ✅ done + user-verified (entries + annotations) | reads LanceDB `topics` reverse index; maintained by the reconcile (T1–T6 + W1–W4) |
 | sidebar feed/topic counts | ✅ repointed; verify on relaunch | cutover step 4 — Bitmap indexes + `unread_ids`/`bookmarked_ids`; see "Remaining cutover steps" + TECH_DEBT counts items |
 
@@ -188,15 +188,19 @@ both kinds, and the bulk-insert annotation-row parity (also the from-reset lista
   `useCacheReady` kept). Workspace compiles + 17 tests; **rebuild the frontend** (TS rename) and verify
   on relaunch. Notes: the `.entry_state_cache.json` snapshot is now an orphaned file (harmless);
   startup no longer does the cache scan/seed (state is read on-demand from LanceDB).
-  - ✅ **Dead-code follow-up resolved.** `filter::unread_ids`/`bookmarked_ids`
-    ([filter.rs](crates/xaga-core/src/filter.rs)) are **not** dead — the CLI still uses them
-    (`cmd/feeds.rs` Add/List/Refresh). Only the `item::list_items` → `feeds::list_entries` →
-    `annotate_unread_status`/`annotate_bookmarked_status` chain was dead (the Tauri `list_entries`
-    command was repointed to `list_entry_ids` + LanceDB); that chain + `ItemSource` + the now-unused
-    imports were removed, and the stale `created_at` FIXME in `atom_entry_to_entry`
-    ([feed_entry.rs](crates/xaga-core/src/feeds/feed_entry.rs)) was deleted (it described a bug the
-    current code doesn't have). Workspace builds clean, 19 tests pass. See TECH_DEBT.md
-    "CLI review" for the CLI's separate `.md`-scanning state path.
+  - ✅ **Dead-code follow-up resolved.** At the time, `filter::unread_ids`/`bookmarked_ids`
+    ([filter.rs](crates/xaga-core/src/filter.rs)) were kept because the CLI still used them
+    (`cmd/feeds.rs` Add/List/Refresh); the dead part was the `item::list_items` →
+    `feeds::list_entries` → `annotate_unread_status`/`annotate_bookmarked_status` chain (the Tauri
+    `list_entries` command was repointed to `list_entry_ids` + LanceDB), which was removed along with
+    `ItemSource`, the now-unused imports, and the stale `created_at` FIXME in `atom_entry_to_entry`
+    ([feed_entry.rs](crates/xaga-core/src/feeds/feed_entry.rs)).
+  - ✅ **CLI migrated to the LanceDB read API; `filter::unread_ids`/`bookmarked_ids` removed.** The
+    CLI's `Add`/`List`/`Refresh` feed arms now read the unread/bookmark id-sets via
+    `db.unread_ids()`/`db.bookmarked_ids()` (the same methods the UI uses), and `cmd/articles.rs` /
+    `cmd/bookmarks.rs` list commands read `db.all_entries()` / `db.bookmarked_entries()`. The
+    file-scanning `filter::unread_ids`/`bookmarked_ids` are deleted — the CLI's separate
+    `.md`-scanning state path is gone (the former TECH_DEBT "CLI review" item, now resolved).
 - ✅ **Feed-search hack** (cutover step 7) — **DONE + user-verified on relaunch** (searching "New York
   Times" surfaced the **NYT** and **BBC** feeds — semantic feed hits, not name matches).
   Decided **hybrid (C)**: feeds searchable both semantically and by name.
@@ -232,8 +236,20 @@ both kinds, and the bulk-insert annotation-row parity (also the from-reset lista
 ## Related open tasks (already filed)
 
 In [TODO.md](TODO.md): Rust-layer symbol-naming review (`sync`/`reconcile` overload); embeddings
-write-lock audit; queue-priority refactor; Virtuoso windowed LanceDB reads; pins cleanup on target
-removal.
+write-lock audit; queue-priority refactor; Virtuoso windowed LanceDB reads.
+
+## Pins cutover — ✅ DONE (content files own pins)
+
+The pins migration is now complete (was: data migrated by `migrate-pins`, but the app never
+repointed — see git history of this section). Pinned state lives in the content files (`<category
+term="pinned">` on a feed `.atom`, a `pinned` tag on a topic `.md`) and is surfaced on the
+`Feed`/`Topic` DTOs as `is_pinned`/`isPinned`. The UI **reads** pins by deriving the id-set from the
+already-loaded feed/topic lists (`FeedsProvider`/`TopicsProvider`) and **writes** them per-item via
+`set_feed_pinned` / `set_topic_pinned` (→ `feeds::set_feed_pinned` / `topics::set_topic_pinned`,
+optimistic UI update). The `settings.json` pin path (`get/set_pinned_*` commands, `AppState` +
+`UserSettings` fields) and the one-time `migrate-pins` CLI command are removed. The LanceDB
+`is_pinned` column + Bitmap index stay as the mirror (embedding change-gate). Resolves the former
+stale-pins TODO — a pin now lives in the content file and is deleted with it.
 
 In [TECH_DEBT.md](TECH_DEBT.md): reload-before-every-read cost; `all_entries`/`entries_by_ids`
 unpaginated/unchunked; count-scan costs; `list_entry_topics` via `get_entry` reads the vector.

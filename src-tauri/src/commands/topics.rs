@@ -38,6 +38,15 @@ pub async fn create_topic(
 }
 
 #[tauri::command]
+pub async fn set_topic_pinned(id: String, pinned: bool, state: State<'_, AppState>) -> Result<(), String> {
+    let data_dir = state.library.read().unwrap().clone();
+    topics::set_topic_pinned(&data_dir, &id, pinned)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn list_topics(state: State<'_, AppState>) -> Result<Vec<Topic>, String> {
     let data_dir = state.library.read().unwrap().clone();
     let mut topics = topics::list_topics(&data_dir)

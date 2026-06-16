@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use clap::{Args, Subcommand};
+use xaga_core::embeddings::EmbeddingsDb;
 use xaga_core::entries;
 
 use crate::die;
@@ -30,16 +31,18 @@ pub enum BookmarksCommand {
 pub async fn handle(cmd: BookmarksCommand, data_dir: &Path) {
     match cmd {
         BookmarksCommand::List => {
-            match entries::list_entries(data_dir).await {
-                Ok(items) => {
-                    let bookmarks: Vec<_> = items.into_iter().filter(|e| e.is_bookmarked).collect();
-                    if bookmarks.is_empty() {
-                        println!("No bookmarks saved.");
-                    } else {
-                        for item in &bookmarks {
-                            println!("{}", item.url);
-                            println!("  {}", item.title);
-                        }
+            let db = match EmbeddingsDb::open(data_dir).await {
+                Ok(db) => db,
+                Err(e) => die(e),
+            };
+            match db.bookmarked_entries().await {
+                Ok(bookmarks) if bookmarks.is_empty() => {
+                    println!("No bookmarks saved.");
+                }
+                Ok(bookmarks) => {
+                    for item in &bookmarks {
+                        println!("{}", item.url);
+                        println!("  {}", item.title);
                     }
                 }
                 Err(e) => die(e),

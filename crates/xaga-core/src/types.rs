@@ -368,6 +368,8 @@ pub struct Topic {
     /// Storage only — frontmatter tags (e.g. "pinned"); not sent to the frontend.
     #[serde(skip)]
     pub tags: Vec<String>,
+    /// Derived from the `pinned` frontmatter tag; sent to the frontend (the `tags` field is not).
+    pub is_pinned: bool,
     pub entry_count: usize,
     pub unread_count: usize,
 }
@@ -397,6 +399,7 @@ pub struct Feed {
     pub bookmarked_count: usize,
     pub created_at: String,
     pub updated_at: Option<String>,
+    pub is_pinned: bool,
 }
 
 impl Item for Feed {

@@ -46,6 +46,16 @@ pub async fn refresh_feed(window: tauri::Window, id: String, state: State<'_, Ap
 }
 
 #[tauri::command]
+pub async fn set_feed_pinned(id: String, pinned: bool, state: State<'_, AppState>) -> Result<(), String> {
+    let library = state.library.read().unwrap().clone();
+    let dir = feeds_dir(&library);
+    feeds::set_feed_pinned(&dir, &feeds::FeedId(id), pinned)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn rename_feed(id: String, title: String, state: State<'_, AppState>) -> Result<feeds::Feed, String> {
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);

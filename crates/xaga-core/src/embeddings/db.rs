@@ -547,7 +547,7 @@ impl EmbeddingsDb {
         }
 
         // Low-cardinality state booleans: Bitmap is the right index (the unread/bookmarked id-sets
-        // for sidebar counts, and `list_bookmarks`/`list_saved`, become index-driven not scans).
+        // for sidebar counts, and the Saved list, become index-driven not scans).
         for col in ["is_unread", "is_bookmarked", "is_pinned"] {
             if indexed.contains(col) {
                 continue;
@@ -1034,7 +1034,6 @@ impl EmbeddingsDb {
             }
         }
 
-        summaries.sort_by(|a, b| a.url.cmp(&b.url));
         Ok(summaries)
     }
 

@@ -2,6 +2,7 @@ use std::path::Path;
 
 use clap::{Args, Subcommand};
 use xaga_core::articles;
+use xaga_core::embeddings::EmbeddingsDb;
 use xaga_core::entries;
 
 use crate::die;
@@ -28,7 +29,11 @@ pub enum ArticlesCommand {
 pub async fn handle(cmd: ArticlesCommand, data_dir: &Path) {
     match cmd {
         ArticlesCommand::List => {
-            match entries::list_entries(data_dir).await {
+            let db = match EmbeddingsDb::open(data_dir).await {
+                Ok(db) => db,
+                Err(e) => die(e),
+            };
+            match db.all_entries().await {
                 Ok(docs) if docs.is_empty() => {
                     println!("No articles saved.");
                 }

@@ -105,6 +105,7 @@ pub async fn save_topic(
     )
     .await?;
 
+    let is_pinned = tags.iter().any(|t| t == "pinned");
     Ok(Topic {
         id: id.to_string(),
         title: title.to_string(),
@@ -114,9 +115,48 @@ pub async fn save_topic(
         threshold,
         items,
         tags,
+        is_pinned,
         entry_count: 0,
         unread_count: 0,
     })
+}
+
+/// Adds or removes the `pinned` frontmatter tag on a topic's `.md`. Returns true if it changed.
+/// Preserves the topic's timestamps (a pin toggle is not a content edit). The `is_pinned` LanceDB
+/// column is updated by the watcher → `sync_row` re-read; membership is unchanged so the reconcile
+/// sees no member delta. Mirrors `feeds::set_feed_pinned`.
+pub async fn set_topic_pinned(data_dir: &Path, id: &str, pinned: bool) -> Result<bool, TopicsError> {
+    let path = topic_path(data_dir, id);
+    if !tokio::fs::try_exists(&path).await? {
+        return Err(TopicsError::NotFound);
+    }
+    let raw = tokio::fs::read_to_string(&path).await?;
+    let (fm, body) = parse_document(&raw).ok_or(TopicsError::NotFound)?;
+
+    let has = fm.tags.iter().any(|t| t == "pinned");
+    if has == pinned {
+        return Ok(false);
+    }
+
+    let mut tags = fm.tags.clone();
+    if pinned {
+        tags.push("pinned".to_string());
+    } else {
+        tags.retain(|t| t != "pinned");
+    }
+    let updated_at = fm.updated_at.clone().unwrap_or_else(|| fm.created_at.clone());
+    let new = render_topic(
+        id,
+        &fm.title,
+        &fm.created_at,
+        &updated_at,
+        fm.threshold,
+        &fm.items,
+        &tags,
+        &body,
+    );
+    tokio::fs::write(&path, new.as_bytes()).await?;
+    Ok(true)
 }
 
 /// Creates or updates a topic with explicit timestamps — for migration use only.
@@ -151,6 +191,7 @@ pub async fn save_topic_with_timestamps(
         threshold,
         items,
         tags: tags.to_vec(),
+        is_pinned: tags.iter().any(|t| t == "pinned"),
         entry_count: 0,
         unread_count: 0,
     })
@@ -175,6 +216,7 @@ pub async fn read_topic(data_dir: &Path, id: &str) -> Result<Topic, TopicsError>
     }
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(TopicsError::NotFound)?;
+    let is_pinned = fm.tags.iter().any(|t| t == "pinned");
     Ok(Topic {
         id: crate::util::item_id(&path),
         title: fm.title,
@@ -184,6 +226,7 @@ pub async fn read_topic(data_dir: &Path, id: &str) -> Result<Topic, TopicsError>
         threshold: fm.threshold,
         items: fm.items,
         tags: fm.tags,
+        is_pinned,
         entry_count: 0,
         unread_count: 0,
     })
@@ -216,6 +259,7 @@ pub async fn list_topics(data_dir: &Path) -> Result<Vec<Topic>, TopicsError> {
         }
         let raw = tokio::fs::read_to_string(&path).await?;
         if let Some((fm, body)) = parse_document(&raw) {
+            let is_pinned = fm.tags.iter().any(|t| t == "pinned");
             topics.push(Topic {
                 id: crate::util::item_id(&path),
                 title: fm.title,
@@ -225,6 +269,7 @@ pub async fn list_topics(data_dir: &Path) -> Result<Vec<Topic>, TopicsError> {
                 threshold: fm.threshold,
                 items: fm.items,
                 tags: fm.tags,
+                is_pinned,
                 entry_count: 0,
                 unread_count: 0,
             });

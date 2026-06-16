@@ -166,7 +166,7 @@ export function isAnnotation(item?: Item | null): item is Annotation {
 
 // ── SavedItem ────────────────────────────────────────────────────────────────
 
-/** A bookmark or annotation returned by list_saved. Annotations have reference and color set. */
+/** A bookmark or annotation row (e.g. from `list_all_items`). Annotations have reference and color set. */
 export type SavedItem = Item & {
   url: string;
   isUnread?: boolean;
@@ -222,7 +222,7 @@ export function isArticle(item?: Item | null): item is Article {
 
 // ── Topic ────────────────────────────────────────────────────────────────────
 
-export type Topic = Document & Collection & { threshold?: number };
+export type Topic = Document & Collection & { threshold?: number; isPinned: boolean };
 
 export function isTopic(item?: Item | null): item is Topic {
   return isDocument(item) && isCollection(item);
@@ -234,6 +234,7 @@ export function isTopic(item?: Item | null): item is Topic {
  *  brand is what distinguishes it from an Entry. */
 export type Feed = Collection & WebResource & {
   readonly __kind: "feed";
+  isPinned: boolean;
 };
 
 // Brand-first, then the shape foundation (Collection & url). The brand resolves the

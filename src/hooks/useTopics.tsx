@@ -9,14 +9,17 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
   const ctx = useContext(TopicsContext);
   if (!ctx) throw new Error("useTopics must be used inside TopicsProvider");
 
-  const { topics, pinnedTopicIds, setTopics, setPinnedTopicIds } = ctx;
+  const { topics, pinnedTopicIds, setTopics, setTopicPinned } = ctx;
 
   const platform = usePlatform();
   const { listTopics } = useSidebar(abortControllerRef);
 
   const createTopic = useCallback(
     async (
-      topic: Omit<Topic, "id" | "createdAt" | "unreadCount" | "entryCount">
+      topic: Omit<
+        Topic,
+        "id" | "createdAt" | "unreadCount" | "entryCount" | "isPinned"
+      >
     ) => {
       const signal = abortControllerRef.current.signal;
       try {
@@ -124,7 +127,7 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
   return {
     topics,
     pinnedTopicIds,
-    setPinnedTopicIds,
+    setTopicPinned,
     requestTopics,
     createTopic,
     saveTopic,

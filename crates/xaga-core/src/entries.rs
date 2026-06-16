@@ -246,7 +246,6 @@ pub async fn list_entries(data_dir: &Path) -> Result<Vec<Entry>, EntryError> {
         }
     }
 
-    entries.sort_by(|a, b| a.url.cmp(&b.url));
     Ok(entries)
 }
 

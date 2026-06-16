@@ -4,7 +4,6 @@ pub mod entries;
 pub mod embeddings;
 pub mod feeds;
 pub mod library;
-pub mod saved;
 pub mod settings;
 pub mod topics;
 

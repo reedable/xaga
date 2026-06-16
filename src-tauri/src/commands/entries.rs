@@ -37,20 +37,6 @@ pub fn is_cache_ready(state: State<'_, AppState>) -> bool {
 }
 
 #[tauri::command]
-pub async fn list_all_articles(state: State<'_, AppState>) -> Result<Vec<Entry>, String> {
-    // Phase C: whole-library list from LanceDB instead of scanning entries/ .md files.
-    // Reload the version-pinned handle before reading; match the previous url ordering.
-    let db = state.embeddings_read.lock().unwrap().clone();
-    let Some(db) = db else {
-        return Err("embeddings read handle unavailable".to_string());
-    };
-    db.reload().await.map_err(|e| e.to_string())?;
-    let mut entries = db.all_entries().await.map_err(|e| e.to_string())?;
-    entries.sort_by(|a, b| a.url.cmp(&b.url));
-    Ok(entries)
-}
-
-#[tauri::command]
 pub async fn list_all_items(
     item_filter: Option<String>,
     state: State<'_, AppState>,

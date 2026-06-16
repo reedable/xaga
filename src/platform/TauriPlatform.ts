@@ -44,6 +44,7 @@ const FeedSchema = ItemSchema.extend({
   url: z.string(),
   entry_count: z.number(),
   unread_count: z.number(),
+  is_pinned: z.boolean(),
 });
 
 const toFeed = (data: z.infer<typeof FeedSchema>): Feed => {
@@ -53,6 +54,7 @@ const toFeed = (data: z.infer<typeof FeedSchema>): Feed => {
     url: data.url,
     entryCount: data.entry_count,
     unreadCount: data.unread_count,
+    isPinned: data.is_pinned,
   };
 };
 
@@ -81,6 +83,7 @@ const TopicSchema = ItemSchema.extend({
   threshold: z.number().nullable().optional(),
   entry_count: z.number(),
   unread_count: z.number(),
+  is_pinned: z.boolean(),
 });
 
 const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
@@ -89,6 +92,7 @@ const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
   threshold: data.threshold ?? undefined,
   entryCount: data.entry_count,
   unreadCount: data.unread_count,
+  isPinned: data.is_pinned,
 });
 
 const AnnotationSchema = z.object({
@@ -519,9 +523,12 @@ export class TauriPlatform implements Platform {
     return ArticleSchema.transform(toArticle).parse(result);
   }
 
+  // `__kind` is minted on the way back by ArticleSchema.transform(toArticle)
+  // below, so it's omitted from the input. Tactical fix — see TECH_DEBT.md
+  // "Frontend type branding (`__kind`)".
   async createArticle(
     signal: AbortSignal,
-    article: Omit<Article, "id" | "createdAt">
+    article: Omit<Article, "id" | "createdAt" | "__kind">
   ): Promise<Article> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -577,19 +584,6 @@ export class TauriPlatform implements Platform {
     return ArticleSchema.transform(toArticle).parse(result);
   }
 
-  async listSaved(signal: AbortSignal): Promise<SavedItem[]> {
-    const invoker = decorate(invoke)
-      .with(abortable, { signal })
-      .with(logged, { logger, name: "list_saved" });
-
-    const results = await invoker<unknown[]>("list_saved");
-
-    return results
-      .map((e) => SavedItemSchema.transform(toSavedItem).safeParse(e))
-      .filter((e) => !e.error)
-      .map((e) => e.data);
-  }
-
   async listAnnotations(signal: AbortSignal): Promise<AnnotationSummary[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -609,7 +603,7 @@ export class TauriPlatform implements Platform {
 
   async createTopic(
     signal: AbortSignal,
-    topic: Omit<Topic, "id" | "createdAt" | "unreadCount">
+    topic: Omit<Topic, "id" | "createdAt" | "unreadCount" | "isPinned">
   ): Promise<Topic> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -788,19 +782,6 @@ export class TauriPlatform implements Platform {
       .with(logged, { logger, name: "export_bookmarks" });
 
     await invoker("export_bookmarks", { filePath });
-  }
-
-  async listBookmarks(signal: AbortSignal): Promise<Entry[]> {
-    const invoker = decorate(invoke)
-      .with(abortable, { signal })
-      .with(logged, { logger, name: "list_bookmarks" });
-
-    const results = await invoker<unknown[]>("list_bookmarks");
-
-    return results
-      .map((e) => EntrySchema.transform(toEntry).safeParse(e))
-      .filter((e) => !e.error) // FIXME silently dropping invalid items
-      .map((e) => e.data);
   }
 
   // Embedding queries ---------------------------------------------------------
@@ -1133,32 +1114,18 @@ export class TauriPlatform implements Platform {
     return invoker<void>(name);
   }
 
-  getPinnedFeedIds(): Promise<string[]> {
+  setFeedPinned(id: string, pinned: boolean): Promise<void> {
     return decorate(invoke).with(logged, {
       logger,
-      name: "get_pinned_feed_ids",
-    })<string[]>("get_pinned_feed_ids");
+      name: "set_feed_pinned",
+    })<void>("set_feed_pinned", { id, pinned });
   }
 
-  setPinnedFeedIds(value: string[]): Promise<void> {
+  setTopicPinned(id: string, pinned: boolean): Promise<void> {
     return decorate(invoke).with(logged, {
       logger,
-      name: "set_pinned_feed_ids",
-    })<void>("set_pinned_feed_ids", { value });
-  }
-
-  getPinnedTopicIds(): Promise<string[]> {
-    return decorate(invoke).with(logged, {
-      logger,
-      name: "get_pinned_topic_ids",
-    })<string[]>("get_pinned_topic_ids");
-  }
-
-  setPinnedTopicIds(value: string[]): Promise<void> {
-    return decorate(invoke).with(logged, {
-      logger,
-      name: "set_pinned_topic_ids",
-    })<void>("set_pinned_topic_ids", { value });
+      name: "set_topic_pinned",
+    })<void>("set_topic_pinned", { id, pinned });
   }
 
   getExpandedSidebarList(): Promise<string | null> {

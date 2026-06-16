@@ -45,10 +45,10 @@ export function AppLayout() {
     createTopic,
     saveTopic,
     deleteTopic,
-    setPinnedTopicIds,
+    setTopicPinned,
   } = useTopics(abortControllerRef);
 
-  const { requestFeeds, addFeed, renameFeed, deleteFeed, setPinnedFeedIds } =
+  const { requestFeeds, addFeed, renameFeed, deleteFeed, setFeedPinned } =
     useFeeds(abortControllerRef);
 
   const closeEditTopic = useCallback(() => {
@@ -78,13 +78,7 @@ export function AppLayout() {
       }
 
       if (topic) {
-        setPinnedTopicIds((prev) =>
-          pinned
-            ? prev.includes(topic.id)
-              ? prev
-              : [...prev, topic.id]
-            : prev.filter((id) => id !== topic.id)
-        );
+        setTopicPinned(topic.id, pinned);
 
         await requestTopics();
         selectTopic(topic, "unread");
@@ -94,7 +88,7 @@ export function AppLayout() {
       editingTopic,
       saveTopic,
       createTopic,
-      setPinnedTopicIds,
+      setTopicPinned,
       requestTopics,
       selectTopic,
     ]
@@ -103,10 +97,10 @@ export function AppLayout() {
   const handleDeleteTopic = useCallback(
     async (topic: Topic) => {
       await deleteTopic(topic.id);
-      setPinnedTopicIds((prev) => prev.filter((id) => id !== topic.id));
+      // Pin lived in the topic `.md`; deleting the file removes it. No separate cleanup.
       await requestTopics();
     },
-    [deleteTopic, setPinnedTopicIds, requestTopics]
+    [deleteTopic, requestTopics]
   );
 
   const closeEditFeed = useCallback(() => {
@@ -120,12 +114,12 @@ export function AppLayout() {
 
       if (feed) {
         if (title) await renameFeed(feed.id, title);
-        if (pinned) setPinnedFeedIds((prev) => [...prev, feed.id]);
+        if (pinned) setFeedPinned(feed.id, true);
         await requestFeeds();
         selectFeed(feed);
       }
     },
-    [addFeed, renameFeed, setPinnedFeedIds, requestFeeds, selectFeed]
+    [addFeed, renameFeed, setFeedPinned, requestFeeds, selectFeed]
   );
 
   const handleSaveFeed = useCallback(
@@ -133,26 +127,20 @@ export function AppLayout() {
       if (!editingFeed) return;
       await renameFeed(editingFeed.id, title);
 
-      setPinnedFeedIds((prev) =>
-        pinned
-          ? prev.includes(editingFeed.id)
-            ? prev
-            : [...prev, editingFeed.id]
-          : prev.filter((id) => id !== editingFeed.id)
-      );
+      setFeedPinned(editingFeed.id, pinned);
 
       await requestFeeds();
     },
-    [editingFeed, renameFeed, setPinnedFeedIds, requestFeeds]
+    [editingFeed, renameFeed, setFeedPinned, requestFeeds]
   );
 
   const handleDeleteFeed = useCallback(
     async (feed: { url: string; id: string }) => {
       await deleteFeed(feed.url);
-      setPinnedFeedIds((prev) => prev.filter((id) => id !== feed.id));
+      // Pin lived in the feed `.atom`; deleting the file removes it. No separate cleanup.
       await requestFeeds();
     },
-    [deleteFeed, setPinnedFeedIds, requestFeeds]
+    [deleteFeed, requestFeeds]
   );
 
   useEffect(() => {

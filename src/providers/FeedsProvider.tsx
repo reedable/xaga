@@ -4,7 +4,6 @@ import {
   useMemo,
   useState,
   type ReactNode,
-  type SetStateAction,
 } from "react";
 import { subscribe } from "../hooks/useEvents";
 import { usePlatform } from "../platform/Platform";
@@ -19,22 +18,20 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [loadingSet, setLoadingSet] = useState<Set<string>>(new Set());
   const [feeds, setFeeds] = useState<Feed[]>([]);
-  const [pinnedFeedIds, setPinnedFeedIdsState] = useState<Feed["id"][]>([]);
 
-  useEffect(() => {
-    platform
-      .getPinnedFeedIds()
-      .then(setPinnedFeedIdsState)
-      .catch(console.error);
-  }, [platform]);
+  // Pinned state lives on each feed's `.atom` (surfaced as `isPinned`); derive the id-set.
+  const pinnedFeedIds = useMemo(
+    () => feeds.filter((f) => f.isPinned).map((f) => f.id),
+    [feeds]
+  );
 
-  const setPinnedFeedIds = useCallback(
-    (updater: SetStateAction<Feed["id"][]>) => {
-      setPinnedFeedIdsState((prev) => {
-        const next = typeof updater === "function" ? updater(prev) : updater;
-        platform.setPinnedFeedIds(next).catch(console.error);
-        return next;
-      });
+  // Optimistically flip the feed's `isPinned`, then persist to the `.atom` (fire-and-forget).
+  const setFeedPinned = useCallback(
+    (id: Feed["id"], pinned: boolean) => {
+      setFeeds((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, isPinned: pinned } : f))
+      );
+      platform.setFeedPinned(id, pinned).catch(console.error);
     },
     [platform]
   );
@@ -108,9 +105,9 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
       setLoading,
       setLoadingSet,
       setFeeds,
-      setPinnedFeedIds,
+      setFeedPinned,
     }),
-    [error, loading, loadingSet, feeds, pinnedFeedIds, setPinnedFeedIds]
+    [error, loading, loadingSet, feeds, pinnedFeedIds, setFeedPinned]
   );
 
   return (

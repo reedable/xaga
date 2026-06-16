@@ -218,6 +218,13 @@ pub async fn list_feeds(feeds_dir: &Path, unread: &HashSet<String>, bookmarked: 
 /// `pinned` flag) so they never collide with publisher-supplied categories.
 pub const TAG_CATEGORY_SCHEME: &str = "https://xaga.app/ns/tag";
 
+/// Whether `feed` carries the app-local `<category term="pinned">` flag.
+fn is_feed_pinned(feed: &atom::Feed) -> bool {
+    feed.categories()
+        .iter()
+        .any(|c| c.term() == "pinned" && c.scheme() == Some(TAG_CATEGORY_SCHEME))
+}
+
 /// Per-feed metadata for embedding feeds into LanceDB as `kind = 'feed'` rows.
 pub struct FeedMeta {
     pub id: String,
@@ -244,10 +251,7 @@ pub async fn feed_embedding_meta(feeds_dir: &Path) -> Vec<FeedMeta> {
         let Ok(feed) = parse_atom(&xml) else {
             continue;
         };
-        let is_pinned = feed
-            .categories()
-            .iter()
-            .any(|c| c.term() == "pinned" && c.scheme() == Some(TAG_CATEGORY_SCHEME));
+        let is_pinned = is_feed_pinned(&feed);
         metas.push(FeedMeta {
             id: id.to_string(),
             url: self_link_url(&feed).unwrap_or_default(),
@@ -260,22 +264,13 @@ pub async fn feed_embedding_meta(feeds_dir: &Path) -> Vec<FeedMeta> {
 }
 
 /// Adds (or removes) the app-local `pinned` category on a feed's `.atom`, under
-/// [`TAG_CATEGORY_SCHEME`]. Idempotent. With `dry_run`, reports whether it *would*
-/// change without writing. Returns whether the file changed (or would change).
-pub async fn set_feed_pinned(
-    feeds_dir: &Path,
-    id: &FeedId,
-    pinned: bool,
-    dry_run: bool,
-) -> Result<bool> {
+/// [`TAG_CATEGORY_SCHEME`]. Idempotent. Returns whether the file changed.
+pub async fn set_feed_pinned(feeds_dir: &Path, id: &FeedId, pinned: bool) -> Result<bool> {
     let path = xml_path(feeds_dir, id);
     let xml = tokio::fs::read_to_string(&path).await?;
     let mut feed = parse_atom(&xml)?;
 
-    let has = feed
-        .categories()
-        .iter()
-        .any(|c| c.term() == "pinned" && c.scheme() == Some(TAG_CATEGORY_SCHEME));
+    let has = is_feed_pinned(&feed);
     if has == pinned {
         return Ok(false);
     }
@@ -291,9 +286,6 @@ pub async fn set_feed_pinned(
     }
     feed.set_categories(categories);
 
-    if dry_run {
-        return Ok(true);
-    }
     write_atom_atomic(feeds_dir, id, &feed).await?;
     Ok(true)
 }
@@ -755,6 +747,7 @@ fn feed_summary(
         bookmarked_count,
         created_at: created_at.to_rfc3339(),
         updated_at: Some(feed.updated().to_rfc3339()),
+        is_pinned: is_feed_pinned(feed),
     }
 }
 

@@ -90,6 +90,8 @@ pub async fn enrich_embedded(library: &Path, entries: Vec<EmbeddedEntry>) -> Vec
                     bookmarked_count: 0,
                     created_at: entry.entry.created_at.clone(),
                     updated_at: entry.entry.updated_at.clone(),
+                    // Pinned state is not shown in search results; deferred like the counts above.
+                    is_pinned: false,
                 },
                 kind: entry.kind,
                 similarity: entry.similarity,

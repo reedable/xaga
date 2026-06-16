@@ -23,7 +23,7 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
     setLoading,
     setLoadingSet,
     setFeeds,
-    setPinnedFeedIds,
+    setFeedPinned,
   } = context;
 
   const platform = usePlatform();
@@ -131,6 +131,6 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
     addFeed,
     renameFeed,
     deleteFeed,
-    setPinnedFeedIds,
+    setFeedPinned,
   };
 }

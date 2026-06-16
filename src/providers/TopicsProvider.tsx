@@ -4,7 +4,6 @@ import {
   useMemo,
   useState,
   type ReactNode,
-  type SetStateAction,
 } from "react";
 import { subscribe } from "../hooks/useEvents";
 import { usePlatform } from "../platform/Platform";
@@ -16,22 +15,20 @@ import TopicsContext, { type TopicsContextType } from "./TopicsContext";
 export function TopicsProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [pinnedTopicIds, setPinnedTopicIdsState] = useState<string[]>([]);
 
-  useEffect(() => {
-    platform
-      .getPinnedTopicIds()
-      .then(setPinnedTopicIdsState)
-      .catch(console.error);
-  }, [platform]);
+  // Pinned state lives in each topic's `.md` tags (surfaced as `isPinned`); derive the id-set.
+  const pinnedTopicIds = useMemo(
+    () => topics.filter((t) => t.isPinned).map((t) => t.id),
+    [topics]
+  );
 
-  const setPinnedTopicIds = useCallback(
-    (updater: SetStateAction<string[]>) => {
-      setPinnedTopicIdsState((prev) => {
-        const next = typeof updater === "function" ? updater(prev) : updater;
-        platform.setPinnedTopicIds(next).catch(console.error);
-        return next;
-      });
+  // Optimistically flip the topic's `isPinned`, then persist to the `.md` (fire-and-forget).
+  const setTopicPinned = useCallback(
+    (id: string, pinned: boolean) => {
+      setTopics((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, isPinned: pinned } : t))
+      );
+      platform.setTopicPinned(id, pinned).catch(console.error);
     },
     [platform]
   );
@@ -52,8 +49,8 @@ export function TopicsProvider({ children }: { children: ReactNode }) {
   }, [platform, refreshTopics]);
 
   const value = useMemo<TopicsContextType>(
-    () => ({ topics, pinnedTopicIds, setTopics, setPinnedTopicIds }),
-    [topics, pinnedTopicIds, setPinnedTopicIds]
+    () => ({ topics, pinnedTopicIds, setTopics, setTopicPinned }),
+    [topics, pinnedTopicIds, setTopicPinned]
   );
 
   return (
