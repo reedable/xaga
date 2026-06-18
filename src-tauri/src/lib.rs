@@ -619,11 +619,7 @@ pub fn run() {
                             Err(e) => log::error!("startup: read handle open failed: {e}"),
                         }
 
-                        file_watchers::watch(
-                            lib_path.clone(),
-                            svc.priority_sender(),
-                            svc.background_sender(),
-                        );
+                        file_watchers::watch(lib_path.clone(), svc.job_sender());
 
                         let embeddings_app_handle = app_handle.clone();
                         let priority_drained_rx = svc.subscribe_to_priority_drained();

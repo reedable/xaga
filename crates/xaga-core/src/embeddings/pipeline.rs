@@ -472,6 +472,130 @@ async fn set_topic_base(
     Ok(())
 }
 
+/// Builds an `Entry` (the UI-facing shape) from a cached row, for change-event emission.
+fn entry_from_row(row: &EmbeddingEntry) -> Entry {
+    let opt = |s: &str| (!s.is_empty()).then(|| s.to_string());
+    Entry {
+        id: row.id.clone(),
+        url: row.source.clone(),
+        title: row.title.clone(),
+        created_at: row.created_at.clone(),
+        published_at: opt(&row.published_at),
+        updated_at: opt(&row.updated_at),
+        summary: opt(&row.summary),
+        is_unread: row.is_unread,
+        is_bookmarked: row.is_bookmarked,
+        tags: row.tags.clone(),
+    }
+}
+
+/// Write-through state update for a `SyncState` job: applies the carried value(s) directly
+/// to the cached row's `tags` + denormalized boolean columns and emits the UI change event,
+/// without reading the `.md`. `get_entry` is still required because `upsert` replaces the
+/// whole row (preserving vector/topics/items/content). A `None` field is left unchanged; a
+/// missing row is a no-op (recovery will create it).
+pub async fn apply_state(
+    db: &EmbeddingsDb,
+    id: &str,
+    is_unread: Option<bool>,
+    is_bookmarked: Option<bool>,
+    is_pinned: Option<bool>,
+    unread_tx: &flume::Sender<Entry>,
+    bookmarked_tx: &flume::Sender<Entry>,
+) -> Result<(), EmbeddingsError> {
+    let Some(mut row) = db.get_entry(id).await? else {
+        log::warn!("apply_state: row not found id={id} (recovery will create it)");
+        return Ok(());
+    };
+
+    let old_unread = row.is_unread;
+    let old_bookmarked = row.is_bookmarked;
+
+    fn set_tag(tags: &mut Vec<String>, tag: &str, on: bool) {
+        let has = tags.iter().any(|t| t == tag);
+        if on && !has {
+            tags.push(tag.to_string());
+        } else if !on && has {
+            tags.retain(|t| t != tag);
+        }
+    }
+    if let Some(v) = is_unread {
+        set_tag(&mut row.tags, "unread", v);
+        row.is_unread = v;
+    }
+    if let Some(v) = is_bookmarked {
+        set_tag(&mut row.tags, "bookmark", v);
+        row.is_bookmarked = v;
+    }
+    if let Some(v) = is_pinned {
+        set_tag(&mut row.tags, "pinned", v);
+        row.is_pinned = v;
+    }
+
+    let new_unread = row.is_unread;
+    let new_bookmarked = row.is_bookmarked;
+    let entry = entry_from_row(&row);
+    db.upsert(row).await?;
+
+    if new_unread != old_unread {
+        let _ = unread_tx.send(entry.clone());
+    }
+    if new_bookmarked != old_bookmarked {
+        let _ = bookmarked_tx.send(entry);
+    }
+    Ok(())
+}
+
+/// Standalone annotation reconcile for a `SyncAnnotations` job: reads the entry's `.md`,
+/// parses frontmatter, and reconciles its annotation rows (embedder-free). Used when only
+/// annotations changed; content edits reconcile annotations via `sync_row`.
+pub async fn sync_annotations_from_file(
+    path: &Path,
+    db: &EmbeddingsDb,
+    annotation_tx: &flume::Sender<SavedItem>,
+) -> Result<(), EmbeddingsError> {
+    let raw = tokio::fs::read_to_string(path)
+        .await
+        .map_err(EmbeddingsError::Io)?;
+    let (fm, _body) = crate::util::parse_document(&raw)
+        .ok_or_else(|| EmbeddingsError::Parse(path.display().to_string()))?;
+    let id = crate::util::item_id(path);
+    sync_annotations(&id, &fm, db, annotation_tx).await
+}
+
+/// Precise single-member reverse-index add: sets `topic_id` on `member_id`'s `topics`
+/// column and advances the topic row's `items` base so a later full reconcile sees no
+/// spurious delta. The O(1) counterpart to [`reconcile_topic_membership`] for a live add.
+pub async fn add_topic_member(
+    db: &EmbeddingsDb,
+    topic_id: &str,
+    member_id: &str,
+) -> Result<(), EmbeddingsError> {
+    write_topic_delta(db, topic_id, &[member_id], true).await?;
+    let mut base = db.get_entry(topic_id).await?.map(|t| t.items).unwrap_or_default();
+    if !base.iter().any(|m| m == member_id) {
+        base.push(member_id.to_string());
+        set_topic_base(db, topic_id, &base).await?;
+    }
+    Ok(())
+}
+
+/// Precise single-member reverse-index remove: clears `topic_id` from `member_id`'s
+/// `topics` column and drops it from the topic row's `items` base.
+pub async fn remove_topic_member(
+    db: &EmbeddingsDb,
+    topic_id: &str,
+    member_id: &str,
+) -> Result<(), EmbeddingsError> {
+    write_topic_delta(db, topic_id, &[member_id], false).await?;
+    let base = db.get_entry(topic_id).await?.map(|t| t.items).unwrap_or_default();
+    if base.iter().any(|m| m == member_id) {
+        let new_base: Vec<String> = base.into_iter().filter(|m| m != member_id).collect();
+        set_topic_base(db, topic_id, &new_base).await?;
+    }
+    Ok(())
+}
+
 /// SHA-256 of a feed's embeddable content (its title).
 fn feed_checksum(title: &str) -> String {
     let mut h = sha2::Sha256::new();

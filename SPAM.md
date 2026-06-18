@@ -41,8 +41,8 @@ accepting eventual "sync at some point" rather than live sync.
    background/maintenance (recovery bulk, embedding backfill, compaction). Messages are
    standardized to carry the action and a reference to the entity; priority is implied by
    the queue the message lands on rather than re-derived downstream. (Replaces today's
-   ad-hoc biased `select!` keyed by message source; the exact message taxonomy is still
-   to be defined.)
+   ad-hoc biased `select!` keyed by message source; the message taxonomy is defined below
+   under _Ratified Taxonomy — Step 1_.)
 7. **LanceDB state (the cache) has exactly two producers: the command layer and
    recovery.** LanceDB is a cache of state derived from the filesystem source of truth —
    vectors _and_ state such as unread/bookmark. In the running app only two producers
@@ -58,3 +58,78 @@ accepting eventual "sync at some point" rather than live sync.
 4. Confirm recovery is the complete backstop for out-of-band changes.
 5. Retire the file watcher.
 6. Refocus xaga-cli (drop interactive CRUD; keep migration and database management).
+
+## Ratified Taxonomy — Step 1
+
+Settled. These are the decisions; do not re-open without a concrete reason.
+
+### Priority tiers (queues), drained strictly highest-first: T0 > T1 > T2 > T3
+
+| Tier | Name | Holds |
+|----|----|----|
+| **T0** | Control | shutdown, reset, start-recovery |
+| **T1** | Interactive | cheap, must-reflect-now updates from a single user action — state toggles, content-row upsert (so the item appears), annotation sync, single-member membership delta, single delete. **No ONNX.** |
+| **T2** | Regular | ONNX vector (re)compute for an _individual, live/user-originated_ item |
+| **T3** | Maintenance | bulk/backfill embeds (recovery, large imports), batch deletes, compaction, index maintenance |
+
+**Tier follows the work's _cost_, not its _trigger_.** A user-triggered job is only T1 if
+it is cheap and must reflect now; an expensive job (large membership fan-out, bulk delete,
+backfill) goes to T2/T3 even when a user started it, so it never blocks the interactive tier.
+
+### Message structure
+
+One `Job` enum (the **action**, orthogonal to priority) carrying an **entity reference**
+that includes `kind` (entry/topic/feed/annotation), enqueued onto one of four typed
+tier-channels. **The tier _is_ the priority.** The same `Job` may ride different tiers by
+different producers (e.g. `EmbedVector` on T2 from a live save, T3 from recovery). No
+per-tier enums — that would re-couple action to tier.
+
+### Job vocabulary
+
+- `SyncState { id, kind, <state values> }` — **carries the new state value(s)**
+  (is_unread / is_bookmarked / is_pinned); consumer applies them and emits the UI change
+  event. No file read, no embed (write-through). Recovery stays the file-authoritative
+  reconciler for drift.
+- `UpsertContent { id, kind }` — content created/edited; consumer reads the file, syncs the
+  row, and (if checksum changed) enqueues an `EmbedVector` follow-up.
+- `EmbedVector { id, kind }` — ONNX vector (re)compute, checksum-gated. T2 (live) or T3 (bulk).
+- `SyncAnnotations { id }` — reconcile an entry's annotation rows (embedder-free).
+- `AddMember { topic_id, member_id }` / `RemoveMember { topic_id, member_id }` — precise O(1)
+  reverse-index delta the command already knows. Cheap → T1.
+- `ReconcileMembership { topic_id }` — full diff + chunked bulk fan-out over a topic's whole
+  member list. Expensive → T3 (recovery/drift) or T2 (one wholesale topic edit). Never T1.
+- `Delete { id, kind }` / `DeleteBatch { ids }` — remove cached row(s).
+- `Compact` / `EnsureIndexes` — maintenance (T3).
+- Control: `Shutdown` / `Reset` / `StartRecovery` (T0).
+
+### Producer → Job → tier
+
+| Producer | Job | Tier |
+|----|----|----|
+| `mark_entry_read/unread`, `add/remove_bookmark`, `set_*_pinned` | `SyncState` | T1 |
+| `save_article`, `create_article`, `save_topic`, `create_topic` | `UpsertContent` (→ `EmbedVector`) | T1 (→ T2) |
+| `add_annotation`, `remove_annotation` | `SyncAnnotations` | T1 |
+| `add_topic_item`, `remove_topic_item` (and `remove_annotation` topic cleanup) | `AddMember`/`RemoveMember` | T1 |
+| `save_topic` wholesale item-list edit; recovery membership rebuild | `ReconcileMembership` | T2 (one topic) / T3 (bulk) |
+| `delete_topic` | `Delete` | T1 |
+| `refresh_feed`/`add_feed` new entries; `import_feeds`/`import_bookmarks` | `UpsertContent`/`SyncState` ×N | T3 |
+| `set_feed_pinned` / `rename_feed` (kind=feed) | `SyncState` / `UpsertContent` | T1 / T2 |
+| `remove_feed` (entries stay) | `Delete` (kind=feed) | T1 |
+| Recovery (`dispatch_recovery`) | `DeleteBatch`, `UpsertContent`/`EmbedVector` ×N, `Compact` | T3 |
+| App lifecycle | `Shutdown` / `Reset` / `StartRecovery` | T0 |
+
+Feeds reuse the same jobs with `kind=feed` — no feed-specific jobs.
+
+### Deferred to Task #2 (implementation, not taxonomy)
+
+- Compaction-trigger consolidation (today's three-way queue/interval/drain paths).
+- Membership delta-batching threshold (start per-delta; add a batch cutoff only if a burst
+  proves it necessary).
+- Concrete Rust wiring of the `Job` enum + tier channels.
+
+### Out of scope / unchanged
+
+- Outbound UI-notification channels (`unread_changed`, `bookmarked_changed`,
+  `annotation_changed`, `priority_drained`, `background_drained`) are orthogonal to the
+  priority tiers and stay as-is.
+- Embedding stays checksum-gated end-to-end (no plan to change).

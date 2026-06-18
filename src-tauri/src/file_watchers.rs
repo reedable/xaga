@@ -3,36 +3,28 @@ use std::time::Duration;
 
 use notify_debouncer_full::new_debouncer;
 use notify_debouncer_full::notify::{EventKind, RecursiveMode, Watcher};
-use xaga_core::embeddings::{BackgroundMsg, PriorityMsg};
+use xaga_core::embeddings::{EntityRef, Job, JobSender, Tier};
+use xaga_core::types::Kind;
 
-/// Spawns one watcher thread per directory.
+/// Spawns one watcher thread per directory. Interim producer: the watcher has no
+/// intent, so it emits generic jobs (`UpsertContent`/`Delete`) and lets the consumer
+/// figure out what changed. Tiers mirror the pre-refactor routing. (Retired in a later
+/// task once the command layer is the sole live producer.)
 ///
 /// Routing:
-/// - entries/  create → background: Embed
-/// - entries/  modify → priority:   Embed
-/// - topics/   create → priority:   Embed
-/// - topics/   modify → priority:   Embed
-/// - topics/   delete → background: Delete
-/// - archived/ delete → background: Delete
-pub fn watch(
-    data_dir: PathBuf,
-    priority_tx: flume::Sender<PriorityMsg>,
-    background_tx: flume::Sender<BackgroundMsg>,
-) {
-    watch_entries(
-        data_dir.join("entries"),
-        priority_tx.clone(),
-        background_tx.clone(),
-    );
-    watch_topics(data_dir.join("topics"), priority_tx, background_tx.clone());
-    watch_archived(data_dir.join("archived"), background_tx);
+/// - entries/  create → Maintenance: UpsertContent
+/// - entries/  modify → Interactive: UpsertContent
+/// - topics/   create → Interactive: UpsertContent
+/// - topics/   modify → Interactive: UpsertContent
+/// - topics/   delete → Maintenance: Delete
+/// - archived/ delete → Maintenance: Delete
+pub fn watch(data_dir: PathBuf, jobs: JobSender) {
+    watch_entries(data_dir.join("entries"), jobs.clone());
+    watch_topics(data_dir.join("topics"), jobs.clone());
+    watch_archived(data_dir.join("archived"), jobs);
 }
 
-fn watch_entries(
-    dir: PathBuf,
-    priority_tx: flume::Sender<PriorityMsg>,
-    background_tx: flume::Sender<BackgroundMsg>,
-) {
+fn watch_entries(dir: PathBuf, jobs: JobSender) {
     std::thread::spawn(move || {
         if let Err(e) = std::fs::create_dir_all(&dir) {
             log::error!("file_watchers: cannot create {}: {e}", dir.display());
@@ -55,12 +47,18 @@ fn watch_entries(
                         };
                         match event.kind {
                             EventKind::Create(_) => {
-                                log::debug!("file_watchers: entries create → background embed {id}");
-                                let _ = background_tx.send(BackgroundMsg::Embed(id.to_string()));
+                                log::debug!("file_watchers: entries create → upsert (maintenance) {id}");
+                                jobs.enqueue(
+                                    Tier::Maintenance,
+                                    Job::UpsertContent { entity: EntityRef::new(id, Kind::Entry) },
+                                );
                             }
                             EventKind::Modify(_) if path.exists() => {
-                                log::debug!("file_watchers: entries modify → priority embed {id}");
-                                let _ = priority_tx.send(PriorityMsg::Embed(id.to_string()));
+                                log::debug!("file_watchers: entries modify → upsert (interactive) {id}");
+                                jobs.enqueue(
+                                    Tier::Interactive,
+                                    Job::UpsertContent { entity: EntityRef::new(id, Kind::Entry) },
+                                );
                             }
                             _ => {}
                         }
@@ -84,11 +82,7 @@ fn watch_entries(
     });
 }
 
-fn watch_topics(
-    dir: PathBuf,
-    priority_tx: flume::Sender<PriorityMsg>,
-    background_tx: flume::Sender<BackgroundMsg>,
-) {
+fn watch_topics(dir: PathBuf, jobs: JobSender) {
     std::thread::spawn(move || {
         if let Err(e) = std::fs::create_dir_all(&dir) {
             log::error!("file_watchers: cannot create {}: {e}", dir.display());
@@ -112,15 +106,21 @@ fn watch_topics(
                         match event.kind {
                             EventKind::Create(_) | EventKind::Modify(_) => {
                                 log::debug!(
-                                    "file_watchers: topics create/modify → priority embed {id}"
+                                    "file_watchers: topics create/modify → upsert (interactive) {id}"
                                 );
-                                let _ = priority_tx.send(PriorityMsg::Embed(id.to_string()));
+                                jobs.enqueue(
+                                    Tier::Interactive,
+                                    Job::UpsertContent { entity: EntityRef::new(id, Kind::Topic) },
+                                );
                             }
                             EventKind::Remove(_) => {
                                 log::debug!(
-                                    "file_watchers: topics delete → background delete {id}"
+                                    "file_watchers: topics delete → delete (maintenance) {id}"
                                 );
-                                let _ = background_tx.send(BackgroundMsg::Delete(id.to_string()));
+                                jobs.enqueue(
+                                    Tier::Maintenance,
+                                    Job::Delete { entity: EntityRef::new(id, Kind::Topic) },
+                                );
                             }
                             _ => {}
                         }
@@ -144,7 +144,7 @@ fn watch_topics(
     });
 }
 
-fn watch_archived(dir: PathBuf, background_tx: flume::Sender<BackgroundMsg>) {
+fn watch_archived(dir: PathBuf, jobs: JobSender) {
     std::thread::spawn(move || {
         if let Err(e) = std::fs::create_dir_all(&dir) {
             log::error!("file_watchers: cannot create {}: {e}", dir.display());
@@ -168,8 +168,11 @@ fn watch_archived(dir: PathBuf, background_tx: flume::Sender<BackgroundMsg>) {
                         let Some(id) = path.file_stem().and_then(|s| s.to_str()) else {
                             continue;
                         };
-                        log::debug!("file_watchers: archived delete → background delete {id}");
-                        let _ = background_tx.send(BackgroundMsg::Delete(id.to_string()));
+                        log::debug!("file_watchers: archived delete → delete (maintenance) {id}");
+                        jobs.enqueue(
+                            Tier::Maintenance,
+                            Job::Delete { entity: EntityRef::new(id, Kind::Entry) },
+                        );
                     }
                 }
             },

@@ -1740,6 +1740,77 @@ mod tests {
         assert_eq!(db.get_entry("topic-1").await.unwrap().unwrap().items, vec!["entry-1".to_string()]);
     }
 
+    /// `add_topic_member` / `remove_topic_member` update just that one member's reverse-index
+    /// `topics` column and the topic-row `items` base — the precise O(1) live path. Re-adding
+    /// an existing member is a no-op.
+    #[tokio::test]
+    async fn single_member_add_remove_tracks_base() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        let mut topic = sample("topic-1", "topic", None);
+        topic.topics = vec![];
+        topic.items = vec![];
+        db.upsert(topic).await.unwrap();
+        let mut e = sample("entry-1", "entry", None);
+        e.topics = vec![];
+        db.upsert(e).await.unwrap();
+
+        crate::embeddings::pipeline::add_topic_member(&db, "topic-1", "entry-1").await.unwrap();
+        assert!(db.get_entry("entry-1").await.unwrap().unwrap().topics.contains(&"topic-1".to_string()));
+        assert_eq!(db.get_entry("topic-1").await.unwrap().unwrap().items, vec!["entry-1".to_string()]);
+
+        // Idempotent re-add: base unchanged.
+        crate::embeddings::pipeline::add_topic_member(&db, "topic-1", "entry-1").await.unwrap();
+        assert_eq!(db.get_entry("topic-1").await.unwrap().unwrap().items, vec!["entry-1".to_string()]);
+
+        crate::embeddings::pipeline::remove_topic_member(&db, "topic-1", "entry-1").await.unwrap();
+        assert!(!db.get_entry("entry-1").await.unwrap().unwrap().topics.contains(&"topic-1".to_string()));
+        assert!(db.get_entry("topic-1").await.unwrap().unwrap().items.is_empty());
+    }
+
+    /// `apply_state` write-through flips the boolean columns + tags from the carried values,
+    /// preserves the vector/topics, and emits a change event only for columns that changed.
+    #[tokio::test]
+    async fn apply_state_writes_through_and_emits() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        let mut e = sample("entry-1", "entry", Some(vec![0.1f32; EMBEDDING_DIM as usize]));
+        e.tags = vec!["unread".to_string()];
+        e.is_unread = true;
+        e.is_bookmarked = false;
+        e.topics = vec!["topic-1".to_string()];
+        db.upsert(e).await.unwrap();
+
+        let (unread_tx, unread_rx) = flume::unbounded();
+        let (bm_tx, bm_rx) = flume::unbounded();
+
+        // Mark read (is_unread -> false) and bookmark (-> true) in one patch.
+        crate::embeddings::pipeline::apply_state(
+            &db, "entry-1", Some(false), Some(true), None, &unread_tx, &bm_tx,
+        )
+        .await
+        .unwrap();
+
+        let row = db.get_entry("entry-1").await.unwrap().unwrap();
+        assert!(!row.is_unread && row.is_bookmarked);
+        assert!(!row.tags.contains(&"unread".to_string()));
+        assert!(row.tags.contains(&"bookmark".to_string()));
+        assert!(row.vector.is_some(), "vector preserved");
+        assert_eq!(row.topics, vec!["topic-1".to_string()], "topics preserved");
+        assert_eq!(unread_rx.len(), 1, "is_unread changed → one event");
+        assert_eq!(bm_rx.len(), 1, "is_bookmarked changed → one event");
+
+        // A no-op patch (same value) emits nothing.
+        crate::embeddings::pipeline::apply_state(
+            &db, "entry-1", Some(false), None, None, &unread_tx, &bm_tx,
+        )
+        .await
+        .unwrap();
+        assert_eq!(unread_rx.len(), 1, "no event when unchanged");
+    }
+
     /// The reconcile is member-type-agnostic: an annotation-kind member gets its `topics`
     /// updated exactly like an entry (covers W2 — callers now pass annotation members too).
     #[tokio::test]

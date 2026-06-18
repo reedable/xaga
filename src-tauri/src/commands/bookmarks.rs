@@ -1,9 +1,9 @@
 use serde::Serialize;
 use tauri::State;
 use xaga_core::bookmarks;
-use xaga_core::embeddings::BackgroundMsg;
+use xaga_core::embeddings::{EntityRef, Job, Tier};
 use xaga_core::entries;
-use xaga_core::types::Entry;
+use xaga_core::types::{Entry, Kind};
 
 use crate::AppState;
 
@@ -60,15 +60,16 @@ pub async fn import_bookmarks(
         .await
         .map_err(|e| e.to_string())?;
 
-    // The file watcher queues embed messages for entries/ on modify events,
-    // but import writes files directly without going through the watcher path.
-    // Queue explicitly here so imported bookmarks get indexed.
+    // Import writes entry files directly; enqueue their indexing explicitly (bulk →
+    // Maintenance tier) so imported bookmarks get indexed without the watcher.
     {
         let svc = state.embedding_service.lock().unwrap();
         if let Some(svc) = svc.as_ref() {
-            let tx = svc.background_sender();
             for id in result.added.iter().chain(result.updated.iter()) {
-                let _ = tx.send(BackgroundMsg::Embed(id.clone()));
+                svc.enqueue(
+                    Tier::Maintenance,
+                    Job::UpsertContent { entity: EntityRef::new(id.clone(), Kind::Entry) },
+                );
             }
         }
     }
