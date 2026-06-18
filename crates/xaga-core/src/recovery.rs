@@ -145,17 +145,18 @@ pub async fn build_recovery_plan(
 
 // ── Feed entry reconciliation ─────────────────────────────────────────────────
 
-/// For every entry in one `.atom` file, ensure an Entry exists on disk.
-/// Called both during full recovery (once per feed) and live when the file
-/// watcher detects a change to a specific `.atom` file.
-pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) {
+/// For every entry in one `.atom` file, ensure an Entry exists on disk. Returns the ids of
+/// the entries it newly created, so the caller can enqueue their indexing. Called during
+/// recovery (per feed) and by `refresh_feed` after a fetch.
+pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) -> Vec<String> {
+    let mut created = Vec::new();
     let atom_path = data_dir.join("feeds").join(format!("{feed_id}.atom"));
 
     let entries = match crate::feeds::feed_entry::entries_from_path(&atom_path).await {
         Ok(e) => e,
         Err(e) => {
             log::warn!("reconcile_atom_file {feed_id}: {e}");
-            return;
+            return created;
         }
     };
 
@@ -182,7 +183,7 @@ pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) {
             continue;
         }
 
-        if let Err(e) = crate::entries::write_entry(
+        match crate::entries::write_entry(
             data_dir,
             &entry.url,
             &entry.title,
@@ -192,11 +193,14 @@ pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) {
         )
         .await
         {
-            log::warn!("reconcile_atom_file {feed_id}: {e}");
+            Ok(_) => created.push(hash12),
+            Err(e) => log::warn!("reconcile_atom_file {feed_id}: {e}"),
         }
 
         tokio::task::yield_now().await;
     }
+
+    created
 }
 
 /// For every feed, reconcile its atom file. Calls `reconcile_atom_file` per

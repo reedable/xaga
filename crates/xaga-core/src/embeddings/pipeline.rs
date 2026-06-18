@@ -606,6 +606,51 @@ fn feed_checksum(title: &str) -> String {
 /// Embeds feed rows (`kind = 'feed'`) from the `.atom` files so feeds are searchable and
 /// carry their pinned state. Feeds are few (sidebar-scale), so this runs in one pass.
 /// Re-embeds a feed only when its title/subtitle or pinned state changed, or its vector is missing.
+/// Embeds (or refreshes) one feed's row from its metadata. Checksum-gated: a no-op when the
+/// row already has a vector and its title/subtitle checksum and `is_pinned` are unchanged.
+/// The single-feed unit that both `embed_feeds` (the `.atom` sweep) and the live
+/// `EmbedVector` path for `kind=Feed` call.
+pub async fn embed_feed(
+    meta: &crate::feeds::FeedMeta,
+    embedder: &Arc<Embedder>,
+    db: &EmbeddingsDb,
+) -> Result<(), EmbeddingsError> {
+    let checksum = feed_checksum(&format!("{}\n{}", meta.title, meta.subtitle));
+    let existing = db.get_entry(&meta.id).await?;
+    let up_to_date = matches!(
+        &existing,
+        Some(e) if e.vector.is_some() && e.checksum == checksum && e.is_pinned == meta.is_pinned
+    );
+    if up_to_date {
+        return Ok(());
+    }
+
+    log::debug!("embed_feed: embedding feed id={} title={:?}", meta.id, meta.title);
+    let vector = compute_vector(embedder, meta.title.clone(), meta.subtitle.clone()).await?;
+    db.upsert(EmbeddingEntry {
+        id: meta.id.clone(),
+        kind: Kind::Feed,
+        source: meta.url.clone(),
+        title: meta.title.clone(),
+        created_at: String::new(),
+        published_at: String::new(),
+        updated_at: String::new(),
+        checksum,
+        reference: String::new(),
+        color: String::new(),
+        summary: meta.subtitle.clone(),
+        tags: vec![],
+        topics: vec![],
+        items: vec![],
+        is_unread: false,
+        is_bookmarked: false,
+        is_pinned: meta.is_pinned,
+        vector: Some(vector),
+    })
+    .await?;
+    Ok(())
+}
+
 pub async fn embed_feeds(
     feeds_dir: &Path,
     embedder: &Arc<Embedder>,
@@ -614,40 +659,8 @@ pub async fn embed_feeds(
     let metas = crate::feeds::feed_embedding_meta(feeds_dir).await;
     let current: HashSet<String> = metas.iter().map(|m| m.id.clone()).collect();
 
-    for meta in metas {
-        let checksum = feed_checksum(&format!("{}\n{}", meta.title, meta.subtitle));
-        let existing = db.get_entry(&meta.id).await?;
-        let up_to_date = matches!(
-            &existing,
-            Some(e) if e.vector.is_some() && e.checksum == checksum && e.is_pinned == meta.is_pinned
-        );
-        if up_to_date {
-            continue;
-        }
-
-        log::debug!("embed_feeds: embedding feed id={} title={:?}", meta.id, meta.title);
-        let vector = compute_vector(embedder, meta.title.clone(), meta.subtitle.clone()).await?;
-        db.upsert(EmbeddingEntry {
-            id: meta.id,
-            kind: Kind::Feed,
-            source: meta.url,
-            title: meta.title,
-            created_at: String::new(),
-            published_at: String::new(),
-            updated_at: String::new(),
-            checksum,
-            reference: String::new(),
-            color: String::new(),
-            summary: meta.subtitle,
-            tags: vec![],
-            topics: vec![],
-            items: vec![],
-            is_unread: false,
-            is_bookmarked: false,
-            is_pinned: meta.is_pinned,
-            vector: Some(vector),
-        })
-        .await?;
+    for meta in &metas {
+        embed_feed(meta, embedder, db).await?;
     }
 
     // Delete feed rows whose `.atom` no longer exists.

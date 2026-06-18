@@ -14,8 +14,9 @@ pub enum ShutdownReason {
 use super::lock::LockFile;
 use super::model::{Embedder, load_default_embedder};
 use super::pipeline::{
-    add_topic_member, annotation_embedding_entry, apply_state, embed_feeds, embed_vector,
-    reconcile_topic_membership, remove_topic_member, sync_annotations_from_file, sync_row,
+    add_topic_member, annotation_embedding_entry, apply_state, embed_feed, embed_feeds,
+    embed_vector, reconcile_topic_membership, remove_topic_member, sync_annotations_from_file,
+    sync_row,
 };
 use super::{EmbeddingEntry, EmbeddingsDb, EmbeddingsError};
 
@@ -124,18 +125,6 @@ impl Senders {
             Tier::Maintenance => &self.maintenance,
         };
         let _ = tx.send(job);
-    }
-}
-
-/// A cloneable handle for enqueuing jobs onto the service's tier channels from
-/// producers outside the service loop (the command layer and, until it is retired,
-/// the file watcher). The tier *is* the priority.
-#[derive(Clone)]
-pub struct JobSender(Senders);
-
-impl JobSender {
-    pub fn enqueue(&self, tier: Tier, job: Job) {
-        self.0.enqueue(tier, job);
     }
 }
 
@@ -267,12 +256,6 @@ impl EmbeddingService {
     /// later task, the file watcher).
     pub fn enqueue(&self, tier: Tier, job: Job) {
         self.senders.enqueue(tier, job);
-    }
-
-    /// Returns a cloneable handle for enqueuing jobs from outside the service
-    /// (e.g. the file watcher's threads).
-    pub fn job_sender(&self) -> JobSender {
-        JobSender(self.senders.clone())
     }
 
     /// Returns a receiver that fires once each time the priority queue drains to empty.
@@ -535,6 +518,20 @@ async fn handle_job(
             }
             None => log::warn!("upsert_content: file not found id={}", entity.id),
         },
+        Job::EmbedVector { entity } if entity.kind == Kind::Feed => {
+            // Feeds embed from their `.atom`, not a `.md`, so they take the single-feed path
+            // rather than `find_item_path` + `embed_vector`. (Format still leaks into this
+            // branch — the generic-Item refactor is the planned circle-back.)
+            let feeds_dir = data_dir.join("feeds");
+            match crate::feeds::feed_embedding_meta_one(&feeds_dir, &crate::feeds::FeedId(entity.id.clone())).await {
+                Some(meta) => {
+                    if let Err(e) = embed_feed(&meta, embedder, db).await {
+                        log::error!("embed_feed failed id={}: {e}", entity.id);
+                    }
+                }
+                None => log::warn!("embed_vector: feed .atom not found id={}", entity.id),
+            }
+        }
         Job::EmbedVector { entity } => match find_item_path(data_dir, &entity.id).await {
             Some(path) => {
                 if let Err(e) = embed_vector(&path, embedder, db).await {

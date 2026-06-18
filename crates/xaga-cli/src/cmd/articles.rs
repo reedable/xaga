@@ -3,7 +3,6 @@ use std::path::Path;
 use clap::{Args, Subcommand};
 use xaga_core::articles;
 use xaga_core::embeddings::EmbeddingsDb;
-use xaga_core::entries;
 
 use crate::die;
 
@@ -20,10 +19,6 @@ pub enum ArticlesCommand {
     List,
     /// Print an article
     Read { id: String },
-    /// Mark an item as read (move from unread/ to read/)
-    MarkRead { id: String },
-    /// Mark an item as unread (move from read/ to unread/)
-    MarkUnread { id: String },
 }
 
 pub async fn handle(cmd: ArticlesCommand, data_dir: &Path) {
@@ -55,35 +50,6 @@ pub async fn handle(cmd: ArticlesCommand, data_dir: &Path) {
                     println!("created_at: {}", doc.meta.created_at);
                     println!();
                     print!("{}", doc.content);
-                }
-                Err(e) => die(e),
-            }
-        }
-
-        ArticlesCommand::MarkRead { id } => {
-            match entries::read_entry(data_dir, &id).await {
-                Ok(entry) => {
-                    let tags = entry.tags.into_iter().filter(|t| t != "unread").collect();
-                    match entries::set_entry_tags(data_dir, &id, tags).await {
-                        Ok(_) => println!("Marked as read."),
-                        Err(e) => die(e),
-                    }
-                }
-                Err(e) => die(e),
-            }
-        }
-
-        ArticlesCommand::MarkUnread { id } => {
-            match entries::read_entry(data_dir, &id).await {
-                Ok(entry) => {
-                    let mut tags = entry.tags;
-                    if !tags.contains(&"unread".to_string()) {
-                        tags.push("unread".to_string());
-                    }
-                    match entries::set_entry_tags(data_dir, &id, tags).await {
-                        Ok(_) => println!("Marked as unread."),
-                        Err(e) => die(e),
-                    }
                 }
                 Err(e) => die(e),
             }

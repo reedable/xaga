@@ -2,8 +2,9 @@ use std::collections::HashSet;
 
 use serde::Serialize;
 use tauri::{Emitter, State};
+use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
 use xaga_core::feeds;
-use xaga_core::types::Entry;
+use xaga_core::types::{Entry, Kind};
 
 use crate::{feeds_dir, get_bookmarked, get_unread, AppState};
 use super::parse_item_filter;
@@ -28,9 +29,13 @@ pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<feeds::
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
-    feeds::add_feed(&state.http_client, &dir, &library, &url, &unread, &bookmarked)
+    let (feed, created) = feeds::add_feed(&state.http_client, &dir, &library, &url, &unread, &bookmarked)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    for id in created {
+        state.enqueue(Tier::Maintenance, Job::UpsertContent { entity: EntityRef::new(id, Kind::Entry) });
+    }
+    Ok(feed)
 }
 
 #[tauri::command]
@@ -38,9 +43,12 @@ pub async fn refresh_feed(window: tauri::Window, id: String, state: State<'_, Ap
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
-    let feed = feeds::refresh_feed(&state.http_client, &dir, &library, &feeds::FeedId(id), &unread, &bookmarked)
+    let (feed, created) = feeds::refresh_feed(&state.http_client, &dir, &library, &feeds::FeedId(id), &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())?;
+    for id in created {
+        state.enqueue(Tier::Maintenance, Job::UpsertContent { entity: EntityRef::new(id, Kind::Entry) });
+    }
     window.emit("feed:refreshed", &feed).ok();
     Ok(feed)
 }
@@ -49,10 +57,19 @@ pub async fn refresh_feed(window: tauri::Window, id: String, state: State<'_, Ap
 pub async fn set_feed_pinned(id: String, pinned: bool, state: State<'_, AppState>) -> Result<(), String> {
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
-    feeds::set_feed_pinned(&dir, &feeds::FeedId(id), pinned)
+    let changed = feeds::set_feed_pinned(&dir, &feeds::FeedId(id.clone()), pinned)
         .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    if changed {
+        state.enqueue(
+            Tier::Interactive,
+            Job::SyncState {
+                entity: EntityRef::new(id, Kind::Feed),
+                state: StatePatch { is_pinned: Some(pinned), ..Default::default() },
+            },
+        );
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -60,9 +77,14 @@ pub async fn rename_feed(id: String, title: String, state: State<'_, AppState>) 
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
-    feeds::rename_feed(&dir, &feeds::FeedId(id), &title, &unread, &bookmarked)
+    let feed = feeds::rename_feed(&dir, &feeds::FeedId(id.clone()), &title, &unread, &bookmarked)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state.enqueue(
+        Tier::Regular,
+        Job::EmbedVector { entity: EntityRef::new(id, Kind::Feed) },
+    );
+    Ok(feed)
 }
 
 #[tauri::command]
@@ -109,7 +131,15 @@ pub async fn import_feeds(
         }
 
         match feeds::add_feed(&state.http_client, &dir, &library, &normalized, &unread, &bookmarked).await {
-            Ok(feed) => added.push(feed),
+            Ok((feed, created)) => {
+                for id in created {
+                    state.enqueue(
+                        Tier::Maintenance,
+                        Job::UpsertContent { entity: EntityRef::new(id, Kind::Entry) },
+                    );
+                }
+                added.push(feed);
+            }
             Err(e) => {
                 log::warn!("import_feeds: failed to add {normalized:?}: {e}");
                 failed.push(normalized);

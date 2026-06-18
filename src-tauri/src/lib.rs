@@ -1,6 +1,5 @@
 mod article_loader;
 mod commands;
-mod file_watchers;
 mod ssrf_proxy;
 
 use std::path::{Path, PathBuf};
@@ -629,8 +628,6 @@ pub fn run() {
                             Ok(rdb) => *setup_embeddings_read.lock().unwrap() = Some(rdb),
                             Err(e) => log::error!("startup: read handle open failed: {e}"),
                         }
-
-                        file_watchers::watch(lib_path.clone(), svc.job_sender());
 
                         let embeddings_app_handle = app_handle.clone();
                         let priority_drained_rx = svc.subscribe_to_priority_drained();

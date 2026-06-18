@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
 use xaga_core::embeddings::EmbeddingsDb;
-use xaga_core::feeds::{self, FeedId, RepairOutcome};
+use xaga_core::feeds::{self, RepairOutcome};
 
 use crate::die;
 
@@ -16,43 +16,20 @@ pub struct FeedsArgs {
 
 #[derive(Subcommand)]
 pub enum FeedsCommand {
-    /// Fetch and save a new feed
-    Add { url: String },
-    /// Remove a saved feed by ID
-    Remove { id: FeedId },
     /// List all saved feeds
     List,
-    /// Re-fetch one feed (or all if no ID given)
-    Refresh { id: Option<FeedId> },
     /// Repair feed files: add missing <link rel="self"> and rename files whose
     /// hash no longer matches their feed URL
     Repair,
 }
 
-pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &PathBuf, data_dir: &PathBuf) {
+pub async fn handle(cmd: FeedsCommand, feeds_dir: &PathBuf, data_dir: &PathBuf) {
     match cmd {
-        FeedsCommand::Add { url } => {
-            let (unread, bookmarked) = read_state_sets(data_dir).await;
-            eprint!("Fetching {url} ... ");
-            match feeds::add_feed(client, feeds_dir, data_dir, &url, &unread, &bookmarked).await {
-                Ok(feed) => {
-                    eprintln!("done");
-                    println!("[{}] {}", feed.id, feed.title);
-                }
-                Err(e) => die(e),
-            }
-        }
-
-        FeedsCommand::Remove { id } => match feeds::remove_feed(feeds_dir, &id).await {
-            Ok(()) => println!("Removed: {id}"),
-            Err(e) => die(e),
-        },
-
         FeedsCommand::List => {
             let (unread, bookmarked) = read_state_sets(data_dir).await;
             match feeds::list_feeds(feeds_dir, &unread, &bookmarked).await {
                 Ok(feeds) if feeds.is_empty() => {
-                    println!("No feeds saved. Use `feeds add <url>` to add one.");
+                    println!("No feeds saved.");
                 }
                 Ok(feeds) => {
                     for feed in &feeds {
@@ -63,40 +40,6 @@ pub async fn handle(cmd: FeedsCommand, client: &reqwest::Client, feeds_dir: &Pat
                     }
                 }
                 Err(e) => die(e),
-            }
-        }
-
-        FeedsCommand::Refresh { id: Some(id) } => {
-            let (unread, bookmarked) = read_state_sets(data_dir).await;
-            eprint!("Refreshing {id} ... ");
-            match feeds::refresh_feed(client, feeds_dir, data_dir, &id, &unread, &bookmarked).await {
-                Ok(feed) => {
-                    eprintln!("done");
-                    println!("[{}] {}", feed.id, feed.title);
-                }
-                Err(e) => die(e),
-            }
-        }
-
-        FeedsCommand::Refresh { id: None } => {
-            let (unread, bookmarked) = read_state_sets(data_dir).await;
-            let results = feeds::refresh_all_feeds(client, feeds_dir, data_dir, &unread, &bookmarked).await;
-            if results.is_empty() {
-                println!("No feeds saved. Use `feeds add <url>` to add one.");
-                return;
-            }
-            let mut had_error = false;
-            for (id, result) in &results {
-                match result {
-                    Ok(feed) => println!("  ok  [{}] {}", id, feed.title),
-                    Err(e) => {
-                        eprintln!("  err [{id}] {e}");
-                        had_error = true;
-                    }
-                }
-            }
-            if had_error {
-                std::process::exit(1);
             }
         }
 

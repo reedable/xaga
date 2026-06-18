@@ -94,7 +94,7 @@ pub async fn add_feed(
     url: &str,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
-) -> Result<Feed> {
+) -> Result<(Feed, Vec<String>)> {
     let url = if url.trim_start().starts_with("http://") {
         format!("https://{}", url.trim_start()[7..].trim_start())
     } else {
@@ -121,6 +121,7 @@ pub async fn add_feed(
     };
 
     write_atom_atomic(feeds_dir, &id, &atom_feed).await?;
+    let mut created = Vec::new();
     for ae in &new_atom_entries {
         let e = super::feed_entry::atom_entry_to_entry(ae);
         if e.url.is_empty() {
@@ -133,7 +134,7 @@ pub async fn add_feed(
         {
             continue;
         }
-        let _ = crate::entries::write_entry(
+        if crate::entries::write_entry(
             data_dir,
             &e.url,
             &e.title,
@@ -141,11 +142,15 @@ pub async fn add_feed(
             e.updated_at.as_deref(),
             e.summary.as_deref(),
         )
-        .await;
+        .await
+        .is_ok()
+        {
+            created.push(e.id);
+        }
     }
     let created_at = file_created_at(&path, Some(*atom_feed.updated())).await;
     let summary = feed_summary(&id, &atom_feed, created_at, unread, bookmarked);
-    Ok(summary)
+    Ok((summary, created))
 }
 
 /// Re-fetch a feed by ID and merge new entries into the existing Atom file.
@@ -157,7 +162,7 @@ pub async fn refresh_feed(
     id: &FeedId,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
-) -> Result<Feed> {
+) -> Result<(Feed, Vec<String>)> {
     let path = xml_path(feeds_dir, id);
     if !path.exists() {
         return Err(FeedError::NotFound(id.clone()));
@@ -173,9 +178,9 @@ pub async fn refresh_feed(
 
     let created_at = file_created_at(&path, Some(*existing.updated())).await;
     write_atom_atomic(feeds_dir, id, &existing).await?;
-    crate::recovery::reconcile_atom_file(data_dir, id.as_str()).await;
+    let created = crate::recovery::reconcile_atom_file(data_dir, id.as_str()).await;
     let summary = feed_summary(id, &existing, created_at, unread, bookmarked);
-    Ok(summary)
+    Ok((summary, created))
 }
 
 /// Re-fetch all feeds. Per-feed errors are collected rather than propagated early.
@@ -185,7 +190,7 @@ pub async fn refresh_all_feeds(
     data_dir: &Path,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
-) -> Vec<(FeedId, Result<Feed>)> {
+) -> Vec<(FeedId, Result<(Feed, Vec<String>)>)> {
     let ids = match list_feed_ids(feeds_dir).await {
         Ok(ids) => ids,
         Err(e) => return vec![(FeedId(String::new()), Err(e))],
@@ -244,23 +249,26 @@ pub async fn feed_embedding_meta(feeds_dir: &Path) -> Vec<FeedMeta> {
     };
     let mut metas = Vec::with_capacity(ids.len());
     for id in ids {
-        let path = xml_path(feeds_dir, &id);
-        let Ok(xml) = tokio::fs::read_to_string(&path).await else {
-            continue;
-        };
-        let Ok(feed) = parse_atom(&xml) else {
-            continue;
-        };
-        let is_pinned = is_feed_pinned(&feed);
-        metas.push(FeedMeta {
-            id: id.to_string(),
-            url: self_link_url(&feed).unwrap_or_default(),
-            title: feed.title().value.clone(),
-            subtitle: feed.subtitle().map(|s| s.value.clone()).unwrap_or_default(),
-            is_pinned,
-        });
+        if let Some(meta) = feed_embedding_meta_one(feeds_dir, &id).await {
+            metas.push(meta);
+        }
     }
     metas
+}
+
+/// Reads a single feed's `.atom` and returns its embedding metadata, or `None` if the
+/// file is missing or unparseable.
+pub async fn feed_embedding_meta_one(feeds_dir: &Path, id: &FeedId) -> Option<FeedMeta> {
+    let path = xml_path(feeds_dir, id);
+    let xml = tokio::fs::read_to_string(&path).await.ok()?;
+    let feed = parse_atom(&xml).ok()?;
+    Some(FeedMeta {
+        id: id.to_string(),
+        url: self_link_url(&feed).unwrap_or_default(),
+        title: feed.title().value.clone(),
+        subtitle: feed.subtitle().map(|s| s.value.clone()).unwrap_or_default(),
+        is_pinned: is_feed_pinned(&feed),
+    })
 }
 
 /// Adds (or removes) the app-local `pinned` category on a feed's `.atom`, under
