@@ -1,7 +1,7 @@
 use tauri::State;
-use xaga_core::embeddings::EmbeddingsDb;
+use xaga_core::embeddings::{EmbeddingsDb, EntityRef, Job, StatePatch, Tier};
 use xaga_core::entries;
-use xaga_core::types::{Entry, ItemFilter, SavedItem};
+use xaga_core::types::{Entry, ItemFilter, Kind, SavedItem};
 
 use crate::AppState;
 use super::parse_item_filter;
@@ -17,7 +17,15 @@ pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<E
     let data_dir = state.library.read().unwrap().clone();
     let current = entries::read_entry(&data_dir, &id).await.map_err(|e| e.to_string())?;
     let tags = current.tags.into_iter().filter(|t| t != "unread").collect();
-    entries::set_entry_tags(&data_dir, &id, tags).await.map_err(|e| e.to_string())
+    let entry = entries::set_entry_tags(&data_dir, &id, tags).await.map_err(|e| e.to_string())?;
+    state.enqueue(
+        Tier::Interactive,
+        Job::SyncState {
+            entity: EntityRef::new(id, Kind::Entry),
+            state: StatePatch { is_unread: Some(false), ..Default::default() },
+        },
+    );
+    Ok(entry)
 }
 
 #[tauri::command]
@@ -28,7 +36,15 @@ pub async fn mark_entry_unread(id: String, state: State<'_, AppState>) -> Result
     if !tags.contains(&"unread".to_string()) {
         tags.push("unread".to_string());
     }
-    entries::set_entry_tags(&data_dir, &id, tags).await.map_err(|e| e.to_string())
+    let entry = entries::set_entry_tags(&data_dir, &id, tags).await.map_err(|e| e.to_string())?;
+    state.enqueue(
+        Tier::Interactive,
+        Job::SyncState {
+            entity: EntityRef::new(id, Kind::Entry),
+            state: StatePatch { is_unread: Some(true), ..Default::default() },
+        },
+    );
+    Ok(entry)
 }
 
 #[tauri::command]

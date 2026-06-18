@@ -1,7 +1,8 @@
 use tauri::State;
+use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
 use xaga_core::item::{self, EmbeddedItemSource};
 use xaga_core::topics::{self, Topic};
-use xaga_core::types::{CollectionItem, ItemFilter, RankedItem, SavedItem};
+use xaga_core::types::{CollectionItem, ItemFilter, Kind, RankedItem, SavedItem};
 
 use crate::{get_unread, AppState};
 use super::{parse_item_filter, parse_item_sort};
@@ -19,9 +20,14 @@ pub async fn save_topic(
     let existing_items = topics::read_topic(&data_dir, &id).await
         .map(|t| t.items)
         .unwrap_or_default();
-    topics::save_topic(&data_dir, &id, &title, &content, threshold, existing_items)
+    let topic = topics::save_topic(&data_dir, &id, &title, &content, threshold, existing_items)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state.enqueue(
+        Tier::Interactive,
+        Job::UpsertContent { entity: EntityRef::new(id, Kind::Topic) },
+    );
+    Ok(topic)
 }
 
 #[tauri::command]
@@ -32,9 +38,14 @@ pub async fn create_topic(
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
     let data_dir = state.library.read().unwrap().clone();
-    topics::create_topic(&data_dir, &title, &content, threshold)
+    let topic = topics::create_topic(&data_dir, &title, &content, threshold)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state.enqueue(
+        Tier::Interactive,
+        Job::UpsertContent { entity: EntityRef::new(topic.id.clone(), Kind::Topic) },
+    );
+    Ok(topic)
 }
 
 #[tauri::command]
@@ -42,8 +53,15 @@ pub async fn set_topic_pinned(id: String, pinned: bool, state: State<'_, AppStat
     let data_dir = state.library.read().unwrap().clone();
     topics::set_topic_pinned(&data_dir, &id, pinned)
         .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state.enqueue(
+        Tier::Interactive,
+        Job::SyncState {
+            entity: EntityRef::new(id, Kind::Topic),
+            state: StatePatch { is_pinned: Some(pinned), ..Default::default() },
+        },
+    );
+    Ok(())
 }
 
 #[tauri::command]
@@ -104,7 +122,12 @@ pub async fn delete_topic(id: String, state: State<'_, AppState>) -> Result<(), 
     let data_dir = state.library.read().unwrap().clone();
     topics::delete_topic(&data_dir, &id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state.enqueue(
+        Tier::Interactive,
+        Job::Delete { entity: EntityRef::new(id, Kind::Topic) },
+    );
+    Ok(())
 }
 
 #[tauri::command]
@@ -114,9 +137,12 @@ pub async fn add_topic_item(
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
     let data_dir = state.library.read().unwrap().clone();
-    topics::add_topic_item(&data_dir, &topic_id, item)
+    let member_id = item.id().to_string();
+    let topic = topics::add_topic_item(&data_dir, &topic_id, item)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state.enqueue(Tier::Interactive, Job::AddMember { topic_id, member_id });
+    Ok(topic)
 }
 
 #[tauri::command]
@@ -126,9 +152,11 @@ pub async fn remove_topic_item(
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
     let data_dir = state.library.read().unwrap().clone();
-    topics::remove_topic_item(&data_dir, &topic_id, &item_id)
+    let topic = topics::remove_topic_item(&data_dir, &topic_id, &item_id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state.enqueue(Tier::Interactive, Job::RemoveMember { topic_id, member_id: item_id });
+    Ok(topic)
 }
 
 #[tauri::command]

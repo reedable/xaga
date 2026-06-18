@@ -11,7 +11,7 @@ use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuIte
 use tauri::window::Color;
 use tauri::{Emitter, Manager, Runtime, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_window_state::StateFlags;
-use xaga_core::embeddings::{EmbeddingService, EmbeddingsDb, EmbeddingsError, ShutdownReason};
+use xaga_core::embeddings::{EmbeddingService, EmbeddingsDb, EmbeddingsError, Job, ShutdownReason, Tier};
 
 pub(crate) const DEFAULT_LOADER_TIMEOUT_SECS: u64 = 10;
 
@@ -42,6 +42,17 @@ pub(crate) struct AppState {
     /// DNS-rebind protection the loader webview gets. Distinct from `http_client`,
     /// which is unproxied and used for feeds/embeddings.
     pub(crate) ssrf_http_client: reqwest::Client,
+}
+
+impl AppState {
+    /// Enqueues a job onto the embedding service if it is running. No-op when the
+    /// service isn't present (e.g. another instance holds the library lock). The
+    /// `flume` send is non-blocking and is never held across an `.await`.
+    pub(crate) fn enqueue(&self, tier: Tier, job: Job) {
+        if let Some(svc) = self.embedding_service.lock().unwrap().as_ref() {
+            svc.enqueue(tier, job);
+        }
+    }
 }
 
 pub(crate) fn feeds_dir(library: &Path) -> PathBuf {

@@ -1,9 +1,9 @@
 use tauri::{AppHandle, Emitter, Manager, State};
 use xaga_core::articles;
-use xaga_core::embeddings::EmbeddingsDb;
+use xaga_core::embeddings::{EmbeddingsDb, EntityRef, Job, StatePatch, Tier};
 use xaga_core::entries;
 use xaga_core::topics;
-use xaga_core::types::AnnotationSummary;
+use xaga_core::types::{AnnotationSummary, Kind};
 
 use base64::Engine as _;
 
@@ -275,7 +275,7 @@ pub async fn save_article(
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
     let data_dir = state.library.read().unwrap().clone();
-    articles::save_article(
+    let article = articles::save_article(
         &data_dir,
         &id,
         &url,
@@ -287,7 +287,12 @@ pub async fn save_article(
         &markdown,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    state.enqueue(
+        Tier::Interactive,
+        Job::UpsertContent { entity: EntityRef::new(id, Kind::Entry) },
+    );
+    Ok(article)
 }
 
 #[tauri::command]
@@ -302,7 +307,7 @@ pub async fn create_article(
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
     let data_dir = state.library.read().unwrap().clone();
-    articles::create_article(
+    let article = articles::create_article(
         &data_dir,
         &url,
         &title,
@@ -313,7 +318,12 @@ pub async fn create_article(
         &markdown,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+    state.enqueue(
+        Tier::Interactive,
+        Job::UpsertContent { entity: EntityRef::new(article.meta.id.clone(), Kind::Entry) },
+    );
+    Ok(article)
 }
 
 #[tauri::command]
@@ -342,6 +352,13 @@ pub async fn read_article(
         let _ = entries::set_entry_tags(&data_dir, &id, tags).await;
     }
 
+    state.enqueue(
+        Tier::Interactive,
+        Job::SyncState {
+            entity: EntityRef::new(id, Kind::Entry),
+            state: StatePatch { is_unread: Some(false), ..Default::default() },
+        },
+    );
     Ok(article)
 }
 
@@ -365,9 +382,11 @@ pub async fn add_annotation(
         note,
         created_at: String::new(),
     };
-    articles::add_annotation(&data_dir, &article_id, annotation)
+    let article = articles::add_annotation(&data_dir, &article_id, annotation)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state.enqueue(Tier::Interactive, Job::SyncAnnotations { id: article_id });
+    Ok(article)
 }
 
 #[tauri::command]
@@ -405,7 +424,13 @@ pub async fn remove_annotation(
     };
     for topic_id in topic_ids {
         let _ = topics::remove_topic_item(&data_dir, &topic_id, &annotation_id).await;
+        state.enqueue(
+            Tier::Interactive,
+            Job::RemoveMember { topic_id, member_id: annotation_id.clone() },
+        );
     }
+
+    state.enqueue(Tier::Interactive, Job::SyncAnnotations { id: article_id });
 
     window.emit("annotation:removed", &annotation_id).ok();
 

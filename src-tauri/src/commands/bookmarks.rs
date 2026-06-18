@@ -1,7 +1,7 @@
 use serde::Serialize;
 use tauri::State;
 use xaga_core::bookmarks;
-use xaga_core::embeddings::{EntityRef, Job, Tier};
+use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
 use xaga_core::entries;
 use xaga_core::types::{Entry, Kind};
 
@@ -27,9 +27,17 @@ pub async fn add_bookmark(
     if !tags.contains(&"bookmark".to_string()) {
         tags.push("bookmark".to_string());
     }
-    entries::set_entry_tags(&data_dir, &id, tags)
+    let entry = entries::set_entry_tags(&data_dir, &id, tags)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state.enqueue(
+        Tier::Interactive,
+        Job::SyncState {
+            entity: EntityRef::new(id, Kind::Entry),
+            state: StatePatch { is_bookmarked: Some(true), ..Default::default() },
+        },
+    );
+    Ok(entry)
 }
 
 #[tauri::command]
@@ -42,9 +50,17 @@ pub async fn remove_bookmark(
         .await
         .map_err(|e| e.to_string())?;
     let tags: Vec<String> = current.tags.into_iter().filter(|t| t != "bookmark").collect();
-    entries::set_entry_tags(&data_dir, &id, tags)
+    let entry = entries::set_entry_tags(&data_dir, &id, tags)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state.enqueue(
+        Tier::Interactive,
+        Job::SyncState {
+            entity: EntityRef::new(id, Kind::Entry),
+            state: StatePatch { is_bookmarked: Some(false), ..Default::default() },
+        },
+    );
+    Ok(entry)
 }
 
 #[tauri::command]
@@ -62,16 +78,11 @@ pub async fn import_bookmarks(
 
     // Import writes entry files directly; enqueue their indexing explicitly (bulk →
     // Maintenance tier) so imported bookmarks get indexed without the watcher.
-    {
-        let svc = state.embedding_service.lock().unwrap();
-        if let Some(svc) = svc.as_ref() {
-            for id in result.added.iter().chain(result.updated.iter()) {
-                svc.enqueue(
-                    Tier::Maintenance,
-                    Job::UpsertContent { entity: EntityRef::new(id.clone(), Kind::Entry) },
-                );
-            }
-        }
+    for id in result.added.iter().chain(result.updated.iter()) {
+        state.enqueue(
+            Tier::Maintenance,
+            Job::UpsertContent { entity: EntityRef::new(id.clone(), Kind::Entry) },
+        );
     }
 
     Ok(BookmarkImportResult {
