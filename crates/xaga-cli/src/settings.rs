@@ -36,7 +36,7 @@ pub fn load() -> Config {
 pub fn save(config: &Config) -> Result<(), String> {
     let path = rc_path().ok_or("cannot determine home directory")?;
     let text = toml::to_string_pretty(config).map_err(|e| e.to_string())?;
-    std::fs::write(&path, text).map_err(|e| e.to_string())?;
+    xaga_core::fs::write_atomic(&path, text.as_bytes()).map_err(|e| e.to_string())?;
     Ok(())
 }
 

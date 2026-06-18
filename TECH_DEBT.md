@@ -109,3 +109,19 @@ listed above.
   `toSavedItem` mints, switch the guards to the brand-**and**-shape form above.
   [TauriPlatform.ts](src/platform/TauriPlatform.ts) `toSavedItem`,
   [types.ts](src/types.ts) `isEntry`/`isFeed`/`isWebResource`.
+
+## Theme / appearance
+
+- [ ] **Theme-mismatch white flash when an explicit theme differs from the OS.** When the
+  user has manually set Dark in Settings while the OS is Light, launch briefly shows
+  dark → white → dark (and the reverse — white → dark → white — for explicit Light on a Dark
+  OS). The cause is **not** the transparent-webview approach: the native window paints the
+  correct color first (Rust resolves the persisted theme in `setup()` and calls
+  `set_background_color`). The middle frame is the frontend rendering with the wrong
+  `themeMode` because the persisted theme loads asynchronously (`getTheme()`) *after* first
+  paint, so the initial render falls back to `"auto"` + the OS preference, which disagrees
+  with the explicit setting. Fix: make the resolved theme available synchronously to the
+  first render (e.g. Rust-injected value or a `localStorage` mirror) rather than anything
+  about `drawsBackground`.
+  [AppearanceProvider.tsx](src/providers/AppearanceProvider.tsx) `themeSetting` init (`"auto"`),
+  `themeMode` derivation, and the async `getTheme()` effect.

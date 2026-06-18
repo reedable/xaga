@@ -4,6 +4,7 @@ pub mod entries;
 pub mod bookmarks;
 pub mod embeddings;
 pub mod feeds;
+pub mod fs;
 pub mod filter;
 pub mod item;
 pub mod recovery;

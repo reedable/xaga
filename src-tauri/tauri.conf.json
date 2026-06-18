@@ -6,8 +6,8 @@
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeDevCommand": "npm run icons && npm run dev",
+    "beforeBuildCommand": "npm run icons && npm run build"
   },
   "app": {
     "macOSPrivateApi": true,

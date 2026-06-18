@@ -102,10 +102,8 @@ pub(crate) fn load_settings(path: &Path) -> UserSettings {
 }
 
 pub(crate) fn save_settings(path: &Path, settings: &UserSettings) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(path, serde_json::to_string_pretty(settings).unwrap())
+    let json = serde_json::to_string_pretty(settings).unwrap();
+    xaga_core::fs::write_atomic(path, json.as_bytes())
 }
 
 // ── Appearance helpers ───────────────────────────────────────────────────────────

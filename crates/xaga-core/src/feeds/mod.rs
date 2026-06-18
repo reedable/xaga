@@ -48,21 +48,15 @@ pub(super) fn xml_path(feeds_dir: &Path, id: &FeedId) -> PathBuf {
     feeds_dir.join(format!("{id}.atom"))
 }
 
-pub(super) fn tmp_xml_path(feeds_dir: &Path, id: &FeedId) -> PathBuf {
-    feeds_dir.join(format!("{id}.atom.tmp"))
-}
-
 pub(super) async fn write_atom_atomic(
     feeds_dir: &Path,
     id: &FeedId,
     feed: &atom::Feed,
 ) -> Result<()> {
-    let tmp = tmp_xml_path(feeds_dir, id);
     let mut buf = Vec::new();
     feed.write_to(&mut buf)
         .map_err(|e| FeedError::AtomParse(e.to_string()))?;
-    tokio::fs::write(&tmp, &buf).await?;
-    tokio::fs::rename(&tmp, xml_path(feeds_dir, id)).await?;
+    crate::fs::write_atomic_async(xml_path(feeds_dir, id), buf).await?;
     Ok(())
 }
 
