@@ -20,7 +20,7 @@ import {
   isEntry,
   isFeed,
   isTopic,
-  type Embedded,
+  type Ranked,
   type Item,
 } from "../../types";
 import cx from "../../utils/cx";
@@ -48,7 +48,7 @@ export function SearchResultList({
   const { onUnreadChanged, onBookmarkChanged } = useEvents();
   const [, abortControllerRef] = useAbortController();
   const { feeds } = useFeeds(abortControllerRef);
-  const [results, setResults] = useState<(Embedded & Item)[]>([]);
+  const [results, setResults] = useState<Ranked<Item>[]>([]);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("entries");
 
   const visibleResults = useMemo((): Item[] => {

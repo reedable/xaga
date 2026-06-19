@@ -14,7 +14,7 @@ export function useAnnotations(abortControllerRef: RefObject<AbortController>) {
   /** Creates or updates an annotation. The caller owns the id. createdAt is set by the backend. */
   const saveAnnotation = useCallback(
     async (
-      annotation: Omit<Annotation, "createdAt" | "updatedAt">
+      annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">
     ): Promise<void> => {
       const signal = abortControllerRef.current.signal;
       const updatedArticle = await platform.addAnnotation(signal, annotation);

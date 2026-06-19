@@ -18,7 +18,7 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     async (
       topic: Omit<
         Topic,
-        "id" | "createdAt" | "unreadCount" | "entryCount" | "isPinned"
+        "id" | "createdAt" | "unreadCount" | "entryCount" | "isPinned" | "__kind" | "members"
       >
     ) => {
       const signal = abortControllerRef.current.signal;

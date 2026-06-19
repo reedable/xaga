@@ -72,9 +72,9 @@ export function AppLayout() {
       let topic: Topic | undefined;
 
       if (editingTopic) {
-        topic = await saveTopic({ ...editingTopic, title, content, threshold });
+        topic = await saveTopic({ ...editingTopic, title, description: content, threshold });
       } else {
-        topic = await createTopic({ title, content, threshold });
+        topic = await createTopic({ title, description: content, threshold });
       }
 
       if (topic) {

@@ -9,7 +9,7 @@ import {
   isFilter,
   isTopic,
   type Annotation,
-  type Collection,
+  type Countable,
   type Entry,
   type Feed,
   type Filter,
@@ -94,7 +94,7 @@ export default function useRouter() {
   );
 
   const selectCollection = useCallback(
-    (collection: Collection, filter?: Filter) => {
+    (collection: Countable, filter?: Filter) => {
       if (isFeed(collection)) return selectFeed(collection, filter);
       if (isTopic(collection)) return selectTopic(collection, filter);
 

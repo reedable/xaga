@@ -184,12 +184,12 @@ impl Item for SavedItem {
     fn reference(&self) -> &str { self.reference.as_deref().unwrap_or("") }
 }
 
-// ── AnnotationSummary ─────────────────────────────────────────────────────────
+// ── PartialAnnotation ─────────────────────────────────────────────────────────
 
-/// A lightweight annotation record sourced from the embeddings DB.
-/// Contains only what LanceDB stores — no `text[]`, `occurrence[]`, or `note`.
+/// An annotation record as stored in the embeddings DB — only what LanceDB holds:
+/// no `text[]`, `occurrence[]`, or `note` (those live in the article's `.md`).
 #[derive(Debug, Serialize)]
-pub struct AnnotationSummary {
+pub struct PartialAnnotation {
     pub id: String,
     /// The ID of the article this annotation belongs to.
     pub reference: String,

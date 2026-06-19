@@ -67,7 +67,7 @@ export default function EditTopicDialog({
   useEffect(() => {
     if (open && !wasOpen.current) {
       setTitle(topic?.title ?? initialTitle ?? "");
-      setDescription(topic?.content ?? "");
+      setDescription(topic?.description ?? "");
       setThresholdString((topic?.threshold ?? TOPIC_THRESHOLD).toFixed(2));
       setPinnedState(pinnedTopicIds.includes(topic?.id ?? ""));
     }

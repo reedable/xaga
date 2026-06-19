@@ -7,17 +7,10 @@
       "layers" : [
         {
           "glass" : false,
-          "image-name" : "Image.png",
-          "name" : "Image"
+          "image-name" : "Image 2.png",
+          "name" : "Image 2"
         }
       ],
-      "position" : {
-        "scale" : 1,
-        "translation-in-points" : [
-          0,
-          -8
-        ]
-      },
       "shadow" : {
         "kind" : "neutral",
         "opacity" : 0.5

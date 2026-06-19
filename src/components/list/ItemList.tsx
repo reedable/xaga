@@ -137,7 +137,7 @@ export function ItemList({
       if (item.title.toLowerCase().includes(lower)) return true;
       if (isEntry(item)) {
         if (item.url.toLowerCase().includes(lower)) return true;
-        if (item.summary?.toLowerCase().includes(lower)) return true;
+        if (item.description?.toLowerCase().includes(lower)) return true;
       }
       return false;
     });

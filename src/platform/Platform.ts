@@ -2,9 +2,10 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { createContext, useContext } from "react";
 import type {
   Annotation,
-  AnnotationSummary,
+  PartialAnnotation,
   Article,
-  Embedded,
+  Ranked,
+  RankedItem,
   Entry,
   Feed,
   Filter,
@@ -72,26 +73,26 @@ export interface Platform {
   // "Frontend type branding (`__kind`)".
   createArticle(
     signal: AbortSignal,
-    article: Omit<Article, "id" | "createdAt" | "__kind">
+    article: Omit<Article, "id" | "createdAt" | "__kind" | "isBookmarked">
   ): Promise<Article>;
 
   // Annotations
   addAnnotation(
     signal: AbortSignal,
-    annotation: Omit<Annotation, "createdAt" | "updatedAt">
+    annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">
   ): Promise<Article>;
   removeAnnotation(
     signal: AbortSignal,
     annotation: Pick<Annotation, "id" | "reference">
   ): Promise<Article>;
-  listAnnotations(signal: AbortSignal): Promise<AnnotationSummary[]>;
+  listAnnotations(signal: AbortSignal): Promise<PartialAnnotation[]>;
 
   // Topics
   createTopic(
     signal: AbortSignal,
     topic: Omit<
       Topic,
-      "id" | "createdAt" | "unreadCount" | "entryCount" | "isPinned"
+      "id" | "createdAt" | "unreadCount" | "entryCount" | "isPinned" | "__kind" | "members"
     >
   ): Promise<Topic>;
   saveTopic(signal: AbortSignal, topic: Topic): Promise<Topic>;
@@ -119,7 +120,7 @@ export interface Platform {
     signal: AbortSignal,
     itemId: string,
     minSimilarity?: number
-  ): Promise<Array<{ id: string } & Embedded>>;
+  ): Promise<RankedItem[]>;
 
   // Bookmarks
   addBookmark(signal: AbortSignal, id: string): Promise<Entry>;
@@ -135,7 +136,7 @@ export interface Platform {
     minSimilarity?: number | null,
     maxSimilarity?: number | null,
     limit?: number | null
-  ): Promise<(Embedded & Item)[]>;
+  ): Promise<Ranked<Item>[]>;
 
   queryByText(
     signal: AbortSignal,
@@ -144,7 +145,7 @@ export interface Platform {
     minSimilarity?: number | null,
     maxSimilarity?: number | null,
     limit?: number | null
-  ): Promise<(Embedded & Item)[]>;
+  ): Promise<Ranked<Item>[]>;
 
   // Theme
   getTheme(): Promise<string>;

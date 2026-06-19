@@ -9,7 +9,7 @@ import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRouter from "../../hooks/useRouter";
 import { ALL_ITEMS } from "../../Shortcuts";
-import { isFeed, isTopic, type Collection } from "../../types";
+import { isFeed, isTopic, type Countable } from "../../types";
 import ExpandableList from "./ExpandableList";
 import css from "./ShortcutList.module.css";
 import SidebarItem from "./SidebarItem";
@@ -17,7 +17,7 @@ import UnreadCount from "./UnreadCount";
 
 type ShortcutListProps = {
   isExpanded?: boolean;
-  shortcuts: Collection[];
+  shortcuts: Countable[];
   onClickHeader: () => void;
 };
 
@@ -32,7 +32,7 @@ export default function ShortcutList({
   const { loadingFeedIds } = useFeeds(abortControllerRef);
 
   const handleSelectShortcut = useCallback(
-    (collection: Collection) => selectCollection(collection),
+    (collection: Countable) => selectCollection(collection),
     [selectCollection]
   );
 

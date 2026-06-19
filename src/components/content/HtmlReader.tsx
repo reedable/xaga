@@ -47,7 +47,7 @@ interface HtmlReaderProps {
   annotationId?: string;
   onClickLink?: (url: string) => void; //outgoing links in the html content
   onSaveAnnotation?: (
-    annotation: Omit<Annotation, "createdAt" | "updatedAt">
+    annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">
   ) => void;
   onRemoveAnnotation?: (
     annotation: Pick<Annotation, "id" | "reference">
@@ -108,7 +108,7 @@ export function HtmlReader({
       setTooltip({
         text: ann.text,
         annotationId,
-        note: ann.note ?? null,
+        note: ann.content || null,
         color: ann.color,
         occurrence: ann.occurrence,
         position: toViewportPosition(rect),
@@ -154,7 +154,7 @@ export function HtmlReader({
           text: tooltip.text,
           occurrence: tooltip.occurrence,
           color,
-          note: note || undefined,
+          content: note,
         });
       } else if (color === null && tooltip.color !== null) {
         onRemoveAnnotation?.({ id: tooltip.annotationId, reference: entryId });
@@ -178,7 +178,7 @@ export function HtmlReader({
         text: tooltip.text,
         occurrence: tooltip.occurrence,
         color: tooltip.color,
-        note: tooltip.note ?? undefined,
+        content: tooltip.note ?? "",
       };
       onSaveAnnotation?.(annotation);
       await tooltipRef.current?.saveAnnotationToTopics(

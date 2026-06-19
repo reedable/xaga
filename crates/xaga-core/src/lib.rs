@@ -2,6 +2,7 @@ pub mod articles;
 pub mod opml;
 pub mod entries;
 pub mod bookmarks;
+pub mod domain;
 pub mod embeddings;
 pub mod feeds;
 pub mod fs;

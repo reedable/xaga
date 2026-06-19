@@ -14,7 +14,7 @@ use lancedb::DistanceType;
 use lancedb::query::{ExecutableQuery, QueryBase, Select};
 
 use super::EmbeddingsError;
-use crate::types::{AnnotationSummary, EmbeddedEntry, Entry, Kind};
+use crate::types::{PartialAnnotation, EmbeddedEntry, Entry, Kind};
 
 const EMBEDDING_DIM: i32 = 384;
 
@@ -1039,7 +1039,7 @@ impl EmbeddingsDb {
 
     /// Returns all annotation rows (those with a non-empty `reference` column),
     /// sorted by `created_at`.
-    pub async fn list_annotations(&self) -> Result<Vec<AnnotationSummary>, EmbeddingsError> {
+    pub async fn list_annotations(&self) -> Result<Vec<PartialAnnotation>, EmbeddingsError> {
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -1056,7 +1056,7 @@ impl EmbeddingsDb {
                 continue;
             };
             for i in 0..batch.num_rows() {
-                results.push(AnnotationSummary {
+                results.push(PartialAnnotation {
                     id: cols.ids.value(i).to_string(),
                     reference: cols.reference_at(i),
                     title: cols.titles.value(i).to_string(),

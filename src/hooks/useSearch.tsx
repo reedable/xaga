@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { SEARCH_THRESHOLD } from "../consts";
 import { usePlatform } from "../platform/Platform";
-import { isAbortError, type Embedded, type Item } from "../types";
+import { isAbortError, type Ranked, type Item } from "../types";
 
 export default function useSearch() {
   const platform = usePlatform();
@@ -10,7 +10,7 @@ export default function useSearch() {
   const abortRef = useRef(new AbortController());
 
   const search = useCallback(
-    async (text: string): Promise<(Embedded & Item)[] | undefined> => {
+    async (text: string): Promise<Ranked<Item>[] | undefined> => {
       abortRef.current.abort();
       abortRef.current = new AbortController();
       const signal = abortRef.current.signal;

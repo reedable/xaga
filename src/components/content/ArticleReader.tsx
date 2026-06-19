@@ -131,8 +131,8 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
         setTitle(article.title ?? "Untitled");
 
-        if (article.summary) {
-          const html = await markdownToHtml(article.summary);
+        if (article.description) {
+          const html = await markdownToHtml(article.description);
           setSummaryHtml(buildEntryHtml(html, htmlReaderStyle));
         }
 

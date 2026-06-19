@@ -6,9 +6,10 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { z } from "zod";
 import type {
   Annotation,
-  AnnotationSummary,
+  PartialAnnotation,
   Article,
-  Embedded,
+  Ranked,
+  RankedItem,
   Entry,
   Feed,
   Filter,
@@ -55,6 +56,7 @@ const toFeed = (data: z.infer<typeof FeedSchema>): Feed => {
     entryCount: data.entry_count,
     unreadCount: data.unread_count,
     isPinned: data.is_pinned,
+    members: [],
   };
 };
 
@@ -72,7 +74,7 @@ const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
     __kind: "entry",
     url: data.url,
     publishedAt: data.published_at ?? undefined,
-    summary: data.summary ?? undefined,
+    description: data.summary ?? undefined,
     isUnread: data.is_unread,
     isBookmarked: data.is_bookmarked,
   };
@@ -88,11 +90,13 @@ const TopicSchema = ItemSchema.extend({
 
 const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
   ...toItem(data),
-  content: data.content,
+  __kind: "topic",
+  description: data.content ?? undefined,
   threshold: data.threshold ?? undefined,
   entryCount: data.entry_count,
   unreadCount: data.unread_count,
   isPinned: data.is_pinned,
+  members: [],
 });
 
 const AnnotationSchema = z.object({
@@ -106,13 +110,14 @@ const AnnotationSchema = z.object({
 });
 
 const toAnnotation = (data: z.infer<typeof AnnotationSchema>): Annotation => ({
+  __kind: "annotation",
   id: data.id,
   title: data.text.join(" "),
   reference: data.reference,
   text: data.text,
   occurrence: data.occurrence,
   color: data.color,
-  note: data.note ?? undefined,
+  content: data.note ?? "",
   createdAt: data.created_at,
 });
 
@@ -127,18 +132,29 @@ const SavedItemSchema = z.object({
   color: z.string().optional(),
 });
 
-const toSavedItem = (data: z.infer<typeof SavedItemSchema>): SavedItem => ({
-  id: data.id,
-  title: data.title,
-  createdAt: data.created_at,
-  url: data.url,
-  isUnread: data.is_unread,
-  isBookmarked: data.is_bookmarked,
-  reference: data.reference,
-  color: data.color,
-});
+const toSavedItem = (data: z.infer<typeof SavedItemSchema>): SavedItem =>
+  data.reference !== undefined
+    ? // annotation row -> PartialAnnotation
+      {
+        id: data.id,
+        reference: data.reference,
+        title: data.title,
+        color: data.color ?? "",
+        createdAt: data.created_at,
+        url: data.url,
+      }
+    : // bookmark row -> Entry
+      {
+        __kind: "entry",
+        id: data.id,
+        title: data.title,
+        createdAt: data.created_at,
+        url: data.url,
+        isUnread: data.is_unread,
+        isBookmarked: data.is_bookmarked,
+      };
 
-const AnnotationSummarySchema = z.object({
+const PartialAnnotationSchema = z.object({
   id: z.string(),
   reference: z.string(),
   title: z.string(),
@@ -147,9 +163,9 @@ const AnnotationSummarySchema = z.object({
   url: z.string(),
 });
 
-const toAnnotationSummary = (
-  data: z.infer<typeof AnnotationSummarySchema>
-): AnnotationSummary => ({
+const toPartialAnnotation = (
+  data: z.infer<typeof PartialAnnotationSchema>
+): PartialAnnotation => ({
   id: data.id,
   reference: data.reference,
   title: data.title,
@@ -199,7 +215,7 @@ const EmbeddedSchema = z.object({
   similarity: z.number(),
 });
 
-function toEmbedded(data: z.infer<typeof EmbeddedSchema>): Embedded {
+function toEmbedded(data: z.infer<typeof EmbeddedSchema>): { similarity: number } {
   return { similarity: data.similarity };
 }
 
@@ -497,7 +513,7 @@ export class TauriPlatform implements Platform {
       title: article.title,
       publishedAt: article.publishedAt,
       updatedAt: article.updatedAt,
-      summary: article.summary,
+      summary: article.description,
       favicon: article.favicon ?? null,
       markdown: article.content,
     });
@@ -528,7 +544,7 @@ export class TauriPlatform implements Platform {
   // "Frontend type branding (`__kind`)".
   async createArticle(
     signal: AbortSignal,
-    article: Omit<Article, "id" | "createdAt" | "__kind">
+    article: Omit<Article, "id" | "createdAt" | "__kind" | "isBookmarked">
   ): Promise<Article> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -539,7 +555,7 @@ export class TauriPlatform implements Platform {
       title: article.title,
       publishedAt: article.publishedAt,
       updatedAt: article.updatedAt,
-      summary: article.summary,
+      summary: article.description,
       favicon: article.favicon ?? null,
       markdown: article.content,
     });
@@ -551,7 +567,7 @@ export class TauriPlatform implements Platform {
 
   async addAnnotation(
     signal: AbortSignal,
-    annotation: Omit<Annotation, "createdAt" | "updatedAt">
+    annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">
   ): Promise<Article> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -563,7 +579,7 @@ export class TauriPlatform implements Platform {
       text: annotation.text,
       occurrence: annotation.occurrence,
       color: annotation.color,
-      note: annotation.note ?? null,
+      note: annotation.content || null,
     });
 
     return ArticleSchema.transform(toArticle).parse(result);
@@ -584,7 +600,7 @@ export class TauriPlatform implements Platform {
     return ArticleSchema.transform(toArticle).parse(result);
   }
 
-  async listAnnotations(signal: AbortSignal): Promise<AnnotationSummary[]> {
+  async listAnnotations(signal: AbortSignal): Promise<PartialAnnotation[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "list_annotations" });
@@ -593,7 +609,7 @@ export class TauriPlatform implements Platform {
 
     return results
       .map((e) =>
-        AnnotationSummarySchema.transform(toAnnotationSummary).safeParse(e)
+        PartialAnnotationSchema.transform(toPartialAnnotation).safeParse(e)
       )
       .filter((e) => !e.error)
       .map((e) => e.data);
@@ -603,7 +619,10 @@ export class TauriPlatform implements Platform {
 
   async createTopic(
     signal: AbortSignal,
-    topic: Omit<Topic, "id" | "createdAt" | "unreadCount" | "isPinned">
+    topic: Omit<
+      Topic,
+      "id" | "createdAt" | "unreadCount" | "entryCount" | "isPinned" | "__kind" | "members"
+    >
   ): Promise<Topic> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -621,7 +640,7 @@ export class TauriPlatform implements Platform {
     const result = await invoker<unknown>("save_topic", {
       id: topic.id,
       title: topic.title,
-      content: topic.content,
+      content: topic.description ?? null,
       threshold: topic.threshold ?? null,
     });
 
@@ -725,11 +744,11 @@ export class TauriPlatform implements Platform {
     signal: AbortSignal,
     itemId: string,
     minSimilarity?: number
-  ): Promise<Array<{ id: string } & Embedded>> {
+  ): Promise<RankedItem[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "rank_topics_by_item" });
-    return invoker<Array<{ id: string } & Embedded>>("rank_topics_by_item", {
+    return invoker<RankedItem[]>("rank_topics_by_item", {
       itemId,
       minSimilarity: minSimilarity ?? null,
     });
@@ -793,7 +812,7 @@ export class TauriPlatform implements Platform {
     minSimilarity: number | null = null,
     maxSimilarity: number | null = null,
     limit: number | null = null
-  ): Promise<(Embedded & Item)[]> {
+  ): Promise<Ranked<Item>[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "query_by_item" });
@@ -821,7 +840,7 @@ export class TauriPlatform implements Platform {
     minSimilarity?: number | null,
     maxSimilarity?: number | null,
     limit?: number | null
-  ): Promise<(Embedded & Item)[]> {
+  ): Promise<Ranked<Item>[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "query_by_text" });

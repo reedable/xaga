@@ -3,7 +3,7 @@ use xaga_core::articles;
 use xaga_core::embeddings::{EmbeddingsDb, EntityRef, Job, StatePatch, Tier};
 use xaga_core::entries;
 use xaga_core::topics;
-use xaga_core::types::{AnnotationSummary, Kind};
+use xaga_core::types::{PartialAnnotation, Kind};
 
 use base64::Engine as _;
 
@@ -451,7 +451,7 @@ pub fn clear_webview_history(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn list_annotations(
     state: State<'_, AppState>,
-) -> Result<Vec<AnnotationSummary>, String> {
+) -> Result<Vec<PartialAnnotation>, String> {
     let data_dir = state.library.read().unwrap().clone();
     let db = EmbeddingsDb::open(&data_dir)
         .await

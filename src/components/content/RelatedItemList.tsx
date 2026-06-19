@@ -11,7 +11,7 @@ import useAbortController from "../../hooks/useAbortController";
 import { useEvents } from "../../hooks/useEvents";
 import useRelatedItems from "../../hooks/useRelatedItems";
 import useRouter from "../../hooks/useRouter";
-import { isAnnotation, type Embedded, type Item } from "../../types";
+import { isAnnotation, type Ranked, type Item } from "../../types";
 import cx from "../../utils/cx";
 import { abortable, decorate, retriable } from "../../utils/Decorator";
 import Logger from "../../utils/Logger";
@@ -28,7 +28,7 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
   const { selectItem } = useRouter();
   const [abort, abortControllerRef] = useAbortController();
   const { queryByItem } = useRelatedItems(abortControllerRef);
-  const [embeddedItems, setEmbeddedItems] = useState<(Embedded & Item)[]>([]);
+  const [embeddedItems, setEmbeddedItems] = useState<Ranked<Item>[]>([]);
   const { onUnreadChanged, onBookmarkChanged, onAnnotationChanged } =
     useEvents();
 
