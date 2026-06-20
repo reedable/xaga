@@ -19,10 +19,10 @@ fn entry_from_fm_ref(id: &str, fm: &Frontmatter) -> Entry {
         created_at: fm.created_at.clone(),
         published_at: fm.published_at.clone(),
         updated_at: fm.updated_at.clone(),
-        summary: fm.summary.clone(),
+        description: fm.summary.clone(),
         is_unread: fm.tags.contains(&"unread".to_string()),
         is_bookmarked: fm.tags.contains(&"bookmark".to_string()),
-        tags: fm.tags.clone(),
+        color: None,
     }
 }
 
@@ -67,9 +67,9 @@ async fn compute_vector(
 fn annotation_checksum(annotation: &Annotation) -> String {
     let mut h = sha2::Sha256::new();
     h.update(annotation.text.join(" ").as_bytes());
-    if let Some(note) = &annotation.note {
+    if !annotation.content.is_empty() {
         h.update(b"\n\n");
-        h.update(note.as_bytes());
+        h.update(annotation.content.as_bytes());
     }
     hex::encode(h.finalize())
 }
@@ -218,7 +218,7 @@ async fn embed_annotations(
 
         log::debug!("embed_annotations: embedding annotation {}", annotation.id);
         let title = annotation.text.join(" ");
-        let body = annotation.note.clone().unwrap_or_default();
+        let body = annotation.content.clone();
         let vector = compute_vector(embedder, title, body).await?;
         // Carry the existing row's topics forward — the topic path owns that column.
         let topics = existing.map(|e| e.topics).unwrap_or_default();
@@ -482,10 +482,10 @@ fn entry_from_row(row: &EmbeddingEntry) -> Entry {
         created_at: row.created_at.clone(),
         published_at: opt(&row.published_at),
         updated_at: opt(&row.updated_at),
-        summary: opt(&row.summary),
+        description: opt(&row.summary),
         is_unread: row.is_unread,
         is_bookmarked: row.is_bookmarked,
-        tags: row.tags.clone(),
+        color: None,
     }
 }
 

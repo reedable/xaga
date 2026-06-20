@@ -138,6 +138,51 @@ pub fn parse_document(raw: &str) -> Option<(Frontmatter, String)> {
     split_document(raw)
 }
 
+/// The `.md` frontmatter storage shape for an annotation. Storage keeps `note`; the domain
+/// `Annotation`'s `title`/`content` are derived here at the boundary (title = highlighted text,
+/// content = note). Mapped to/from the domain type by the `From` impls below.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct FrontmatterAnnotation {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub reference: String,
+    pub text: Vec<String>,
+    pub occurrence: Vec<u32>,
+    pub color: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    pub created_at: String,
+}
+
+impl From<FrontmatterAnnotation> for crate::types::Annotation {
+    fn from(a: FrontmatterAnnotation) -> Self {
+        crate::types::Annotation {
+            title: a.text.join(" "),
+            content: a.note.unwrap_or_default(),
+            id: a.id,
+            reference: a.reference,
+            text: a.text,
+            occurrence: a.occurrence,
+            color: a.color,
+            created_at: a.created_at,
+        }
+    }
+}
+
+impl From<&crate::types::Annotation> for FrontmatterAnnotation {
+    fn from(a: &crate::types::Annotation) -> Self {
+        FrontmatterAnnotation {
+            id: a.id.clone(),
+            reference: a.reference.clone(),
+            text: a.text.clone(),
+            occurrence: a.occurrence.clone(),
+            color: a.color.clone(),
+            note: (!a.content.is_empty()).then(|| a.content.clone()),
+            created_at: a.created_at.clone(),
+        }
+    }
+}
+
 #[derive(serde::Deserialize, Default)]
 struct FrontmatterRaw {
     #[serde(default)]
@@ -153,7 +198,7 @@ struct FrontmatterRaw {
     #[serde(default)]
     summary: Option<String>,
     #[serde(default)]
-    annotations: Vec<crate::types::Annotation>,
+    annotations: Vec<FrontmatterAnnotation>,
     #[serde(default)]
     threshold: Option<f32>,
     #[serde(default)]
@@ -181,7 +226,7 @@ fn split_document(raw: &str) -> Option<(Frontmatter, String)> {
             published_at: fm.published,
             updated_at: fm.updated,
             summary: fm.summary,
-            annotations: fm.annotations,
+            annotations: fm.annotations.into_iter().map(Into::into).collect(),
             threshold: fm.threshold,
             tags: fm.tags,
             favicon: fm.favicon,

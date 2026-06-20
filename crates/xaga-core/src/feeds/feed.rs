@@ -140,7 +140,7 @@ pub async fn add_feed(
             &e.title,
             e.published_at.as_deref(),
             e.updated_at.as_deref(),
-            e.summary.as_deref(),
+            e.description.as_deref(),
         )
         .await
         .is_ok()
@@ -744,18 +744,19 @@ fn feed_summary(
         .collect();
 
     let unread_count = entry_ids.iter().filter(|id| unread_ids.contains(*id)).count();
-    let bookmarked_count = entry_ids.iter().filter(|id| bookmarked_ids.contains(*id)).count();
+    let _bookmarked_count = entry_ids.iter().filter(|id| bookmarked_ids.contains(*id)).count();
 
     Feed {
         id: id.to_string(),
         url: self_link_url(feed).unwrap_or_default(),
         title: feed.title().value.clone(),
+        description: feed.subtitle().map(|s| s.value.clone()),
         entry_count: feed.entries().len(),
         unread_count,
-        bookmarked_count,
         created_at: created_at.to_rfc3339(),
         updated_at: Some(feed.updated().to_rfc3339()),
         is_pinned: is_feed_pinned(feed),
+        members: vec![],
     }
 }
 

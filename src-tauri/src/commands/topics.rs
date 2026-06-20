@@ -17,8 +17,8 @@ pub async fn save_topic(
 ) -> Result<Topic, String> {
     let data_dir = state.library.read().unwrap().clone();
     // Preserve existing manual items when editing from the UI
-    let existing_items = topics::read_topic(&data_dir, &id).await
-        .map(|t| t.items)
+    let existing_items = topics::read_topic_items(&data_dir, &id)
+        .await
         .unwrap_or_default();
     let topic = topics::save_topic(&data_dir, &id, &title, &content, threshold, existing_items)
         .await
@@ -95,11 +95,8 @@ pub async fn list_topics(state: State<'_, AppState>) -> Result<Vec<Topic>, Strin
         }
 
         // Manual items — both entries and annotations contribute to the count.
-        for item in &topic.items {
-            match item {
-                CollectionItem::Entry { id } => { all_ids.insert(id.clone()); }
-                CollectionItem::Annotation { id, .. } => { all_ids.insert(id.clone()); }
-            }
+        for item in &topic.members {
+            all_ids.insert(item.id().to_string());
         }
 
         topic.entry_count = all_ids.len();

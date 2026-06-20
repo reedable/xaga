@@ -15,8 +15,12 @@ pub async fn read_entry(id: String, state: State<'_, AppState>) -> Result<entrie
 #[tauri::command]
 pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
     let data_dir = state.library.read().unwrap().clone();
-    let current = entries::read_entry(&data_dir, &id).await.map_err(|e| e.to_string())?;
-    let tags = current.tags.into_iter().filter(|t| t != "unread").collect();
+    let tags: Vec<String> = entries::read_entry_tags(&data_dir, &id)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(|t| t != "unread")
+        .collect();
     let entry = entries::set_entry_tags(&data_dir, &id, tags).await.map_err(|e| e.to_string())?;
     state.enqueue(
         Tier::Interactive,
@@ -31,8 +35,7 @@ pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<E
 #[tauri::command]
 pub async fn mark_entry_unread(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
     let data_dir = state.library.read().unwrap().clone();
-    let current = entries::read_entry(&data_dir, &id).await.map_err(|e| e.to_string())?;
-    let mut tags = current.tags;
+    let mut tags = entries::read_entry_tags(&data_dir, &id).await.map_err(|e| e.to_string())?;
     if !tags.contains(&"unread".to_string()) {
         tags.push("unread".to_string());
     }

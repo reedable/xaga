@@ -461,7 +461,7 @@ async fn reconcile_topic_full(db: &EmbeddingsDb, data_dir: &Path, topic_id: &str
     match crate::topics::read_topic(data_dir, topic_id).await {
         Ok(topic) => {
             let member_ids: Vec<String> =
-                topic.items.iter().map(|i| i.id().to_string()).collect();
+                topic.members.iter().map(|i| i.id().to_string()).collect();
             if let Err(e) = reconcile_topic_membership(db, topic_id, &member_ids).await {
                 log::error!("reconcile topic {topic_id} failed: {e}");
             }
@@ -666,7 +666,7 @@ async fn dispatch_recovery(
                 Ok(topics) => {
                     for topic in &topics {
                         let member_ids: Vec<String> =
-                            topic.items.iter().map(|i| i.id().to_string()).collect();
+                            topic.members.iter().map(|i| i.id().to_string()).collect();
                         if let Err(e) =
                             reconcile_topic_membership(db, &topic.id, &member_ids).await
                         {

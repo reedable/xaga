@@ -45,6 +45,8 @@ export type PartialAnnotation = Pick<
   "id" | "title" | "createdAt" | "reference" | "color"
 > & { url: string };
 
+// An annotation in list form (saved list or embedding-query result). Identified by reference +
+// color + url; a full `Annotation` carries no url, which is what separates the two forms.
 export function isPartialAnnotation(item?: Item | null): item is PartialAnnotation {
   return (
     isItem(item) &&

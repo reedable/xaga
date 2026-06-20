@@ -16,7 +16,7 @@ import { useFeeds } from "../../hooks/useFeeds";
 import useRouter from "../../hooks/useRouter";
 import useSearch from "../../hooks/useSearch";
 import {
-  isAnnotation,
+  isPartialAnnotation,
   isEntry,
   isFeed,
   isTopic,
@@ -53,7 +53,7 @@ export function SearchResultList({
 
   const visibleResults = useMemo((): Item[] => {
     if (typeFilter === "topics") return results.filter(isTopic);
-    if (typeFilter === "annotations") return results.filter(isAnnotation);
+    if (typeFilter === "annotations") return results.filter(isPartialAnnotation);
     if (typeFilter === "feeds") {
       // Hybrid: name-matches first (local title/URL filter over all feeds), then the
       // semantic feed hits from the unified search appended after, deduped by id.
@@ -183,8 +183,8 @@ export function SearchResultList({
                 <ListItemText
                   primary={
                     <Quotes
-                      quoted={isAnnotation(item)}
-                      color={isAnnotation(item) ? item.color : undefined}
+                      quoted={isPartialAnnotation(item)}
+                      color={isPartialAnnotation(item) ? item.color : undefined}
                     >
                       {item.title}
                     </Quotes>

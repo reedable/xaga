@@ -20,10 +20,9 @@ pub async fn add_bookmark(
     state: State<'_, AppState>,
 ) -> Result<Entry, String> {
     let data_dir = state.library.read().unwrap().clone();
-    let current = entries::read_entry(&data_dir, &id)
+    let mut tags = entries::read_entry_tags(&data_dir, &id)
         .await
         .map_err(|e| e.to_string())?;
-    let mut tags = current.tags;
     if !tags.contains(&"bookmark".to_string()) {
         tags.push("bookmark".to_string());
     }
@@ -46,10 +45,12 @@ pub async fn remove_bookmark(
     state: State<'_, AppState>,
 ) -> Result<entries::Entry, String> {
     let data_dir = state.library.read().unwrap().clone();
-    let current = entries::read_entry(&data_dir, &id)
+    let tags: Vec<String> = entries::read_entry_tags(&data_dir, &id)
         .await
-        .map_err(|e| e.to_string())?;
-    let tags: Vec<String> = current.tags.into_iter().filter(|t| t != "bookmark").collect();
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(|t| t != "bookmark")
+        .collect();
     let entry = entries::set_entry_tags(&data_dir, &id, tags)
         .await
         .map_err(|e| e.to_string())?;

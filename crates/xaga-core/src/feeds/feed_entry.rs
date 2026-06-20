@@ -85,9 +85,9 @@ pub(super) fn atom_entry_to_entry(e: &atom::Entry) -> Entry {
         created_at: updated_at.clone(),
         published_at,
         updated_at: Some(updated_at),
-        summary,
+        description: summary,
         is_unread: false,
         is_bookmarked: false,
-        tags: vec![],
+        color: None,
     }
 }

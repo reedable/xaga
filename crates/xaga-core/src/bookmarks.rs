@@ -60,7 +60,7 @@ fn render(entries: &[Entry]) -> String {
             "    <DT><A {attrs}>{}</A>\n",
             html_escape(&e.title)
         ));
-        if let Some(ref desc) = e.summary {
+        if let Some(ref desc) = e.description {
             out.push_str(&format!("    <DD>{}\n", html_escape(desc)));
         }
     }
@@ -130,10 +130,10 @@ fn parse(html: &str) -> Vec<Entry> {
             created_at,
             published_at,
             updated_at,
-            summary,
+            description: summary,
             is_unread: false,
             is_bookmarked: false,
-            tags: vec![],
+            color: None,
         });
     }
     entries
@@ -177,11 +177,14 @@ pub async fn import_bookmarks(
 
         let id = url_hash12(&entry.url);
 
-        if let Some(_) = crate::entries::find_entry_path(data_dir, &id).await {
-            // Entry already exists — add "bookmark" tag if not already present.
-            match crate::entries::read_entry(data_dir, &id).await {
-                Ok(existing) => {
-                    let mut tags = existing.tags;
+        if let Some(path) = crate::entries::find_entry_path(data_dir, &id).await {
+            // Entry already exists — add "bookmark" tag if not already present. Tags are a
+            // persistence detail (not on the domain Entry), so read them from the file.
+            match tokio::fs::read_to_string(&path).await {
+                Ok(raw) => {
+                    let mut tags = crate::util::parse_frontmatter(&raw)
+                        .map(|fm| fm.tags)
+                        .unwrap_or_default();
                     if !tags.contains(&bookmark_tag) {
                         tags.push(bookmark_tag.clone());
                         match crate::entries::set_entry_tags(data_dir, &id, tags).await {
@@ -203,7 +206,7 @@ pub async fn import_bookmarks(
                 &entry.created_at,
                 entry.published_at.as_deref(),
                 entry.updated_at.as_deref(),
-                entry.summary.as_deref(),
+                entry.description.as_deref(),
                 &[bookmark_tag.clone()],
             )
             .await

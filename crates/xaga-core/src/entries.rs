@@ -57,8 +57,8 @@ pub fn render_entry(
         updated: Option<&'a str>,
         #[serde(skip_serializing_if = "Option::is_none")]
         summary: Option<String>,
-        #[serde(skip_serializing_if = "<[_]>::is_empty")]
-        annotations: &'a [crate::types::Annotation],
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        annotations: Vec<crate::util::FrontmatterAnnotation>,
         #[serde(skip_serializing_if = "<[_]>::is_empty")]
         tags: &'a [String],
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,7 +75,7 @@ pub fn render_entry(
         published: published_at,
         updated: updated_at,
         summary: clean_summary.as_deref().map(str::to_string),
-        annotations,
+        annotations: annotations.iter().map(Into::into).collect(),
         tags,
         favicon,
     };
@@ -100,10 +100,10 @@ pub fn entry_from_fm(id: String, fm: crate::util::Frontmatter) -> Entry {
         created_at: fm.created_at,
         published_at: fm.published_at,
         updated_at: fm.updated_at,
-        summary: fm.summary,
+        description: fm.summary,
         is_unread,
         is_bookmarked,
-        tags: fm.tags,
+        color: None,
     }
 }
 
@@ -189,6 +189,14 @@ pub async fn read_entry(data_dir: &Path, id: &str) -> Result<Entry, EntryError> 
     Ok(entry_from_fm(id.to_string(), fm))
 }
 
+/// Returns an entry's frontmatter tags — a persistence detail, not on the domain `Entry`.
+pub async fn read_entry_tags(data_dir: &Path, id: &str) -> Result<Vec<String>, EntryError> {
+    let path = find_entry_path(data_dir, id).await.ok_or(EntryError::NotFound)?;
+    let raw = tokio::fs::read_to_string(&path).await?;
+    let fm = parse_frontmatter(&raw).ok_or(EntryError::NotFound)?;
+    Ok(fm.tags)
+}
+
 /// Replaces the tags on an entry's frontmatter and writes the file back.
 /// The file watcher picks up the write and queues a priority LanceDB update.
 pub async fn set_entry_tags(data_dir: &Path, id: &str, tags: Vec<String>) -> Result<Entry, EntryError> {
@@ -217,10 +225,10 @@ pub async fn set_entry_tags(data_dir: &Path, id: &str, tags: Vec<String>) -> Res
         created_at: fm.created_at,
         published_at: fm.published_at,
         updated_at: fm.updated_at,
-        summary: fm.summary,
+        description: fm.summary,
         is_unread,
         is_bookmarked,
-        tags,
+        color: None,
     })
 }
 

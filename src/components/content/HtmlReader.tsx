@@ -172,6 +172,7 @@ export function HtmlReader({
       onRemoveAnnotation?.({ id: tooltip.annotationId, reference: entryId });
     } else {
       const annotation = {
+        __kind: "annotation" as const,
         id: tooltip.annotationId,
         title: tooltip.text.join(" "),
         reference: entryId,

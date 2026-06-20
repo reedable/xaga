@@ -274,6 +274,7 @@ impl Pinnable for Topic {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Article {
+    #[serde(flatten)]
     pub meta: Entry,
     pub content: String,
     pub annotations: Vec<Annotation>,

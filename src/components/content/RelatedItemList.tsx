@@ -11,7 +11,7 @@ import useAbortController from "../../hooks/useAbortController";
 import { useEvents } from "../../hooks/useEvents";
 import useRelatedItems from "../../hooks/useRelatedItems";
 import useRouter from "../../hooks/useRouter";
-import { isAnnotation, type Ranked, type Item } from "../../types";
+import { isPartialAnnotation, type Ranked, type Item } from "../../types";
 import cx from "../../utils/cx";
 import { abortable, decorate, retriable } from "../../utils/Decorator";
 import Logger from "../../utils/Logger";
@@ -113,8 +113,8 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
               <ListItemText
                 primary={
                   <Quotes
-                    quoted={isAnnotation(item)}
-                    color={isAnnotation(item) ? item.color : undefined}
+                    quoted={isPartialAnnotation(item)}
+                    color={isPartialAnnotation(item) ? item.color : undefined}
                   >
                     {item.title}
                   </Quotes>

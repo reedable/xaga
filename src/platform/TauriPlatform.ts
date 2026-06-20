@@ -20,7 +20,6 @@ import type {
   Topic,
   TopicSort,
 } from "../types";
-import { isAnnotation } from "../types";
 import { abortable, decorate, logged } from "../utils/Decorator";
 import Logger from "../utils/Logger";
 import type { Platform } from "./Platform";
@@ -63,9 +62,10 @@ const toFeed = (data: z.infer<typeof FeedSchema>): Feed => {
 const EntrySchema = ItemSchema.extend({
   url: z.string(),
   published_at: z.string().nullable(),
-  summary: z.string().nullable(),
+  description: z.string().nullable(),
   is_unread: z.boolean(),
   is_bookmarked: z.boolean(),
+  color: z.string().nullable().optional(),
 });
 
 const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
@@ -74,14 +74,15 @@ const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
     __kind: "entry",
     url: data.url,
     publishedAt: data.published_at ?? undefined,
-    description: data.summary ?? undefined,
+    description: data.description ?? undefined,
     isUnread: data.is_unread,
     isBookmarked: data.is_bookmarked,
+    color: data.color ?? undefined,
   };
 };
 
 const TopicSchema = ItemSchema.extend({
-  content: z.string(),
+  description: z.string().nullable().optional(),
   threshold: z.number().nullable().optional(),
   entry_count: z.number(),
   unread_count: z.number(),
@@ -91,7 +92,7 @@ const TopicSchema = ItemSchema.extend({
 const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
   ...toItem(data),
   __kind: "topic",
-  description: data.content ?? undefined,
+  description: data.description ?? undefined,
   threshold: data.threshold ?? undefined,
   entryCount: data.entry_count,
   unreadCount: data.unread_count,
@@ -101,23 +102,24 @@ const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
 
 const AnnotationSchema = z.object({
   id: z.string(),
+  title: z.string(),
   reference: z.string(),
   text: z.array(z.string()),
   occurrence: z.array(z.number()),
   color: z.string(),
-  note: z.string().nullable().optional(),
+  content: z.string(),
   created_at: z.string(),
 });
 
 const toAnnotation = (data: z.infer<typeof AnnotationSchema>): Annotation => ({
   __kind: "annotation",
   id: data.id,
-  title: data.text.join(" "),
+  title: data.title,
   reference: data.reference,
   text: data.text,
   occurrence: data.occurrence,
   color: data.color,
-  content: data.note ?? "",
+  content: data.content,
   createdAt: data.created_at,
 });
 
@@ -176,6 +178,8 @@ const toPartialAnnotation = (
 
 // Schema for annotation rows returned from embedding queries.
 // These carry only the fields stored in LanceDB — no text[] or occurrence[].
+// `url` is the row's `source` column (the parent article url), flattened from the
+// EmbeddedEntry `entry.url` by the Rust query path.
 const EmbeddedAnnotationResultSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -183,6 +187,8 @@ const EmbeddedAnnotationResultSchema = z.object({
   updated_at: z.string().nullable().optional(),
   color: z.string(),
   reference: z.string(),
+  url: z.string(),
+  kind: z.string(), // the row brand (RowKind::as_str); "annotation" — used to dispatch below
   similarity: z.number(),
 });
 
@@ -195,6 +201,7 @@ const toEmbeddedAnnotationResult = (
   updatedAt: data.updated_at ?? undefined,
   color: data.color,
   reference: data.reference,
+  url: data.url,
   similarity: data.similarity,
 });
 
@@ -229,8 +236,9 @@ const EmbeddedFeedSchema = FeedSchema.extend(EmbeddedSchema.shape).extend({
 });
 const EmbeddedTopicSchema = TopicSchema.extend(EmbeddedSchema.shape);
 const EmbeddedItemSchema = ItemSchema.extend(EmbeddedSchema.shape);
-// Detection order:
-// 1. Annotation: has `color` + `reference` (entries never have these)
+// Detection order (each branch identified by brand AND shape together):
+// 1. Annotation: `kind === "annotation"`; shape guaranteed by the schema's required `reference`
+//    (entries/feeds/topics never serialize it, so coloring an entry can't collide here)
 // 2. Feed: `kind === "feed"` (feed/entry share shape — only the brand separates them)
 // 3. Entry: has `is_unread` (topics don't — they have no url/is_unread fields)
 // 4. Topic: has `content` + `entry_count` + `unread_count`
@@ -241,7 +249,7 @@ const AnyEmbeddedItemSchema = EmbeddedAnnotationResultSchema.or(EmbeddedFeedSche
   .or(EmbeddedItemSchema);
 
 const toAnyEmbeddedItem = (data: z.infer<typeof AnyEmbeddedItemSchema>) => {
-  if ("color" in data) {
+  if ("kind" in data && data.kind === "annotation") {
     return toEmbeddedAnnotationResult(
       data as z.infer<typeof EmbeddedAnnotationResultSchema>
     );
@@ -628,7 +636,11 @@ export class TauriPlatform implements Platform {
       .with(abortable, { signal })
       .with(logged, { logger, name: "create_topic" });
 
-    const result = await invoker<unknown>("create_topic", topic);
+    const result = await invoker<unknown>("create_topic", {
+      title: topic.title,
+      content: topic.description ?? null,
+      threshold: topic.threshold ?? null,
+    });
     return TopicSchema.transform(toTopic).parse(result);
   }
 
@@ -705,9 +717,11 @@ export class TauriPlatform implements Platform {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "add_topic_item" });
-    const topicItem = isAnnotation(item)
-      ? { type: "annotation", id: item.id, reference: item.reference }
-      : { type: "entry", id: item.id };
+    // `Entry | Annotation` is a discriminated union on `__kind`; dispatch on the brand.
+    const topicItem =
+      item.__kind === "annotation"
+        ? { type: "annotation", id: item.id, reference: item.reference }
+        : { type: "entry", id: item.id };
     const result = await invoker<unknown>("add_topic_item", {
       topicId,
       item: topicItem,

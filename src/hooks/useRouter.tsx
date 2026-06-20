@@ -7,6 +7,7 @@ import {
   isEntry,
   isFeed,
   isFilter,
+  isPartialAnnotation,
   isTopic,
   type Annotation,
   type Countable,
@@ -124,7 +125,7 @@ export default function useRouter() {
   );
 
   const selectAnnotation = useCallback(
-    (annotation: Annotation) => {
+    (annotation: Pick<Annotation, "id" | "reference">) => {
       const next: NavigationState = {
         ...state,
         annotationId: annotation.id,
@@ -194,7 +195,7 @@ export default function useRouter() {
     (item: Item) => {
       if (isCollection(item)) return selectCollection(item);
       if (isEntry(item)) return selectEntry(item);
-      if (isAnnotation(item)) return selectAnnotation(item);
+      if (isAnnotation(item) || isPartialAnnotation(item)) return selectAnnotation(item);
       logger.error("Unknown item type", item);
     },
     [selectAnnotation, selectCollection, selectEntry]

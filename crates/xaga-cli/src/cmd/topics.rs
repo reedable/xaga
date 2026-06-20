@@ -7,7 +7,7 @@ use uuid::Uuid;
 use xaga_core::embeddings::EmbeddingsDb;
 use xaga_core::topics;
 use xaga_core::types::CollectionItem;
-use xaga_core::util::parse_frontmatter;
+use xaga_core::util::{parse_document, parse_frontmatter};
 
 use crate::die;
 
@@ -26,6 +26,13 @@ pub enum TopicsCommand {
     Read { id: String },
     /// Migrate collections/*.yaml to topics/*.md (one-time; remove after use)
     Migrate {
+        /// Print what would be done without writing any files
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Repair topic memberships where an annotation was mis-recorded as an entry.
+    /// Rewrites `{type: entry, id: <annotationId>}` -> `{type: annotation, id, reference}`.
+    RepairAnnotations {
         /// Print what would be done without writing any files
         #[arg(long)]
         dry_run: bool,
@@ -65,7 +72,7 @@ pub async fn handle(cmd: TopicsCommand, data_dir: &Path) {
                     println!("title:   {}", t.title);
                     println!("created: {}", t.created_at);
                     println!();
-                    print!("{}", t.content);
+                    print!("{}", t.description.as_deref().unwrap_or(""));
                 }
                 Err(e) => die(e),
             }
@@ -74,7 +81,131 @@ pub async fn handle(cmd: TopicsCommand, data_dir: &Path) {
         TopicsCommand::Migrate { dry_run } => {
             migrate(data_dir, dry_run).await;
         }
+
+        TopicsCommand::RepairAnnotations { dry_run } => {
+            repair_annotations(data_dir, dry_run).await;
+        }
     }
+}
+
+/// One-time repair. An annotation added to a topic at creation-time — before the new-annotation
+/// object carried its `__kind` brand — was mis-recorded in the topic `.md` as
+/// `{type: entry, id: <annotationId>}` with no `reference`. `list_topic_items` then silently
+/// drops it (it tries to read an *entry* file by the annotation id, which doesn't exist), so the
+/// annotation never renders in the topic even though it still counts toward membership.
+///
+/// This rewrites each such item to `{type: annotation, id, reference}`, recovering `reference`
+/// (the parent article id) from the article frontmatter. The discriminator is reliable: only an
+/// `Entry` item whose id is a known annotation id is rewritten — real entry ids never appear in
+/// the annotation map. LanceDB is untouched (its reverse index is already keyed by the correct
+/// id; only the on-disk `type` was wrong). Idempotent.
+async fn repair_annotations(data_dir: &Path, dry_run: bool) {
+    if dry_run {
+        eprintln!("note: dry-run mode — no files will be written");
+    }
+
+    // Build annotation id -> parent article id from entries/*.md frontmatter.
+    let mut annotation_map: HashMap<String, String> = HashMap::new();
+    let entries_dir = data_dir.join("entries");
+    if let Ok(mut dir) = tokio::fs::read_dir(&entries_dir).await {
+        while let Ok(Some(entry)) = dir.next_entry().await {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("md") {
+                continue;
+            }
+            let article_id = match path.file_stem().and_then(|s| s.to_str()) {
+                Some(s) => s.to_string(),
+                None => continue,
+            };
+            if let Ok(raw) = tokio::fs::read_to_string(&path).await {
+                if let Some(fm) = parse_frontmatter(&raw) {
+                    for ann in &fm.annotations {
+                        annotation_map.insert(ann.id.clone(), article_id.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    let topics_list = match topics::list_topics(data_dir).await {
+        Ok(ts) => ts,
+        Err(e) => die(e),
+    };
+
+    let mut n_topics_scanned = 0usize;
+    let mut n_topics_changed = 0usize;
+    let mut n_repaired = 0usize;
+
+    for topic in &topics_list {
+        n_topics_scanned += 1;
+        let path = data_dir.join("topics").join(format!("{}.md", topic.id));
+        let raw = match tokio::fs::read_to_string(&path).await {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("warn: could not read {}: {e}", path.display());
+                continue;
+            }
+        };
+        let (fm, body) = match parse_document(&raw) {
+            Some(parsed) => parsed,
+            None => {
+                eprintln!("warn: could not parse {}", path.display());
+                continue;
+            }
+        };
+
+        let mut changed = 0usize;
+        let new_items: Vec<CollectionItem> = fm
+            .items
+            .iter()
+            .map(|item| match item {
+                CollectionItem::Entry { id } if annotation_map.contains_key(id) => {
+                    changed += 1;
+                    let reference = annotation_map[id].clone();
+                    if dry_run {
+                        eprintln!("  {}: entry {id} -> annotation (reference {reference})", topic.id);
+                    }
+                    CollectionItem::Annotation { id: id.clone(), reference }
+                }
+                other => other.clone(),
+            })
+            .collect();
+
+        if changed == 0 {
+            continue;
+        }
+
+        n_topics_changed += 1;
+        n_repaired += changed;
+
+        if dry_run {
+            println!("would repair '{}' ({}): {changed} item(s)", topic.title, topic.id);
+            continue;
+        }
+
+        // Preserve timestamps — a membership-type correction is not a content edit (mirrors
+        // set_topic_pinned). The member ids are unchanged, so the watcher's reconcile is a no-op.
+        let updated_at = fm.updated_at.clone().unwrap_or_else(|| fm.created_at.clone());
+        let rendered = topics::render_topic(
+            &topic.id,
+            &fm.title,
+            &fm.created_at,
+            &updated_at,
+            fm.threshold,
+            &new_items,
+            &fm.tags,
+            &body,
+        );
+        match tokio::fs::write(&path, rendered.as_bytes()).await {
+            Ok(_) => println!("repaired '{}' ({}): {changed} item(s)", topic.title, topic.id),
+            Err(e) => eprintln!("error: failed to write {}: {e}", path.display()),
+        }
+    }
+
+    let verb = if dry_run { "Would repair" } else { "Repaired" };
+    println!();
+    println!("Scanned {n_topics_scanned} topic(s).");
+    println!("{verb} {n_repaired} mis-recorded annotation item(s) across {n_topics_changed} topic(s).");
 }
 
 async fn migrate(data_dir: &Path, dry_run: bool) {

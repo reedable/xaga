@@ -189,7 +189,7 @@ pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) -> Vec<String> 
             &entry.title,
             entry.published_at.as_deref(),
             entry.updated_at.as_deref(),
-            entry.summary.as_deref(),
+            entry.description.as_deref(),
         )
         .await
         {

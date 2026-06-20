@@ -1,12 +1,33 @@
 use chrono::{DateTime, Utc};
 
-use crate::types::{Item, ItemFilter};
+use crate::types::{EmbeddedEntry, Entry, Item, ItemFilter};
+
+/// The read/bookmark/reference state the list filters need. Implemented by the URL-bearing,
+/// stateful item types (`Entry` and its embedded form) — these are query-layer accessors, not
+/// part of the domain `Item` contract.
+pub trait Filterable {
+    fn is_unread(&self) -> bool;
+    fn is_bookmarked(&self) -> bool;
+    fn url(&self) -> Option<&str>;
+    fn reference(&self) -> &str;
+}
+
+impl Filterable for Entry {
+    fn is_unread(&self) -> bool { self.is_unread }
+    fn is_bookmarked(&self) -> bool { self.is_bookmarked }
+    fn url(&self) -> Option<&str> { Some(&self.url) }
+    fn reference(&self) -> &str { "" }
+}
+
+impl Filterable for EmbeddedEntry {
+    fn is_unread(&self) -> bool { self.entry.is_unread }
+    fn is_bookmarked(&self) -> bool { self.entry.is_bookmarked }
+    fn url(&self) -> Option<&str> { Some(&self.entry.url) }
+    fn reference(&self) -> &str { &self.reference }
+}
 
 /// Filter `items` according to `item_filter` — predicate only, no sorting.
-///
-/// Works on any `T` that implements `Item`. Items without a `source` are
-/// treated as authored (already read, not bookmarkable).
-pub async fn filter_items<T: Item>(
+pub async fn filter_items<T: Filterable>(
     mut items: Vec<T>,
     item_filter: &ItemFilter,
 ) -> std::io::Result<Vec<T>> {

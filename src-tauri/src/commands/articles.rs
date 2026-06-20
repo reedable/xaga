@@ -347,8 +347,8 @@ pub async fn read_article(
         .await
         .map_err(|e| e.to_string())?;
 
-    if let Ok(current) = entries::read_entry(&data_dir, &id).await {
-        let tags = current.tags.into_iter().filter(|t| t != "unread").collect();
+    if let Ok(tags) = entries::read_entry_tags(&data_dir, &id).await {
+        let tags: Vec<String> = tags.into_iter().filter(|t| t != "unread").collect();
         let _ = entries::set_entry_tags(&data_dir, &id, tags).await;
     }
 
@@ -375,17 +375,27 @@ pub async fn add_annotation(
     let data_dir = state.library.read().unwrap().clone();
     let annotation = xaga_core::types::Annotation {
         id,
+        title: text.join(" "),
         reference: article_id.clone(),
         text,
         occurrence,
         color,
-        note,
+        content: note.unwrap_or_default(),
         created_at: String::new(),
     };
     let article = articles::add_annotation(&data_dir, &article_id, annotation)
         .await
         .map_err(|e| e.to_string())?;
-    state.enqueue(Tier::Interactive, Job::SyncAnnotations { id: article_id });
+    // Insert/refresh the annotation row now (embedder-free, immediately listable), then defer the
+    // ONNX embed so the new annotation gets a vector — without it, find_related/rank_topics_by_item
+    // raise "id not found". embed_vector is checksum-gated, so it skips the unchanged article body
+    // and only fills the pending annotation vector via embed_annotations. Tier mirrors the
+    // live-edit embed_follow() (Interactive -> Regular).
+    state.enqueue(Tier::Interactive, Job::SyncAnnotations { id: article_id.clone() });
+    state.enqueue(
+        Tier::Regular,
+        Job::EmbedVector { entity: EntityRef::new(article_id, Kind::Entry) },
+    );
     Ok(article)
 }
 

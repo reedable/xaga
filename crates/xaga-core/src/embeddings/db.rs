@@ -386,10 +386,10 @@ impl<'a> BatchSummaryColumns<'a> {
             created_at: self.created_ats.value(i).to_string(),
             published_at: opt_str(self.published_ats, i),
             updated_at: opt_str(self.updated_ats, i),
-            summary: opt_str(self.summaries, i),
+            description: opt_str(self.summaries, i),
             is_unread,
             is_bookmarked,
-            tags,
+            color: None,
         }
     }
 
@@ -1186,7 +1186,10 @@ impl EmbeddingsDb {
             )
             .await?
             .into_iter()
-            .map(|(similarity, entry, kind, reference, color)| EmbeddedEntry { entry, kind, similarity, reference, color })
+            .map(|(similarity, mut entry, kind, reference, color)| {
+                if !color.is_empty() { entry.color = Some(color); }
+                EmbeddedEntry { entry, kind, similarity, reference }
+            })
             .collect())
     }
 
@@ -1433,7 +1436,10 @@ impl EmbeddingsDb {
 
         Ok(scored
             .into_iter()
-            .map(|(similarity, entry, kind, reference, color)| EmbeddedEntry { entry, kind, similarity, reference, color })
+            .map(|(similarity, mut entry, kind, reference, color)| {
+                if !color.is_empty() { entry.color = Some(color); }
+                EmbeddedEntry { entry, kind, similarity, reference }
+            })
             .collect())
     }
 
@@ -1533,9 +1539,11 @@ impl EmbeddingsDb {
                 .column_by_name("_distance")
                 .and_then(|c| c.as_any().downcast_ref::<Float32Array>());
             for i in 0..batch.num_rows() {
-                let entry = cols.summary_at(i);
+                let mut entry = cols.summary_at(i);
+                let color = cols.color_at(i);
+                if !color.is_empty() { entry.color = Some(color); }
                 let similarity = distances.map_or(0.0, |d| 1.0 - d.value(i));
-                results.push(EmbeddedEntry { entry, kind: cols.kind_at(i), similarity, reference: cols.reference_at(i), color: cols.color_at(i) });
+                results.push(EmbeddedEntry { entry, kind: cols.kind_at(i), similarity, reference: cols.reference_at(i) });
             }
         }
 
@@ -1595,14 +1603,15 @@ impl EmbeddingsDb {
                 .column_by_name("_distance")
                 .and_then(|c| c.as_any().downcast_ref::<Float32Array>());
             for i in 0..batch.num_rows() {
-                let entry = cols.summary_at(i);
+                let mut entry = cols.summary_at(i);
+                let color = cols.color_at(i);
+                if !color.is_empty() { entry.color = Some(color); }
                 let similarity = distances.map_or(0.0, |d| 1.0 - d.value(i));
                 results.push(EmbeddedEntry {
                     entry,
                     kind: cols.kind_at(i),
                     similarity,
                     reference: cols.reference_at(i),
-                    color: cols.color_at(i),
                 });
             }
         }
@@ -2036,7 +2045,7 @@ mod tests {
         assert_eq!(by_id, vec!["e2".to_string()]);
 
         let e1_read = db.entries_by_ids(&["e1".to_string()]).await.unwrap();
-        assert_eq!(e1_read[0].summary.as_deref(), Some("s1"));
+        assert_eq!(e1_read[0].description.as_deref(), Some("s1"));
         assert!(e1_read[0].is_bookmarked);
     }
 
