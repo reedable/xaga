@@ -11,7 +11,7 @@ use super::{parse_item_filter, parse_item_sort};
 pub async fn save_topic(
     id: String,
     title: String,
-    content: String,
+    description: String,
     threshold: Option<f32>,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
@@ -20,7 +20,7 @@ pub async fn save_topic(
     let existing_items = topics::read_topic_items(&data_dir, &id)
         .await
         .unwrap_or_default();
-    let topic = topics::save_topic(&data_dir, &id, &title, &content, threshold, existing_items)
+    let topic = topics::save_topic(&data_dir, &id, &title, &description, threshold, existing_items)
         .await
         .map_err(|e| e.to_string())?;
     state.enqueue(
@@ -33,12 +33,12 @@ pub async fn save_topic(
 #[tauri::command]
 pub async fn create_topic(
     title: String,
-    content: String,
+    description: String,
     threshold: Option<f32>,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
     let data_dir = state.library.read().unwrap().clone();
-    let topic = topics::create_topic(&data_dir, &title, &content, threshold)
+    let topic = topics::create_topic(&data_dir, &title, &description, threshold)
         .await
         .map_err(|e| e.to_string())?;
     state.enqueue(

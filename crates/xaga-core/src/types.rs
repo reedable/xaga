@@ -185,11 +185,12 @@ impl std::ops::DerefMut for EmbeddedEntry {
     fn deref_mut(&mut self) -> &mut Entry { &mut self.entry }
 }
 
-/// A `Topic` returned from an embedding similarity query, carrying its score.
+/// A `Topic` returned from an embedding similarity query, carrying its score + `kind`.
 #[derive(Debug, Serialize)]
 pub struct EmbeddedTopic {
     #[serde(flatten)]
     pub topic: Topic,
+    pub kind: Kind,
     pub similarity: f32,
 }
 

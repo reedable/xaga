@@ -234,14 +234,16 @@ const EmbeddedEntrySchema = EntrySchema.extend(EmbeddedSchema.shape).extend({
 const EmbeddedFeedSchema = FeedSchema.extend(EmbeddedSchema.shape).extend({
   kind: z.string(),
 });
-const EmbeddedTopicSchema = TopicSchema.extend(EmbeddedSchema.shape);
+const EmbeddedTopicSchema = TopicSchema.extend(EmbeddedSchema.shape).extend({
+  kind: z.string(),
+});
 const EmbeddedItemSchema = ItemSchema.extend(EmbeddedSchema.shape);
 // Detection order (each branch identified by brand AND shape together):
 // 1. Annotation: `kind === "annotation"`; shape guaranteed by the schema's required `reference`
 //    (entries/feeds/topics never serialize it, so coloring an entry can't collide here)
 // 2. Feed: `kind === "feed"` (feed/entry share shape — only the brand separates them)
-// 3. Entry: has `is_unread` (topics don't — they have no url/is_unread fields)
-// 4. Topic: has `content` + `entry_count` + `unread_count`
+// 3. Topic: `kind === "topic"` (a Topic has no url/is_unread/content — only the brand is reliable)
+// 4. Entry: has `is_unread` (topics don't — they have no url/is_unread fields)
 // 5. Generic Item: fallback
 const AnyEmbeddedItemSchema = EmbeddedAnnotationResultSchema.or(EmbeddedFeedSchema)
   .or(EmbeddedEntrySchema)
@@ -260,15 +262,15 @@ const toAnyEmbeddedItem = (data: z.infer<typeof AnyEmbeddedItemSchema>) => {
       ...toEmbedded(data as z.infer<typeof EmbeddedSchema>),
     };
   }
-  if ("is_unread" in data) {
+  if ("kind" in data && data.kind === "topic") {
     return {
-      ...toEntry(data as z.infer<typeof EmbeddedEntrySchema>),
+      ...toTopic(data as z.infer<typeof TopicSchema>),
       ...toEmbedded(data as z.infer<typeof EmbeddedSchema>),
     };
   }
-  if ("content" in data) {
+  if ("is_unread" in data) {
     return {
-      ...toTopic(data as z.infer<typeof TopicSchema>),
+      ...toEntry(data as z.infer<typeof EmbeddedEntrySchema>),
       ...toEmbedded(data as z.infer<typeof EmbeddedSchema>),
     };
   }
@@ -638,7 +640,7 @@ export class TauriPlatform implements Platform {
 
     const result = await invoker<unknown>("create_topic", {
       title: topic.title,
-      content: topic.description ?? null,
+      description: topic.description ?? null,
       threshold: topic.threshold ?? null,
     });
     return TopicSchema.transform(toTopic).parse(result);
@@ -652,7 +654,7 @@ export class TauriPlatform implements Platform {
     const result = await invoker<unknown>("save_topic", {
       id: topic.id,
       title: topic.title,
-      content: topic.description ?? null,
+      description: topic.description ?? null,
       threshold: topic.threshold ?? null,
     });
 

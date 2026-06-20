@@ -33,7 +33,7 @@ type EditTopicDialogProps = {
   onClose: () => void;
   onSave: (
     title: string,
-    content: string,
+    description: string,
     threshold: number,
     pinned: boolean
   ) => Promise<void>;

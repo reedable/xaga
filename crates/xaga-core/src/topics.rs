@@ -31,7 +31,7 @@ pub fn render_topic(
     threshold: Option<f32>,
     items: &[CollectionItem],
     tags: &[String],
-    content: &str,
+    description: &str,
 ) -> String {
     #[derive(serde::Serialize)]
     struct Fm<'a> {
@@ -41,6 +41,10 @@ pub fn render_topic(
         updated: &'a str,
         #[serde(skip_serializing_if = "Option::is_none")]
         threshold: Option<f32>,
+        // A Topic's blurb is its `description`, stored as the `summary` frontmatter key (the same
+        // key entries use). A Topic has no body content, so nothing is written after the `---`.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        summary: Option<&'a str>,
         #[serde(skip_serializing_if = "<[_]>::is_empty")]
         items: &'a [CollectionItem],
         #[serde(skip_serializing_if = "<[_]>::is_empty")]
@@ -53,12 +57,13 @@ pub fn render_topic(
         created: created_at,
         updated: updated_at,
         threshold,
+        summary: (!description.is_empty()).then_some(description),
         items,
         tags,
     };
 
     let yaml = serde_yaml::to_string(&fm).expect("frontmatter serialization is infallible");
-    format!("---\n{yaml}---\n\n{content}\n")
+    format!("---\n{yaml}---\n")
 }
 
 /// Creates or updates a topic at `topics/{id}.md`.
@@ -68,7 +73,7 @@ pub async fn save_topic(
     data_dir: &Path,
     id: &str,
     title: &str,
-    content: &str,
+    description: &str,
     threshold: Option<f32>,
     items: Vec<CollectionItem>,
 ) -> Result<Topic, TopicsError> {
@@ -99,7 +104,7 @@ pub async fn save_topic(
             threshold,
             &items,
             &tags,
-            content,
+            description,
         )
         .as_bytes(),
     )
@@ -111,7 +116,7 @@ pub async fn save_topic(
         title: title.to_string(),
         created_at,
         updated_at: Some(updated_at),
-        description: (!content.is_empty()).then(|| content.to_string()),
+        description: (!description.is_empty()).then(|| description.to_string()),
         threshold,
         is_pinned,
         entry_count: 0,
@@ -144,6 +149,9 @@ pub async fn set_topic_pinned(data_dir: &Path, id: &str, pinned: bool) -> Result
         tags.retain(|t| t != "pinned");
     }
     let updated_at = fm.updated_at.clone().unwrap_or_else(|| fm.created_at.clone());
+    // Legacy fallback: pre-migration topics keep their blurb in the body. Re-derive the
+    // description so the rewrite moves it into the `summary` frontmatter key.
+    let description = fm.summary.clone().unwrap_or(body);
     let new = render_topic(
         id,
         &fm.title,
@@ -152,7 +160,7 @@ pub async fn set_topic_pinned(data_dir: &Path, id: &str, pinned: bool) -> Result
         fm.threshold,
         &fm.items,
         &tags,
-        &body,
+        &description,
     );
     tokio::fs::write(&path, new.as_bytes()).await?;
     Ok(true)
@@ -164,7 +172,7 @@ pub async fn save_topic_with_timestamps(
     data_dir: &Path,
     id: &str,
     title: &str,
-    content: &str,
+    description: &str,
     threshold: Option<f32>,
     items: Vec<CollectionItem>,
     tags: &[String],
@@ -177,7 +185,8 @@ pub async fn save_topic_with_timestamps(
 
     tokio::fs::write(
         &path,
-        render_topic(id, title, created_at, updated_at, threshold, &items, tags, content).as_bytes(),
+        render_topic(id, title, created_at, updated_at, threshold, &items, tags, description)
+            .as_bytes(),
     )
     .await?;
 
@@ -186,7 +195,7 @@ pub async fn save_topic_with_timestamps(
         title: title.to_string(),
         created_at: created_at.to_string(),
         updated_at: Some(updated_at.to_string()),
-        description: (!content.is_empty()).then(|| content.to_string()),
+        description: (!description.is_empty()).then(|| description.to_string()),
         threshold,
         is_pinned: tags.iter().any(|t| t == "pinned"),
         entry_count: 0,
@@ -199,11 +208,11 @@ pub async fn save_topic_with_timestamps(
 pub async fn create_topic(
     data_dir: &Path,
     title: &str,
-    content: &str,
+    description: &str,
     threshold: Option<f32>,
 ) -> Result<Topic, TopicsError> {
     let id = Uuid::new_v4().to_string();
-    save_topic(data_dir, &id, title, content, threshold, vec![]).await
+    save_topic(data_dir, &id, title, description, threshold, vec![]).await
 }
 
 /// Returns the topic for the given id.
@@ -220,7 +229,8 @@ pub async fn read_topic(data_dir: &Path, id: &str) -> Result<Topic, TopicsError>
         title: fm.title,
         created_at: fm.created_at,
         updated_at: fm.updated_at,
-        description: (!body.is_empty()).then(|| body),
+        // `summary` is the canonical home; fall back to the body for pre-migration topics.
+        description: fm.summary.or_else(|| (!body.is_empty()).then_some(body)),
         threshold: fm.threshold,
         is_pinned,
         entry_count: 0,
@@ -274,7 +284,8 @@ pub async fn list_topics(data_dir: &Path) -> Result<Vec<Topic>, TopicsError> {
                 title: fm.title,
                 created_at: fm.created_at,
                 updated_at: fm.updated_at,
-                description: (!body.is_empty()).then(|| body),
+                // `summary` is the canonical home; fall back to the body for pre-migration topics.
+                description: fm.summary.or_else(|| (!body.is_empty()).then_some(body)),
                 threshold: fm.threshold,
                 is_pinned,
                 entry_count: 0,
@@ -303,9 +314,11 @@ pub async fn add_topic_item(
     if fm.items.iter().any(|i| i.id() == item.id()) {
         return read_topic(data_dir, topic_id).await;
     }
+    // Legacy fallback: pre-migration topics keep their blurb in the body.
+    let description = fm.summary.unwrap_or(body);
     let mut items = fm.items;
     items.push(item);
-    save_topic(data_dir, topic_id, &fm.title, &body, fm.threshold, items).await
+    save_topic(data_dir, topic_id, &fm.title, &description, fm.threshold, items).await
 }
 
 /// Removes the item with the given ID from the topic's manual items list.
@@ -323,9 +336,11 @@ pub async fn remove_topic_item(
     if !fm.items.iter().any(|i| i.id() == item_id) {
         return read_topic(data_dir, topic_id).await;
     }
+    // Legacy fallback: pre-migration topics keep their blurb in the body.
+    let description = fm.summary.unwrap_or(body);
     let mut items = fm.items;
     items.retain(|i| i.id() != item_id);
-    save_topic(data_dir, topic_id, &fm.title, &body, fm.threshold, items).await
+    save_topic(data_dir, topic_id, &fm.title, &description, fm.threshold, items).await
 }
 
 /// Returns the union of embedding-matched items and manually curated items for a topic,

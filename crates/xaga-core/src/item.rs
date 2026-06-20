@@ -101,7 +101,11 @@ pub async fn enrich_embedded(library: &Path, entries: Vec<EmbeddedEntry>) -> Vec
         }
         if entry.entry.url.is_empty() {
             if let Ok(topic) = crate::topics::read_topic(library, &entry.entry.id).await {
-                result.push(EmbeddedItem::Topic(EmbeddedTopic { topic, similarity: entry.similarity }));
+                result.push(EmbeddedItem::Topic(EmbeddedTopic {
+                    topic,
+                    kind: Kind::Topic,
+                    similarity: entry.similarity,
+                }));
                 continue;
             }
         }

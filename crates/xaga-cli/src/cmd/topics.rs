@@ -7,7 +7,7 @@ use uuid::Uuid;
 use xaga_core::embeddings::EmbeddingsDb;
 use xaga_core::topics;
 use xaga_core::types::CollectionItem;
-use xaga_core::util::{parse_document, parse_frontmatter};
+use xaga_core::util::{item_id, parse_document, parse_frontmatter};
 
 use crate::die;
 
@@ -33,6 +33,14 @@ pub enum TopicsCommand {
     /// Repair topic memberships where an annotation was mis-recorded as an entry.
     /// Rewrites `{type: entry, id: <annotationId>}` -> `{type: annotation, id, reference}`.
     RepairAnnotations {
+        /// Print what would be done without writing any files
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Move each topic's blurb from the `.md` body into the `summary:` frontmatter key
+    /// (one-time; remove after use). Timestamps and the embedding checksum are preserved,
+    /// so migrated topics are not re-embedded.
+    MigrateSummary {
         /// Print what would be done without writing any files
         #[arg(long)]
         dry_run: bool,
@@ -85,6 +93,96 @@ pub async fn handle(cmd: TopicsCommand, data_dir: &Path) {
         TopicsCommand::RepairAnnotations { dry_run } => {
             repair_annotations(data_dir, dry_run).await;
         }
+
+        TopicsCommand::MigrateSummary { dry_run } => {
+            migrate_summary(data_dir, dry_run).await;
+        }
+    }
+}
+
+/// Rewrites every `topics/*.md` whose blurb still lives in the body, moving it into the
+/// `summary:` frontmatter key. `embed_text` (= `summary` or the body) is byte-identical before
+/// and after, so `content_checksum` is unchanged and the watcher will not re-embed the topic.
+async fn migrate_summary(data_dir: &Path, dry_run: bool) {
+    let topics_dir = data_dir.join("topics");
+    let mut dir_entries = match tokio::fs::read_dir(&topics_dir).await {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("warn: could not read {}: {e}", topics_dir.display());
+            return;
+        }
+    };
+
+    let mut n_scanned = 0usize;
+    let mut n_migrated = 0usize;
+
+    loop {
+        let dir_entry = match dir_entries.next_entry().await {
+            Ok(Some(e)) => e,
+            Ok(None) => break,
+            Err(e) => {
+                eprintln!("warn: error reading topics dir: {e}");
+                break;
+            }
+        };
+        let path = dir_entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        n_scanned += 1;
+
+        let raw = match tokio::fs::read_to_string(&path).await {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("warn: could not read {}: {e}", path.display());
+                continue;
+            }
+        };
+        let (fm, body) = match parse_document(&raw) {
+            Some(parsed) => parsed,
+            None => {
+                eprintln!("warn: could not parse {}", path.display());
+                continue;
+            }
+        };
+
+        // Already migrated (summary present) or nothing to move (no body blurb).
+        if fm.summary.is_some() || body.is_empty() {
+            continue;
+        }
+
+        let id = item_id(&path);
+        if dry_run {
+            println!("would migrate topics/{id}.md  (move body blurb -> summary frontmatter)");
+            n_migrated += 1;
+            continue;
+        }
+
+        // Preserve timestamps — moving storage location is not a content edit.
+        let updated_at = fm.updated_at.clone().unwrap_or_else(|| fm.created_at.clone());
+        let rendered = topics::render_topic(
+            &id,
+            &fm.title,
+            &fm.created_at,
+            &updated_at,
+            fm.threshold,
+            &fm.items,
+            &fm.tags,
+            &body,
+        );
+        match tokio::fs::write(&path, rendered.as_bytes()).await {
+            Ok(_) => {
+                println!("migrated topics/{id}.md");
+                n_migrated += 1;
+            }
+            Err(e) => eprintln!("error: failed to write {}: {e}", path.display()),
+        }
+    }
+
+    if dry_run {
+        println!("\n{n_migrated} of {n_scanned} topic file(s) would be migrated.");
+    } else {
+        println!("\nMigrated {n_migrated} of {n_scanned} topic file(s).");
     }
 }
 
@@ -186,6 +284,8 @@ async fn repair_annotations(data_dir: &Path, dry_run: bool) {
         // Preserve timestamps — a membership-type correction is not a content edit (mirrors
         // set_topic_pinned). The member ids are unchanged, so the watcher's reconcile is a no-op.
         let updated_at = fm.updated_at.clone().unwrap_or_else(|| fm.created_at.clone());
+        // Legacy fallback: pre-migration topics keep their blurb in the body.
+        let description = fm.summary.clone().unwrap_or_else(|| body.clone());
         let rendered = topics::render_topic(
             &topic.id,
             &fm.title,
@@ -194,7 +294,7 @@ async fn repair_annotations(data_dir: &Path, dry_run: bool) {
             fm.threshold,
             &new_items,
             &fm.tags,
-            &body,
+            &description,
         );
         match tokio::fs::write(&path, rendered.as_bytes()).await {
             Ok(_) => println!("repaired '{}' ({}): {changed} item(s)", topic.title, topic.id),

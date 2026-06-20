@@ -65,16 +65,16 @@ export function AppLayout() {
   const handleSaveTopic = useCallback(
     async (
       title: string,
-      content: string,
+      description: string,
       threshold: number,
       pinned: boolean
     ) => {
       let topic: Topic | undefined;
 
       if (editingTopic) {
-        topic = await saveTopic({ ...editingTopic, title, description: content, threshold });
+        topic = await saveTopic({ ...editingTopic, title, description, threshold });
       } else {
-        topic = await createTopic({ title, description: content, threshold });
+        topic = await createTopic({ title, description, threshold });
       }
 
       if (topic) {
