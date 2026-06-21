@@ -377,8 +377,8 @@ impl<'a> BatchSummaryColumns<'a> {
             })
         }
         let tags = self.tags_at(i);
-        let is_unread = tags.contains(&"unread".to_string());
-        let is_bookmarked = tags.contains(&"bookmark".to_string());
+        let is_unread = crate::tags::is_unread(&tags);
+        let is_bookmarked = crate::tags::is_bookmarked(&tags);
         Entry {
             id: self.ids.value(i).to_string(),
             url: self.sources.value(i).to_string(),

@@ -160,7 +160,7 @@ pub async fn list_topic_items(
     let data_dir = state.library.read().unwrap().clone();
     let item_filter = parse_item_filter(item_filter)?;
     let sort = parse_item_sort(sort)?;
-    topics::list_topic_items(&data_dir, &id, item_filter, sort)
+    xaga_core::query::topics::list_topic_items(&data_dir, &id, item_filter, sort)
         .await
         .map_err(|e| e.to_string())
 }

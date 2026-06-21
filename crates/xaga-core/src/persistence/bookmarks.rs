@@ -25,7 +25,9 @@ fn html_escape(s: &str) -> String {
 }
 
 fn rfc3339_to_unix(s: &str) -> Option<i64> {
-    DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.timestamp())
+    DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| dt.timestamp())
 }
 
 fn unix_to_rfc3339(ts: i64) -> String {
@@ -47,23 +49,29 @@ fn render(entries: &[Entry]) -> String {
          <H1>Bookmarks</H1>\n\
          <DL><p>\n",
     );
+
     for e in entries {
         let add_date = rfc3339_to_unix(&e.created_at).unwrap_or(0);
         let mut attrs = format!("HREF=\"{}\" ADD_DATE=\"{add_date}\"", html_escape(&e.url));
+
         if let Some(ts) = e.published_at.as_deref().and_then(rfc3339_to_unix) {
             attrs.push_str(&format!(" PUBLISHED_AT=\"{ts}\""));
         }
+
         if let Some(ts) = e.updated_at.as_deref().and_then(rfc3339_to_unix) {
             attrs.push_str(&format!(" LAST_MODIFIED=\"{ts}\""));
         }
+
         out.push_str(&format!(
             "    <DT><A {attrs}>{}</A>\n",
             html_escape(&e.title)
         ));
+
         if let Some(ref desc) = e.description {
             out.push_str(&format!("    <DD>{}\n", html_escape(desc)));
         }
     }
+
     out.push_str("</DL><p>\n");
     out
 }
@@ -73,13 +81,14 @@ fn render(entries: &[Entry]) -> String {
 fn parse(html: &str) -> Vec<Entry> {
     let doc = Html::parse_document(html);
     let a_sel = Selector::parse("dl dt a").unwrap();
-
     let mut entries = Vec::new();
+
     for a in doc.select(&a_sel) {
         let href = match a.value().attr("href") {
             Some(h) => h,
             None => continue,
         };
+
         let normalized = match normalize_url(href) {
             Ok(n) => n,
             Err(_) => continue,
@@ -110,16 +119,19 @@ fn parse(html: &str) -> Vec<Entry> {
         let summary = (|| -> Option<String> {
             let dt_node = a.parent()?;
             let mut next = dt_node.next_sibling();
+
             while let Some(node) = next {
                 if let Some(elem) = ElementRef::wrap(node) {
                     if elem.value().name() == "dd" {
                         let text = elem.text().collect::<String>().trim().to_string();
                         return if text.is_empty() { None } else { Some(text) };
                     }
+
                     return None; // Hit the next <DT> or other element — stop.
                 }
                 next = node.next_sibling(); // Skip text/comment nodes.
             }
+
             None
         })();
 
@@ -164,7 +176,7 @@ pub async fn import_bookmarks(
     data_dir: &Path,
     html: &str,
 ) -> Result<BookmarkImportResult, BookmarksError> {
-    let bookmark_tag = "bookmark".to_string();
+    let bookmark_tag = crate::tags::BOOKMARK.to_string();
     let parsed = parse(html);
     let mut seen = std::collections::HashSet::new();
     let mut added: Vec<Article> = Vec::new();
@@ -218,7 +230,11 @@ pub async fn import_bookmarks(
         }
     }
 
-    Ok(BookmarkImportResult { added, updated, failed })
+    Ok(BookmarkImportResult {
+        added,
+        updated,
+        failed,
+    })
 }
 
 /// Exports all bookmarked entries as a Netscape bookmark file to `dest_path`.

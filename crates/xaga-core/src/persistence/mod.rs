@@ -1,8 +1,7 @@
 //! Persistence: the domain ↔ `.md`/`.atom`/`.html` boundary.
 //!
-//! These modules read and write entity files and produce the neutral
-//! [`Content`](crate::content::Content) payload. They have **no** dependency on the indexing
-//! layer (`embeddings`) — the separation the refactor enforces.
+//! These modules read and write entity files and map them to and from the domain model. They have
+//! **no** dependency on the indexing layer (`embeddings`) — the separation the refactor enforces.
 
 pub mod articles;
 pub mod bookmarks;

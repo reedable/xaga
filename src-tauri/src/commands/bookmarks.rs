@@ -23,8 +23,8 @@ pub async fn add_bookmark(
     let mut tags = entries::read_entry_tags(&data_dir, &id)
         .await
         .map_err(|e| e.to_string())?;
-    if !tags.contains(&"bookmark".to_string()) {
-        tags.push("bookmark".to_string());
+    if !xaga_core::tags::is_bookmarked(&tags) {
+        tags.push(xaga_core::tags::BOOKMARK.to_string());
     }
     let entry = entries::set_entry_tags(&data_dir, &id, tags)
         .await
@@ -49,7 +49,7 @@ pub async fn remove_bookmark(
         .await
         .map_err(|e| e.to_string())?
         .into_iter()
-        .filter(|t| t != "bookmark")
+        .filter(|t| t != xaga_core::tags::BOOKMARK)
         .collect();
     let entry = entries::set_entry_tags(&data_dir, &id, tags)
         .await

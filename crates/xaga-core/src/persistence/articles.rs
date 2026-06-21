@@ -67,23 +67,7 @@ pub async fn save_article(
         (chrono::Utc::now().to_rfc3339(), vec![], vec![])
     };
 
-    let rendered = render_entry(
-        &normalized,
-        title,
-        &created_at,
-        published_at,
-        updated_at,
-        summary,
-        &existing_annotations,
-        &existing_tags,
-        favicon,
-        markdown,
-    );
-    tokio::fs::write(&path, rendered.as_bytes()).await?;
-
-    let is_unread = existing_tags.iter().any(|t| t == "unread");
-    let is_bookmarked = existing_tags.iter().any(|t| t == "bookmark");
-    Ok(Article {
+    let article = Article {
         meta: Entry {
             id: id.to_string(),
             url: normalized,
@@ -92,14 +76,16 @@ pub async fn save_article(
             published_at: published_at.map(str::to_string),
             updated_at: updated_at.map(str::to_string),
             description: summary.map(str::to_string),
-            is_unread,
-            is_bookmarked,
+            is_unread: crate::tags::is_unread(&existing_tags),
+            is_bookmarked: crate::tags::is_bookmarked(&existing_tags),
             color: None,
         },
         content: markdown.to_string(),
         annotations: with_reference(existing_annotations, id),
         favicon: favicon.map(str::to_string),
-    })
+    };
+    tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
+    Ok(article)
 }
 
 /// Creates a new article, deriving the ID from the URL hash.
@@ -151,15 +137,7 @@ pub async fn read_article(
 
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
-    let annotations = fm.annotations.clone();
-    let favicon = fm.favicon.clone();
-
-    Ok(Article {
-        meta: entry_from_fm(id.to_string(), fm),
-        content: body,
-        annotations: with_reference(annotations, id),
-        favicon,
-    })
+    Ok(article_from_document(id, fm, body))
 }
 
 /// Adds or replaces an annotation in the article's frontmatter (upsert by id).
@@ -185,21 +163,9 @@ pub async fn add_annotation(
     }
 
     let favicon = fm.favicon.clone();
-    let rendered = render_entry(
-        &fm.source,
-        &fm.title,
-        &fm.created_at,
-        fm.published_at.as_deref(),
-        fm.updated_at.as_deref(),
-        fm.summary.as_deref(),
-        &annotations,
-        &fm.tags,
-        favicon.as_deref(),
-        &body,
-    );
-    tokio::fs::write(&path, rendered.as_bytes()).await?;
-
-    Ok(article_from_fm(article_id, fm, annotations, favicon, body))
+    let article = article_from_fm(article_id, fm, annotations, favicon, body);
+    tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
+    Ok(article)
 }
 
 /// Removes an annotation by id. Returns the updated [`Article`].
@@ -219,21 +185,9 @@ pub async fn remove_annotation(
         .collect();
 
     let favicon = fm.favicon.clone();
-    let rendered = render_entry(
-        &fm.source,
-        &fm.title,
-        &fm.created_at,
-        fm.published_at.as_deref(),
-        fm.updated_at.as_deref(),
-        fm.summary.as_deref(),
-        &annotations,
-        &fm.tags,
-        favicon.as_deref(),
-        &body,
-    );
-    tokio::fs::write(&path, rendered.as_bytes()).await?;
-
-    Ok(article_from_fm(article_id, fm, annotations, favicon, body))
+    let article = article_from_fm(article_id, fm, annotations, favicon, body);
+    tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
+    Ok(article)
 }
 
 /// Builds the updated [`Article`] from its parsed frontmatter and the new annotation set, so the
@@ -246,18 +200,7 @@ fn article_from_fm(
     body: String,
 ) -> Article {
     Article {
-        meta: Entry {
-            id: article_id.to_string(),
-            url: fm.source,
-            title: fm.title,
-            created_at: fm.created_at,
-            published_at: fm.published_at,
-            updated_at: fm.updated_at,
-            description: fm.summary,
-            is_unread: fm.tags.iter().any(|t| t == "unread"),
-            is_bookmarked: fm.tags.iter().any(|t| t == "bookmark"),
-            color: None,
-        },
+        meta: entry_from_fm(article_id.to_string(), fm),
         content: body,
         annotations: with_reference(annotations, article_id),
         favicon,

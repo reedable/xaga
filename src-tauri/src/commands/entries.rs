@@ -19,7 +19,7 @@ pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<E
         .await
         .map_err(|e| e.to_string())?
         .into_iter()
-        .filter(|t| t != "unread")
+        .filter(|t| t != xaga_core::tags::UNREAD)
         .collect();
     let entry = entries::set_entry_tags(&data_dir, &id, tags).await.map_err(|e| e.to_string())?;
     state.enqueue(
@@ -36,8 +36,8 @@ pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<E
 pub async fn mark_entry_unread(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
     let data_dir = state.library.read().unwrap().clone();
     let mut tags = entries::read_entry_tags(&data_dir, &id).await.map_err(|e| e.to_string())?;
-    if !tags.contains(&"unread".to_string()) {
-        tags.push("unread".to_string());
+    if !xaga_core::tags::is_unread(&tags) {
+        tags.push(xaga_core::tags::UNREAD.to_string());
     }
     let entry = entries::set_entry_tags(&data_dir, &id, tags).await.map_err(|e| e.to_string())?;
     state.enqueue(

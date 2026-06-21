@@ -54,10 +54,10 @@ impl EmbeddingEntry {
         let meta = &article.meta;
         let mut tags = Vec::new();
         if meta.is_unread {
-            tags.push("unread".to_string());
+            tags.push(crate::tags::UNREAD.to_string());
         }
         if meta.is_bookmarked {
-            tags.push("bookmark".to_string());
+            tags.push(crate::tags::BOOKMARK.to_string());
         }
         EmbeddingEntry {
             id: meta.id.clone(),
@@ -85,7 +85,7 @@ impl EmbeddingEntry {
     pub fn from_feed(feed: &Feed, vector: Option<Vec<f32>>) -> EmbeddingEntry {
         let mut tags = Vec::new();
         if feed.is_pinned {
-            tags.push("pinned".to_string());
+            tags.push(crate::tags::PINNED.to_string());
         }
         EmbeddingEntry {
             id: feed.id.clone(),
@@ -114,7 +114,7 @@ impl EmbeddingEntry {
     pub fn from_topic(topic: &Topic, vector: Option<Vec<f32>>) -> EmbeddingEntry {
         let mut tags = Vec::new();
         if topic.is_pinned {
-            tags.push("pinned".to_string());
+            tags.push(crate::tags::PINNED.to_string());
         }
         EmbeddingEntry {
             id: topic.id.clone(),

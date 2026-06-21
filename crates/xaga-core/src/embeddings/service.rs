@@ -295,7 +295,7 @@ impl EmbeddingService {
         self.senders.enqueue(Tier::Control, Job::StartRecovery { data_dir });
     }
 
-    /// Returns a clone of the Arc<Embedder> for on-demand text embedding outside the service loop.
+    /// Returns a clone of the `Arc<Embedder>` for on-demand text embedding outside the service loop.
     pub fn embedder(&self) -> Arc<Embedder> {
         Arc::clone(&self.embedder)
     }

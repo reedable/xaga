@@ -10,6 +10,7 @@ pub mod fs;
 pub mod persistence;
 pub mod query;
 pub mod recovery;
+pub mod tags;
 pub mod types;
 pub mod util;
 

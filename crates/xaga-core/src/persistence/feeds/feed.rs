@@ -223,11 +223,12 @@ pub async fn list_feeds(feeds_dir: &Path, unread: &HashSet<String>, bookmarked: 
 /// `pinned` flag) so they never collide with publisher-supplied categories.
 pub const TAG_CATEGORY_SCHEME: &str = "https://xaga.app/ns/tag";
 
-/// Whether `feed` carries the app-local `<category term="pinned">` flag.
+/// Whether `feed` carries the app-local [`crate::tags::PINNED`] flag, stored as an Atom
+/// `<category term="…">` under [`TAG_CATEGORY_SCHEME`].
 fn is_feed_pinned(feed: &atom::Feed) -> bool {
     feed.categories()
         .iter()
-        .any(|c| c.term() == "pinned" && c.scheme() == Some(TAG_CATEGORY_SCHEME))
+        .any(|c| c.term() == crate::tags::PINNED && c.scheme() == Some(TAG_CATEGORY_SCHEME))
 }
 
 
@@ -246,11 +247,11 @@ pub async fn set_feed_pinned(feeds_dir: &Path, id: &FeedId, pinned: bool) -> Res
     let mut categories = feed.categories().to_vec();
     if pinned {
         let mut cat = atom::Category::default();
-        cat.set_term("pinned");
+        cat.set_term(crate::tags::PINNED);
         cat.set_scheme(Some(TAG_CATEGORY_SCHEME.to_string()));
         categories.push(cat);
     } else {
-        categories.retain(|c| !(c.term() == "pinned" && c.scheme() == Some(TAG_CATEGORY_SCHEME)));
+        categories.retain(|c| !(c.term() == crate::tags::PINNED && c.scheme() == Some(TAG_CATEGORY_SCHEME)));
     }
     feed.set_categories(categories);
 

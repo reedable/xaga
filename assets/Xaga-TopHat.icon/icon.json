@@ -6,6 +6,7 @@
     {
       "layers" : [
         {
+          "hidden" : false,
           "image-name" : "Image.png",
           "name" : "Image"
         }

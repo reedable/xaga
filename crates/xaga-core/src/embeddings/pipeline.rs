@@ -17,8 +17,8 @@ fn emit_entry_changes(
     unread_tx: &flume::Sender<Entry>,
     bookmarked_tx: &flume::Sender<Entry>,
 ) {
-    let old_unread = old_tags.map_or(false, |t| t.contains(&"unread".to_string()));
-    let old_bookmarked = old_tags.map_or(false, |t| t.contains(&"bookmark".to_string()));
+    let old_unread = old_tags.map_or(false, crate::tags::is_unread);
+    let old_bookmarked = old_tags.map_or(false, crate::tags::is_bookmarked);
     let new_unread = entry.is_unread;
     let new_bookmarked = entry.is_bookmarked;
     if old_unread != new_unread || old_bookmarked != new_bookmarked {
@@ -56,7 +56,7 @@ fn annotation_checksum(annotation: &Annotation) -> String {
 }
 
 /// Builds the LanceDB row for an annotation. `vector` is `None` while the embedding is
-/// still pending (row inserted by [`sync_annotations`]); `Some` once [`embed_annotations`]
+/// still pending (row inserted by [`sync_annotations`]); `Some` once `embed_annotations`
 /// has computed it. `topics` is the reverse index, owned by the topic membership path — the
 /// caller passes the row's *existing* topics forward so this write never clobbers it.
 ///
@@ -107,7 +107,7 @@ fn annotation_saved_item(article: &Article, annotation: &Annotation) -> SavedIte
 
 /// Fast path: reconciles annotation *rows* against `fm` **without** running the embedder, so a
 /// newly added annotation is listable immediately (the vector is deferred to
-/// [`embed_annotations`]). Row insert is decoupled from embedding, mirroring entries' [`sync_row`].
+/// `embed_annotations`). Row insert is decoupled from embedding, mirroring entries' [`sync_entry_row`].
 ///
 /// - Deletes rows for annotations removed from the file.
 /// - Inserts new / content-changed annotations with a `None` (pending) vector.
@@ -529,15 +529,15 @@ pub async fn apply_state(
         }
     }
     if let Some(v) = is_unread {
-        set_tag(&mut row.tags, "unread", v);
+        set_tag(&mut row.tags, crate::tags::UNREAD, v);
         row.is_unread = v;
     }
     if let Some(v) = is_bookmarked {
-        set_tag(&mut row.tags, "bookmark", v);
+        set_tag(&mut row.tags, crate::tags::BOOKMARK, v);
         row.is_bookmarked = v;
     }
     if let Some(v) = is_pinned {
-        set_tag(&mut row.tags, "pinned", v);
+        set_tag(&mut row.tags, crate::tags::PINNED, v);
         row.is_pinned = v;
     }
 

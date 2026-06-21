@@ -342,7 +342,7 @@ pub async fn read_article(
         .map_err(|e| e.to_string())?;
 
     if let Ok(tags) = entries::read_entry_tags(&data_dir, &id).await {
-        let tags: Vec<String> = tags.into_iter().filter(|t| t != "unread").collect();
+        let tags: Vec<String> = tags.into_iter().filter(|t| t != xaga_core::tags::UNREAD).collect();
         let _ = entries::set_entry_tags(&data_dir, &id, tags).await;
     }
 

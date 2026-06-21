@@ -48,7 +48,6 @@ pub enum TopicsCommand {
     },
 }
 
-
 #[derive(Deserialize)]
 struct CollectionFile {
     id: String,
@@ -61,31 +60,27 @@ struct CollectionFile {
 
 pub async fn handle(cmd: TopicsCommand, data_dir: &Path) {
     match cmd {
-        TopicsCommand::List => {
-            match topics::list_topics(data_dir).await {
-                Ok(ts) if ts.is_empty() => println!("No topics saved."),
-                Ok(ts) => {
-                    for t in &ts {
-                        println!("{}", t.id);
-                        println!("  {}", t.title);
-                    }
+        TopicsCommand::List => match topics::list_topics(data_dir).await {
+            Ok(ts) if ts.is_empty() => println!("No topics saved."),
+            Ok(ts) => {
+                for t in &ts {
+                    println!("{}", t.id);
+                    println!("  {}", t.title);
                 }
-                Err(e) => die(e),
             }
-        }
+            Err(e) => die(e),
+        },
 
-        TopicsCommand::Read { id } => {
-            match topics::read_topic(data_dir, &id).await {
-                Ok(t) => {
-                    println!("id:      {}", t.id);
-                    println!("title:   {}", t.title);
-                    println!("created: {}", t.created_at);
-                    println!();
-                    print!("{}", t.description.as_deref().unwrap_or(""));
-                }
-                Err(e) => die(e),
+        TopicsCommand::Read { id } => match topics::read_topic(data_dir, &id).await {
+            Ok(t) => {
+                println!("id:      {}", t.id);
+                println!("title:   {}", t.title);
+                println!("created: {}", t.created_at);
+                println!();
+                print!("{}", t.description.as_deref().unwrap_or(""));
             }
-        }
+            Err(e) => die(e),
+        },
 
         TopicsCommand::Migrate { dry_run } => {
             migrate(data_dir, dry_run).await;
@@ -160,17 +155,18 @@ async fn migrate_summary(data_dir: &Path, dry_run: bool) {
         }
 
         // Preserve timestamps — moving storage location is not a content edit.
-        let updated_at = fm.updated_at.clone().unwrap_or_else(|| fm.created_at.clone());
-        let rendered = topics::render_topic(
-            &id,
-            &fm.title,
-            &fm.created_at,
-            &updated_at,
-            fm.threshold,
-            &fm.items,
-            &fm.tags,
-            &body,
-        );
+        let updated_at = fm
+            .updated_at
+            .clone()
+            .unwrap_or_else(|| fm.created_at.clone());
+
+        let items = fm.items.clone();
+
+        let mut topic = topics::topic_from_document(&id, fm, body);
+        topic.updated_at = Some(updated_at);
+
+        let rendered = topics::render_topic(&topic, &items);
+
         match tokio::fs::write(&path, rendered.as_bytes()).await {
             Ok(_) => {
                 println!("migrated topics/{id}.md");
@@ -262,9 +258,15 @@ async fn repair_annotations(data_dir: &Path, dry_run: bool) {
                     changed += 1;
                     let reference = annotation_map[id].clone();
                     if dry_run {
-                        eprintln!("  {}: entry {id} -> annotation (reference {reference})", topic.id);
+                        eprintln!(
+                            "  {}: entry {id} -> annotation (reference {reference})",
+                            topic.id
+                        );
                     }
-                    CollectionItem::Annotation { id: id.clone(), reference }
+                    CollectionItem::Annotation {
+                        id: id.clone(),
+                        reference,
+                    }
                 }
                 other => other.clone(),
             })
@@ -278,27 +280,27 @@ async fn repair_annotations(data_dir: &Path, dry_run: bool) {
         n_repaired += changed;
 
         if dry_run {
-            println!("would repair '{}' ({}): {changed} item(s)", topic.title, topic.id);
+            println!(
+                "would repair '{}' ({}): {changed} item(s)",
+                topic.title, topic.id
+            );
             continue;
         }
 
         // Preserve timestamps — a membership-type correction is not a content edit (mirrors
         // set_topic_pinned). The member ids are unchanged, so the watcher's reconcile is a no-op.
-        let updated_at = fm.updated_at.clone().unwrap_or_else(|| fm.created_at.clone());
-        // Legacy fallback: pre-migration topics keep their blurb in the body.
-        let description = fm.summary.clone().unwrap_or_else(|| body.clone());
-        let rendered = topics::render_topic(
-            &topic.id,
-            &fm.title,
-            &fm.created_at,
-            &updated_at,
-            fm.threshold,
-            &new_items,
-            &fm.tags,
-            &description,
-        );
+        let updated_at = fm
+            .updated_at
+            .clone()
+            .unwrap_or_else(|| fm.created_at.clone());
+        let mut rebuilt = topics::topic_from_document(&topic.id, fm, body);
+        rebuilt.updated_at = Some(updated_at);
+        let rendered = topics::render_topic(&rebuilt, &new_items);
         match tokio::fs::write(&path, rendered.as_bytes()).await {
-            Ok(_) => println!("repaired '{}' ({}): {changed} item(s)", topic.title, topic.id),
+            Ok(_) => println!(
+                "repaired '{}' ({}): {changed} item(s)",
+                topic.title, topic.id
+            ),
             Err(e) => eprintln!("error: failed to write {}: {e}", path.display()),
         }
     }
@@ -306,7 +308,9 @@ async fn repair_annotations(data_dir: &Path, dry_run: bool) {
     let verb = if dry_run { "Would repair" } else { "Repaired" };
     println!();
     println!("Scanned {n_topics_scanned} topic(s).");
-    println!("{verb} {n_repaired} mis-recorded annotation item(s) across {n_topics_changed} topic(s).");
+    println!(
+        "{verb} {n_repaired} mis-recorded annotation item(s) across {n_topics_changed} topic(s)."
+    );
 }
 
 async fn migrate(data_dir: &Path, dry_run: bool) {
@@ -383,7 +387,9 @@ async fn migrate(data_dir: &Path, dry_run: bool) {
         };
 
         // Determine target topic ID.
-        let topic_path = data_dir.join("topics").join(format!("{}.md", collection.id));
+        let topic_path = data_dir
+            .join("topics")
+            .join(format!("{}.md", collection.id));
         let target_id = if tokio::fs::try_exists(&topic_path).await.unwrap_or(false) {
             let new_id = Uuid::new_v4().to_string();
             eprintln!(
@@ -423,7 +429,9 @@ async fn migrate(data_dir: &Path, dry_run: bool) {
                         if let Some(ref db) = db {
                             if let Ok(Some(_)) = db.get_entry(id).await {
                                 if dry_run {
-                                    eprintln!("  (would delete stale LanceDB row for annotation {id})");
+                                    eprintln!(
+                                        "  (would delete stale LanceDB row for annotation {id})"
+                                    );
                                 } else if db.delete_by_id(id).await.is_ok() {
                                     n_lancedb_deleted += 1;
                                 }
@@ -440,8 +448,14 @@ async fn migrate(data_dir: &Path, dry_run: bool) {
                 collection.title,
                 collection.id,
                 target_id,
-                resolved_items.iter().filter(|i| matches!(i, CollectionItem::Entry { .. })).count(),
-                resolved_items.iter().filter(|i| matches!(i, CollectionItem::Annotation { .. })).count(),
+                resolved_items
+                    .iter()
+                    .filter(|i| matches!(i, CollectionItem::Entry { .. }))
+                    .count(),
+                resolved_items
+                    .iter()
+                    .filter(|i| matches!(i, CollectionItem::Annotation { .. }))
+                    .count(),
             );
         } else {
             match topics::save_topic_with_timestamps(
@@ -458,7 +472,10 @@ async fn migrate(data_dir: &Path, dry_run: bool) {
             .await
             {
                 Ok(_) => println!("migrated '{}' → topics/{}.md", collection.title, target_id),
-                Err(e) => eprintln!("error: failed to write topic for '{}': {e}", collection.title),
+                Err(e) => eprintln!(
+                    "error: failed to write topic for '{}': {e}",
+                    collection.title
+                ),
             }
         }
 
@@ -472,5 +489,7 @@ async fn migrate(data_dir: &Path, dry_run: bool) {
     println!("{verb} {n_collections} collection(s).");
     println!("  Entries carried over:    {n_entries}");
     println!("  Annotations migrated:    {n_annotations}");
-    println!("  Annotations dropped:     {n_dropped}  (stale LanceDB rows deleted: {n_lancedb_deleted})");
+    println!(
+        "  Annotations dropped:     {n_dropped}  (stale LanceDB rows deleted: {n_lancedb_deleted})"
+    );
 }

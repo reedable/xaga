@@ -36,18 +36,10 @@ pub fn is_safe_id(id: &str) -> bool {
 
 // ── Frontmatter rendering ─────────────────────────────────────────────────────
 
-pub fn render_entry(
-    source: &str,
-    title: &str,
-    created_at: &str,
-    published_at: Option<&str>,
-    updated_at: Option<&str>,
-    summary: Option<&str>,
-    annotations: &[crate::types::Annotation],
-    tags: &[String],
-    favicon: Option<&str>,
-    markdown: &str,
-) -> String {
+/// Encodes an [`Article`] to its `.md` representation (frontmatter + body) — the single
+/// entry/article encoder. `tags` and `aliases` are reconstructed from the domain object (state
+/// booleans / title); both are storage-only keys the domain doesn't carry directly.
+pub fn render_entry(article: &Article) -> String {
     #[derive(serde::Serialize)]
     struct Fm<'a> {
         source: &'a str,
@@ -68,23 +60,35 @@ pub fn render_entry(
         favicon: Option<&'a str>,
     }
 
-    let clean_summary = summary.map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "));
+    let meta = &article.meta;
+    let mut tags: Vec<String> = Vec::new();
+    if meta.is_unread {
+        tags.push(crate::tags::UNREAD.to_string());
+    }
+    if meta.is_bookmarked {
+        tags.push(crate::tags::BOOKMARK.to_string());
+    }
+
+    let clean_summary = meta
+        .description
+        .as_deref()
+        .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "));
 
     let fm = Fm {
-        source,
-        title,
-        aliases: vec![title],
-        created: created_at,
-        published: published_at,
-        updated: updated_at,
-        summary: clean_summary.as_deref().map(str::to_string),
-        annotations: annotations.iter().map(Into::into).collect(),
-        tags,
-        favicon,
+        source: &meta.url,
+        title: &meta.title,
+        aliases: vec![meta.title.as_str()],
+        created: &meta.created_at,
+        published: meta.published_at.as_deref(),
+        updated: meta.updated_at.as_deref(),
+        summary: clean_summary,
+        annotations: article.annotations.iter().map(Into::into).collect(),
+        tags: &tags,
+        favicon: article.favicon.as_deref(),
     };
 
     let yaml = serde_yaml::to_string(&fm).expect("frontmatter serialization is infallible");
-    format!("---\n{yaml}---\n\n{markdown}\n")
+    format!("---\n{yaml}---\n\n{}\n", article.content)
 }
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
@@ -94,8 +98,8 @@ pub(crate) fn entry_path(data_dir: &Path, hash12: &str) -> PathBuf {
 }
 
 pub fn entry_from_fm(id: String, fm: super::frontmatter::Frontmatter) -> Entry {
-    let is_unread = fm.tags.contains(&"unread".to_string());
-    let is_bookmarked = fm.tags.contains(&"bookmark".to_string());
+    let is_unread = crate::tags::is_unread(&fm.tags);
+    let is_bookmarked = crate::tags::is_bookmarked(&fm.tags);
     Entry {
         id,
         url: fm.source,
@@ -155,8 +159,8 @@ fn entry_article(
             published_at: published_at.map(str::to_string),
             updated_at: updated_at.map(str::to_string),
             description: summary.map(str::to_string),
-            is_unread: tags.iter().any(|t| t == "unread"),
-            is_bookmarked: tags.iter().any(|t| t == "bookmark"),
+            is_unread: crate::tags::is_unread(tags),
+            is_bookmarked: crate::tags::is_bookmarked(tags),
             color: None,
         },
         content: String::new(),
@@ -180,11 +184,11 @@ pub async fn write_entry(
     let path = entry_path(data_dir, &hash12);
 
     let created_at = Utc::now().to_rfc3339();
-    let tags = vec!["unread".to_string()];
-    let rendered = render_entry(&normalized, title, &created_at, published_at, updated_at, summary, &[], &tags, None, "");
+    let tags = vec![crate::tags::UNREAD.to_string()];
+    let article = entry_article(hash12, normalized, title, created_at, published_at, updated_at, summary, &tags);
     tokio::fs::create_dir_all(path.parent().unwrap()).await?;
-    tokio::fs::write(&path, rendered.as_bytes()).await?;
-    Ok(entry_article(hash12, normalized, title, created_at, published_at, updated_at, summary, &tags))
+    tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
+    Ok(article)
 }
 
 /// Writes a new Entry to `entries/{hash12}.md` without the `unread` tag (already read).
@@ -204,13 +208,7 @@ pub async fn write_read_entry(
     let hash12 = url_hash12(&normalized);
     let path = entry_path(data_dir, &hash12);
 
-    if !tokio::fs::try_exists(&path).await? {
-        let rendered = render_entry(&normalized, title, created_at, published_at, updated_at, summary, &[], tags, None, "");
-        tokio::fs::create_dir_all(path.parent().unwrap()).await?;
-        tokio::fs::write(&path, rendered.as_bytes()).await?;
-    }
-
-    Ok(entry_article(
+    let article = entry_article(
         hash12,
         normalized,
         title,
@@ -219,7 +217,14 @@ pub async fn write_read_entry(
         updated_at,
         summary,
         tags,
-    ))
+    );
+
+    if !tokio::fs::try_exists(&path).await? {
+        tokio::fs::create_dir_all(path.parent().unwrap()).await?;
+        tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
+    }
+
+    Ok(article)
 }
 
 
@@ -246,33 +251,27 @@ pub async fn set_entry_tags(data_dir: &Path, id: &str, tags: Vec<String>) -> Res
     let path = find_entry_path(data_dir, id).await.ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
-    let content = render_entry(
-        &fm.source,
-        &fm.title,
-        &fm.created_at,
-        fm.published_at.as_deref(),
-        fm.updated_at.as_deref(),
-        fm.summary.as_deref(),
-        &fm.annotations,
-        &tags,
-        fm.favicon.as_deref(),
-        &body,
-    );
-    tokio::fs::write(&path, content.as_bytes()).await?;
-    let is_unread = tags.contains(&"unread".to_string());
-    let is_bookmarked = tags.contains(&"bookmark".to_string());
-    Ok(Entry {
-        id: id.to_string(),
-        url: fm.source,
-        title: fm.title,
-        created_at: fm.created_at,
-        published_at: fm.published_at,
-        updated_at: fm.updated_at,
-        description: fm.summary,
-        is_unread,
-        is_bookmarked,
-        color: None,
-    })
+    // Build the updated Article (the message) once, encode it, and return its meta. State comes from
+    // the new `tags`; annotations/body/favicon are preserved from the parsed file.
+    let article = Article {
+        meta: Entry {
+            id: id.to_string(),
+            url: fm.source,
+            title: fm.title,
+            created_at: fm.created_at,
+            published_at: fm.published_at,
+            updated_at: fm.updated_at,
+            description: fm.summary,
+            is_unread: crate::tags::is_unread(&tags),
+            is_bookmarked: crate::tags::is_bookmarked(&tags),
+            color: None,
+        },
+        content: body,
+        annotations: fm.annotations,
+        favicon: fm.favicon,
+    };
+    tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
+    Ok(article.meta)
 }
 
 /// Returns a summary for every entry in `entries/`.
