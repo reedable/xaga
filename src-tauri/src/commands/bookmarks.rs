@@ -80,9 +80,9 @@ pub async fn import_bookmarks(
     // Newly-created entries carry their parsed payload — enqueue content indexing (bulk →
     // Maintenance tier) so the consumer never re-reads. Already-existing entries only gained the
     // bookmark tag, which is a state change → SyncState (Interactive).
-    let added_ids: Vec<String> = result.added.iter().map(|c| c.id.clone()).collect();
-    for content in result.added {
-        state.enqueue(Tier::Maintenance, Job::UpsertContent { content });
+    let added_ids: Vec<String> = result.added.iter().map(|a| a.meta.id.clone()).collect();
+    for article in result.added {
+        state.enqueue(Tier::Maintenance, Job::UpsertEntry { article });
     }
     for id in &result.updated {
         state.enqueue(

@@ -275,7 +275,7 @@ pub async fn save_article(
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
     let data_dir = state.library.read().unwrap().clone();
-    let content = articles::save_article(
+    let article = articles::save_article(
         &data_dir,
         &id,
         &url,
@@ -288,8 +288,7 @@ pub async fn save_article(
     )
     .await
     .map_err(|e| e.to_string())?;
-    let article = content.to_article();
-    state.enqueue(Tier::Interactive, Job::UpsertContent { content });
+    state.enqueue(Tier::Interactive, Job::UpsertEntry { article: article.clone() });
     Ok(article)
 }
 
@@ -305,7 +304,7 @@ pub async fn create_article(
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
     let data_dir = state.library.read().unwrap().clone();
-    let content = articles::create_article(
+    let article = articles::create_article(
         &data_dir,
         &url,
         &title,
@@ -317,8 +316,7 @@ pub async fn create_article(
     )
     .await
     .map_err(|e| e.to_string())?;
-    let article = content.to_article();
-    state.enqueue(Tier::Interactive, Job::UpsertContent { content });
+    state.enqueue(Tier::Interactive, Job::UpsertEntry { article: article.clone() });
     Ok(article)
 }
 
@@ -379,17 +377,16 @@ pub async fn add_annotation(
         content: note.unwrap_or_default(),
         created_at: String::new(),
     };
-    let content = articles::add_annotation(&data_dir, &article_id, annotation)
+    let article = articles::add_annotation(&data_dir, &article_id, annotation)
         .await
         .map_err(|e| e.to_string())?;
-    let article = content.to_article();
     // Insert/refresh the annotation row now (embedder-free, immediately listable), then defer the
     // ONNX embed so the new annotation gets a vector — without it, find_related/rank_topics_by_item
-    // raise "id not found". embed_vector is checksum-gated, so it skips the unchanged article body
-    // and only fills the pending annotation vector via embed_annotations. Tier mirrors the
-    // live-edit embed_follow() (Interactive -> Regular). Both jobs carry the parsed payload.
-    state.enqueue(Tier::Interactive, Job::SyncAnnotations { content: content.clone() });
-    state.enqueue(Tier::Regular, Job::EmbedVector { content });
+    // raise "id not found". embed_entry_vector is checksum-gated, so it skips the unchanged article
+    // body and only fills the pending annotation vector via embed_annotations. Tier mirrors the
+    // live-edit embed_follow() (Interactive -> Regular). Both jobs carry the domain object.
+    state.enqueue(Tier::Interactive, Job::SyncAnnotations { article: article.clone() });
+    state.enqueue(Tier::Regular, Job::EmbedEntry { article: article.clone() });
     Ok(article)
 }
 
@@ -401,7 +398,7 @@ pub async fn remove_annotation(
     state: State<'_, AppState>,
 ) -> Result<articles::Article, String> {
     let data_dir = state.library.read().unwrap().clone();
-    let content = articles::remove_annotation(&data_dir, &article_id, &annotation_id)
+    let article = articles::remove_annotation(&data_dir, &article_id, &annotation_id)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -434,11 +431,11 @@ pub async fn remove_annotation(
         );
     }
 
-    state.enqueue(Tier::Interactive, Job::SyncAnnotations { content: content.clone() });
+    state.enqueue(Tier::Interactive, Job::SyncAnnotations { article: article.clone() });
 
     window.emit("annotation:removed", &annotation_id).ok();
 
-    Ok(content.to_article())
+    Ok(article)
 }
 
 #[tauri::command]

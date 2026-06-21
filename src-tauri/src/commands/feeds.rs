@@ -32,8 +32,8 @@ pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<feeds::
     let (feed, created) = feeds::add_feed(&state.http_client, &dir, &library, &url, &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())?;
-    for content in created {
-        state.enqueue(Tier::Maintenance, Job::UpsertContent { content });
+    for article in created {
+        state.enqueue(Tier::Maintenance, Job::UpsertEntry { article });
     }
     Ok(feed)
 }
@@ -46,8 +46,8 @@ pub async fn refresh_feed(window: tauri::Window, id: String, state: State<'_, Ap
     let (feed, created) = feeds::refresh_feed(&state.http_client, &dir, &library, &feeds::FeedId(id), &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())?;
-    for content in created {
-        state.enqueue(Tier::Maintenance, Job::UpsertContent { content });
+    for article in created {
+        state.enqueue(Tier::Maintenance, Job::UpsertEntry { article });
     }
     window.emit("feed:refreshed", &feed).ok();
     Ok(feed)
@@ -133,8 +133,8 @@ pub async fn import_feeds(
 
         match feeds::add_feed(&state.http_client, &dir, &library, &normalized, &unread, &bookmarked).await {
             Ok((feed, created)) => {
-                for content in created {
-                    state.enqueue(Tier::Maintenance, Job::UpsertContent { content });
+                for article in created {
+                    state.enqueue(Tier::Maintenance, Job::UpsertEntry { article });
                 }
                 added.push(feed);
             }

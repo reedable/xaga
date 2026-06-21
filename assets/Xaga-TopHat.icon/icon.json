@@ -6,8 +6,8 @@
     {
       "layers" : [
         {
-          "image-name" : "Image 2.png",
-          "name" : "Image 2"
+          "image-name" : "Image.png",
+          "name" : "Image"
         }
       ],
       "shadow" : {

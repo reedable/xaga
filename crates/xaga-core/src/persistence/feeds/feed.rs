@@ -6,8 +6,7 @@ use atom_syndication as atom;
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 
-use crate::content::Content;
-use crate::types::Feed;
+use crate::types::{Article, Feed};
 use crate::util::{feed_entry_id, normalize_url, url_hash12};
 
 use super::{
@@ -95,7 +94,7 @@ pub async fn add_feed(
     url: &str,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
-) -> Result<(Feed, Vec<Content>)> {
+) -> Result<(Feed, Vec<Article>)> {
     let url = if url.trim_start().starts_with("http://") {
         format!("https://{}", url.trim_start()[7..].trim_start())
     } else {
@@ -122,7 +121,7 @@ pub async fn add_feed(
     };
 
     write_atom_atomic(feeds_dir, &id, &atom_feed).await?;
-    let mut created: Vec<Content> = Vec::new();
+    let mut created: Vec<Article> = Vec::new();
     for ae in &new_atom_entries {
         let e = super::feed_entry::atom_entry_to_entry(ae);
         if e.url.is_empty() {
@@ -163,7 +162,7 @@ pub async fn refresh_feed(
     id: &FeedId,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
-) -> Result<(Feed, Vec<Content>)> {
+) -> Result<(Feed, Vec<Article>)> {
     let path = xml_path(feeds_dir, id);
     if !path.exists() {
         return Err(FeedError::NotFound(id.clone()));
@@ -191,7 +190,7 @@ pub async fn refresh_all_feeds(
     data_dir: &Path,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
-) -> Vec<(FeedId, Result<(Feed, Vec<Content>)>)> {
+) -> Vec<(FeedId, Result<(Feed, Vec<Article>)>)> {
     let ids = match list_feed_ids(feeds_dir).await {
         Ok(ids) => ids,
         Err(e) => return vec![(FeedId(String::new()), Err(e))],

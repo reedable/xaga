@@ -3,8 +3,7 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use thiserror::Error;
 
-use crate::content::Content;
-use crate::types::Kind;
+use crate::types::Article;
 use crate::util::{normalize_url, url_hash12};
 
 use super::frontmatter::{parse_document, parse_frontmatter};
@@ -135,9 +134,9 @@ pub async fn find_entry_path(data_dir: &Path, id: &str) -> Option<PathBuf> {
     None
 }
 
-/// Builds the [`Content`] payload for a freshly-written entry from its parts, so the producer
-/// parses/constructs once and the indexing consumer never re-reads the file.
-fn entry_content(
+/// Builds the [`Article`] for a freshly-written entry (empty body, no annotations) from its parts,
+/// so the producer hands the domain object to the queue and the consumer never re-reads the file.
+fn entry_article(
     id: String,
     normalized_url: String,
     title: &str,
@@ -145,27 +144,28 @@ fn entry_content(
     published_at: Option<&str>,
     updated_at: Option<&str>,
     summary: Option<&str>,
-    tags: Vec<String>,
-) -> Content {
-    Content {
-        id,
-        kind: Kind::Entry,
-        source: normalized_url,
-        title: title.to_string(),
-        created_at,
-        published_at: published_at.map(str::to_string),
-        updated_at: updated_at.map(str::to_string),
-        summary: summary.map(str::to_string),
-        tags,
+    tags: &[String],
+) -> Article {
+    Article {
+        meta: Entry {
+            id,
+            url: normalized_url,
+            title: title.to_string(),
+            created_at,
+            published_at: published_at.map(str::to_string),
+            updated_at: updated_at.map(str::to_string),
+            description: summary.map(str::to_string),
+            is_unread: tags.iter().any(|t| t == "unread"),
+            is_bookmarked: tags.iter().any(|t| t == "bookmark"),
+            color: None,
+        },
+        content: String::new(),
         annotations: vec![],
-        threshold: None,
         favicon: None,
-        items: vec![],
-        body: String::new(),
     }
 }
 
-/// Writes a new Entry to `entries/{hash12}.md` with the `unread` tag, returning its [`Content`].
+/// Writes a new Entry to `entries/{hash12}.md` with the `unread` tag, returning its [`Article`].
 /// Called by `reconcile_atom_file` when a feed entry has no local file yet.
 pub async fn write_entry(
     data_dir: &Path,
@@ -174,7 +174,7 @@ pub async fn write_entry(
     published_at: Option<&str>,
     updated_at: Option<&str>,
     summary: Option<&str>,
-) -> Result<Content, EntryError> {
+) -> Result<Article, EntryError> {
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
     let path = entry_path(data_dir, &hash12);
@@ -184,11 +184,11 @@ pub async fn write_entry(
     let rendered = render_entry(&normalized, title, &created_at, published_at, updated_at, summary, &[], &tags, None, "");
     tokio::fs::create_dir_all(path.parent().unwrap()).await?;
     tokio::fs::write(&path, rendered.as_bytes()).await?;
-    Ok(entry_content(hash12, normalized, title, created_at, published_at, updated_at, summary, tags))
+    Ok(entry_article(hash12, normalized, title, created_at, published_at, updated_at, summary, &tags))
 }
 
 /// Writes a new Entry to `entries/{hash12}.md` without the `unread` tag (already read).
-/// If an Entry already exists at that path it is left untouched. Returns the [`Content`] for the
+/// If an Entry already exists at that path it is left untouched. Returns the [`Article`] for the
 /// entry so the caller can queue an embed without re-reading the file.
 pub async fn write_read_entry(
     data_dir: &Path,
@@ -199,7 +199,7 @@ pub async fn write_read_entry(
     updated_at: Option<&str>,
     summary: Option<&str>,
     tags: &[String],
-) -> Result<Content, EntryError> {
+) -> Result<Article, EntryError> {
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
     let path = entry_path(data_dir, &hash12);
@@ -210,7 +210,7 @@ pub async fn write_read_entry(
         tokio::fs::write(&path, rendered.as_bytes()).await?;
     }
 
-    Ok(entry_content(
+    Ok(entry_article(
         hash12,
         normalized,
         title,
@@ -218,7 +218,7 @@ pub async fn write_read_entry(
         published_at,
         updated_at,
         summary,
-        tags.to_vec(),
+        tags,
     ))
 }
 

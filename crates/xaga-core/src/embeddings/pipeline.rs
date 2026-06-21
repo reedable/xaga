@@ -4,31 +4,30 @@ use std::sync::Arc;
 
 use sha2::Digest;
 
-use crate::content::Content;
-use crate::types::{Annotation, Entry, Kind, SavedItem};
+use crate::types::{Annotation, Article, Entry, Kind, SavedItem, Topic};
 use super::db::EmbeddingEntry;
 use super::model::Embedder;
+use super::row::{article_embed_text, checksum, topic_embed_text};
 use super::{EmbeddingsDb, EmbeddingsError};
 
 /// Compares old and new tag state; sends the entry to the appropriate channels
 /// when is_unread or is_bookmarked actually changed.
 fn emit_entry_changes(
-    content: &Content,
+    entry: &Entry,
     old_tags: Option<&[String]>,
     unread_tx: &flume::Sender<Entry>,
     bookmarked_tx: &flume::Sender<Entry>,
 ) {
     let old_unread = old_tags.map_or(false, |t| t.contains(&"unread".to_string()));
     let old_bookmarked = old_tags.map_or(false, |t| t.contains(&"bookmark".to_string()));
-    let new_unread = content.is_unread();
-    let new_bookmarked = content.is_bookmarked();
+    let new_unread = entry.is_unread;
+    let new_bookmarked = entry.is_bookmarked;
     if old_unread != new_unread || old_bookmarked != new_bookmarked {
-        let entry = content.to_entry();
         if old_unread != new_unread {
             let _ = unread_tx.send(entry.clone());
         }
         if old_bookmarked != new_bookmarked {
-            let _ = bookmarked_tx.send(entry);
+            let _ = bookmarked_tx.send(entry.clone());
         }
     }
 }
@@ -66,8 +65,7 @@ fn annotation_checksum(annotation: &Annotation) -> String {
 /// highlighted text; the note (if present) is the embedding body. The `reference` column
 /// holds the parent article ID; `color` holds the highlight color.
 pub(crate) fn annotation_embedding_entry(
-    article_id: &str,
-    content: &Content,
+    article: &Article,
     annotation: &Annotation,
     topics: Vec<String>,
     vector: Option<Vec<f32>>,
@@ -75,13 +73,13 @@ pub(crate) fn annotation_embedding_entry(
     EmbeddingEntry {
         id: annotation.id.clone(),
         kind: Kind::Annotation,
-        source: content.source.clone(),
+        source: article.meta.url.clone(),
         title: annotation.text.join(" "),
         created_at: annotation.created_at.clone(),
-        published_at: content.published_at.clone().unwrap_or_default(),
-        updated_at: content.updated_at.clone().unwrap_or_default(),
+        published_at: article.meta.published_at.clone().unwrap_or_default(),
+        updated_at: article.meta.updated_at.clone().unwrap_or_default(),
         checksum: annotation_checksum(annotation),
-        reference: article_id.to_string(),
+        reference: article.meta.id.clone(),
         color: annotation.color.clone(),
         summary: String::new(),
         tags: vec![],
@@ -95,15 +93,15 @@ pub(crate) fn annotation_embedding_entry(
 }
 
 /// The live-update payload the UI consumes to add/refresh a saved annotation.
-fn annotation_saved_item(article_id: &str, content: &Content, annotation: &Annotation) -> SavedItem {
+fn annotation_saved_item(article: &Article, annotation: &Annotation) -> SavedItem {
     SavedItem {
         id: annotation.id.clone(),
         title: annotation.text.join(" "),
         created_at: annotation.created_at.clone(),
-        url: content.source.clone(),
+        url: article.meta.url.clone(),
         is_unread: false,
         is_bookmarked: false,
-        reference: Some(article_id.to_string()),
+        reference: Some(article.meta.id.clone()),
         color: Some(annotation.color.clone()),
     }
 }
@@ -117,15 +115,15 @@ fn annotation_saved_item(article_id: &str, content: &Content, annotation: &Annot
 /// - Applies a color-only change in place, preserving the existing vector.
 ///
 /// Emits the live `annotation_tx` event for inserted/updated rows.
-async fn sync_annotations(
-    article_id: &str,
-    content: &Content,
+pub async fn sync_annotations(
+    article: &Article,
     db: &EmbeddingsDb,
     annotation_tx: &flume::Sender<SavedItem>,
 ) -> Result<(), EmbeddingsError> {
+    let article_id = &article.meta.id;
     let existing = db.annotation_meta_for_article(article_id).await?;
 
-    let current_ids: HashSet<String> = content.annotations.iter().map(|a| a.id.clone()).collect();
+    let current_ids: HashSet<String> = article.annotations.iter().map(|a| a.id.clone()).collect();
 
     let to_delete: Vec<String> = existing
         .keys()
@@ -140,7 +138,7 @@ async fn sync_annotations(
         db.delete_by_ids(&to_delete).await?;
     }
 
-    for annotation in &content.annotations {
+    for annotation in &article.annotations {
         let checksum = annotation_checksum(annotation);
 
         match existing.get(&annotation.id) {
@@ -155,7 +153,7 @@ async fn sync_annotations(
                 if let Some(mut existing_entry) = db.get_entry(&annotation.id).await? {
                     existing_entry.color = annotation.color.clone();
                     db.upsert(existing_entry).await?;
-                    let _ = annotation_tx.send(annotation_saved_item(article_id, content, annotation));
+                    let _ = annotation_tx.send(annotation_saved_item(article, annotation));
                 }
                 continue;
             }
@@ -170,9 +168,9 @@ async fn sync_annotations(
         } else {
             Vec::new()
         };
-        db.upsert(annotation_embedding_entry(article_id, content, annotation, topics, None))
+        db.upsert(annotation_embedding_entry(article, annotation, topics, None))
             .await?;
-        let _ = annotation_tx.send(annotation_saved_item(article_id, content, annotation));
+        let _ = annotation_tx.send(annotation_saved_item(article, annotation));
     }
 
     Ok(())
@@ -183,12 +181,11 @@ async fn sync_annotations(
 /// safety net — annotation rows are normally created earlier (fresh recovery via `bulk_insert`,
 /// live edits via `sync_annotations`). Runs the embedder.
 async fn embed_annotations(
-    article_id: &str,
-    content: &Content,
+    article: &Article,
     embedder: &Arc<Embedder>,
     db: &EmbeddingsDb,
 ) -> Result<(), EmbeddingsError> {
-    for annotation in &content.annotations {
+    for annotation in &article.annotations {
         let checksum = annotation_checksum(annotation);
         let existing = db.get_entry(&annotation.id).await?;
         let needs_vector = match &existing {
@@ -205,31 +202,30 @@ async fn embed_annotations(
         let vector = compute_vector(embedder, title, body).await?;
         // Carry the existing row's topics forward — the topic path owns that column.
         let topics = existing.map(|e| e.topics).unwrap_or_default();
-        db.upsert(annotation_embedding_entry(article_id, content, annotation, topics, Some(vector)))
+        db.upsert(annotation_embedding_entry(article, annotation, topics, Some(vector)))
             .await?;
     }
 
     Ok(())
 }
 
-/// Fast path: brings the row's metadata, tags, and denormalized state in sync with
-/// the `.md` file *without* running the embedder. The vector is preserved when the
-/// content is unchanged, or left `None` (pending) when the row is new or its content
-/// changed — `None` ⟺ still needs embedding. Annotation rows are reconciled here too
-/// (also embedder-free) by [`sync_annotations`]; their vectors are filled by [`embed_vector`].
-pub async fn sync_row(
-    content: &Content,
+/// Fast path (entry): brings the row's metadata, tags, and denormalized state in sync with the
+/// carried `Article` *without* running the embedder. The vector is preserved when the content is
+/// unchanged, or left `None` (pending) when the row is new or its content changed. Annotation rows
+/// are reconciled here too (also embedder-free); their vectors are filled by [`embed_entry_vector`].
+pub async fn sync_entry_row(
+    article: &Article,
     db: &EmbeddingsDb,
     unread_tx: &flume::Sender<Entry>,
     bookmarked_tx: &flume::Sender<Entry>,
     annotation_tx: &flume::Sender<SavedItem>,
 ) -> Result<(), EmbeddingsError> {
-    let id = content.id.clone();
+    let id = article.meta.id.clone();
 
     let existing = db.get_entry(&id).await?;
-    let checksum = content.content_checksum();
+    let new_checksum = checksum(&article.meta.title, article_embed_text(article));
     let content_unchanged =
-        existing.as_ref().map(|e| e.checksum.as_str()) == Some(checksum.as_str());
+        existing.as_ref().map(|e| e.checksum.as_str()) == Some(new_checksum.as_str());
 
     // Preserve the existing vector only when content is unchanged; otherwise leave it
     // pending so the embed pass recomputes it.
@@ -239,58 +235,85 @@ pub async fn sync_row(
         None
     };
 
-    // Write only when something the row stores actually changed (state derives from tags).
-    // `topics` is excluded: it's the reverse index owned by the topic membership path, not the
-    // content payload, so it neither triggers a write nor is sourced from `content` here.
+    let mut row = EmbeddingEntry::from_article(article, vector);
+
+    // Write only when something the row stores actually changed.
     let changed = match &existing {
         None => true,
-        Some(e) => {
-            !content_unchanged
-                || e.tags != content.tags
-                || e.summary != content.summary.clone().unwrap_or_default()
-        }
+        Some(e) => !content_unchanged || e.tags != row.tags || e.summary != row.summary,
     };
 
     if changed {
         let old_tags = existing.as_ref().map(|e| e.tags.clone());
         // Carry the existing row's topics + items forward so this write never clobbers the
         // reverse index — both columns are owned by the topic-membership reconcile path.
-        let mut row = EmbeddingEntry::from_content(content, vector);
         row.topics = existing.as_ref().map(|e| e.topics.clone()).unwrap_or_default();
         row.items = existing.as_ref().map(|e| e.items.clone()).unwrap_or_default();
         db.upsert(row).await?;
-        emit_entry_changes(content, old_tags.as_deref(), unread_tx, bookmarked_tx);
+        emit_entry_changes(&article.meta, old_tags.as_deref(), unread_tx, bookmarked_tx);
     }
 
     // Always reconcile annotation rows (embedder-free) so a new/removed annotation is
     // listable immediately, even when the entry body itself is unchanged.
-    sync_annotations(&id, content, db, annotation_tx).await?;
+    sync_annotations(article, db, annotation_tx).await?;
 
     Ok(())
 }
 
-/// Slow path: computes and stores the embedding vector for `id` when it is missing or
-/// stale, then fills any pending annotation vectors. Runs the embedder.
-pub async fn embed_vector(
-    content: &Content,
+/// Fast path (topic): syncs the topic's row from the carried `Topic` (embedder-free).
+pub async fn sync_topic_row(topic: &Topic, db: &EmbeddingsDb) -> Result<(), EmbeddingsError> {
+    let existing = db.get_entry(&topic.id).await?;
+    let new_checksum = checksum(&topic.title, topic_embed_text(topic));
+    let content_unchanged =
+        existing.as_ref().map(|e| e.checksum.as_str()) == Some(new_checksum.as_str());
+
+    let vector = if content_unchanged {
+        existing.as_ref().and_then(|e| e.vector.clone())
+    } else {
+        None
+    };
+
+    let mut row = EmbeddingEntry::from_topic(topic, vector);
+
+    let changed = match &existing {
+        None => true,
+        Some(e) => !content_unchanged || e.tags != row.tags || e.summary != row.summary,
+    };
+
+    if changed {
+        row.topics = existing.as_ref().map(|e| e.topics.clone()).unwrap_or_default();
+        row.items = existing.as_ref().map(|e| e.items.clone()).unwrap_or_default();
+        db.upsert(row).await?;
+    }
+
+    Ok(())
+}
+
+/// Slow path (entry): computes and stores the entry's embedding vector when missing or stale,
+/// then fills any pending annotation vectors. Runs the embedder.
+pub async fn embed_entry_vector(
+    article: &Article,
     embedder: &Arc<Embedder>,
     db: &EmbeddingsDb,
 ) -> Result<(), EmbeddingsError> {
-    let id = content.id.clone();
+    let id = article.meta.id.clone();
 
     let existing = db.get_entry(&id).await?;
-    let checksum = content.content_checksum();
+    let new_checksum = checksum(&article.meta.title, article_embed_text(article));
     let needs_vector = match &existing {
         None => true,
-        Some(e) => e.vector.is_none() || e.checksum != checksum,
+        Some(e) => e.vector.is_none() || e.checksum != new_checksum,
     };
 
     if needs_vector {
-        log::debug!("embed_vector: embedding id={id} title={:?}", content.title);
-        let vector =
-            compute_vector(embedder, content.title.clone(), content.embed_text().to_string()).await?;
-        // Carry the existing row's topics + items forward — owned by the topic reconcile path.
-        let mut row = EmbeddingEntry::from_content(content, Some(vector));
+        log::debug!("embed_entry_vector: embedding id={id} title={:?}", article.meta.title);
+        let vector = compute_vector(
+            embedder,
+            article.meta.title.clone(),
+            article_embed_text(article).to_string(),
+        )
+        .await?;
+        let mut row = EmbeddingEntry::from_article(article, Some(vector));
         row.topics = existing.as_ref().map(|e| e.topics.clone()).unwrap_or_default();
         row.items = existing.as_ref().map(|e| e.items.clone()).unwrap_or_default();
         db.upsert(row).await?;
@@ -298,24 +321,38 @@ pub async fn embed_vector(
 
     // Fill any pending annotation vectors. Rows (incl. stale-row deletes) were already
     // reconciled by sync_annotations; this also creates rows the recovery path skipped.
-    embed_annotations(&id, content, embedder, db).await?;
+    embed_annotations(article, embedder, db).await?;
 
     Ok(())
 }
 
-/// Synchronous full sync: metadata/state (`sync_row`) then vector + annotations
-/// (`embed_vector`) in one pass. Used by `xaga-cli embeddings recover`, which wants a
-/// finished index rather than the service's deferred two-phase behaviour.
-pub async fn embed_file(
-    content: &Content,
+/// Slow path (topic): computes and stores the topic's embedding vector when missing or stale.
+pub async fn embed_topic_vector(
+    topic: &Topic,
     embedder: &Arc<Embedder>,
     db: &EmbeddingsDb,
-    unread_tx: &flume::Sender<Entry>,
-    bookmarked_tx: &flume::Sender<Entry>,
-    annotation_tx: &flume::Sender<SavedItem>,
 ) -> Result<(), EmbeddingsError> {
-    sync_row(content, db, unread_tx, bookmarked_tx, annotation_tx).await?;
-    embed_vector(content, embedder, db).await?;
+    let existing = db.get_entry(&topic.id).await?;
+    let new_checksum = checksum(&topic.title, topic_embed_text(topic));
+    let needs_vector = match &existing {
+        None => true,
+        Some(e) => e.vector.is_none() || e.checksum != new_checksum,
+    };
+
+    if needs_vector {
+        log::debug!("embed_topic_vector: embedding id={} title={:?}", topic.id, topic.title);
+        let vector = compute_vector(
+            embedder,
+            topic.title.clone(),
+            topic_embed_text(topic).to_string(),
+        )
+        .await?;
+        let mut row = EmbeddingEntry::from_topic(topic, Some(vector));
+        row.topics = existing.as_ref().map(|e| e.topics.clone()).unwrap_or_default();
+        row.items = existing.as_ref().map(|e| e.items.clone()).unwrap_or_default();
+        db.upsert(row).await?;
+    }
+
     Ok(())
 }
 
@@ -517,17 +554,6 @@ pub async fn apply_state(
         let _ = bookmarked_tx.send(entry);
     }
     Ok(())
-}
-
-/// Standalone annotation reconcile for a `SyncAnnotations` job: reconciles the entry's annotation
-/// rows (embedder-free) from the carried content. Used when only annotations changed; content
-/// edits reconcile annotations via `sync_row`.
-pub async fn sync_annotations_from_content(
-    content: &Content,
-    db: &EmbeddingsDb,
-    annotation_tx: &flume::Sender<SavedItem>,
-) -> Result<(), EmbeddingsError> {
-    sync_annotations(&content.id, content, db, annotation_tx).await
 }
 
 /// Precise single-member reverse-index add: sets `topic_id` on `member_id`'s `topics`

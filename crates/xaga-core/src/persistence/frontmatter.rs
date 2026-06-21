@@ -1,11 +1,10 @@
 //! `.md` frontmatter parsing — the persistence layer's inbound boundary.
 //!
-//! Parses the `---`-delimited document format into the in-memory [`Frontmatter`] and the neutral
-//! [`Content`](crate::content::Content) payload. Lives under `persistence` (not `util`) because it
-//! is the file-format boundary; `util` keeps only format-agnostic helpers (url/hash).
+//! Parses the `---`-delimited document format into the in-memory [`Frontmatter`] and markdown body.
+//! Lives under `persistence` (not `util`) because it is the file-format boundary; `util` keeps only
+//! format-agnostic helpers (url/hash).
 
-use crate::content::Content;
-use crate::types::{Annotation, CollectionItem, Kind};
+use crate::types::{Annotation, CollectionItem};
 
 /// The parsed header fields of a `.md` document.
 pub struct Frontmatter {
@@ -20,41 +19,6 @@ pub struct Frontmatter {
     pub tags: Vec<String>,
     pub favicon: Option<String>,
     pub items: Vec<CollectionItem>,
-}
-
-/// Maps a parsed document into the neutral [`Content`] payload.
-/// The kind is derived as topics carry no `source`; entries always do — matching the former
-/// `Frontmatter::to_embedding_entry` discriminant.
-pub fn content_from_frontmatter(id: String, fm: Frontmatter, body: String) -> Content {
-    let kind = if fm.source.is_empty() {
-        Kind::Topic
-    } else {
-        Kind::Entry
-    };
-    Content {
-        id,
-        kind,
-        source: fm.source,
-        title: fm.title,
-        created_at: fm.created_at,
-        published_at: fm.published_at,
-        updated_at: fm.updated_at,
-        summary: fm.summary,
-        tags: fm.tags,
-        annotations: fm.annotations,
-        threshold: fm.threshold,
-        favicon: fm.favicon,
-        items: fm.items,
-        body,
-    }
-}
-
-/// Parses a `---`-delimited document directly into a [`Content`], given the item's id. Returns
-/// `None` if the format is invalid. The single parse the producers and recovery use so the
-/// indexing consumer never re-reads the file.
-pub fn parse_content(id: String, raw: &str) -> Option<Content> {
-    let (fm, body) = split_document(raw)?;
-    Some(content_from_frontmatter(id, fm, body))
 }
 
 /// Parses only the header fields from a `---`-delimited document.

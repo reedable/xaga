@@ -1,14 +1,12 @@
 use std::path::{Path, PathBuf};
 
-use crate::content::Content;
 use crate::entries::{entry_from_fm, find_entry_path, render_entry, EntryError};
-use crate::types::Kind;
 use crate::util::{normalize_url, url_hash12};
 
 use super::frontmatter::parse_document;
 
 pub use crate::entries::EntryError as ArticleError;
-pub use crate::types::{Annotation, Article};
+pub use crate::types::{Annotation, Article, Entry};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -43,7 +41,7 @@ pub async fn save_article(
     summary: Option<&str>,
     favicon: Option<&str>,
     markdown: &str,
-) -> Result<Content, EntryError> {
+) -> Result<Article, EntryError> {
     if !crate::entries::is_safe_id(id) {
         return Err(EntryError::InvalidId);
     }
@@ -83,21 +81,24 @@ pub async fn save_article(
     );
     tokio::fs::write(&path, rendered.as_bytes()).await?;
 
-    Ok(Content {
-        id: id.to_string(),
-        kind: Kind::Entry,
-        source: normalized,
-        title: title.to_string(),
-        created_at,
-        published_at: published_at.map(str::to_string),
-        updated_at: updated_at.map(str::to_string),
-        summary: summary.map(str::to_string),
-        tags: existing_tags,
-        annotations: existing_annotations,
-        threshold: None,
+    let is_unread = existing_tags.iter().any(|t| t == "unread");
+    let is_bookmarked = existing_tags.iter().any(|t| t == "bookmark");
+    Ok(Article {
+        meta: Entry {
+            id: id.to_string(),
+            url: normalized,
+            title: title.to_string(),
+            created_at,
+            published_at: published_at.map(str::to_string),
+            updated_at: updated_at.map(str::to_string),
+            description: summary.map(str::to_string),
+            is_unread,
+            is_bookmarked,
+            color: None,
+        },
+        content: markdown.to_string(),
+        annotations: with_reference(existing_annotations, id),
         favicon: favicon.map(str::to_string),
-        items: vec![],
-        body: markdown.to_string(),
     })
 }
 
@@ -112,7 +113,7 @@ pub async fn create_article(
     summary: Option<&str>,
     favicon: Option<&str>,
     markdown: &str,
-) -> Result<Content, EntryError> {
+) -> Result<Article, EntryError> {
     let normalized = normalize_url(url)?;
     let id = url_hash12(&normalized);
     save_article(data_dir, &id, url, title, published_at, updated_at, summary, favicon, markdown).await
@@ -131,6 +132,14 @@ pub async fn find_article(
         Err(EntryError::NotFound) => Ok(None),
         Err(e) => Err(e),
     }
+}
+
+/// Builds an [`Article`] from an already-parsed document (used by recovery, which parses once
+/// during its scan and hands the domain object straight to indexing).
+pub fn article_from_document(id: &str, fm: super::frontmatter::Frontmatter, body: String) -> Article {
+    let annotations = fm.annotations.clone();
+    let favicon = fm.favicon.clone();
+    article_from_fm(id, fm, annotations, favicon, body)
 }
 
 /// Returns the article for the given id, searching all entry directories.
@@ -159,7 +168,7 @@ pub async fn add_annotation(
     data_dir: &Path,
     article_id: &str,
     annotation: Annotation,
-) -> Result<Content, EntryError> {
+) -> Result<Article, EntryError> {
     let path = find_entry_path(data_dir, article_id).await.ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
@@ -190,15 +199,15 @@ pub async fn add_annotation(
     );
     tokio::fs::write(&path, rendered.as_bytes()).await?;
 
-    Ok(content_from_article_fm(article_id, fm, annotations, favicon, body))
+    Ok(article_from_fm(article_id, fm, annotations, favicon, body))
 }
 
-/// Removes an annotation by id. Returns the updated [`Content`].
+/// Removes an annotation by id. Returns the updated [`Article`].
 pub async fn remove_annotation(
     data_dir: &Path,
     article_id: &str,
     annotation_id: &str,
-) -> Result<Content, EntryError> {
+) -> Result<Article, EntryError> {
     let path = find_entry_path(data_dir, article_id).await.ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
@@ -224,32 +233,33 @@ pub async fn remove_annotation(
     );
     tokio::fs::write(&path, rendered.as_bytes()).await?;
 
-    Ok(content_from_article_fm(article_id, fm, annotations, favicon, body))
+    Ok(article_from_fm(article_id, fm, annotations, favicon, body))
 }
 
-/// Builds the article's [`Content`] payload from its parsed frontmatter and the updated
-/// annotation set, so the annotation edit parses once and the consumer never re-reads.
-fn content_from_article_fm(
+/// Builds the updated [`Article`] from its parsed frontmatter and the new annotation set, so the
+/// annotation edit parses once and the producer hands the domain object straight to the queue.
+fn article_from_fm(
     article_id: &str,
     fm: super::frontmatter::Frontmatter,
     annotations: Vec<Annotation>,
     favicon: Option<String>,
     body: String,
-) -> Content {
-    Content {
-        id: article_id.to_string(),
-        kind: Kind::Entry,
-        source: fm.source,
-        title: fm.title,
-        created_at: fm.created_at,
-        published_at: fm.published_at,
-        updated_at: fm.updated_at,
-        summary: fm.summary,
-        tags: fm.tags,
-        annotations,
-        threshold: fm.threshold,
+) -> Article {
+    Article {
+        meta: Entry {
+            id: article_id.to_string(),
+            url: fm.source,
+            title: fm.title,
+            created_at: fm.created_at,
+            published_at: fm.published_at,
+            updated_at: fm.updated_at,
+            description: fm.summary,
+            is_unread: fm.tags.iter().any(|t| t == "unread"),
+            is_bookmarked: fm.tags.iter().any(|t| t == "bookmark"),
+            color: None,
+        },
+        content: body,
+        annotations: with_reference(annotations, article_id),
         favicon,
-        items: fm.items,
-        body,
     }
 }

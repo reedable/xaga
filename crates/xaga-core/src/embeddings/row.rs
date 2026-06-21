@@ -1,36 +1,105 @@
-//! The `Content → EmbeddingEntry` mapping — the indexing layer's inbound boundary.
+//! The domain-object → `EmbeddingEntry` mapping — the indexing layer's inbound boundary.
 //!
 //! Lives here (not in persistence) so persistence has no dependency on `embeddings::db`. The
-//! indexing consumer builds a LanceDB row from the neutral [`Content`](crate::content::Content)
-//! payload it received on the queue, never from a file.
+//! indexing consumer builds a LanceDB row directly from the domain object (`Article`/`Topic`) it
+//! received on the queue — the object is carried end-to-end, never flattened into an intermediate
+//! and never re-read from a file.
+//!
+//! The `tags` column is reconstructed from the object's state booleans (`is_unread` /
+//! `is_bookmarked` / `is_pinned`). The row only ever uses those three state tags (see
+//! `BatchSummaryColumns::summary_at` in `db.rs`); arbitrary file tags are not consulted by the
+//! index, so this is behavior-preserving for queries and counts.
 
-use crate::content::Content;
+use sha2::Digest;
+
+use crate::types::{Article, Kind, Topic};
 
 use super::db::EmbeddingEntry;
 
+/// SHA-256 checksum of the embeddable content (title + embed text). Annotations are embedded as
+/// separate rows and are not included here. Shared by the row build and the embed-gate so both
+/// agree on when a re-embed is needed.
+pub(crate) fn checksum(title: &str, embed_text: &str) -> String {
+    let mut h = sha2::Sha256::new();
+    h.update(title.as_bytes());
+    h.update(b"\n\n");
+    h.update(embed_text.as_bytes());
+    hex::encode(h.finalize())
+}
+
+/// The text embedded for an entry: its summary when present, otherwise the article body.
+pub(crate) fn article_embed_text(article: &Article) -> &str {
+    article
+        .meta
+        .description
+        .as_deref()
+        .unwrap_or(&article.content)
+}
+
+/// The text embedded for a topic: its description (the `summary` key); empty when absent.
+pub(crate) fn topic_embed_text(topic: &Topic) -> &str {
+    topic.description.as_deref().unwrap_or("")
+}
+
 impl EmbeddingEntry {
-    /// Builds an entry/topic row from `content` and an optional vector. `topics` (the entry→topic
-    /// reverse index) and `items` (the topic-membership base) are reconcile-managed, not sourced
-    /// from content — written empty here and carried forward by `sync_row`/`embed_vector`.
-    pub fn from_content(content: &Content, vector: Option<Vec<f32>>) -> EmbeddingEntry {
+    /// Builds an entry row from an `Article`. `topics`/`items` are reconcile-managed (written empty
+    /// here, carried forward by the sync/embed paths).
+    pub fn from_article(article: &Article, vector: Option<Vec<f32>>) -> EmbeddingEntry {
+        let meta = &article.meta;
+        let mut tags = Vec::new();
+        if meta.is_unread {
+            tags.push("unread".to_string());
+        }
+        if meta.is_bookmarked {
+            tags.push("bookmark".to_string());
+        }
         EmbeddingEntry {
-            id: content.id.clone(),
-            kind: content.kind,
-            source: content.source.clone(),
-            title: content.title.clone(),
-            created_at: content.created_at.clone(),
-            published_at: content.published_at.clone().unwrap_or_default(),
-            updated_at: content.updated_at.clone().unwrap_or_default(),
-            checksum: content.content_checksum(),
+            id: meta.id.clone(),
+            kind: Kind::Entry,
+            source: meta.url.clone(),
+            title: meta.title.clone(),
+            created_at: meta.created_at.clone(),
+            published_at: meta.published_at.clone().unwrap_or_default(),
+            updated_at: meta.updated_at.clone().unwrap_or_default(),
+            checksum: checksum(&meta.title, article_embed_text(article)),
             reference: String::new(),
             color: String::new(),
-            summary: content.summary.clone().unwrap_or_default(),
-            tags: content.tags.clone(),
+            summary: meta.description.clone().unwrap_or_default(),
+            tags,
             topics: vec![],
             items: vec![],
-            is_unread: content.is_unread(),
-            is_bookmarked: content.is_bookmarked(),
-            is_pinned: content.is_pinned(),
+            is_unread: meta.is_unread,
+            is_bookmarked: meta.is_bookmarked,
+            is_pinned: false,
+            vector,
+        }
+    }
+
+    /// Builds a topic row from a `Topic`. `topics`/`items` are reconcile-managed (written empty
+    /// here, carried forward by the sync/embed paths).
+    pub fn from_topic(topic: &Topic, vector: Option<Vec<f32>>) -> EmbeddingEntry {
+        let mut tags = Vec::new();
+        if topic.is_pinned {
+            tags.push("pinned".to_string());
+        }
+        EmbeddingEntry {
+            id: topic.id.clone(),
+            kind: Kind::Topic,
+            source: String::new(),
+            title: topic.title.clone(),
+            created_at: topic.created_at.clone(),
+            published_at: String::new(),
+            updated_at: topic.updated_at.clone().unwrap_or_default(),
+            checksum: checksum(&topic.title, topic_embed_text(topic)),
+            reference: String::new(),
+            color: String::new(),
+            summary: topic.description.clone().unwrap_or_default(),
+            tags,
+            topics: vec![],
+            items: vec![],
+            is_unread: false,
+            is_bookmarked: false,
+            is_pinned: topic.is_pinned,
             vector,
         }
     }

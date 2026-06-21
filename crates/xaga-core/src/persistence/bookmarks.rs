@@ -4,8 +4,7 @@ use chrono::DateTime;
 use scraper::{ElementRef, Html, Selector};
 use thiserror::Error;
 
-use crate::content::Content;
-use crate::types::Entry;
+use crate::types::{Article, Entry};
 use crate::util::{normalize_url, url_hash12};
 
 #[derive(Debug, Error)]
@@ -143,9 +142,9 @@ fn parse(html: &str) -> Vec<Entry> {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 pub struct BookmarkImportResult {
-    /// [`Content`] payloads for Entries newly created by the import, so the caller can enqueue
-    /// their indexing without re-reading the files.
-    pub added: Vec<Content>,
+    /// [`Article`]s for Entries newly created by the import, so the caller can enqueue their
+    /// indexing without re-reading the files.
+    pub added: Vec<Article>,
     /// IDs of Entries that already existed and received the "bookmark" tag (a state change).
     pub updated: Vec<String>,
     /// URLs that could not be processed.
@@ -168,7 +167,7 @@ pub async fn import_bookmarks(
     let bookmark_tag = "bookmark".to_string();
     let parsed = parse(html);
     let mut seen = std::collections::HashSet::new();
-    let mut added: Vec<Content> = Vec::new();
+    let mut added: Vec<Article> = Vec::new();
     let mut updated: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
 

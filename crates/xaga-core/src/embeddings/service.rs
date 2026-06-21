@@ -11,15 +11,15 @@ pub enum ShutdownReason {
     Restart,
 }
 
-use crate::content::Content;
 use crate::feeds::FeedMeta;
+use crate::types::{Article, Topic};
 
 use super::lock::LockFile;
 use super::model::{Embedder, load_default_embedder};
 use super::pipeline::{
-    add_topic_member, annotation_embedding_entry, apply_state, embed_feed, embed_feeds,
-    embed_vector, reconcile_topic_membership, remove_topic_member, sync_annotations_from_content,
-    sync_row,
+    add_topic_member, annotation_embedding_entry, apply_state, embed_entry_vector, embed_feed,
+    embed_feeds, embed_topic_vector, reconcile_topic_membership, remove_topic_member,
+    sync_annotations, sync_entry_row, sync_topic_row,
 };
 use super::{EmbeddingEntry, EmbeddingsDb, EmbeddingsError};
 
@@ -55,12 +55,14 @@ pub enum Job {
     /// Write-through state update from a user action. Carries the new value(s);
     /// the consumer applies them and emits the UI change event — no file read.
     SyncState { entity: EntityRef, state: StatePatch },
-    /// Content created/edited: sync the row from the carried payload, then defer an
-    /// `EmbedVector` follow-up (carrying the same payload) if the checksum changed.
-    /// The producer parsed once; the consumer never reads the file.
-    UpsertContent { content: Content },
-    /// Reconcile an entry's annotation rows (embedder-free) from the carried payload.
-    SyncAnnotations { content: Content },
+    /// Entry created/edited: sync the row from the carried `Article`, then defer an
+    /// `EmbedEntry` follow-up (carrying the same object) if the checksum changed.
+    /// The producer holds the domain object; the consumer never reads the file.
+    UpsertEntry { article: Article },
+    /// Topic created/edited: sync the row from the carried `Topic`, then defer an `EmbedTopic`.
+    UpsertTopic { topic: Topic },
+    /// Reconcile an entry's annotation rows (embedder-free) from the carried `Article`.
+    SyncAnnotations { article: Article },
     /// Precise reverse-index delta the producer already knows (single member).
     AddMember { topic_id: String, member_id: String },
     RemoveMember { topic_id: String, member_id: String },
@@ -68,8 +70,10 @@ pub enum Job {
     Delete { entity: EntityRef },
 
     // ── Embedding: ONNX (Regular for live, Maintenance for bulk) ──
-    /// Compute/refresh an entry/topic vector from the carried payload (checksum-gated).
-    EmbedVector { content: Content },
+    /// Compute/refresh an entry vector from the carried `Article` (checksum-gated).
+    EmbedEntry { article: Article },
+    /// Compute/refresh a topic vector from the carried `Topic` (checksum-gated).
+    EmbedTopic { topic: Topic },
     /// Compute/refresh a feed row's vector from its `.atom` metadata (feeds have no `.md`).
     EmbedFeed { meta: FeedMeta },
 
@@ -491,28 +495,36 @@ async fn handle_job(
                 log::error!("sync_state failed id={}: {e}", entity.id);
             }
         }
-        Job::UpsertContent { content } => {
+        Job::UpsertEntry { article } => {
             if let Err(e) =
-                sync_row(&content, db, &events.unread, &events.bookmarked, &events.annotation).await
+                sync_entry_row(&article, db, &events.unread, &events.bookmarked, &events.annotation).await
             {
-                log::error!("upsert_content sync_row failed id={}: {e}", content.id);
+                log::error!("upsert_entry failed id={}: {e}", article.meta.id);
             }
-            // A topic content change reconciles its full member→topic reverse index from the
-            // carried membership (`items`) — no topic-file read.
-            if content.kind == Kind::Topic {
-                if let Err(e) =
-                    reconcile_topic_membership(db, &content.id, &content.member_ids()).await
-                {
-                    log::error!("reconcile topic {} failed: {e}", content.id);
-                }
-            }
-            // Defer the ONNX embed to the appropriate lower tier, carrying the payload forward
+            // Defer the ONNX embed to the appropriate lower tier, carrying the object forward
             // so the embed pass never re-reads the file.
-            senders.enqueue(arrival.embed_follow(), Job::EmbedVector { content });
+            senders.enqueue(arrival.embed_follow(), Job::EmbedEntry { article });
         }
-        Job::EmbedVector { content } => {
-            if let Err(e) = embed_vector(&content, embedder, db).await {
-                log::error!("embed_vector failed id={}: {e}", content.id);
+        Job::UpsertTopic { topic } => {
+            if let Err(e) = sync_topic_row(&topic, db).await {
+                log::error!("upsert_topic failed id={}: {e}", topic.id);
+            }
+            // Reconcile the full member→topic reverse index from the carried membership — no read.
+            let member_ids: Vec<String> =
+                topic.members.iter().map(|m| m.id().to_string()).collect();
+            if let Err(e) = reconcile_topic_membership(db, &topic.id, &member_ids).await {
+                log::error!("reconcile topic {} failed: {e}", topic.id);
+            }
+            senders.enqueue(arrival.embed_follow(), Job::EmbedTopic { topic });
+        }
+        Job::EmbedEntry { article } => {
+            if let Err(e) = embed_entry_vector(&article, embedder, db).await {
+                log::error!("embed_entry failed id={}: {e}", article.meta.id);
+            }
+        }
+        Job::EmbedTopic { topic } => {
+            if let Err(e) = embed_topic_vector(&topic, embedder, db).await {
+                log::error!("embed_topic failed id={}: {e}", topic.id);
             }
         }
         Job::EmbedFeed { meta } => {
@@ -520,9 +532,9 @@ async fn handle_job(
                 log::error!("embed_feed failed id={}: {e}", meta.id);
             }
         }
-        Job::SyncAnnotations { content } => {
-            if let Err(e) = sync_annotations_from_content(&content, db, &events.annotation).await {
-                log::error!("sync_annotations failed id={}: {e}", content.id);
+        Job::SyncAnnotations { article } => {
+            if let Err(e) = sync_annotations(&article, db, &events.annotation).await {
+                log::error!("sync_annotations failed id={}: {e}", article.meta.id);
             }
         }
         Job::AddMember { topic_id, member_id } => {
@@ -617,13 +629,16 @@ async fn dispatch_recovery(
 
             if fresh {
                 // Empty table: bulk-insert rows (no per-row get_entry/delete), then queue
-                // each payload for the vector pass. Topics first so they embed before articles.
-                bulk_insert(db, plan.to_embed_topics, senders).await;
-                bulk_insert(db, plan.to_embed_articles, senders).await;
+                // each object for the vector pass. Topics first so they embed before articles.
+                bulk_insert_topics(db, plan.to_embed_topics, senders).await;
+                bulk_insert_articles(db, plan.to_embed_articles, senders).await;
             } else {
-                // Carry each parsed payload through UpsertContent so the consumer never re-reads.
-                for content in plan.to_embed_topics.into_iter().chain(plan.to_embed_articles) {
-                    senders.enqueue(Tier::Maintenance, Job::UpsertContent { content });
+                // Carry each parsed domain object through Upsert so the consumer never re-reads.
+                for topic in plan.to_embed_topics {
+                    senders.enqueue(Tier::Maintenance, Job::UpsertTopic { topic });
+                }
+                for article in plan.to_embed_articles {
+                    senders.enqueue(Tier::Maintenance, Job::UpsertEntry { article });
                 }
             }
 
@@ -659,34 +674,46 @@ async fn dispatch_recovery(
     }
 }
 
-/// Bulk path for fresh recovery: reads each id's `.md`, builds a null-vector row (plus a
-/// null-vector row for each of the entry's annotations), and inserts in batches with a single
-/// `add` per batch — no per-row `get_entry`/`delete`. Each id is queued onto the vector channel
-/// for the (lowest-priority) embed pass, which fills the entry's and its annotations' vectors.
-/// Safe only when the table has no pre-existing rows for these ids.
-async fn bulk_insert(db: &EmbeddingsDb, contents: Vec<Content>, senders: &Senders) {
-    const BULK_BATCH: usize = 1024;
+/// Batch size for the fresh-recovery bulk inserts below. Safe only when the table has no
+/// pre-existing rows for these ids (a fresh post-reset recovery).
+const BULK_BATCH: usize = 1024;
+
+/// Bulk path for fresh recovery (entries): builds each article's row (plus a null-vector row per
+/// annotation) and inserts in batches, then queues the carried `Article` for the embed pass — no
+/// file is re-read (the objects were built once by `build_recovery_plan`).
+async fn bulk_insert_articles(db: &EmbeddingsDb, articles: Vec<Article>, senders: &Senders) {
     let mut buf: Vec<EmbeddingEntry> = Vec::with_capacity(BULK_BATCH);
-
-    // The `Content` payloads were parsed once by `build_recovery_plan`; no file is read here.
-    for content in contents {
-        buf.push(EmbeddingEntry::from_content(&content, None));
-        // Create annotation rows (null-vector) in the bulk phase too, so they're listable
-        // immediately and exist before the reverse-index reconcile (W2). Topics empty for now;
-        // the entry's embed pass fills annotation vectors via embed_annotations.
-        for annotation in &content.annotations {
-            buf.push(annotation_embedding_entry(&content.id, &content, annotation, Vec::new(), None));
+    for article in articles {
+        buf.push(EmbeddingEntry::from_article(&article, None));
+        for annotation in &article.annotations {
+            buf.push(annotation_embedding_entry(&article, annotation, Vec::new(), None));
         }
-        // Carry the payload forward to the embed pass so the vector compute never re-reads.
-        senders.enqueue(Tier::Maintenance, Job::EmbedVector { content });
-
+        senders.enqueue(Tier::Maintenance, Job::EmbedEntry { article });
         if buf.len() >= BULK_BATCH {
             if let Err(e) = db.add_batch(std::mem::take(&mut buf)).await {
-                log::error!("bulk_insert: add_batch failed: {e}");
+                log::error!("bulk_insert_articles: add_batch failed: {e}");
             }
         }
     }
     if let Err(e) = db.add_batch(buf).await {
-        log::error!("bulk_insert: add_batch failed: {e}");
+        log::error!("bulk_insert_articles: add_batch failed: {e}");
+    }
+}
+
+/// Bulk path for fresh recovery (topics): builds each topic's row and queues the carried `Topic`
+/// for the embed pass.
+async fn bulk_insert_topics(db: &EmbeddingsDb, topics: Vec<Topic>, senders: &Senders) {
+    let mut buf: Vec<EmbeddingEntry> = Vec::with_capacity(BULK_BATCH);
+    for topic in topics {
+        buf.push(EmbeddingEntry::from_topic(&topic, None));
+        senders.enqueue(Tier::Maintenance, Job::EmbedTopic { topic });
+        if buf.len() >= BULK_BATCH {
+            if let Err(e) = db.add_batch(std::mem::take(&mut buf)).await {
+                log::error!("bulk_insert_topics: add_batch failed: {e}");
+            }
+        }
+    }
+    if let Err(e) = db.add_batch(buf).await {
+        log::error!("bulk_insert_topics: add_batch failed: {e}");
     }
 }

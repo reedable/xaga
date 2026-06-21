@@ -1,33 +1,40 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::content::Content;
-use crate::embeddings::{Embedder, EmbeddingsDb, EmbeddingsError, embed_file};
-use crate::types::{Entry, Kind, SavedItem};
 use flume;
+
+use crate::articles::article_from_document;
+use crate::embeddings::pipeline::{
+    embed_entry_vector, embed_topic_vector, sync_entry_row, sync_topic_row,
+};
+use crate::embeddings::row::{article_embed_text, checksum, topic_embed_text};
+use crate::embeddings::{Embedder, EmbeddingsDb, EmbeddingsError};
+use crate::persistence::frontmatter::{parse_document, Frontmatter};
+use crate::topics::topic_from_document;
+use crate::types::{Article, Entry, Kind, SavedItem, Topic};
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
-/// The output of a recovery scan: what needs to happen to bring LanceDB back
-/// into sync with the filesystem. Recovery is the filesystem-reading producer: it parses each
-/// file **once** here and carries the `Content` so the embedding pass never re-reads.
+/// The output of a recovery scan: what needs to happen to bring LanceDB back into sync with the
+/// filesystem. Recovery is the filesystem-reading producer: it parses each file **once** here and
+/// carries the domain object (`Article`/`Topic`) so the embedding pass never re-reads.
 pub struct RecoveryPlan {
-    /// Topic `.md` payloads missing from LanceDB or with changed checksums.
+    /// Topics missing from LanceDB or with changed checksums.
     /// Separated so callers can route them to a higher-priority channel.
-    pub to_embed_topics: Vec<Content>,
-    /// Article `.md` payloads missing from LanceDB or with changed checksums.
-    pub to_embed_articles: Vec<Content>,
+    pub to_embed_topics: Vec<Topic>,
+    /// Articles missing from LanceDB or with changed checksums.
+    pub to_embed_articles: Vec<Article>,
     /// IDs of LanceDB rows whose `.md` file no longer exists on disk.
     pub to_delete: Vec<String>,
 }
 
 // ── Directory scanner ─────────────────────────────────────────────────────────
 
-/// Scans one directory of `.md` files and appends discovered items into `fs_entries`
-/// (id → (path, parsed `Content`)). The single parse recovery performs; the `Content` is carried
-/// into the embed pass. Yields between reads to avoid starving higher-priority tasks.
-async fn scan_dir(dir: &Path, fs_entries: &mut HashMap<String, (PathBuf, Content)>) {
+/// Scans one directory of `.md` files and appends each parsed document into `out`
+/// (id, path, frontmatter, body). The single parse recovery performs; the caller turns these into
+/// domain objects. Yields between reads to avoid starving higher-priority tasks.
+async fn scan_dir(dir: &Path, out: &mut Vec<(String, PathBuf, Frontmatter, String)>) {
     if !dir.exists() {
         return;
     }
@@ -50,79 +57,92 @@ async fn scan_dir(dir: &Path, fs_entries: &mut HashMap<String, (PathBuf, Content
         };
 
         let id = crate::util::item_id(&path);
-        let content = match crate::persistence::frontmatter::parse_content(id.clone(), &raw) {
-            Some(c) => c,
+        let (fm, body) = match parse_document(&raw) {
+            Some(x) => x,
             None => continue,
         };
 
-        fs_entries.insert(id, (path, content));
+        out.push((id, path, fm, body));
         tokio::task::yield_now().await;
     }
 }
 
+/// Sorts a `(path, item)` batch newest-modified first (in place).
+fn sort_by_mtime_desc<T>(batch: &mut [(PathBuf, T)]) {
+    batch.sort_by(|(a, _), (b, _)| {
+        let mt_a = std::fs::metadata(a).and_then(|m| m.modified()).ok();
+        let mt_b = std::fs::metadata(b).and_then(|m| m.modified()).ok();
+        mt_b.cmp(&mt_a)
+    });
+}
+
 // ── Public plan builder ───────────────────────────────────────────────────────
 
-/// Scans `{data_dir}/topics/` and `{data_dir}/entries/` and compares against
-/// LanceDB.  Topics entries appear first in `to_embed` so they are indexed
-/// before entries.
+/// Scans `{data_dir}/topics/` and `{data_dir}/entries/` and compares against LanceDB. Topics
+/// appear before articles so they are indexed first.
 ///
-/// Call `reconcile_feed_entries` before this so that Entry exist on
-/// disk before the articles directory is scanned.
+/// Call `reconcile_feed_entries` before this so that entries exist on disk before the entries
+/// directory is scanned.
 pub async fn build_recovery_plan(
     data_dir: &Path,
     db: &EmbeddingsDb,
 ) -> Result<RecoveryPlan, EmbeddingsError> {
     let db_meta = db.all_entries_meta().await?; // id → (checksum, reference, has_vector, kind)
 
-    // Scan topics first, then articles, so to_embed preserves that order.
-    let mut topic_entries: HashMap<String, (PathBuf, Content)> = HashMap::new();
-    scan_dir(&data_dir.join("topics"), &mut topic_entries).await;
+    // Scan topics first, then entries.
+    let mut topic_raw: Vec<(String, PathBuf, Frontmatter, String)> = Vec::new();
+    scan_dir(&data_dir.join("topics"), &mut topic_raw).await;
 
-    let mut article_entries: HashMap<String, (PathBuf, Content)> = HashMap::new();
+    let mut article_raw: Vec<(String, PathBuf, Frontmatter, String)> = Vec::new();
     for dir in crate::entries::entry_dirs(data_dir) {
-        scan_dir(&dir, &mut article_entries).await;
+        scan_dir(&dir, &mut article_raw).await;
     }
 
-    // Build to_embed: on disk but absent or changed in LanceDB. The parsed `Content` is carried
-    // forward (no re-read). Each group sorted newest-modified first.
-    let make_batch = |entries: &HashMap<String, (PathBuf, Content)>| -> Vec<Content> {
-        let mut batch: Vec<&(PathBuf, Content)> = entries
-            .values()
-            .filter(|(_, content)| {
-                // Re-embed when the row is absent, its content changed, or its vector is
-                // still pending (the row was inserted before the embedding was computed).
-                match db_meta.get(content.id.as_str()) {
-                    None => true,
-                    Some((stored_checksum, _, has_vector, _)) => {
-                        stored_checksum != &content.content_checksum() || !has_vector
-                    }
-                }
-            })
-            .collect();
-        batch.sort_by(|(a, _), (b, _)| {
-            let mt_a = std::fs::metadata(a).and_then(|m| m.modified()).ok();
-            let mt_b = std::fs::metadata(b).and_then(|m| m.modified()).ok();
-            mt_b.cmp(&mt_a)
-        });
-        batch.into_iter().map(|(_, content)| content.clone()).collect()
+    // Build domain objects (parsed once); keep the path for the mtime sort.
+    let topics: Vec<(PathBuf, Topic)> = topic_raw
+        .into_iter()
+        .map(|(id, path, fm, body)| (path, topic_from_document(&id, fm, body)))
+        .collect();
+    let articles: Vec<(PathBuf, Article)> = article_raw
+        .into_iter()
+        .map(|(id, path, fm, body)| (path, article_from_document(&id, fm, body)))
+        .collect();
+
+    // Filesystem id-set for to_delete, captured before the objects are moved into batches.
+    let fs_ids: HashSet<String> = topics
+        .iter()
+        .map(|(_, t)| t.id.clone())
+        .chain(articles.iter().map(|(_, a)| a.meta.id.clone()))
+        .collect();
+
+    // Re-embed when the row is absent, its content changed, or its vector is still pending.
+    let needs = |id: &str, cksum: &str| -> bool {
+        match db_meta.get(id) {
+            None => true,
+            Some((stored, _, has_vector, _)) => stored != cksum || !has_vector,
+        }
     };
-    let to_embed_topics = make_batch(&topic_entries);
-    let to_embed_articles = make_batch(&article_entries);
+
+    let mut topic_batch: Vec<(PathBuf, Topic)> = topics
+        .into_iter()
+        .filter(|(_, t)| needs(&t.id, &checksum(&t.title, topic_embed_text(t))))
+        .collect();
+    sort_by_mtime_desc(&mut topic_batch);
+    let to_embed_topics: Vec<Topic> = topic_batch.into_iter().map(|(_, t)| t).collect();
+
+    let mut article_batch: Vec<(PathBuf, Article)> = articles
+        .into_iter()
+        .filter(|(_, a)| needs(&a.meta.id, &checksum(&a.meta.title, article_embed_text(a))))
+        .collect();
+    sort_by_mtime_desc(&mut article_batch);
+    let to_embed_articles: Vec<Article> = article_batch.into_iter().map(|(_, a)| a).collect();
 
     // Build to_delete: in LanceDB but not found in either directory.
-    let fs_ids: HashSet<&str> = topic_entries
-        .keys()
-        .chain(article_entries.keys())
-        .map(String::as_str)
-        .collect();
-    // Annotation rows carry a non-empty `reference` (parent article ID).
-    // For those, check the reference against the filesystem; for all other
-    // rows, check the row's own ID.
+    // Annotation rows carry a non-empty `reference` (parent article ID); check the reference
+    // against the filesystem. Feed rows are managed by embed_feeds, never deleted here.
     let to_delete: Vec<String> = db_meta
         .into_iter()
         .filter(|(id, (_, reference, _, kind))| {
-            // Feed rows are managed by embed_feeds, not the entry/topic plan — never
-            // delete them here (their ids are not in the entries/topics filesystem scan).
             if kind == Kind::Feed.as_str() {
                 return false;
             }
@@ -145,11 +165,11 @@ pub async fn build_recovery_plan(
 
 // ── Feed entry reconciliation ─────────────────────────────────────────────────
 
-/// For every entry in one `.atom` file, ensure an Entry exists on disk. Returns the ids of
-/// the entries it newly created, so the caller can enqueue their indexing. Called during
-/// recovery (per feed) and by `refresh_feed` after a fetch.
-pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) -> Vec<Content> {
-    let mut created: Vec<Content> = Vec::new();
+/// For every entry in one `.atom` file, ensure an Entry exists on disk. Returns the `Article`s it
+/// newly created, so the caller can enqueue their indexing. Called during recovery (per feed) and
+/// by `refresh_feed` after a fetch.
+pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) -> Vec<Article> {
+    let mut created: Vec<Article> = Vec::new();
     let atom_path = data_dir.join("feeds").join(format!("{feed_id}.atom"));
 
     let entries = match crate::feeds::feed_entry::entries_from_path(&atom_path).await {
@@ -193,7 +213,7 @@ pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) -> Vec<Content>
         )
         .await
         {
-            Ok(content) => created.push(content),
+            Ok(article) => created.push(article),
             Err(e) => log::warn!("reconcile_atom_file {feed_id}: {e}"),
         }
 
@@ -280,12 +300,27 @@ async fn apply_plan(
     let (noop_bookmarked_tx, _) = flume::unbounded::<Entry>();
     let (noop_annotation_tx, _) = flume::unbounded::<SavedItem>();
 
-    // The `Content` carries everything embed_file needs; no file is re-read here.
-    for content in plan.to_embed_topics.iter().chain(plan.to_embed_articles.iter()) {
-        let label = if content.kind == Kind::Topic { "topic" } else { "article" };
-        match embed_file(content, embedder, db, &noop_unread_tx, &noop_bookmarked_tx, &noop_annotation_tx).await {
+    // The domain object carries everything sync/embed need; no file is re-read here.
+    for topic in &plan.to_embed_topics {
+        if let Err(e) = sync_topic_row(topic, db).await {
+            report.errors.push(format!("sync topic {}: {e}", topic.id));
+            continue;
+        }
+        match embed_topic_vector(topic, embedder, db).await {
             Ok(()) => report.embedded += 1,
-            Err(e) => report.errors.push(format!("embed {label} {}: {e}", content.id)),
+            Err(e) => report.errors.push(format!("embed topic {}: {e}", topic.id)),
+        }
+    }
+    for article in &plan.to_embed_articles {
+        if let Err(e) =
+            sync_entry_row(article, db, &noop_unread_tx, &noop_bookmarked_tx, &noop_annotation_tx).await
+        {
+            report.errors.push(format!("sync article {}: {e}", article.meta.id));
+            continue;
+        }
+        match embed_entry_vector(article, embedder, db).await {
+            Ok(()) => report.embedded += 1,
+            Err(e) => report.errors.push(format!("embed article {}: {e}", article.meta.id)),
         }
     }
 }
