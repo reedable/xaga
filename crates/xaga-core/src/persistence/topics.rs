@@ -6,8 +6,10 @@ use thiserror::Error;
 
 use uuid::Uuid;
 
-use crate::types::CollectionItem;
-use crate::util::{parse_document, parse_frontmatter};
+use crate::content::Content;
+use crate::types::{CollectionItem, Kind};
+
+use super::frontmatter::{parse_document, parse_frontmatter};
 
 pub use crate::types::Topic;
 
@@ -76,7 +78,7 @@ pub async fn save_topic(
     description: &str,
     threshold: Option<f32>,
     items: Vec<CollectionItem>,
-) -> Result<Topic, TopicsError> {
+) -> Result<Content, TopicsError> {
     let dir = data_dir.join("topics");
     tokio::fs::create_dir_all(&dir).await?;
     let path = topic_path(data_dir, id);
@@ -110,18 +112,21 @@ pub async fn save_topic(
     )
     .await?;
 
-    let is_pinned = tags.iter().any(|t| t == "pinned");
-    Ok(Topic {
+    Ok(Content {
         id: id.to_string(),
+        kind: Kind::Topic,
+        source: String::new(),
         title: title.to_string(),
         created_at,
+        published_at: None,
         updated_at: Some(updated_at),
-        description: (!description.is_empty()).then(|| description.to_string()),
+        summary: (!description.is_empty()).then(|| description.to_string()),
+        tags,
+        annotations: vec![],
         threshold,
-        is_pinned,
-        entry_count: 0,
-        unread_count: 0,
-        members: items.iter().map(crate::types::Reference::from).collect(),
+        favicon: None,
+        items,
+        body: String::new(),
     })
 }
 
@@ -210,7 +215,7 @@ pub async fn create_topic(
     title: &str,
     description: &str,
     threshold: Option<f32>,
-) -> Result<Topic, TopicsError> {
+) -> Result<Content, TopicsError> {
     let id = Uuid::new_v4().to_string();
     save_topic(data_dir, &id, title, description, threshold, vec![]).await
 }
@@ -318,7 +323,9 @@ pub async fn add_topic_item(
     let description = fm.summary.unwrap_or(body);
     let mut items = fm.items;
     items.push(item);
-    save_topic(data_dir, topic_id, &fm.title, &description, fm.threshold, items).await
+    save_topic(data_dir, topic_id, &fm.title, &description, fm.threshold, items)
+        .await
+        .map(|c| c.to_topic())
 }
 
 /// Removes the item with the given ID from the topic's manual items list.
@@ -340,7 +347,9 @@ pub async fn remove_topic_item(
     let description = fm.summary.unwrap_or(body);
     let mut items = fm.items;
     items.retain(|i| i.id() != item_id);
-    save_topic(data_dir, topic_id, &fm.title, &description, fm.threshold, items).await
+    save_topic(data_dir, topic_id, &fm.title, &description, fm.threshold, items)
+        .await
+        .map(|c| c.to_topic())
 }
 
 /// Returns the union of embedding-matched items and manually curated items for a topic,

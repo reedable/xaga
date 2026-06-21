@@ -3,7 +3,11 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use thiserror::Error;
 
-use crate::util::{normalize_url, parse_frontmatter, url_hash12};
+use crate::content::Content;
+use crate::types::Kind;
+use crate::util::{normalize_url, url_hash12};
+
+use super::frontmatter::{parse_document, parse_frontmatter};
 
 pub use crate::types::Entry;
 
@@ -58,7 +62,7 @@ pub fn render_entry(
         #[serde(skip_serializing_if = "Option::is_none")]
         summary: Option<String>,
         #[serde(skip_serializing_if = "Vec::is_empty")]
-        annotations: Vec<crate::util::FrontmatterAnnotation>,
+        annotations: Vec<super::frontmatter::FrontmatterAnnotation>,
         #[serde(skip_serializing_if = "<[_]>::is_empty")]
         tags: &'a [String],
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -90,7 +94,7 @@ pub(crate) fn entry_path(data_dir: &Path, hash12: &str) -> PathBuf {
     data_dir.join("entries").join(format!("{hash12}.md"))
 }
 
-pub fn entry_from_fm(id: String, fm: crate::util::Frontmatter) -> Entry {
+pub fn entry_from_fm(id: String, fm: super::frontmatter::Frontmatter) -> Entry {
     let is_unread = fm.tags.contains(&"unread".to_string());
     let is_bookmarked = fm.tags.contains(&"bookmark".to_string());
     Entry {
@@ -131,7 +135,37 @@ pub async fn find_entry_path(data_dir: &Path, id: &str) -> Option<PathBuf> {
     None
 }
 
-/// Writes a new Entry to `entries/{hash12}.md` with the `unread` tag.
+/// Builds the [`Content`] payload for a freshly-written entry from its parts, so the producer
+/// parses/constructs once and the indexing consumer never re-reads the file.
+fn entry_content(
+    id: String,
+    normalized_url: String,
+    title: &str,
+    created_at: String,
+    published_at: Option<&str>,
+    updated_at: Option<&str>,
+    summary: Option<&str>,
+    tags: Vec<String>,
+) -> Content {
+    Content {
+        id,
+        kind: Kind::Entry,
+        source: normalized_url,
+        title: title.to_string(),
+        created_at,
+        published_at: published_at.map(str::to_string),
+        updated_at: updated_at.map(str::to_string),
+        summary: summary.map(str::to_string),
+        tags,
+        annotations: vec![],
+        threshold: None,
+        favicon: None,
+        items: vec![],
+        body: String::new(),
+    }
+}
+
+/// Writes a new Entry to `entries/{hash12}.md` with the `unread` tag, returning its [`Content`].
 /// Called by `reconcile_atom_file` when a feed entry has no local file yet.
 pub async fn write_entry(
     data_dir: &Path,
@@ -140,22 +174,22 @@ pub async fn write_entry(
     published_at: Option<&str>,
     updated_at: Option<&str>,
     summary: Option<&str>,
-) -> Result<PathBuf, EntryError> {
+) -> Result<Content, EntryError> {
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
     let path = entry_path(data_dir, &hash12);
 
     let created_at = Utc::now().to_rfc3339();
     let tags = vec!["unread".to_string()];
-    let content = render_entry(&normalized, title, &created_at, published_at, updated_at, summary, &[], &tags, None, "");
+    let rendered = render_entry(&normalized, title, &created_at, published_at, updated_at, summary, &[], &tags, None, "");
     tokio::fs::create_dir_all(path.parent().unwrap()).await?;
-    tokio::fs::write(&path, content.as_bytes()).await?;
-    Ok(path)
+    tokio::fs::write(&path, rendered.as_bytes()).await?;
+    Ok(entry_content(hash12, normalized, title, created_at, published_at, updated_at, summary, tags))
 }
 
 /// Writes a new Entry to `entries/{hash12}.md` without the `unread` tag (already read).
-/// If an Entry already exists at that path it is left untouched and the
-/// existing id is returned. The caller is responsible for queuing an embed.
+/// If an Entry already exists at that path it is left untouched. Returns the [`Content`] for the
+/// entry so the caller can queue an embed without re-reading the file.
 pub async fn write_read_entry(
     data_dir: &Path,
     url: &str,
@@ -165,18 +199,27 @@ pub async fn write_read_entry(
     updated_at: Option<&str>,
     summary: Option<&str>,
     tags: &[String],
-) -> Result<String, EntryError> {
+) -> Result<Content, EntryError> {
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
     let path = entry_path(data_dir, &hash12);
 
     if !tokio::fs::try_exists(&path).await? {
-        let content = render_entry(&normalized, title, created_at, published_at, updated_at, summary, &[], tags, None, "");
+        let rendered = render_entry(&normalized, title, created_at, published_at, updated_at, summary, &[], tags, None, "");
         tokio::fs::create_dir_all(path.parent().unwrap()).await?;
-        tokio::fs::write(&path, content.as_bytes()).await?;
+        tokio::fs::write(&path, rendered.as_bytes()).await?;
     }
 
-    Ok(hash12)
+    Ok(entry_content(
+        hash12,
+        normalized,
+        title,
+        created_at.to_string(),
+        published_at,
+        updated_at,
+        summary,
+        tags.to_vec(),
+    ))
 }
 
 
@@ -202,7 +245,7 @@ pub async fn read_entry_tags(data_dir: &Path, id: &str) -> Result<Vec<String>, E
 pub async fn set_entry_tags(data_dir: &Path, id: &str, tags: Vec<String>) -> Result<Entry, EntryError> {
     let path = find_entry_path(data_dir, id).await.ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
-    let (fm, body) = crate::util::parse_document(&raw).ok_or(EntryError::NotFound)?;
+    let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
     let content = render_entry(
         &fm.source,
         &fm.title,

@@ -2,6 +2,7 @@ pub mod db;
 pub mod lock;
 pub mod model;
 pub mod pipeline;
+pub mod row;
 pub mod service;
 
 // ── Error ─────────────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ use chrono::DateTime;
 use scraper::{ElementRef, Html, Selector};
 use thiserror::Error;
 
+use crate::content::Content;
 use crate::types::Entry;
 use crate::util::{normalize_url, url_hash12};
 
@@ -142,9 +143,10 @@ fn parse(html: &str) -> Vec<Entry> {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 pub struct BookmarkImportResult {
-    /// IDs of Entries newly created in `read/`.
-    pub added: Vec<String>,
-    /// IDs of Entries that already existed and received the "bookmark" tag.
+    /// [`Content`] payloads for Entries newly created by the import, so the caller can enqueue
+    /// their indexing without re-reading the files.
+    pub added: Vec<Content>,
+    /// IDs of Entries that already existed and received the "bookmark" tag (a state change).
     pub updated: Vec<String>,
     /// URLs that could not be processed.
     pub failed: Vec<String>,
@@ -166,7 +168,7 @@ pub async fn import_bookmarks(
     let bookmark_tag = "bookmark".to_string();
     let parsed = parse(html);
     let mut seen = std::collections::HashSet::new();
-    let mut added: Vec<String> = Vec::new();
+    let mut added: Vec<Content> = Vec::new();
     let mut updated: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
 
@@ -182,7 +184,7 @@ pub async fn import_bookmarks(
             // persistence detail (not on the domain Entry), so read them from the file.
             match tokio::fs::read_to_string(&path).await {
                 Ok(raw) => {
-                    let mut tags = crate::util::parse_frontmatter(&raw)
+                    let mut tags = super::frontmatter::parse_frontmatter(&raw)
                         .map(|fm| fm.tags)
                         .unwrap_or_default();
                     if !tags.contains(&bookmark_tag) {
@@ -211,7 +213,7 @@ pub async fn import_bookmarks(
             )
             .await
             {
-                Ok(id) => added.push(id),
+                Ok(content) => added.push(content),
                 Err(_) => failed.push(entry.url),
             }
         }

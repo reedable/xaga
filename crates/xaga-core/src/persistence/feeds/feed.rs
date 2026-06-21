@@ -6,6 +6,7 @@ use atom_syndication as atom;
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 
+use crate::content::Content;
 use crate::types::Feed;
 use crate::util::{feed_entry_id, normalize_url, url_hash12};
 
@@ -94,7 +95,7 @@ pub async fn add_feed(
     url: &str,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
-) -> Result<(Feed, Vec<String>)> {
+) -> Result<(Feed, Vec<Content>)> {
     let url = if url.trim_start().starts_with("http://") {
         format!("https://{}", url.trim_start()[7..].trim_start())
     } else {
@@ -121,7 +122,7 @@ pub async fn add_feed(
     };
 
     write_atom_atomic(feeds_dir, &id, &atom_feed).await?;
-    let mut created = Vec::new();
+    let mut created: Vec<Content> = Vec::new();
     for ae in &new_atom_entries {
         let e = super::feed_entry::atom_entry_to_entry(ae);
         if e.url.is_empty() {
@@ -134,7 +135,7 @@ pub async fn add_feed(
         {
             continue;
         }
-        if crate::entries::write_entry(
+        match crate::entries::write_entry(
             data_dir,
             &e.url,
             &e.title,
@@ -143,9 +144,9 @@ pub async fn add_feed(
             e.description.as_deref(),
         )
         .await
-        .is_ok()
         {
-            created.push(e.id);
+            Ok(content) => created.push(content),
+            Err(err) => log::warn!("add_feed: write_entry {}: {err}", e.id),
         }
     }
     let created_at = file_created_at(&path, Some(*atom_feed.updated())).await;
@@ -162,7 +163,7 @@ pub async fn refresh_feed(
     id: &FeedId,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
-) -> Result<(Feed, Vec<String>)> {
+) -> Result<(Feed, Vec<Content>)> {
     let path = xml_path(feeds_dir, id);
     if !path.exists() {
         return Err(FeedError::NotFound(id.clone()));
@@ -190,7 +191,7 @@ pub async fn refresh_all_feeds(
     data_dir: &Path,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
-) -> Vec<(FeedId, Result<(Feed, Vec<String>)>)> {
+) -> Vec<(FeedId, Result<(Feed, Vec<Content>)>)> {
     let ids = match list_feed_ids(feeds_dir).await {
         Ok(ids) => ids,
         Err(e) => return vec![(FeedId(String::new()), Err(e))],

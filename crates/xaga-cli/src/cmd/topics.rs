@@ -5,9 +5,10 @@ use clap::{Args, Subcommand};
 use serde::Deserialize;
 use uuid::Uuid;
 use xaga_core::embeddings::EmbeddingsDb;
+use xaga_core::persistence::frontmatter::{parse_document, parse_frontmatter};
 use xaga_core::topics;
 use xaga_core::types::CollectionItem;
-use xaga_core::util::{item_id, parse_document, parse_frontmatter};
+use xaga_core::util::item_id;
 
 use crate::die;
 

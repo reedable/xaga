@@ -77,17 +77,25 @@ pub async fn import_bookmarks(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Import writes entry files directly; enqueue their indexing explicitly (bulk →
-    // Maintenance tier) so imported bookmarks get indexed without the watcher.
-    for id in result.added.iter().chain(result.updated.iter()) {
+    // Newly-created entries carry their parsed payload — enqueue content indexing (bulk →
+    // Maintenance tier) so the consumer never re-reads. Already-existing entries only gained the
+    // bookmark tag, which is a state change → SyncState (Interactive).
+    let added_ids: Vec<String> = result.added.iter().map(|c| c.id.clone()).collect();
+    for content in result.added {
+        state.enqueue(Tier::Maintenance, Job::UpsertContent { content });
+    }
+    for id in &result.updated {
         state.enqueue(
-            Tier::Maintenance,
-            Job::UpsertContent { entity: EntityRef::new(id.clone(), Kind::Entry) },
+            Tier::Interactive,
+            Job::SyncState {
+                entity: EntityRef::new(id.clone(), Kind::Entry),
+                state: StatePatch { is_bookmarked: Some(true), ..Default::default() },
+            },
         );
     }
 
     Ok(BookmarkImportResult {
-        added: result.added,
+        added: added_ids,
         updated: result.updated,
         failed: result.failed,
     })

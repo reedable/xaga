@@ -32,8 +32,8 @@ pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<feeds::
     let (feed, created) = feeds::add_feed(&state.http_client, &dir, &library, &url, &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())?;
-    for id in created {
-        state.enqueue(Tier::Maintenance, Job::UpsertContent { entity: EntityRef::new(id, Kind::Entry) });
+    for content in created {
+        state.enqueue(Tier::Maintenance, Job::UpsertContent { content });
     }
     Ok(feed)
 }
@@ -46,8 +46,8 @@ pub async fn refresh_feed(window: tauri::Window, id: String, state: State<'_, Ap
     let (feed, created) = feeds::refresh_feed(&state.http_client, &dir, &library, &feeds::FeedId(id), &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())?;
-    for id in created {
-        state.enqueue(Tier::Maintenance, Job::UpsertContent { entity: EntityRef::new(id, Kind::Entry) });
+    for content in created {
+        state.enqueue(Tier::Maintenance, Job::UpsertContent { content });
     }
     window.emit("feed:refreshed", &feed).ok();
     Ok(feed)
@@ -80,10 +80,11 @@ pub async fn rename_feed(id: String, title: String, state: State<'_, AppState>) 
     let feed = feeds::rename_feed(&dir, &feeds::FeedId(id.clone()), &title, &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())?;
-    state.enqueue(
-        Tier::Regular,
-        Job::EmbedVector { entity: EntityRef::new(id, Kind::Feed) },
-    );
+    // Re-embed the feed row from its `.atom` metadata (title changed). The producer reads the
+    // `.atom` to build the payload; the consumer embeds without touching the filesystem.
+    if let Some(meta) = feeds::feed_embedding_meta_one(&dir, &feeds::FeedId(id)).await {
+        state.enqueue(Tier::Regular, Job::EmbedFeed { meta });
+    }
     Ok(feed)
 }
 
@@ -132,11 +133,8 @@ pub async fn import_feeds(
 
         match feeds::add_feed(&state.http_client, &dir, &library, &normalized, &unread, &bookmarked).await {
             Ok((feed, created)) => {
-                for id in created {
-                    state.enqueue(
-                        Tier::Maintenance,
-                        Job::UpsertContent { entity: EntityRef::new(id, Kind::Entry) },
-                    );
+                for content in created {
+                    state.enqueue(Tier::Maintenance, Job::UpsertContent { content });
                 }
                 added.push(feed);
             }

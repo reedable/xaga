@@ -20,13 +20,11 @@ pub async fn save_topic(
     let existing_items = topics::read_topic_items(&data_dir, &id)
         .await
         .unwrap_or_default();
-    let topic = topics::save_topic(&data_dir, &id, &title, &description, threshold, existing_items)
+    let content = topics::save_topic(&data_dir, &id, &title, &description, threshold, existing_items)
         .await
         .map_err(|e| e.to_string())?;
-    state.enqueue(
-        Tier::Interactive,
-        Job::UpsertContent { entity: EntityRef::new(id, Kind::Topic) },
-    );
+    let topic = content.to_topic();
+    state.enqueue(Tier::Interactive, Job::UpsertContent { content });
     Ok(topic)
 }
 
@@ -38,13 +36,11 @@ pub async fn create_topic(
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
     let data_dir = state.library.read().unwrap().clone();
-    let topic = topics::create_topic(&data_dir, &title, &description, threshold)
+    let content = topics::create_topic(&data_dir, &title, &description, threshold)
         .await
         .map_err(|e| e.to_string())?;
-    state.enqueue(
-        Tier::Interactive,
-        Job::UpsertContent { entity: EntityRef::new(topic.id.clone(), Kind::Topic) },
-    );
+    let topic = content.to_topic();
+    state.enqueue(Tier::Interactive, Job::UpsertContent { content });
     Ok(topic)
 }
 

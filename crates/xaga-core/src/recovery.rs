@@ -2,31 +2,32 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::content::Content;
 use crate::embeddings::{Embedder, EmbeddingsDb, EmbeddingsError, embed_file};
 use crate::types::{Entry, Kind, SavedItem};
 use flume;
-use crate::util::parse_document;
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
 /// The output of a recovery scan: what needs to happen to bring LanceDB back
-/// into sync with the filesystem.
+/// into sync with the filesystem. Recovery is the filesystem-reading producer: it parses each
+/// file **once** here and carries the `Content` so the embedding pass never re-reads.
 pub struct RecoveryPlan {
-    /// IDs of topic `.md` files missing from LanceDB or with changed checksums.
+    /// Topic `.md` payloads missing from LanceDB or with changed checksums.
     /// Separated so callers can route them to a higher-priority channel.
-    pub to_embed_topics: Vec<String>,
-    /// IDs of article `.md` files missing from LanceDB or with changed checksums.
-    pub to_embed_articles: Vec<String>,
+    pub to_embed_topics: Vec<Content>,
+    /// Article `.md` payloads missing from LanceDB or with changed checksums.
+    pub to_embed_articles: Vec<Content>,
     /// IDs of LanceDB rows whose `.md` file no longer exists on disk.
     pub to_delete: Vec<String>,
 }
 
 // ── Directory scanner ─────────────────────────────────────────────────────────
 
-/// Scans one directory of `.md` files and appends discovered entries into
-/// `fs_entries` (id → (path, checksum)).  Yields between reads to avoid
-/// starving higher-priority tasks.
-async fn scan_dir(dir: &Path, fs_entries: &mut HashMap<String, (PathBuf, String)>) {
+/// Scans one directory of `.md` files and appends discovered items into `fs_entries`
+/// (id → (path, parsed `Content`)). The single parse recovery performs; the `Content` is carried
+/// into the embed pass. Yields between reads to avoid starving higher-priority tasks.
+async fn scan_dir(dir: &Path, fs_entries: &mut HashMap<String, (PathBuf, Content)>) {
     if !dir.exists() {
         return;
     }
@@ -48,13 +49,13 @@ async fn scan_dir(dir: &Path, fs_entries: &mut HashMap<String, (PathBuf, String)
             Err(_) => continue,
         };
 
-        let (fm, body) = match parse_document(&raw) {
-            Some(f) => f,
+        let id = crate::util::item_id(&path);
+        let content = match crate::persistence::frontmatter::parse_content(id.clone(), &raw) {
+            Some(c) => c,
             None => continue,
         };
 
-        let id = crate::util::item_id(&path);
-        fs_entries.insert(id, (path, fm.content_checksum(&body)));
+        fs_entries.insert(id, (path, content));
         tokio::task::yield_now().await;
     }
 }
@@ -71,40 +72,39 @@ pub async fn build_recovery_plan(
     data_dir: &Path,
     db: &EmbeddingsDb,
 ) -> Result<RecoveryPlan, EmbeddingsError> {
-    let db_meta = db.all_entries_meta().await?; // id → checksum
+    let db_meta = db.all_entries_meta().await?; // id → (checksum, reference, has_vector, kind)
 
     // Scan topics first, then articles, so to_embed preserves that order.
-    let mut topic_entries: HashMap<String, (PathBuf, String)> = HashMap::new();
+    let mut topic_entries: HashMap<String, (PathBuf, Content)> = HashMap::new();
     scan_dir(&data_dir.join("topics"), &mut topic_entries).await;
 
-    let mut article_entries: HashMap<String, (PathBuf, String)> = HashMap::new();
+    let mut article_entries: HashMap<String, (PathBuf, Content)> = HashMap::new();
     for dir in crate::entries::entry_dirs(data_dir) {
         scan_dir(&dir, &mut article_entries).await;
     }
 
-    // Build to_embed: on disk but absent or changed in LanceDB.
-    // Each group sorted newest-modified first.
-    let make_batch = |entries: &HashMap<String, (PathBuf, String)>| -> Vec<String> {
-        let mut batch: Vec<(&String, &PathBuf)> = entries
-            .iter()
-            .filter(|(id, (_, checksum))| {
+    // Build to_embed: on disk but absent or changed in LanceDB. The parsed `Content` is carried
+    // forward (no re-read). Each group sorted newest-modified first.
+    let make_batch = |entries: &HashMap<String, (PathBuf, Content)>| -> Vec<Content> {
+        let mut batch: Vec<&(PathBuf, Content)> = entries
+            .values()
+            .filter(|(_, content)| {
                 // Re-embed when the row is absent, its content changed, or its vector is
                 // still pending (the row was inserted before the embedding was computed).
-                match db_meta.get(id.as_str()) {
+                match db_meta.get(content.id.as_str()) {
                     None => true,
                     Some((stored_checksum, _, has_vector, _)) => {
-                        stored_checksum != checksum || !has_vector
+                        stored_checksum != &content.content_checksum() || !has_vector
                     }
                 }
             })
-            .map(|(id, (path, _))| (id, path))
             .collect();
-        batch.sort_by(|(_, a), (_, b)| {
+        batch.sort_by(|(a, _), (b, _)| {
             let mt_a = std::fs::metadata(a).and_then(|m| m.modified()).ok();
             let mt_b = std::fs::metadata(b).and_then(|m| m.modified()).ok();
             mt_b.cmp(&mt_a)
         });
-        batch.into_iter().map(|(id, _)| id.clone()).collect()
+        batch.into_iter().map(|(_, content)| content.clone()).collect()
     };
     let to_embed_topics = make_batch(&topic_entries);
     let to_embed_articles = make_batch(&article_entries);
@@ -148,8 +148,8 @@ pub async fn build_recovery_plan(
 /// For every entry in one `.atom` file, ensure an Entry exists on disk. Returns the ids of
 /// the entries it newly created, so the caller can enqueue their indexing. Called during
 /// recovery (per feed) and by `refresh_feed` after a fetch.
-pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) -> Vec<String> {
-    let mut created = Vec::new();
+pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) -> Vec<Content> {
+    let mut created: Vec<Content> = Vec::new();
     let atom_path = data_dir.join("feeds").join(format!("{feed_id}.atom"));
 
     let entries = match crate::feeds::feed_entry::entries_from_path(&atom_path).await {
@@ -193,7 +193,7 @@ pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) -> Vec<String> 
         )
         .await
         {
-            Ok(_) => created.push(hash12),
+            Ok(content) => created.push(content),
             Err(e) => log::warn!("reconcile_atom_file {feed_id}: {e}"),
         }
 
@@ -254,7 +254,7 @@ pub async fn run_full_recovery(
     reconcile_feed_entries(data_dir).await;
 
     match build_recovery_plan(data_dir, db).await {
-        Ok(plan) => apply_plan(data_dir, plan, embedder, db, &mut report).await,
+        Ok(plan) => apply_plan(plan, embedder, db, &mut report).await,
         Err(e) => report
             .errors
             .push(format!("build_recovery_plan failed: {e}")),
@@ -264,7 +264,6 @@ pub async fn run_full_recovery(
 }
 
 async fn apply_plan(
-    data_dir: &Path,
     plan: RecoveryPlan,
     embedder: &Arc<Embedder>,
     db: &EmbeddingsDb,
@@ -281,20 +280,12 @@ async fn apply_plan(
     let (noop_bookmarked_tx, _) = flume::unbounded::<Entry>();
     let (noop_annotation_tx, _) = flume::unbounded::<SavedItem>();
 
-    for id in &plan.to_embed_topics {
-        let path = crate::topics::topic_path(data_dir, id);
-        match embed_file(&path, embedder, db, &noop_unread_tx, &noop_bookmarked_tx, &noop_annotation_tx).await {
+    // The `Content` carries everything embed_file needs; no file is re-read here.
+    for content in plan.to_embed_topics.iter().chain(plan.to_embed_articles.iter()) {
+        let label = if content.kind == Kind::Topic { "topic" } else { "article" };
+        match embed_file(content, embedder, db, &noop_unread_tx, &noop_bookmarked_tx, &noop_annotation_tx).await {
             Ok(()) => report.embedded += 1,
-            Err(e) => report.errors.push(format!("embed topic {id}: {e}")),
-        }
-    }
-    for id in &plan.to_embed_articles {
-        match crate::entries::find_entry_path(data_dir, id).await {
-            Some(path) => match embed_file(&path, embedder, db, &noop_unread_tx, &noop_bookmarked_tx, &noop_annotation_tx).await {
-                Ok(()) => report.embedded += 1,
-                Err(e) => report.errors.push(format!("embed article {id}: {e}")),
-            },
-            None => report.errors.push(format!("embed article {id}: not found")),
+            Err(e) => report.errors.push(format!("embed {label} {}: {e}", content.id)),
         }
     }
 }
