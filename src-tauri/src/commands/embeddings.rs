@@ -1,5 +1,5 @@
 use tauri::State;
-use xaga_core::item::{self, EmbeddedItemSource};
+use xaga_core::query::item::{self, EmbeddedItemSource};
 use xaga_core::types::{EmbeddedEntry, EmbeddedItem};
 
 use crate::AppState;

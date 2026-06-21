@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::topics::TopicsError;
+use crate::persistence::topics::TopicsError;
 use crate::types::CollectionItem;
 
 use crate::persistence::frontmatter::parse_document;
@@ -26,9 +26,9 @@ pub async fn list_topic_items(
     // Ungated similarity lookup: every embedded item ranked by similarity to the topic.
     // The explicit low floor (-1.0) disables the default 0.5 cutoff so that even weakly
     // related manually-curated items still receive a score for relevance ranking.
-    let all_embedded = crate::item::list_embedded_items(
+    let all_embedded = crate::query::item::list_embedded_items(
         data_dir,
-        crate::item::EmbeddedItemSource::RelatedTo {
+        crate::query::item::EmbeddedItemSource::RelatedTo {
             id: id.to_string(),
             limit: None,
             min_similarity: Some(-1.0),
@@ -53,7 +53,7 @@ pub async fn list_topic_items(
         .into_iter()
         .filter(|e| e.similarity >= threshold)
         .collect();
-    for e in crate::filter::filter_items(semantic, &item_filter)
+    for e in crate::query::filter::filter_items(semantic, &item_filter)
         .await
         .unwrap_or_default()
     {
@@ -79,13 +79,13 @@ pub async fn list_topic_items(
     for item in &fm.items {
         if let CollectionItem::Entry { id } = item {
             if !seen.contains(id) {
-                if let Ok(entry) = crate::entries::read_entry(data_dir, id).await {
+                if let Ok(entry) = crate::persistence::entries::read_entry(data_dir, id).await {
                     manual_entries.push(entry);
                 }
             }
         }
     }
-    for entry in crate::filter::filter_items(manual_entries, &item_filter)
+    for entry in crate::query::filter::filter_items(manual_entries, &item_filter)
         .await
         .unwrap_or_default()
     {
@@ -118,7 +118,7 @@ pub async fn list_topic_items(
     for item in &fm.items {
         if let CollectionItem::Annotation { id, reference } = item {
             if include_annotations && !seen.contains(id) && !reference.is_empty() {
-                if let Ok(article) = crate::articles::read_article(data_dir, reference).await {
+                if let Ok(article) = crate::persistence::articles::read_article(data_dir, reference).await {
                     if let Some(ann) = article.annotations.iter().find(|a| &a.id == id) {
                         seen.insert(ann.id.clone());
                         let similarity = similarity_by_id.get(&ann.id).copied();
@@ -156,7 +156,7 @@ pub async fn list_topic_items(
         crate::types::ItemSort::Timestamp => {
             let mut items: Vec<crate::types::SavedItem> =
                 scored.into_iter().map(|(_, item)| item).collect();
-            crate::filter::sort_items(&mut items);
+            crate::query::filter::sort_items(&mut items);
             Ok(items)
         }
     }

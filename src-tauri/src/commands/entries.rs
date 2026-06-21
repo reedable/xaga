@@ -1,13 +1,13 @@
 use tauri::State;
 use xaga_core::embeddings::{EmbeddingsDb, EntityRef, Job, StatePatch, Tier};
-use xaga_core::entries;
+use xaga_core::persistence::entries;
 use xaga_core::types::{Entry, ItemFilter, Kind, SavedItem};
 
 use crate::AppState;
 use super::parse_item_filter;
 
 #[tauri::command]
-pub async fn read_entry(id: String, state: State<'_, AppState>) -> Result<entries::Entry, String> {
+pub async fn read_entry(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
     let data_dir = state.library.read().unwrap().clone();
     entries::read_entry(&data_dir, &id).await.map_err(|e| e.to_string())
 }

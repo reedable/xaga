@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use flume;
 
-use crate::articles::article_from_document;
+use crate::persistence::articles::article_from_document;
 use crate::embeddings::pipeline::{
     annotation_embedding_entry, embed_entry_vector, embed_feed, embed_topic_vector,
     reconcile_topic_membership, sync_entry_row, sync_topic_row,
@@ -13,7 +13,7 @@ use crate::embeddings::row::{article_embed_text, checksum, topic_embed_text};
 use crate::embeddings::service::Senders;
 use crate::embeddings::{Embedder, EmbeddingEntry, EmbeddingsDb, EmbeddingsError, Job, Tier};
 use crate::persistence::frontmatter::{parse_document, Frontmatter};
-use crate::topics::topic_from_document;
+use crate::persistence::topics::topic_from_document;
 use crate::types::{Article, Entry, Kind, SavedItem, Topic};
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ pub async fn build_recovery_plan(
     scan_dir(&data_dir.join("topics"), &mut topic_raw).await;
 
     let mut article_raw: Vec<(String, PathBuf, Frontmatter, String)> = Vec::new();
-    for dir in crate::entries::entry_dirs(data_dir) {
+    for dir in crate::persistence::entries::entry_dirs(data_dir) {
         scan_dir(&dir, &mut article_raw).await;
     }
 
@@ -174,7 +174,7 @@ pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) -> Vec<Article>
     let mut created: Vec<Article> = Vec::new();
     let atom_path = data_dir.join("feeds").join(format!("{feed_id}.atom"));
 
-    let entries = match crate::feeds::feed_entry::entries_from_path(&atom_path).await {
+    let entries = match crate::persistence::feeds::entries_from_path(&atom_path).await {
         Ok(e) => e,
         Err(e) => {
             log::warn!("reconcile_atom_file {feed_id}: {e}");
@@ -197,7 +197,7 @@ pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) -> Vec<Article>
 
         let hash12 = crate::util::url_hash12(&normalized);
 
-        if crate::entries::find_entry_path(data_dir, &hash12)
+        if crate::persistence::entries::find_entry_path(data_dir, &hash12)
             .await
             .is_some()
         {
@@ -205,7 +205,7 @@ pub async fn reconcile_atom_file(data_dir: &Path, feed_id: &str) -> Vec<Article>
             continue;
         }
 
-        match crate::entries::write_entry(
+        match crate::persistence::entries::write_entry(
             data_dir,
             &entry.url,
             &entry.title,
@@ -338,7 +338,7 @@ async fn reconcile_feeds(
     db: &EmbeddingsDb,
 ) -> Result<(), EmbeddingsError> {
     let empty = HashSet::new();
-    let feeds = crate::feeds::list_feeds(feeds_dir, &empty, &empty)
+    let feeds = crate::persistence::feeds::list_feeds(feeds_dir, &empty, &empty)
         .await
         .unwrap_or_default();
     let current: HashSet<String> = feeds.iter().map(|f| f.id.clone()).collect();
@@ -425,7 +425,7 @@ pub(crate) async fn dispatch_recovery(
             // Rebuild the member→topic reverse index from the topic files. Unconditional: a
             // membership-only change doesn't alter a member's checksum, so build_recovery_plan
             // would skip it. Bounded by drift via the topic-row `items` base.
-            match crate::topics::list_topics(data_dir).await {
+            match crate::persistence::topics::list_topics(data_dir).await {
                 Ok(topics) => {
                     for topic in &topics {
                         let member_ids: Vec<String> =

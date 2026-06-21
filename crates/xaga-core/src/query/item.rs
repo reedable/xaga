@@ -3,12 +3,9 @@ use std::path::Path;
 use thiserror::Error;
 
 use crate::embeddings::EmbeddingsDb;
-use crate::feeds;
-use crate::filter;
+use crate::persistence::feeds;
+use crate::query::filter;
 use crate::types::{EmbeddedEntry, EmbeddedFeed, EmbeddedItem, EmbeddedTopic, Feed, ItemFilter, Kind};
-
-// Forwarding shim — all types have moved to `crate::types`.
-pub use crate::types::{Document, Item};
 
 // ── EmbeddedItemSource ──────────────────────────────────────────────────────────
 
@@ -100,7 +97,7 @@ pub async fn enrich_embedded(library: &Path, entries: Vec<EmbeddedEntry>) -> Vec
             continue;
         }
         if entry.entry.url.is_empty() {
-            if let Ok(topic) = crate::topics::read_topic(library, &entry.entry.id).await {
+            if let Ok(topic) = crate::persistence::topics::read_topic(library, &entry.entry.id).await {
                 result.push(EmbeddedItem::Topic(EmbeddedTopic {
                     topic,
                     kind: Kind::Topic,

@@ -1,9 +1,9 @@
 use tauri::{AppHandle, Emitter, Manager, State};
-use xaga_core::articles;
+use xaga_core::persistence::articles;
 use xaga_core::embeddings::{EmbeddingsDb, EntityRef, Job, StatePatch, Tier};
-use xaga_core::entries;
-use xaga_core::topics;
-use xaga_core::types::{PartialAnnotation, Kind};
+use xaga_core::persistence::entries;
+use xaga_core::persistence::topics;
+use xaga_core::types::{Article, PartialAnnotation, Kind};
 
 use base64::Engine as _;
 
@@ -273,7 +273,7 @@ pub async fn save_article(
     favicon: Option<String>,
     markdown: String,
     state: State<'_, AppState>,
-) -> Result<articles::Article, String> {
+) -> Result<Article, String> {
     let data_dir = state.library.read().unwrap().clone();
     let article = articles::save_article(
         &data_dir,
@@ -302,7 +302,7 @@ pub async fn create_article(
     favicon: Option<String>,
     markdown: String,
     state: State<'_, AppState>,
-) -> Result<articles::Article, String> {
+) -> Result<Article, String> {
     let data_dir = state.library.read().unwrap().clone();
     let article = articles::create_article(
         &data_dir,
@@ -324,7 +324,7 @@ pub async fn create_article(
 pub async fn find_article(
     url: String,
     state: State<'_, AppState>,
-) -> Result<Option<articles::Article>, String> {
+) -> Result<Option<Article>, String> {
     let data_dir = state.library.read().unwrap().clone();
     articles::find_article(&data_dir, &url)
         .await
@@ -335,7 +335,7 @@ pub async fn find_article(
 pub async fn read_article(
     id: String,
     state: State<'_, AppState>,
-) -> Result<articles::Article, String> {
+) -> Result<Article, String> {
     let data_dir = state.library.read().unwrap().clone();
     let article = articles::read_article(&data_dir, &id)
         .await
@@ -365,7 +365,7 @@ pub async fn add_annotation(
     color: String,
     note: Option<String>,
     state: State<'_, AppState>,
-) -> Result<articles::Article, String> {
+) -> Result<Article, String> {
     let data_dir = state.library.read().unwrap().clone();
     let annotation = xaga_core::types::Annotation {
         id,
@@ -396,7 +396,7 @@ pub async fn remove_annotation(
     article_id: String,
     annotation_id: String,
     state: State<'_, AppState>,
-) -> Result<articles::Article, String> {
+) -> Result<Article, String> {
     let data_dir = state.library.read().unwrap().clone();
     let article = articles::remove_annotation(&data_dir, &article_id, &annotation_id)
         .await

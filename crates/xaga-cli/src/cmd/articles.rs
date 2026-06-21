@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use clap::{Args, Subcommand};
-use xaga_core::articles;
+use xaga_core::persistence::articles;
 use xaga_core::embeddings::EmbeddingsDb;
 
 use crate::die;

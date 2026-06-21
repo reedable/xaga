@@ -3,21 +3,21 @@ use std::collections::HashSet;
 use serde::Serialize;
 use tauri::{Emitter, State};
 use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
-use xaga_core::feeds;
-use xaga_core::types::{Entry, Kind};
+use xaga_core::persistence::feeds;
+use xaga_core::types::{Entry, Feed, Kind};
 
 use crate::{feeds_dir, get_bookmarked, get_unread, AppState};
 use super::parse_item_filter;
 
 #[derive(Serialize)]
 pub struct ImportResult {
-    pub added: Vec<feeds::Feed>,
+    pub added: Vec<Feed>,
     pub skipped: Vec<String>,
     pub failed: Vec<String>,
 }
 
 #[tauri::command]
-pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<feeds::Feed>, String> {
+pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<Feed>, String> {
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
@@ -25,7 +25,7 @@ pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<feeds::Feed>, 
 }
 
 #[tauri::command]
-pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<feeds::Feed, String> {
+pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, String> {
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
@@ -39,7 +39,7 @@ pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<feeds::
 }
 
 #[tauri::command]
-pub async fn refresh_feed(window: tauri::Window, id: String, state: State<'_, AppState>) -> Result<feeds::Feed, String> {
+pub async fn refresh_feed(window: tauri::Window, id: String, state: State<'_, AppState>) -> Result<Feed, String> {
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
@@ -73,7 +73,7 @@ pub async fn set_feed_pinned(id: String, pinned: bool, state: State<'_, AppState
 }
 
 #[tauri::command]
-pub async fn rename_feed(id: String, title: String, state: State<'_, AppState>) -> Result<feeds::Feed, String> {
+pub async fn rename_feed(id: String, title: String, state: State<'_, AppState>) -> Result<Feed, String> {
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
@@ -106,11 +106,11 @@ pub async fn import_feeds(
         .await
         .map_err(|e| e.to_string())?;
 
-    let raw_urls = xaga_core::opml::parse_opml(&xml).map_err(|e| e.to_string())?;
+    let raw_urls = xaga_core::persistence::opml::parse_opml(&xml).map_err(|e| e.to_string())?;
 
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
     let mut seen: HashSet<String> = HashSet::new();
-    let mut added: Vec<feeds::Feed> = Vec::new();
+    let mut added: Vec<Feed> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
 
@@ -164,7 +164,7 @@ pub async fn export_feeds(
         .map(|f| (f.url.as_str(), f.title.as_str()))
         .collect();
 
-    let opml = xaga_core::opml::build_opml(&pairs);
+    let opml = xaga_core::persistence::opml::build_opml(&pairs);
 
     tokio::fs::write(&file_path, opml)
         .await
@@ -194,9 +194,9 @@ pub async fn list_entries(
     db.reload().await.map_err(|e| e.to_string())?;
 
     let entries = db.entries_by_ids(&ids).await.map_err(|e| e.to_string())?;
-    let mut items = xaga_core::filter::filter_items(entries, &item_filter)
+    let mut items = xaga_core::query::filter::filter_items(entries, &item_filter)
         .await
         .map_err(|e| e.to_string())?;
-    xaga_core::filter::sort_items(&mut items);
+    xaga_core::query::filter::sort_items(&mut items);
     Ok(items)
 }

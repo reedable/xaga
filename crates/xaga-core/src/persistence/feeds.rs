@@ -1,18 +1,182 @@
+//! Feeds persistence: the `.atom` boundary for feeds and their entry membership.
+//! Collapsed from the former `feeds/{mod,feed,feed_entry}.rs` split into one module.
+
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use atom_syndication as atom;
-use chrono::{DateTime, FixedOffset};
+use chrono::{DateTime, FixedOffset, Utc};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
-use crate::types::{Article, Feed};
+use crate::types::{Article, Entry, Feed};
 use crate::util::{feed_entry_id, normalize_url, url_hash12};
 
-use super::{
-    FeedError, Result, fetch_xml, list_feed_ids, now_fixed, parse_atom, parse_incoming, to_fixed,
-    write_atom_atomic, xml_path,
-};
+// ── Shared error + result ────────────────────────────────────────────────────
+
+#[derive(Debug, Error)]
+pub enum FeedError {
+    #[error("invalid URL: {0}")]
+    InvalidUrl(#[from] url::ParseError),
+    #[error("HTTP error fetching {url}: {source}")]
+    Http {
+        url: String,
+        #[source]
+        source: reqwest::Error,
+    },
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Atom parse error: {0}")]
+    AtomParse(String),
+    #[error("feed parse error: {0}")]
+    FeedParse(String),
+    #[error("feed not found: {0}")]
+    NotFound(FeedId),
+    #[error("feed missing self link: {0}")]
+    MissingSelfLink(FeedId),
+}
+
+pub type Result<T> = std::result::Result<T, FeedError>;
+
+// ── Shared infrastructure (private) ──────────────────────────────────────────
+
+fn xml_path(feeds_dir: &Path, id: &FeedId) -> PathBuf {
+    feeds_dir.join(format!("{id}.atom"))
+}
+
+async fn write_atom_atomic(
+    feeds_dir: &Path,
+    id: &FeedId,
+    feed: &atom::Feed,
+) -> Result<()> {
+    let mut buf = Vec::new();
+    feed.write_to(&mut buf)
+        .map_err(|e| FeedError::AtomParse(e.to_string()))?;
+    crate::fs::write_atomic_async(xml_path(feeds_dir, id), buf).await?;
+    Ok(())
+}
+
+async fn list_feed_ids(feeds_dir: &Path) -> Result<Vec<FeedId>> {
+    if !feeds_dir.exists() {
+        return Ok(vec![]);
+    }
+    let mut entries = tokio::fs::read_dir(feeds_dir).await?;
+    let mut ids = Vec::new();
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        let name = path.to_string_lossy();
+        if name.ends_with(".atom") && !name.ends_with(".atom.tmp") {
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                ids.push(FeedId(stem.to_string()));
+            }
+        }
+    }
+    ids.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(ids)
+}
+
+async fn fetch_xml(client: &reqwest::Client, url: &str) -> Result<String> {
+    client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| FeedError::Http { url: url.to_string(), source: e })?
+        .error_for_status()
+        .map_err(|e| FeedError::Http { url: url.to_string(), source: e })?
+        .text()
+        .await
+        .map_err(|e| FeedError::Http { url: url.to_string(), source: e })
+}
+
+fn parse_incoming(xml: &str) -> Result<feed_rs::model::Feed> {
+    let sanitized = fix_bare_ampersands(xml);
+    feed_rs::parser::parse(sanitized.as_bytes()).map_err(|e| FeedError::FeedParse(e.to_string()))
+}
+
+/// Escape bare `&` characters in XML that are not part of a valid entity or character reference.
+/// Skips `<![CDATA[...]]>` sections so their content is never modified.
+/// This makes lenient parsing of feeds from publishers who forget to encode `&` in URLs.
+fn fix_bare_ampersands(xml: &str) -> String {
+    let mut result = String::with_capacity(xml.len() + 64);
+    let mut rest = xml;
+
+    // Fast path: no CDATA sections — avoids rescanning the whole string for
+    // "<![CDATA[" on every `&`, which is O(n×k) for files with many entities.
+    if !xml.contains("<![CDATA[") {
+        loop {
+            match rest.find('&') {
+                None => { result.push_str(rest); break; }
+                Some(a) => {
+                    result.push_str(&rest[..a]);
+                    let after = &rest[a + 1..];
+                    let is_valid_ref = after.starts_with("amp;")
+                        || after.starts_with("lt;")
+                        || after.starts_with("gt;")
+                        || after.starts_with("apos;")
+                        || after.starts_with("quot;")
+                        || after.starts_with('#');
+                    if is_valid_ref { result.push('&'); } else { result.push_str("&amp;"); }
+                    rest = after;
+                }
+            }
+        }
+        return result;
+    }
+
+    // CDATA-aware path for feeds that embed content in CDATA sections.
+    loop {
+        let amp = rest.find('&');
+        let cdata = rest.find("<![CDATA[");
+
+        match (amp, cdata) {
+            (None, _) => {
+                result.push_str(rest);
+                break;
+            }
+            (Some(a), Some(c)) if c < a => {
+                // CDATA section starts before the next `&` — copy it through verbatim.
+                result.push_str(&rest[..c]);
+                rest = &rest[c..];
+                if let Some(end) = rest.find("]]>") {
+                    result.push_str(&rest[..end + 3]);
+                    rest = &rest[end + 3..];
+                } else {
+                    // Unclosed CDATA; copy remainder as-is.
+                    result.push_str(rest);
+                    break;
+                }
+            }
+            (Some(a), _) => {
+                result.push_str(&rest[..a]);
+                let after = &rest[a + 1..];
+                let is_valid_ref = after.starts_with("amp;")
+                    || after.starts_with("lt;")
+                    || after.starts_with("gt;")
+                    || after.starts_with("apos;")
+                    || after.starts_with("quot;")
+                    || after.starts_with('#');
+                if is_valid_ref { result.push('&'); } else { result.push_str("&amp;"); }
+                rest = after;
+            }
+        }
+    }
+
+    result
+}
+
+fn parse_atom(xml: &str) -> Result<atom::Feed> {
+    let sanitized = fix_bare_ampersands(xml);
+    sanitized.parse::<atom::Feed>().map_err(|e| FeedError::AtomParse(e.to_string()))
+}
+
+fn to_fixed(dt: DateTime<Utc>) -> DateTime<FixedOffset> {
+    dt.with_timezone(&FixedOffset::east_opt(0).unwrap())
+}
+
+fn now_fixed() -> DateTime<FixedOffset> {
+    Utc::now().with_timezone(&FixedOffset::east_opt(0).unwrap())
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -123,18 +287,18 @@ pub async fn add_feed(
     write_atom_atomic(feeds_dir, &id, &atom_feed).await?;
     let mut created: Vec<Article> = Vec::new();
     for ae in &new_atom_entries {
-        let e = super::feed_entry::atom_entry_to_entry(ae);
+        let e = atom_entry_to_entry(ae);
         if e.url.is_empty() {
             continue;
         }
         // Only create an Entry in unread/ if the entry doesn't already exist in any dir.
-        if crate::entries::find_entry_path(data_dir, &e.id)
+        if crate::persistence::entries::find_entry_path(data_dir, &e.id)
             .await
             .is_some()
         {
             continue;
         }
-        match crate::entries::write_entry(
+        match crate::persistence::entries::write_entry(
             data_dir,
             &e.url,
             &e.title,
@@ -673,7 +837,7 @@ fn set_self_link(feed: &mut atom::Feed, url: &str) {
     feed.set_links(links);
 }
 
-pub(super) fn self_link_url(feed: &atom::Feed) -> Option<String> {
+fn self_link_url(feed: &atom::Feed) -> Option<String> {
     feed.links()
         .iter()
         .find(|l| l.rel() == "self")
@@ -743,4 +907,88 @@ async fn file_created_at(
         })
         .or(updated_at)
         .unwrap_or_else(epoch)
+}
+
+// ── Public API ───────────────────────────────────────────────────────────────
+
+/// Returns the membership id-set for `url` (one feed) or all feeds (`None`),
+/// deduplicated. The `.atom` is the source of truth for feed membership; entry data
+/// and state are fetched from LanceDB by the caller (see the `list_entries` command).
+pub async fn list_entry_ids(library: &Path, url: Option<&str>) -> Result<Vec<String>> {
+    let feeds_dir = library.join("feeds");
+    let mut ids = Vec::new();
+    let mut seen = HashSet::new();
+
+    match url {
+        Some(url) => {
+            let normalized = normalize_url(url)?;
+            let id = feed_id_from_url(&normalized)?;
+            let path = xml_path(&feeds_dir, &id);
+
+            if !tokio::fs::try_exists(&path).await? {
+                return Err(FeedError::NotFound(id));
+            }
+
+            let xml = tokio::fs::read_to_string(&path).await?;
+            let feed = parse_atom(&xml)?;
+            for e in feed.entries() {
+                let id = atom_entry_to_entry(e).id;
+                if seen.insert(id.clone()) {
+                    ids.push(id);
+                }
+            }
+        }
+        None => {
+            let feed_ids = list_feed_ids(&feeds_dir).await?;
+            for fid in feed_ids {
+                if let Ok(xml) = tokio::fs::read_to_string(xml_path(&feeds_dir, &fid)).await {
+                    if let Ok(feed) = parse_atom(&xml) {
+                        for e in feed.entries() {
+                            let id = atom_entry_to_entry(e).id;
+                            if seen.insert(id.clone()) {
+                                ids.push(id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(ids)
+}
+
+/// Read a single `.atom` file and return its entries.
+pub(crate) async fn entries_from_path(path: &Path) -> Result<Vec<Entry>> {
+    let xml = tokio::fs::read_to_string(path).await?;
+    let feed = parse_atom(&xml)?;
+    let entries = feed.entries().iter().map(atom_entry_to_entry).collect();
+    Ok(entries)
+}
+
+fn atom_entry_to_entry(e: &atom::Entry) -> Entry {
+    let title = e.title().value.clone();
+    let updated_at = e.updated().to_rfc3339();
+    let url = e
+        .links()
+        .iter()
+        .find(|l| l.rel() == "alternate")
+        .or_else(|| e.links().first())
+        .map(|l| l.href().to_string())
+        .unwrap_or_default();
+    let summary = e.summary().map(|s| s.value.clone());
+    let published_at = e.published().map(|d| d.to_rfc3339());
+    let normalized_url = normalize_url(&url).unwrap_or_else(|_| url.clone());
+    Entry {
+        id: url_hash12(&normalized_url),
+        url,
+        title,
+        created_at: updated_at.clone(),
+        published_at,
+        updated_at: Some(updated_at),
+        description: summary,
+        is_unread: false,
+        is_bookmarked: false,
+        color: None,
+    }
 }

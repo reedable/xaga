@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
 use xaga_core::embeddings::EmbeddingsDb;
-use xaga_core::feeds::{self, RepairOutcome};
+use xaga_core::persistence::feeds::{self, RepairOutcome};
 
 use crate::die;
 

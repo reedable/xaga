@@ -3,12 +3,10 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use thiserror::Error;
 
-use crate::types::Article;
+use crate::types::{Article, Entry};
 use crate::util::{normalize_url, url_hash12};
 
 use super::frontmatter::{parse_document, parse_frontmatter};
-
-pub use crate::types::Entry;
 
 #[derive(Debug, Error)]
 pub enum EntryError {

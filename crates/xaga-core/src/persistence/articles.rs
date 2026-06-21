@@ -1,12 +1,11 @@
 use std::path::{Path, PathBuf};
 
-use crate::entries::{entry_from_fm, find_entry_path, render_entry, EntryError};
+use crate::persistence::entries::{entry_from_fm, find_entry_path, render_entry, EntryError};
 use crate::util::{normalize_url, url_hash12};
 
 use super::frontmatter::parse_document;
 
-pub use crate::entries::EntryError as ArticleError;
-pub use crate::types::{Annotation, Article, Entry};
+use crate::types::{Annotation, Article, Entry};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -42,7 +41,7 @@ pub async fn save_article(
     favicon: Option<&str>,
     markdown: &str,
 ) -> Result<Article, EntryError> {
-    if !crate::entries::is_safe_id(id) {
+    if !crate::persistence::entries::is_safe_id(id) {
         return Err(EntryError::InvalidId);
     }
     let normalized = normalize_url(url)?;

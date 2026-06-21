@@ -190,7 +190,7 @@ pub async fn import_bookmarks(
 
         let id = url_hash12(&entry.url);
 
-        if let Some(path) = crate::entries::find_entry_path(data_dir, &id).await {
+        if let Some(path) = crate::persistence::entries::find_entry_path(data_dir, &id).await {
             // Entry already exists — add "bookmark" tag if not already present. Tags are a
             // persistence detail (not on the domain Entry), so read them from the file.
             match tokio::fs::read_to_string(&path).await {
@@ -200,7 +200,7 @@ pub async fn import_bookmarks(
                         .unwrap_or_default();
                     if !tags.contains(&bookmark_tag) {
                         tags.push(bookmark_tag.clone());
-                        match crate::entries::set_entry_tags(data_dir, &id, tags).await {
+                        match crate::persistence::entries::set_entry_tags(data_dir, &id, tags).await {
                             Ok(_) => updated.push(id),
                             Err(_) => failed.push(entry.url),
                         }
@@ -212,7 +212,7 @@ pub async fn import_bookmarks(
             }
         } else {
             // No Entry exists — create one in read/ with the bookmark tag.
-            match crate::entries::write_read_entry(
+            match crate::persistence::entries::write_read_entry(
                 data_dir,
                 &entry.url,
                 &entry.title,
@@ -239,7 +239,7 @@ pub async fn import_bookmarks(
 
 /// Exports all bookmarked entries as a Netscape bookmark file to `dest_path`.
 pub async fn export_bookmarks(data_dir: &Path, dest_path: &Path) -> Result<(), BookmarksError> {
-    let mut entries = crate::entries::list_entries(data_dir)
+    let mut entries = crate::persistence::entries::list_entries(data_dir)
         .await
         .unwrap_or_default();
     entries.retain(|e| e.is_bookmarked);

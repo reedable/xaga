@@ -5,11 +5,9 @@ use thiserror::Error;
 
 use uuid::Uuid;
 
-use crate::types::CollectionItem;
+use crate::types::{CollectionItem, Topic};
 
 use super::frontmatter::{parse_document, parse_frontmatter};
-
-pub use crate::types::Topic;
 
 #[derive(Debug, Error)]
 pub enum TopicsError {

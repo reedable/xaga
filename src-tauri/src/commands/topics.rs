@@ -1,8 +1,8 @@
 use tauri::State;
 use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
-use xaga_core::item::{self, EmbeddedItemSource};
-use xaga_core::topics::{self, Topic};
-use xaga_core::types::{CollectionItem, ItemFilter, Kind, RankedItem, SavedItem};
+use xaga_core::query::item::{self, EmbeddedItemSource};
+use xaga_core::persistence::topics;
+use xaga_core::types::{CollectionItem, ItemFilter, Kind, RankedItem, SavedItem, Topic};
 
 use crate::{get_unread, AppState};
 use super::{parse_item_filter, parse_item_sort};
