@@ -230,46 +230,6 @@ fn is_feed_pinned(feed: &atom::Feed) -> bool {
         .any(|c| c.term() == "pinned" && c.scheme() == Some(TAG_CATEGORY_SCHEME))
 }
 
-/// Per-feed metadata for embedding feeds into LanceDB as `kind = 'feed'` rows.
-pub struct FeedMeta {
-    pub id: String,
-    pub url: String,
-    pub title: String,
-    /// The feed's `atom:subtitle` (description/tagline), empty if absent. Embedded alongside the
-    /// title so feeds have real content for semantic search.
-    pub subtitle: String,
-    pub is_pinned: bool,
-}
-
-/// Reads every feed's `.atom` and returns the metadata needed to embed feed rows.
-/// `is_pinned` reflects a feed-level `<category term="pinned">` under [`TAG_CATEGORY_SCHEME`].
-pub async fn feed_embedding_meta(feeds_dir: &Path) -> Vec<FeedMeta> {
-    let Ok(ids) = list_feed_ids(feeds_dir).await else {
-        return vec![];
-    };
-    let mut metas = Vec::with_capacity(ids.len());
-    for id in ids {
-        if let Some(meta) = feed_embedding_meta_one(feeds_dir, &id).await {
-            metas.push(meta);
-        }
-    }
-    metas
-}
-
-/// Reads a single feed's `.atom` and returns its embedding metadata, or `None` if the
-/// file is missing or unparseable.
-pub async fn feed_embedding_meta_one(feeds_dir: &Path, id: &FeedId) -> Option<FeedMeta> {
-    let path = xml_path(feeds_dir, id);
-    let xml = tokio::fs::read_to_string(&path).await.ok()?;
-    let feed = parse_atom(&xml).ok()?;
-    Some(FeedMeta {
-        id: id.to_string(),
-        url: self_link_url(&feed).unwrap_or_default(),
-        title: feed.title().value.clone(),
-        subtitle: feed.subtitle().map(|s| s.value.clone()).unwrap_or_default(),
-        is_pinned: is_feed_pinned(&feed),
-    })
-}
 
 /// Adds (or removes) the app-local `pinned` category on a feed's `.atom`, under
 /// [`TAG_CATEGORY_SCHEME`]. Idempotent. Returns whether the file changed.

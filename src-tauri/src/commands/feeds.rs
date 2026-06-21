@@ -80,11 +80,9 @@ pub async fn rename_feed(id: String, title: String, state: State<'_, AppState>) 
     let feed = feeds::rename_feed(&dir, &feeds::FeedId(id.clone()), &title, &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())?;
-    // Re-embed the feed row from its `.atom` metadata (title changed). The producer reads the
-    // `.atom` to build the payload; the consumer embeds without touching the filesystem.
-    if let Some(meta) = feeds::feed_embedding_meta_one(&dir, &feeds::FeedId(id)).await {
-        state.enqueue(Tier::Regular, Job::EmbedFeed { meta });
-    }
+    // Re-embed the feed row (title changed). `rename_feed` already returns the domain `Feed`;
+    // carry it on the job so the consumer embeds without touching the filesystem.
+    state.enqueue(Tier::Regular, Job::EmbedFeed { feed: feed.clone() });
     Ok(feed)
 }
 

@@ -11,9 +11,8 @@ pub use crate::types::Feed;
 
 pub use feed_entry::list_entry_ids;
 pub use feed::{
-    add_feed, feed_embedding_meta, feed_embedding_meta_one, feed_id_from_url, list_feeds,
-    refresh_all_feeds, refresh_feed,
-    remove_feed, rename_feed, repair_feeds, set_feed_pinned, FeedId, FeedMeta, RepairOutcome,
+    add_feed, feed_id_from_url, list_feeds, refresh_all_feeds, refresh_feed,
+    remove_feed, rename_feed, repair_feeds, set_feed_pinned, FeedId, RepairOutcome,
     RepairResult, TAG_CATEGORY_SCHEME,
 };
 

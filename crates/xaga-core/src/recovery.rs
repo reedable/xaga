@@ -6,10 +6,12 @@ use flume;
 
 use crate::articles::article_from_document;
 use crate::embeddings::pipeline::{
-    embed_entry_vector, embed_topic_vector, sync_entry_row, sync_topic_row,
+    annotation_embedding_entry, embed_entry_vector, embed_feed, embed_topic_vector,
+    reconcile_topic_membership, sync_entry_row, sync_topic_row,
 };
 use crate::embeddings::row::{article_embed_text, checksum, topic_embed_text};
-use crate::embeddings::{Embedder, EmbeddingsDb, EmbeddingsError};
+use crate::embeddings::service::Senders;
+use crate::embeddings::{Embedder, EmbeddingEntry, EmbeddingsDb, EmbeddingsError, Job, Tier};
 use crate::persistence::frontmatter::{parse_document, Frontmatter};
 use crate::topics::topic_from_document;
 use crate::types::{Article, Entry, Kind, SavedItem, Topic};
@@ -322,5 +324,170 @@ async fn apply_plan(
             Ok(()) => report.embedded += 1,
             Err(e) => report.errors.push(format!("embed article {}: {e}", article.meta.id)),
         }
+    }
+}
+
+// ── Service-driven recovery (the bridge orchestration) ──────────────────────────
+
+/// Embeds every feed's row from its domain `Feed` and deletes feed rows whose `.atom` is gone.
+/// Recovery is the filesystem-reading producer: it lists feeds here (the `.atom` read) and hands
+/// each domain `Feed` to `embed_feed`, which never touches the disk.
+async fn reconcile_feeds(
+    feeds_dir: &Path,
+    embedder: &Arc<Embedder>,
+    db: &EmbeddingsDb,
+) -> Result<(), EmbeddingsError> {
+    let empty = HashSet::new();
+    let feeds = crate::feeds::list_feeds(feeds_dir, &empty, &empty)
+        .await
+        .unwrap_or_default();
+    let current: HashSet<String> = feeds.iter().map(|f| f.id.clone()).collect();
+
+    for feed in &feeds {
+        if let Err(e) = embed_feed(feed, embedder, db).await {
+            log::error!("reconcile_feeds: embed {}: {e}", feed.id);
+        }
+    }
+
+    // Delete feed rows whose `.atom` no longer exists.
+    let stale: Vec<String> = db
+        .all_entries_meta()
+        .await?
+        .into_iter()
+        .filter(|(id, (_, _, _, kind))| kind == Kind::Feed.as_str() && !current.contains(id))
+        .map(|(id, _)| id)
+        .collect();
+    if !stale.is_empty() {
+        db.delete_by_ids(&stale).await?;
+    }
+    Ok(())
+}
+
+/// Builds the recovery plan and enqueues the work as Maintenance-tier jobs onto the service.
+/// Lives here (the bridge), not in `embeddings`, so the filesystem reads it performs
+/// (`reconcile_feed_entries`, `reconcile_feeds`, `build_recovery_plan`, `list_topics`) stay out of
+/// the indexing layer. Driven by the service's control loop via `Job::StartRecovery`.
+///
+/// Topics are enqueued before articles so they index first; both ride the Maintenance tier —
+/// recovery is bulk/maintenance work, kept off the interactive tier so live actions never block.
+pub(crate) async fn dispatch_recovery(
+    data_dir: &Path,
+    db: &EmbeddingsDb,
+    embedder: &Arc<Embedder>,
+    senders: &Senders,
+) {
+    // Compact the DB before queuing any new work to clear version files accumulated during
+    // previous sessions. Without this, Lance's auto-cleanup fires mid-upsert and blocks the loop.
+    log::info!("recovery: pre-recovery compact starting");
+    if let Err(e) = db.compact().await {
+        log::error!("recovery: pre-recovery compact failed: {e}");
+    }
+
+    // Capture emptiness before any inserts, so a fresh post-reset recovery can use the fast
+    // bulk-insert path below instead of per-row upserts.
+    let fresh = db.count().await.unwrap_or(1) == 0;
+
+    // Create `.md` for atom feed entries first so they exist before the entries scan.
+    reconcile_feed_entries(data_dir).await;
+
+    // Embed feed rows from the `.atom` files (few; runs synchronously here in the bridge).
+    if let Err(e) = reconcile_feeds(&data_dir.join("feeds"), embedder, db).await {
+        log::error!("recovery: reconcile_feeds failed: {e}");
+    }
+
+    match build_recovery_plan(data_dir, db).await {
+        Ok(plan) => {
+            log::info!(
+                "recovery: {} topics + {} articles to embed, {} to delete",
+                plan.to_embed_topics.len(),
+                plan.to_embed_articles.len(),
+                plan.to_delete.len(),
+            );
+
+            // All deletes as a single batch (one LanceDB version instead of N).
+            senders.enqueue(Tier::Maintenance, Job::DeleteBatch { ids: plan.to_delete });
+
+            if fresh {
+                // Empty table: bulk-insert rows (no per-row get_entry/delete), then queue each
+                // object for the vector pass. Topics first so they embed before articles.
+                bulk_insert_topics(db, plan.to_embed_topics, senders).await;
+                bulk_insert_articles(db, plan.to_embed_articles, senders).await;
+            } else {
+                // Carry each parsed domain object through Upsert so the consumer never re-reads.
+                for topic in plan.to_embed_topics {
+                    senders.enqueue(Tier::Maintenance, Job::UpsertTopic { topic });
+                }
+                for article in plan.to_embed_articles {
+                    senders.enqueue(Tier::Maintenance, Job::UpsertEntry { article });
+                }
+            }
+
+            // Rebuild the member→topic reverse index from the topic files. Unconditional: a
+            // membership-only change doesn't alter a member's checksum, so build_recovery_plan
+            // would skip it. Bounded by drift via the topic-row `items` base.
+            match crate::topics::list_topics(data_dir).await {
+                Ok(topics) => {
+                    for topic in &topics {
+                        let member_ids: Vec<String> =
+                            topic.members.iter().map(|i| i.id().to_string()).collect();
+                        if let Err(e) = reconcile_topic_membership(db, &topic.id, &member_ids).await {
+                            log::error!(
+                                "recovery: reverse-index reconcile for topic {} failed: {e}",
+                                topic.id
+                            );
+                        }
+                    }
+                }
+                Err(e) => log::error!("recovery: list_topics for reverse-index rebuild failed: {e}"),
+            }
+
+            // After all background work drains, compact + prune, then (re)build scalar indexes.
+            senders.enqueue(Tier::Maintenance, Job::Compact);
+            senders.enqueue(Tier::Maintenance, Job::EnsureIndexes);
+        }
+        Err(e) => log::error!("recovery: recovery plan failed: {e}"),
+    }
+}
+
+/// Batch size for the fresh-recovery bulk inserts. Safe only when the table has no pre-existing
+/// rows for these ids (a fresh post-reset recovery).
+const BULK_BATCH: usize = 1024;
+
+/// Bulk path for fresh recovery (entries): builds each article's row (plus a null-vector row per
+/// annotation) and inserts in batches, then queues the carried `Article` for the embed pass.
+async fn bulk_insert_articles(db: &EmbeddingsDb, articles: Vec<Article>, senders: &Senders) {
+    let mut buf: Vec<EmbeddingEntry> = Vec::with_capacity(BULK_BATCH);
+    for article in articles {
+        buf.push(EmbeddingEntry::from_article(&article, None));
+        for annotation in &article.annotations {
+            buf.push(annotation_embedding_entry(&article, annotation, Vec::new(), None));
+        }
+        senders.enqueue(Tier::Maintenance, Job::EmbedEntry { article });
+        if buf.len() >= BULK_BATCH {
+            if let Err(e) = db.add_batch(std::mem::take(&mut buf)).await {
+                log::error!("bulk_insert_articles: add_batch failed: {e}");
+            }
+        }
+    }
+    if let Err(e) = db.add_batch(buf).await {
+        log::error!("bulk_insert_articles: add_batch failed: {e}");
+    }
+}
+
+/// Bulk path for fresh recovery (topics): builds each topic's row and queues the carried `Topic`
+/// for the embed pass.
+async fn bulk_insert_topics(db: &EmbeddingsDb, topics: Vec<Topic>, senders: &Senders) {
+    let mut buf: Vec<EmbeddingEntry> = Vec::with_capacity(BULK_BATCH);
+    for topic in topics {
+        buf.push(EmbeddingEntry::from_topic(&topic, None));
+        senders.enqueue(Tier::Maintenance, Job::EmbedTopic { topic });
+        if buf.len() >= BULK_BATCH {
+            if let Err(e) = db.add_batch(std::mem::take(&mut buf)).await {
+                log::error!("bulk_insert_topics: add_batch failed: {e}");
+            }
+        }
+    }
+    if let Err(e) = db.add_batch(buf).await {
+        log::error!("bulk_insert_topics: add_batch failed: {e}");
     }
 }

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -11,17 +11,16 @@ pub enum ShutdownReason {
     Restart,
 }
 
-use crate::feeds::FeedMeta;
-use crate::types::{Article, Topic};
+use crate::types::{Article, Feed, Topic};
 
 use super::lock::LockFile;
 use super::model::{Embedder, load_default_embedder};
 use super::pipeline::{
-    add_topic_member, annotation_embedding_entry, apply_state, embed_entry_vector, embed_feed,
-    embed_feeds, embed_topic_vector, reconcile_topic_membership, remove_topic_member,
-    sync_annotations, sync_entry_row, sync_topic_row,
+    add_topic_member, apply_state, embed_entry_vector, embed_feed, embed_topic_vector,
+    reconcile_topic_membership, remove_topic_member, sync_annotations, sync_entry_row,
+    sync_topic_row,
 };
-use super::{EmbeddingEntry, EmbeddingsDb, EmbeddingsError};
+use super::{EmbeddingsDb, EmbeddingsError};
 
 /// A reference to a library entity: its id plus what kind it is, so the consumer
 /// never has to probe LanceDB to learn what it is handling.
@@ -74,12 +73,10 @@ pub enum Job {
     EmbedEntry { article: Article },
     /// Compute/refresh a topic vector from the carried `Topic` (checksum-gated).
     EmbedTopic { topic: Topic },
-    /// Compute/refresh a feed row's vector from its `.atom` metadata (feeds have no `.md`).
-    EmbedFeed { meta: FeedMeta },
+    /// Compute/refresh a feed row's vector from the carried domain `Feed` (feeds have no `.md`).
+    EmbedFeed { feed: Feed },
 
     // ── Maintenance ──
-    /// Full diff + chunked bulk fan-out over a topic's whole member list.
-    ReconcileMembership { topic_id: String },
     /// Bulk-delete a batch of ids in one LanceDB operation (one version, not N).
     DeleteBatch { ids: Vec<String> },
     /// Compact + prune the DB.
@@ -117,9 +114,10 @@ impl Tier {
 }
 
 /// The four tier senders, bundled so producers — and the loop's own follow-up
-/// enqueues — route by `Tier` through one place.
+/// enqueues — route by `Tier` through one place. `pub(crate)` so the recovery bridge can
+/// enqueue work onto the service tiers.
 #[derive(Clone)]
-struct Senders {
+pub(crate) struct Senders {
     control: flume::Sender<Job>,
     interactive: flume::Sender<Job>,
     regular: flume::Sender<Job>,
@@ -127,7 +125,7 @@ struct Senders {
 }
 
 impl Senders {
-    fn enqueue(&self, tier: Tier, job: Job) {
+    pub(crate) fn enqueue(&self, tier: Tier, job: Job) {
         let tx = match tier {
             Tier::Control => &self.control,
             Tier::Interactive => &self.interactive,
@@ -226,7 +224,6 @@ impl EmbeddingService {
                     log::info!("embedding service: run_loop starting");
 
                     run_loop(
-                        data_dir,
                         control_rx,
                         interactive_rx,
                         regular_rx,
@@ -330,7 +327,6 @@ impl EmbeddingService {
 
 #[allow(clippy::too_many_arguments)]
 async fn run_loop(
-    data_dir: PathBuf,
     control_rx: flume::Receiver<Job>,
     interactive_rx: flume::Receiver<Job>,
     regular_rx: flume::Receiver<Job>,
@@ -362,7 +358,7 @@ async fn run_loop(
             result = control_rx.recv_async() => match result {
                 Ok(Job::StartRecovery { data_dir: dir }) => {
                     log::info!("embedding service: starting recovery for {}", dir.display());
-                    dispatch_recovery(&dir, &db, &embedder, &senders).await;
+                    crate::recovery::dispatch_recovery(&dir, &db, &embedder, &senders).await;
                     log::info!("embedding service: recovery dispatch complete");
                 }
                 Ok(Job::Reset { data_dir: dir }) => {
@@ -385,7 +381,7 @@ async fn run_loop(
                 Ok(job) => {
                     // Interactive has items — mark that a post-drain compact is needed.
                     compacted_after_drain = false;
-                    handle_job(job, Tier::Interactive, &data_dir, &db, &embedder, &senders, &events).await;
+                    handle_job(job, Tier::Interactive, &db, &embedder, &senders, &events).await;
                 }
                 Err(_) => { log::warn!("interactive tier: disconnected"); break; }
             },
@@ -393,7 +389,7 @@ async fn run_loop(
             // T2 — Regular: ONNX vector compute for single, live items.
             result = regular_rx.recv_async() => match result {
                 Ok(job) => {
-                    handle_job(job, Tier::Regular, &data_dir, &db, &embedder, &senders, &events).await;
+                    handle_job(job, Tier::Regular, &db, &embedder, &senders, &events).await;
                     since_compact += 1;
                     if since_compact >= BACKGROUND_COMPACT_INTERVAL {
                         since_compact = 0;
@@ -424,7 +420,7 @@ async fn run_loop(
                     }
 
                     let resets_interval = matches!(job, Job::Compact | Job::EnsureIndexes);
-                    handle_job(job, Tier::Maintenance, &data_dir, &db, &embedder, &senders, &events).await;
+                    handle_job(job, Tier::Maintenance, &db, &embedder, &senders, &events).await;
 
                     if resets_interval {
                         since_compact = 0;
@@ -449,22 +445,6 @@ async fn run_loop(
     }
 }
 
-/// Reads a topic's current member list from its `.md` and reconciles the full
-/// member→topic reverse index. Shared by the topic `UpsertContent` path and the
-/// explicit `ReconcileMembership` job.
-async fn reconcile_topic_full(db: &EmbeddingsDb, data_dir: &Path, topic_id: &str) {
-    match crate::topics::read_topic(data_dir, topic_id).await {
-        Ok(topic) => {
-            let member_ids: Vec<String> =
-                topic.members.iter().map(|i| i.id().to_string()).collect();
-            if let Err(e) = reconcile_topic_membership(db, topic_id, &member_ids).await {
-                log::error!("reconcile topic {topic_id} failed: {e}");
-            }
-        }
-        Err(e) => log::error!("read_topic {topic_id} for reconcile failed: {e}"),
-    }
-}
-
 /// Executes a single work `Job`. The control-flow variants (Shutdown / Reset /
 /// StartRecovery) are handled by the loop's control arm, not here. `arrival` is the tier
 /// the job was dequeued from; it only affects where a deferred `EmbedVector` follow-up is
@@ -473,7 +453,6 @@ async fn reconcile_topic_full(db: &EmbeddingsDb, data_dir: &Path, topic_id: &str
 async fn handle_job(
     job: Job,
     arrival: Tier,
-    data_dir: &Path,
     db: &EmbeddingsDb,
     embedder: &Arc<Embedder>,
     senders: &Senders,
@@ -527,9 +506,9 @@ async fn handle_job(
                 log::error!("embed_topic failed id={}: {e}", topic.id);
             }
         }
-        Job::EmbedFeed { meta } => {
-            if let Err(e) = embed_feed(&meta, embedder, db).await {
-                log::error!("embed_feed failed id={}: {e}", meta.id);
+        Job::EmbedFeed { feed } => {
+            if let Err(e) = embed_feed(&feed, embedder, db).await {
+                log::error!("embed_feed failed id={}: {e}", feed.id);
             }
         }
         Job::SyncAnnotations { article } => {
@@ -546,9 +525,6 @@ async fn handle_job(
             if let Err(e) = remove_topic_member(db, &topic_id, &member_id).await {
                 log::error!("remove_member topic={topic_id} member={member_id} failed: {e}");
             }
-        }
-        Job::ReconcileMembership { topic_id } => {
-            reconcile_topic_full(db, data_dir, &topic_id).await;
         }
         Job::Delete { entity } => {
             if let Err(e) = db.delete_by_id(&entity.id).await {
@@ -576,144 +552,5 @@ async fn handle_job(
         Job::Shutdown | Job::Reset { .. } | Job::StartRecovery { .. } => {
             log::warn!("handle_job: control job reached work dispatcher (ignored)");
         }
-    }
-}
-
-/// Builds the recovery plan and enqueues the work as Maintenance-tier jobs.
-///
-/// Topics are enqueued before articles so they index first; both ride the
-/// Maintenance tier — recovery is bulk/maintenance work (see SPAM.md), kept off
-/// the interactive tier so live user actions are never blocked by a backfill.
-async fn dispatch_recovery(
-    data_dir: &Path,
-    db: &EmbeddingsDb,
-    embedder: &Arc<Embedder>,
-    senders: &Senders,
-) {
-    // Compact the DB before queuing any new work to clear version files
-    // accumulated during previous sessions.  Without this, Lance's auto-cleanup
-    // fires mid-upsert and blocks the run_loop for minutes on a cluttered DB.
-    log::info!("embedding service: pre-recovery compact starting");
-    if let Err(e) = db.compact().await {
-        log::error!("embedding service: pre-recovery compact failed: {e}");
-    }
-
-    // Capture emptiness *before* embed_feeds inserts feed rows, so a fresh post-reset
-    // recovery can use the fast bulk-insert path below instead of per-row upserts.
-    let fresh = db.count().await.unwrap_or(1) == 0;
-
-    // The entries that are already in atom files that are not yet in the file system are
-    // presumably recent entries. These should get indexed ahead of those *.md files that are
-    // already in the file system but have not yet been indexed. We reconcile the feeds
-    // synchronously to ensure this ordering; however, this comes with one drawback, which is that
-    // the run_loop thread is block while we reconcile the atom feed entries.
-    crate::recovery::reconcile_feed_entries(data_dir).await;
-
-    // Embed feed rows (kind = 'feed') from the .atom files. Feeds are few, so this runs
-    // synchronously here alongside reconcile.
-    if let Err(e) = embed_feeds(&data_dir.join("feeds"), embedder, db).await {
-        log::error!("embedding service: embed_feeds failed: {e}");
-    }
-
-    match crate::recovery::build_recovery_plan(data_dir, db).await {
-        Ok(plan) => {
-            log::info!(
-                "embedding service: recovery — {} topics + {} articles to embed, {} to delete",
-                plan.to_embed_topics.len(),
-                plan.to_embed_articles.len(),
-                plan.to_delete.len(),
-            );
-
-            // All deletes as a single batch (one LanceDB version instead of N).
-            senders.enqueue(Tier::Maintenance, Job::DeleteBatch { ids: plan.to_delete });
-
-            if fresh {
-                // Empty table: bulk-insert rows (no per-row get_entry/delete), then queue
-                // each object for the vector pass. Topics first so they embed before articles.
-                bulk_insert_topics(db, plan.to_embed_topics, senders).await;
-                bulk_insert_articles(db, plan.to_embed_articles, senders).await;
-            } else {
-                // Carry each parsed domain object through Upsert so the consumer never re-reads.
-                for topic in plan.to_embed_topics {
-                    senders.enqueue(Tier::Maintenance, Job::UpsertTopic { topic });
-                }
-                for article in plan.to_embed_articles {
-                    senders.enqueue(Tier::Maintenance, Job::UpsertEntry { article });
-                }
-            }
-
-            // Rebuild the member→topic reverse index from the topic files. Unconditional: a
-            // membership-only change doesn't alter a member's checksum, so build_recovery_plan
-            // would skip it. Covers entries + annotations (annotation rows exist post bulk_insert).
-            // Bounded by drift via the topic-row `items` base.
-            match crate::topics::list_topics(data_dir).await {
-                Ok(topics) => {
-                    for topic in &topics {
-                        let member_ids: Vec<String> =
-                            topic.members.iter().map(|i| i.id().to_string()).collect();
-                        if let Err(e) =
-                            reconcile_topic_membership(db, &topic.id, &member_ids).await
-                        {
-                            log::error!(
-                                "recovery: reverse-index reconcile for topic {} failed: {e}",
-                                topic.id
-                            );
-                        }
-                    }
-                }
-                Err(e) => log::error!("recovery: list_topics for reverse-index rebuild failed: {e}"),
-            }
-
-            // After all background work drains, compact + prune old versions, then
-            // (re)build scalar indexes on the populated, compacted table.
-            senders.enqueue(Tier::Maintenance, Job::Compact);
-            senders.enqueue(Tier::Maintenance, Job::EnsureIndexes);
-        }
-
-        Err(e) => log::error!("embedding service: recovery plan failed: {e}"),
-    }
-}
-
-/// Batch size for the fresh-recovery bulk inserts below. Safe only when the table has no
-/// pre-existing rows for these ids (a fresh post-reset recovery).
-const BULK_BATCH: usize = 1024;
-
-/// Bulk path for fresh recovery (entries): builds each article's row (plus a null-vector row per
-/// annotation) and inserts in batches, then queues the carried `Article` for the embed pass — no
-/// file is re-read (the objects were built once by `build_recovery_plan`).
-async fn bulk_insert_articles(db: &EmbeddingsDb, articles: Vec<Article>, senders: &Senders) {
-    let mut buf: Vec<EmbeddingEntry> = Vec::with_capacity(BULK_BATCH);
-    for article in articles {
-        buf.push(EmbeddingEntry::from_article(&article, None));
-        for annotation in &article.annotations {
-            buf.push(annotation_embedding_entry(&article, annotation, Vec::new(), None));
-        }
-        senders.enqueue(Tier::Maintenance, Job::EmbedEntry { article });
-        if buf.len() >= BULK_BATCH {
-            if let Err(e) = db.add_batch(std::mem::take(&mut buf)).await {
-                log::error!("bulk_insert_articles: add_batch failed: {e}");
-            }
-        }
-    }
-    if let Err(e) = db.add_batch(buf).await {
-        log::error!("bulk_insert_articles: add_batch failed: {e}");
-    }
-}
-
-/// Bulk path for fresh recovery (topics): builds each topic's row and queues the carried `Topic`
-/// for the embed pass.
-async fn bulk_insert_topics(db: &EmbeddingsDb, topics: Vec<Topic>, senders: &Senders) {
-    let mut buf: Vec<EmbeddingEntry> = Vec::with_capacity(BULK_BATCH);
-    for topic in topics {
-        buf.push(EmbeddingEntry::from_topic(&topic, None));
-        senders.enqueue(Tier::Maintenance, Job::EmbedTopic { topic });
-        if buf.len() >= BULK_BATCH {
-            if let Err(e) = db.add_batch(std::mem::take(&mut buf)).await {
-                log::error!("bulk_insert_topics: add_batch failed: {e}");
-            }
-        }
-    }
-    if let Err(e) = db.add_batch(buf).await {
-        log::error!("bulk_insert_topics: add_batch failed: {e}");
     }
 }

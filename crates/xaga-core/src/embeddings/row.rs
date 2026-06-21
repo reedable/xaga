@@ -12,7 +12,7 @@
 
 use sha2::Digest;
 
-use crate::types::{Article, Kind, Topic};
+use crate::types::{Article, Feed, Kind, Topic};
 
 use super::db::EmbeddingEntry;
 
@@ -39,6 +39,12 @@ pub(crate) fn article_embed_text(article: &Article) -> &str {
 /// The text embedded for a topic: its description (the `summary` key); empty when absent.
 pub(crate) fn topic_embed_text(topic: &Topic) -> &str {
     topic.description.as_deref().unwrap_or("")
+}
+
+/// The text embedded for a feed: its description (the `atom:subtitle`, mapped to the domain
+/// `description` by persistence); empty when absent.
+pub(crate) fn feed_embed_text(feed: &Feed) -> &str {
+    feed.description.as_deref().unwrap_or("")
 }
 
 impl EmbeddingEntry {
@@ -71,6 +77,34 @@ impl EmbeddingEntry {
             is_unread: meta.is_unread,
             is_bookmarked: meta.is_bookmarked,
             is_pinned: false,
+            vector,
+        }
+    }
+
+    /// Builds a feed row from a domain `Feed`. Feed rows carry no created/updated timestamps.
+    pub fn from_feed(feed: &Feed, vector: Option<Vec<f32>>) -> EmbeddingEntry {
+        let mut tags = Vec::new();
+        if feed.is_pinned {
+            tags.push("pinned".to_string());
+        }
+        EmbeddingEntry {
+            id: feed.id.clone(),
+            kind: Kind::Feed,
+            source: feed.url.clone(),
+            title: feed.title.clone(),
+            created_at: String::new(),
+            published_at: String::new(),
+            updated_at: String::new(),
+            checksum: checksum(&feed.title, feed_embed_text(feed)),
+            reference: String::new(),
+            color: String::new(),
+            summary: feed.description.clone().unwrap_or_default(),
+            tags,
+            topics: vec![],
+            items: vec![],
+            is_unread: false,
+            is_bookmarked: false,
+            is_pinned: feed.is_pinned,
             vector,
         }
     }
