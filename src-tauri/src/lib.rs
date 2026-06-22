@@ -754,7 +754,7 @@ pub fn run() {
             commands::settings::set_inline_pdf_reader,
             commands::feeds::list_feeds,
             commands::feeds::add_feed,
-            commands::feeds::refresh_feed,
+            commands::feeds::refresh_all_feeds,
             commands::feeds::rename_feed,
             commands::feeds::remove_feed,
             commands::feeds::import_feeds,

@@ -45,11 +45,7 @@ fn xml_path(feeds_dir: &Path, id: &FeedId) -> PathBuf {
     feeds_dir.join(format!("{id}.atom"))
 }
 
-async fn write_atom_atomic(
-    feeds_dir: &Path,
-    id: &FeedId,
-    feed: &atom::Feed,
-) -> Result<()> {
+async fn write_atom_atomic(feeds_dir: &Path, id: &FeedId, feed: &atom::Feed) -> Result<()> {
     let mut buf = Vec::new();
     feed.write_to(&mut buf)
         .map_err(|e| FeedError::AtomParse(e.to_string()))?;
@@ -81,12 +77,21 @@ async fn fetch_xml(client: &reqwest::Client, url: &str) -> Result<String> {
         .get(url)
         .send()
         .await
-        .map_err(|e| FeedError::Http { url: url.to_string(), source: e })?
+        .map_err(|e| FeedError::Http {
+            url: url.to_string(),
+            source: e,
+        })?
         .error_for_status()
-        .map_err(|e| FeedError::Http { url: url.to_string(), source: e })?
+        .map_err(|e| FeedError::Http {
+            url: url.to_string(),
+            source: e,
+        })?
         .text()
         .await
-        .map_err(|e| FeedError::Http { url: url.to_string(), source: e })
+        .map_err(|e| FeedError::Http {
+            url: url.to_string(),
+            source: e,
+        })
 }
 
 fn parse_incoming(xml: &str) -> Result<feed_rs::model::Feed> {
@@ -106,7 +111,10 @@ fn fix_bare_ampersands(xml: &str) -> String {
     if !xml.contains("<![CDATA[") {
         loop {
             match rest.find('&') {
-                None => { result.push_str(rest); break; }
+                None => {
+                    result.push_str(rest);
+                    break;
+                }
                 Some(a) => {
                     result.push_str(&rest[..a]);
                     let after = &rest[a + 1..];
@@ -116,7 +124,11 @@ fn fix_bare_ampersands(xml: &str) -> String {
                         || after.starts_with("apos;")
                         || after.starts_with("quot;")
                         || after.starts_with('#');
-                    if is_valid_ref { result.push('&'); } else { result.push_str("&amp;"); }
+                    if is_valid_ref {
+                        result.push('&');
+                    } else {
+                        result.push_str("&amp;");
+                    }
                     rest = after;
                 }
             }
@@ -156,7 +168,11 @@ fn fix_bare_ampersands(xml: &str) -> String {
                     || after.starts_with("apos;")
                     || after.starts_with("quot;")
                     || after.starts_with('#');
-                if is_valid_ref { result.push('&'); } else { result.push_str("&amp;"); }
+                if is_valid_ref {
+                    result.push('&');
+                } else {
+                    result.push_str("&amp;");
+                }
                 rest = after;
             }
         }
@@ -167,7 +183,9 @@ fn fix_bare_ampersands(xml: &str) -> String {
 
 fn parse_atom(xml: &str) -> Result<atom::Feed> {
     let sanitized = fix_bare_ampersands(xml);
-    sanitized.parse::<atom::Feed>().map_err(|e| FeedError::AtomParse(e.to_string()))
+    sanitized
+        .parse::<atom::Feed>()
+        .map_err(|e| FeedError::AtomParse(e.to_string()))
 }
 
 fn to_fixed(dt: DateTime<Utc>) -> DateTime<FixedOffset> {
@@ -248,50 +266,16 @@ pub fn feed_id_from_url(url: &str) -> Result<FeedId> {
     Ok(FeedId(url_hash12(&normalized)))
 }
 
-/// Add a new feed: fetch, convert to Atom, and save as `{id}.atom`.
-/// If the file already exists, new entries are merged in (idempotent / promotes to refresh).
-/// Writes frontmatter-only `.md` for new entries into `data_dir/articles/`.
-pub async fn add_feed(
-    client: &reqwest::Client,
-    feeds_dir: &Path,
-    data_dir: &Path,
-    url: &str,
-    unread: &HashSet<String>,
-    bookmarked: &HashSet<String>,
-) -> Result<(Feed, Vec<Article>)> {
-    let url = if url.trim_start().starts_with("http://") {
-        format!("https://{}", url.trim_start()[7..].trim_start())
-    } else {
-        url.to_string()
-    };
-    let url = normalize_url(&url).map_err(FeedError::InvalidUrl)?;
-    let id = feed_id_from_url(&url)?;
-
-    tokio::fs::create_dir_all(feeds_dir).await?;
-
-    let xml = fetch_xml(client, &url).await?;
-    let incoming = parse_incoming(&xml)?;
-    let path = xml_path(feeds_dir, &id);
-
-    let (atom_feed, new_atom_entries) = if path.exists() {
-        let existing_xml = tokio::fs::read_to_string(&path).await?;
-        let mut existing = parse_atom(&existing_xml)?;
-        let added = apply_incoming(&mut existing, &incoming, id.as_str());
-        (existing, added)
-    } else {
-        let feed = to_atom_feed(&incoming, &url);
-        let all = feed.entries().to_vec();
-        (feed, all)
-    };
-
-    write_atom_atomic(feeds_dir, &id, &atom_feed).await?;
+/// Save an `.md` for each entry that doesn't already exist on disk, returning the Articles
+/// created. The shared ingestion step behind `add_feed`, `refresh_feed`, and recovery's
+/// `reconcile_atom_file`.
+pub(crate) async fn save_new_entries(data_dir: &Path, entries: &[Entry]) -> Vec<Article> {
     let mut created: Vec<Article> = Vec::new();
-    for ae in &new_atom_entries {
-        let e = atom_entry_to_entry(ae);
+    for e in entries {
         if e.url.is_empty() {
             continue;
         }
-        // Only create an Entry in unread/ if the entry doesn't already exist in any dir.
+        // Only create an Entry if one doesn't already exist on disk.
         if crate::persistence::entries::find_entry_path(data_dir, &e.id)
             .await
             .is_some()
@@ -309,16 +293,43 @@ pub async fn add_feed(
         .await
         {
             Ok(content) => created.push(content),
-            Err(err) => log::warn!("add_feed: write_entry {}: {err}", e.id),
+            Err(err) => log::warn!("save_new_entries: write_entry {}: {err}", e.id),
         }
     }
-    let created_at = file_created_at(&path, Some(*atom_feed.updated())).await;
-    let summary = feed_summary(&id, &atom_feed, created_at, unread, bookmarked);
-    Ok((summary, created))
+    created
 }
 
-/// Re-fetch a feed by ID and merge new entries into the existing Atom file.
-/// Creates articles for new entries in `data_dir/articles/`.
+/// Add a feed by URL: write a new `.atom` recording the source URL (if one isn't already present),
+/// then refresh it. `add_feed` does not fetch — `refresh_feed` owns the fetch/merge/save.
+/// Idempotent: re-adding an existing feed just refreshes it.
+pub async fn add_feed(
+    client: &reqwest::Client,
+    feeds_dir: &Path,
+    data_dir: &Path,
+    url: &str,
+    unread: &HashSet<String>,
+    bookmarked: &HashSet<String>,
+) -> Result<(Feed, Vec<Article>)> {
+    let url = if url.trim_start().starts_with("http://") {
+        format!("https://{}", url.trim_start()[7..].trim_start())
+    } else {
+        url.to_string()
+    };
+    let url = normalize_url(&url).map_err(FeedError::InvalidUrl)?;
+    let id = feed_id_from_url(&url)?;
+
+    tokio::fs::create_dir_all(feeds_dir).await?;
+    let path = xml_path(feeds_dir, &id);
+    if !path.exists() {
+        write_atom_atomic(feeds_dir, &id, &new_atom(&id, &url)).await?;
+    }
+
+    refresh_feed(client, feeds_dir, data_dir, &id, unread, bookmarked).await
+}
+
+/// Re-fetch a feed by ID, merge new entries into the `.atom`, and save an `.md` for each new
+/// entry. Returns the summary and the Articles created, so the caller can enqueue them for
+/// indexing. Plain ingestion — persistence only; never touches recovery.
 pub async fn refresh_feed(
     client: &reqwest::Client,
     feeds_dir: &Path,
@@ -338,13 +349,17 @@ pub async fn refresh_feed(
 
     let xml = fetch_xml(client, &url).await?;
     let incoming = parse_incoming(&xml)?;
-    apply_incoming(&mut existing, &incoming, id.as_str());
+    let added = apply_incoming(&mut existing, &incoming, id.as_str());
 
     let created_at = file_created_at(&path, Some(*existing.updated())).await;
     write_atom_atomic(feeds_dir, id, &existing).await?;
-    let created = crate::recovery::reconcile_atom_file(data_dir, id.as_str()).await;
-    let summary = feed_summary(id, &existing, created_at, unread, bookmarked);
-    Ok((summary, created))
+
+    let entries: Vec<Entry> = added.iter().map(atom_entry_to_entry).collect();
+    let created = save_new_entries(data_dir, &entries).await;
+    Ok((
+        feed_summary(id, &existing, created_at, unread, bookmarked),
+        created,
+    ))
 }
 
 /// Re-fetch all feeds. Per-feed errors are collected rather than propagated early.
@@ -359,27 +374,40 @@ pub async fn refresh_all_feeds(
         Ok(ids) => ids,
         Err(e) => return vec![(FeedId(String::new()), Err(e))],
     };
+
     let mut results = Vec::with_capacity(ids.len());
+
     for id in ids {
         let result = refresh_feed(client, feeds_dir, data_dir, &id, unread, bookmarked).await;
         results.push((id, result));
     }
+
     results
 }
 
 /// List all feeds on disk, parsed from their Atom XML.
-pub async fn list_feeds(feeds_dir: &Path, unread: &HashSet<String>, bookmarked: &HashSet<String>) -> Result<Vec<Feed>> {
+pub async fn list_feeds(
+    feeds_dir: &Path,
+    unread: &HashSet<String>,
+    bookmarked: &HashSet<String>,
+) -> Result<Vec<Feed>> {
     let ids = list_feed_ids(feeds_dir).await?;
     let mut feeds = Vec::with_capacity(ids.len());
+
     for id in ids {
         let path = xml_path(feeds_dir, &id);
+
         if let Ok(xml) = tokio::fs::read_to_string(&path).await {
             if let Ok(atom_feed) = parse_atom(&xml) {
                 let created_at = file_created_at(&path, Some(*atom_feed.updated())).await;
-                feeds.push(feed_summary(&id, &atom_feed, created_at, unread, bookmarked));
+
+                feeds.push(feed_summary(
+                    &id, &atom_feed, created_at, unread, bookmarked,
+                ));
             }
         }
     }
+
     Ok(feeds)
 }
 
@@ -395,7 +423,6 @@ fn is_feed_pinned(feed: &atom::Feed) -> bool {
         .any(|c| c.term() == crate::tags::PINNED && c.scheme() == Some(TAG_CATEGORY_SCHEME))
 }
 
-
 /// Adds (or removes) the app-local `pinned` category on a feed's `.atom`, under
 /// [`TAG_CATEGORY_SCHEME`]. Idempotent. Returns whether the file changed.
 pub async fn set_feed_pinned(feeds_dir: &Path, id: &FeedId, pinned: bool) -> Result<bool> {
@@ -404,22 +431,27 @@ pub async fn set_feed_pinned(feeds_dir: &Path, id: &FeedId, pinned: bool) -> Res
     let mut feed = parse_atom(&xml)?;
 
     let has = is_feed_pinned(&feed);
+
     if has == pinned {
         return Ok(false);
     }
 
     let mut categories = feed.categories().to_vec();
+
     if pinned {
         let mut cat = atom::Category::default();
         cat.set_term(crate::tags::PINNED);
         cat.set_scheme(Some(TAG_CATEGORY_SCHEME.to_string()));
         categories.push(cat);
     } else {
-        categories.retain(|c| !(c.term() == crate::tags::PINNED && c.scheme() == Some(TAG_CATEGORY_SCHEME)));
+        categories.retain(|c| {
+            !(c.term() == crate::tags::PINNED && c.scheme() == Some(TAG_CATEGORY_SCHEME))
+        });
     }
-    feed.set_categories(categories);
 
+    feed.set_categories(categories);
     write_atom_atomic(feeds_dir, id, &feed).await?;
+
     Ok(true)
 }
 
@@ -449,6 +481,7 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
                 continue;
             }
         };
+
         let mut feed = match parse_atom(&xml) {
             Ok(f) => f,
             Err(e) => {
@@ -462,6 +495,7 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
 
         // Step 2: synthesise missing feed <id> from <link rel="self"> if possible.
         let feed_id_synthesized;
+
         if feed.id().is_empty() {
             if let Some(self_url) = self_link_url(&feed) {
                 let normalized = normalize_url(&self_url).unwrap_or(self_url);
@@ -472,6 +506,7 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
                     id,
                     outcome: RepairOutcome::NoId,
                 });
+
                 continue;
             }
         } else {
@@ -483,16 +518,21 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
             let mut links_changed = false;
             let mut ids_changed = false;
             let mut entries = feed.entries().to_vec();
+
             for entry in &mut entries {
                 // Normalise link hrefs.
                 let before: Vec<String> =
                     entry.links().iter().map(|l| l.href().to_string()).collect();
+
                 normalize_entry_links(entry);
+
                 let after: Vec<String> =
                     entry.links().iter().map(|l| l.href().to_string()).collect();
+
                 if before != after {
                     links_changed = true;
                 }
+
                 // Synthesise a stable <id> when absent.
                 if entry.id().is_empty() {
                     let first_href = entry.links().first().map(|l| l.href()).unwrap_or("");
@@ -501,9 +541,11 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
                     ids_changed = true;
                 }
             }
+
             if links_changed || ids_changed {
                 feed.set_entries(entries);
             }
+
             (links_changed, ids_changed)
         };
 
@@ -522,10 +564,12 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
                     continue;
                 }
             };
+
             self_link_added = false;
         } else {
             // Steps 4-5: try to derive the URL from <id>.
             let feed_id_val = feed.id().to_string();
+
             if !feed_id_val.starts_with("http://") && !feed_id_val.starts_with("https://") {
                 results.push(RepairResult {
                     id,
@@ -533,6 +577,7 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
                 });
                 continue;
             }
+
             canonical_url = match normalize_url(&feed_id_val) {
                 Ok(u) => u,
                 Err(e) => {
@@ -543,6 +588,7 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
                     continue;
                 }
             };
+
             set_self_link(&mut feed, &canonical_url);
             self_link_added = true;
         }
@@ -565,6 +611,7 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
             }
             (true, false) => {
                 write_atom_atomic(feeds_dir, &id, &feed).await?;
+
                 results.push(RepairResult {
                     id,
                     outcome: RepairOutcome::Repaired {
@@ -578,6 +625,7 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
             }
             (_, true) => {
                 let new_path = xml_path(feeds_dir, &expected_id);
+
                 if new_path.exists() {
                     results.push(RepairResult {
                         id,
@@ -585,14 +633,17 @@ pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
                             target: expected_id,
                         },
                     });
+
                     continue;
                 }
+
                 if content_changed {
                     write_atom_atomic(feeds_dir, &expected_id, &feed).await?;
                     tokio::fs::remove_file(&path).await?;
                 } else {
                     tokio::fs::rename(&path, &new_path).await?;
                 }
+
                 results.push(RepairResult {
                     id,
                     outcome: RepairOutcome::Repaired {
@@ -652,29 +703,17 @@ fn incoming_title<'a>(title: &'a Option<feed_rs::model::Text>, fallback: &'a str
 }
 
 /// Build a new Atom Feed from a feed-rs model, recording `source_url` as `<link rel="self">`.
-fn to_atom_feed(src: &feed_rs::model::Feed, source_url: &str) -> atom::Feed {
-    let title = incoming_title(&src.title, source_url);
-
-    let feed_id = if src.id.is_empty() {
-        url_hash12(source_url)
-    } else {
-        src.id.clone()
-    };
-
+/// A fresh `.atom` for a newly added feed: records the source URL as the self-link, with no
+/// entries yet. `refresh_feed` then fetches from the self-link and fills it in.
+fn new_atom(id: &FeedId, url: &str) -> atom::Feed {
     let mut self_link = atom::Link::default();
-    self_link.set_href(xml_attr_encode(source_url));
+    self_link.set_href(xml_attr_encode(url));
     self_link.set_rel("self");
 
     let mut feed = atom::Feed::default();
-    feed.set_title(atom::Text::plain(title));
-    feed.set_id(feed_id);
-    feed.set_updated(src.updated.map(to_fixed).unwrap_or_else(now_fixed));
+    feed.set_id(id.as_str().to_string());
+    feed.set_updated(now_fixed());
     feed.set_links(vec![self_link]);
-    feed.set_authors(src.authors.iter().map(to_atom_person).collect::<Vec<_>>());
-    if let Some(desc) = &src.description {
-        feed.set_subtitle(atom::Text::plain(desc.content.clone()));
-    }
-    feed.set_entries(src.entries.iter().map(to_atom_entry).collect::<Vec<_>>());
     feed
 }
 
@@ -868,8 +907,14 @@ fn feed_summary(
         })
         .collect();
 
-    let unread_count = entry_ids.iter().filter(|id| unread_ids.contains(*id)).count();
-    let _bookmarked_count = entry_ids.iter().filter(|id| bookmarked_ids.contains(*id)).count();
+    let unread_count = entry_ids
+        .iter()
+        .filter(|id| unread_ids.contains(*id))
+        .count();
+    let _bookmarked_count = entry_ids
+        .iter()
+        .filter(|id| bookmarked_ids.contains(*id))
+        .count();
 
     Feed {
         id: id.to_string(),

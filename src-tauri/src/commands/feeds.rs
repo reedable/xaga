@@ -39,18 +39,25 @@ pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, S
 }
 
 #[tauri::command]
-pub async fn refresh_feed(window: tauri::Window, id: String, state: State<'_, AppState>) -> Result<Feed, String> {
+pub async fn refresh_all_feeds(window: tauri::Window, state: State<'_, AppState>) -> Result<Vec<Feed>, String> {
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
-    let (feed, created) = feeds::refresh_feed(&state.http_client, &dir, &library, &feeds::FeedId(id), &unread, &bookmarked)
-        .await
-        .map_err(|e| e.to_string())?;
-    for article in created {
-        state.enqueue(Tier::Maintenance, Job::UpsertEntry { article });
+    let results = feeds::refresh_all_feeds(&state.http_client, &dir, &library, &unread, &bookmarked).await;
+    let mut refreshed = Vec::new();
+    for (id, result) in results {
+        match result {
+            Ok((feed, created)) => {
+                for article in created {
+                    state.enqueue(Tier::Maintenance, Job::UpsertEntry { article });
+                }
+                window.emit("feed:refreshed", &feed).ok();
+                refreshed.push(feed);
+            }
+            Err(e) => log::warn!("refresh_all_feeds {id}: {e}"),
+        }
     }
-    window.emit("feed:refreshed", &feed).ok();
-    Ok(feed)
+    Ok(refreshed)
 }
 
 #[tauri::command]

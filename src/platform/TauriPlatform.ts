@@ -365,12 +365,12 @@ export class TauriPlatform implements Platform {
     return FeedSchema.transform(toFeed).parse(result);
   }
 
-  async refreshFeed(signal: AbortSignal, feedId: string): Promise<Feed> {
+  async refreshAllFeeds(signal: AbortSignal): Promise<Feed[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "refresh_feed" });
-    const result = await invoker("refresh_feed", { id: feedId });
-    return FeedSchema.transform(toFeed).parse(result);
+      .with(logged, { logger, name: "refresh_all_feeds" });
+    const result = await invoker("refresh_all_feeds", {});
+    return z.array(FeedSchema.transform(toFeed)).parse(result);
   }
 
   async renameFeed(

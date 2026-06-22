@@ -37,7 +37,7 @@ export interface Platform {
   addFeed(signal: AbortSignal, feedUrl: string): Promise<Feed>;
   importFeeds(signal: AbortSignal): Promise<ImportResult<Feed> | null>;
   exportFeeds(signal: AbortSignal): Promise<void>;
-  refreshFeed(signal: AbortSignal, feedId: string): Promise<Feed>;
+  refreshAllFeeds(signal: AbortSignal): Promise<Feed[]>;
   renameFeed(signal: AbortSignal, feedId: string, title: string): Promise<Feed>;
   removeFeed(signal: AbortSignal, feedUrl: string): Promise<string>;
 

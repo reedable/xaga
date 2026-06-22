@@ -358,7 +358,7 @@ async fn run_loop(
             result = control_rx.recv_async() => match result {
                 Ok(Job::StartRecovery { data_dir: dir }) => {
                     log::info!("embedding service: starting recovery for {}", dir.display());
-                    crate::recovery::dispatch_recovery(&dir, &db, &embedder, &senders).await;
+                    crate::recovery::dispatch::dispatch_recovery(&dir, &db, &embedder, &senders).await;
                     log::info!("embedding service: recovery dispatch complete");
                 }
                 Ok(Job::Reset { data_dir: dir }) => {

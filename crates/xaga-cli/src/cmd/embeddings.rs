@@ -145,7 +145,7 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
                 Err(e) => die(e),
             };
             let embedder = make_embedder().await;
-            let report = recovery::run_full_recovery(data_dir, &embedder, &db).await;
+            let report = recovery::execute::run_full_recovery(data_dir, &embedder, &db).await;
             println!("recover: {} embedded, {} deleted", report.embedded, report.deleted);
             for err in &report.errors {
                 eprintln!("  warning: {err}");
@@ -169,7 +169,7 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
                 Err(e) => die(e),
             };
             let embedder = make_embedder().await;
-            let report = recovery::run_full_recovery(data_dir, &embedder, &db).await;
+            let report = recovery::execute::run_full_recovery(data_dir, &embedder, &db).await;
             println!("reindex: {} embedded, {} deleted", report.embedded, report.deleted);
             for err in &report.errors {
                 eprintln!("  warning: {err}");

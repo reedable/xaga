@@ -29,46 +29,25 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
   const platform = usePlatform();
   const { listFeeds } = useSidebar(abortControllerRef);
 
-  const refreshFeed = useCallback(
-    async (feedId: string) => {
-      const signal = abortControllerRef.current.signal;
-      setError(null);
-      setLoadingSet((prev) => new Set(prev).add(feedId));
-      try {
-        await platform.refreshFeed(signal, feedId);
-        return feedId;
-      } catch (e) {
-        setError(e);
-      } finally {
-        setLoadingSet((prev) => {
-          const next = new Set(prev);
-          next.delete(feedId);
-          return next;
-        });
-      }
-    },
-    [abortControllerRef, platform, setError, setLoadingSet]
-  );
-
   const refreshAllFeeds = useCallback(
     async (callback: (feed: Feed) => void = () => {}) => {
       const signal = abortControllerRef.current.signal;
       const cb = decorate(callback).with(debounced, { wait: 400 });
+      setError(null);
       try {
         const list = await platform.listFeeds(signal);
         if (!list) return;
-        await Promise.all(
-          list.map((feed) =>
-            refreshFeed(feed.id).then((id) => {
-              if (id) cb(feed);
-            })
-          )
-        );
+        // One backend call refreshes every feed; mark them all loading for its duration.
+        setLoadingSet(new Set(list.map((feed) => feed.id)));
+        const refreshed = await platform.refreshAllFeeds(signal);
+        refreshed?.forEach((feed) => cb(feed));
       } catch (e) {
         setError(e);
+      } finally {
+        setLoadingSet(new Set());
       }
     },
-    [abortControllerRef, platform, refreshFeed, setError]
+    [abortControllerRef, platform, setError, setLoadingSet]
   );
 
   const addFeed = useCallback(
@@ -126,7 +105,6 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
     feeds,
     pinnedFeedIds,
     requestFeeds,
-    refreshFeed,
     refreshAllFeeds,
     addFeed,
     renameFeed,
