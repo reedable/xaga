@@ -22,26 +22,7 @@ pub(crate) async fn reconcile_item_embeddings(
 ) -> Result<EmbeddingsReconResults, EmbeddingsError> {
     let db_meta = db.all_entries_meta().await?; // id → (checksum, reference, has_vector, kind)
 
-    let mut all_topics: Vec<Topic> = Vec::new();
-    let mut all_articles: Vec<Article> = Vec::new();
-
-    // Scan file system for .md and map them to domain objects
-
-    for_each_md(&library::topics_dir(library_dir), &mut all_topics, &md_to_topic).await;
-
-    for_each_md(&library::entries_dir(library_dir), &mut all_articles, &md_to_article).await;
-
-    // File system id-set for to_delete, captured before the objects are moved into batches.
-
-    let fs_ids: HashSet<String> = all_topics
-        .iter()
-        .map(|t| t.id.clone())
-        .chain(all_articles.iter().map(|a| a.meta.id.clone()))
-        .collect();
-
-    // Identify items that need to be embedded
     // Embedding is needed when the row is absent, its content changed, or its vector is missing.
-
     let needs_embedding = |id: &str, cksum: &str| -> bool {
         match db_meta.get(id) {
             None => true,
@@ -49,24 +30,42 @@ pub(crate) async fn reconcile_item_embeddings(
         }
     };
 
-    let to_embed_topics: Vec<Topic> = all_topics
-        .into_iter()
-        .filter(|t| needs_embedding(&t.id, &checksum(&t.title, topic_embed_text(t))))
-        .collect();
+    // Reconcile as we walk: record every on-disk id (for `to_delete` below) and retain only the
+    // objects that actually need embedding. The full corpus is never materialized — an object that
+    // doesn't need work is dropped the moment the walk moves past it, freeing its content.
+    let mut fs_ids: HashSet<String> = HashSet::new();
+    let mut to_embed_topics: Vec<Topic> = Vec::new();
+    let mut to_embed_articles: Vec<Article> = Vec::new();
 
-    let to_embed_articles: Vec<Article> = all_articles
-        .into_iter()
-        .filter(|a| needs_embedding(&a.meta.id, &checksum(&a.meta.title, article_embed_text(a))))
-        .collect();
+    // Topics first so they index before articles.
+    for_each_md(&library::topics_dir(library_dir), &md_to_topic, |topic| {
+        fs_ids.insert(topic.id.clone());
+        if needs_embedding(&topic.id, &checksum(&topic.title, topic_embed_text(&topic))) {
+            to_embed_topics.push(topic);
+        }
+    })
+    .await;
+
+    for_each_md(&library::entries_dir(library_dir), &md_to_article, |article| {
+        fs_ids.insert(article.meta.id.clone());
+        if needs_embedding(
+            &article.meta.id,
+            &checksum(&article.meta.title, article_embed_text(&article)),
+        ) {
+            to_embed_articles.push(article);
+        }
+    })
+    .await;
 
     // Feeds: diff like items — re-embed a feed only when its row is absent, its checksum changed,
     // or its vector is pending. A feed row is stale when its feed is gone from disk.
 
     let empty = HashSet::new();
 
-    let all_feeds = crate::persistence::feeds::list_feeds(&library::feeds_dir(library_dir), &empty, &empty)
-        .await
-        .unwrap_or_default();
+    let all_feeds =
+        crate::persistence::feeds::list_feeds(&library::feeds_dir(library_dir), &empty, &empty)
+            .await
+            .unwrap_or_default();
 
     let feed_ids: HashSet<String> = all_feeds.iter().map(|f| f.id.clone()).collect();
 

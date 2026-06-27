@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::{
     fm::parse_frontmatter,
     md::{Markdown, md_to_topic, parse_document},
+    persistence::scan::for_each_md,
     types::{CollectionItem, Topic},
 };
 
@@ -198,27 +199,10 @@ pub async fn delete_topic(library_dir: &Path, id: &str) -> Result<(), TopicsErro
 /// Returns all topics, sorted by id.
 pub async fn list_topics(library_dir: &Path) -> Result<Vec<Topic>, TopicsError> {
     let topics_dir = crate::library::topics_dir(library_dir);
-    if !tokio::fs::try_exists(&topics_dir).await? {
-        return Ok(vec![]);
-    }
-
-    let mut dir_entries = tokio::fs::read_dir(&topics_dir).await?;
     let mut topics: Vec<Topic> = Vec::new();
 
-    while let Some(dir_entry) = dir_entries.next_entry().await? {
-        let path = dir_entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            continue;
-        }
-        let raw = tokio::fs::read_to_string(&path).await?;
-        if let Some((fm, body)) = parse_document(&raw) {
-            topics.push(md_to_topic(Markdown {
-                id: crate::util::item_id(&path),
-                fm,
-                body,
-            }));
-        }
-    }
+    // for_each_md handles the missing dir and skips any file that fails to read or parse.
+    for_each_md(&topics_dir, &md_to_topic, |t| topics.push(t)).await;
 
     topics.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(topics)
