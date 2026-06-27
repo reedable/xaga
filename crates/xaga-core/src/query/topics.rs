@@ -2,9 +2,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use crate::{
-    md::parse_document,
-    persistence::topics::{TopicsError, topic_path},
-    types::CollectionItem,
+    library, md::parse_document, persistence::topics::TopicsError, types::CollectionItem,
 };
 
 /// Returns the union of embedding-matched items and manually curated items for a topic,
@@ -15,7 +13,7 @@ pub async fn list_topic_items(
     item_filter: crate::types::ItemFilter,
     sort: crate::types::ItemSort,
 ) -> Result<Vec<crate::types::ListItem>, TopicsError> {
-    let path = topic_path(library_dir, id);
+    let path = library::topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }

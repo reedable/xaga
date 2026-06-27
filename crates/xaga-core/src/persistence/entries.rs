@@ -91,12 +91,6 @@ pub(crate) fn render_entry(article: &Article) -> String {
     format!("---\n{yaml}---\n\n{}\n", article.content)
 }
 
-// ── Path helpers ──────────────────────────────────────────────────────────────
-
-pub(crate) fn entry_path(library_dir: &Path, hash12: &str) -> PathBuf {
-    crate::library::entries_dir(library_dir).join(format!("{hash12}.md"))
-}
-
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /// Finds the current path of an entry by id, or `None` if the file does not exist.
@@ -154,7 +148,7 @@ pub(crate) async fn write_entry(
 ) -> Result<Article, EntryError> {
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
-    let path = entry_path(library_dir, &hash12);
+    let path = crate::library::entry_path(library_dir, &hash12);
 
     let created_at = Utc::now().to_rfc3339();
     let tags = vec![crate::tags::UNREAD.to_string()];
@@ -188,7 +182,7 @@ pub(crate) async fn write_read_entry(
 ) -> Result<Article, EntryError> {
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
-    let path = entry_path(library_dir, &hash12);
+    let path = crate::library::entry_path(library_dir, &hash12);
 
     let article = entry_article(
         hash12,

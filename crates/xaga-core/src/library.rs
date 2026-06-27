@@ -1,39 +1,67 @@
 //! Xaga library layout: the structure of a library directory and the
 //! library-level operations over it.
 //!
-//! Today this owns only the single-writer lock convention. It is the intended
-//! home for the rest of the library-relative path knowledge (entries/, topics/,
-//! feeds/, the index dir) that currently lives scattered across persistence,
-//! recovery, and the app layers — to be consolidated here as a separate effort.
+//! Single source of truth for where things live inside a library — the subdir
+//! names live here as consts and nowhere else, so persistence, recovery,
+//! embeddings, and the app layers derive every path through these functions
+//! rather than re-encoding the layout.
 
 use std::path::{Path, PathBuf};
 
 use crate::fs::FileLock;
 
-// ── Layout: where each area of a library lives ──────────────────────────────────
-// Single source of truth for the library's directory structure. Persistence,
-// recovery, embeddings, and the app layers all derive paths through these rather
-// than re-encoding the subdir names.
+// ── Layout ──────────────────────────────────────────────────────────────────────
+// Subdir/index names live here once; `*_dir` and `*_path` both build from them.
+
+const ENTRIES_SUBDIR: &str = "entries";
+const TOPICS_SUBDIR: &str = "topics";
+const FEEDS_SUBDIR: &str = "feeds";
+const INDEX_NAME: &str = "embeddings.lance";
 
 /// The directory holding entry `.md` files.
+#[inline]
 pub fn entries_dir(library_dir: &Path) -> PathBuf {
-    library_dir.join("entries")
+    library_dir.join(ENTRIES_SUBDIR)
 }
 
 /// The directory holding topic `.md` files.
+#[inline]
 pub fn topics_dir(library_dir: &Path) -> PathBuf {
-    library_dir.join("topics")
+    library_dir.join(TOPICS_SUBDIR)
 }
 
 /// The directory holding feed `.atom` files.
+#[inline]
 pub fn feeds_dir(library_dir: &Path) -> PathBuf {
-    library_dir.join("feeds")
+    library_dir.join(FEEDS_SUBDIR)
 }
 
 /// The LanceDB embeddings index directory.
+#[inline]
 pub fn index_path(library_dir: &Path) -> PathBuf {
-    library_dir.join("embeddings.lance")
+    library_dir.join(INDEX_NAME)
 }
+
+/// Path to a single entry's `.md` file (`<library>/entries/<hash12>.md`).
+///
+/// Built in one allocation — the combined `entries/<hash12>.md` tail is formatted
+/// once and joined once, rather than materialising the intermediate `entries/`
+/// directory. That extra allocation is avoided per call, which matters in the
+/// per-entry recovery loops. (Embeds the `/` separator, which Rust's `Path`
+/// accepts on every platform.)
+#[inline]
+pub fn entry_path(library_dir: &Path, hash12: &str) -> PathBuf {
+    library_dir.join(format!("{ENTRIES_SUBDIR}/{hash12}.md"))
+}
+
+/// Path to a single topic's `.md` file (`<library>/topics/<id>.md`).
+/// One-allocation, like [`entry_path`].
+#[inline]
+pub fn topic_path(library_dir: &Path, id: &str) -> PathBuf {
+    library_dir.join(format!("{TOPICS_SUBDIR}/{id}.md"))
+}
+
+// ── Single-writer lock ──────────────────────────────────────────────────────────
 
 /// Filename of the single-writer advisory lock at a library's root. Private and
 /// single-sourced: it is the shared agreement that makes the GUI and CLI exclude

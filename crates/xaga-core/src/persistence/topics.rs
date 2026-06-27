@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use chrono::Utc;
 use thiserror::Error;
@@ -17,10 +17,6 @@ pub enum TopicsError {
     Io(#[from] std::io::Error),
     #[error("Topic not found")]
     NotFound,
-}
-
-pub(crate) fn topic_path(library_dir: &Path, id: &str) -> PathBuf {
-    crate::library::topics_dir(library_dir).join(format!("{id}.md"))
 }
 
 /// Encodes a [`Topic`] (plus its membership `items`) to its `.md` representation — the single topic
@@ -79,7 +75,7 @@ pub async fn save_topic(
 ) -> Result<Topic, TopicsError> {
     let dir = crate::library::topics_dir(library_dir);
     tokio::fs::create_dir_all(&dir).await?;
-    let path = topic_path(library_dir, id);
+    let path = crate::library::topic_path(library_dir, id);
 
     // Preserve created_at and any existing tags (e.g. "pinned") across the rewrite.
     let (created_at, tags) = if tokio::fs::try_exists(&path).await? {
@@ -119,7 +115,7 @@ pub async fn set_topic_pinned(
     id: &str,
     pinned: bool,
 ) -> Result<bool, TopicsError> {
-    let path = topic_path(library_dir, id);
+    let path = crate::library::topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
@@ -163,7 +159,7 @@ pub async fn save_topic_with_timestamps(
 ) -> Result<Topic, TopicsError> {
     let dir = crate::library::topics_dir(library_dir);
     tokio::fs::create_dir_all(&dir).await?;
-    let path = topic_path(library_dir, id);
+    let path = crate::library::topic_path(library_dir, id);
 
     let topic = Topic {
         id: id.to_string(),
@@ -194,7 +190,7 @@ pub async fn create_topic(
 
 /// Returns the topic for the given id.
 pub async fn read_topic(library_dir: &Path, id: &str) -> Result<Topic, TopicsError> {
-    let path = topic_path(library_dir, id);
+    let path = crate::library::topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
@@ -213,7 +209,7 @@ pub async fn read_topic_items(
     library_dir: &Path,
     id: &str,
 ) -> Result<Vec<CollectionItem>, TopicsError> {
-    let path = topic_path(library_dir, id);
+    let path = crate::library::topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
@@ -224,7 +220,7 @@ pub async fn read_topic_items(
 
 /// Deletes the topic file for the given id.
 pub async fn delete_topic(library_dir: &Path, id: &str) -> Result<(), TopicsError> {
-    let path = topic_path(library_dir, id);
+    let path = crate::library::topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
@@ -267,7 +263,7 @@ pub async fn add_topic_item(
     topic_id: &str,
     item: CollectionItem,
 ) -> Result<Topic, TopicsError> {
-    let path = topic_path(library_dir, topic_id);
+    let path = crate::library::topic_path(library_dir, topic_id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
@@ -297,7 +293,7 @@ pub async fn remove_topic_item(
     topic_id: &str,
     item_id: &str,
 ) -> Result<Topic, TopicsError> {
-    let path = topic_path(library_dir, topic_id);
+    let path = crate::library::topic_path(library_dir, topic_id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }

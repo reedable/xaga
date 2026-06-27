@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::{
     fm::Frontmatter,
@@ -17,12 +17,6 @@ fn with_reference(mut annotations: Vec<Annotation>, article_id: &str) -> Vec<Ann
         a.reference = article_id.to_string();
     }
     annotations
-}
-
-// ── Path helpers ──────────────────────────────────────────────────────────────
-
-pub(crate) fn article_path(library_dir: &Path, hash12: &str) -> PathBuf {
-    crate::library::entries_dir(library_dir).join(format!("{hash12}.md"))
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -50,7 +44,7 @@ pub async fn save_article(
         Some(p) => (p, true),
         None => {
             // No existing file (e.g. bookmark with no synced entry) — create in entries/.
-            let entries_path = article_path(library_dir, id);
+            let entries_path = crate::library::entry_path(library_dir, id);
             tokio::fs::create_dir_all(entries_path.parent().unwrap()).await?;
             (entries_path, false)
         }

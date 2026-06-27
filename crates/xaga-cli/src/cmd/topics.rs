@@ -238,7 +238,7 @@ async fn repair_annotations(data_dir: &Path, dry_run: bool) {
 
     for topic in &topics_list {
         n_topics_scanned += 1;
-        let path = xaga_core::library::topics_dir(data_dir).join(format!("{}.md", topic.id));
+        let path = xaga_core::library::topic_path(data_dir, &topic.id);
         let raw = match tokio::fs::read_to_string(&path).await {
             Ok(r) => r,
             Err(e) => {
@@ -396,8 +396,7 @@ async fn migrate(data_dir: &Path, dry_run: bool) {
         };
 
         // Determine target topic ID.
-        let topic_path = xaga_core::library::topics_dir(data_dir)
-            .join(format!("{}.md", collection.id));
+        let topic_path = xaga_core::library::topic_path(data_dir, &collection.id);
         let target_id = if tokio::fs::try_exists(&topic_path).await.unwrap_or(false) {
             let new_id = Uuid::new_v4().to_string();
             eprintln!(
