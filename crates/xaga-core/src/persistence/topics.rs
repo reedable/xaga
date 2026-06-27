@@ -6,7 +6,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    fm::{Frontmatter, parse_frontmatter},
+    fm::parse_frontmatter,
     md::{Markdown, md_to_topic, parse_document},
     types::{CollectionItem, Topic},
 };
@@ -190,26 +190,6 @@ pub async fn create_topic(
 ) -> Result<Topic, TopicsError> {
     let id = Uuid::new_v4().to_string();
     save_topic(data_dir, &id, title, description, threshold, vec![]).await
-}
-
-/// Builds a [`Topic`] from an already-parsed document (used by recovery, which parses once during
-/// its scan and hands the domain object straight to indexing). Mirrors [`read_topic`].
-#[deprecated = "replaced by crate::md::md_to_topic"]
-pub(crate) fn topic_from_document(id: &str, fm: Frontmatter, body: String) -> Topic {
-    let is_pinned = crate::tags::is_pinned(&fm.tags);
-    Topic {
-        id: id.to_string(),
-        title: fm.title,
-        created_at: fm.created_at,
-        updated_at: fm.updated_at,
-        // `summary` is the canonical home; fall back to the body for pre-migration topics.
-        description: fm.summary.or_else(|| (!body.is_empty()).then_some(body)),
-        threshold: fm.threshold,
-        is_pinned,
-        entry_count: 0,
-        unread_count: 0,
-        members: fm.items.iter().map(crate::types::Reference::from).collect(),
-    }
 }
 
 /// Returns the topic for the given id.

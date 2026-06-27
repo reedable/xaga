@@ -4,7 +4,7 @@ use chrono::Utc;
 use thiserror::Error;
 
 use crate::{
-    fm::{Frontmatter, FrontmatterAnnotation, parse_frontmatter},
+    fm::{FrontmatterAnnotation, parse_frontmatter},
     md::{Markdown, md_to_entry, parse_document},
     types::{Article, Entry},
     util::{normalize_url, url_hash12},
@@ -95,24 +95,6 @@ pub(crate) fn render_entry(article: &Article) -> String {
 
 pub(crate) fn entry_path(data_dir: &Path, hash12: &str) -> PathBuf {
     data_dir.join("entries").join(format!("{hash12}.md"))
-}
-
-#[deprecated = "replaced by md_to_entry"]
-pub(crate) fn entry_from_fm(id: String, fm: Frontmatter) -> Entry {
-    let is_unread = crate::tags::is_unread(&fm.tags);
-    let is_bookmarked = crate::tags::is_bookmarked(&fm.tags);
-    Entry {
-        id,
-        url: fm.source,
-        title: fm.title,
-        created_at: fm.created_at,
-        published_at: fm.published_at,
-        updated_at: fm.updated_at,
-        description: fm.summary,
-        is_unread,
-        is_bookmarked,
-        color: None,
-    }
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
