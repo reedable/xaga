@@ -511,14 +511,6 @@ impl EmbeddingsDb {
         }
     }
 
-    /// Returns the set of all checksums currently in the database.
-    /// Used to build the in-memory guard shared across feed entry embedding.
-    pub(crate) async fn all_checksums(
-        &self,
-    ) -> Result<std::collections::HashSet<String>, EmbeddingsError> {
-        Ok(self.all_entries_meta().await?.into_values().map(|(checksum, _, _, _)| checksum).collect())
-    }
-
     /// Creates scalar indexes when absent, idempotently: BTree on `id` (id-set retrieval) and
     /// `published_at` (ordered reads); Bitmap on the low-cardinality state booleans
     /// `is_unread`/`is_bookmarked`/`is_pinned` so state filters and counts are index-driven rather
@@ -853,31 +845,6 @@ impl EmbeddingsDb {
             }
         }
         Ok(map)
-    }
-
-    /// Returns the stored checksum for `id`, or `None` if not indexed.
-    pub(crate) async fn get_checksum(&self, id: &str) -> Result<Option<String>, EmbeddingsError> {
-        let escaped = id.replace('\'', "''");
-        let batches: Vec<RecordBatch> = self
-            .table
-            .query()
-            .only_if(format!("id = '{escaped}'"))
-            .limit(1)
-            .execute()
-            .await?
-            .try_collect()
-            .await
-            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
-
-        Ok(batches.iter().find_map(|b| {
-            let col = b.column_by_name("checksum")?;
-            let arr = col.as_any().downcast_ref::<StringArray>()?;
-            if b.num_rows() == 0 {
-                None
-            } else {
-                Some(arr.value(0).to_string())
-            }
-        }))
     }
 
     /// Returns a fully populated `EmbeddingEntry` for `id` so the caller can
