@@ -44,7 +44,7 @@ async fn main() {
     let cli = Cli::parse();
     let rc = settings::load();
     let data_dir = settings::resolve_data_dir(cli.data_dir, &rc);
-    let feeds_dir = data_dir.join("feeds");
+    let feeds_dir = xaga_core::library::feeds_dir(&data_dir);
 
     match cli.command {
         Command::Feeds(args) => cmd::feeds::handle(args.subcommand, &feeds_dir, &data_dir).await,

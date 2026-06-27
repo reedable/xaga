@@ -7,8 +7,8 @@ use thiserror::Error;
 use crate::{
     fm::parse_frontmatter,
     fs::scan_md_dir,
+    library,
     md::md_to_entry,
-    persistence::entries::entry_dirs,
     types::{Article, Entry},
     util::{normalize_url, url_hash12},
 };
@@ -248,9 +248,7 @@ pub async fn import_bookmarks(
 pub async fn export_bookmarks(data_dir: &Path, dest_path: &Path) -> Result<(), BookmarksError> {
     let mut entries: Vec<Entry> = Vec::new();
 
-    for dir in entry_dirs(data_dir) {
-        scan_md_dir(&dir, &mut entries, &md_to_entry).await;
-    }
+    scan_md_dir(&library::entries_dir(data_dir), &mut entries, &md_to_entry).await;
 
     entries.retain(|e| e.is_bookmarked);
 

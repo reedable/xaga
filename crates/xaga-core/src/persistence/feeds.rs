@@ -960,7 +960,7 @@ async fn file_created_at(
 /// deduplicated. The `.atom` is the source of truth for feed membership; entry data
 /// and state are fetched from LanceDB by the caller (see the `list_entries` command).
 pub async fn list_entry_ids(library: &Path, url: Option<&str>) -> Result<Vec<String>> {
-    let feeds_dir = library.join("feeds");
+    let feeds_dir = crate::library::feeds_dir(library);
     let mut ids = Vec::new();
     let mut seen = HashSet::new();
 

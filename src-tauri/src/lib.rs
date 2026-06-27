@@ -55,7 +55,7 @@ impl AppState {
 }
 
 pub(crate) fn feeds_dir(library: &Path) -> PathBuf {
-    library.join("feeds")
+    xaga_core::library::feeds_dir(library)
 }
 
 /// The set of unread entry ids, read from LanceDB (the `is_unread` Bitmap index) via the shared

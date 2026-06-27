@@ -8,8 +8,8 @@ use std::path::Path;
 use crate::embeddings::row::{article_embed_text, checksum, feed_embed_text, topic_embed_text};
 use crate::embeddings::{EmbeddingsDb, EmbeddingsError};
 use crate::fs::scan_md_dir;
+use crate::library;
 use crate::md::{md_to_article, md_to_topic};
-use crate::persistence::entries::entry_dirs;
 use crate::types::{Article, Feed, Kind, Topic};
 
 use super::EmbeddingsReconResults;
@@ -30,11 +30,9 @@ pub(crate) async fn reconcile_item_embeddings(
 
     // Scan file system for .md and map them to domain objects
 
-    scan_md_dir(&data_dir.join("topics"), &mut all_topics, &md_to_topic).await;
+    scan_md_dir(&library::topics_dir(data_dir), &mut all_topics, &md_to_topic).await;
 
-    for dir in entry_dirs(data_dir) {
-        scan_md_dir(&dir, &mut all_articles, &md_to_article).await;
-    }
+    scan_md_dir(&library::entries_dir(data_dir), &mut all_articles, &md_to_article).await;
 
     // File system id-set for to_delete, captured before the objects are moved into batches.
 
@@ -69,7 +67,7 @@ pub(crate) async fn reconcile_item_embeddings(
 
     let empty = HashSet::new();
 
-    let all_feeds = crate::persistence::feeds::list_feeds(&data_dir.join("feeds"), &empty, &empty)
+    let all_feeds = crate::persistence::feeds::list_feeds(&library::feeds_dir(data_dir), &empty, &empty)
         .await
         .unwrap_or_default();
 

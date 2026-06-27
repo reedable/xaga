@@ -20,7 +20,7 @@ pub enum TopicsError {
 }
 
 pub(crate) fn topic_path(data_dir: &Path, id: &str) -> PathBuf {
-    data_dir.join("topics").join(format!("{id}.md"))
+    crate::library::topics_dir(data_dir).join(format!("{id}.md"))
 }
 
 /// Encodes a [`Topic`] (plus its membership `items`) to its `.md` representation — the single topic
@@ -77,7 +77,7 @@ pub async fn save_topic(
     threshold: Option<f32>,
     items: Vec<CollectionItem>,
 ) -> Result<Topic, TopicsError> {
-    let dir = data_dir.join("topics");
+    let dir = crate::library::topics_dir(data_dir);
     tokio::fs::create_dir_all(&dir).await?;
     let path = topic_path(data_dir, id);
 
@@ -161,7 +161,7 @@ pub async fn save_topic_with_timestamps(
     created_at: &str,
     updated_at: &str,
 ) -> Result<Topic, TopicsError> {
-    let dir = data_dir.join("topics");
+    let dir = crate::library::topics_dir(data_dir);
     tokio::fs::create_dir_all(&dir).await?;
     let path = topic_path(data_dir, id);
 
@@ -234,7 +234,7 @@ pub async fn delete_topic(data_dir: &Path, id: &str) -> Result<(), TopicsError> 
 
 /// Returns all topics, sorted by id.
 pub async fn list_topics(data_dir: &Path) -> Result<Vec<Topic>, TopicsError> {
-    let topics_dir = data_dir.join("topics");
+    let topics_dir = crate::library::topics_dir(data_dir);
     if !tokio::fs::try_exists(&topics_dir).await? {
         return Ok(vec![]);
     }

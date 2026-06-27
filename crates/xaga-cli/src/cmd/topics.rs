@@ -101,7 +101,7 @@ pub async fn handle(cmd: TopicsCommand, data_dir: &Path) {
 /// `summary:` frontmatter key. `embed_text` (= `summary` or the body) is byte-identical before
 /// and after, so `content_checksum` is unchanged and the watcher will not re-embed the topic.
 async fn migrate_summary(data_dir: &Path, dry_run: bool) {
-    let topics_dir = data_dir.join("topics");
+    let topics_dir = xaga_core::library::topics_dir(data_dir);
     let mut dir_entries = match tokio::fs::read_dir(&topics_dir).await {
         Ok(d) => d,
         Err(e) => {
@@ -206,7 +206,7 @@ async fn repair_annotations(data_dir: &Path, dry_run: bool) {
 
     // Build annotation id -> parent article id from entries/*.md frontmatter.
     let mut annotation_map: HashMap<String, String> = HashMap::new();
-    let entries_dir = data_dir.join("entries");
+    let entries_dir = xaga_core::library::entries_dir(data_dir);
     if let Ok(mut dir) = tokio::fs::read_dir(&entries_dir).await {
         while let Ok(Some(entry)) = dir.next_entry().await {
             let path = entry.path();
@@ -238,7 +238,7 @@ async fn repair_annotations(data_dir: &Path, dry_run: bool) {
 
     for topic in &topics_list {
         n_topics_scanned += 1;
-        let path = data_dir.join("topics").join(format!("{}.md", topic.id));
+        let path = xaga_core::library::topics_dir(data_dir).join(format!("{}.md", topic.id));
         let raw = match tokio::fs::read_to_string(&path).await {
             Ok(r) => r,
             Err(e) => {
@@ -330,7 +330,7 @@ async fn migrate(data_dir: &Path, dry_run: bool) {
     // ── Step 1: build annotation_id → article_id map from entries/*.md ────────
 
     let mut annotation_map: HashMap<String, String> = HashMap::new();
-    let entries_dir = data_dir.join("entries");
+    let entries_dir = xaga_core::library::entries_dir(data_dir);
 
     if let Ok(mut dir) = tokio::fs::read_dir(&entries_dir).await {
         while let Ok(Some(entry)) = dir.next_entry().await {
@@ -396,8 +396,7 @@ async fn migrate(data_dir: &Path, dry_run: bool) {
         };
 
         // Determine target topic ID.
-        let topic_path = data_dir
-            .join("topics")
+        let topic_path = xaga_core::library::topics_dir(data_dir)
             .join(format!("{}.md", collection.id));
         let target_id = if tokio::fs::try_exists(&topic_path).await.unwrap_or(false) {
             let new_id = Uuid::new_v4().to_string();

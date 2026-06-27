@@ -22,7 +22,7 @@ fn with_reference(mut annotations: Vec<Annotation>, article_id: &str) -> Vec<Ann
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
 pub(crate) fn article_path(data_dir: &Path, hash12: &str) -> PathBuf {
-    data_dir.join("entries").join(format!("{hash12}.md"))
+    crate::library::entries_dir(data_dir).join(format!("{hash12}.md"))
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

@@ -432,7 +432,7 @@ impl EmbeddingsDb {
     pub async fn open(data_dir: &Path) -> Result<Self, EmbeddingsError> {
         let schema = make_schema();
         for attempt in 0..2u8 {
-            let db_path = data_dir.join("embeddings.lance");
+            let db_path = crate::library::index_path(data_dir);
             let connection = lancedb::connect(db_path.to_str().ok_or_else(|| {
                 EmbeddingsError::Io(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
@@ -505,7 +505,7 @@ impl EmbeddingsDb {
     /// Used when restarting the Reconciler with a fresh DB.
     /// Silently succeeds if the directory does not exist.
     pub fn destroy(data_dir: &Path) -> std::io::Result<()> {
-        match std::fs::remove_dir_all(data_dir.join("embeddings.lance")) {
+        match std::fs::remove_dir_all(crate::library::index_path(data_dir)) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             other => other,
         }

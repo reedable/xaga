@@ -11,7 +11,7 @@ use crate::types::Entry;
 /// Compare every feed's `.atom` membership against the entries on disk and return the entries that
 /// have no `.md` yet (the atom lists them, the file is absent). Reads only — the caller saves them.
 pub(crate) async fn reconcile_feed_entries(data_dir: &Path) -> Vec<Entry> {
-    let feeds_dir = data_dir.join("feeds");
+    let feeds_dir = crate::library::feeds_dir(data_dir);
     let mut missing = Vec::new();
 
     let mut dir = match tokio::fs::read_dir(&feeds_dir).await {

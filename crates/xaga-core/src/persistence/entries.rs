@@ -94,31 +94,21 @@ pub(crate) fn render_entry(article: &Article) -> String {
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
 pub(crate) fn entry_path(data_dir: &Path, hash12: &str) -> PathBuf {
-    data_dir.join("entries").join(format!("{hash12}.md"))
+    crate::library::entries_dir(data_dir).join(format!("{hash12}.md"))
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/// Returns the canonical list of directories containing entry `.md` files.
-/// Use this only for directory-level operations (scanning, watching).
-/// To locate a specific entry by id, use [`find_entry_path`] instead.
-pub(crate) fn entry_dirs(library: &Path) -> Vec<PathBuf> {
-    vec![library.join("entries")]
-}
-
-/// Finds the current path of an entry by id, checking all entry directories in order.
-/// Returns `None` if the file does not exist in any of them.
+/// Finds the current path of an entry by id, or `None` if the file does not exist.
 pub(crate) async fn find_entry_path(data_dir: &Path, id: &str) -> Option<PathBuf> {
     if !is_safe_id(id) {
         return None;
     }
-    for dir in entry_dirs(data_dir) {
-        let path = dir.join(format!("{id}.md"));
-        if tokio::fs::try_exists(&path).await.unwrap_or(false) {
-            return Some(path);
-        }
-    }
-    None
+    let path = crate::library::entries_dir(data_dir).join(format!("{id}.md"));
+    tokio::fs::try_exists(&path)
+        .await
+        .unwrap_or(false)
+        .then_some(path)
 }
 
 /// Builds the [`Article`] for a freshly-written entry (empty body, no annotations) from its parts,
