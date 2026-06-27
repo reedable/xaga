@@ -32,10 +32,10 @@ export function isRanked<T extends Item>(o: T | null | undefined): o is Ranked<T
   return !!o && typeof (o as Ranked<T>).similarity === "number";
 }
 
-// ── Saved-items list (derived) ──────────────────────────────────────────────────
+// ── Items list (derived) ────────────────────────────────────────────────────────
 
-/** A saved item is a bookmark (Entry) or an annotation as the embeddings DB lists it. */
-export type SavedItem = Entry | PartialAnnotation;
+/** An item in the list returned by listAllItems: an entry (any state) or an annotation. */
+export type ListItem = Entry | PartialAnnotation;
 
 // ── Cache projection (derived) ──────────────────────────────────────────────────
 

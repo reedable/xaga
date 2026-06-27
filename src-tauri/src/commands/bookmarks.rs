@@ -77,12 +77,14 @@ pub async fn import_bookmarks(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Newly-created entries carry their parsed payload — enqueue content indexing (bulk →
-    // Maintenance tier) so the consumer never re-reads. Already-existing entries only gained the
-    // bookmark tag, which is a state change → SyncState (Interactive).
+    // Newly-created entries carry their parsed payload — enqueue content indexing so the consumer
+    // never re-reads. This is user-initiated CRUD (the user ran the import and is waiting), so the
+    // upsert rides Interactive (T1); its embedding follows to Regular via `embed_follow`, per the
+    // priority definitions in the embedding service's `run_loop`. Already-existing entries only
+    // gained the bookmark tag, which is a state change → SyncState (Interactive).
     let added_ids: Vec<String> = result.added.iter().map(|a| a.meta.id.clone()).collect();
     for article in result.added {
-        state.enqueue(Tier::Maintenance, Job::UpsertEntry { article });
+        state.enqueue(Tier::Interactive, Job::UpsertEntry { article });
     }
     for id in &result.updated {
         state.enqueue(

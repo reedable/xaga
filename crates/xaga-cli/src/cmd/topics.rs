@@ -5,7 +5,8 @@ use clap::{Args, Subcommand};
 use serde::Deserialize;
 use uuid::Uuid;
 use xaga_core::embeddings::EmbeddingsDb;
-use xaga_core::persistence::frontmatter::{parse_document, parse_frontmatter};
+use xaga_core::fm::parse_frontmatter;
+use xaga_core::md::{Markdown, md_to_topic, parse_document};
 use xaga_core::persistence::topics;
 use xaga_core::types::CollectionItem;
 use xaga_core::util::item_id;
@@ -162,7 +163,11 @@ async fn migrate_summary(data_dir: &Path, dry_run: bool) {
 
         let items = fm.items.clone();
 
-        let mut topic = topics::topic_from_document(&id, fm, body);
+        let mut topic = md_to_topic(Markdown {
+            id: id.clone(),
+            fm,
+            body,
+        });
         topic.updated_at = Some(updated_at);
 
         let rendered = topics::render_topic(&topic, &items);
@@ -293,7 +298,11 @@ async fn repair_annotations(data_dir: &Path, dry_run: bool) {
             .updated_at
             .clone()
             .unwrap_or_else(|| fm.created_at.clone());
-        let mut rebuilt = topics::topic_from_document(&topic.id, fm, body);
+        let mut rebuilt = md_to_topic(Markdown {
+            id: topic.id.clone(),
+            fm,
+            body,
+        });
         rebuilt.updated_at = Some(updated_at);
         let rendered = topics::render_topic(&rebuilt, &new_items);
         match tokio::fs::write(&path, rendered.as_bytes()).await {

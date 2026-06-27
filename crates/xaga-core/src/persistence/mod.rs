@@ -7,6 +7,5 @@ pub mod articles;
 pub mod bookmarks;
 pub mod entries;
 pub mod feeds;
-pub mod frontmatter;
 pub mod opml;
 pub mod topics;

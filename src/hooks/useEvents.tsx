@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { usePlatform } from "../platform/Platform";
-import type { Entry, Feed, SavedItem } from "../types";
+import type { Entry, Feed, ListItem } from "../types";
 import { debounced } from "../utils/Decorator";
 
 export function subscribe(register: () => Promise<() => void>): () => void {
@@ -38,7 +38,7 @@ export function useEvents() {
   );
 
   const onAnnotationChanged = useCallback(
-    (callback: (item: SavedItem) => void) =>
+    (callback: (item: ListItem) => void) =>
       subscribe(() => platform.onAnnotationChanged(callback)),
     [platform]
   );

@@ -5,6 +5,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::md::{Markdown, parse_document};
+
 /// Atomically writes `bytes` to `path`: writes to a unique sibling temp file,
 /// fsyncs it, then renames it over `path`. `rename(2)` is atomic, so a reader
 /// never observes a partial file, and a crash mid-write leaves the previous
@@ -76,5 +78,54 @@ fn unique_tmp_path(path: &Path) -> PathBuf {
     match path.parent().filter(|p| !p.as_os_str().is_empty()) {
         Some(parent) => parent.join(name),
         None => PathBuf::from(name),
+    }
+}
+
+/// Scans a directory for .md files, and appends the parsed .md file into `out` vector along with
+/// its path. Caller is responsible for providing the `Markdown` intermediate representation into
+/// domain objects via `parse` argument.  Yields between reads to avoid starving
+/// high-priority tasks.
+pub(crate) async fn scan_md_dir<T, F>(dir: &Path, out: &mut Vec<T>, parse: &F)
+where
+    F: Fn(Markdown) -> T,
+{
+    if !dir.exists() {
+        return;
+    }
+
+    let mut dir_entries = match tokio::fs::read_dir(dir).await {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    while let Ok(Some(dir_entry)) = dir_entries.next_entry().await {
+        let path = dir_entry.path();
+
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            // We only care about .md files
+            continue;
+        }
+
+        let raw = match tokio::fs::read_to_string(&path).await {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        let id = crate::util::item_id(&path);
+
+        let (frontmatter, body) = match parse_document(&raw) {
+            Some(x) => x,
+            None => continue,
+        };
+
+        let md = Markdown {
+            id,
+            fm: frontmatter,
+            body,
+        };
+
+        out.push(parse(md));
+
+        tokio::task::yield_now().await;
     }
 }

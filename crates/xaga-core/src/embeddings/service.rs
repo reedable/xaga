@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::types::{Entry, Kind, SavedItem};
+use crate::types::{Entry, Kind, ListItem};
 
 /// Indicates whether the app should restart or exit after the service drains.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,7 +32,10 @@ pub struct EntityRef {
 
 impl EntityRef {
     pub fn new(id: impl Into<String>, kind: Kind) -> Self {
-        Self { id: id.into(), kind }
+        Self {
+            id: id.into(),
+            kind,
+        }
     }
 }
 
@@ -50,43 +53,72 @@ pub struct StatePatch {
 /// variant — sets its priority, so the same action may ride different tiers
 /// (e.g. `EmbedVector` on Regular from a live save, Maintenance from recovery).
 pub enum Job {
-    // ── Interactive: cheap, must-reflect-now; no ONNX ──
+    // ── Non-embedding CRUD & state sync (no ONNX) ──
     /// Write-through state update from a user action. Carries the new value(s);
     /// the consumer applies them and emits the UI change event — no file read.
-    SyncState { entity: EntityRef, state: StatePatch },
+    SyncState {
+        entity: EntityRef,
+        state: StatePatch,
+    },
     /// Entry created/edited: sync the row from the carried `Article`, then defer an
     /// `EmbedEntry` follow-up (carrying the same object) if the checksum changed.
     /// The producer holds the domain object; the consumer never reads the file.
-    UpsertEntry { article: Article },
+    UpsertEntry {
+        article: Article,
+    },
     /// Topic created/edited: sync the row from the carried `Topic`, then defer an `EmbedTopic`.
-    UpsertTopic { topic: Topic },
+    UpsertTopic {
+        topic: Topic,
+    },
     /// Reconcile an entry's annotation rows (embedder-free) from the carried `Article`.
-    SyncAnnotations { article: Article },
+    SyncAnnotations {
+        article: Article,
+    },
     /// Precise reverse-index delta the producer already knows (single member).
-    AddMember { topic_id: String, member_id: String },
-    RemoveMember { topic_id: String, member_id: String },
+    AddMember {
+        topic_id: String,
+        member_id: String,
+    },
+    RemoveMember {
+        topic_id: String,
+        member_id: String,
+    },
     /// Remove a single cached row.
-    Delete { entity: EntityRef },
+    Delete {
+        entity: EntityRef,
+    },
 
-    // ── Embedding: ONNX (Regular for live, Maintenance for bulk) ──
+    // ── Embedding (ONNX vector compute) ──
     /// Compute/refresh an entry vector from the carried `Article` (checksum-gated).
-    EmbedEntry { article: Article },
+    EmbedEntry {
+        article: Article,
+    },
     /// Compute/refresh a topic vector from the carried `Topic` (checksum-gated).
-    EmbedTopic { topic: Topic },
+    EmbedTopic {
+        topic: Topic,
+    },
     /// Compute/refresh a feed row's vector from the carried domain `Feed` (feeds have no `.md`).
-    EmbedFeed { feed: Feed },
+    EmbedFeed {
+        feed: Feed,
+    },
 
     // ── Maintenance ──
     /// Bulk-delete a batch of ids in one LanceDB operation (one version, not N).
-    DeleteBatch { ids: Vec<String> },
+    DeleteBatch {
+        ids: Vec<String>,
+    },
     /// Compact + prune the DB.
     Compact,
     /// Build scalar indexes once rows are populated.
     EnsureIndexes,
 
     // ── Control: loop control flow ──
-    StartRecovery { data_dir: PathBuf },
-    Reset { data_dir: PathBuf },
+    StartRecovery {
+        data_dir: PathBuf,
+    },
+    Reset {
+        data_dir: PathBuf,
+    },
     Shutdown,
 }
 
@@ -101,10 +133,11 @@ pub enum Tier {
 }
 
 impl Tier {
-    /// The tier a deferred `EmbedVector` follow-up rides after an `UpsertContent`
-    /// arrives on `self`: one step toward Maintenance, floored there. Live content
-    /// (Interactive) embeds on Regular; bulk content (Maintenance) embeds on
-    /// Maintenance.
+    /// Helper for entry embeds only: given the tier an `UpsertEntry` arrived on, the tier its
+    /// deferred `EmbedEntry` follow-up rides — one step toward Maintenance, floored there
+    /// (Control/Interactive → Regular; Regular/Maintenance → Maintenance). This is a convenience,
+    /// not the routing authority, and topic embedding does not use it (topics are always
+    /// Interactive — see `Job::UpsertTopic` in `handle_job`).
     fn embed_follow(self) -> Tier {
         match self {
             Tier::Control | Tier::Interactive => Tier::Regular,
@@ -141,7 +174,7 @@ impl Senders {
 struct Events {
     unread: flume::Sender<Entry>,
     bookmarked: flume::Sender<Entry>,
-    annotation: flume::Sender<SavedItem>,
+    annotation: flume::Sender<ListItem>,
 }
 
 /// Owns the `EmbeddingsDb` and `Embedder`; runs the embedding loop.
@@ -160,7 +193,7 @@ pub struct EmbeddingService {
     background_drained_rx: flume::Receiver<()>,
     unread_changed_rx: flume::Receiver<Entry>,
     bookmarked_changed_rx: flume::Receiver<Entry>,
-    annotation_changed_rx: flume::Receiver<SavedItem>,
+    annotation_changed_rx: flume::Receiver<ListItem>,
     restart_requested: Arc<AtomicBool>,
     embedder: Arc<Embedder>,
     // Held for the service's lifetime; released (file deleted) on Drop.
@@ -194,7 +227,7 @@ impl EmbeddingService {
         let (background_drained_tx, background_drained_rx) = flume::unbounded::<()>();
         let (unread_changed_tx, unread_changed_rx) = flume::unbounded::<Entry>();
         let (bookmarked_changed_tx, bookmarked_changed_rx) = flume::unbounded::<Entry>();
-        let (annotation_changed_tx, annotation_changed_rx) = flume::unbounded::<SavedItem>();
+        let (annotation_changed_tx, annotation_changed_rx) = flume::unbounded::<ListItem>();
 
         let senders = Senders {
             control: control_tx,
@@ -286,13 +319,14 @@ impl EmbeddingService {
     }
 
     /// Returns a receiver that fires when an annotation's color or content changes.
-    pub fn subscribe_to_annotation_changed(&self) -> flume::Receiver<SavedItem> {
+    pub fn subscribe_to_annotation_changed(&self) -> flume::Receiver<ListItem> {
         self.annotation_changed_rx.clone()
     }
 
     /// Enqueues a full recovery pass (non-blocking).
     pub fn trigger_recovery(&self, data_dir: PathBuf) {
-        self.senders.enqueue(Tier::Control, Job::StartRecovery { data_dir });
+        self.senders
+            .enqueue(Tier::Control, Job::StartRecovery { data_dir });
     }
 
     /// Returns a clone of the `Arc<Embedder>` for on-demand text embedding outside the service loop.
@@ -351,10 +385,20 @@ async fn run_loop(
     let mut since_compact: usize = 0;
 
     loop {
+        // Queues are defined per *priority*, and the definition and examples of each level of
+        // priority are provided below.
+
+        // The word "priority" is used to derive precedence. It's the quality of what comes first.
+        // It is driven by importance and urgency, not by the type, shape, size, and the cost of
+        // work. Something expensive can be very important. Something big might be urgent. What the
+        // activity is does not determine priority. Context and circumstances do, and the priority
+        // is inherently relative.
+
         tokio::select! {
             biased;
 
-            // T0 — Control: recovery / reset / shutdown (loop control flow).
+            // T0 — Control: App-wide commands (and commands only)
+            //      StartRecovery, Reset, Shutdown, etc
             result = control_rx.recv_async() => match result {
                 Ok(Job::StartRecovery { data_dir: dir }) => {
                     log::info!("embedding service: starting recovery for {}", dir.display());
@@ -376,24 +420,32 @@ async fn run_loop(
                 Err(_) => { log::warn!("control tier: disconnected"); break; }
             },
 
-            // T1 — Interactive: cheap, must-reflect-now work (no ONNX).
+            // T1 — Interactive: User initiated activity
+            //      All user initiated CRUD except embedding
+            //      Topic embedding is on this channel
+
             result = interactive_rx.recv_async() => match result {
                 Ok(job) => {
                     // Interactive has items — mark that a post-drain compact is needed.
                     compacted_after_drain = false;
                     handle_job(job, Tier::Interactive, &db, &embedder, &senders, &events).await;
                 }
+
                 Err(_) => { log::warn!("interactive tier: disconnected"); break; }
             },
 
-            // T2 — Regular: ONNX vector compute for single, live items.
+            // T2 — Regular: ONNX vector compute.
+            //      All user initiated embedding except Topics embedding
+
             result = regular_rx.recv_async() => match result {
                 Ok(job) => {
                     handle_job(job, Tier::Regular, &db, &embedder, &senders, &events).await;
                     since_compact += 1;
+
                     if since_compact >= BACKGROUND_COMPACT_INTERVAL {
                         since_compact = 0;
                         log::info!("regular tier: {BACKGROUND_COMPACT_INTERVAL}-item interval — compacting");
+
                         if let Err(e) = db.compact().await {
                             log::error!("regular tier: interval compact failed: {e}");
                         }
@@ -402,8 +454,12 @@ async fn run_loop(
                 Err(_) => { log::warn!("regular tier: disconnected"); break; }
             },
 
-            // T3 — Maintenance: bulk embeds, batch deletes, compaction. Because the
-            // select is `biased`, this drains only when the higher tiers are empty.
+            // T3 — Maintenance: System maintenance tasks, such as the side effect of recovery
+            //      The Recovery command is dispatched via Control, but its side effects, such
+            //      as resulting CRUD operations include embeddings are maintenance.
+            //      Topic embeddings, however, is one exception, which goes though Interactive
+            //      even if it is a side effect of system activity.
+
             result = maintenance_rx.recv_async() => match result {
                 Ok(job) => {
                     // First maintenance item after the Interactive tier drained: compact
@@ -413,9 +469,11 @@ async fn run_loop(
                         compacted_after_drain = true;
                         since_compact = 0;
                         log::info!("maintenance tier: interactive drained — compacting");
+
                         if let Err(e) = db.compact().await {
                             log::error!("maintenance tier: compact failed: {e}");
                         }
+
                         let _ = priority_drained_tx.send(());
                     }
 
@@ -429,6 +487,7 @@ async fn run_loop(
                         if since_compact >= BACKGROUND_COMPACT_INTERVAL {
                             since_compact = 0;
                             log::info!("maintenance tier: {BACKGROUND_COMPACT_INTERVAL}-item interval — compacting");
+
                             if let Err(e) = db.compact().await {
                                 log::error!("maintenance tier: interval compact failed: {e}");
                             }
@@ -475,8 +534,14 @@ async fn handle_job(
             }
         }
         Job::UpsertEntry { article } => {
-            if let Err(e) =
-                sync_entry_row(&article, db, &events.unread, &events.bookmarked, &events.annotation).await
+            if let Err(e) = sync_entry_row(
+                &article,
+                db,
+                &events.unread,
+                &events.bookmarked,
+                &events.annotation,
+            )
+            .await
             {
                 log::error!("upsert_entry failed id={}: {e}", article.meta.id);
             }
@@ -494,7 +559,11 @@ async fn handle_job(
             if let Err(e) = reconcile_topic_membership(db, &topic.id, &member_ids).await {
                 log::error!("reconcile topic {} failed: {e}", topic.id);
             }
-            senders.enqueue(arrival.embed_follow(), Job::EmbedTopic { topic });
+            // All topic embeddings are dispatched at Interactive priority, regardless of the
+            // arriving tier, per the priority definitions documented in `run_loop` (T1). This
+            // does not use `embed_follow`: that helper only encodes the entry "step toward
+            // Maintenance" rule and is not the authority for topic routing.
+            senders.enqueue(Tier::Interactive, Job::EmbedTopic { topic });
         }
         Job::EmbedEntry { article } => {
             if let Err(e) = embed_entry_vector(&article, embedder, db).await {
@@ -516,12 +585,18 @@ async fn handle_job(
                 log::error!("sync_annotations failed id={}: {e}", article.meta.id);
             }
         }
-        Job::AddMember { topic_id, member_id } => {
+        Job::AddMember {
+            topic_id,
+            member_id,
+        } => {
             if let Err(e) = add_topic_member(db, &topic_id, &member_id).await {
                 log::error!("add_member topic={topic_id} member={member_id} failed: {e}");
             }
         }
-        Job::RemoveMember { topic_id, member_id } => {
+        Job::RemoveMember {
+            topic_id,
+            member_id,
+        } => {
             if let Err(e) = remove_topic_member(db, &topic_id, &member_id).await {
                 log::error!("remove_member topic={topic_id} member={member_id} failed: {e}");
             }

@@ -16,7 +16,7 @@ import type {
   HtmlReaderView,
   ImportResult,
   Item,
-  SavedItem,
+  ListItem,
   Topic,
   TopicSort,
 } from "../types";
@@ -123,7 +123,7 @@ const toAnnotation = (data: z.infer<typeof AnnotationSchema>): Annotation => ({
   createdAt: data.created_at,
 });
 
-const SavedItemSchema = z.object({
+const ListItemSchema = z.object({
   id: z.string(),
   title: z.string(),
   created_at: z.string(),
@@ -134,7 +134,7 @@ const SavedItemSchema = z.object({
   color: z.string().optional(),
 });
 
-const toSavedItem = (data: z.infer<typeof SavedItemSchema>): SavedItem =>
+const toListItem = (data: z.infer<typeof ListItemSchema>): ListItem =>
   data.reference !== undefined
     ? // annotation row -> PartialAnnotation
       {
@@ -446,7 +446,7 @@ export class TauriPlatform implements Platform {
   async listAllItems(
     signal: AbortSignal,
     itemFilter: Filter = "unread"
-  ): Promise<SavedItem[]> {
+  ): Promise<ListItem[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "list_all_items" });
@@ -454,7 +454,7 @@ export class TauriPlatform implements Platform {
     const results = await invoker<unknown[]>("list_all_items", { itemFilter });
 
     return results
-      .map((e) => SavedItemSchema.transform(toSavedItem).safeParse(e))
+      .map((e) => ListItemSchema.transform(toListItem).safeParse(e))
       .filter((e) => !e.error) // FIXME silently dropping invalid items
       .map((e) => e.data);
   }
@@ -696,7 +696,7 @@ export class TauriPlatform implements Platform {
     id: string,
     filter: Filter,
     sort: TopicSort = "relevance"
-  ): Promise<SavedItem[]> {
+  ): Promise<ListItem[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "list_topic_items" });
@@ -706,7 +706,7 @@ export class TauriPlatform implements Platform {
       sort,
     });
     return results
-      .map((e) => SavedItemSchema.transform(toSavedItem).safeParse(e))
+      .map((e) => ListItemSchema.transform(toListItem).safeParse(e))
       .filter((e) => !e.error)
       .map((e) => e.data);
   }
@@ -934,11 +934,11 @@ export class TauriPlatform implements Platform {
   }
 
   onAnnotationChanged(
-    callback: (item: SavedItem) => void
+    callback: (item: ListItem) => void
   ): Promise<UnlistenFn> {
     const name = "annotation:changed";
     const listener = decorate((e) => {
-      const result = SavedItemSchema.transform(toSavedItem).safeParse(
+      const result = ListItemSchema.transform(toListItem).safeParse(
         e.payload
       );
       if (result.success) callback(result.data);

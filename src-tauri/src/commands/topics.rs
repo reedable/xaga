@@ -1,11 +1,11 @@
 use tauri::State;
 use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
-use xaga_core::query::item::{self, EmbeddedItemSource};
 use xaga_core::persistence::topics;
-use xaga_core::types::{CollectionItem, ItemFilter, Kind, RankedItem, SavedItem, Topic};
+use xaga_core::query::items::{self, EmbeddedItemSource};
+use xaga_core::types::{CollectionItem, ItemFilter, Kind, ListItem, RankedItem, Topic};
 
-use crate::{get_unread, AppState};
 use super::{parse_item_filter, parse_item_sort};
+use crate::{AppState, get_unread};
 
 #[tauri::command]
 pub async fn save_topic(
@@ -20,10 +20,22 @@ pub async fn save_topic(
     let existing_items = topics::read_topic_items(&data_dir, &id)
         .await
         .unwrap_or_default();
-    let topic = topics::save_topic(&data_dir, &id, &title, &description, threshold, existing_items)
-        .await
-        .map_err(|e| e.to_string())?;
-    state.enqueue(Tier::Interactive, Job::UpsertTopic { topic: topic.clone() });
+    let topic = topics::save_topic(
+        &data_dir,
+        &id,
+        &title,
+        &description,
+        threshold,
+        existing_items,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    state.enqueue(
+        Tier::Interactive,
+        Job::UpsertTopic {
+            topic: topic.clone(),
+        },
+    );
     Ok(topic)
 }
 
@@ -38,12 +50,21 @@ pub async fn create_topic(
     let topic = topics::create_topic(&data_dir, &title, &description, threshold)
         .await
         .map_err(|e| e.to_string())?;
-    state.enqueue(Tier::Interactive, Job::UpsertTopic { topic: topic.clone() });
+    state.enqueue(
+        Tier::Interactive,
+        Job::UpsertTopic {
+            topic: topic.clone(),
+        },
+    );
     Ok(topic)
 }
 
 #[tauri::command]
-pub async fn set_topic_pinned(id: String, pinned: bool, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn set_topic_pinned(
+    id: String,
+    pinned: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let data_dir = state.library.read().unwrap().clone();
     topics::set_topic_pinned(&data_dir, &id, pinned)
         .await
@@ -52,7 +73,10 @@ pub async fn set_topic_pinned(id: String, pinned: bool, state: State<'_, AppStat
         Tier::Interactive,
         Job::SyncState {
             entity: EntityRef::new(id, Kind::Topic),
-            state: StatePatch { is_pinned: Some(pinned), ..Default::default() },
+            state: StatePatch {
+                is_pinned: Some(pinned),
+                ..Default::default()
+            },
         },
     );
     Ok(())
@@ -71,7 +95,7 @@ pub async fn list_topics(state: State<'_, AppState>) -> Result<Vec<Topic>, Strin
         let mut all_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         // Semantic matches via proven path — no content guard, title-only embedding is valid.
-        if let Ok(embedded) = item::list_embedded_items(
+        if let Ok(embedded) = items::list_embedded_items(
             &data_dir,
             EmbeddedItemSource::RelatedTo {
                 id: topic.id.clone(),
@@ -116,7 +140,9 @@ pub async fn delete_topic(id: String, state: State<'_, AppState>) -> Result<(), 
         .map_err(|e| e.to_string())?;
     state.enqueue(
         Tier::Interactive,
-        Job::Delete { entity: EntityRef::new(id, Kind::Topic) },
+        Job::Delete {
+            entity: EntityRef::new(id, Kind::Topic),
+        },
     );
     Ok(())
 }
@@ -132,7 +158,13 @@ pub async fn add_topic_item(
     let topic = topics::add_topic_item(&data_dir, &topic_id, item)
         .await
         .map_err(|e| e.to_string())?;
-    state.enqueue(Tier::Interactive, Job::AddMember { topic_id, member_id });
+    state.enqueue(
+        Tier::Interactive,
+        Job::AddMember {
+            topic_id,
+            member_id,
+        },
+    );
     Ok(topic)
 }
 
@@ -146,7 +178,13 @@ pub async fn remove_topic_item(
     let topic = topics::remove_topic_item(&data_dir, &topic_id, &item_id)
         .await
         .map_err(|e| e.to_string())?;
-    state.enqueue(Tier::Interactive, Job::RemoveMember { topic_id, member_id: item_id });
+    state.enqueue(
+        Tier::Interactive,
+        Job::RemoveMember {
+            topic_id,
+            member_id: item_id,
+        },
+    );
     Ok(topic)
 }
 
@@ -156,7 +194,7 @@ pub async fn list_topic_items(
     item_filter: Option<String>,
     sort: Option<String>,
     state: State<'_, AppState>,
-) -> Result<Vec<SavedItem>, String> {
+) -> Result<Vec<ListItem>, String> {
     let data_dir = state.library.read().unwrap().clone();
     let item_filter = parse_item_filter(item_filter)?;
     let sort = parse_item_sort(sort)?;
@@ -192,7 +230,7 @@ pub async fn rank_topics_by_item(
     state: State<'_, AppState>,
 ) -> Result<Vec<RankedItem>, String> {
     let data_dir = state.library.read().unwrap().clone();
-    let entries = item::list_embedded_items(
+    let entries = items::list_embedded_items(
         &data_dir,
         EmbeddedItemSource::TopicsRelatedTo {
             id: item_id,
@@ -206,6 +244,9 @@ pub async fn rank_topics_by_item(
 
     Ok(entries
         .into_iter()
-        .map(|e| RankedItem { id: e.entry.id, similarity: e.similarity })
+        .map(|e| RankedItem {
+            id: e.entry.id,
+            similarity: e.similarity,
+        })
         .collect())
 }

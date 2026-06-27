@@ -1,4 +1,4 @@
-//! Derived types: query/wire DTOs + UI filter/sort + on-disk storage shapes. The domain model
+//! Derived types: query shapes + UI filter/sort + on-disk storage shapes. The domain model
 //! lives in `crate::domain`; this module re-exports it and adds the shapes built around it.
 
 use serde::{Deserialize, Serialize};
@@ -100,12 +100,13 @@ impl From<&CollectionItem> for Reference {
     }
 }
 
-// ── SavedItem (flat wire DTO for `list_all_items`) ──────────────────────────────
+// ── ListItem (flat record for `list_all_items`) ────────────────────────────────
 
-/// A flat wire record for the saved-items list: a bookmark or an annotation row. The TS adapter
-/// splits it into the domain `Entry | PartialAnnotation` union (annotations set reference/color).
+/// A flat record in the items list returned by `list_all_items`: an entry (any state) or an
+/// annotation row. The TS adapter splits it into the domain `Entry | PartialAnnotation` union
+/// (annotations set reference/color).
 #[derive(Debug, Serialize)]
-pub struct SavedItem {
+pub struct ListItem {
     pub id: String,
     pub title: String,
     pub created_at: String,
@@ -118,7 +119,7 @@ pub struct SavedItem {
     pub color: Option<String>,
 }
 
-impl Item for SavedItem {
+impl Item for ListItem {
     fn id(&self) -> &str { &self.id }
     fn title(&self) -> &str { &self.title }
     fn created_at(&self) -> &str { &self.created_at }

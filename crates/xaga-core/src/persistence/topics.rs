@@ -5,9 +5,11 @@ use thiserror::Error;
 
 use uuid::Uuid;
 
-use crate::types::{CollectionItem, Topic};
-
-use super::frontmatter::{parse_document, parse_frontmatter};
+use crate::{
+    fm::{Frontmatter, parse_frontmatter},
+    md::{Markdown, md_to_topic, parse_document},
+    types::{CollectionItem, Topic},
+};
 
 #[derive(Debug, Error)]
 pub enum TopicsError {
@@ -112,7 +114,11 @@ pub async fn save_topic(
 /// Preserves the topic's timestamps (a pin toggle is not a content edit). The `is_pinned` LanceDB
 /// column is updated by the watcher → `sync_row` re-read; membership is unchanged so the reconcile
 /// sees no member delta. Mirrors `feeds::set_feed_pinned`.
-pub async fn set_topic_pinned(data_dir: &Path, id: &str, pinned: bool) -> Result<bool, TopicsError> {
+pub async fn set_topic_pinned(
+    data_dir: &Path,
+    id: &str,
+    pinned: bool,
+) -> Result<bool, TopicsError> {
     let path = topic_path(data_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
@@ -124,11 +130,18 @@ pub async fn set_topic_pinned(data_dir: &Path, id: &str, pinned: bool) -> Result
         return Ok(false);
     }
 
-    let updated_at = fm.updated_at.clone().unwrap_or_else(|| fm.created_at.clone());
+    let updated_at = fm
+        .updated_at
+        .clone()
+        .unwrap_or_else(|| fm.created_at.clone());
     let items = fm.items.clone();
     // Decode to the domain Topic (which handles the legacy summary/body description fallback), then
     // flip the pinned flag and preserve the timestamp — a pin toggle is not a content edit.
-    let mut topic = topic_from_document(id, fm, body);
+    let mut topic = md_to_topic(Markdown {
+        id: id.to_string(),
+        fm,
+        body,
+    });
     topic.is_pinned = pinned;
     topic.updated_at = Some(updated_at);
     tokio::fs::write(&path, render_topic(&topic, &items).as_bytes()).await?;
@@ -181,7 +194,8 @@ pub async fn create_topic(
 
 /// Builds a [`Topic`] from an already-parsed document (used by recovery, which parses once during
 /// its scan and hands the domain object straight to indexing). Mirrors [`read_topic`].
-pub fn topic_from_document(id: &str, fm: super::frontmatter::Frontmatter, body: String) -> Topic {
+#[deprecated = "replaced by crate::md::md_to_topic"]
+pub fn topic_from_document(id: &str, fm: Frontmatter, body: String) -> Topic {
     let is_pinned = crate::tags::is_pinned(&fm.tags);
     Topic {
         id: id.to_string(),
@@ -206,12 +220,19 @@ pub async fn read_topic(data_dir: &Path, id: &str) -> Result<Topic, TopicsError>
     }
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(TopicsError::NotFound)?;
-    Ok(topic_from_document(&crate::util::item_id(&path), fm, body))
+    Ok(md_to_topic(Markdown {
+        id: crate::util::item_id(&path),
+        fm,
+        body,
+    }))
 }
 
 /// Returns a topic's stored membership (the `.md` `items:` list) — the storage shape
 /// (`CollectionItem`, carrying the annotation parent `reference`), not the domain `members`.
-pub async fn read_topic_items(data_dir: &Path, id: &str) -> Result<Vec<CollectionItem>, TopicsError> {
+pub async fn read_topic_items(
+    data_dir: &Path,
+    id: &str,
+) -> Result<Vec<CollectionItem>, TopicsError> {
     let path = topic_path(data_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
@@ -248,7 +269,11 @@ pub async fn list_topics(data_dir: &Path) -> Result<Vec<Topic>, TopicsError> {
         }
         let raw = tokio::fs::read_to_string(&path).await?;
         if let Some((fm, body)) = parse_document(&raw) {
-            topics.push(topic_from_document(&crate::util::item_id(&path), fm, body));
+            topics.push(md_to_topic(Markdown {
+                id: crate::util::item_id(&path),
+                fm,
+                body,
+            }));
         }
     }
 
@@ -275,7 +300,15 @@ pub async fn add_topic_item(
     let description = fm.summary.unwrap_or(body);
     let mut items = fm.items;
     items.push(item);
-    save_topic(data_dir, topic_id, &fm.title, &description, fm.threshold, items).await
+    save_topic(
+        data_dir,
+        topic_id,
+        &fm.title,
+        &description,
+        fm.threshold,
+        items,
+    )
+    .await
 }
 
 /// Removes the item with the given ID from the topic's manual items list.
@@ -297,5 +330,13 @@ pub async fn remove_topic_item(
     let description = fm.summary.unwrap_or(body);
     let mut items = fm.items;
     items.retain(|i| i.id() != item_id);
-    save_topic(data_dir, topic_id, &fm.title, &description, fm.threshold, items).await
+    save_topic(
+        data_dir,
+        topic_id,
+        &fm.title,
+        &description,
+        fm.threshold,
+        items,
+    )
+    .await
 }

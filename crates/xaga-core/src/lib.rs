@@ -6,7 +6,9 @@
 //   recovery    — the filesystem-reading producer that reconciles files into the index
 pub mod domain;
 pub mod embeddings;
+pub mod fm;
 pub mod fs;
+pub mod md;
 pub mod persistence;
 pub mod query;
 pub mod recovery;

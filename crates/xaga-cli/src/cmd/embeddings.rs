@@ -3,7 +3,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use clap::{Args, Subcommand};
-use xaga_core::embeddings::{default_model_dir, load_default_embedder, EmbeddingsDb, LockFile, DEFAULT_MODEL_REPO, MODEL_FILES};
+use xaga_core::embeddings::{
+    DEFAULT_MODEL_REPO, EmbeddingsDb, LockFile, MODEL_FILES, default_model_dir,
+    load_default_embedder,
+};
 use xaga_core::recovery;
 
 use crate::die;
@@ -81,7 +84,10 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
                 Ok(rows) => {
                     let total: usize = rows.iter().map(|r| r.total).sum();
                     let embedded: usize = rows.iter().map(|r| r.embedded).sum();
-                    println!("{total} row(s): {embedded} embedded, {} pending", total - embedded);
+                    println!(
+                        "{total} row(s): {embedded} embedded, {} pending",
+                        total - embedded
+                    );
                     for r in &rows {
                         println!(
                             "  {:<11} {:>7} total  {:>7} embedded  {:>7} pending",
@@ -140,13 +146,20 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
 
         EmbeddingsCommand::Recover => {
             let _lock = require_write_lock(data_dir);
+
             let db = match EmbeddingsDb::open(data_dir).await {
                 Ok(db) => db,
                 Err(e) => die(e),
             };
+
             let embedder = make_embedder().await;
-            let report = recovery::execute::run_full_recovery(data_dir, &embedder, &db).await;
-            println!("recover: {} embedded, {} deleted", report.embedded, report.deleted);
+            let report = recovery::inline::run_full_recovery(data_dir, &embedder, &db).await;
+
+            println!(
+                "recover: {} embedded, {} deleted",
+                report.embedded, report.deleted
+            );
+
             for err in &report.errors {
                 eprintln!("  warning: {err}");
             }
@@ -155,6 +168,7 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
         EmbeddingsCommand::Reset => {
             let _lock = require_write_lock(data_dir);
             EmbeddingsDb::destroy(data_dir).unwrap_or_else(|e| die(e));
+
             match EmbeddingsDb::open(data_dir).await {
                 Ok(_) => println!("Embeddings index cleared."),
                 Err(e) => die(e),
@@ -163,14 +177,22 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
 
         EmbeddingsCommand::Reindex => {
             let _lock = require_write_lock(data_dir);
+
             EmbeddingsDb::destroy(data_dir).unwrap_or_else(|e| die(e));
+
             let db = match EmbeddingsDb::open(data_dir).await {
                 Ok(db) => db,
                 Err(e) => die(e),
             };
+
             let embedder = make_embedder().await;
-            let report = recovery::execute::run_full_recovery(data_dir, &embedder, &db).await;
-            println!("reindex: {} embedded, {} deleted", report.embedded, report.deleted);
+            let report = recovery::inline::run_full_recovery(data_dir, &embedder, &db).await;
+
+            println!(
+                "reindex: {} embedded, {} deleted",
+                report.embedded, report.deleted
+            );
+
             for err in &report.errors {
                 eprintln!("  warning: {err}");
             }
@@ -212,7 +234,8 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
             // Histogram: bins of width 0.05 from `min` (rounded down) to 1.0.
             const BIN_WIDTH: f32 = 0.05;
             let first_bin = ((min / BIN_WIDTH).floor() as usize).max(0);
-            let num_bins = ((1.0f32 - first_bin as f32 * BIN_WIDTH) / BIN_WIDTH).ceil() as usize + 1;
+            let num_bins =
+                ((1.0f32 - first_bin as f32 * BIN_WIDTH) / BIN_WIDTH).ceil() as usize + 1;
             let mut bins = vec![0usize; num_bins];
             for &s in &scores {
                 let idx = ((s / BIN_WIDTH).floor() as usize).saturating_sub(first_bin);
@@ -241,7 +264,11 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
             println!("\nPercentiles (of all sampled pairs ≥ {min:.2}):");
             println!(
                 "  p50: {:.3}   p75: {:.3}   p90: {:.3}   p95: {:.3}   p99: {:.3}",
-                pct(50.0), pct(75.0), pct(90.0), pct(95.0), pct(99.0)
+                pct(50.0),
+                pct(75.0),
+                pct(90.0),
+                pct(95.0),
+                pct(99.0)
             );
         }
     }
@@ -290,5 +317,12 @@ async fn download_model(repo: &str) {
 const DOWNLOAD_CMD_DONE: &str = "xaga-cli embeddings reindex";
 
 async fn fetch_file(client: &reqwest::Client, url: &str) -> Result<Vec<u8>, reqwest::Error> {
-    Ok(client.get(url).send().await?.error_for_status()?.bytes().await?.to_vec())
+    Ok(client
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?
+        .to_vec())
 }

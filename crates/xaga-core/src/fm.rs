@@ -27,12 +27,6 @@ pub fn parse_frontmatter(raw: &str) -> Option<Frontmatter> {
     Some(split_document(raw)?.0)
 }
 
-/// Parses both the header fields and the markdown body from a `---`-delimited document.
-/// Returns `None` if the format is invalid.
-pub fn parse_document(raw: &str) -> Option<(Frontmatter, String)> {
-    split_document(raw)
-}
-
 /// The `.md` frontmatter storage shape for an annotation. Storage keeps `note`; the domain
 /// `Annotation`'s `title`/`content` are derived here at the boundary (title = highlighted text,
 /// content = note). Mapped to/from the domain type by the `From` impls below.
@@ -104,7 +98,7 @@ struct FrontmatterRaw {
     items: Vec<CollectionItem>,
 }
 
-fn split_document(raw: &str) -> Option<(Frontmatter, String)> {
+pub(crate) fn split_document(raw: &str) -> Option<(Frontmatter, String)> {
     let raw = raw.trim_start();
     let rest = raw.strip_prefix("---\n")?;
     let end = rest.find("\n---\n")?;

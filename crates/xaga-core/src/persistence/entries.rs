@@ -3,10 +3,12 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use thiserror::Error;
 
-use crate::types::{Article, Entry};
-use crate::util::{normalize_url, url_hash12};
-
-use super::frontmatter::{parse_document, parse_frontmatter};
+use crate::{
+    fm::{Frontmatter, FrontmatterAnnotation, parse_frontmatter},
+    md::{Markdown, md_to_entry, parse_document},
+    types::{Article, Entry},
+    util::{normalize_url, url_hash12},
+};
 
 #[derive(Debug, Error)]
 pub enum EntryError {
@@ -51,7 +53,7 @@ pub fn render_entry(article: &Article) -> String {
         #[serde(skip_serializing_if = "Option::is_none")]
         summary: Option<String>,
         #[serde(skip_serializing_if = "Vec::is_empty")]
-        annotations: Vec<super::frontmatter::FrontmatterAnnotation>,
+        annotations: Vec<FrontmatterAnnotation>,
         #[serde(skip_serializing_if = "<[_]>::is_empty")]
         tags: &'a [String],
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -95,7 +97,8 @@ pub(crate) fn entry_path(data_dir: &Path, hash12: &str) -> PathBuf {
     data_dir.join("entries").join(format!("{hash12}.md"))
 }
 
-pub fn entry_from_fm(id: String, fm: super::frontmatter::Frontmatter) -> Entry {
+#[deprecated = "replaced by md_to_entry"]
+pub fn entry_from_fm(id: String, fm: Frontmatter) -> Entry {
     let is_unread = crate::tags::is_unread(&fm.tags);
     let is_bookmarked = crate::tags::is_bookmarked(&fm.tags);
     Entry {
@@ -183,7 +186,16 @@ pub async fn write_entry(
 
     let created_at = Utc::now().to_rfc3339();
     let tags = vec![crate::tags::UNREAD.to_string()];
-    let article = entry_article(hash12, normalized, title, created_at, published_at, updated_at, summary, &tags);
+    let article = entry_article(
+        hash12,
+        normalized,
+        title,
+        created_at,
+        published_at,
+        updated_at,
+        summary,
+        &tags,
+    );
     tokio::fs::create_dir_all(path.parent().unwrap()).await?;
     tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
     Ok(article)
@@ -225,19 +237,25 @@ pub async fn write_read_entry(
     Ok(article)
 }
 
-
-
 /// Reads an entry by id and returns its metadata. Does not modify the file.
 pub async fn read_entry(data_dir: &Path, id: &str) -> Result<Entry, EntryError> {
-    let path = find_entry_path(data_dir, id).await.ok_or(EntryError::NotFound)?;
+    let path = find_entry_path(data_dir, id)
+        .await
+        .ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
     let fm = parse_frontmatter(&raw).ok_or(EntryError::NotFound)?;
-    Ok(entry_from_fm(id.to_string(), fm))
+    Ok(md_to_entry(Markdown {
+        id: id.to_string(),
+        fm,
+        body: String::new(),
+    }))
 }
 
 /// Returns an entry's frontmatter tags — a persistence detail, not on the domain `Entry`.
 pub async fn read_entry_tags(data_dir: &Path, id: &str) -> Result<Vec<String>, EntryError> {
-    let path = find_entry_path(data_dir, id).await.ok_or(EntryError::NotFound)?;
+    let path = find_entry_path(data_dir, id)
+        .await
+        .ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
     let fm = parse_frontmatter(&raw).ok_or(EntryError::NotFound)?;
     Ok(fm.tags)
@@ -245,8 +263,14 @@ pub async fn read_entry_tags(data_dir: &Path, id: &str) -> Result<Vec<String>, E
 
 /// Replaces the tags on an entry's frontmatter and writes the file back.
 /// The file watcher picks up the write and queues a priority LanceDB update.
-pub async fn set_entry_tags(data_dir: &Path, id: &str, tags: Vec<String>) -> Result<Entry, EntryError> {
-    let path = find_entry_path(data_dir, id).await.ok_or(EntryError::NotFound)?;
+pub async fn set_entry_tags(
+    data_dir: &Path,
+    id: &str,
+    tags: Vec<String>,
+) -> Result<Entry, EntryError> {
+    let path = find_entry_path(data_dir, id)
+        .await
+        .ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
     // Build the updated Article (the message) once, encode it, and return its meta. State comes from
@@ -271,30 +295,3 @@ pub async fn set_entry_tags(data_dir: &Path, id: &str, tags: Vec<String>) -> Res
     tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
     Ok(article.meta)
 }
-
-/// Returns a summary for every entry in `entries/`.
-/// `is_unread` is derived from each file's frontmatter tags.
-pub async fn list_entries(data_dir: &Path) -> Result<Vec<Entry>, EntryError> {
-    let mut entries: Vec<Entry> = Vec::new();
-
-    for dir in entry_dirs(data_dir) {
-        if !tokio::fs::try_exists(&dir).await? {
-            continue;
-        }
-        let mut dir_entries = tokio::fs::read_dir(&dir).await?;
-        while let Some(dir_entry) = dir_entries.next_entry().await? {
-            let path = dir_entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("md") {
-                continue;
-            }
-            let raw = tokio::fs::read_to_string(&path).await?;
-            if let Some(fm) = parse_frontmatter(&raw) {
-                entries.push(entry_from_fm(crate::util::item_id(&path), fm));
-            }
-        }
-    }
-
-    Ok(entries)
-}
-
-// (The `render_entry` topics round-trip test was removed with the `topics:` frontmatter field.)

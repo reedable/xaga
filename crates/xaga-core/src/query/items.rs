@@ -2,29 +2,44 @@ use std::path::Path;
 
 use thiserror::Error;
 
-use crate::embeddings::EmbeddingsDb;
-use crate::persistence::feeds;
-use crate::query::filter;
-use crate::types::{EmbeddedEntry, EmbeddedFeed, EmbeddedItem, EmbeddedTopic, Feed, ItemFilter, Kind};
+use crate::{
+    embeddings::EmbeddingsDb,
+    query::filter,
+    types::{
+        EmbeddedEntry, EmbeddedFeed, EmbeddedItem, EmbeddedTopic, Feed, ItemFilter, Kind, ListItem,
+    },
+};
 
 // ── EmbeddedItemSource ──────────────────────────────────────────────────────────
 
 /// Describes the source for an embedding similarity query.
 pub enum EmbeddedItemSource {
     /// Items related to a given item, ranked by embedding similarity.
-    RelatedTo { id: String, limit: Option<usize>, min_similarity: Option<f32>, max_similarity: Option<f32> },
+    RelatedTo {
+        id: String,
+        limit: Option<usize>,
+        min_similarity: Option<f32>,
+        max_similarity: Option<f32>,
+    },
     /// Items related to an arbitrary pre-computed query vector (e.g. from embedded search text).
-    RelatedToVector { vector: Vec<f32>, limit: Option<usize>, min_similarity: Option<f32>, max_similarity: Option<f32> },
+    RelatedToVector {
+        vector: Vec<f32>,
+        limit: Option<usize>,
+        min_similarity: Option<f32>,
+        max_similarity: Option<f32>,
+    },
     /// Topics ranked by similarity to a given item.
-    TopicsRelatedTo { id: String, limit: Option<usize>, min_similarity: Option<f32> },
+    TopicsRelatedTo {
+        id: String,
+        limit: Option<usize>,
+        min_similarity: Option<f32>,
+    },
 }
 
 // ── Error ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
 pub enum ItemError {
-    #[error(transparent)]
-    Feed(#[from] feeds::FeedError),
     #[error(transparent)]
     Embeddings(#[from] crate::embeddings::EmbeddingsError),
     #[error(transparent)]
@@ -43,27 +58,95 @@ pub async fn list_embedded_items(
     item_filter: ItemFilter,
 ) -> Result<Vec<EmbeddedEntry>> {
     match source {
-        EmbeddedItemSource::RelatedTo { id, limit, min_similarity, max_similarity } => {
+        EmbeddedItemSource::RelatedTo {
+            id,
+            limit,
+            min_similarity,
+            max_similarity,
+        } => {
             let db = EmbeddingsDb::open(library).await?;
-            let entries = db.find_related(&id, limit, min_similarity, max_similarity, None).await?;
+            let entries = db
+                .find_related(&id, limit, min_similarity, max_similarity, None)
+                .await?;
             filter::filter_items(entries, &item_filter)
                 .await
                 .map_err(ItemError::Io)
         }
-        EmbeddedItemSource::RelatedToVector { vector, limit, min_similarity, max_similarity } => {
+        EmbeddedItemSource::RelatedToVector {
+            vector,
+            limit,
+            min_similarity,
+            max_similarity,
+        } => {
             let db = EmbeddingsDb::open(library).await?;
-            let entries = db.find_by_vector(vector, limit, min_similarity, max_similarity).await?;
+            let entries = db
+                .find_by_vector(vector, limit, min_similarity, max_similarity)
+                .await?;
             filter::filter_items(entries, &item_filter)
                 .await
                 .map_err(ItemError::Io)
         }
-        EmbeddedItemSource::TopicsRelatedTo { id, limit, min_similarity } => {
+        EmbeddedItemSource::TopicsRelatedTo {
+            id,
+            limit,
+            min_similarity,
+        } => {
             let db = EmbeddingsDb::open(library).await?;
             db.find_related(&id, limit, min_similarity, None, Some(Kind::Topic))
                 .await
                 .map_err(ItemError::Embeddings)
         }
     }
+}
+
+/// Lists every item in the library — entry rows and annotation rows — read entirely from
+/// LanceDB, filtered by `item_filter` and sorted by `created_at` descending. Returns the flat
+/// `ListItem` the items list renders (annotations carry `reference`/`color`).
+pub async fn list_all_items(library: &Path, item_filter: ItemFilter) -> Result<Vec<ListItem>> {
+    let db = EmbeddingsDb::open(library).await?;
+
+    let (entries_result, annotations_result) =
+        tokio::join!(db.all_entries(), db.list_annotations());
+
+    let all_entries = entries_result?;
+    let annotations = annotations_result.unwrap_or_default();
+
+    let mut items: Vec<ListItem> = all_entries
+        .into_iter()
+        .filter(|e| match item_filter {
+            ItemFilter::All => true,
+            ItemFilter::Unread => e.is_unread,
+            ItemFilter::Bookmarked | ItemFilter::Saved => e.is_bookmarked,
+        })
+        .map(|e| ListItem {
+            id: e.id,
+            title: e.title,
+            created_at: e.created_at,
+            url: e.url,
+            is_unread: e.is_unread,
+            is_bookmarked: e.is_bookmarked,
+            reference: None,
+            color: None,
+        })
+        .chain(
+            annotations
+                .into_iter()
+                .filter(|_| matches!(item_filter, ItemFilter::All | ItemFilter::Saved))
+                .map(|a| ListItem {
+                    id: a.id,
+                    title: a.title,
+                    created_at: a.created_at,
+                    url: a.url,
+                    is_unread: false,
+                    is_bookmarked: false,
+                    reference: Some(a.reference),
+                    color: Some(a.color),
+                }),
+        )
+        .collect();
+
+    items.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    Ok(items)
 }
 
 /// Enriches raw LanceDB results: rows with no URL are topic rows.
@@ -97,7 +180,9 @@ pub async fn enrich_embedded(library: &Path, entries: Vec<EmbeddedEntry>) -> Vec
             continue;
         }
         if entry.entry.url.is_empty() {
-            if let Ok(topic) = crate::persistence::topics::read_topic(library, &entry.entry.id).await {
+            if let Ok(topic) =
+                crate::persistence::topics::read_topic(library, &entry.entry.id).await
+            {
                 result.push(EmbeddedItem::Topic(EmbeddedTopic {
                     topic,
                     kind: Kind::Topic,

@@ -1,9 +1,9 @@
 use tauri::State;
-use xaga_core::query::item::{self, EmbeddedItemSource};
+use xaga_core::query::items::{self, EmbeddedItemSource};
 use xaga_core::types::{EmbeddedEntry, EmbeddedItem};
 
-use crate::AppState;
 use super::parse_item_filter;
+use crate::AppState;
 
 #[tauri::command]
 pub async fn query_by_item(
@@ -16,9 +16,14 @@ pub async fn query_by_item(
 ) -> Result<Vec<EmbeddedEntry>, String> {
     let library = state.library.read().unwrap().clone();
     let item_filter = parse_item_filter(item_filter)?;
-    let result = item::list_embedded_items(
+    let result = items::list_embedded_items(
         &library,
-        EmbeddedItemSource::RelatedTo { id, limit, min_similarity, max_similarity },
+        EmbeddedItemSource::RelatedTo {
+            id,
+            limit,
+            min_similarity,
+            max_similarity,
+        },
         item_filter,
     )
     .await
@@ -56,15 +61,20 @@ pub async fn query_by_text(
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
 
-    let entries = item::list_embedded_items(
+    let entries = items::list_embedded_items(
         &library,
-        EmbeddedItemSource::RelatedToVector { vector, limit, min_similarity, max_similarity },
+        EmbeddedItemSource::RelatedToVector {
+            vector,
+            limit,
+            min_similarity,
+            max_similarity,
+        },
         item_filter,
     )
     .await
     .map_err(|e| e.to_string())?;
 
-    let result = item::enrich_embedded(&library, entries).await;
+    let result = items::enrich_embedded(&library, entries).await;
     log::debug!("query_by_text: ok ({} entries)", result.len());
     Ok(result)
 }

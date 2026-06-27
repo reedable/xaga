@@ -6,7 +6,12 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "xaga-cli", about = "Headless Xaga PKM tool", version, arg_required_else_help = true)]
+#[command(
+    name = "xaga-cli",
+    about = "Headless Xaga PKM tool",
+    version,
+    arg_required_else_help = true
+)]
 struct Cli {
     /// Override data directory (also: $XAGA_DATA_DIR, or set via `config set data-dir`)
     #[arg(long, env = "XAGA_DATA_DIR")]

@@ -5,5 +5,5 @@
 //! write-side separation; nothing here is on the indexing write path.
 
 pub mod filter;
-pub mod item;
+pub mod items;
 pub mod topics;

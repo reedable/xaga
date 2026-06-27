@@ -14,13 +14,14 @@ use crate::types::{Article, Topic};
 use super::embeddings::reconcile_item_embeddings;
 use super::feeds::reconcile_feed_entries;
 
-/// Reconciles the embeddings and enqueues the work as Maintenance-tier jobs onto the service.
+/// Reconciles the embeddings and enqueues the reconciled work onto the service's tiers.
 /// Lives here (the bridge), not in `embeddings`, so the filesystem reads it performs
 /// (`reconcile_feed_entries`, `reconcile_item_embeddings`, `list_topics`) stay out of
 /// the indexing layer. Driven by the service's control loop via `Job::StartRecovery`.
 ///
-/// Topics are enqueued before articles so they index first; both ride the Maintenance tier —
-/// recovery is bulk/maintenance work, kept off the interactive tier so live actions never block.
+/// Topics are enqueued before articles so they index first. Recovery is system-initiated, so its
+/// work rides the Maintenance tier (lowest precedence) — except topic embedding, which is always
+/// dispatched at Interactive, per the priority definitions in the service's `run_loop`.
 pub(crate) async fn dispatch_recovery(
     data_dir: &Path,
     db: &EmbeddingsDb,
@@ -30,6 +31,7 @@ pub(crate) async fn dispatch_recovery(
     // Compact the DB before queuing any new work to clear version files accumulated during
     // previous sessions. Without this, Lance's auto-cleanup fires mid-upsert and blocks the loop.
     log::info!("recovery: pre-recovery compact starting");
+
     if let Err(e) = db.compact().await {
         log::error!("recovery: pre-recovery compact failed: {e}");
     }
@@ -157,7 +159,10 @@ async fn bulk_insert_topics(db: &EmbeddingsDb, topics: Vec<Topic>, senders: &Sen
 
     for topic in topics {
         buf.push(EmbeddingEntry::from_topic(&topic, None));
-        senders.enqueue(Tier::Maintenance, Job::EmbedTopic { topic });
+        // All topic embeddings are dispatched at Interactive priority, regardless of initiator,
+        // per the priority definitions in the embedding service's `run_loop` (T1). Recovery is
+        // system-initiated, but topic embedding is the documented exception that stays Interactive.
+        senders.enqueue(Tier::Interactive, Job::EmbedTopic { topic });
 
         if buf.len() >= BULK_BATCH {
             if let Err(e) = db.add_batch(std::mem::take(&mut buf)).await {

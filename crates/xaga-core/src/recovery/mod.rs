@@ -9,8 +9,8 @@
 
 pub mod dispatch;
 pub mod embeddings;
-pub mod execute;
 pub mod feeds;
+pub mod inline;
 
 use crate::types::{Article, Feed, Topic};
 

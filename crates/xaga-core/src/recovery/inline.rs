@@ -8,7 +8,7 @@ use crate::embeddings::pipeline::{
     embed_entry_vector, embed_feed, embed_topic_vector, sync_entry_row, sync_topic_row,
 };
 use crate::embeddings::{Embedder, EmbeddingsDb};
-use crate::types::{Entry, SavedItem};
+use crate::types::{Entry, ListItem};
 
 use super::EmbeddingsReconResults;
 use super::embeddings::reconcile_item_embeddings;
@@ -48,7 +48,9 @@ pub async fn run_full_recovery(
 
     // Embeddings layer recovery
     match reconcile_item_embeddings(data_dir, db).await {
-        Ok(recon_results) => process_recon_results(recon_results, embedder, db, &mut report).await,
+        Ok(recon_results) => {
+            process_recon_results_inline(recon_results, embedder, db, &mut report).await
+        }
         Err(e) => report
             .errors
             .push(format!("reconcile_item_embeddings failed: {e}")),
@@ -57,7 +59,9 @@ pub async fn run_full_recovery(
     report
 }
 
-async fn process_recon_results(
+// Unlike `dispatch`, this method processes the reconciliation results inline (sychronously)
+// This method is intended for use in CLI, not GUI.
+async fn process_recon_results_inline(
     recon_results: EmbeddingsReconResults,
     embedder: &Arc<Embedder>,
     db: &EmbeddingsDb,
@@ -73,7 +77,7 @@ async fn process_recon_results(
     // Recovery runs at startup; suppress change events to avoid flooding the UI.
     let (noop_unread_tx, _) = flume::unbounded::<Entry>();
     let (noop_bookmarked_tx, _) = flume::unbounded::<Entry>();
-    let (noop_annotation_tx, _) = flume::unbounded::<SavedItem>();
+    let (noop_annotation_tx, _) = flume::unbounded::<ListItem>();
 
     // The domain object carries everything sync/embed need; no file is re-read here.
     for topic in &recon_results.to_embed_topics {

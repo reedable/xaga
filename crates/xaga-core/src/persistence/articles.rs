@@ -1,11 +1,12 @@
 use std::path::{Path, PathBuf};
 
-use crate::persistence::entries::{entry_from_fm, find_entry_path, render_entry, EntryError};
-use crate::util::{normalize_url, url_hash12};
-
-use super::frontmatter::parse_document;
-
-use crate::types::{Annotation, Article, Entry};
+use crate::{
+    fm::Frontmatter,
+    md::{Markdown, md_to_entry, parse_document},
+    persistence::entries::{EntryError, find_entry_path, render_entry},
+    types::{Annotation, Article, Entry},
+    util::{normalize_url, url_hash12},
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -23,7 +24,6 @@ fn with_reference(mut annotations: Vec<Annotation>, article_id: &str) -> Vec<Ann
 pub(crate) fn article_path(data_dir: &Path, hash12: &str) -> PathBuf {
     data_dir.join("entries").join(format!("{hash12}.md"))
 }
-
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -101,15 +101,23 @@ pub async fn create_article(
 ) -> Result<Article, EntryError> {
     let normalized = normalize_url(url)?;
     let id = url_hash12(&normalized);
-    save_article(data_dir, &id, url, title, published_at, updated_at, summary, favicon, markdown).await
+    save_article(
+        data_dir,
+        &id,
+        url,
+        title,
+        published_at,
+        updated_at,
+        summary,
+        favicon,
+        markdown,
+    )
+    .await
 }
 
 /// Returns the article for the given URL if it exists, or `None` if not found.
 /// The ID is derived from the normalised URL hash, matching `create_article`.
-pub async fn find_article(
-    data_dir: &Path,
-    url: &str,
-) -> Result<Option<Article>, EntryError> {
+pub async fn find_article(data_dir: &Path, url: &str) -> Result<Option<Article>, EntryError> {
     let normalized = normalize_url(url)?;
     let id = url_hash12(&normalized);
     match read_article(data_dir, &id).await {
@@ -121,18 +129,17 @@ pub async fn find_article(
 
 /// Builds an [`Article`] from an already-parsed document (used by recovery, which parses once
 /// during its scan and hands the domain object straight to indexing).
-pub fn article_from_document(id: &str, fm: super::frontmatter::Frontmatter, body: String) -> Article {
+pub fn article_from_document(id: &str, fm: Frontmatter, body: String) -> Article {
     let annotations = fm.annotations.clone();
     let favicon = fm.favicon.clone();
     article_from_fm(id, fm, annotations, favicon, body)
 }
 
 /// Returns the article for the given id, searching all entry directories.
-pub async fn read_article(
-    data_dir: &Path,
-    id: &str,
-) -> Result<Article, EntryError> {
-    let path = find_entry_path(data_dir, id).await.ok_or(EntryError::NotFound)?;
+pub async fn read_article(data_dir: &Path, id: &str) -> Result<Article, EntryError> {
+    let path = find_entry_path(data_dir, id)
+        .await
+        .ok_or(EntryError::NotFound)?;
 
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
@@ -146,14 +153,19 @@ pub async fn add_annotation(
     article_id: &str,
     annotation: Annotation,
 ) -> Result<Article, EntryError> {
-    let path = find_entry_path(data_dir, article_id).await.ok_or(EntryError::NotFound)?;
+    let path = find_entry_path(data_dir, article_id)
+        .await
+        .ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
 
     let mut annotations = fm.annotations.clone();
     if let Some(pos) = annotations.iter().position(|a| a.id == annotation.id) {
         let created_at = annotations[pos].created_at.clone();
-        annotations[pos] = Annotation { created_at, ..annotation };
+        annotations[pos] = Annotation {
+            created_at,
+            ..annotation
+        };
     } else {
         annotations.push(Annotation {
             created_at: chrono::Utc::now().to_rfc3339(),
@@ -173,11 +185,14 @@ pub async fn remove_annotation(
     article_id: &str,
     annotation_id: &str,
 ) -> Result<Article, EntryError> {
-    let path = find_entry_path(data_dir, article_id).await.ok_or(EntryError::NotFound)?;
+    let path = find_entry_path(data_dir, article_id)
+        .await
+        .ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
 
-    let annotations: Vec<Annotation> = fm.annotations
+    let annotations: Vec<Annotation> = fm
+        .annotations
         .iter()
         .filter(|a| a.id != annotation_id)
         .cloned()
@@ -193,13 +208,17 @@ pub async fn remove_annotation(
 /// annotation edit parses once and the producer hands the domain object straight to the queue.
 fn article_from_fm(
     article_id: &str,
-    fm: super::frontmatter::Frontmatter,
+    fm: Frontmatter,
     annotations: Vec<Annotation>,
     favicon: Option<String>,
     body: String,
 ) -> Article {
     Article {
-        meta: entry_from_fm(article_id.to_string(), fm),
+        meta: md_to_entry(Markdown {
+            id: article_id.to_string(),
+            fm,
+            body: String::new(),
+        }),
         content: body,
         annotations: with_reference(annotations, article_id),
         favicon,

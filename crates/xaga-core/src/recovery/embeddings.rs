@@ -3,131 +3,70 @@
 //! (`scan_dir`/`parse_document`) and embeddings (`all_entries_meta`).
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::embeddings::row::{article_embed_text, checksum, feed_embed_text, topic_embed_text};
 use crate::embeddings::{EmbeddingsDb, EmbeddingsError};
-use crate::persistence::articles::article_from_document;
-use crate::persistence::frontmatter::{Frontmatter, parse_document};
-use crate::persistence::topics::topic_from_document;
+use crate::fs::scan_md_dir;
+use crate::md::{md_to_article, md_to_topic};
+use crate::persistence::entries::entry_dirs;
 use crate::types::{Article, Feed, Kind, Topic};
 
 use super::EmbeddingsReconResults;
-
-/// Scans one directory of `.md` files and appends each parsed document into `out`
-/// (id, path, frontmatter, body). The single parse recovery performs; the caller turns these into
-/// domain objects. Yields between reads to avoid starving higher-priority tasks.
-async fn scan_dir(dir: &Path, out: &mut Vec<(String, PathBuf, Frontmatter, String)>) {
-    if !dir.exists() {
-        return;
-    }
-
-    let mut entries = match tokio::fs::read_dir(dir).await {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-
-    while let Ok(Some(entry)) = entries.next_entry().await {
-        let path = entry.path();
-
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            continue;
-        }
-
-        let raw = match tokio::fs::read_to_string(&path).await {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-
-        let id = crate::util::item_id(&path);
-
-        let (fm, body) = match parse_document(&raw) {
-            Some(x) => x,
-            None => continue,
-        };
-
-        out.push((id, path, fm, body));
-        tokio::task::yield_now().await;
-    }
-}
-
-/// Sorts a `(path, item)` batch newest-modified first (in place).
-fn sort_by_mtime_desc<T>(batch: &mut [(PathBuf, T)]) {
-    batch.sort_by(|(a, _), (b, _)| {
-        let mt_a = std::fs::metadata(a).and_then(|m| m.modified()).ok();
-        let mt_b = std::fs::metadata(b).and_then(|m| m.modified()).ok();
-        mt_b.cmp(&mt_a)
-    });
-}
 
 /// Scans `{data_dir}/topics/` and `{data_dir}/entries/` and compares against LanceDB. Topics
 /// appear before articles so they are indexed first.
 ///
 /// Call `reconcile_feed_entries` before this so that entries exist on disk before the entries
 /// directory is scanned.
-pub async fn reconcile_item_embeddings(
+pub(crate) async fn reconcile_item_embeddings(
     data_dir: &Path,
     db: &EmbeddingsDb,
 ) -> Result<EmbeddingsReconResults, EmbeddingsError> {
     let db_meta = db.all_entries_meta().await?; // id → (checksum, reference, has_vector, kind)
 
-    // Scan topics first, then entries.
-    let mut topic_raw: Vec<(String, PathBuf, Frontmatter, String)> = Vec::new();
+    let mut all_topics: Vec<Topic> = Vec::new();
+    let mut all_articles: Vec<Article> = Vec::new();
 
-    scan_dir(&data_dir.join("topics"), &mut topic_raw).await;
+    // Scan file system for .md and map them to domain objects
 
-    let mut article_raw: Vec<(String, PathBuf, Frontmatter, String)> = Vec::new();
+    scan_md_dir(&data_dir.join("topics"), &mut all_topics, &md_to_topic).await;
 
-    for dir in crate::persistence::entries::entry_dirs(data_dir) {
-        scan_dir(&dir, &mut article_raw).await;
+    for dir in entry_dirs(data_dir) {
+        scan_md_dir(&dir, &mut all_articles, &md_to_article).await;
     }
 
-    // Build domain objects (parsed once); keep the path for the mtime sort.
-    let topics: Vec<(PathBuf, Topic)> = topic_raw
-        .into_iter()
-        .map(|(id, path, fm, body)| (path, topic_from_document(&id, fm, body)))
-        .collect();
+    // File system id-set for to_delete, captured before the objects are moved into batches.
 
-    let articles: Vec<(PathBuf, Article)> = article_raw
-        .into_iter()
-        .map(|(id, path, fm, body)| (path, article_from_document(&id, fm, body)))
-        .collect();
-
-    // Filesystem id-set for to_delete, captured before the objects are moved into batches.
-    let fs_ids: HashSet<String> = topics
+    let fs_ids: HashSet<String> = all_topics
         .iter()
-        .map(|(_, t)| t.id.clone())
-        .chain(articles.iter().map(|(_, a)| a.meta.id.clone()))
+        .map(|t| t.id.clone())
+        .chain(all_articles.iter().map(|a| a.meta.id.clone()))
         .collect();
 
-    // Re-embed when the row is absent, its content changed, or its vector is still pending.
-    let needs = |id: &str, cksum: &str| -> bool {
+    // Identify items that need to be embedded
+    // Embedding is needed when the row is absent, its content changed, or its vector is missing.
+
+    let needs_embedding = |id: &str, cksum: &str| -> bool {
         match db_meta.get(id) {
             None => true,
             Some((stored, _, has_vector, _)) => stored != cksum || !has_vector,
         }
     };
 
-    let mut topic_batch: Vec<(PathBuf, Topic)> = topics
+    let to_embed_topics: Vec<Topic> = all_topics
         .into_iter()
-        .filter(|(_, t)| needs(&t.id, &checksum(&t.title, topic_embed_text(t))))
+        .filter(|t| needs_embedding(&t.id, &checksum(&t.title, topic_embed_text(t))))
         .collect();
 
-    sort_by_mtime_desc(&mut topic_batch);
-
-    let to_embed_topics: Vec<Topic> = topic_batch.into_iter().map(|(_, t)| t).collect();
-
-    let mut article_batch: Vec<(PathBuf, Article)> = articles
+    let to_embed_articles: Vec<Article> = all_articles
         .into_iter()
-        .filter(|(_, a)| needs(&a.meta.id, &checksum(&a.meta.title, article_embed_text(a))))
+        .filter(|a| needs_embedding(&a.meta.id, &checksum(&a.meta.title, article_embed_text(a))))
         .collect();
-
-    sort_by_mtime_desc(&mut article_batch);
-
-    let to_embed_articles: Vec<Article> = article_batch.into_iter().map(|(_, a)| a).collect();
 
     // Feeds: diff like items — re-embed a feed only when its row is absent, its checksum changed,
     // or its vector is pending. A feed row is stale when its feed is gone from disk.
+
     let empty = HashSet::new();
 
     let all_feeds = crate::persistence::feeds::list_feeds(&data_dir.join("feeds"), &empty, &empty)
@@ -138,7 +77,7 @@ pub async fn reconcile_item_embeddings(
 
     let to_embed_feeds: Vec<Feed> = all_feeds
         .into_iter()
-        .filter(|f| needs(&f.id, &checksum(&f.title, feed_embed_text(f))))
+        .filter(|f| needs_embedding(&f.id, &checksum(&f.title, feed_embed_text(f))))
         .collect();
 
     // Build to_delete: in LanceDB but no longer on disk. Item rows: the `.md` is gone (annotation

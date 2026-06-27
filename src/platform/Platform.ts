@@ -12,7 +12,7 @@ import type {
   HtmlReaderView,
   ImportResult,
   Item,
-  SavedItem,
+  ListItem,
   Topic,
   TopicSort,
 } from "../types";
@@ -50,7 +50,7 @@ export interface Platform {
     feedUrl: string,
     filter: Filter
   ): Promise<Entry[]>;
-  listAllItems(signal: AbortSignal, filter: Filter): Promise<SavedItem[]>;
+  listAllItems(signal: AbortSignal, filter: Filter): Promise<ListItem[]>;
   markEntryRead(signal: AbortSignal, id: string): Promise<Entry>;
   markEntryUnread(signal: AbortSignal, id: string): Promise<Entry>;
 
@@ -68,7 +68,7 @@ export interface Platform {
   findArticle(signal: AbortSignal, url: string): Promise<Article | null>;
   saveArticle(signal: AbortSignal, article: Article): Promise<Article>;
   readArticle(signal: AbortSignal, id: string): Promise<Article>;
-  // `__kind` is minted at the wire boundary (toArticle), not caller-supplied,
+  // `__kind` is minted at the boundary (toArticle), not caller-supplied,
   // so it's omitted from the input. Tactical fix — see TECH_DEBT.md
   // "Frontend type branding (`__kind`)".
   createArticle(
@@ -104,7 +104,7 @@ export interface Platform {
     id: string,
     filter: Filter,
     sort: TopicSort
-  ): Promise<SavedItem[]>;
+  ): Promise<ListItem[]>;
   addTopicItem(
     signal: AbortSignal,
     topicId: string,
@@ -173,7 +173,7 @@ export interface Platform {
   onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn>;
   onUnreadChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
   onBookmarkChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
-  onAnnotationChanged(callback: (item: SavedItem) => void): Promise<UnlistenFn>;
+  onAnnotationChanged(callback: (item: ListItem) => void): Promise<UnlistenFn>;
   onAnnotationRemoved(callback: (id: string) => void): Promise<UnlistenFn>;
   onEmbeddingsChanged(callback: () => void): Promise<UnlistenFn>;
   onImportBookmarks(callback: () => void): Promise<UnlistenFn>;
@@ -216,7 +216,7 @@ export interface Platform {
   ): Promise<UnlistenFn>;
 
   // Pinned state lives in the content files (feed `.atom` category / topic `.md` tag);
-  // surfaced on the Feed/Topic DTOs (`isPinned`) and toggled per-item here.
+  // surfaced on the Feed/Topic types (`isPinned`) and toggled per-item here.
   setFeedPinned(id: string, pinned: boolean): Promise<void>;
   setTopicPinned(id: string, pinned: boolean): Promise<void>;
 

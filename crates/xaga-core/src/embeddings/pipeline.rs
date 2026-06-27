@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use sha2::Digest;
 
-use crate::types::{Annotation, Article, Entry, Feed, Kind, SavedItem, Topic};
+use crate::types::{Annotation, Article, Entry, Feed, Kind, ListItem, Topic};
 use super::db::EmbeddingEntry;
 use super::model::Embedder;
 use super::row::{article_embed_text, checksum, feed_embed_text, topic_embed_text};
@@ -92,8 +92,8 @@ pub(crate) fn annotation_embedding_entry(
 }
 
 /// The live-update payload the UI consumes to add/refresh a saved annotation.
-fn annotation_saved_item(article: &Article, annotation: &Annotation) -> SavedItem {
-    SavedItem {
+fn annotation_list_item(article: &Article, annotation: &Annotation) -> ListItem {
+    ListItem {
         id: annotation.id.clone(),
         title: annotation.text.join(" "),
         created_at: annotation.created_at.clone(),
@@ -117,7 +117,7 @@ fn annotation_saved_item(article: &Article, annotation: &Annotation) -> SavedIte
 pub async fn sync_annotations(
     article: &Article,
     db: &EmbeddingsDb,
-    annotation_tx: &flume::Sender<SavedItem>,
+    annotation_tx: &flume::Sender<ListItem>,
 ) -> Result<(), EmbeddingsError> {
     let article_id = &article.meta.id;
     let existing = db.annotation_meta_for_article(article_id).await?;
@@ -152,7 +152,7 @@ pub async fn sync_annotations(
                 if let Some(mut existing_entry) = db.get_entry(&annotation.id).await? {
                     existing_entry.color = annotation.color.clone();
                     db.upsert(existing_entry).await?;
-                    let _ = annotation_tx.send(annotation_saved_item(article, annotation));
+                    let _ = annotation_tx.send(annotation_list_item(article, annotation));
                 }
                 continue;
             }
@@ -169,7 +169,7 @@ pub async fn sync_annotations(
         };
         db.upsert(annotation_embedding_entry(article, annotation, topics, None))
             .await?;
-        let _ = annotation_tx.send(annotation_saved_item(article, annotation));
+        let _ = annotation_tx.send(annotation_list_item(article, annotation));
     }
 
     Ok(())
@@ -217,7 +217,7 @@ pub async fn sync_entry_row(
     db: &EmbeddingsDb,
     unread_tx: &flume::Sender<Entry>,
     bookmarked_tx: &flume::Sender<Entry>,
-    annotation_tx: &flume::Sender<SavedItem>,
+    annotation_tx: &flume::Sender<ListItem>,
 ) -> Result<(), EmbeddingsError> {
     let id = article.meta.id.clone();
 

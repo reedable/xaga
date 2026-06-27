@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::persistence::topics::TopicsError;
-use crate::types::CollectionItem;
-
-use crate::persistence::frontmatter::parse_document;
-use crate::persistence::topics::topic_path;
+use crate::{
+    md::parse_document,
+    persistence::topics::{TopicsError, topic_path},
+    types::CollectionItem,
+};
 
 /// Returns the union of embedding-matched items and manually curated items for a topic,
 /// with the given filter applied and ordered by `sort`. Deduplicates by ID.
@@ -14,7 +14,7 @@ pub async fn list_topic_items(
     id: &str,
     item_filter: crate::types::ItemFilter,
     sort: crate::types::ItemSort,
-) -> Result<Vec<crate::types::SavedItem>, TopicsError> {
+) -> Result<Vec<crate::types::ListItem>, TopicsError> {
     let path = topic_path(data_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
@@ -26,9 +26,9 @@ pub async fn list_topic_items(
     // Ungated similarity lookup: every embedded item ranked by similarity to the topic.
     // The explicit low floor (-1.0) disables the default 0.5 cutoff so that even weakly
     // related manually-curated items still receive a score for relevance ranking.
-    let all_embedded = crate::query::item::list_embedded_items(
+    let all_embedded = crate::query::items::list_embedded_items(
         data_dir,
-        crate::query::item::EmbeddedItemSource::RelatedTo {
+        crate::query::items::EmbeddedItemSource::RelatedTo {
             id: id.to_string(),
             limit: None,
             min_similarity: Some(-1.0),
@@ -45,7 +45,7 @@ pub async fn list_topic_items(
         .map(|e| (e.entry.id.clone(), e.similarity))
         .collect();
 
-    let mut scored: Vec<(Option<f32>, crate::types::SavedItem)> = Vec::new();
+    let mut scored: Vec<(Option<f32>, crate::types::ListItem)> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
 
     // 1. Semantic matches at or above the topic threshold, with the requested filter applied.
@@ -60,14 +60,18 @@ pub async fn list_topic_items(
         if seen.insert(e.entry.id.clone()) {
             scored.push((
                 Some(e.similarity),
-                crate::types::SavedItem {
+                crate::types::ListItem {
                     id: e.entry.id.clone(),
                     title: e.entry.title.clone(),
                     created_at: e.entry.created_at.clone(),
                     url: e.entry.url.clone(),
                     is_unread: e.entry.is_unread,
                     is_bookmarked: e.entry.is_bookmarked,
-                    reference: if e.reference.is_empty() { None } else { Some(e.reference.clone()) },
+                    reference: if e.reference.is_empty() {
+                        None
+                    } else {
+                        Some(e.reference.clone())
+                    },
                     color: e.entry.color.clone(),
                 },
             ));
@@ -93,7 +97,7 @@ pub async fn list_topic_items(
         let similarity = similarity_by_id.get(&entry.id).copied();
         scored.push((
             similarity,
-            crate::types::SavedItem {
+            crate::types::ListItem {
                 id: entry.id,
                 title: entry.title,
                 created_at: entry.created_at,
@@ -118,13 +122,15 @@ pub async fn list_topic_items(
     for item in &fm.items {
         if let CollectionItem::Annotation { id, reference } = item {
             if include_annotations && !seen.contains(id) && !reference.is_empty() {
-                if let Ok(article) = crate::persistence::articles::read_article(data_dir, reference).await {
+                if let Ok(article) =
+                    crate::persistence::articles::read_article(data_dir, reference).await
+                {
                     if let Some(ann) = article.annotations.iter().find(|a| &a.id == id) {
                         seen.insert(ann.id.clone());
                         let similarity = similarity_by_id.get(&ann.id).copied();
                         scored.push((
                             similarity,
-                            crate::types::SavedItem {
+                            crate::types::ListItem {
                                 id: ann.id.clone(),
                                 title: ann.text.join(" "),
                                 created_at: ann.created_at.clone(),
@@ -154,7 +160,7 @@ pub async fn list_topic_items(
             Ok(scored.into_iter().map(|(_, item)| item).collect())
         }
         crate::types::ItemSort::Timestamp => {
-            let mut items: Vec<crate::types::SavedItem> =
+            let mut items: Vec<crate::types::ListItem> =
                 scored.into_iter().map(|(_, item)| item).collect();
             crate::query::filter::sort_items(&mut items);
             Ok(items)

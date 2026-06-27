@@ -6,8 +6,8 @@ use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
 use xaga_core::persistence::feeds;
 use xaga_core::types::{Entry, Feed, Kind};
 
-use crate::{feeds_dir, get_bookmarked, get_unread, AppState};
 use super::parse_item_filter;
+use crate::{AppState, feeds_dir, get_bookmarked, get_unread};
 
 #[derive(Serialize)]
 pub struct ImportResult {
@@ -21,7 +21,9 @@ pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<Feed>, String>
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
-    feeds::list_feeds(&dir, &unread, &bookmarked).await.map_err(|e| e.to_string())
+    feeds::list_feeds(&dir, &unread, &bookmarked)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -29,67 +31,110 @@ pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, S
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
-    let (feed, created) = feeds::add_feed(&state.http_client, &dir, &library, &url, &unread, &bookmarked)
-        .await
-        .map_err(|e| e.to_string())?;
+    let (feed, created) = feeds::add_feed(
+        &state.http_client,
+        &dir,
+        &library,
+        &url,
+        &unread,
+        &bookmarked,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    // User-initiated CRUD: the user invoked add_feed and is waiting on the result, so the
+    // entry upsert rides Interactive (T1). Its entry embedding then follows to Regular via
+    // `embed_follow`, per the priority definitions in the embedding service's `run_loop`.
     for article in created {
-        state.enqueue(Tier::Maintenance, Job::UpsertEntry { article });
+        state.enqueue(Tier::Interactive, Job::UpsertEntry { article });
     }
     Ok(feed)
 }
 
 #[tauri::command]
-pub async fn refresh_all_feeds(window: tauri::Window, state: State<'_, AppState>) -> Result<Vec<Feed>, String> {
+pub async fn refresh_all_feeds(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+) -> Result<Vec<Feed>, String> {
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
-    let results = feeds::refresh_all_feeds(&state.http_client, &dir, &library, &unread, &bookmarked).await;
+    let results =
+        feeds::refresh_all_feeds(&state.http_client, &dir, &library, &unread, &bookmarked).await;
     let mut refreshed = Vec::new();
+
     for (id, result) in results {
         match result {
             Ok((feed, created)) => {
+                // User-initiated CRUD: the user clicked Refresh and is waiting, so the entry
+                // upsert rides Interactive (T1); its embedding follows to Regular via
+                // `embed_follow`, per the priority definitions in the service's `run_loop`.
                 for article in created {
-                    state.enqueue(Tier::Maintenance, Job::UpsertEntry { article });
+                    state.enqueue(Tier::Interactive, Job::UpsertEntry { article });
                 }
+
                 window.emit("feed:refreshed", &feed).ok();
                 refreshed.push(feed);
             }
+
             Err(e) => log::warn!("refresh_all_feeds {id}: {e}"),
         }
     }
+
     Ok(refreshed)
 }
 
 #[tauri::command]
-pub async fn set_feed_pinned(id: String, pinned: bool, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn set_feed_pinned(
+    id: String,
+    pinned: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
     let changed = feeds::set_feed_pinned(&dir, &feeds::FeedId(id.clone()), pinned)
         .await
         .map_err(|e| e.to_string())?;
+
     if changed {
         state.enqueue(
             Tier::Interactive,
             Job::SyncState {
                 entity: EntityRef::new(id, Kind::Feed),
-                state: StatePatch { is_pinned: Some(pinned), ..Default::default() },
+                state: StatePatch {
+                    is_pinned: Some(pinned),
+                    ..Default::default()
+                },
             },
         );
     }
+
     Ok(())
 }
 
 #[tauri::command]
-pub async fn rename_feed(id: String, title: String, state: State<'_, AppState>) -> Result<Feed, String> {
+pub async fn rename_feed(
+    id: String,
+    title: String,
+    state: State<'_, AppState>,
+) -> Result<Feed, String> {
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
-    let feed = feeds::rename_feed(&dir, &feeds::FeedId(id.clone()), &title, &unread, &bookmarked)
-        .await
-        .map_err(|e| e.to_string())?;
+
+    let feed = feeds::rename_feed(
+        &dir,
+        &feeds::FeedId(id.clone()),
+        &title,
+        &unread,
+        &bookmarked,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
     // Re-embed the feed row (title changed). `rename_feed` already returns the domain `Feed`;
     // carry it on the job so the consumer embeds without touching the filesystem.
     state.enqueue(Tier::Regular, Job::EmbedFeed { feed: feed.clone() });
+
     Ok(feed)
 }
 
@@ -97,7 +142,9 @@ pub async fn rename_feed(id: String, title: String, state: State<'_, AppState>) 
 pub async fn remove_feed(url: String, state: State<'_, AppState>) -> Result<String, String> {
     let dir = feeds_dir(&state.library.read().unwrap());
     let feed_id = feeds::feed_id_from_url(&url).map_err(|e| e.to_string())?;
-    feeds::remove_feed(&dir, &feed_id).await.map_err(|e| e.to_string())?;
+    feeds::remove_feed(&dir, &feed_id)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(url)
 }
 
@@ -136,10 +183,22 @@ pub async fn import_feeds(
             continue;
         }
 
-        match feeds::add_feed(&state.http_client, &dir, &library, &normalized, &unread, &bookmarked).await {
+        match feeds::add_feed(
+            &state.http_client,
+            &dir,
+            &library,
+            &normalized,
+            &unread,
+            &bookmarked,
+        )
+        .await
+        {
             Ok((feed, created)) => {
+                // User-initiated CRUD (OPML import): the user is waiting, so the entry upsert
+                // rides Interactive (T1); its embedding follows to Regular via `embed_follow`,
+                // per the priority definitions in the service's `run_loop`.
                 for article in created {
-                    state.enqueue(Tier::Maintenance, Job::UpsertEntry { article });
+                    state.enqueue(Tier::Interactive, Job::UpsertEntry { article });
                 }
                 added.push(feed);
             }
@@ -150,14 +209,15 @@ pub async fn import_feeds(
         }
     }
 
-    Ok(ImportResult { added, skipped, failed })
+    Ok(ImportResult {
+        added,
+        skipped,
+        failed,
+    })
 }
 
 #[tauri::command]
-pub async fn export_feeds(
-    file_path: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn export_feeds(file_path: String, state: State<'_, AppState>) -> Result<(), String> {
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
 
