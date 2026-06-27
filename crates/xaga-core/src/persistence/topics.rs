@@ -144,39 +144,6 @@ pub async fn set_topic_pinned(
     Ok(true)
 }
 
-/// Creates or updates a topic with explicit timestamps — for migration use only.
-/// Does not read the existing file or call `Utc::now()`.
-pub async fn save_topic_with_timestamps(
-    library_dir: &Path,
-    id: &str,
-    title: &str,
-    description: &str,
-    threshold: Option<f32>,
-    items: Vec<CollectionItem>,
-    tags: &[String],
-    created_at: &str,
-    updated_at: &str,
-) -> Result<Topic, TopicsError> {
-    let dir = crate::library::topics_dir(library_dir);
-    tokio::fs::create_dir_all(&dir).await?;
-    let path = crate::library::topic_path(library_dir, id);
-
-    let topic = Topic {
-        id: id.to_string(),
-        title: title.to_string(),
-        created_at: created_at.to_string(),
-        updated_at: Some(updated_at.to_string()),
-        description: (!description.is_empty()).then(|| description.to_string()),
-        threshold,
-        is_pinned: crate::tags::is_pinned(tags),
-        entry_count: 0,
-        unread_count: 0,
-        members: items.iter().map(crate::types::Reference::from).collect(),
-    };
-    tokio::fs::write(&path, render_topic(&topic, &items).as_bytes()).await?;
-    Ok(topic)
-}
-
 /// Creates a new topic with a UUID as its ID.
 pub async fn create_topic(
     library_dir: &Path,
