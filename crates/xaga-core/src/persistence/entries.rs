@@ -98,7 +98,7 @@ pub(crate) async fn find_entry_path(library_dir: &Path, id: &str) -> Option<Path
     if !is_safe_id(id) {
         return None;
     }
-    let path = crate::library::entries_dir(library_dir).join(format!("{id}.md"));
+    let path = crate::library::entry_path(library_dir, id);
     tokio::fs::try_exists(&path)
         .await
         .unwrap_or(false)
