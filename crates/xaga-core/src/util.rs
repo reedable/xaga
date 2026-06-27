@@ -50,7 +50,7 @@ pub(crate) fn feed_entry_id(atom_id: &str, link_href: &str) -> String {
 }
 
 /// Returns the canonical ID for any library item: the file stem.
-pub fn item_id(path: &std::path::Path) -> String {
+pub(crate) fn item_id(path: &std::path::Path) -> String {
     path.file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("")

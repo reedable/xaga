@@ -23,7 +23,7 @@ pub enum TopicsError {
 /// encoder. `items` is passed alongside the domain object because `Topic.members` (`Vec<Reference>`)
 /// is a lossy view of the stored `Vec<CollectionItem>` (it drops the annotation parent `reference`);
 /// the renderer uses `items`, not `topic.members`. `tags` is reconstructed from `topic.is_pinned`.
-pub fn render_topic(topic: &Topic, items: &[CollectionItem]) -> String {
+pub(crate) fn render_topic(topic: &Topic, items: &[CollectionItem]) -> String {
     #[derive(serde::Serialize)]
     struct Fm<'a> {
         id: &'a str,

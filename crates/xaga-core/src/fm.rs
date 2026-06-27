@@ -23,7 +23,7 @@ pub struct Frontmatter {
 
 /// Parses only the header fields from a `---`-delimited document.
 /// Returns `None` if the format is invalid.
-pub fn parse_frontmatter(raw: &str) -> Option<Frontmatter> {
+pub(crate) fn parse_frontmatter(raw: &str) -> Option<Frontmatter> {
     Some(split_document(raw)?.0)
 }
 

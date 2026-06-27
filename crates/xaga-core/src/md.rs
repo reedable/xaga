@@ -7,7 +7,7 @@ use crate::{
 };
 
 /// Represends the .md storage format
-pub struct Markdown {
+pub(crate) struct Markdown {
     pub id: String,
     pub fm: Frontmatter,
     pub body: String,
@@ -15,12 +15,12 @@ pub struct Markdown {
 
 /// Parses both the header fields and the markdown body from a `---`-delimited document.
 /// Returns `None` if the format is invalid.
-pub fn parse_document(raw: &str) -> Option<(Frontmatter, String)> {
+pub(crate) fn parse_document(raw: &str) -> Option<(Frontmatter, String)> {
     split_document(raw)
 }
 
 /// Converts .md storage format to Topic domain object
-pub fn md_to_topic(md: Markdown) -> Topic {
+pub(crate) fn md_to_topic(md: Markdown) -> Topic {
     let is_pinned = crate::tags::is_pinned(&md.fm.tags);
 
     Topic {
