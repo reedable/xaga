@@ -23,7 +23,7 @@ use super::feeds::reconcile_feed_entries;
 /// work rides the Maintenance tier (lowest precedence) — except topic embedding, which is always
 /// dispatched at Interactive, per the priority definitions in the service's `run_loop`.
 pub(crate) async fn dispatch_recovery(
-    data_dir: &Path,
+    library_dir: &Path,
     db: &EmbeddingsDb,
     embedder: &Arc<Embedder>,
     senders: &Senders,
@@ -42,10 +42,10 @@ pub(crate) async fn dispatch_recovery(
 
     // Find feed entries the atoms declare but that are missing on disk, then save them so they
     // exist before the entries scan.
-    let missing = reconcile_feed_entries(data_dir).await;
-    crate::persistence::feeds::save_new_entries(data_dir, &missing).await;
+    let missing = reconcile_feed_entries(library_dir).await;
+    crate::persistence::feeds::save_new_entries(library_dir, &missing).await;
 
-    match reconcile_item_embeddings(data_dir, db).await {
+    match reconcile_item_embeddings(library_dir, db).await {
         Ok(recon_results) => {
             log::info!(
                 "recovery: {} topics + {} articles + {} feeds to embed, {} to delete",
@@ -89,7 +89,7 @@ pub(crate) async fn dispatch_recovery(
             // Rebuild the member→topic reverse index from the topic files. Unconditional: a
             // membership-only change doesn't alter a member's checksum, so reconcile_item_embeddings
             // would skip it. Bounded by drift via the topic-row `items` base.
-            match crate::persistence::topics::list_topics(data_dir).await {
+            match crate::persistence::topics::list_topics(library_dir).await {
                 Ok(topics) => {
                     for topic in &topics {
                         let member_ids: Vec<String> =

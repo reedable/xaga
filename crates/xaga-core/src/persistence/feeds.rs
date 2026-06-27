@@ -269,21 +269,21 @@ pub fn feed_id_from_url(url: &str) -> Result<FeedId> {
 /// Save an `.md` for each entry that doesn't already exist on disk, returning the Articles
 /// created. The shared ingestion step behind `add_feed`, `refresh_feed`, and recovery's
 /// `reconcile_atom_file`.
-pub(crate) async fn save_new_entries(data_dir: &Path, entries: &[Entry]) -> Vec<Article> {
+pub(crate) async fn save_new_entries(library_dir: &Path, entries: &[Entry]) -> Vec<Article> {
     let mut created: Vec<Article> = Vec::new();
     for e in entries {
         if e.url.is_empty() {
             continue;
         }
         // Only create an Entry if one doesn't already exist on disk.
-        if crate::persistence::entries::find_entry_path(data_dir, &e.id)
+        if crate::persistence::entries::find_entry_path(library_dir, &e.id)
             .await
             .is_some()
         {
             continue;
         }
         match crate::persistence::entries::write_entry(
-            data_dir,
+            library_dir,
             &e.url,
             &e.title,
             e.published_at.as_deref(),
@@ -305,7 +305,7 @@ pub(crate) async fn save_new_entries(data_dir: &Path, entries: &[Entry]) -> Vec<
 pub async fn add_feed(
     client: &reqwest::Client,
     feeds_dir: &Path,
-    data_dir: &Path,
+    library_dir: &Path,
     url: &str,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
@@ -324,7 +324,7 @@ pub async fn add_feed(
         write_atom_atomic(feeds_dir, &id, &new_atom(&id, &url)).await?;
     }
 
-    refresh_feed(client, feeds_dir, data_dir, &id, unread, bookmarked).await
+    refresh_feed(client, feeds_dir, library_dir, &id, unread, bookmarked).await
 }
 
 /// Re-fetch a feed by ID, merge new entries into the `.atom`, and save an `.md` for each new
@@ -333,7 +333,7 @@ pub async fn add_feed(
 pub(crate) async fn refresh_feed(
     client: &reqwest::Client,
     feeds_dir: &Path,
-    data_dir: &Path,
+    library_dir: &Path,
     id: &FeedId,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
@@ -355,7 +355,7 @@ pub(crate) async fn refresh_feed(
     write_atom_atomic(feeds_dir, id, &existing).await?;
 
     let entries: Vec<Entry> = added.iter().map(atom_entry_to_entry).collect();
-    let created = save_new_entries(data_dir, &entries).await;
+    let created = save_new_entries(library_dir, &entries).await;
     Ok((
         feed_summary(id, &existing, created_at, unread, bookmarked),
         created,
@@ -366,7 +366,7 @@ pub(crate) async fn refresh_feed(
 pub async fn refresh_all_feeds(
     client: &reqwest::Client,
     feeds_dir: &Path,
-    data_dir: &Path,
+    library_dir: &Path,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
 ) -> Vec<(FeedId, Result<(Feed, Vec<Article>)>)> {
@@ -378,7 +378,7 @@ pub async fn refresh_all_feeds(
     let mut results = Vec::with_capacity(ids.len());
 
     for id in ids {
-        let result = refresh_feed(client, feeds_dir, data_dir, &id, unread, bookmarked).await;
+        let result = refresh_feed(client, feeds_dir, library_dir, &id, unread, bookmarked).await;
         results.push((id, result));
     }
 
@@ -959,8 +959,8 @@ async fn file_created_at(
 /// Returns the membership id-set for `url` (one feed) or all feeds (`None`),
 /// deduplicated. The `.atom` is the source of truth for feed membership; entry data
 /// and state are fetched from LanceDB by the caller (see the `list_entries` command).
-pub async fn list_entry_ids(library: &Path, url: Option<&str>) -> Result<Vec<String>> {
-    let feeds_dir = crate::library::feeds_dir(library);
+pub async fn list_entry_ids(library_dir: &Path, url: Option<&str>) -> Result<Vec<String>> {
+    let feeds_dir = crate::library::feeds_dir(library_dir);
     let mut ids = Vec::new();
     let mut seen = HashSet::new();
 

@@ -425,14 +425,14 @@ pub struct EmbeddingsDb {
 }
 
 impl EmbeddingsDb {
-    /// Opens (or creates) the `embeddings.lance` database inside `data_dir`.
+    /// Opens (or creates) the `embeddings.lance` database inside `library_dir`.
     ///
     /// If the directory is in an inconsistent state (open says "not found" while
     /// create says "already exists"), the directory is destroyed and recreated once.
-    pub async fn open(data_dir: &Path) -> Result<Self, EmbeddingsError> {
+    pub async fn open(library_dir: &Path) -> Result<Self, EmbeddingsError> {
         let schema = make_schema();
         for attempt in 0..2u8 {
-            let db_path = crate::library::index_path(data_dir);
+            let db_path = crate::library::index_path(library_dir);
             let connection = lancedb::connect(db_path.to_str().ok_or_else(|| {
                 EmbeddingsError::Io(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
@@ -482,7 +482,7 @@ impl EmbeddingsDb {
                         // Destroy the directory and retry once with a clean slate.
                         log::warn!("EmbeddingsDb::open: inconsistent state ({e}), resetting DB");
                         drop(connection);
-                        Self::destroy(data_dir)?;
+                        Self::destroy(library_dir)?;
                     }
                     Err(e) => return Err(e),
                 },
@@ -504,8 +504,8 @@ impl EmbeddingsDb {
     /// Deletes the `embeddings.lance` directory entirely.
     /// Used when restarting the Reconciler with a fresh DB.
     /// Silently succeeds if the directory does not exist.
-    pub fn destroy(data_dir: &Path) -> std::io::Result<()> {
-        match std::fs::remove_dir_all(crate::library::index_path(data_dir)) {
+    pub fn destroy(library_dir: &Path) -> std::io::Result<()> {
+        match std::fs::remove_dir_all(crate::library::index_path(library_dir)) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             other => other,
         }

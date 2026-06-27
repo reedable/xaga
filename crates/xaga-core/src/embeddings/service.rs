@@ -115,10 +115,10 @@ pub enum Job {
 
     // ── Control: loop control flow ──
     StartRecovery {
-        data_dir: PathBuf,
+        library_dir: PathBuf,
     },
     Reset {
-        data_dir: PathBuf,
+        library_dir: PathBuf,
     },
     Shutdown,
 }
@@ -208,17 +208,17 @@ impl EmbeddingService {
     /// Returns `Err(EmbeddingsError::LockNotAcquired)` if another instance
     /// already holds the library lock.  In that case the caller should treat
     /// the embeddings DB as read-only and not start this service.
-    pub async fn start(data_dir: PathBuf) -> Result<Self, EmbeddingsError> {
+    pub async fn start(library_dir: PathBuf) -> Result<Self, EmbeddingsError> {
         // Acquire the lock before touching LanceDB.  If the file already exists
         // another instance is running against the same library; we must not
         // write to the DB from this instance.
-        let lock = library::acquire_lock(&data_dir)
+        let lock = library::acquire_lock(&library_dir)
             .ok_or(EmbeddingsError::LockNotAcquired)?;
 
         let embedder = load_default_embedder().await?;
         let service_embedder = Arc::clone(&embedder);
 
-        let db = EmbeddingsDb::open(&data_dir).await?;
+        let db = EmbeddingsDb::open(&library_dir).await?;
 
         let (control_tx, control_rx) = flume::unbounded::<Job>();
         let (interactive_tx, interactive_rx) = flume::unbounded::<Job>();
@@ -325,9 +325,9 @@ impl EmbeddingService {
     }
 
     /// Enqueues a full recovery pass (non-blocking).
-    pub fn trigger_recovery(&self, data_dir: PathBuf) {
+    pub fn trigger_recovery(&self, library_dir: PathBuf) {
         self.senders
-            .enqueue(Tier::Control, Job::StartRecovery { data_dir });
+            .enqueue(Tier::Control, Job::StartRecovery { library_dir });
     }
 
     /// Returns a clone of the `Arc<Embedder>` for on-demand text embedding outside the service loop.
@@ -336,8 +336,8 @@ impl EmbeddingService {
     }
 
     /// Resets the embeddings DB and re-runs recovery (non-blocking).
-    pub fn reset(&self, data_dir: PathBuf) {
-        self.senders.enqueue(Tier::Control, Job::Reset { data_dir });
+    pub fn reset(&self, library_dir: PathBuf) {
+        self.senders.enqueue(Tier::Control, Job::Reset { library_dir });
     }
 
     /// Marks the service as needing a restart after shutdown.  Must be called
@@ -401,16 +401,16 @@ async fn run_loop(
             // T0 — Control: App-wide commands (and commands only)
             //      StartRecovery, Reset, Shutdown, etc
             result = control_rx.recv_async() => match result {
-                Ok(Job::StartRecovery { data_dir: dir }) => {
+                Ok(Job::StartRecovery { library_dir: dir }) => {
                     log::info!("embedding service: starting recovery for {}", dir.display());
                     crate::recovery::dispatch::dispatch_recovery(&dir, &db, &embedder, &senders).await;
                     log::info!("embedding service: recovery dispatch complete");
                 }
-                Ok(Job::Reset { data_dir: dir }) => {
+                Ok(Job::Reset { library_dir: dir }) => {
                     if let Err(e) = db.reset().await {
                         log::error!("embedding service: reset failed: {e}");
                     } else {
-                        senders.enqueue(Tier::Control, Job::StartRecovery { data_dir: dir });
+                        senders.enqueue(Tier::Control, Job::StartRecovery { library_dir: dir });
                     }
                 }
                 Ok(Job::Shutdown) => {

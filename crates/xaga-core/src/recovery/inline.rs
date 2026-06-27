@@ -30,7 +30,7 @@ pub struct RecoveryReport {
 /// Designed to be called from the CLI (`xaga embeddings recover` / `reindex`).
 /// In the Tauri app, use `dispatch::dispatch_recovery` in the embedding service instead.
 pub async fn run_full_recovery(
-    data_dir: &Path,
+    library_dir: &Path,
     embedder: &Arc<Embedder>,
     db: &EmbeddingsDb,
 ) -> RecoveryReport {
@@ -43,11 +43,11 @@ pub async fn run_full_recovery(
     // Persistence layer recovery
     // Find feed entries the atoms declare but that are missing on disk (crash repair), then save
     // them so the entries directory is complete before reconcile_item_embeddings scans it.
-    let missing = reconcile_feed_entries(data_dir).await;
-    crate::persistence::feeds::save_new_entries(data_dir, &missing).await;
+    let missing = reconcile_feed_entries(library_dir).await;
+    crate::persistence::feeds::save_new_entries(library_dir, &missing).await;
 
     // Embeddings layer recovery
-    match reconcile_item_embeddings(data_dir, db).await {
+    match reconcile_item_embeddings(library_dir, db).await {
         Ok(recon_results) => {
             process_recon_results_inline(recon_results, embedder, db, &mut report).await
         }

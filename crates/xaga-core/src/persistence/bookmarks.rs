@@ -179,7 +179,7 @@ pub struct BookmarkImportResult {
 /// Duplicate URLs within the file are skipped after the first occurrence.
 /// The caller is responsible for queuing embed messages for the returned ids.
 pub async fn import_bookmarks(
-    data_dir: &Path,
+    library_dir: &Path,
     html: &str,
 ) -> Result<BookmarkImportResult, BookmarksError> {
     let bookmark_tag = crate::tags::BOOKMARK.to_string();
@@ -196,7 +196,7 @@ pub async fn import_bookmarks(
 
         let id = url_hash12(&entry.url);
 
-        if let Some(path) = crate::persistence::entries::find_entry_path(data_dir, &id).await {
+        if let Some(path) = crate::persistence::entries::find_entry_path(library_dir, &id).await {
             // Entry already exists — add "bookmark" tag if not already present. Tags are a
             // persistence detail (not on the domain Entry), so read them from the file.
             match tokio::fs::read_to_string(&path).await {
@@ -206,7 +206,7 @@ pub async fn import_bookmarks(
                         .unwrap_or_default();
                     if !tags.contains(&bookmark_tag) {
                         tags.push(bookmark_tag.clone());
-                        match crate::persistence::entries::set_entry_tags(data_dir, &id, tags).await
+                        match crate::persistence::entries::set_entry_tags(library_dir, &id, tags).await
                         {
                             Ok(_) => updated.push(id),
                             Err(_) => failed.push(entry.url),
@@ -220,7 +220,7 @@ pub async fn import_bookmarks(
         } else {
             // No Entry exists — create one in read/ with the bookmark tag.
             match crate::persistence::entries::write_read_entry(
-                data_dir,
+                library_dir,
                 &entry.url,
                 &entry.title,
                 &entry.created_at,
@@ -245,10 +245,10 @@ pub async fn import_bookmarks(
 }
 
 /// Exports all bookmarked entries as a Netscape bookmark file to `dest_path`.
-pub async fn export_bookmarks(data_dir: &Path, dest_path: &Path) -> Result<(), BookmarksError> {
+pub async fn export_bookmarks(library_dir: &Path, dest_path: &Path) -> Result<(), BookmarksError> {
     let mut entries: Vec<Entry> = Vec::new();
 
-    scan_md_dir(&library::entries_dir(data_dir), &mut entries, &md_to_entry).await;
+    scan_md_dir(&library::entries_dir(library_dir), &mut entries, &md_to_entry).await;
 
     entries.retain(|e| e.is_bookmarked);
 

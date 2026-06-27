@@ -10,12 +10,12 @@ use crate::{
 /// Returns the union of embedding-matched items and manually curated items for a topic,
 /// with the given filter applied and ordered by `sort`. Deduplicates by ID.
 pub async fn list_topic_items(
-    data_dir: &Path,
+    library_dir: &Path,
     id: &str,
     item_filter: crate::types::ItemFilter,
     sort: crate::types::ItemSort,
 ) -> Result<Vec<crate::types::ListItem>, TopicsError> {
-    let path = topic_path(data_dir, id);
+    let path = topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
@@ -27,7 +27,7 @@ pub async fn list_topic_items(
     // The explicit low floor (-1.0) disables the default 0.5 cutoff so that even weakly
     // related manually-curated items still receive a score for relevance ranking.
     let all_embedded = crate::query::items::list_embedded_items(
-        data_dir,
+        library_dir,
         crate::query::items::EmbeddedItemSource::RelatedTo {
             id: id.to_string(),
             limit: None,
@@ -83,7 +83,7 @@ pub async fn list_topic_items(
     for item in &fm.items {
         if let CollectionItem::Entry { id } = item {
             if !seen.contains(id) {
-                if let Ok(entry) = crate::persistence::entries::read_entry(data_dir, id).await {
+                if let Ok(entry) = crate::persistence::entries::read_entry(library_dir, id).await {
                     manual_entries.push(entry);
                 }
             }
@@ -123,7 +123,7 @@ pub async fn list_topic_items(
         if let CollectionItem::Annotation { id, reference } = item {
             if include_annotations && !seen.contains(id) && !reference.is_empty() {
                 if let Ok(article) =
-                    crate::persistence::articles::read_article(data_dir, reference).await
+                    crate::persistence::articles::read_article(library_dir, reference).await
                 {
                     if let Some(ann) = article.annotations.iter().find(|a| &a.id == id) {
                         seen.insert(ann.id.clone());

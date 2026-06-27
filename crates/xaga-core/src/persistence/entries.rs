@@ -93,18 +93,18 @@ pub(crate) fn render_entry(article: &Article) -> String {
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
-pub(crate) fn entry_path(data_dir: &Path, hash12: &str) -> PathBuf {
-    crate::library::entries_dir(data_dir).join(format!("{hash12}.md"))
+pub(crate) fn entry_path(library_dir: &Path, hash12: &str) -> PathBuf {
+    crate::library::entries_dir(library_dir).join(format!("{hash12}.md"))
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /// Finds the current path of an entry by id, or `None` if the file does not exist.
-pub(crate) async fn find_entry_path(data_dir: &Path, id: &str) -> Option<PathBuf> {
+pub(crate) async fn find_entry_path(library_dir: &Path, id: &str) -> Option<PathBuf> {
     if !is_safe_id(id) {
         return None;
     }
-    let path = crate::library::entries_dir(data_dir).join(format!("{id}.md"));
+    let path = crate::library::entries_dir(library_dir).join(format!("{id}.md"));
     tokio::fs::try_exists(&path)
         .await
         .unwrap_or(false)
@@ -145,7 +145,7 @@ fn entry_article(
 /// Writes a new Entry to `entries/{hash12}.md` with the `unread` tag, returning its [`Article`].
 /// Called by `reconcile_atom_file` when a feed entry has no local file yet.
 pub(crate) async fn write_entry(
-    data_dir: &Path,
+    library_dir: &Path,
     url: &str,
     title: &str,
     published_at: Option<&str>,
@@ -154,7 +154,7 @@ pub(crate) async fn write_entry(
 ) -> Result<Article, EntryError> {
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
-    let path = entry_path(data_dir, &hash12);
+    let path = entry_path(library_dir, &hash12);
 
     let created_at = Utc::now().to_rfc3339();
     let tags = vec![crate::tags::UNREAD.to_string()];
@@ -177,7 +177,7 @@ pub(crate) async fn write_entry(
 /// If an Entry already exists at that path it is left untouched. Returns the [`Article`] for the
 /// entry so the caller can queue an embed without re-reading the file.
 pub(crate) async fn write_read_entry(
-    data_dir: &Path,
+    library_dir: &Path,
     url: &str,
     title: &str,
     created_at: &str,
@@ -188,7 +188,7 @@ pub(crate) async fn write_read_entry(
 ) -> Result<Article, EntryError> {
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
-    let path = entry_path(data_dir, &hash12);
+    let path = entry_path(library_dir, &hash12);
 
     let article = entry_article(
         hash12,
@@ -210,8 +210,8 @@ pub(crate) async fn write_read_entry(
 }
 
 /// Reads an entry by id and returns its metadata. Does not modify the file.
-pub async fn read_entry(data_dir: &Path, id: &str) -> Result<Entry, EntryError> {
-    let path = find_entry_path(data_dir, id)
+pub async fn read_entry(library_dir: &Path, id: &str) -> Result<Entry, EntryError> {
+    let path = find_entry_path(library_dir, id)
         .await
         .ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
@@ -224,8 +224,8 @@ pub async fn read_entry(data_dir: &Path, id: &str) -> Result<Entry, EntryError> 
 }
 
 /// Returns an entry's frontmatter tags — a persistence detail, not on the domain `Entry`.
-pub async fn read_entry_tags(data_dir: &Path, id: &str) -> Result<Vec<String>, EntryError> {
-    let path = find_entry_path(data_dir, id)
+pub async fn read_entry_tags(library_dir: &Path, id: &str) -> Result<Vec<String>, EntryError> {
+    let path = find_entry_path(library_dir, id)
         .await
         .ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
@@ -236,11 +236,11 @@ pub async fn read_entry_tags(data_dir: &Path, id: &str) -> Result<Vec<String>, E
 /// Replaces the tags on an entry's frontmatter and writes the file back.
 /// The file watcher picks up the write and queues a priority LanceDB update.
 pub async fn set_entry_tags(
-    data_dir: &Path,
+    library_dir: &Path,
     id: &str,
     tags: Vec<String>,
 ) -> Result<Entry, EntryError> {
-    let path = find_entry_path(data_dir, id)
+    let path = find_entry_path(library_dir, id)
         .await
         .ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;

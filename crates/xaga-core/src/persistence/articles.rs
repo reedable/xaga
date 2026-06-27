@@ -21,8 +21,8 @@ fn with_reference(mut annotations: Vec<Annotation>, article_id: &str) -> Vec<Ann
 
 // ── Path helpers ──────────────────────────────────────────────────────────────
 
-pub(crate) fn article_path(data_dir: &Path, hash12: &str) -> PathBuf {
-    crate::library::entries_dir(data_dir).join(format!("{hash12}.md"))
+pub(crate) fn article_path(library_dir: &Path, hash12: &str) -> PathBuf {
+    crate::library::entries_dir(library_dir).join(format!("{hash12}.md"))
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ pub(crate) fn article_path(data_dir: &Path, hash12: &str) -> PathBuf {
 /// and any existing annotations. Does not change the item's read state.
 /// Returns the saved Article.
 pub async fn save_article(
-    data_dir: &Path,
+    library_dir: &Path,
     id: &str,
     url: &str,
     title: &str,
@@ -46,11 +46,11 @@ pub async fn save_article(
     }
     let normalized = normalize_url(url)?;
 
-    let (path, file_exists) = match find_entry_path(data_dir, id).await {
+    let (path, file_exists) = match find_entry_path(library_dir, id).await {
         Some(p) => (p, true),
         None => {
             // No existing file (e.g. bookmark with no synced entry) — create in entries/.
-            let entries_path = article_path(data_dir, id);
+            let entries_path = article_path(library_dir, id);
             tokio::fs::create_dir_all(entries_path.parent().unwrap()).await?;
             (entries_path, false)
         }
@@ -90,7 +90,7 @@ pub async fn save_article(
 /// Creates a new article, deriving the ID from the URL hash.
 /// If an article with this URL already exists (same hash), it is overwritten.
 pub async fn create_article(
-    data_dir: &Path,
+    library_dir: &Path,
     url: &str,
     title: &str,
     published_at: Option<&str>,
@@ -102,7 +102,7 @@ pub async fn create_article(
     let normalized = normalize_url(url)?;
     let id = url_hash12(&normalized);
     save_article(
-        data_dir,
+        library_dir,
         &id,
         url,
         title,
@@ -117,10 +117,10 @@ pub async fn create_article(
 
 /// Returns the article for the given URL if it exists, or `None` if not found.
 /// The ID is derived from the normalised URL hash, matching `create_article`.
-pub async fn find_article(data_dir: &Path, url: &str) -> Result<Option<Article>, EntryError> {
+pub async fn find_article(library_dir: &Path, url: &str) -> Result<Option<Article>, EntryError> {
     let normalized = normalize_url(url)?;
     let id = url_hash12(&normalized);
-    match read_article(data_dir, &id).await {
+    match read_article(library_dir, &id).await {
         Ok(article) => Ok(Some(article)),
         Err(EntryError::NotFound) => Ok(None),
         Err(e) => Err(e),
@@ -136,8 +136,8 @@ pub(crate) fn article_from_document(id: &str, fm: Frontmatter, body: String) -> 
 }
 
 /// Returns the article for the given id, searching all entry directories.
-pub async fn read_article(data_dir: &Path, id: &str) -> Result<Article, EntryError> {
-    let path = find_entry_path(data_dir, id)
+pub async fn read_article(library_dir: &Path, id: &str) -> Result<Article, EntryError> {
+    let path = find_entry_path(library_dir, id)
         .await
         .ok_or(EntryError::NotFound)?;
 
@@ -149,11 +149,11 @@ pub async fn read_article(data_dir: &Path, id: &str) -> Result<Article, EntryErr
 /// Adds or replaces an annotation in the article's frontmatter (upsert by id).
 /// Returns the updated Article.
 pub async fn add_annotation(
-    data_dir: &Path,
+    library_dir: &Path,
     article_id: &str,
     annotation: Annotation,
 ) -> Result<Article, EntryError> {
-    let path = find_entry_path(data_dir, article_id)
+    let path = find_entry_path(library_dir, article_id)
         .await
         .ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;
@@ -181,11 +181,11 @@ pub async fn add_annotation(
 
 /// Removes an annotation by id. Returns the updated [`Article`].
 pub async fn remove_annotation(
-    data_dir: &Path,
+    library_dir: &Path,
     article_id: &str,
     annotation_id: &str,
 ) -> Result<Article, EntryError> {
-    let path = find_entry_path(data_dir, article_id)
+    let path = find_entry_path(library_dir, article_id)
         .await
         .ok_or(EntryError::NotFound)?;
     let raw = tokio::fs::read_to_string(&path).await?;

@@ -53,7 +53,7 @@ pub(crate) type Result<T> = std::result::Result<T, ItemError>;
 /// Fetch embedded items from `source`, preserving similarity rank, then filter.
 /// `is_unread` and `is_bookmarked` are read directly from LanceDB tags.
 pub async fn list_embedded_items(
-    library: &Path,
+    library_dir: &Path,
     source: EmbeddedItemSource,
     item_filter: ItemFilter,
 ) -> Result<Vec<EmbeddedEntry>> {
@@ -64,7 +64,7 @@ pub async fn list_embedded_items(
             min_similarity,
             max_similarity,
         } => {
-            let db = EmbeddingsDb::open(library).await?;
+            let db = EmbeddingsDb::open(library_dir).await?;
             let entries = db
                 .find_related(&id, limit, min_similarity, max_similarity, None)
                 .await?;
@@ -78,7 +78,7 @@ pub async fn list_embedded_items(
             min_similarity,
             max_similarity,
         } => {
-            let db = EmbeddingsDb::open(library).await?;
+            let db = EmbeddingsDb::open(library_dir).await?;
             let entries = db
                 .find_by_vector(vector, limit, min_similarity, max_similarity)
                 .await?;
@@ -91,7 +91,7 @@ pub async fn list_embedded_items(
             limit,
             min_similarity,
         } => {
-            let db = EmbeddingsDb::open(library).await?;
+            let db = EmbeddingsDb::open(library_dir).await?;
             db.find_related(&id, limit, min_similarity, None, Some(Kind::Topic))
                 .await
                 .map_err(ItemError::Embeddings)
@@ -102,8 +102,8 @@ pub async fn list_embedded_items(
 /// Lists every item in the library — entry rows and annotation rows — read entirely from
 /// LanceDB, filtered by `item_filter` and sorted by `created_at` descending. Returns the flat
 /// `ListItem` the items list renders (annotations carry `reference`/`color`).
-pub async fn list_all_items(library: &Path, item_filter: ItemFilter) -> Result<Vec<ListItem>> {
-    let db = EmbeddingsDb::open(library).await?;
+pub async fn list_all_items(library_dir: &Path, item_filter: ItemFilter) -> Result<Vec<ListItem>> {
+    let db = EmbeddingsDb::open(library_dir).await?;
 
     let (entries_result, annotations_result) =
         tokio::join!(db.all_entries(), db.list_annotations());
@@ -152,7 +152,7 @@ pub async fn list_all_items(library: &Path, item_filter: ItemFilter) -> Result<V
 /// Enriches raw LanceDB results: rows with no URL are topic rows.
 /// For each, loads the full Topic from disk and wraps it as EmbeddedItem::Topic.
 /// Falls back to EmbeddedItem::Entry for any row that can't be resolved as a topic.
-pub async fn enrich_embedded(library: &Path, entries: Vec<EmbeddedEntry>) -> Vec<EmbeddedItem> {
+pub async fn enrich_embedded(library_dir: &Path, entries: Vec<EmbeddedEntry>) -> Vec<EmbeddedItem> {
     let mut result = Vec::with_capacity(entries.len());
     for entry in entries {
         if entry.kind == Kind::Feed {
@@ -181,7 +181,7 @@ pub async fn enrich_embedded(library: &Path, entries: Vec<EmbeddedEntry>) -> Vec
         }
         if entry.entry.url.is_empty() {
             if let Ok(topic) =
-                crate::persistence::topics::read_topic(library, &entry.entry.id).await
+                crate::persistence::topics::read_topic(library_dir, &entry.entry.id).await
             {
                 result.push(EmbeddedItem::Topic(EmbeddedTopic {
                     topic,

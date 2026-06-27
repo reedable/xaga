@@ -19,8 +19,8 @@ pub enum TopicsError {
     NotFound,
 }
 
-pub(crate) fn topic_path(data_dir: &Path, id: &str) -> PathBuf {
-    crate::library::topics_dir(data_dir).join(format!("{id}.md"))
+pub(crate) fn topic_path(library_dir: &Path, id: &str) -> PathBuf {
+    crate::library::topics_dir(library_dir).join(format!("{id}.md"))
 }
 
 /// Encodes a [`Topic`] (plus its membership `items`) to its `.md` representation — the single topic
@@ -70,16 +70,16 @@ pub fn render_topic(topic: &Topic, items: &[CollectionItem]) -> String {
 /// Preserves the original `created_at` if the file already exists.
 /// Always sets `updated_at` to the current UTC time.
 pub async fn save_topic(
-    data_dir: &Path,
+    library_dir: &Path,
     id: &str,
     title: &str,
     description: &str,
     threshold: Option<f32>,
     items: Vec<CollectionItem>,
 ) -> Result<Topic, TopicsError> {
-    let dir = crate::library::topics_dir(data_dir);
+    let dir = crate::library::topics_dir(library_dir);
     tokio::fs::create_dir_all(&dir).await?;
-    let path = topic_path(data_dir, id);
+    let path = topic_path(library_dir, id);
 
     // Preserve created_at and any existing tags (e.g. "pinned") across the rewrite.
     let (created_at, tags) = if tokio::fs::try_exists(&path).await? {
@@ -115,11 +115,11 @@ pub async fn save_topic(
 /// column is updated by the watcher → `sync_row` re-read; membership is unchanged so the reconcile
 /// sees no member delta. Mirrors `feeds::set_feed_pinned`.
 pub async fn set_topic_pinned(
-    data_dir: &Path,
+    library_dir: &Path,
     id: &str,
     pinned: bool,
 ) -> Result<bool, TopicsError> {
-    let path = topic_path(data_dir, id);
+    let path = topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
@@ -151,7 +151,7 @@ pub async fn set_topic_pinned(
 /// Creates or updates a topic with explicit timestamps — for migration use only.
 /// Does not read the existing file or call `Utc::now()`.
 pub async fn save_topic_with_timestamps(
-    data_dir: &Path,
+    library_dir: &Path,
     id: &str,
     title: &str,
     description: &str,
@@ -161,9 +161,9 @@ pub async fn save_topic_with_timestamps(
     created_at: &str,
     updated_at: &str,
 ) -> Result<Topic, TopicsError> {
-    let dir = crate::library::topics_dir(data_dir);
+    let dir = crate::library::topics_dir(library_dir);
     tokio::fs::create_dir_all(&dir).await?;
-    let path = topic_path(data_dir, id);
+    let path = topic_path(library_dir, id);
 
     let topic = Topic {
         id: id.to_string(),
@@ -183,18 +183,18 @@ pub async fn save_topic_with_timestamps(
 
 /// Creates a new topic with a UUID as its ID.
 pub async fn create_topic(
-    data_dir: &Path,
+    library_dir: &Path,
     title: &str,
     description: &str,
     threshold: Option<f32>,
 ) -> Result<Topic, TopicsError> {
     let id = Uuid::new_v4().to_string();
-    save_topic(data_dir, &id, title, description, threshold, vec![]).await
+    save_topic(library_dir, &id, title, description, threshold, vec![]).await
 }
 
 /// Returns the topic for the given id.
-pub async fn read_topic(data_dir: &Path, id: &str) -> Result<Topic, TopicsError> {
-    let path = topic_path(data_dir, id);
+pub async fn read_topic(library_dir: &Path, id: &str) -> Result<Topic, TopicsError> {
+    let path = topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
@@ -210,10 +210,10 @@ pub async fn read_topic(data_dir: &Path, id: &str) -> Result<Topic, TopicsError>
 /// Returns a topic's stored membership (the `.md` `items:` list) — the storage shape
 /// (`CollectionItem`, carrying the annotation parent `reference`), not the domain `members`.
 pub async fn read_topic_items(
-    data_dir: &Path,
+    library_dir: &Path,
     id: &str,
 ) -> Result<Vec<CollectionItem>, TopicsError> {
-    let path = topic_path(data_dir, id);
+    let path = topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
@@ -223,8 +223,8 @@ pub async fn read_topic_items(
 }
 
 /// Deletes the topic file for the given id.
-pub async fn delete_topic(data_dir: &Path, id: &str) -> Result<(), TopicsError> {
-    let path = topic_path(data_dir, id);
+pub async fn delete_topic(library_dir: &Path, id: &str) -> Result<(), TopicsError> {
+    let path = topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
@@ -233,8 +233,8 @@ pub async fn delete_topic(data_dir: &Path, id: &str) -> Result<(), TopicsError> 
 }
 
 /// Returns all topics, sorted by id.
-pub async fn list_topics(data_dir: &Path) -> Result<Vec<Topic>, TopicsError> {
-    let topics_dir = crate::library::topics_dir(data_dir);
+pub async fn list_topics(library_dir: &Path) -> Result<Vec<Topic>, TopicsError> {
+    let topics_dir = crate::library::topics_dir(library_dir);
     if !tokio::fs::try_exists(&topics_dir).await? {
         return Ok(vec![]);
     }
@@ -263,25 +263,25 @@ pub async fn list_topics(data_dir: &Path) -> Result<Vec<Topic>, TopicsError> {
 
 /// Appends `item` to the topic's manual items list. No-op if already present.
 pub async fn add_topic_item(
-    data_dir: &Path,
+    library_dir: &Path,
     topic_id: &str,
     item: CollectionItem,
 ) -> Result<Topic, TopicsError> {
-    let path = topic_path(data_dir, topic_id);
+    let path = topic_path(library_dir, topic_id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(TopicsError::NotFound)?;
     if fm.items.iter().any(|i| i.id() == item.id()) {
-        return read_topic(data_dir, topic_id).await;
+        return read_topic(library_dir, topic_id).await;
     }
     // Legacy fallback: pre-migration topics keep their blurb in the body.
     let description = fm.summary.unwrap_or(body);
     let mut items = fm.items;
     items.push(item);
     save_topic(
-        data_dir,
+        library_dir,
         topic_id,
         &fm.title,
         &description,
@@ -293,25 +293,25 @@ pub async fn add_topic_item(
 
 /// Removes the item with the given ID from the topic's manual items list.
 pub async fn remove_topic_item(
-    data_dir: &Path,
+    library_dir: &Path,
     topic_id: &str,
     item_id: &str,
 ) -> Result<Topic, TopicsError> {
-    let path = topic_path(data_dir, topic_id);
+    let path = topic_path(library_dir, topic_id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
     let raw = tokio::fs::read_to_string(&path).await?;
     let (fm, body) = parse_document(&raw).ok_or(TopicsError::NotFound)?;
     if !fm.items.iter().any(|i| i.id() == item_id) {
-        return read_topic(data_dir, topic_id).await;
+        return read_topic(library_dir, topic_id).await;
     }
     // Legacy fallback: pre-migration topics keep their blurb in the body.
     let description = fm.summary.unwrap_or(body);
     let mut items = fm.items;
     items.retain(|i| i.id() != item_id);
     save_topic(
-        data_dir,
+        library_dir,
         topic_id,
         &fm.title,
         &description,
