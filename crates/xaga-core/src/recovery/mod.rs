@@ -2,14 +2,12 @@
 //! read-side). Recovery operations own the *what* — what to reconcile — and delegate the *how*
 //! (read/write) to persistence and embeddings primitives.
 //!
-//!   feed_entries — reconcile a feed's `.atom` membership into on-disk entries
 //!   embeddings   — diff the filesystem against the index, producing `EmbeddingsReconResults`
-//!   execute      — process the recon results in-process (CLI)
+//!   inline       — process the recon results in-process (CLI)
 //!   dispatch     — process the recon results by enqueuing jobs onto the embedding service
 
 pub mod dispatch;
 pub mod embeddings;
-pub mod feeds;
 pub mod inline;
 
 use crate::types::{Article, Feed, Topic};

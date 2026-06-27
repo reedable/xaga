@@ -327,9 +327,10 @@ pub async fn add_feed(
     refresh_feed(client, feeds_dir, library_dir, &id, unread, bookmarked).await
 }
 
-/// Re-fetch a feed by ID, merge new entries into the `.atom`, and save an `.md` for each new
-/// entry. Returns the summary and the Articles created, so the caller can enqueue them for
-/// indexing. Plain ingestion — persistence only; never touches recovery.
+/// Re-fetch a feed by ID, merge new entries into the atom, materialize each new entry's `.md`,
+/// then commit the atom — in that order (see the body for why it's crash-safety-critical).
+/// Returns the summary and the Articles created, so the caller can enqueue them for indexing.
+/// Plain ingestion — persistence only.
 pub(crate) async fn refresh_feed(
     client: &reqwest::Client,
     feeds_dir: &Path,
@@ -352,10 +353,17 @@ pub(crate) async fn refresh_feed(
     let added = apply_incoming(&mut existing, &incoming, id.as_str());
 
     let created_at = file_created_at(&path, Some(*existing.updated())).await;
-    write_atom_atomic(feeds_dir, id, &existing).await?;
 
+    // Materialize each new entry's `.md` BEFORE committing the atom. The `.md` is the irreplaceable
+    // content; the atom is only the membership label. A crash between the two leaves materialized
+    // entries that aren't yet in the atom — benign and self-healing: the next refresh re-adds them
+    // from the live feed (and `save_new_entries` skips the already-written `.md`). The reverse order
+    // would instead lose the content, forcing a reconciliation pass to rebuild it from the atom.
     let entries: Vec<Entry> = added.iter().map(atom_entry_to_entry).collect();
     let created = save_new_entries(library_dir, &entries).await;
+
+    write_atom_atomic(feeds_dir, id, &existing).await?;
+
     Ok((
         feed_summary(id, &existing, created_at, unread, bookmarked),
         created,
@@ -1003,17 +1011,10 @@ pub async fn list_entry_ids(library_dir: &Path, url: Option<&str>) -> Result<Vec
     Ok(ids)
 }
 
-/// Read a single `.atom` file and return its entries.
-pub(crate) async fn entries_from_path(path: &Path) -> Result<Vec<Entry>> {
-    let xml = tokio::fs::read_to_string(path).await?;
-    let feed = parse_atom(&xml)?;
-    let entries = feed.entries().iter().map(atom_entry_to_entry).collect();
-    Ok(entries)
-}
-
 fn atom_entry_to_entry(e: &atom::Entry) -> Entry {
     let title = e.title().value.clone();
     let updated_at = e.updated().to_rfc3339();
+
     let url = e
         .links()
         .iter()
@@ -1021,9 +1022,11 @@ fn atom_entry_to_entry(e: &atom::Entry) -> Entry {
         .or_else(|| e.links().first())
         .map(|l| l.href().to_string())
         .unwrap_or_default();
+
     let summary = e.summary().map(|s| s.value.clone());
     let published_at = e.published().map(|d| d.to_rfc3339());
     let normalized_url = normalize_url(&url).unwrap_or_else(|_| url.clone());
+
     Entry {
         id: url_hash12(&normalized_url),
         url,

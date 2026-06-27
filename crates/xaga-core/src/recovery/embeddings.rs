@@ -16,9 +16,6 @@ use super::EmbeddingsReconResults;
 
 /// Scans `{library_dir}/topics/` and `{library_dir}/entries/` and compares against LanceDB. Topics
 /// appear before articles so they are indexed first.
-///
-/// Call `reconcile_feed_entries` before this so that entries exist on disk before the entries
-/// directory is scanned.
 pub(crate) async fn reconcile_item_embeddings(
     library_dir: &Path,
     db: &EmbeddingsDb,

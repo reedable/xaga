@@ -12,7 +12,6 @@ use crate::types::{Entry, ListItem};
 
 use super::EmbeddingsReconResults;
 use super::embeddings::reconcile_item_embeddings;
-use super::feeds::reconcile_feed_entries;
 
 /// Summary of a completed recovery run.
 pub struct RecoveryReport {
@@ -21,11 +20,8 @@ pub struct RecoveryReport {
     pub errors: Vec<String>,
 }
 
-/// Executes a full recovery: reconciles topics and articles against LanceDB.
-///
-/// Order of operations:
-/// 1. Create missing `.md` for feed entries (articles must exist before scanning).
-/// 2. Detect caching (embeddings) discrepancies and queue corrections to LanceDB.
+/// Executes a full recovery: scans the filesystem and reconciles topics and articles against
+/// LanceDB, queuing the corrections (embeds + deletes).
 ///
 /// Designed to be called from the CLI (`xaga embeddings recover` / `reindex`).
 /// In the Tauri app, use `dispatch::dispatch_recovery` in the embedding service instead.
@@ -40,13 +36,6 @@ pub async fn run_full_recovery(
         errors: Vec::new(),
     };
 
-    // Persistence layer recovery
-    // Find feed entries the atoms declare but that are missing on disk (crash repair), then save
-    // them so the entries directory is complete before reconcile_item_embeddings scans it.
-    let missing = reconcile_feed_entries(library_dir).await;
-    crate::persistence::feeds::save_new_entries(library_dir, &missing).await;
-
-    // Embeddings layer recovery
     match reconcile_item_embeddings(library_dir, db).await {
         Ok(recon_results) => {
             process_recon_results_inline(recon_results, embedder, db, &mut report).await

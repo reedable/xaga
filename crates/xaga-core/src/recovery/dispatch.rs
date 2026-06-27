@@ -12,12 +12,11 @@ use crate::embeddings::{Embedder, EmbeddingEntry, EmbeddingsDb, Job, Tier};
 use crate::types::{Article, Topic};
 
 use super::embeddings::reconcile_item_embeddings;
-use super::feeds::reconcile_feed_entries;
 
 /// Reconciles the embeddings and enqueues the reconciled work onto the service's tiers.
 /// Lives here (the bridge), not in `embeddings`, so the filesystem reads it performs
-/// (`reconcile_feed_entries`, `reconcile_item_embeddings`, `list_topics`) stay out of
-/// the indexing layer. Driven by the service's control loop via `Job::StartRecovery`.
+/// (`reconcile_item_embeddings`, `list_topics`) stay out of the indexing layer.
+/// Driven by the service's control loop via `Job::StartRecovery`.
 ///
 /// Topics are enqueued before articles so they index first. Recovery is system-initiated, so its
 /// work rides the Maintenance tier (lowest precedence) — except topic embedding, which is always
@@ -39,11 +38,6 @@ pub(crate) async fn dispatch_recovery(
     // Capture emptiness before any inserts, so a fresh post-reset recovery can use the fast
     // bulk-insert path below instead of per-row upserts.
     let fresh = db.count().await.unwrap_or(1) == 0;
-
-    // Find feed entries the atoms declare but that are missing on disk, then save them so they
-    // exist before the entries scan.
-    let missing = reconcile_feed_entries(library_dir).await;
-    crate::persistence::feeds::save_new_entries(library_dir, &missing).await;
 
     match reconcile_item_embeddings(library_dir, db).await {
         Ok(recon_results) => {
