@@ -13,7 +13,8 @@ pub enum ShutdownReason {
 
 use crate::types::{Article, Feed, Topic};
 
-use super::lock::LockFile;
+use crate::fs::FileLock;
+use crate::library;
 use super::model::{Embedder, load_default_embedder};
 use super::pipeline::{
     add_topic_member, apply_state, embed_entry_vector, embed_feed, embed_topic_vector,
@@ -183,7 +184,7 @@ struct Events {
 /// via `enqueue()` / `job_sender()`.  All LanceDB interactions live inside this
 /// service — nothing outside needs to know LanceDB exists.
 ///
-/// The service holds the library's `LockFile` for its entire lifetime.
+/// The service holds the library's `FileLock` for its entire lifetime.
 /// Dropping the service (or calling `shutdown()`) releases the lock so the
 /// next launch can acquire it.
 pub struct EmbeddingService {
@@ -197,7 +198,7 @@ pub struct EmbeddingService {
     restart_requested: Arc<AtomicBool>,
     embedder: Arc<Embedder>,
     // Held for the service's lifetime; released (file deleted) on Drop.
-    _lock: LockFile,
+    _lock: FileLock,
 }
 
 impl EmbeddingService {
@@ -211,7 +212,7 @@ impl EmbeddingService {
         // Acquire the lock before touching LanceDB.  If the file already exists
         // another instance is running against the same library; we must not
         // write to the DB from this instance.
-        let lock = LockFile::try_acquire(LockFile::path_for(&data_dir))
+        let lock = library::acquire_lock(&data_dir)
             .ok_or(EmbeddingsError::LockNotAcquired)?;
 
         let embedder = load_default_embedder().await?;

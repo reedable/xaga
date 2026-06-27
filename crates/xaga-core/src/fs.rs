@@ -1,9 +1,11 @@
 //! Filesystem helpers shared across the crate.
 
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+
+use fs2::FileExt;
 
 use crate::md::{Markdown, parse_document};
 
@@ -127,5 +129,40 @@ where
         out.push(parse(md));
 
         tokio::task::yield_now().await;
+    }
+}
+
+/// An exclusive advisory lock on a file, used to guarantee a single writer.
+///
+/// `try_acquire` opens the path and requests a non-blocking exclusive advisory
+/// lock from the OS — `flock(2)` on Unix (macOS, Linux) and `LockFileEx` on
+/// Windows, via the `fs2` crate. Only one process can hold it at a time.
+///
+/// The lock is tied to the open file handle, not the file contents, so the OS
+/// releases it automatically when the handle is dropped — including on crashes,
+/// hard kills, or any other abnormal exit. There are no stale lock files to clean
+/// up manually.
+pub struct FileLock {
+    // The lock is held for as long as this handle is alive.
+    _file: File,
+}
+
+impl FileLock {
+    /// Attempts to acquire an exclusive advisory lock on `path`.
+    ///
+    /// Returns `Some(FileLock)` if the lock was granted, or `None` if another
+    /// live process already holds it. The lock is released automatically when the
+    /// returned value is dropped.
+    pub(crate) fn try_acquire(path: PathBuf) -> Option<Self> {
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(path)
+            .ok()?;
+
+        file.try_lock_exclusive().ok()?;
+
+        Some(Self { _file: file })
     }
 }

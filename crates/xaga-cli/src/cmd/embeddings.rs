@@ -4,9 +4,10 @@ use std::time::Instant;
 
 use clap::{Args, Subcommand};
 use xaga_core::embeddings::{
-    DEFAULT_MODEL_REPO, EmbeddingsDb, LockFile, MODEL_FILES, default_model_dir,
-    load_default_embedder,
+    DEFAULT_MODEL_REPO, EmbeddingsDb, MODEL_FILES, default_model_dir, load_default_embedder,
 };
+use xaga_core::fs::FileLock;
+use xaga_core::library;
 use xaga_core::recovery;
 
 use crate::die;
@@ -67,10 +68,10 @@ pub enum EmbeddingsCommand {
 
 /// Acquires the library write lock or exits with a clear error.
 ///
-/// The returned `LockFile` must be kept alive for the duration of the write
+/// The returned `FileLock` must be kept alive for the duration of the write
 /// operation — dropping it releases the lock.
-fn require_write_lock(data_dir: &Path) -> LockFile {
-    LockFile::try_acquire(LockFile::path_for(data_dir)).unwrap_or_else(|| {
+fn require_write_lock(data_dir: &Path) -> FileLock {
+    library::acquire_lock(data_dir).unwrap_or_else(|| {
         eprintln!("error: the Xaga UI is running against this library.");
         eprintln!("       Stop the UI before running write commands.");
         std::process::exit(1);
