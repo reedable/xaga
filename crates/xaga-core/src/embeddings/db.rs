@@ -493,7 +493,7 @@ impl EmbeddingsDb {
 
     /// Drops and recreates the "documents" table, erasing all indexed data.
     /// The `EmbeddingsDb` instance remains valid and ready for new inserts.
-    pub async fn reset(&mut self) -> Result<(), EmbeddingsError> {
+    pub(crate) async fn reset(&mut self) -> Result<(), EmbeddingsError> {
         self._connection.drop_table("documents", &[]).await?;
 
         create_empty_documents_table(&self._connection, &self.schema).await?;
@@ -513,7 +513,7 @@ impl EmbeddingsDb {
 
     /// Returns the set of all checksums currently in the database.
     /// Used to build the in-memory guard shared across feed entry embedding.
-    pub async fn all_checksums(
+    pub(crate) async fn all_checksums(
         &self,
     ) -> Result<std::collections::HashSet<String>, EmbeddingsError> {
         Ok(self.all_entries_meta().await?.into_values().map(|(checksum, _, _, _)| checksum).collect())
@@ -524,7 +524,7 @@ impl EmbeddingsDb {
     /// `is_unread`/`is_bookmarked`/`is_pinned` so state filters and counts are index-driven rather
     /// than full scans. Intended to run after recovery has populated the rows, so indexes train
     /// over real data.
-    pub async fn ensure_indexes(&self) -> Result<(), EmbeddingsError> {
+    pub(crate) async fn ensure_indexes(&self) -> Result<(), EmbeddingsError> {
         let indexed: HashSet<String> = self
             .table
             .list_indices()
@@ -690,7 +690,7 @@ impl EmbeddingsDb {
     }
 
     /// Inserts an embedding row, replacing any existing row with the same id.
-    pub async fn upsert(&self, entry: EmbeddingEntry) -> Result<(), EmbeddingsError> {
+    pub(crate) async fn upsert(&self, entry: EmbeddingEntry) -> Result<(), EmbeddingsError> {
         // Delete before insert rather than using merge_insert.
         //
         // merge_insert performs a relational join between the incoming row and all
@@ -727,7 +727,7 @@ impl EmbeddingsDb {
     /// Inserts many rows in a single `add`, with no per-row `get_entry`/`delete`.
     /// Intended for bulk recovery into a table that has no pre-existing rows for
     /// these ids (e.g. a fresh post-`reset` recovery); it does not de-duplicate.
-    pub async fn add_batch(&self, entries: Vec<EmbeddingEntry>) -> Result<(), EmbeddingsError> {
+    pub(crate) async fn add_batch(&self, entries: Vec<EmbeddingEntry>) -> Result<(), EmbeddingsError> {
         if entries.is_empty() {
             return Ok(());
         }
@@ -769,7 +769,7 @@ impl EmbeddingsDb {
     /// `has_vector` is false for rows inserted before their embedding was computed.
     /// `kind` is the row-kind discriminator ("entry" | "annotation" | "topic" | "feed").
     /// Used by recovery to determine which files need (re-)embedding.
-    pub async fn all_entries_meta(
+    pub(crate) async fn all_entries_meta(
         &self,
     ) -> Result<HashMap<String, (String, String, bool, String)>, EmbeddingsError> {
         let batches: Vec<RecordBatch> = self
@@ -817,7 +817,7 @@ impl EmbeddingsDb {
 
     /// Returns a map of `id → checksum` for all annotation rows belonging to `article_id`.
     /// Returns `(checksum, color)` per annotation id for the given article.
-    pub async fn annotation_meta_for_article(
+    pub(crate) async fn annotation_meta_for_article(
         &self,
         article_id: &str,
     ) -> Result<HashMap<String, (String, String)>, EmbeddingsError> {
@@ -856,7 +856,7 @@ impl EmbeddingsDb {
     }
 
     /// Returns the stored checksum for `id`, or `None` if not indexed.
-    pub async fn get_checksum(&self, id: &str) -> Result<Option<String>, EmbeddingsError> {
+    pub(crate) async fn get_checksum(&self, id: &str) -> Result<Option<String>, EmbeddingsError> {
         let escaped = id.replace('\'', "''");
         let batches: Vec<RecordBatch> = self
             .table
@@ -970,7 +970,7 @@ impl EmbeddingsDb {
 
     /// Deletes all rows whose `id` is in `ids` using a single operation.
     /// Skips the call entirely when `ids` is empty.
-    pub async fn delete_by_ids(&self, ids: &[String]) -> Result<(), EmbeddingsError> {
+    pub(crate) async fn delete_by_ids(&self, ids: &[String]) -> Result<(), EmbeddingsError> {
         if ids.is_empty() {
             return Ok(());
         }
@@ -987,7 +987,7 @@ impl EmbeddingsDb {
     /// Compacts small fragment files and prunes all old versions.
     /// Call this after bulk ingestion to keep the on-disk layout tidy and
     /// prevent Lance's auto-cleanup from blocking the next write.
-    pub async fn compact(&self) -> Result<(), EmbeddingsError> {
+    pub(crate) async fn compact(&self) -> Result<(), EmbeddingsError> {
         use lancedb::table::optimize::{CompactionOptions, Duration, OptimizeAction};
 
         log::info!("EmbeddingsDb::compact: compacting fragments");
@@ -1296,7 +1296,7 @@ impl EmbeddingsDb {
     ///   `DEFAULT_MAX_COSINE_DISTANCE` (0.5 similarity).
     ///
     /// Returns an empty vec if none of the provided IDs are indexed.
-    pub async fn find_related_to_many(
+    pub(crate) async fn find_related_to_many(
         &self,
         ids: &[String],
         limit: Option<usize>,
@@ -1449,7 +1449,7 @@ impl EmbeddingsDb {
     /// - `limit`: cap on results; `None` returns all matches above the threshold.
     /// - `min_similarity`: cosine similarity floor in [0, 1]; `None` uses
     ///   `DEFAULT_MAX_COSINE_DISTANCE` (0.5 similarity).
-    pub async fn find_related(
+    pub(crate) async fn find_related(
         &self,
         id: &str,
         limit: Option<usize>,
@@ -1552,7 +1552,7 @@ impl EmbeddingsDb {
 
     /// Returns items whose vectors are most similar to the given query vector.
     /// Unlike `find_related`, no ID lookup is performed and nothing is excluded.
-    pub async fn find_by_vector(
+    pub(crate) async fn find_by_vector(
         &self,
         query_vector: Vec<f32>,
         limit: Option<usize>,

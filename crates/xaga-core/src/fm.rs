@@ -31,7 +31,7 @@ pub fn parse_frontmatter(raw: &str) -> Option<Frontmatter> {
 /// `Annotation`'s `title`/`content` are derived here at the boundary (title = highlighted text,
 /// content = note). Mapped to/from the domain type by the `From` impls below.
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct FrontmatterAnnotation {
+pub(crate) struct FrontmatterAnnotation {
     pub id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reference: String,

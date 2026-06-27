@@ -52,7 +52,7 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// blocking filesystem work runs on tokio's blocking thread pool via
 /// `spawn_blocking`, so it never stalls an async executor thread. Takes owned
 /// arguments because the spawned task must be `'static`.
-pub async fn write_atomic_async(path: PathBuf, bytes: Vec<u8>) -> std::io::Result<()> {
+pub(crate) async fn write_atomic_async(path: PathBuf, bytes: Vec<u8>) -> std::io::Result<()> {
     match tokio::task::spawn_blocking(move || write_atomic(&path, &bytes)).await {
         Ok(res) => res,
         Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),

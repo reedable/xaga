@@ -195,7 +195,7 @@ pub async fn create_topic(
 /// Builds a [`Topic`] from an already-parsed document (used by recovery, which parses once during
 /// its scan and hands the domain object straight to indexing). Mirrors [`read_topic`].
 #[deprecated = "replaced by crate::md::md_to_topic"]
-pub fn topic_from_document(id: &str, fm: Frontmatter, body: String) -> Topic {
+pub(crate) fn topic_from_document(id: &str, fm: Frontmatter, body: String) -> Topic {
     let is_pinned = crate::tags::is_pinned(&fm.tags);
     Topic {
         id: id.to_string(),

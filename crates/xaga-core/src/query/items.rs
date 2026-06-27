@@ -46,7 +46,7 @@ pub enum ItemError {
     Io(#[from] std::io::Error),
 }
 
-pub type Result<T> = std::result::Result<T, ItemError>;
+pub(crate) type Result<T> = std::result::Result<T, ItemError>;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 

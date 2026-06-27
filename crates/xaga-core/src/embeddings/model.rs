@@ -128,7 +128,7 @@ pub struct Embedder {
 impl Embedder {
     /// Loads the embedding model from `model_dir`.
     /// All five required files must already be present — see `model_files_present()`.
-    pub fn load(model_dir: &Path) -> Result<Self, EmbeddingsError> {
+    pub(crate) fn load(model_dir: &Path) -> Result<Self, EmbeddingsError> {
         let read = |name: &str| -> Result<Vec<u8>, EmbeddingsError> {
             std::fs::read(model_dir.join(name))
                 .map_err(|e| EmbeddingsError::Model(format!("{name}: {e}")))

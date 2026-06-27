@@ -50,7 +50,7 @@ pub(crate) fn feed_embed_text(feed: &Feed) -> &str {
 impl EmbeddingEntry {
     /// Builds an entry row from an `Article`. `topics`/`items` are reconcile-managed (written empty
     /// here, carried forward by the sync/embed paths).
-    pub fn from_article(article: &Article, vector: Option<Vec<f32>>) -> EmbeddingEntry {
+    pub(crate) fn from_article(article: &Article, vector: Option<Vec<f32>>) -> EmbeddingEntry {
         let meta = &article.meta;
         let mut tags = Vec::new();
         if meta.is_unread {
@@ -82,7 +82,7 @@ impl EmbeddingEntry {
     }
 
     /// Builds a feed row from a domain `Feed`. Feed rows carry no created/updated timestamps.
-    pub fn from_feed(feed: &Feed, vector: Option<Vec<f32>>) -> EmbeddingEntry {
+    pub(crate) fn from_feed(feed: &Feed, vector: Option<Vec<f32>>) -> EmbeddingEntry {
         let mut tags = Vec::new();
         if feed.is_pinned {
             tags.push(crate::tags::PINNED.to_string());
@@ -111,7 +111,7 @@ impl EmbeddingEntry {
 
     /// Builds a topic row from a `Topic`. `topics`/`items` are reconcile-managed (written empty
     /// here, carried forward by the sync/embed paths).
-    pub fn from_topic(topic: &Topic, vector: Option<Vec<f32>>) -> EmbeddingEntry {
+    pub(crate) fn from_topic(topic: &Topic, vector: Option<Vec<f32>>) -> EmbeddingEntry {
         let mut tags = Vec::new();
         if topic.is_pinned {
             tags.push(crate::tags::PINNED.to_string());

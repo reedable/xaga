@@ -129,7 +129,7 @@ pub async fn find_article(data_dir: &Path, url: &str) -> Result<Option<Article>,
 
 /// Builds an [`Article`] from an already-parsed document (used by recovery, which parses once
 /// during its scan and hands the domain object straight to indexing).
-pub fn article_from_document(id: &str, fm: Frontmatter, body: String) -> Article {
+pub(crate) fn article_from_document(id: &str, fm: Frontmatter, body: String) -> Article {
     let annotations = fm.annotations.clone();
     let favicon = fm.favicon.clone();
     article_from_fm(id, fm, annotations, favicon, body)

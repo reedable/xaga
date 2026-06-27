@@ -26,7 +26,7 @@ pub enum EntryError {
 /// path component with no separators or parent-directory references. Entry and
 /// article ids are URL hashes (`url_hash12`) or Atom ids — never paths — so a
 /// value containing `/`, `\`, `..` or a NUL byte is an attempted traversal.
-pub fn is_safe_id(id: &str) -> bool {
+pub(crate) fn is_safe_id(id: &str) -> bool {
     !id.is_empty()
         && !id.contains('/')
         && !id.contains('\\')
@@ -39,7 +39,7 @@ pub fn is_safe_id(id: &str) -> bool {
 /// Encodes an [`Article`] to its `.md` representation (frontmatter + body) — the single
 /// entry/article encoder. `tags` and `aliases` are reconstructed from the domain object (state
 /// booleans / title); both are storage-only keys the domain doesn't carry directly.
-pub fn render_entry(article: &Article) -> String {
+pub(crate) fn render_entry(article: &Article) -> String {
     #[derive(serde::Serialize)]
     struct Fm<'a> {
         source: &'a str,
@@ -98,7 +98,7 @@ pub(crate) fn entry_path(data_dir: &Path, hash12: &str) -> PathBuf {
 }
 
 #[deprecated = "replaced by md_to_entry"]
-pub fn entry_from_fm(id: String, fm: Frontmatter) -> Entry {
+pub(crate) fn entry_from_fm(id: String, fm: Frontmatter) -> Entry {
     let is_unread = crate::tags::is_unread(&fm.tags);
     let is_bookmarked = crate::tags::is_bookmarked(&fm.tags);
     Entry {
@@ -120,13 +120,13 @@ pub fn entry_from_fm(id: String, fm: Frontmatter) -> Entry {
 /// Returns the canonical list of directories containing entry `.md` files.
 /// Use this only for directory-level operations (scanning, watching).
 /// To locate a specific entry by id, use [`find_entry_path`] instead.
-pub fn entry_dirs(library: &Path) -> Vec<PathBuf> {
+pub(crate) fn entry_dirs(library: &Path) -> Vec<PathBuf> {
     vec![library.join("entries")]
 }
 
 /// Finds the current path of an entry by id, checking all entry directories in order.
 /// Returns `None` if the file does not exist in any of them.
-pub async fn find_entry_path(data_dir: &Path, id: &str) -> Option<PathBuf> {
+pub(crate) async fn find_entry_path(data_dir: &Path, id: &str) -> Option<PathBuf> {
     if !is_safe_id(id) {
         return None;
     }
@@ -172,7 +172,7 @@ fn entry_article(
 
 /// Writes a new Entry to `entries/{hash12}.md` with the `unread` tag, returning its [`Article`].
 /// Called by `reconcile_atom_file` when a feed entry has no local file yet.
-pub async fn write_entry(
+pub(crate) async fn write_entry(
     data_dir: &Path,
     url: &str,
     title: &str,
@@ -204,7 +204,7 @@ pub async fn write_entry(
 /// Writes a new Entry to `entries/{hash12}.md` without the `unread` tag (already read).
 /// If an Entry already exists at that path it is left untouched. Returns the [`Article`] for the
 /// entry so the caller can queue an embed without re-reading the file.
-pub async fn write_read_entry(
+pub(crate) async fn write_read_entry(
     data_dir: &Path,
     url: &str,
     title: &str,

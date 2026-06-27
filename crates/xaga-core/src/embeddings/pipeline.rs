@@ -114,7 +114,7 @@ fn annotation_list_item(article: &Article, annotation: &Annotation) -> ListItem 
 /// - Applies a color-only change in place, preserving the existing vector.
 ///
 /// Emits the live `annotation_tx` event for inserted/updated rows.
-pub async fn sync_annotations(
+pub(crate) async fn sync_annotations(
     article: &Article,
     db: &EmbeddingsDb,
     annotation_tx: &flume::Sender<ListItem>,
@@ -378,7 +378,7 @@ const MEMBERSHIP_CHUNK: usize = 1024;
 /// later run once they exist). Member-type-agnostic — operates on whatever ids the caller passes
 /// (entries **and** annotations); annotation rows exist by this point (created by `bulk_insert` on
 /// fresh recovery, `sync_annotations` on live edits).
-pub async fn reconcile_topic_membership(
+pub(crate) async fn reconcile_topic_membership(
     db: &EmbeddingsDb,
     topic_id: &str,
     member_ids: &[String],
@@ -503,7 +503,7 @@ fn entry_from_row(row: &EmbeddingEntry) -> Entry {
 /// without reading the `.md`. `get_entry` is still required because `upsert` replaces the
 /// whole row (preserving vector/topics/items/content). A `None` field is left unchanged; a
 /// missing row is a no-op (recovery will create it).
-pub async fn apply_state(
+pub(crate) async fn apply_state(
     db: &EmbeddingsDb,
     id: &str,
     is_unread: Option<bool>,
@@ -558,7 +558,7 @@ pub async fn apply_state(
 /// Precise single-member reverse-index add: sets `topic_id` on `member_id`'s `topics`
 /// column and advances the topic row's `items` base so a later full reconcile sees no
 /// spurious delta. The O(1) counterpart to [`reconcile_topic_membership`] for a live add.
-pub async fn add_topic_member(
+pub(crate) async fn add_topic_member(
     db: &EmbeddingsDb,
     topic_id: &str,
     member_id: &str,
@@ -574,7 +574,7 @@ pub async fn add_topic_member(
 
 /// Precise single-member reverse-index remove: clears `topic_id` from `member_id`'s
 /// `topics` column and drops it from the topic row's `items` base.
-pub async fn remove_topic_member(
+pub(crate) async fn remove_topic_member(
     db: &EmbeddingsDb,
     topic_id: &str,
     member_id: &str,
@@ -591,7 +591,7 @@ pub async fn remove_topic_member(
 /// Embeds (or refreshes) one feed's row from the domain [`Feed`] carried to it — no file read.
 /// Checksum-gated: a no-op when the row already has a vector and its title/description checksum and
 /// `is_pinned` are unchanged. The `.atom` read and stale-row cleanup live in recovery (the bridge).
-pub async fn embed_feed(
+pub(crate) async fn embed_feed(
     feed: &Feed,
     embedder: &Arc<Embedder>,
     db: &EmbeddingsDb,

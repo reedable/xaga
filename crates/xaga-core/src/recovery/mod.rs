@@ -17,7 +17,7 @@ use crate::types::{Article, Feed, Topic};
 /// The output of a recovery scan: what needs to happen to bring LanceDB back into sync with the
 /// filesystem. Recovery is the filesystem-reading producer: it parses each file **once** here and
 /// carries the domain object (`Article`/`Topic`) so the embedding pass never re-reads.
-pub struct EmbeddingsReconResults {
+pub(crate) struct EmbeddingsReconResults {
     /// Topics missing from LanceDB or with changed checksums.
     /// Separated so callers can route them to a higher-priority channel.
     pub to_embed_topics: Vec<Topic>,

@@ -61,7 +61,7 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Kind::Entry => "entry",
             Kind::Annotation => "annotation",

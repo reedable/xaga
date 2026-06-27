@@ -9,7 +9,7 @@ pub const UNREAD: &str = "unread";
 /// The `bookmark` state tag.
 pub const BOOKMARK: &str = "bookmark";
 /// The `pinned` state tag.
-pub const PINNED: &str = "pinned";
+pub(crate) const PINNED: &str = "pinned";
 
 /// Whether the `unread` tag is present.
 pub fn is_unread(tags: &[String]) -> bool {
@@ -22,6 +22,6 @@ pub fn is_bookmarked(tags: &[String]) -> bool {
 }
 
 /// Whether the `pinned` tag is present.
-pub fn is_pinned(tags: &[String]) -> bool {
+pub(crate) fn is_pinned(tags: &[String]) -> bool {
     tags.iter().any(|t| t == PINNED)
 }

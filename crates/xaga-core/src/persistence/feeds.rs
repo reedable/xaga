@@ -37,7 +37,7 @@ pub enum FeedError {
     MissingSelfLink(FeedId),
 }
 
-pub type Result<T> = std::result::Result<T, FeedError>;
+pub(crate) type Result<T> = std::result::Result<T, FeedError>;
 
 // ── Shared infrastructure (private) ──────────────────────────────────────────
 
@@ -204,7 +204,7 @@ fn now_fixed() -> DateTime<FixedOffset> {
 pub struct FeedId(pub String);
 
 impl FeedId {
-    pub fn as_str(&self) -> &str {
+    pub(crate) fn as_str(&self) -> &str {
         &self.0
     }
 }
@@ -330,7 +330,7 @@ pub async fn add_feed(
 /// Re-fetch a feed by ID, merge new entries into the `.atom`, and save an `.md` for each new
 /// entry. Returns the summary and the Articles created, so the caller can enqueue them for
 /// indexing. Plain ingestion — persistence only; never touches recovery.
-pub async fn refresh_feed(
+pub(crate) async fn refresh_feed(
     client: &reqwest::Client,
     feeds_dir: &Path,
     data_dir: &Path,
@@ -413,7 +413,7 @@ pub async fn list_feeds(
 
 /// Atom `<category>` scheme that namespaces xaga's own app-local categories (e.g. the
 /// `pinned` flag) so they never collide with publisher-supplied categories.
-pub const TAG_CATEGORY_SCHEME: &str = "https://xaga.app/ns/tag";
+pub(crate) const TAG_CATEGORY_SCHEME: &str = "https://xaga.app/ns/tag";
 
 /// Whether `feed` carries the app-local [`crate::tags::PINNED`] flag, stored as an Atom
 /// `<category term="…">` under [`TAG_CATEGORY_SCHEME`].

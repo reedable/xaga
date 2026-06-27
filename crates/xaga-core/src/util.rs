@@ -31,7 +31,7 @@ pub fn normalize_url(raw: &str) -> Result<String, url::ParseError> {
 
 /// Returns the first 12 hex characters of the SHA-256 of `normalized`.
 /// Used as a compact, filesystem-safe identifier for both feeds and documents.
-pub fn url_hash12(normalized: &str) -> String {
+pub(crate) fn url_hash12(normalized: &str) -> String {
     let hash = Sha256::digest(normalized.as_bytes());
     hex::encode(hash)[..12].to_string()
 }
@@ -40,7 +40,7 @@ pub fn url_hash12(normalized: &str) -> String {
 /// Uses the Atom `<entry><id>` value when non-empty; falls back to
 /// `url_hash12(normalize_url(link_href))` when the entry id is absent or blank
 /// (malformed Atom).
-pub fn feed_entry_id(atom_id: &str, link_href: &str) -> String {
+pub(crate) fn feed_entry_id(atom_id: &str, link_href: &str) -> String {
     if !atom_id.is_empty() {
         return atom_id.to_string();
     }
