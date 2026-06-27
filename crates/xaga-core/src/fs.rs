@@ -7,8 +7,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use fs2::FileExt;
 
-use crate::md::{Markdown, parse_document};
-
 /// Atomically writes `bytes` to `path`: writes to a unique sibling temp file,
 /// fsyncs it, then renames it over `path`. `rename(2)` is atomic, so a reader
 /// never observes a partial file, and a crash mid-write leaves the previous
@@ -83,13 +81,13 @@ fn unique_tmp_path(path: &Path) -> PathBuf {
     }
 }
 
-/// Scans a directory for .md files, and appends the parsed .md file into `out` vector along with
-/// its path. Caller is responsible for providing the `Markdown` intermediate representation into
-/// domain objects via `parse` argument.  Yields between reads to avoid starving
-/// high-priority tasks.
-pub(crate) async fn scan_md_dir<T, F>(dir: &Path, out: &mut Vec<T>, parse: &F)
+/// Visits every file in `dir` whose extension matches `ext`, reading each to a `String` and handing
+/// `(path, contents)` to `visit`. Yields between files so a large scan never starves higher-priority
+/// tasks. A missing directory, an unreadable directory entry, or a file that fails to read (e.g.
+/// non-UTF-8) is skipped. Pure traversal — no knowledge of file format or contents.
+pub(crate) async fn for_each_file<F>(dir: &Path, ext: &str, mut visit: F)
 where
-    F: Fn(Markdown) -> T,
+    F: FnMut(PathBuf, String),
 {
     if !dir.exists() {
         return;
@@ -103,8 +101,7 @@ where
     while let Ok(Some(dir_entry)) = dir_entries.next_entry().await {
         let path = dir_entry.path();
 
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            // We only care about .md files
+        if path.extension().and_then(|e| e.to_str()) != Some(ext) {
             continue;
         }
 
@@ -113,20 +110,7 @@ where
             Err(_) => continue,
         };
 
-        let id = crate::util::item_id(&path);
-
-        let (frontmatter, body) = match parse_document(&raw) {
-            Some(x) => x,
-            None => continue,
-        };
-
-        let md = Markdown {
-            id,
-            fm: frontmatter,
-            body,
-        };
-
-        out.push(parse(md));
+        visit(path, raw);
 
         tokio::task::yield_now().await;
     }

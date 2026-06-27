@@ -1,15 +1,15 @@
 //! The diff stage: scan the filesystem, compare against the index, and produce `EmbeddingsReconResults`
 //! of what to embed and what to delete. Pure computation — the reads are delegated to persistence
-//! (`scan_dir`/`parse_document`) and embeddings (`all_entries_meta`).
+//! (`for_each_md`/`parse_document`) and embeddings (`all_entries_meta`).
 
 use std::collections::HashSet;
 use std::path::Path;
 
 use crate::embeddings::row::{article_embed_text, checksum, feed_embed_text, topic_embed_text};
 use crate::embeddings::{EmbeddingsDb, EmbeddingsError};
-use crate::fs::scan_md_dir;
 use crate::library;
 use crate::md::{md_to_article, md_to_topic};
+use crate::persistence::scan::for_each_md;
 use crate::types::{Article, Feed, Kind, Topic};
 
 use super::EmbeddingsReconResults;
@@ -27,9 +27,9 @@ pub(crate) async fn reconcile_item_embeddings(
 
     // Scan file system for .md and map them to domain objects
 
-    scan_md_dir(&library::topics_dir(library_dir), &mut all_topics, &md_to_topic).await;
+    for_each_md(&library::topics_dir(library_dir), &mut all_topics, &md_to_topic).await;
 
-    scan_md_dir(&library::entries_dir(library_dir), &mut all_articles, &md_to_article).await;
+    for_each_md(&library::entries_dir(library_dir), &mut all_articles, &md_to_article).await;
 
     // File system id-set for to_delete, captured before the objects are moved into batches.
 
