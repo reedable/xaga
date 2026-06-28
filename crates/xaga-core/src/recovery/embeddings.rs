@@ -1,6 +1,7 @@
-//! The diff stage: scan the filesystem, compare against the index, and produce `EmbeddingsReconResults`
-//! of what to embed and what to delete. Pure computation — the reads are delegated to persistence
-//! (`for_each_md`/`parse_document`) and embeddings (`all_entries_meta`).
+//! The diff stage: walk the filesystem, compare against the index, and drive the repair. Each item
+//! that needs embedding is streamed to the caller's `RepairSink`; the post-walk residue (feed embeds
+//! + deletes) is returned. Pure computation — the reads are delegated to persistence
+//! (`for_each_md`/`parse_document`) and embeddings (`all_entries_meta`); the *apply* is the sink's.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -10,16 +11,18 @@ use crate::embeddings::{EmbeddingsDb, EmbeddingsError};
 use crate::library;
 use crate::md::{md_to_article, md_to_topic};
 use crate::persistence::scan::for_each_md;
-use crate::types::{Article, Feed, Kind, Topic};
+use crate::types::{Feed, Kind};
 
-use super::EmbeddingsReconResults;
+use super::{RepairResidue, RepairSink};
 
-/// Scans `{library_dir}/topics/` and `{library_dir}/entries/` and compares against LanceDB. Topics
-/// appear before articles so they are indexed first.
-pub(crate) async fn reconcile_item_embeddings(
+/// Walks `{library_dir}/topics/` and `{library_dir}/entries/`, comparing each against LanceDB and
+/// streaming the items that need embedding to `sink` (topics before articles, so they index first).
+/// Returns the residue that can only be computed after the full walk: feed embeds and deletes.
+pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     library_dir: &Path,
     db: &EmbeddingsDb,
-) -> Result<EmbeddingsReconResults, EmbeddingsError> {
+    sink: &mut S,
+) -> Result<RepairResidue, EmbeddingsError> {
     let db_meta = db.all_entries_meta().await?; // id → (checksum, reference, has_vector, kind)
 
     // Embedding is needed when the row is absent, its content changed, or its vector is missing.
@@ -30,18 +33,16 @@ pub(crate) async fn reconcile_item_embeddings(
         }
     };
 
-    // Reconcile as we walk: record every on-disk id (for `to_delete` below) and retain only the
-    // objects that actually need embedding. The full corpus is never materialized — an object that
+    // Reconcile as we walk: record every on-disk id (for `to_delete` below) and stream only the
+    // items that need embedding straight to the sink. Nothing is accumulated here — an object that
     // doesn't need work is dropped the moment the walk moves past it, freeing its content.
     let mut fs_ids: HashSet<String> = HashSet::new();
-    let mut to_embed_topics: Vec<Topic> = Vec::new();
-    let mut to_embed_articles: Vec<Article> = Vec::new();
 
     // Topics first so they index before articles.
     for_each_md(&library::topics_dir(library_dir), &md_to_topic, |topic| {
         fs_ids.insert(topic.id.clone());
         if needs_embedding(&topic.id, &checksum(&topic.title, topic_embed_text(&topic))) {
-            to_embed_topics.push(topic);
+            sink.topic(topic);
         }
     })
     .await;
@@ -52,7 +53,7 @@ pub(crate) async fn reconcile_item_embeddings(
             &article.meta.id,
             &checksum(&article.meta.title, article_embed_text(&article)),
         ) {
-            to_embed_articles.push(article);
+            sink.article(article);
         }
     })
     .await;
@@ -95,9 +96,7 @@ pub(crate) async fn reconcile_item_embeddings(
         .map(|(id, _)| id)
         .collect();
 
-    Ok(EmbeddingsReconResults {
-        to_embed_topics,
-        to_embed_articles,
+    Ok(RepairResidue {
         to_embed_feeds,
         to_delete,
     })

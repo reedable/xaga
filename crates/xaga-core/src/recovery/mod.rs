@@ -2,9 +2,9 @@
 //! read-side). Recovery operations own the *what* — what to reconcile — and delegate the *how*
 //! (read/write) to persistence and embeddings primitives.
 //!
-//!   embeddings   — diff the filesystem against the index, producing `EmbeddingsReconResults`
-//!   inline       — process the recon results in-process (CLI)
-//!   dispatch     — process the recon results by enqueuing jobs onto the embedding service
+//!   embeddings   — walk the filesystem, stream items needing embedding to a `RepairSink`, return the residue
+//!   inline       — CLI sink: collect, then embed in-process
+//!   dispatch     — service sink: enqueue jobs onto the embedding tiers (or bulk-insert on fresh)
 
 pub mod dispatch;
 pub mod embeddings;
@@ -12,16 +12,20 @@ pub mod inline;
 
 use crate::types::{Article, Feed, Topic};
 
-/// The output of a recovery scan: what needs to happen to bring LanceDB back into sync with the
-/// filesystem. Recovery is the filesystem-reading producer: it parses each file **once** here and
-/// carries the domain object (`Article`/`Topic`) so the embedding pass never re-reads.
-pub(crate) struct EmbeddingsReconResults {
-    /// Topics missing from LanceDB or with changed checksums.
-    /// Separated so callers can route them to a higher-priority channel.
-    pub to_embed_topics: Vec<Topic>,
-    /// Articles missing from LanceDB or with changed checksums.
-    pub to_embed_articles: Vec<Article>,
-    /// All current feed rows to (re)embed.
+/// Receives each item that needs embedding as `repair_item_embeddings` walks the library, so the
+/// caller decides how to apply the work without the scan materializing the whole corpus. The
+/// service path enqueues onto the embedding tiers; the CLI path collects for in-process embedding.
+/// Sync by necessity — the walk's visitor cannot await (see `fs::for_each_file`).
+pub(crate) trait RepairSink {
+    fn topic(&mut self, topic: Topic);
+    fn article(&mut self, article: Article);
+}
+
+/// The post-walk residue of a repair scan: the parts that can only be known once every file has been
+/// seen, so they cannot stream item-by-item to the [`RepairSink`]. Item embeds stream during the
+/// walk; these are returned.
+pub(crate) struct RepairResidue {
+    /// All current feed rows to (re)embed. Feeds have no `.md`, so they're listed, not walked.
     pub to_embed_feeds: Vec<Feed>,
     /// IDs of LanceDB rows (items or feeds) whose source no longer exists on disk.
     pub to_delete: Vec<String>,

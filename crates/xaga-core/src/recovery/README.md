@@ -14,7 +14,7 @@ error. A library is stored as three layers, each a projection of the one above:
 
 So "recovery" is mostly **re-deriving a lower layer from a higher one**. Today the
 only active recovery *pass* is the index reconciliation,
-[`reconcile_item_embeddings`](embeddings.rs): scan `entries/` and `topics/`,
+[`repair_item_embeddings`](embeddings.rs): scan `entries/` and `topics/`,
 diff against LanceDB, and queue the corrections (embed what's new or changed,
 delete what's gone). The `.atom` ↔ `.md` relationship is kept consistent **by
 write ordering, not by a recovery pass** — see below for why that's deliberate.
@@ -43,7 +43,7 @@ but not yet in the atom*. This is **benign and self-healing**:
   up with no duplicate work, and the entry opens instantly (its content was
   written on the interrupted attempt).
 - The index layer catches the orphan `.md` independently:
-  `reconcile_item_embeddings` scans `entries/`, finds it, and embeds it.
+  `repair_item_embeddings` scans `entries/`, finds it, and embeds it.
 
 From the user's perspective nothing is ever lost: the entry is readable for as
 long as its `.md` exists, and the feed list reconciles on the next refresh.
