@@ -224,41 +224,6 @@ impl FromStr for FeedId {
     }
 }
 
-/// What happened to a feed file during `repair_feeds`.
-#[derive(Debug)]
-pub enum RepairOutcome {
-    /// File is already consistent; no changes made.
-    Ok,
-    /// File could not be read or parsed as Atom XML.
-    ParseError(String),
-    /// Feed has no `<id>` element and no `<link rel="self">` to derive one from.
-    NoId,
-    /// Feed has no `<link rel="self">` and `<id>` is not an HTTP(S) URL.
-    NoRepairableUrl,
-    /// The correctly-named target file already exists; rename skipped.
-    RenameConflict { target: FeedId },
-    /// One or more repairs were applied.
-    Repaired {
-        /// Feed `<id>` was synthesised from `<link rel="self">` and written to the file.
-        feed_id_synthesized: bool,
-        /// `<link rel="self">` was synthesised from `<id>` and written to the file.
-        self_link_added: bool,
-        /// The file was renamed to match the hash of the feed URL.
-        renamed_to: Option<FeedId>,
-        /// Entry link hrefs were normalised (trailing-slash stripping, lower-casing).
-        entry_links_normalized: bool,
-        /// Missing `<entry><id>` values were synthesised from the entry's link href.
-        entry_ids_synthesized: bool,
-    },
-}
-
-/// The result of inspecting (and possibly repairing) a single feed file.
-#[derive(Debug)]
-pub struct RepairResult {
-    pub id: FeedId,
-    pub outcome: RepairOutcome,
-}
-
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /// Derive a deterministic ID from a feed URL.
@@ -470,212 +435,6 @@ pub async fn set_feed_pinned(feeds_dir: &Path, id: &FeedId, pinned: bool) -> Res
     Ok(true)
 }
 
-/// Scan `feeds_dir` and repair inconsistencies:
-///
-/// * Missing `<link rel="self">` — synthesised from `<id>` when `<id>` is an HTTP(S) URL.
-/// * Filename whose hash does not match the feed URL — file is renamed to `{hash}.atom`.
-///
-/// Each `.atom` file is inspected in turn; errors on individual files are collected into
-/// the returned `Vec` rather than stopping the whole scan.
-/// I/O errors on the directory itself are propagated immediately.
-pub async fn repair_feeds(feeds_dir: &Path) -> Result<Vec<RepairResult>> {
-    let ids = list_feed_ids(feeds_dir).await?;
-    let mut results = Vec::with_capacity(ids.len());
-
-    for id in ids {
-        let path = xml_path(feeds_dir, &id);
-
-        // Step 1: read and parse.
-        let xml = match tokio::fs::read_to_string(&path).await {
-            Ok(s) => s,
-            Err(e) => {
-                results.push(RepairResult {
-                    id,
-                    outcome: RepairOutcome::ParseError(e.to_string()),
-                });
-                continue;
-            }
-        };
-
-        let mut feed = match parse_atom(&xml) {
-            Ok(f) => f,
-            Err(e) => {
-                results.push(RepairResult {
-                    id,
-                    outcome: RepairOutcome::ParseError(e.to_string()),
-                });
-                continue;
-            }
-        };
-
-        // Step 2: synthesise missing feed <id> from <link rel="self"> if possible.
-        let feed_id_synthesized;
-
-        if feed.id().is_empty() {
-            if let Some(self_url) = self_link_url(&feed) {
-                let normalized = normalize_url(&self_url).unwrap_or(self_url);
-                feed.set_id(url_hash12(&normalized));
-                feed_id_synthesized = true;
-            } else {
-                results.push(RepairResult {
-                    id,
-                    outcome: RepairOutcome::NoId,
-                });
-
-                continue;
-            }
-        } else {
-            feed_id_synthesized = false;
-        }
-
-        // Step 2b: normalise entry link hrefs and synthesise missing entry <id>s.
-        let (entry_links_normalized, entry_ids_synthesized) = {
-            let mut links_changed = false;
-            let mut ids_changed = false;
-            let mut entries = feed.entries().to_vec();
-
-            for entry in &mut entries {
-                // Normalise link hrefs.
-                let before: Vec<String> =
-                    entry.links().iter().map(|l| l.href().to_string()).collect();
-
-                normalize_entry_links(entry);
-
-                let after: Vec<String> =
-                    entry.links().iter().map(|l| l.href().to_string()).collect();
-
-                if before != after {
-                    links_changed = true;
-                }
-
-                // Synthesise a stable <id> when absent.
-                if entry.id().is_empty() {
-                    let first_href = entry.links().first().map(|l| l.href()).unwrap_or("");
-                    let synthesized = feed_entry_id("", first_href);
-                    entry.set_id(synthesized);
-                    ids_changed = true;
-                }
-            }
-
-            if links_changed || ids_changed {
-                feed.set_entries(entries);
-            }
-
-            (links_changed, ids_changed)
-        };
-
-        // Step 3: check for an existing <link rel="self">.
-        let self_link_added;
-        let canonical_url: String;
-
-        if let Some(existing) = self_link_url(&feed) {
-            canonical_url = match normalize_url(&existing) {
-                Ok(u) => u,
-                Err(e) => {
-                    results.push(RepairResult {
-                        id,
-                        outcome: RepairOutcome::ParseError(e.to_string()),
-                    });
-                    continue;
-                }
-            };
-
-            self_link_added = false;
-        } else {
-            // Steps 4-5: try to derive the URL from <id>.
-            let feed_id_val = feed.id().to_string();
-
-            if !feed_id_val.starts_with("http://") && !feed_id_val.starts_with("https://") {
-                results.push(RepairResult {
-                    id,
-                    outcome: RepairOutcome::NoRepairableUrl,
-                });
-                continue;
-            }
-
-            canonical_url = match normalize_url(&feed_id_val) {
-                Ok(u) => u,
-                Err(e) => {
-                    results.push(RepairResult {
-                        id,
-                        outcome: RepairOutcome::ParseError(e.to_string()),
-                    });
-                    continue;
-                }
-            };
-
-            set_self_link(&mut feed, &canonical_url);
-            self_link_added = true;
-        }
-
-        // Step 6: check whether the filename matches the expected hash.
-        let expected_id = feed_id_from_url(&canonical_url)?;
-        let needs_rename = expected_id != id;
-
-        let content_changed = feed_id_synthesized
-            || self_link_added
-            || entry_links_normalized
-            || entry_ids_synthesized;
-
-        match (content_changed, needs_rename) {
-            (false, false) => {
-                results.push(RepairResult {
-                    id,
-                    outcome: RepairOutcome::Ok,
-                });
-            }
-            (true, false) => {
-                write_atom_atomic(feeds_dir, &id, &feed).await?;
-
-                results.push(RepairResult {
-                    id,
-                    outcome: RepairOutcome::Repaired {
-                        feed_id_synthesized,
-                        self_link_added,
-                        renamed_to: None,
-                        entry_links_normalized,
-                        entry_ids_synthesized,
-                    },
-                });
-            }
-            (_, true) => {
-                let new_path = xml_path(feeds_dir, &expected_id);
-
-                if new_path.exists() {
-                    results.push(RepairResult {
-                        id,
-                        outcome: RepairOutcome::RenameConflict {
-                            target: expected_id,
-                        },
-                    });
-
-                    continue;
-                }
-
-                if content_changed {
-                    write_atom_atomic(feeds_dir, &expected_id, &feed).await?;
-                    tokio::fs::remove_file(&path).await?;
-                } else {
-                    tokio::fs::rename(&path, &new_path).await?;
-                }
-
-                results.push(RepairResult {
-                    id,
-                    outcome: RepairOutcome::Repaired {
-                        feed_id_synthesized,
-                        self_link_added,
-                        renamed_to: Some(expected_id),
-                        entry_links_normalized,
-                        entry_ids_synthesized,
-                    },
-                });
-            }
-        }
-    }
-
-    Ok(results)
-}
-
 /// Rename a feed by updating its `<title>` in the stored Atom file.
 pub async fn rename_feed(
     feeds_dir: &Path,
@@ -734,7 +493,7 @@ fn new_atom(id: &FeedId, url: &str) -> atom::Feed {
 
 /// Normalise every HTTP(S) link `href` on an entry in-place.
 /// Falls back to the raw href when `normalize_url` rejects the URL.
-/// Used as a shared helper by both `to_atom_entry` and `repair_feeds`.
+/// Used as a shared helper by `to_atom_entry`.
 fn normalize_entry_links(entry: &mut atom::Entry) {
     let links: Vec<atom::Link> = entry
         .links()
@@ -874,21 +633,6 @@ fn merge_entries(feed: &mut atom::Feed, new_entries: Vec<atom::Entry>) -> Vec<at
     }
 
     to_add
-}
-
-/// Set (or replace) the `<link rel="self">` on `feed`.
-fn set_self_link(feed: &mut atom::Feed, url: &str) {
-    let mut links: Vec<atom::Link> = feed
-        .links()
-        .iter()
-        .filter(|l| l.rel() != "self")
-        .cloned()
-        .collect();
-    let mut link = atom::Link::default();
-    link.set_href(xml_attr_encode(url));
-    link.set_rel("self");
-    links.push(link);
-    feed.set_links(links);
 }
 
 fn self_link_url(feed: &atom::Feed) -> Option<String> {
