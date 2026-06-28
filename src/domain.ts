@@ -48,6 +48,9 @@ export type Feed = Collection<Entry> &
   WebResource &
   Pinnable & {
     readonly __kind: "feed"; // description? (from Item) = the .atom subtitle
+    // createdAt (from Item) is NOT a real creation time for a Feed: Atom has no feed-level creation
+    // field (`atom:feed` has `<updated>`, no `<published>`), so the backend mirrors `<updated>` into
+    // it for now. Tech debt — don't rely on Feed.createdAt as a true creation timestamp.
   };
 
 export type Topic = Collection<Entry | Annotation | Note> &

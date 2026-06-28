@@ -91,7 +91,7 @@ pub async fn set_feed_pinned(
 ) -> Result<(), String> {
     let library = state.library.read().unwrap().clone();
     let dir = feeds_dir(&library);
-    let changed = feeds::set_feed_pinned(&dir, &feeds::FeedId(id.clone()), pinned)
+    let changed = feeds::set_feed_pinned(&dir, &id, pinned)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -123,7 +123,7 @@ pub async fn rename_feed(
 
     let feed = feeds::rename_feed(
         &dir,
-        &feeds::FeedId(id.clone()),
+        &id,
         &title,
         &unread,
         &bookmarked,

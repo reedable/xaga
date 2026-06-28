@@ -3,11 +3,9 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 use atom_syndication as atom;
 use chrono::{DateTime, FixedOffset, Utc};
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::types::{Article, Entry, Feed};
@@ -34,44 +32,25 @@ pub enum FeedError {
     #[error("feed parse error: {0}")]
     FeedParse(String),
     #[error("feed not found: {0}")]
-    NotFound(FeedId),
+    NotFound(String),
     #[error("feed missing self link: {0}")]
-    MissingSelfLink(FeedId),
+    MissingSelfLink(String),
 }
 
 pub(crate) type Result<T> = std::result::Result<T, FeedError>;
 
 // ── Shared infrastructure (private) ──────────────────────────────────────────
 
-fn xml_path(feeds_dir: &Path, id: &FeedId) -> PathBuf {
+fn xml_path(feeds_dir: &Path, id: &str) -> PathBuf {
     feeds_dir.join(format!("{id}.atom"))
 }
 
-async fn write_atom_atomic(feeds_dir: &Path, id: &FeedId, feed: &atom::Feed) -> Result<()> {
+async fn write_atom_atomic(feeds_dir: &Path, id: &str, feed: &atom::Feed) -> Result<()> {
     let mut buf = Vec::new();
     feed.write_to(&mut buf)
         .map_err(|e| FeedError::AtomParse(e.to_string()))?;
     crate::fs::write_atomic_async(xml_path(feeds_dir, id), buf).await?;
     Ok(())
-}
-
-async fn list_feed_ids(feeds_dir: &Path) -> Result<Vec<FeedId>> {
-    if !feeds_dir.exists() {
-        return Ok(vec![]);
-    }
-    let mut entries = tokio::fs::read_dir(feeds_dir).await?;
-    let mut ids = Vec::new();
-    while let Some(entry) = entries.next_entry().await? {
-        let path = entry.path();
-        let name = path.to_string_lossy();
-        if name.ends_with(".atom") && !name.ends_with(".atom.tmp") {
-            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                ids.push(FeedId(stem.to_string()));
-            }
-        }
-    }
-    ids.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(ids)
 }
 
 async fn fetch_xml(client: &reqwest::Client, url: &str) -> Result<String> {
@@ -198,39 +177,13 @@ fn now_fixed() -> DateTime<FixedOffset> {
     Utc::now().with_timezone(&FixedOffset::east_opt(0).unwrap())
 }
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
-/// Stable, filesystem-safe feed identifier.
-/// SHA-256 of the normalized URL (trailing slash stripped), first 12 hex characters.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct FeedId(pub String);
-
-impl FeedId {
-    pub(crate) fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for FeedId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl FromStr for FeedId {
-    type Err = std::convert::Infallible;
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        Ok(FeedId(s.to_string()))
-    }
-}
-
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /// Derive a deterministic ID from a feed URL.
 /// Pure/sync — no I/O.
-pub fn feed_id_from_url(url: &str) -> Result<FeedId> {
+pub fn feed_id_from_url(url: &str) -> Result<String> {
     let normalized = normalize_url(url).map_err(FeedError::InvalidUrl)?;
-    Ok(FeedId(url_hash12(&normalized)))
+    Ok(url_hash12(&normalized))
 }
 
 /// Save an `.md` for each entry that doesn't already exist on disk, returning the Articles
@@ -302,24 +255,46 @@ pub(crate) async fn refresh_feed(
     client: &reqwest::Client,
     feeds_dir: &Path,
     library_dir: &Path,
-    id: &FeedId,
+    id: &str,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
 ) -> Result<(Feed, Vec<Article>)> {
     let path = xml_path(feeds_dir, id);
     if !path.exists() {
-        return Err(FeedError::NotFound(id.clone()));
+        return Err(FeedError::NotFound(id.to_string()));
     }
-    let existing_xml = tokio::fs::read_to_string(&path).await?;
-    let mut existing = parse_atom(&existing_xml)?;
+    let existing = parse_atom(&tokio::fs::read_to_string(&path).await?)?;
 
-    let url = self_link_url(&existing).ok_or_else(|| FeedError::MissingSelfLink(id.clone()))?;
+    refresh_feed_parsed(
+        client,
+        feeds_dir,
+        library_dir,
+        id,
+        existing,
+        unread,
+        bookmarked,
+    )
+    .await
+}
+
+/// Fetch, merge, and save for a feed whose `.atom` has already been read and parsed by the caller
+/// (which holds the `path` and the parsed `existing` feed). `refresh_feed` is the by-id wrapper that
+/// performs the read; `refresh_all_feeds` calls this directly with the feed `for_each_atom` parsed,
+/// so each `.atom` is parsed exactly once.
+async fn refresh_feed_parsed(
+    client: &reqwest::Client,
+    feeds_dir: &Path,
+    library_dir: &Path,
+    id: &str,
+    mut existing: atom::Feed,
+    unread: &HashSet<String>,
+    bookmarked: &HashSet<String>,
+) -> Result<(Feed, Vec<Article>)> {
+    let url = self_link_url(&existing).ok_or_else(|| FeedError::MissingSelfLink(id.to_string()))?;
 
     let xml = fetch_xml(client, &url).await?;
     let incoming = parse_incoming(&xml)?;
-    let added = apply_incoming(&mut existing, &incoming, id.as_str());
-
-    let created_at = file_created_at(&path, Some(*existing.updated())).await;
+    let added = apply_incoming(&mut existing, &incoming, id);
 
     // Materialize each new entry's `.md` BEFORE committing the atom. The `.md` is the irreplaceable
     // content; the atom is only the membership label. A crash between the two leaves materialized
@@ -332,7 +307,7 @@ pub(crate) async fn refresh_feed(
     write_atom_atomic(feeds_dir, id, &existing).await?;
 
     Ok((
-        feed_summary(id, &existing, created_at, unread, bookmarked),
+        feed_summary(id, &existing, unread, bookmarked),
         created,
     ))
 }
@@ -344,16 +319,21 @@ pub async fn refresh_all_feeds(
     library_dir: &Path,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
-) -> Vec<(FeedId, Result<(Feed, Vec<Article>)>)> {
-    let ids = match list_feed_ids(feeds_dir).await {
-        Ok(ids) => ids,
-        Err(e) => return vec![(FeedId(String::new()), Err(e))],
-    };
+) -> Vec<(String, Result<(Feed, Vec<Article>)>)> {
+    // Walk + parse each `.atom` once; the parsed feed flows straight into the refresh, so
+    // `refresh_feed_parsed` never re-reads the file it was just walked from.
+    let mut feeds: Vec<(String, atom::Feed)> = Vec::new();
+    for_each_atom(feeds_dir, &parse_atom, |path, feed| {
+        feeds.push((crate::util::item_id(&path), feed));
+    })
+    .await;
 
-    let mut results = Vec::with_capacity(ids.len());
+    let mut results = Vec::with_capacity(feeds.len());
 
-    for id in ids {
-        let result = refresh_feed(client, feeds_dir, library_dir, &id, unread, bookmarked).await;
+    for (id, existing) in feeds {
+        let result =
+            refresh_feed_parsed(client, feeds_dir, library_dir, &id, existing, unread, bookmarked)
+                .await;
         results.push((id, result));
     }
 
@@ -366,27 +346,15 @@ pub async fn list_feeds(
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
 ) -> Result<Vec<Feed>> {
-    // Collect the parsed feeds (sync walk), then build each summary in a second pass —
-    // `file_created_at` is async and can't run inside the sync visitor. Feeds are few, so the
-    // transient is negligible.
-    let mut parsed: Vec<(PathBuf, atom::Feed)> = Vec::new();
+    let mut feeds: Vec<Feed> = Vec::new();
 
-    for_each_atom(feeds_dir, &parse_atom, |path, feed| {
-        parsed.push((path, feed))
+    for_each_atom(feeds_dir, &parse_atom, |path, atom_feed| {
+        let id = crate::util::item_id(&path);
+        feeds.push(feed_summary(&id, &atom_feed, unread, bookmarked));
     })
     .await;
 
-    let mut feeds = Vec::with_capacity(parsed.len());
-
-    for (path, atom_feed) in parsed {
-        let id = FeedId(crate::util::item_id(&path));
-        let created_at = file_created_at(&path, Some(*atom_feed.updated())).await;
-        feeds.push(feed_summary(
-            &id, &atom_feed, created_at, unread, bookmarked,
-        ));
-    }
-
-    // for_each_atom yields in directory order; restore the id sort list_feed_ids used to provide.
+    // for_each_atom yields in directory order; sort by id for a stable listing.
     feeds.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(feeds)
 }
@@ -405,7 +373,7 @@ fn is_feed_pinned(feed: &atom::Feed) -> bool {
 
 /// Adds (or removes) the app-local `pinned` category on a feed's `.atom`, under
 /// [`TAG_CATEGORY_SCHEME`]. Idempotent. Returns whether the file changed.
-pub async fn set_feed_pinned(feeds_dir: &Path, id: &FeedId, pinned: bool) -> Result<bool> {
+pub async fn set_feed_pinned(feeds_dir: &Path, id: &str, pinned: bool) -> Result<bool> {
     let path = xml_path(feeds_dir, id);
     let xml = tokio::fs::read_to_string(&path).await?;
     let mut feed = parse_atom(&xml)?;
@@ -438,28 +406,27 @@ pub async fn set_feed_pinned(feeds_dir: &Path, id: &FeedId, pinned: bool) -> Res
 /// Rename a feed by updating its `<title>` in the stored Atom file.
 pub async fn rename_feed(
     feeds_dir: &Path,
-    id: &FeedId,
+    id: &str,
     new_title: &str,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
 ) -> Result<Feed> {
     let path = xml_path(feeds_dir, id);
     if !path.exists() {
-        return Err(FeedError::NotFound(id.clone()));
+        return Err(FeedError::NotFound(id.to_string()));
     }
     let xml = tokio::fs::read_to_string(&path).await?;
     let mut feed = parse_atom(&xml)?;
     feed.set_title(atom::Text::plain(new_title));
-    let created_at = file_created_at(&path, Some(*feed.updated())).await;
     write_atom_atomic(feeds_dir, id, &feed).await?;
-    Ok(feed_summary(id, &feed, created_at, unread, bookmarked))
+    Ok(feed_summary(id, &feed, unread, bookmarked))
 }
 
 /// Remove a feed (deletes `{id}.atom`).
-pub async fn remove_feed(feeds_dir: &Path, id: &FeedId) -> Result<()> {
+pub async fn remove_feed(feeds_dir: &Path, id: &str) -> Result<()> {
     let path = xml_path(feeds_dir, id);
     if !path.exists() {
-        return Err(FeedError::NotFound(id.clone()));
+        return Err(FeedError::NotFound(id.to_string()));
     }
     tokio::fs::remove_file(&path).await?;
     Ok(())
@@ -479,13 +446,13 @@ fn incoming_title<'a>(title: &'a Option<feed_rs::model::Text>, fallback: &'a str
 /// Build a new Atom Feed from a feed-rs model, recording `source_url` as `<link rel="self">`.
 /// A fresh `.atom` for a newly added feed: records the source URL as the self-link, with no
 /// entries yet. `refresh_feed` then fetches from the self-link and fills it in.
-fn new_atom(id: &FeedId, url: &str) -> atom::Feed {
+fn new_atom(id: &str, url: &str) -> atom::Feed {
     let mut self_link = atom::Link::default();
     self_link.set_href(xml_attr_encode(url));
     self_link.set_rel("self");
 
     let mut feed = atom::Feed::default();
-    feed.set_id(id.as_str().to_string());
+    feed.set_id(id.to_string());
     feed.set_updated(now_fixed());
     feed.set_links(vec![self_link]);
     feed
@@ -643,9 +610,8 @@ fn self_link_url(feed: &atom::Feed) -> Option<String> {
 }
 
 fn feed_summary(
-    id: &FeedId,
+    id: &str,
     feed: &atom::Feed,
-    created_at: DateTime<FixedOffset>,
     unread_ids: &HashSet<String>,
     bookmarked_ids: &HashSet<String>,
 ) -> Feed {
@@ -682,35 +648,13 @@ fn feed_summary(
         description: feed.subtitle().map(|s| s.value.clone()),
         entry_count: feed.entries().len(),
         unread_count,
-        created_at: created_at.to_rfc3339(),
+        // Atom has no feed-level creation time (`atom:feed` has `<updated>`, no `<published>`), so
+        // created_at reuses `<updated>` for now — tech debt.
+        created_at: feed.updated().to_rfc3339(),
         updated_at: Some(feed.updated().to_rfc3339()),
         is_pinned: is_feed_pinned(feed),
         members: vec![],
     }
-}
-
-/// Returns the file creation time as a `DateTime<FixedOffset>`.
-/// Falls back to `updated_at` if the OS does not track creation time.
-/// Falls back to the UNIX epoch if that is also unavailable.
-async fn file_created_at(
-    path: &Path,
-    updated_at: Option<DateTime<FixedOffset>>,
-) -> DateTime<FixedOffset> {
-    let epoch = || {
-        chrono::DateTime::from_timestamp(0, 0)
-            .unwrap()
-            .with_timezone(&FixedOffset::east_opt(0).unwrap())
-    };
-    tokio::fs::metadata(path)
-        .await
-        .ok()
-        .and_then(|m| m.created().ok())
-        .map(|st| {
-            let utc = chrono::DateTime::<chrono::Utc>::from(st);
-            utc.with_timezone(&FixedOffset::east_opt(0).unwrap())
-        })
-        .or(updated_at)
-        .unwrap_or_else(epoch)
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
