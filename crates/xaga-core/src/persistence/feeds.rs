@@ -13,6 +13,8 @@ use thiserror::Error;
 use crate::types::{Article, Entry, Feed};
 use crate::util::{feed_entry_id, normalize_url, url_hash12};
 
+use super::walk::for_each_atom;
+
 // ── Shared error + result ────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
@@ -399,23 +401,28 @@ pub async fn list_feeds(
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
 ) -> Result<Vec<Feed>> {
-    let ids = list_feed_ids(feeds_dir).await?;
-    let mut feeds = Vec::with_capacity(ids.len());
+    // Collect the parsed feeds (sync walk), then build each summary in a second pass —
+    // `file_created_at` is async and can't run inside the sync visitor. Feeds are few, so the
+    // transient is negligible.
+    let mut parsed: Vec<(PathBuf, atom::Feed)> = Vec::new();
 
-    for id in ids {
-        let path = xml_path(feeds_dir, &id);
+    for_each_atom(feeds_dir, &parse_atom, |path, feed| {
+        parsed.push((path, feed))
+    })
+    .await;
 
-        if let Ok(xml) = tokio::fs::read_to_string(&path).await {
-            if let Ok(atom_feed) = parse_atom(&xml) {
-                let created_at = file_created_at(&path, Some(*atom_feed.updated())).await;
+    let mut feeds = Vec::with_capacity(parsed.len());
 
-                feeds.push(feed_summary(
-                    &id, &atom_feed, created_at, unread, bookmarked,
-                ));
-            }
-        }
+    for (path, atom_feed) in parsed {
+        let id = FeedId(crate::util::item_id(&path));
+        let created_at = file_created_at(&path, Some(*atom_feed.updated())).await;
+        feeds.push(feed_summary(
+            &id, &atom_feed, created_at, unread, bookmarked,
+        ));
     }
 
+    // for_each_atom yields in directory order; restore the id sort list_feed_ids used to provide.
+    feeds.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(feeds)
 }
 
@@ -992,19 +999,15 @@ pub async fn list_entry_ids(library_dir: &Path, url: Option<&str>) -> Result<Vec
             }
         }
         None => {
-            let feed_ids = list_feed_ids(&feeds_dir).await?;
-            for fid in feed_ids {
-                if let Ok(xml) = tokio::fs::read_to_string(xml_path(&feeds_dir, &fid)).await {
-                    if let Ok(feed) = parse_atom(&xml) {
-                        for e in feed.entries() {
-                            let id = atom_entry_to_entry(e).id;
-                            if seen.insert(id.clone()) {
-                                ids.push(id);
-                            }
-                        }
+            for_each_atom(&feeds_dir, &parse_atom, |_path, feed| {
+                for e in feed.entries() {
+                    let id = atom_entry_to_entry(e).id;
+                    if seen.insert(id.clone()) {
+                        ids.push(id);
                     }
                 }
-            }
+            })
+            .await;
         }
     }
 

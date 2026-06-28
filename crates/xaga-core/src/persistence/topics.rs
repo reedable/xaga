@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     fm::parse_frontmatter,
     md::{Markdown, md_to_topic, parse_document},
-    persistence::scan::for_each_md,
+    persistence::walk::for_each_md,
     types::{CollectionItem, Topic},
 };
 

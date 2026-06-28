@@ -8,7 +8,7 @@ use crate::{
     fm::parse_frontmatter,
     library,
     md::md_to_entry,
-    persistence::scan::for_each_md,
+    persistence::walk::for_each_md,
     types::{Article, Entry},
     util::{normalize_url, url_hash12},
 };

@@ -8,5 +8,5 @@ pub mod bookmarks;
 pub mod entries;
 pub mod feeds;
 pub mod opml;
-pub(crate) mod scan;
 pub mod topics;
+pub(crate) mod walk;

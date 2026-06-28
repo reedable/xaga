@@ -10,7 +10,7 @@ use crate::embeddings::row::{article_embed_text, checksum, feed_embed_text, topi
 use crate::embeddings::{EmbeddingsDb, EmbeddingsError};
 use crate::library;
 use crate::md::{md_to_article, md_to_topic};
-use crate::persistence::scan::for_each_md;
+use crate::persistence::walk::for_each_md;
 use crate::types::{Feed, Kind};
 
 use super::{RepairResidue, RepairSink};
