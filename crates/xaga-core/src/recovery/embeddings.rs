@@ -63,10 +63,9 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
 
     let empty = HashSet::new();
 
-    let all_feeds =
-        crate::persistence::feeds::list_feeds(&library::feeds_dir(library_dir), &empty, &empty)
-            .await
-            .unwrap_or_default();
+    let all_feeds = crate::persistence::feeds::list_feeds(library_dir, &empty, &empty)
+        .await
+        .unwrap_or_default();
 
     let feed_ids: HashSet<String> = all_feeds.iter().map(|f| f.id.clone()).collect();
 

@@ -5,9 +5,9 @@
 //   query       — read-side joins over both
 //   recovery    — the filesystem-reading producer that reconciles files into the index
 mod consts; // intentional empty guardrail — keep; see consts.rs
+pub mod atom;
 pub mod domain;
 pub mod embeddings;
-pub mod fm;
 pub mod fs;
 pub mod library;
 pub mod md;

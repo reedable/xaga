@@ -54,10 +54,6 @@ impl AppState {
     }
 }
 
-pub(crate) fn feeds_dir(library: &Path) -> PathBuf {
-    xaga_core::library::feeds_dir(library)
-}
-
 /// The set of unread entry ids, read from LanceDB (the `is_unread` Bitmap index) via the shared
 /// read handle. Reloads first (handles are version-pinned); empty if the handle isn't ready.
 pub(crate) async fn get_unread(state: &AppState) -> std::collections::HashSet<String> {

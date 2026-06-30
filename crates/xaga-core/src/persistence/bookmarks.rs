@@ -5,7 +5,7 @@ use scraper::{ElementRef, Html, Selector};
 use thiserror::Error;
 
 use crate::{
-    fm::parse_frontmatter,
+    md::parse_frontmatter,
     library,
     md::md_to_entry,
     persistence::walk::for_each_md,

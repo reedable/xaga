@@ -20,11 +20,11 @@ pub enum FeedsCommand {
     List,
 }
 
-pub async fn handle(cmd: FeedsCommand, feeds_dir: &PathBuf, data_dir: &PathBuf) {
+pub async fn handle(cmd: FeedsCommand, data_dir: &PathBuf) {
     match cmd {
         FeedsCommand::List => {
             let (unread, bookmarked) = read_state_sets(data_dir).await;
-            match feeds::list_feeds(feeds_dir, &unread, &bookmarked).await {
+            match feeds::list_feeds(data_dir, &unread, &bookmarked).await {
                 Ok(feeds) if feeds.is_empty() => {
                     println!("No feeds saved.");
                 }

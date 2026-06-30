@@ -6,16 +6,21 @@
   "scripts": {
     "clean": "rm -rf dist target",
     "dev": "vite",
+    "audit": "cargo audit",
+    "audit:report": "npm run audit || true",
     "build": "tsc -b && vite build",
     "icons": "node scripts/generate-icons.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
+
     "tauri": "tauri",
     "tauri:debug": "RUST_LOG=xaga=debug tauri dev",
-    "clean:build": "npm run clean && npm run tauri build",
-    "cli:build": "cargo build -p xaga-cli",
-    "cli:build:release": "cargo build -p xaga-cli --release",
-    "cli:run": "cargo run -p xaga-cli --"
+    "tauri:build": "npm run audit:report && npm run tauri build",
+    "tauri:build:release": "npm run audit && npm run clean && npm run tauri build",
+
+    "cli:debug": "cargo run -p xaga-cli --",
+    "cli:build": "npm run audit:report && cargo build -p xaga-cli",
+    "cli:build:release": "npm run audit && cargo build -p xaga-cli --release"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

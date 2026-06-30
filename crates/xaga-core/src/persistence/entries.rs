@@ -4,7 +4,7 @@ use chrono::Utc;
 use thiserror::Error;
 
 use crate::{
-    fm::{FrontmatterAnnotation, parse_frontmatter},
+    md::{FrontmatterAnnotation, parse_frontmatter},
     md::{Markdown, md_to_entry, parse_document},
     types::{Article, Entry},
     util::{normalize_url, url_hash12},

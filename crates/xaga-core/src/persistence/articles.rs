@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::{
-    fm::Frontmatter,
+    md::Frontmatter,
     md::{Markdown, md_to_entry, parse_document},
     persistence::entries::{EntryError, find_entry_path, render_entry},
     types::{Annotation, Article, Entry},

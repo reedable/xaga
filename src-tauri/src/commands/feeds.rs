@@ -7,7 +7,7 @@ use xaga_core::persistence::feeds;
 use xaga_core::types::{Entry, Feed, Kind};
 
 use super::parse_item_filter;
-use crate::{AppState, feeds_dir, get_bookmarked, get_unread};
+use crate::{AppState, get_bookmarked, get_unread};
 
 #[derive(Serialize)]
 pub struct ImportResult {
@@ -19,9 +19,8 @@ pub struct ImportResult {
 #[tauri::command]
 pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<Feed>, String> {
     let library = state.library.read().unwrap().clone();
-    let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
-    feeds::list_feeds(&dir, &unread, &bookmarked)
+    feeds::list_feeds(&library, &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())
 }
@@ -29,11 +28,9 @@ pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<Feed>, String>
 #[tauri::command]
 pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, String> {
     let library = state.library.read().unwrap().clone();
-    let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
     let (feed, created) = feeds::add_feed(
         &state.http_client,
-        &dir,
         &library,
         &url,
         &unread,
@@ -56,10 +53,9 @@ pub async fn refresh_all_feeds(
     state: State<'_, AppState>,
 ) -> Result<Vec<Feed>, String> {
     let library = state.library.read().unwrap().clone();
-    let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
     let results =
-        feeds::refresh_all_feeds(&state.http_client, &dir, &library, &unread, &bookmarked).await;
+        feeds::refresh_all_feeds(&state.http_client, &library, &unread, &bookmarked).await;
     let mut refreshed = Vec::new();
 
     for (id, result) in results {
@@ -90,8 +86,7 @@ pub async fn set_feed_pinned(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let library = state.library.read().unwrap().clone();
-    let dir = feeds_dir(&library);
-    let changed = feeds::set_feed_pinned(&dir, &id, pinned)
+    let changed = feeds::set_feed_pinned(&library, &id, pinned)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -118,11 +113,10 @@ pub async fn rename_feed(
     state: State<'_, AppState>,
 ) -> Result<Feed, String> {
     let library = state.library.read().unwrap().clone();
-    let dir = feeds_dir(&library);
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
 
     let feed = feeds::rename_feed(
-        &dir,
+        &library,
         &id,
         &title,
         &unread,
@@ -140,9 +134,9 @@ pub async fn rename_feed(
 
 #[tauri::command]
 pub async fn remove_feed(url: String, state: State<'_, AppState>) -> Result<String, String> {
-    let dir = feeds_dir(&state.library.read().unwrap());
+    let library = state.library.read().unwrap().clone();
     let feed_id = feeds::feed_id_from_url(&url).map_err(|e| e.to_string())?;
-    feeds::remove_feed(&dir, &feed_id)
+    feeds::remove_feed(&library, &feed_id)
         .await
         .map_err(|e| e.to_string())?;
     Ok(url)
@@ -154,7 +148,6 @@ pub async fn import_feeds(
     state: State<'_, AppState>,
 ) -> Result<ImportResult, String> {
     let library = state.library.read().unwrap().clone();
-    let dir = feeds_dir(&library);
 
     let xml = tokio::fs::read_to_string(&file_path)
         .await
@@ -185,7 +178,6 @@ pub async fn import_feeds(
 
         match feeds::add_feed(
             &state.http_client,
-            &dir,
             &library,
             &normalized,
             &unread,
@@ -219,10 +211,9 @@ pub async fn import_feeds(
 #[tauri::command]
 pub async fn export_feeds(file_path: String, state: State<'_, AppState>) -> Result<(), String> {
     let library = state.library.read().unwrap().clone();
-    let dir = feeds_dir(&library);
 
     let (unread, bookmarked) = (get_unread(&state).await, get_bookmarked(&state).await);
-    let feed_list = feeds::list_feeds(&dir, &unread, &bookmarked)
+    let feed_list = feeds::list_feeds(&library, &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())?;
 

@@ -61,6 +61,13 @@ pub fn topic_path(library_dir: &Path, id: &str) -> PathBuf {
     library_dir.join(format!("{TOPICS_SUBDIR}/{id}.md"))
 }
 
+/// Path to a single feed's `.atom` file (`<library>/feeds/<id>.atom`).
+/// One-allocation, like [`entry_path`].
+#[inline]
+pub fn feed_path(library_dir: &Path, id: &str) -> PathBuf {
+    library_dir.join(format!("{FEEDS_SUBDIR}/{id}.atom"))
+}
+
 // ── Single-writer lock ──────────────────────────────────────────────────────────
 
 /// Filename of the single-writer advisory lock at a library's root. Private and
