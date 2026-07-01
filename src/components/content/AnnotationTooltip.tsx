@@ -23,7 +23,7 @@ import css from "./AnnotationTooltip.module.css";
 import { TopicMenuButton, type TopicMenuButtonHandle } from "./TopicMenuButton";
 
 export interface AnnotationTooltipHandle {
-  saveAnnotationToTopics: (annotation: Entry | Annotation) => Promise<void>;
+  addAnnotationToTopics: (annotation: Entry | Annotation) => Promise<void>;
 }
 
 export interface AnnotationTooltipProps {
@@ -69,8 +69,8 @@ export const AnnotationTooltip = forwardRef<
   const [pendingRemove, setPendingRemove] = useState(false);
 
   useImperativeHandle(ref, () => ({
-    saveAnnotationToTopics: (item: Entry | Annotation) =>
-      collectionMenuRef.current?.saveToTopics(item) ?? Promise.resolve(),
+    addAnnotationToTopics: (item: Entry | Annotation) =>
+      collectionMenuRef.current?.addToTopics(item) ?? Promise.resolve(),
   }));
 
   const handleNoteKeyDown = useCallback(

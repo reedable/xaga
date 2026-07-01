@@ -35,7 +35,7 @@ fn domain_store_id(domain: &str) -> [u8; 16] {
 
 /// Returns the allow-listed domain entry that matches `host`, or None.
 /// An entry of "nytimes.com" matches both "nytimes.com" and "www.nytimes.com".
-fn matching_domain<'a>(host: &str, allowed: &'a [String]) -> Option<&'a str> {
+fn find_matching_domain<'a>(host: &str, allowed: &'a [String]) -> Option<&'a str> {
     allowed.iter().find_map(|domain| {
         if host == domain.as_str() || host.ends_with(&format!(".{domain}")) {
             Some(domain.as_str())
@@ -96,7 +96,7 @@ pub async fn load_via_webview(
     }
 
     let host = parsed.host_str().unwrap_or("");
-    let matched = matching_domain(host, allowed_domains);
+    let matched = find_matching_domain(host, allowed_domains);
 
     let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(parsed))
         .initialization_script(&init_script);

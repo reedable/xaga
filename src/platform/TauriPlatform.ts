@@ -831,9 +831,9 @@ export class TauriPlatform implements Platform {
   ): Promise<Ranked<Item>[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "query_by_item" });
+      .with(logged, { logger, name: "search_by_item" });
 
-    const results = await invoker<unknown[]>("query_by_item", {
+    const results = await invoker<unknown[]>("search_by_item", {
       id,
       limit,
       minSimilarity,
@@ -859,9 +859,9 @@ export class TauriPlatform implements Platform {
   ): Promise<Ranked<Item>[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "query_by_text" });
+      .with(logged, { logger, name: "search_by_text" });
 
-    const results = await invoker<unknown[]>("query_by_text", {
+    const results = await invoker<unknown[]>("search_by_text", {
       text,
       limit,
       minSimilarity,

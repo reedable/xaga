@@ -47,7 +47,7 @@ locations — severity and ordering are not assigned here.
   `enrich_embedded` builds `EmbeddedItem::Feed` without real stats; the server-side lookup
   (read the feed's `.atom` membership + intersect with the unread/bookmarked id-sets via
   `feed_summary`) was deferred. Decided design when picked up: thread `feeds_dir` + unread/
-  bookmarked sets from the `query_by_text` command (same source as `list_feeds`), or open the
+  bookmarked sets from the `search_by_text` command (same source as `list_feeds`), or open the
   db inside `enrich_embedded` only when a feed hit is present. Counts are O(U)+O(M) (see the
   per-feed count discussion). [item.rs](crates/xaga-core/src/item.rs) `enrich_embedded`.
 

@@ -56,7 +56,7 @@ impl AppState {
 
 /// The set of unread entry ids, read from LanceDB (the `is_unread` Bitmap index) via the shared
 /// read handle. Reloads first (handles are version-pinned); empty if the handle isn't ready.
-pub(crate) async fn get_unread(state: &AppState) -> std::collections::HashSet<String> {
+pub(crate) async fn get_unread_ids(state: &AppState) -> std::collections::HashSet<String> {
     let db = state.embeddings_read.lock().unwrap().clone();
     let Some(db) = db else {
         return Default::default();
@@ -66,13 +66,13 @@ pub(crate) async fn get_unread(state: &AppState) -> std::collections::HashSet<St
 }
 
 /// The set of bookmarked entry ids, read from LanceDB (the `is_bookmarked` Bitmap index).
-pub(crate) async fn get_bookmarked(state: &AppState) -> std::collections::HashSet<String> {
+pub(crate) async fn get_bookmarked_ids(state: &AppState) -> std::collections::HashSet<String> {
     let db = state.embeddings_read.lock().unwrap().clone();
     let Some(db) = db else {
         return Default::default();
     };
     let _ = db.reload().await;
-    db.bookmarked_ids().await.unwrap_or_default()
+    db.get_bookmarked_ids().await.unwrap_or_default()
 }
 
 // ── Settings helpers ───────────────────────────────────────────────────────────
@@ -770,8 +770,8 @@ pub fn run() {
             commands::topics::list_topic_items,
             commands::topics::list_entry_topics,
             commands::topics::rank_topics_by_item,
-            commands::embeddings::query_by_item,
-            commands::embeddings::query_by_text,
+            commands::embeddings::search_by_item,
+            commands::embeddings::search_by_text,
             commands::embeddings::reset_embeddings,
             ]);
             move |invoke: tauri::ipc::Invoke| {

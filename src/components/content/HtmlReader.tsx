@@ -182,7 +182,7 @@ export function HtmlReader({
         content: tooltip.note ?? "",
       };
       onSaveAnnotation?.(annotation);
-      await tooltipRef.current?.saveAnnotationToTopics(
+      await tooltipRef.current?.addAnnotationToTopics(
         annotation as Annotation
       );
     }

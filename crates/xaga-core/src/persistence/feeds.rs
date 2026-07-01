@@ -6,12 +6,14 @@ use std::path::Path;
 
 use thiserror::Error;
 
-use crate::atom::{
-    Atom, AtomEntry, apply_incoming_xml, atom_to_entry, atom_to_feed, atom_to_xml, entry_ids,
-    feed_to_atom, parse_atom, self_link_url, set_pinned, set_title,
+use crate::{
+    atom::{
+        Atom, AtomEntry, apply_incoming_xml, atom_to_entry, atom_to_feed, atom_to_xml, entry_ids,
+        feed_to_atom, parse_atom, self_link_url, set_pinned, set_title,
+    },
+    types::{Article, Feed},
+    util::{normalize_url, url_hash12},
 };
-use crate::types::{Article, Feed};
-use crate::util::{normalize_url, url_hash12};
 
 use super::walk::for_each_atom;
 
@@ -39,34 +41,35 @@ pub enum FeedError {
     MissingSelfLink(String),
 }
 
+/// FIXME Untangle FeedError for least visibility
 pub(crate) type Result<T> = std::result::Result<T, FeedError>;
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /// Derive a deterministic ID from a feed URL.
 /// Pure/sync — no I/O.
-pub fn feed_id_from_url(url: &str) -> Result<String> {
+pub fn url_to_feed_id(url: &str) -> Result<String> {
     let normalized = normalize_url(url).map_err(FeedError::InvalidUrl)?;
     Ok(url_hash12(&normalized))
 }
 
 /// Save an `.md` for each entry that doesn't already exist on disk, returning the Articles
 /// created. The shared ingestion step behind `add_feed`, `refresh_feed`, and recovery's
-/// `reconcile_atom_file`.
+/// `reconcile_atom_file`. This function is a noop if the file already exists.
 async fn save_new_atom_entries(library_dir: &Path, atom_entries: &[AtomEntry]) -> Vec<Article> {
     let mut created: Vec<Article> = Vec::new();
 
-    for ae in atom_entries {
+    for atom_entry in atom_entries {
         // Convert the storage AtomEntry to the domain Entry via the serialization layer, at the
         // point the domain fields are actually needed to write the `.md`.
-        let e = atom_to_entry(ae);
+        let entry = atom_to_entry(atom_entry);
 
-        if e.url.is_empty() {
+        if entry.url.is_empty() {
             continue;
         }
 
         // Only create an Entry if one doesn't already exist on disk.
-        if crate::persistence::entries::find_entry_path(library_dir, &e.id)
+        if crate::persistence::entries::find_entry_path(library_dir, &entry.id)
             .await
             .is_some()
         {
@@ -75,16 +78,16 @@ async fn save_new_atom_entries(library_dir: &Path, atom_entries: &[AtomEntry]) -
 
         match crate::persistence::entries::write_entry(
             library_dir,
-            &e.url,
-            &e.title,
-            e.published_at.as_deref(),
-            e.updated_at.as_deref(),
-            e.description.as_deref(),
+            &entry.url,
+            &entry.title,
+            entry.published_at.as_deref(),
+            entry.updated_at.as_deref(),
+            entry.description.as_deref(),
         )
         .await
         {
             Ok(content) => created.push(content),
-            Err(err) => log::warn!("save_new_entries: write_entry {}: {err}", e.id),
+            Err(err) => log::warn!("save_new_entries: write_entry {}: {err}", entry.id),
         }
     }
 
@@ -110,7 +113,7 @@ pub async fn add_feed(
     };
 
     let url = normalize_url(&url).map_err(FeedError::InvalidUrl)?;
-    let id = feed_id_from_url(&url)?;
+    let id = url_to_feed_id(&url)?;
 
     tokio::fs::create_dir_all(crate::library::feeds_dir(library_dir)).await?;
 
@@ -163,7 +166,7 @@ fn seed_atom(id: String, url: String) -> Atom {
 /// Re-fetch a feed by ID: read and parse the `.atom`, fetch + merge in memory, then commit.
 /// Returns the summary and the Articles created, so the caller can enqueue them for indexing.
 /// Plain ingestion — persistence only.
-pub(crate) async fn refresh_feed(
+async fn refresh_feed(
     client: &reqwest::Client,
     library_dir: &Path,
     id: &str,
@@ -327,7 +330,7 @@ pub async fn list_entry_ids(library_dir: &Path, url: Option<&str>) -> Result<Vec
     match url {
         Some(url) => {
             let normalized = normalize_url(url)?;
-            let id = feed_id_from_url(&normalized)?;
+            let id = url_to_feed_id(&normalized)?;
             let path = crate::library::feed_path(library_dir, &id);
 
             if !tokio::fs::try_exists(&path).await? {

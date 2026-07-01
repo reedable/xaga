@@ -40,7 +40,7 @@ interface TopicMenuButtonProps {
 }
 
 export interface TopicMenuButtonHandle {
-  saveToTopics: (item: Entry | Annotation) => Promise<void>;
+  addToTopics: (item: Entry | Annotation) => Promise<void>;
 }
 
 export const TopicMenuButton = forwardRef<
@@ -104,7 +104,7 @@ export const TopicMenuButton = forwardRef<
   useImperativeHandle(
     ref,
     () => ({
-      async saveToTopics(item: Entry | Annotation) {
+      async addToTopics(item: Entry | Annotation) {
         await Promise.all(
           [...selectedTopicIds].map((topicId) => addTopicItem(topicId, item))
         );

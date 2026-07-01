@@ -5,7 +5,7 @@ use xaga_core::query::items::{self, EmbeddedItemSource};
 use xaga_core::types::{CollectionItem, ItemFilter, Kind, ListItem, RankedItem, Topic};
 
 use super::{parse_item_filter, parse_item_sort};
-use crate::{AppState, get_unread};
+use crate::{AppState, get_unread_ids};
 
 #[tauri::command]
 pub async fn save_topic(
@@ -89,7 +89,7 @@ pub async fn list_topics(state: State<'_, AppState>) -> Result<Vec<Topic>, Strin
         .await
         .map_err(|e| e.to_string())?;
 
-    let unread = get_unread(&state).await;
+    let unread = get_unread_ids(&state).await;
 
     for topic in &mut topics {
         let mut all_ids: std::collections::HashSet<String> = std::collections::HashSet::new();

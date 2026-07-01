@@ -66,7 +66,7 @@ pub async fn list_embedded_items(
         } => {
             let db = EmbeddingsDb::open(library_dir).await?;
             let entries = db
-                .find_related(&id, limit, min_similarity, max_similarity, None)
+                .search_related(&id, limit, min_similarity, max_similarity, None)
                 .await?;
             filter::filter_items(entries, &item_filter)
                 .await
@@ -80,7 +80,7 @@ pub async fn list_embedded_items(
         } => {
             let db = EmbeddingsDb::open(library_dir).await?;
             let entries = db
-                .find_by_vector(vector, limit, min_similarity, max_similarity)
+                .search_by_vector(vector, limit, min_similarity, max_similarity)
                 .await?;
             filter::filter_items(entries, &item_filter)
                 .await
@@ -92,7 +92,7 @@ pub async fn list_embedded_items(
             min_similarity,
         } => {
             let db = EmbeddingsDb::open(library_dir).await?;
-            db.find_related(&id, limit, min_similarity, None, Some(Kind::Topic))
+            db.search_related(&id, limit, min_similarity, None, Some(Kind::Topic))
                 .await
                 .map_err(ItemError::Embeddings)
         }
@@ -106,12 +106,12 @@ pub async fn list_all_items(library_dir: &Path, item_filter: ItemFilter) -> Resu
     let db = EmbeddingsDb::open(library_dir).await?;
 
     let (entries_result, annotations_result) =
-        tokio::join!(db.all_entries(), db.list_annotations());
+        tokio::join!(db.list_entries(), db.list_annotations());
 
-    let all_entries = entries_result?;
+    let list_entries = entries_result?;
     let annotations = annotations_result.unwrap_or_default();
 
-    let mut items: Vec<ListItem> = all_entries
+    let mut items: Vec<ListItem> = list_entries
         .into_iter()
         .filter(|e| match item_filter {
             ItemFilter::All => true,

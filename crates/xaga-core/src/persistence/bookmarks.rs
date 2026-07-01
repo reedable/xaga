@@ -23,7 +23,7 @@ pub enum BookmarksError {
 
 // ── Serialisation helpers ─────────────────────────────────────────────────────
 
-fn html_escape(s: &str) -> String {
+fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -58,7 +58,7 @@ fn render(entries: &[Entry]) -> String {
 
     for e in entries {
         let add_date = rfc3339_to_unix(&e.created_at).unwrap_or(0);
-        let mut attrs = format!("HREF=\"{}\" ADD_DATE=\"{add_date}\"", html_escape(&e.url));
+        let mut attrs = format!("HREF=\"{}\" ADD_DATE=\"{add_date}\"", escape_html(&e.url));
 
         if let Some(ts) = e.published_at.as_deref().and_then(rfc3339_to_unix) {
             attrs.push_str(&format!(" PUBLISHED_AT=\"{ts}\""));
@@ -70,11 +70,11 @@ fn render(entries: &[Entry]) -> String {
 
         out.push_str(&format!(
             "    <DT><A {attrs}>{}</A>\n",
-            html_escape(&e.title)
+            escape_html(&e.title)
         ));
 
         if let Some(ref desc) = e.description {
-            out.push_str(&format!("    <DD>{}\n", html_escape(desc)));
+            out.push_str(&format!("    <DD>{}\n", escape_html(desc)));
         }
     }
 

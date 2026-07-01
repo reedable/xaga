@@ -138,8 +138,11 @@ fn entry_article(
     }
 }
 
-/// Writes a new Entry to `entries/{hash12}.md` with the `unread` tag, returning its [`Article`].
-/// Called by `reconcile_atom_file` when a feed entry has no local file yet.
+/// Writes an Entry to `entries/{hash12}.md` with the `unread` tag, returning its [`Article`].
+///
+/// WARNING:
+///     If the caller wishes to preserve preexisting file, it is the caller's responsibility to
+///     check its existence before calling this function.
 pub(crate) async fn write_entry(
     library_dir: &Path,
     url: &str,
@@ -151,9 +154,9 @@ pub(crate) async fn write_entry(
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
     let path = crate::library::entry_path(library_dir, &hash12);
-
     let created_at = Utc::now().to_rfc3339();
     let tags = vec![crate::tags::UNREAD.to_string()];
+
     let article = entry_article(
         hash12,
         normalized,
@@ -164,8 +167,10 @@ pub(crate) async fn write_entry(
         summary,
         &tags,
     );
+
     tokio::fs::create_dir_all(path.parent().unwrap()).await?;
     tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
+
     Ok(article)
 }
 

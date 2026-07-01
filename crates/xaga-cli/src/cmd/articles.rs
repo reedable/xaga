@@ -28,7 +28,7 @@ pub async fn handle(cmd: ArticlesCommand, data_dir: &Path) {
                 Ok(db) => db,
                 Err(e) => die(e),
             };
-            match db.all_entries().await {
+            match db.list_entries().await {
                 Ok(docs) if docs.is_empty() => {
                     println!("No articles saved.");
                 }

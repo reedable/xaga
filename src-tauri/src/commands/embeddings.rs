@@ -6,7 +6,7 @@ use super::parse_item_filter;
 use crate::AppState;
 
 #[tauri::command]
-pub async fn query_by_item(
+pub async fn search_by_item(
     id: String,
     item_filter: Option<String>,
     min_similarity: Option<f32>,
@@ -29,14 +29,14 @@ pub async fn query_by_item(
     .await
     .map_err(|e| e.to_string());
     match &result {
-        Ok(entries) => log::debug!("query_by_item: ok ({} entries)", entries.len()),
-        Err(e) => log::debug!("query_by_item: err — {e}"),
+        Ok(entries) => log::debug!("search_by_item: ok ({} entries)", entries.len()),
+        Err(e) => log::debug!("search_by_item: err — {e}"),
     }
     result
 }
 
 #[tauri::command]
-pub async fn query_by_text(
+pub async fn search_by_text(
     text: String,
     item_filter: Option<String>,
     min_similarity: Option<f32>,
@@ -75,7 +75,7 @@ pub async fn query_by_text(
     .map_err(|e| e.to_string())?;
 
     let result = items::enrich_embedded(&library, entries).await;
-    log::debug!("query_by_text: ok ({} entries)", result.len());
+    log::debug!("search_by_text: ok ({} entries)", result.len());
     Ok(result)
 }
 

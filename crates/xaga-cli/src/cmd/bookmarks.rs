@@ -25,7 +25,7 @@ pub async fn handle(cmd: BookmarksCommand, data_dir: &Path) {
                 Ok(db) => db,
                 Err(e) => die(e),
             };
-            match db.bookmarked_entries().await {
+            match db.filter_bookmarked().await {
                 Ok(bookmarks) if bookmarks.is_empty() => {
                     println!("No bookmarks saved.");
                 }

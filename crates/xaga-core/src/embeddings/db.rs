@@ -2,11 +2,11 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
+use arrow_array::builder::{ListBuilder, StringBuilder};
 use arrow_array::{
     Array, BooleanArray, FixedSizeListArray, Float32Array, ListArray, RecordBatch,
     RecordBatchIterator, RecordBatchReader, StringArray,
 };
-use arrow_array::builder::{ListBuilder, StringBuilder};
 use arrow_buffer::NullBuffer;
 use arrow_schema::{DataType, Field, Schema};
 use futures::TryStreamExt;
@@ -14,7 +14,7 @@ use lancedb::DistanceType;
 use lancedb::query::{ExecutableQuery, QueryBase, Select};
 
 use super::EmbeddingsError;
-use crate::types::{PartialAnnotation, EmbeddedEntry, Entry, Kind};
+use crate::types::{EmbeddedEntry, Entry, Kind, PartialAnnotation};
 
 const EMBEDDING_DIM: i32 = 384;
 
@@ -76,9 +76,17 @@ pub struct EmbeddingEntry {
     pub summary: String,
     pub tags: Vec<String>,
     pub topics: Vec<String>,
-    /// For topic rows: the ids of the topic's members (entries/annotations) — the prior-membership
-    /// base for the reverse-index delta, mirroring the topic `.md` `items:` field (the SoT). Empty
-    /// for entry/annotation/feed rows. Nullable in storage; reads back empty when absent/null.
+    /// The ids of the Item entities that belong to this row — a single membership meaning, agnostic
+    /// to the item kind (Topic/Entry/Annotation/…). Which relation it denormalizes depends only on
+    /// the owning row:
+    /// - **topic rows**: the topic's members — the prior-membership base for the reverse-index delta,
+    ///   mirroring the topic `.md` `items:` field (the SoT).
+    /// - **entry rows**: the entry's annotations — the recorded membership recovery diffs against the
+    ///   `.md` (without a per-entry query) to gate the annotation reconcile. Written by
+    ///   `sync_annotations` as its final step (after the annotation rows), so a crash leaves the rows
+    ///   present and this stale — a harmless re-reconcile on the next pass.
+    ///
+    /// Empty for annotation/feed rows. Nullable in storage; reads back empty when absent/null.
     pub items: Vec<String>,
     pub is_unread: bool,
     pub is_bookmarked: bool,
@@ -365,15 +373,23 @@ impl<'a> BatchSummaryColumns<'a> {
     fn tags_at(&self, i: usize) -> Vec<String> {
         let Some(arr) = self.tags else { return vec![] };
         let item = arr.value(i);
-        let Some(strings) = item.as_any().downcast_ref::<StringArray>() else { return vec![] };
-        (0..strings.len()).map(|j| strings.value(j).to_string()).collect()
+        let Some(strings) = item.as_any().downcast_ref::<StringArray>() else {
+            return vec![];
+        };
+        (0..strings.len())
+            .map(|j| strings.value(j).to_string())
+            .collect()
     }
 
     fn summary_at(&self, i: usize) -> Entry {
         fn opt_str(col: Option<&StringArray>, i: usize) -> Option<String> {
             col.and_then(|a| {
                 let v = a.value(i);
-                if v.is_empty() { None } else { Some(v.to_string()) }
+                if v.is_empty() {
+                    None
+                } else {
+                    Some(v.to_string())
+                }
             })
         }
         let tags = self.tags_at(i);
@@ -394,11 +410,13 @@ impl<'a> BatchSummaryColumns<'a> {
     }
 
     fn reference_at(&self, i: usize) -> String {
-        self.references.map_or(String::new(), |a| a.value(i).to_string())
+        self.references
+            .map_or(String::new(), |a| a.value(i).to_string())
     }
 
     fn color_at(&self, i: usize) -> String {
-        self.colors.map_or(String::new(), |a| a.value(i).to_string())
+        self.colors
+            .map_or(String::new(), |a| a.value(i).to_string())
     }
 }
 
@@ -561,7 +579,7 @@ impl EmbeddingsDb {
     }
 
     /// The set of entry ids currently bookmarked — read via the `is_bookmarked` Bitmap index.
-    pub async fn bookmarked_ids(&self) -> Result<HashSet<String>, EmbeddingsError> {
+    pub async fn get_bookmarked_ids(&self) -> Result<HashSet<String>, EmbeddingsError> {
         self.state_ids("is_bookmarked = true").await
     }
 
@@ -596,20 +614,31 @@ impl EmbeddingsDb {
     /// Columns needed to build an `Entry` — everything except the vector, so these
     /// list reads never touch the large embedding column.
     const SUMMARY_COLUMNS: [&'static str; 11] = [
-        "id", "kind", "source", "title", "created_at", "published_at", "updated_at",
-        "reference", "color", "summary", "tags",
+        "id",
+        "kind",
+        "source",
+        "title",
+        "created_at",
+        "published_at",
+        "updated_at",
+        "reference",
+        "color",
+        "summary",
+        "tags",
     ];
 
     /// Fetches entry rows for the given ids (e.g. a feed's atom-supplied id set),
     /// served by the scalar `id` index. Order is not guaranteed; callers sort.
-    pub async fn entries_by_ids(&self, ids: &[String]) -> Result<Vec<Entry>, EmbeddingsError> {
+    pub async fn list_entries_by_ids(&self, ids: &[String]) -> Result<Vec<Entry>, EmbeddingsError> {
         if ids.is_empty() {
             return Ok(vec![]);
         }
+
         let in_list: Vec<String> = ids
             .iter()
             .map(|id| format!("'{}'", id.replace('\'', "''")))
             .collect();
+
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -620,11 +649,12 @@ impl EmbeddingsDb {
             .try_collect()
             .await
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
         Ok(entries_from_batches(&batches))
     }
 
     /// All entry rows (`kind = 'entry'`).
-    pub async fn all_entries(&self) -> Result<Vec<Entry>, EmbeddingsError> {
+    pub async fn list_entries(&self) -> Result<Vec<Entry>, EmbeddingsError> {
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -635,49 +665,59 @@ impl EmbeddingsDb {
             .try_collect()
             .await
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
         Ok(entries_from_batches(&batches))
     }
 
     /// Entry rows that are bookmarked.
-    pub async fn bookmarked_entries(&self) -> Result<Vec<Entry>, EmbeddingsError> {
+    pub async fn filter_bookmarked(&self) -> Result<Vec<Entry>, EmbeddingsError> {
         let batches: Vec<RecordBatch> = self
             .table
             .query()
             .select(Select::columns(&Self::SUMMARY_COLUMNS))
-            .only_if(format!("{} AND is_bookmarked = true", Kind::Entry.predicate()))
+            .only_if(format!(
+                "{} AND is_bookmarked = true",
+                Kind::Entry.predicate()
+            ))
             .execute()
             .await?
             .try_collect()
             .await
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
         Ok(entries_from_batches(&batches))
     }
 
     /// Read-only per-kind summary: total rows and how many are embedded (non-null
     /// vector). Counts are pushed down to LanceDB (no row materialization). Kinds
     /// with zero rows are omitted.
-    pub async fn embedding_status(&self) -> Result<Vec<KindStatus>, EmbeddingsError> {
+    pub async fn get_embedding_status(&self) -> Result<Vec<KindStatus>, EmbeddingsError> {
         let mut out = Vec::new();
+
         for kind in [Kind::Entry, Kind::Annotation, Kind::Topic, Kind::Feed] {
             let total = self
                 .table
                 .count_rows(Some(kind.predicate()))
                 .await
                 .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
             if total == 0 {
                 continue;
             }
+
             let embedded = self
                 .table
                 .count_rows(Some(format!("{} AND vector IS NOT NULL", kind.predicate())))
                 .await
                 .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
             out.push(KindStatus {
                 kind: kind.as_str().to_string(),
                 total,
                 embedded,
             });
         }
+
         Ok(out)
     }
 
@@ -696,6 +736,7 @@ impl EmbeddingsDb {
         // on a single thread, so this two-step operation is effectively atomic from
         // the application's perspective.
         let escaped = entry.id.replace('\'', "''");
+
         self.table
             .delete(&format!("id = '{escaped}'"))
             .await
@@ -719,15 +760,21 @@ impl EmbeddingsDb {
     /// Inserts many rows in a single `add`, with no per-row `get_entry`/`delete`.
     /// Intended for bulk recovery into a table that has no pre-existing rows for
     /// these ids (e.g. a fresh post-`reset` recovery); it does not de-duplicate.
-    pub(crate) async fn add_batch(&self, entries: Vec<EmbeddingEntry>) -> Result<(), EmbeddingsError> {
+    pub(crate) async fn add_batch(
+        &self,
+        entries: Vec<EmbeddingEntry>,
+    ) -> Result<(), EmbeddingsError> {
         if entries.is_empty() {
             return Ok(());
         }
+
         let batch = entries_to_batch(entries, &self.schema)?;
+
         let reader: Box<dyn RecordBatchReader + Send> = Box::new(RecordBatchIterator::new(
             vec![Ok(batch)],
             self.schema.clone(),
         ));
+
         self.table
             .add(reader)
             .execute()
@@ -753,6 +800,7 @@ impl EmbeddingsDb {
             .count_rows(None)
             .await
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
         Ok(n)
     }
 
@@ -761,9 +809,12 @@ impl EmbeddingsDb {
     /// `has_vector` is false for rows inserted before their embedding was computed.
     /// `kind` is the row-kind discriminator ("entry" | "annotation" | "topic" | "feed").
     /// Used by recovery to determine which files need (re-)embedding.
-    pub(crate) async fn all_entries_meta(
+    /// Returns `id → (checksum, reference, has_vector, kind, items)` for every row, in one full scan.
+    /// `items` is the row's membership list — for entry rows, the recorded annotation membership that
+    /// recovery diffs against the `.md` to gate the annotation reconcile without a per-entry query.
+    pub(crate) async fn list_entries_meta(
         &self,
-    ) -> Result<HashMap<String, (String, String, bool, String)>, EmbeddingsError> {
+    ) -> Result<HashMap<String, (String, String, bool, String, Vec<String>)>, EmbeddingsError> {
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -779,41 +830,62 @@ impl EmbeddingsDb {
             let ids = batch
                 .column_by_name("id")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
             let checksums = batch
                 .column_by_name("checksum")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
             let references = batch
                 .column_by_name("reference")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
             let vectors = batch
                 .column_by_name("vector")
                 .and_then(|c| c.as_any().downcast_ref::<FixedSizeListArray>());
+
             let kinds = batch
                 .column_by_name("kind")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
+            let items = batch
+                .column_by_name("items")
+                .and_then(|c| c.as_any().downcast_ref::<ListArray>());
 
             if let (Some(ids), Some(checksums)) = (ids, checksums) {
                 for i in 0..batch.num_rows() {
                     let reference = references.map_or(String::new(), |a| a.value(i).to_string());
                     let has_vector = vectors.map_or(false, |v| !v.is_null(i));
                     let kind = kinds.map_or(String::new(), |a| a.value(i).to_string());
+                    let item_ids = items
+                        .filter(|a| !a.is_null(i))
+                        .map(|a| {
+                            let row = a.value(i);
+                            row.as_any()
+                                .downcast_ref::<StringArray>()
+                                .map(|s| (0..s.len()).map(|j| s.value(j).to_string()).collect())
+                                .unwrap_or_default()
+                        })
+                        .unwrap_or_default();
+
                     map.insert(
                         ids.value(i).to_string(),
-                        (checksums.value(i).to_string(), reference, has_vector, kind),
+                        (checksums.value(i).to_string(), reference, has_vector, kind, item_ids),
                     );
                 }
             }
         }
+
         Ok(map)
     }
 
     /// Returns a map of `id → checksum` for all annotation rows belonging to `article_id`.
     /// Returns `(checksum, color)` per annotation id for the given article.
-    pub(crate) async fn annotation_meta_for_article(
+    pub(crate) async fn get_annotation_meta_for_article(
         &self,
         article_id: &str,
     ) -> Result<HashMap<String, (String, String)>, EmbeddingsError> {
         let escaped = article_id.replace('\'', "''");
+
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -825,16 +897,20 @@ impl EmbeddingsDb {
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
         let mut map = HashMap::new();
+
         for batch in &batches {
             let ids = batch
                 .column_by_name("id")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
             let checksums = batch
                 .column_by_name("checksum")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
             let colors = batch
                 .column_by_name("color")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
+
             if let (Some(ids), Some(checksums), Some(colors)) = (ids, checksums, colors) {
                 for i in 0..batch.num_rows() {
                     map.insert(
@@ -844,6 +920,7 @@ impl EmbeddingsDb {
                 }
             }
         }
+
         Ok(map)
     }
 
@@ -852,6 +929,7 @@ impl EmbeddingsDb {
     /// Returns `None` if the entry is not in the database.
     pub async fn get_entry(&self, id: &str) -> Result<Option<EmbeddingEntry>, EmbeddingsError> {
         let escaped = id.replace('\'', "''");
+
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -864,25 +942,32 @@ impl EmbeddingsDb {
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
         for batch in &batches {
-            if batch.num_rows() == 0 { continue; }
+            if batch.num_rows() == 0 {
+                continue;
+            }
+
             let get_str = |name: &str| -> String {
-                batch.column_by_name(name)
+                batch
+                    .column_by_name(name)
                     .and_then(|c| c.as_any().downcast_ref::<StringArray>())
                     .map(|a| a.value(0).to_string())
                     .unwrap_or_default()
             };
+
             let read_list = |name: &str| -> Vec<String> {
                 batch
                     .column_by_name(name)
                     .and_then(|c| c.as_any().downcast_ref::<ListArray>())
                     .map(|arr| {
                         let item = arr.value(0);
-                        item.as_any().downcast_ref::<StringArray>()
+                        item.as_any()
+                            .downcast_ref::<StringArray>()
                             .map(|s| (0..s.len()).map(|j| s.value(j).to_string()).collect())
                             .unwrap_or_default()
                     })
                     .unwrap_or_default()
             };
+
             let get_bool = |name: &str| -> bool {
                 batch
                     .column_by_name(name)
@@ -890,6 +975,7 @@ impl EmbeddingsDb {
                     .map(|a| a.value(0))
                     .unwrap_or(false)
             };
+
             // `None` when the vector column is null for this row (not yet embedded).
             let vector = batch
                 .column_by_name("vector")
@@ -904,6 +990,7 @@ impl EmbeddingsDb {
                         .downcast_ref::<Float32Array>()
                         .map(|f| f.values().to_vec())
                 });
+
             return Ok(Some(EmbeddingEntry {
                 id: get_str("id"),
                 kind: get_str("kind").parse().unwrap_or(Kind::Entry),
@@ -925,6 +1012,7 @@ impl EmbeddingsDb {
                 vector,
             }));
         }
+
         Ok(None)
     }
 
@@ -941,13 +1029,16 @@ impl EmbeddingsDb {
         if ids.is_empty() {
             return Ok(());
         }
+
         let in_list: Vec<String> = ids
             .iter()
             .map(|id| format!("'{}'", id.replace('\'', "''")))
             .collect();
+
         self.table
             .delete(&format!("id IN ({})", in_list.join(", ")))
             .await?;
+
         Ok(())
     }
 
@@ -992,10 +1083,12 @@ impl EmbeddingsDb {
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
         let mut summaries = Vec::new();
+
         for batch in &batches {
             let Some(cols) = BatchSummaryColumns::from_batch(batch) else {
                 continue;
             };
+
             for i in 0..batch.num_rows() {
                 summaries.push(cols.summary_at(i));
             }
@@ -1018,10 +1111,12 @@ impl EmbeddingsDb {
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
         let mut results = Vec::new();
+
         for batch in &batches {
             let Some(cols) = BatchSummaryColumns::from_batch(batch) else {
                 continue;
             };
+
             for i in 0..batch.num_rows() {
                 results.push(PartialAnnotation {
                     id: cols.ids.value(i).to_string(),
@@ -1035,6 +1130,7 @@ impl EmbeddingsDb {
         }
 
         results.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+
         Ok(results)
     }
 
@@ -1047,7 +1143,7 @@ impl EmbeddingsDb {
     /// documents) this is fast enough.
     ///
     /// Results are returned sorted by similarity descending (most similar first).
-    async fn full_scan_scored(
+    async fn search_scored(
         &self,
         query_vector: &[f32],
         exclude_ids: &HashSet<String>,
@@ -1059,9 +1155,11 @@ impl EmbeddingsDb {
         use arrow_array::Array;
 
         let mut q = self.table.query();
+
         if let Some(kind) = row_kind {
             q = q.only_if(kind.predicate());
         }
+
         let batches: Vec<RecordBatch> = q
             .execute()
             .await?
@@ -1072,6 +1170,7 @@ impl EmbeddingsDb {
         let query_norm: f32 = query_vector.iter().map(|x| x * x).sum::<f32>().sqrt();
 
         let mut scored: Vec<(f32, Entry, Kind, String, String)> = Vec::new();
+
         for batch in &batches {
             let Some(id_col) = batch
                 .column_by_name("id")
@@ -1079,12 +1178,14 @@ impl EmbeddingsDb {
             else {
                 continue;
             };
+
             let Some(vec_col) = batch
                 .column_by_name("vector")
                 .and_then(|c| c.as_any().downcast_ref::<FixedSizeListArray>())
             else {
                 continue;
             };
+
             let Some(cols) = BatchSummaryColumns::from_batch(batch) else {
                 continue;
             };
@@ -1093,6 +1194,7 @@ impl EmbeddingsDb {
                 if exclude_ids.contains(id_col.value(i)) {
                     continue;
                 }
+
                 // Skip rows whose embedding hasn't been computed yet (null vector).
                 if vec_col.is_null(i) {
                     continue;
@@ -1112,7 +1214,9 @@ impl EmbeddingsDb {
                     .zip(vec_values.iter())
                     .map(|(a, b)| a * b)
                     .sum();
+
                 let vec_norm: f32 = vec_values.iter().map(|x| x * x).sum::<f32>().sqrt();
+
                 let similarity = if query_norm > 0.0 && vec_norm > 0.0 {
                     dot / (query_norm * vec_norm)
                 } else {
@@ -1120,12 +1224,19 @@ impl EmbeddingsDb {
                 };
 
                 if similarity >= min_similarity && similarity <= max_similarity {
-                    scored.push((similarity, cols.summary_at(i), cols.kind_at(i), cols.reference_at(i), cols.color_at(i)));
+                    scored.push((
+                        similarity,
+                        cols.summary_at(i),
+                        cols.kind_at(i),
+                        cols.reference_at(i),
+                        cols.color_at(i),
+                    ));
                 }
             }
         }
 
         scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
         if let Some(n) = limit {
             scored.truncate(n);
         }
@@ -1133,7 +1244,7 @@ impl EmbeddingsDb {
         Ok(scored)
     }
 
-    async fn full_scan_by_similarity(
+    async fn search_by_similarity(
         &self,
         query_vector: &[f32],
         exclude_ids: &HashSet<String>,
@@ -1143,7 +1254,7 @@ impl EmbeddingsDb {
         row_kind: Option<&Kind>,
     ) -> Result<Vec<EmbeddedEntry>, EmbeddingsError> {
         Ok(self
-            .full_scan_scored(
+            .search_scored(
                 query_vector,
                 exclude_ids,
                 min_similarity,
@@ -1154,8 +1265,16 @@ impl EmbeddingsDb {
             .await?
             .into_iter()
             .map(|(similarity, mut entry, kind, reference, color)| {
-                if !color.is_empty() { entry.color = Some(color); }
-                EmbeddedEntry { entry, kind, similarity, reference }
+                if !color.is_empty() {
+                    entry.color = Some(color);
+                }
+
+                EmbeddedEntry {
+                    entry,
+                    kind,
+                    similarity,
+                    reference,
+                }
             })
             .collect())
     }
@@ -1184,6 +1303,7 @@ impl EmbeddingsDb {
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
         let mut all_items: Vec<Vec<f32>> = Vec::new();
+
         for batch in &batches {
             let Some(vec_col) = batch
                 .column_by_name("vector")
@@ -1197,6 +1317,7 @@ impl EmbeddingsDb {
                 if vec_col.is_null(i) {
                     continue;
                 }
+
                 let Some(vec_values) = vec_col
                     .value(i)
                     .as_any()
@@ -1205,11 +1326,13 @@ impl EmbeddingsDb {
                 else {
                     continue;
                 };
+
                 all_items.push(vec_values);
             }
         }
 
         let n = all_items.len();
+
         if n < 2 {
             return Ok(vec![]);
         }
@@ -1229,23 +1352,31 @@ impl EmbeddingsDb {
             .collect();
 
         let mut scores: Vec<f32> = Vec::new();
+
         for &si in &sample_indices {
             let query_norm = norms[si];
+
             if query_norm == 0.0 {
                 continue;
             }
+
             let qv = &all_items[si];
+
             for j in 0..n {
                 if j == si {
                     continue;
                 }
+
                 let vec_norm = norms[j];
+
                 if vec_norm == 0.0 {
                     continue;
                 }
+
                 let tv = &all_items[j];
                 let dot: f32 = qv.iter().zip(tv.iter()).map(|(a, b)| a * b).sum();
                 let sim = dot / (query_norm * vec_norm);
+
                 if sim >= min_similarity {
                     scores.push(sim);
                 }
@@ -1261,7 +1392,7 @@ impl EmbeddingsDb {
     /// - `limit`: cap on results; `None` returns all matches above the threshold.
     /// - `min_similarity`: cosine similarity floor in [0, 1]; `None` uses
     ///   `DEFAULT_MAX_COSINE_DISTANCE` (0.5 similarity).
-    pub(crate) async fn find_related(
+    pub(crate) async fn search_related(
         &self,
         id: &str,
         limit: Option<usize>,
@@ -1271,6 +1402,7 @@ impl EmbeddingsDb {
     ) -> Result<Vec<EmbeddedEntry>, EmbeddingsError> {
         // 1. Fetch the query vector for this id.
         let escaped = id.replace('\'', "''");
+
         let rows: Vec<RecordBatch> = self
             .table
             .query()
@@ -1306,8 +1438,9 @@ impl EmbeddingsDb {
         // 2. Search, excluding the item itself.
         if max_similarity.is_some() {
             let exclude = HashSet::from([id.to_string()]);
+
             return self
-                .full_scan_by_similarity(
+                .search_by_similarity(
                     &query_vector,
                     &exclude,
                     min_similarity.unwrap_or(f32::NEG_INFINITY),
@@ -1322,7 +1455,9 @@ impl EmbeddingsDb {
             Some(n) => n,
             None => self.count().await?.saturating_sub(1),
         };
+
         let (_, upper_distance) = similarity_bounds(min_similarity, max_similarity);
+
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -1332,7 +1467,10 @@ impl EmbeddingsDb {
             .distance_type(DistanceType::Cosine)
             .distance_range(None, upper_distance)
             .only_if(match &row_kind {
-                Some(k) => format!("id != '{escaped}' AND {} AND vector IS NOT NULL", k.predicate()),
+                Some(k) => format!(
+                    "id != '{escaped}' AND {} AND vector IS NOT NULL",
+                    k.predicate()
+                ),
                 None => format!("id != '{escaped}' AND vector IS NOT NULL"),
             })
             .limit(effective_limit)
@@ -1343,19 +1481,32 @@ impl EmbeddingsDb {
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
         let mut results = Vec::new();
+
         for batch in &batches {
             let Some(cols) = BatchSummaryColumns::from_batch(batch) else {
                 continue;
             };
+
             let distances = batch
                 .column_by_name("_distance")
                 .and_then(|c| c.as_any().downcast_ref::<Float32Array>());
+
             for i in 0..batch.num_rows() {
                 let mut entry = cols.summary_at(i);
                 let color = cols.color_at(i);
-                if !color.is_empty() { entry.color = Some(color); }
+
+                if !color.is_empty() {
+                    entry.color = Some(color);
+                }
+
                 let similarity = distances.map_or(0.0, |d| 1.0 - d.value(i));
-                results.push(EmbeddedEntry { entry, kind: cols.kind_at(i), similarity, reference: cols.reference_at(i) });
+
+                results.push(EmbeddedEntry {
+                    entry,
+                    kind: cols.kind_at(i),
+                    similarity,
+                    reference: cols.reference_at(i),
+                });
             }
         }
 
@@ -1363,8 +1514,8 @@ impl EmbeddingsDb {
     }
 
     /// Returns items whose vectors are most similar to the given query vector.
-    /// Unlike `find_related`, no ID lookup is performed and nothing is excluded.
-    pub(crate) async fn find_by_vector(
+    /// Unlike `search_related`, no ID lookup is performed and nothing is excluded.
+    pub(crate) async fn search_by_vector(
         &self,
         query_vector: Vec<f32>,
         limit: Option<usize>,
@@ -1373,8 +1524,9 @@ impl EmbeddingsDb {
     ) -> Result<Vec<EmbeddedEntry>, EmbeddingsError> {
         if max_similarity.is_some() {
             let exclude = HashSet::new();
+
             return self
-                .full_scan_by_similarity(
+                .search_by_similarity(
                     &query_vector,
                     &exclude,
                     min_similarity.unwrap_or(f32::NEG_INFINITY),
@@ -1389,7 +1541,9 @@ impl EmbeddingsDb {
             Some(n) => n,
             None => self.count().await?,
         };
+
         let (_, upper_distance) = similarity_bounds(min_similarity, max_similarity);
+
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -1407,18 +1561,26 @@ impl EmbeddingsDb {
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
         let mut results = Vec::new();
+
         for batch in &batches {
             let Some(cols) = BatchSummaryColumns::from_batch(batch) else {
                 continue;
             };
+
             let distances = batch
                 .column_by_name("_distance")
                 .and_then(|c| c.as_any().downcast_ref::<Float32Array>());
+
             for i in 0..batch.num_rows() {
                 let mut entry = cols.summary_at(i);
                 let color = cols.color_at(i);
-                if !color.is_empty() { entry.color = Some(color); }
+
+                if !color.is_empty() {
+                    entry.color = Some(color);
+                }
+
                 let similarity = distances.map_or(0.0, |d| 1.0 - d.value(i));
+
                 results.push(EmbeddedEntry {
                     entry,
                     kind: cols.kind_at(i),
@@ -1427,6 +1589,7 @@ impl EmbeddingsDb {
                 });
             }
         }
+
         Ok(results)
     }
 }
@@ -1466,25 +1629,50 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
 
-        db.upsert(sample("with-vec", "entry", Some(vec![0.5f32; EMBEDDING_DIM as usize])))
-            .await
-            .unwrap();
-        db.upsert(sample("no-vec", "entry", None)).await.unwrap();
+        db.upsert(sample(
+            "with-vec",
+            "entry",
+            Some(vec![0.5f32; EMBEDDING_DIM as usize]),
+        ))
+        .await
+        .unwrap();
 
+        db.upsert(sample("no-vec", "entry", None)).await.unwrap();
         assert_eq!(db.count().await.unwrap(), 2);
 
-        let got = db.get_entry("with-vec").await.unwrap().expect("row present");
+        let got = db
+            .get_entry("with-vec")
+            .await
+            .unwrap()
+            .expect("row present");
+
         assert_eq!(got.kind, Kind::Entry);
         assert_eq!(got.summary, "a summary");
-        assert_eq!(got.topics, vec!["topic-1".to_string(), "topic-2".to_string()]);
+
+        assert_eq!(
+            got.topics,
+            vec!["topic-1".to_string(), "topic-2".to_string()]
+        );
+
         assert!(got.is_unread && got.is_pinned && !got.is_bookmarked);
+
         let v = got.vector.expect("vector present");
+
         assert_eq!(v.len(), EMBEDDING_DIM as usize);
         assert_eq!(v[0], 0.5);
 
         let pending = db.get_entry("no-vec").await.unwrap().expect("row present");
-        assert!(pending.vector.is_none(), "null-vector row must read back as None");
-        assert_eq!(pending.topics, vec!["topic-1".to_string(), "topic-2".to_string()]);
+
+        assert!(
+            pending.vector.is_none(),
+            "null-vector row must read back as None"
+        );
+
+        assert_eq!(
+            pending.topics,
+            vec!["topic-1".to_string(), "topic-2".to_string()]
+        );
+
         assert!(pending.is_pinned);
     }
 
@@ -1496,18 +1684,29 @@ mod tests {
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
 
         let mut topic = sample("topic-x", "topic", None);
+
         topic.items = vec!["m1".to_string(), "m2".to_string(), "m3".to_string()];
         db.upsert(topic).await.unwrap();
         db.upsert(sample("entry-x", "entry", None)).await.unwrap();
 
-        let got = db.get_entry("topic-x").await.unwrap().expect("topic row present");
+        let got = db
+            .get_entry("topic-x")
+            .await
+            .unwrap()
+            .expect("topic row present");
+
         assert_eq!(
             got.items,
             vec!["m1".to_string(), "m2".to_string(), "m3".to_string()]
         );
 
-        let entry = db.get_entry("entry-x").await.unwrap().expect("entry row present");
-        assert!(entry.items.is_empty(), "entry rows carry no items");
+        let entry = db
+            .get_entry("entry-x")
+            .await
+            .unwrap()
+            .expect("entry row present");
+
+        assert!(entry.items.is_empty(), "an entry with no members/annotations reads back empty");
     }
 
     /// `reconcile_topic_membership` adds the topic to newly-listed members, removes it from
@@ -1519,8 +1718,10 @@ mod tests {
 
         // Topic row with empty base; two entry rows with empty topics.
         let mut topic = sample("topic-1", "topic", None);
+
         topic.topics = vec![];
         db.upsert(topic).await.unwrap();
+
         for id in ["entry-1", "entry-2"] {
             let mut e = sample(id, "entry", None);
             e.topics = vec![];
@@ -1536,8 +1737,24 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(db.get_entry("entry-1").await.unwrap().unwrap().topics.contains(&"topic-1".to_string()));
-        assert!(db.get_entry("entry-2").await.unwrap().unwrap().topics.contains(&"topic-1".to_string()));
+        assert!(
+            db.get_entry("entry-1")
+                .await
+                .unwrap()
+                .unwrap()
+                .topics
+                .contains(&"topic-1".to_string())
+        );
+
+        assert!(
+            db.get_entry("entry-2")
+                .await
+                .unwrap()
+                .unwrap()
+                .topics
+                .contains(&"topic-1".to_string())
+        );
+
         assert_eq!(
             db.get_entry("topic-1").await.unwrap().unwrap().items,
             vec!["entry-1".to_string(), "entry-2".to_string()],
@@ -1553,12 +1770,29 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(db.get_entry("entry-1").await.unwrap().unwrap().topics.contains(&"topic-1".to_string()));
         assert!(
-            !db.get_entry("entry-2").await.unwrap().unwrap().topics.contains(&"topic-1".to_string()),
+            db.get_entry("entry-1")
+                .await
+                .unwrap()
+                .unwrap()
+                .topics
+                .contains(&"topic-1".to_string())
+        );
+
+        assert!(
+            !db.get_entry("entry-2")
+                .await
+                .unwrap()
+                .unwrap()
+                .topics
+                .contains(&"topic-1".to_string()),
             "dropped member loses the topic"
         );
-        assert_eq!(db.get_entry("topic-1").await.unwrap().unwrap().items, vec!["entry-1".to_string()]);
+
+        assert_eq!(
+            db.get_entry("topic-1").await.unwrap().unwrap().items,
+            vec!["entry-1".to_string()]
+        );
     }
 
     /// `add_topic_member` / `remove_topic_member` update just that one member's reverse-index
@@ -1568,26 +1802,66 @@ mod tests {
     async fn single_member_add_remove_tracks_base() {
         let dir = tempfile::tempdir().unwrap();
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
-
         let mut topic = sample("topic-1", "topic", None);
+
         topic.topics = vec![];
         topic.items = vec![];
         db.upsert(topic).await.unwrap();
+
         let mut e = sample("entry-1", "entry", None);
+
         e.topics = vec![];
         db.upsert(e).await.unwrap();
 
-        crate::embeddings::pipeline::add_topic_member(&db, "topic-1", "entry-1").await.unwrap();
-        assert!(db.get_entry("entry-1").await.unwrap().unwrap().topics.contains(&"topic-1".to_string()));
-        assert_eq!(db.get_entry("topic-1").await.unwrap().unwrap().items, vec!["entry-1".to_string()]);
+        crate::embeddings::pipeline::add_topic_member(&db, "topic-1", "entry-1")
+            .await
+            .unwrap();
+
+        assert!(
+            db.get_entry("entry-1")
+                .await
+                .unwrap()
+                .unwrap()
+                .topics
+                .contains(&"topic-1".to_string())
+        );
+
+        assert_eq!(
+            db.get_entry("topic-1").await.unwrap().unwrap().items,
+            vec!["entry-1".to_string()]
+        );
 
         // Idempotent re-add: base unchanged.
-        crate::embeddings::pipeline::add_topic_member(&db, "topic-1", "entry-1").await.unwrap();
-        assert_eq!(db.get_entry("topic-1").await.unwrap().unwrap().items, vec!["entry-1".to_string()]);
+        crate::embeddings::pipeline::add_topic_member(&db, "topic-1", "entry-1")
+            .await
+            .unwrap();
 
-        crate::embeddings::pipeline::remove_topic_member(&db, "topic-1", "entry-1").await.unwrap();
-        assert!(!db.get_entry("entry-1").await.unwrap().unwrap().topics.contains(&"topic-1".to_string()));
-        assert!(db.get_entry("topic-1").await.unwrap().unwrap().items.is_empty());
+        assert_eq!(
+            db.get_entry("topic-1").await.unwrap().unwrap().items,
+            vec!["entry-1".to_string()]
+        );
+
+        crate::embeddings::pipeline::remove_topic_member(&db, "topic-1", "entry-1")
+            .await
+            .unwrap();
+
+        assert!(
+            !db.get_entry("entry-1")
+                .await
+                .unwrap()
+                .unwrap()
+                .topics
+                .contains(&"topic-1".to_string())
+        );
+
+        assert!(
+            db.get_entry("topic-1")
+                .await
+                .unwrap()
+                .unwrap()
+                .items
+                .is_empty()
+        );
     }
 
     /// `apply_state` write-through flips the boolean columns + tags from the carried values,
@@ -1597,7 +1871,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
 
-        let mut e = sample("entry-1", "entry", Some(vec![0.1f32; EMBEDDING_DIM as usize]));
+        let mut e = sample(
+            "entry-1",
+            "entry",
+            Some(vec![0.1f32; EMBEDDING_DIM as usize]),
+        );
+
         e.tags = vec!["unread".to_string()];
         e.is_unread = true;
         e.is_bookmarked = false;
@@ -1609,7 +1888,13 @@ mod tests {
 
         // Mark read (is_unread -> false) and bookmark (-> true) in one patch.
         crate::embeddings::pipeline::apply_state(
-            &db, "entry-1", Some(false), Some(true), None, &unread_tx, &bm_tx,
+            &db,
+            "entry-1",
+            Some(false),
+            Some(true),
+            None,
+            &unread_tx,
+            &bm_tx,
         )
         .await
         .unwrap();
@@ -1625,10 +1910,17 @@ mod tests {
 
         // A no-op patch (same value) emits nothing.
         crate::embeddings::pipeline::apply_state(
-            &db, "entry-1", Some(false), None, None, &unread_tx, &bm_tx,
+            &db,
+            "entry-1",
+            Some(false),
+            None,
+            None,
+            &unread_tx,
+            &bm_tx,
         )
         .await
         .unwrap();
+
         assert_eq!(unread_rx.len(), 1, "no event when unchanged");
     }
 
@@ -1646,13 +1938,26 @@ mod tests {
         anno.topics = vec![];
         db.upsert(anno).await.unwrap();
 
-        crate::embeddings::pipeline::reconcile_topic_membership(&db, "topic-a", &["anno-1".to_string()])
-            .await
-            .unwrap();
+        crate::embeddings::pipeline::reconcile_topic_membership(
+            &db,
+            "topic-a",
+            &["anno-1".to_string()],
+        )
+        .await
+        .unwrap();
 
-        let got = db.get_entry("anno-1").await.unwrap().expect("annotation row present");
+        let got = db
+            .get_entry("anno-1")
+            .await
+            .unwrap()
+            .expect("annotation row present");
+
         assert_eq!(got.kind, Kind::Annotation);
-        assert!(got.topics.contains(&"topic-a".to_string()), "annotation member gets the topic");
+
+        assert!(
+            got.topics.contains(&"topic-a".to_string()),
+            "annotation member gets the topic"
+        );
     }
 
     /// A membership change larger than the chunk size is applied across multiple chunks: every
@@ -1666,7 +1971,9 @@ mod tests {
         let mut topic = sample("topic-1", "topic", None);
         topic.topics = vec![];
         db.upsert(topic).await.unwrap();
+
         let members: Vec<String> = (0..5).map(|i| format!("entry-{i}")).collect();
+
         for id in &members {
             let mut e = sample(id, "entry", None);
             e.topics = vec![];
@@ -1674,15 +1981,24 @@ mod tests {
         }
 
         // Add all 5 with chunk size 2 -> 3 chunks.
-        crate::embeddings::pipeline::reconcile_topic_membership_chunked(&db, "topic-1", &members, 2)
-            .await
-            .unwrap();
+        crate::embeddings::pipeline::reconcile_topic_membership_chunked(
+            &db, "topic-1", &members, 2,
+        )
+        .await
+        .unwrap();
+
         for id in &members {
             assert!(
-                db.get_entry(id).await.unwrap().unwrap().topics.contains(&"topic-1".to_string()),
+                db.get_entry(id)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .topics
+                    .contains(&"topic-1".to_string()),
                 "{id} tagged after multi-chunk add"
             );
         }
+
         let mut base = db.get_entry("topic-1").await.unwrap().unwrap().items;
         base.sort();
         assert_eq!(base, members, "base = all members after multi-chunk add");
@@ -1693,11 +2009,23 @@ mod tests {
             .await
             .unwrap();
         for id in &keep {
-            assert!(db.get_entry(id).await.unwrap().unwrap().topics.contains(&"topic-1".to_string()));
+            assert!(
+                db.get_entry(id)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .topics
+                    .contains(&"topic-1".to_string())
+            );
         }
         for id in ["entry-2", "entry-3", "entry-4"] {
             assert!(
-                !db.get_entry(id).await.unwrap().unwrap().topics.contains(&"topic-1".to_string()),
+                !db.get_entry(id)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .topics
+                    .contains(&"topic-1".to_string()),
                 "{id} untagged after multi-chunk remove"
             );
         }
@@ -1732,9 +2060,11 @@ mod tests {
         db.upsert(topic).await.unwrap();
 
         // Re-run with the full membership, chunk size 2.
-        crate::embeddings::pipeline::reconcile_topic_membership_chunked(&db, "topic-1", &members, 2)
-            .await
-            .unwrap();
+        crate::embeddings::pipeline::reconcile_topic_membership_chunked(
+            &db, "topic-1", &members, 2,
+        )
+        .await
+        .unwrap();
 
         for id in &members {
             let topics = db.get_entry(id).await.unwrap().unwrap().topics;
@@ -1757,14 +2087,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
 
-        db.upsert(sample("embedded", "entry", Some(vec![1.0f32; EMBEDDING_DIM as usize])))
-            .await
-            .unwrap();
+        db.upsert(sample(
+            "embedded",
+            "entry",
+            Some(vec![1.0f32; EMBEDDING_DIM as usize]),
+        ))
+        .await
+        .unwrap();
         db.upsert(sample("pending", "entry", None)).await.unwrap();
 
         // ANN path: nearest_to + `vector IS NOT NULL`.
         let ann = db
-            .find_by_vector(vec![1.0f32; EMBEDDING_DIM as usize], None, None, None)
+            .search_by_vector(vec![1.0f32; EMBEDDING_DIM as usize], None, None, None)
             .await
             .unwrap();
         let ann_ids: Vec<&str> = ann.iter().map(|e| e.entry.id.as_str()).collect();
@@ -1774,9 +2108,14 @@ mod tests {
             "null-vector row must be excluded from ANN search"
         );
 
-        // Full-scan path: max_similarity set routes through full_scan_scored.
+        // Full-scan path: max_similarity set routes through search_scored.
         let scan = db
-            .find_by_vector(vec![1.0f32; EMBEDDING_DIM as usize], None, Some(-1.0), Some(1.0))
+            .search_by_vector(
+                vec![1.0f32; EMBEDDING_DIM as usize],
+                None,
+                Some(-1.0),
+                Some(1.0),
+            )
             .await
             .unwrap();
         let scan_ids: Vec<&str> = scan.iter().map(|e| e.entry.id.as_str()).collect();
@@ -1792,12 +2131,20 @@ mod tests {
     async fn ensure_indexes_idempotent_and_queryable() {
         let dir = tempfile::tempdir().unwrap();
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
-        db.upsert(sample("a", "entry", Some(vec![1.0f32; EMBEDDING_DIM as usize])))
-            .await
-            .unwrap();
-        db.upsert(sample("b", "entry", Some(vec![0.2f32; EMBEDDING_DIM as usize])))
-            .await
-            .unwrap();
+        db.upsert(sample(
+            "a",
+            "entry",
+            Some(vec![1.0f32; EMBEDDING_DIM as usize]),
+        ))
+        .await
+        .unwrap();
+        db.upsert(sample(
+            "b",
+            "entry",
+            Some(vec![0.2f32; EMBEDDING_DIM as usize]),
+        ))
+        .await
+        .unwrap();
 
         db.ensure_indexes().await.unwrap();
         // Second call is a no-op (indexes already present).
@@ -1805,14 +2152,14 @@ mod tests {
 
         assert!(db.get_entry("a").await.unwrap().is_some());
         let related = db
-            .find_by_vector(vec![1.0f32; EMBEDDING_DIM as usize], None, None, None)
+            .search_by_vector(vec![1.0f32; EMBEDDING_DIM as usize], None, None, None)
             .await
             .unwrap();
         assert!(related.iter().any(|e| e.entry.id == "a"));
     }
 
-    /// The list-read API returns only the right rows: all_entries excludes feed and
-    /// annotation rows, bookmarked_entries filters on state, entries_by_ids fetches a
+    /// The list-read API returns only the right rows: list_entries excludes feed and
+    /// annotation rows, filter_bookmarked filters on state, list_entries_by_ids fetches a
     /// set, and projected reads still carry summary + state.
     #[tokio::test]
     async fn read_api_filters_by_kind_and_state() {
@@ -1825,7 +2172,11 @@ mod tests {
         e1.summary = "s1".to_string();
         let e2 = sample("e2", "entry", Some(vec![0.2f32; EMBEDDING_DIM as usize]));
         let feed = sample("feed1", "feed", Some(vec![0.3f32; EMBEDDING_DIM as usize]));
-        let mut ann = sample("ann1", "annotation", Some(vec![0.4f32; EMBEDDING_DIM as usize]));
+        let mut ann = sample(
+            "ann1",
+            "annotation",
+            Some(vec![0.4f32; EMBEDDING_DIM as usize]),
+        );
         ann.reference = "e1".to_string();
 
         db.upsert(e1).await.unwrap();
@@ -1833,13 +2184,18 @@ mod tests {
         db.upsert(feed).await.unwrap();
         db.upsert(ann).await.unwrap();
 
-        let mut all: Vec<String> =
-            db.all_entries().await.unwrap().into_iter().map(|e| e.id).collect();
+        let mut all: Vec<String> = db
+            .list_entries()
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
         all.sort();
         assert_eq!(all, vec!["e1".to_string(), "e2".to_string()]);
 
         let bm: Vec<String> = db
-            .bookmarked_entries()
+            .filter_bookmarked()
             .await
             .unwrap()
             .into_iter()
@@ -1848,7 +2204,7 @@ mod tests {
         assert_eq!(bm, vec!["e1".to_string()]);
 
         let by_id: Vec<String> = db
-            .entries_by_ids(&["e2".to_string()])
+            .list_entries_by_ids(&["e2".to_string()])
             .await
             .unwrap()
             .into_iter()
@@ -1856,29 +2212,40 @@ mod tests {
             .collect();
         assert_eq!(by_id, vec!["e2".to_string()]);
 
-        let e1_read = db.entries_by_ids(&["e1".to_string()]).await.unwrap();
+        let e1_read = db.list_entries_by_ids(&["e1".to_string()]).await.unwrap();
         assert_eq!(e1_read[0].description.as_deref(), Some("s1"));
         assert!(e1_read[0].is_bookmarked);
     }
 
-    /// `embedding_status` counts per kind and distinguishes embedded from pending
+    /// `get_embedding_status` counts per kind and distinguishes embedded from pending
     /// (null-vector) rows; kinds with no rows are omitted.
     #[tokio::test]
     async fn embedding_status_counts_by_kind_and_vector() {
         let dir = tempfile::tempdir().unwrap();
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
 
-        db.upsert(sample("e1", "entry", Some(vec![0.1f32; EMBEDDING_DIM as usize])))
-            .await
-            .unwrap();
+        db.upsert(sample(
+            "e1",
+            "entry",
+            Some(vec![0.1f32; EMBEDDING_DIM as usize]),
+        ))
+        .await
+        .unwrap();
         db.upsert(sample("e2", "entry", None)).await.unwrap(); // pending
-        db.upsert(sample("f1", "feed", Some(vec![0.2f32; EMBEDDING_DIM as usize])))
-            .await
-            .unwrap();
+        db.upsert(sample(
+            "f1",
+            "feed",
+            Some(vec![0.2f32; EMBEDDING_DIM as usize]),
+        ))
+        .await
+        .unwrap();
 
-        let status = db.embedding_status().await.unwrap();
+        let status = db.get_embedding_status().await.unwrap();
 
-        let entry = status.iter().find(|s| s.kind == "entry").expect("entry kind");
+        let entry = status
+            .iter()
+            .find(|s| s.kind == "entry")
+            .expect("entry kind");
         assert_eq!(entry.total, 2);
         assert_eq!(entry.embedded, 1);
 
@@ -1886,7 +2253,11 @@ mod tests {
         assert_eq!(feed.total, 1);
         assert_eq!(feed.embedded, 1);
 
-        assert!(status.iter().all(|s| s.kind != "annotation" && s.kind != "topic"));
+        assert!(
+            status
+                .iter()
+                .all(|s| s.kind != "annotation" && s.kind != "topic")
+        );
     }
 
     /// `add_batch` inserts many rows in one call, round-tripping mixed Some/None
@@ -1910,7 +2281,7 @@ mod tests {
         assert_eq!(db.get_entry("c").await.unwrap().unwrap().kind, Kind::Topic);
 
         let related = db
-            .find_by_vector(vec![0.1f32; EMBEDDING_DIM as usize], None, None, None)
+            .search_by_vector(vec![0.1f32; EMBEDDING_DIM as usize], None, None, None)
             .await
             .unwrap();
         assert!(related.iter().any(|e| e.entry.id == "a"));
@@ -1939,6 +2310,9 @@ mod tests {
         assert_eq!(after, 1, "reader must see writer's commit after reload");
         // Baseline hypothesis: a handle is pinned until reloaded. If this assert fails,
         // handles auto-track latest and `reload` is unnecessary — adjust accordingly.
-        assert_eq!(before, 0, "handle is pinned to its open-version until reloaded");
+        assert_eq!(
+            before, 0,
+            "handle is pinned to its open-version until reloaded"
+        );
     }
 }

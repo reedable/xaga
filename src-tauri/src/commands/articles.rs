@@ -381,7 +381,7 @@ pub async fn add_annotation(
         .await
         .map_err(|e| e.to_string())?;
     // Insert/refresh the annotation row now (embedder-free, immediately listable), then defer the
-    // ONNX embed so the new annotation gets a vector — without it, find_related/rank_topics_by_item
+    // ONNX embed so the new annotation gets a vector — without it, search_related/rank_topics_by_item
     // raise "id not found". embed_entry_vector is checksum-gated, so it skips the unchanged article
     // body and only fills the pending annotation vector via embed_annotations. Tier mirrors the
     // live-edit embed_follow() (Interactive -> Regular). Both jobs carry the domain object.

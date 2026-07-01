@@ -81,7 +81,7 @@ fn require_write_lock(data_dir: &Path) -> FileLock {
 pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
     match cmd {
         EmbeddingsCommand::Status => match EmbeddingsDb::open(data_dir).await {
-            Ok(db) => match db.embedding_status().await {
+            Ok(db) => match db.get_embedding_status().await {
                 Ok(rows) => {
                     let total: usize = rows.iter().map(|r| r.total).sum();
                     let embedded: usize = rows.iter().map(|r| r.embedded).sum();

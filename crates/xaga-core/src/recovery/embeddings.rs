@@ -1,7 +1,7 @@
 //! The diff stage: walk the filesystem, compare against the index, and drive the repair. Each item
 //! that needs embedding is streamed to the caller's `RepairSink`; the post-walk residue (feed embeds
 //! + deletes) is returned. Pure computation — the reads are delegated to persistence
-//! (`for_each_md`/`parse_document`) and embeddings (`all_entries_meta`); the *apply* is the sink's.
+//! (`for_each_md`/`parse_document`) and embeddings (`list_entries_meta`); the *apply* is the sink's.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -11,7 +11,7 @@ use crate::embeddings::{EmbeddingsDb, EmbeddingsError};
 use crate::library;
 use crate::md::{md_to_article, md_to_topic};
 use crate::persistence::walk::for_each_md;
-use crate::types::{Feed, Kind};
+use crate::types::{Article, Feed, Kind};
 
 use super::{RepairResidue, RepairSink};
 
@@ -23,14 +23,25 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     db: &EmbeddingsDb,
     sink: &mut S,
 ) -> Result<RepairResidue, EmbeddingsError> {
-    let db_meta = db.all_entries_meta().await?; // id → (checksum, reference, has_vector, kind)
+    let db_meta = db.list_entries_meta().await?; // id → (checksum, reference, has_vector, kind, items)
 
     // Embedding is needed when the row is absent, its content changed, or its vector is missing.
     let needs_embedding = |id: &str, cksum: &str| -> bool {
         match db_meta.get(id) {
             None => true,
-            Some((stored, _, has_vector, _)) => stored != cksum || !has_vector,
+            Some((stored, _, has_vector, _, _)) => stored != cksum || !has_vector,
         }
+    };
+
+    // The annotation rows need reconciling when the entry's recorded annotation membership differs
+    // from the `.md`'s annotation set. Diffed against `db_meta` (already loaded) — no per-entry query.
+    // When the row is absent, `needs_embedding` already streams it, so this reports no extra work.
+    let annotations_differ = |article: &Article| -> bool {
+        db_meta.get(&article.meta.id).is_some_and(|(.., recorded)| {
+            let recorded: HashSet<&str> = recorded.iter().map(|s| s.as_str()).collect();
+            let current: HashSet<&str> = article.annotations.iter().map(|a| a.id.as_str()).collect();
+            recorded != current
+        })
     };
 
     // Reconcile as we walk: record every on-disk id (for `to_delete` below) and stream only the
@@ -49,10 +60,13 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
 
     for_each_md(&library::entries_dir(library_dir), &md_to_article, |article| {
         fs_ids.insert(article.meta.id.clone());
-        if needs_embedding(
+        let needs_embed = needs_embedding(
             &article.meta.id,
             &checksum(&article.meta.title, article_embed_text(&article)),
-        ) {
+        );
+        // Stream when the entry needs (re)embedding OR its annotation membership drifted from the
+        // `.md` — the consumer's `sync_entry_row` re-checks each and does only the work required.
+        if needs_embed || annotations_differ(&article) {
             sink.article(article);
         }
     })
@@ -79,7 +93,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     // is gone from disk.
     let to_delete: Vec<String> = db_meta
         .into_iter()
-        .filter(|(id, (_, reference, _, kind))| {
+        .filter(|(id, (_, reference, _, kind, _))| {
             if kind == Kind::Feed.as_str() {
                 return !feed_ids.contains(id);
             }

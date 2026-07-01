@@ -49,7 +49,8 @@ pub(crate) fn feed_embed_text(feed: &Feed) -> &str {
 
 impl EmbeddingEntry {
     /// Builds an entry row from an `Article`. `topics`/`items` are reconcile-managed (written empty
-    /// here, carried forward by the sync/embed paths).
+    /// here, carried forward by the sync/embed paths). For entry rows `items` holds the annotation
+    /// membership, filled by `sync_annotations` after the annotation rows are written.
     pub(crate) fn from_article(article: &Article, vector: Option<Vec<f32>>) -> EmbeddingEntry {
         let meta = &article.meta;
         let mut tags = Vec::new();

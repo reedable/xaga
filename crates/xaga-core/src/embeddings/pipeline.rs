@@ -120,7 +120,7 @@ pub(crate) async fn sync_annotations(
     annotation_tx: &flume::Sender<ListItem>,
 ) -> Result<(), EmbeddingsError> {
     let article_id = &article.meta.id;
-    let existing = db.annotation_meta_for_article(article_id).await?;
+    let existing = db.get_annotation_meta_for_article(article_id).await?;
 
     let current_ids: HashSet<String> = article.annotations.iter().map(|a| a.id.clone()).collect();
 
@@ -170,6 +170,19 @@ pub(crate) async fn sync_annotations(
         db.upsert(annotation_embedding_entry(article, annotation, topics, None))
             .await?;
         let _ = annotation_tx.send(annotation_list_item(article, annotation));
+    }
+
+    // Record the entry's annotation membership (in the entry row's `items`) as the *final* step,
+    // after the annotation rows above are written. A crash between the row writes and this leaves the
+    // rows present and the membership stale, so the next recovery diff flags this entry and
+    // re-reconciles it (idempotent — the rows already match the `.md`). No-op if the entry row
+    // doesn't exist yet (recovery will create it).
+    let member_ids: Vec<String> = article.annotations.iter().map(|a| a.id.clone()).collect();
+    if let Some(mut entry_row) = db.get_entry(article_id).await? {
+        if entry_row.items != member_ids {
+            entry_row.items = member_ids;
+            db.upsert(entry_row).await?;
+        }
     }
 
     Ok(())
@@ -244,17 +257,26 @@ pub async fn sync_entry_row(
 
     if changed {
         let old_tags = existing.as_ref().map(|e| e.tags.clone());
-        // Carry the existing row's topics + items forward so this write never clobbers the
-        // reverse index — both columns are owned by the topic-membership reconcile path.
+        // Carry the existing row's topics + items forward so this write never clobbers the reverse
+        // index or the recorded annotation membership — for entry rows `items` holds that membership,
+        // owned by the annotation reconcile path, not this one.
         row.topics = existing.as_ref().map(|e| e.topics.clone()).unwrap_or_default();
         row.items = existing.as_ref().map(|e| e.items.clone()).unwrap_or_default();
         db.upsert(row).await?;
         emit_entry_changes(&article.meta, old_tags.as_deref(), unread_tx, bookmarked_tx);
     }
 
-    // Always reconcile annotation rows (embedder-free) so a new/removed annotation is
-    // listable immediately, even when the entry body itself is unchanged.
-    sync_annotations(article, db, annotation_tx).await?;
+    // Reconcile annotation rows (embedder-free) only when the recorded membership (the entry row's
+    // `items`) differs from the `.md` — the entry row we just read carries it, so this diff costs no
+    // query. Unchanged membership means the annotation rows already match; skip the reconcile.
+    let recorded: HashSet<&str> = existing
+        .as_ref()
+        .map(|e| e.items.iter().map(|s| s.as_str()).collect())
+        .unwrap_or_default();
+    let current: HashSet<&str> = article.annotations.iter().map(|a| a.id.as_str()).collect();
+    if recorded != current {
+        sync_annotations(article, db, annotation_tx).await?;
+    }
 
     Ok(())
 }

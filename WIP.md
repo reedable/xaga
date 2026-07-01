@@ -175,7 +175,7 @@ both kinds, and the bulk-insert annotation-row parity (also the from-reset lista
 - ✅ **Sidebar feed/topic counts** repointed to LanceDB (cutover step 4). Added **Bitmap** indexes on
   `is_unread`/`is_bookmarked`/`is_pinned` ([db.rs](crates/xaga-core/src/embeddings/db.rs)
   `ensure_indexes`, built via recovery's `Compact`), `unread_ids()`/`bookmarked_ids()` (index-driven,
-  `id`-only projection), and `get_unread`/`get_bookmarked` ([lib.rs](src-tauri/src/lib.rs)) now read
+  `id`-only projection), and `get_unread_ids`/`get_bookmarked_ids` ([lib.rs](src-tauri/src/lib.rs)) now read
   LanceDB, not the cache. Compiles + 17 tests. **Verify on relaunch** (bitmaps build once; counts
   should match the old values). Residual scale note: the per-feed/topic counts materialize the full
   unread id-set per refresh — the Bitmap makes *finding* unread rows index-fast, but the set size is
