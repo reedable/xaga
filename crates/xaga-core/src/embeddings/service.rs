@@ -376,6 +376,11 @@ async fn run_loop(
     // Compact every this many Regular/Maintenance items processed consecutively.
     const BACKGROUND_COMPACT_INTERVAL: usize = 100;
 
+    // Compact every this many Interactive items processed consecutively. Kept separate from
+    // BACKGROUND_COMPACT_INTERVAL: this cadence is paid on the user-facing path, so it may need
+    // tuning independently of background compaction. The two happen to share the value 100 today.
+    const INTERACTIVE_COMPACT_INTERVAL: usize = 100;
+
     // Cleared whenever the Interactive tier processes an item; the Maintenance arm
     // compacts the DB the first time it runs after Interactive drains so version files
     // never pile up for long.
@@ -384,6 +389,13 @@ async fn run_loop(
     // Items processed since the last compact (Regular + Maintenance); resets to 0 after
     // every compact so the interval applies regardless of why the last compact fired.
     let mut since_compact: usize = 0;
+
+    // Items processed on the Interactive tier since its last compact. A sustained stream of
+    // Interactive work (bulk refresh, "mark all read") keeps the biased select from ever reaching
+    // the Regular/Maintenance arms where compaction lives, so without this the DB version files
+    // grow unbounded and every commit — and read — degrades. Resets to 0 after every interactive
+    // compact.
+    let mut since_interactive_compact: usize = 0;
 
     loop {
         // Queues are defined per *priority*, and the definition and examples of each level of
@@ -430,6 +442,22 @@ async fn run_loop(
                     // Interactive has items — mark that a post-drain compact is needed.
                     compacted_after_drain = false;
                     handle_job(job, Tier::Interactive, &db, &embedder, &senders, &events).await;
+
+                    // Compact on the Interactive path itself: a sustained Interactive stream never
+                    // yields to the Regular/Maintenance arms (biased select), so their compaction
+                    // never runs. Without this, version files pile up and commits/reads decay.
+                    since_interactive_compact += 1;
+                    if since_interactive_compact >= INTERACTIVE_COMPACT_INTERVAL {
+                        since_interactive_compact = 0;
+                        log::info!("interactive tier: {INTERACTIVE_COMPACT_INTERVAL}-item interval — compacting");
+
+                        if let Err(e) = db.compact().await {
+                            log::error!("interactive tier: interval compact failed: {e}");
+                        }
+
+                        // We just compacted, so the Maintenance arm's post-drain compact is redundant.
+                        compacted_after_drain = true;
+                    }
                 }
 
                 Err(_) => { log::warn!("interactive tier: disconnected"); break; }
