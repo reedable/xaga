@@ -1,9 +1,9 @@
 use tauri::{AppHandle, Emitter, Manager, State};
-use xaga_core::persistence::articles;
 use xaga_core::embeddings::{EmbeddingsDb, EntityRef, Job, StatePatch, Tier};
+use xaga_core::persistence::articles;
 use xaga_core::persistence::entries;
 use xaga_core::persistence::topics;
-use xaga_core::types::{Article, PartialAnnotation, Kind};
+use xaga_core::types::{Article, Kind, PartialAnnotation};
 
 use base64::Engine as _;
 
@@ -164,6 +164,13 @@ async fn try_fetch_pdf(
         .await
         .map_err(|e| e.to_string())?;
 
+    // The SSRF proxy's "plaintext HTTP is disabled" refusal. Mapped before the
+    // content-type check so it doesn't read as a server error; the caller falls
+    // back to the loader webview, which surfaces the proxy's explanation body.
+    if resp.status().as_u16() == xaga_core::persistence::feeds::HTTP_BLOCKED_STATUS {
+        return Err("plaintext HTTP fetch blocked by the \"HTTP allowed\" setting".to_string());
+    }
+
     // MIME type only — ignore parameters like charset.
     let content_type = resp
         .headers()
@@ -219,7 +226,12 @@ pub async fn load_article(
     // webview entirely. Not making this request when the setting is off avoids
     // letting servers profile us.
     if inline_pdf_reader && !keep_open {
-        match try_fetch_pdf(&state.ssrf_http_client, &url, timeout_secs).await {
+        let client = crate::fetch_client::build(
+            ssrf_proxy_port,
+            *state.max_redirects.read().unwrap(),
+            *state.referer_allowed.read().unwrap(),
+        );
+        match try_fetch_pdf(&client, &url, timeout_secs).await {
             Ok(PdfProbe::Pdf(bytes)) => {
                 return Ok(LoadArticleResult {
                     mime_type: "application/pdf".to_string(),
@@ -288,7 +300,12 @@ pub async fn save_article(
     )
     .await
     .map_err(|e| e.to_string())?;
-    state.enqueue(Tier::Interactive, Job::UpsertEntry { article: article.clone() });
+    state.enqueue(
+        Tier::Interactive,
+        Job::UpsertEntry {
+            article: article.clone(),
+        },
+    );
     Ok(article)
 }
 
@@ -316,7 +333,12 @@ pub async fn create_article(
     )
     .await
     .map_err(|e| e.to_string())?;
-    state.enqueue(Tier::Interactive, Job::UpsertEntry { article: article.clone() });
+    state.enqueue(
+        Tier::Interactive,
+        Job::UpsertEntry {
+            article: article.clone(),
+        },
+    );
     Ok(article)
 }
 
@@ -332,17 +354,17 @@ pub async fn find_article(
 }
 
 #[tauri::command]
-pub async fn read_article(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<Article, String> {
+pub async fn read_article(id: String, state: State<'_, AppState>) -> Result<Article, String> {
     let data_dir = state.library.read().unwrap().clone();
     let article = articles::read_article(&data_dir, &id)
         .await
         .map_err(|e| e.to_string())?;
 
     if let Ok(tags) = entries::read_entry_tags(&data_dir, &id).await {
-        let tags: Vec<String> = tags.into_iter().filter(|t| t != xaga_core::tags::UNREAD).collect();
+        let tags: Vec<String> = tags
+            .into_iter()
+            .filter(|t| t != xaga_core::tags::UNREAD)
+            .collect();
         let _ = entries::set_entry_tags(&data_dir, &id, tags).await;
     }
 
@@ -350,7 +372,10 @@ pub async fn read_article(
         Tier::Interactive,
         Job::SyncState {
             entity: EntityRef::new(id, Kind::Entry),
-            state: StatePatch { is_unread: Some(false), ..Default::default() },
+            state: StatePatch {
+                is_unread: Some(false),
+                ..Default::default()
+            },
         },
     );
     Ok(article)
@@ -385,8 +410,18 @@ pub async fn add_annotation(
     // raise "id not found". embed_entry_vector is checksum-gated, so it skips the unchanged article
     // body and only fills the pending annotation vector via embed_annotations. Tier mirrors the
     // live-edit embed_follow() (Interactive -> Regular). Both jobs carry the domain object.
-    state.enqueue(Tier::Interactive, Job::SyncAnnotations { article: article.clone() });
-    state.enqueue(Tier::Regular, Job::EmbedEntry { article: article.clone() });
+    state.enqueue(
+        Tier::Interactive,
+        Job::SyncAnnotations {
+            article: article.clone(),
+        },
+    );
+    state.enqueue(
+        Tier::Regular,
+        Job::EmbedEntry {
+            article: article.clone(),
+        },
+    );
     Ok(article)
 }
 
@@ -427,11 +462,19 @@ pub async fn remove_annotation(
         let _ = topics::remove_topic_item(&data_dir, &topic_id, &annotation_id).await;
         state.enqueue(
             Tier::Interactive,
-            Job::RemoveMember { topic_id, member_id: annotation_id.clone() },
+            Job::RemoveMember {
+                topic_id,
+                member_id: annotation_id.clone(),
+            },
         );
     }
 
-    state.enqueue(Tier::Interactive, Job::SyncAnnotations { article: article.clone() });
+    state.enqueue(
+        Tier::Interactive,
+        Job::SyncAnnotations {
+            article: article.clone(),
+        },
+    );
 
     window.emit("annotation:removed", &annotation_id).ok();
 

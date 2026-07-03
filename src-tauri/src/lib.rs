@@ -1,5 +1,7 @@
 mod article_loader;
 mod commands;
+mod fetch_client;
+mod native;
 mod ssrf_proxy;
 
 use std::path::{Path, PathBuf};
@@ -10,21 +12,26 @@ use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuIte
 use tauri::window::Color;
 use tauri::{Emitter, Manager, Runtime, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_window_state::StateFlags;
-use xaga_core::embeddings::{EmbeddingService, EmbeddingsDb, EmbeddingsError, Job, ShutdownReason, Tier};
+use xaga_core::embeddings::{
+    EmbeddingService, EmbeddingsDb, EmbeddingsError, Job, ShutdownReason, Tier,
+};
 
 pub(crate) const DEFAULT_LOADER_TIMEOUT_SECS: u64 = 10;
+pub(crate) const DEFAULT_FEED_TIMEOUT_SECS: u64 = 10;
+pub(crate) const DEFAULT_FEED_MAX_BODY_BYTES: u64 = 10 * 1024 * 1024;
 
 pub(crate) struct AppState {
     pub(crate) library: Arc<RwLock<PathBuf>>,
     pub(crate) theme: Arc<RwLock<String>>,
     pub(crate) refresh_on_startup: Arc<RwLock<bool>>,
     pub(crate) loader_timeout_secs: Arc<RwLock<u64>>,
+    pub(crate) feed_timeout_secs: Arc<RwLock<u64>>,
+    pub(crate) feed_max_body_bytes: Arc<RwLock<u64>>,
     pub(crate) html_reader_font_family: Arc<RwLock<String>>,
     pub(crate) html_reader_font_size: Arc<RwLock<f64>>,
     pub(crate) html_reader_line_height: Arc<RwLock<f64>>,
     pub(crate) show_sidebar: Arc<RwLock<bool>>,
     pub(crate) embedding_service: Arc<Mutex<Option<EmbeddingService>>>,
-    pub(crate) http_client: reqwest::Client,
     /// Read-only LanceDB handle for command reads (Phase C). Distinct connection from
     /// the embedding service's writer; reads must `reload()` to see the service's writes.
     pub(crate) embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>>,
@@ -33,14 +40,17 @@ pub(crate) struct AppState {
     pub(crate) expanded_sidebar_list: Arc<RwLock<Option<String>>>,
     pub(crate) inline_pdf_reader: Arc<RwLock<bool>>,
     pub(crate) html_reader_view: Arc<RwLock<String>>,
-    /// Port of the local SSRF-filtering proxy that loader webviews are routed
-    /// through (see [`ssrf_proxy`]).
+    /// Port of the local SSRF-filtering proxy that loader webviews and the
+    /// per-invocation fetch clients (see [`fetch_client`]) are routed through.
     pub(crate) ssrf_proxy_port: u16,
-    /// HTTP client routed through the SSRF-filtering proxy. Used to fetch remote
-    /// content directly (e.g. inline PDF bytes) with the same private/loopback/
-    /// DNS-rebind protection the loader webview gets. Distinct from `http_client`,
-    /// which is unproxied and used for feeds/embeddings.
-    pub(crate) ssrf_http_client: reqwest::Client,
+    /// Redirect cap for the reqwest fetch paths (feed XML, PDF probe), already
+    /// clamped to [`fetch_client::MAX_REDIRECTS_CEILING`]. The article loader
+    /// webview is not covered (docs/backlog/article_loader_redirect_cap.md).
+    pub(crate) max_redirects: Arc<RwLock<u32>>,
+    /// Whether the `Referer` header is allowed to go out on redirect hops
+    /// (reqwest fetch paths); it names the previous URL. Off by default:
+    /// redirect targets don't learn the original feed URL.
+    pub(crate) referer_allowed: Arc<RwLock<bool>>,
 }
 
 impl AppState {
@@ -86,6 +96,14 @@ pub(crate) struct UserSettings {
     /// the webview is force-closed. Lower values shrink the window available to
     /// malicious scripts. Defaults to 10 seconds if absent.
     pub(crate) loader_timeout_secs: Option<u64>,
+    /// Maximum seconds for a feed fetch (connection negotiation through body
+    /// read). Bounds how long a stalled feed server can hold up `add_feed` or
+    /// the sequential refresh loop. Defaults to 10 seconds if absent.
+    pub(crate) feed_timeout_secs: Option<u64>,
+    /// Maximum bytes read from a feed response body; the fetch aborts past this
+    /// limit. Bounds the memory a single response can occupy. Defaults to
+    /// 10 MiB if absent.
+    pub(crate) feed_max_body_bytes: Option<u64>,
     #[serde(alias = "reader_font_family")]
     pub(crate) html_reader_font_family: Option<String>,
     #[serde(alias = "reader_font_size")]
@@ -97,6 +115,18 @@ pub(crate) struct UserSettings {
     pub(crate) expanded_sidebar_list: Option<String>,
     pub(crate) inline_pdf_reader: Option<bool>,
     pub(crate) html_reader_view: Option<String>,
+    /// Allow plaintext `http://` fetches (feeds, PDF probe, article loader).
+    /// Enforced by the SSRF proxy. Defaults to false if absent.
+    pub(crate) http_allowed: Option<bool>,
+    /// Maximum redirects per fetch on the reqwest paths (feed XML, PDF probe).
+    /// 0 means the initial request only. Defaults to 3 if absent; clamped to
+    /// 10. The default of 3 is a UX exception to secure-by-default — see
+    /// docs/security/fetching_untrusted_content.md.
+    pub(crate) max_redirects: Option<u32>,
+    /// Whether the `Referer` header is allowed to go out on redirect hops
+    /// (reqwest fetch paths); it names the previous URL to the redirect
+    /// target. Defaults to false if absent.
+    pub(crate) referer_allowed: Option<bool>,
 }
 
 pub(crate) fn load_settings(path: &Path) -> UserSettings {
@@ -217,28 +247,30 @@ pub fn run() {
     let http_client = reqwest::Client::new();
     let named_stores_supported = article_loader::supports_named_data_stores();
 
-    // Start the local SSRF-filtering proxy that every loader webview is routed
-    // through. Fail fast: binding 127.0.0.1:0 essentially never fails, and
-    // running the loader without this proxy would silently reopen the SSRF hole.
-    let ssrf_proxy_port =
-        tauri::async_runtime::block_on(ssrf_proxy::start(ssrf_proxy::ProxyConfig::new()))
-            .expect("failed to start SSRF filtering proxy for the article loader");
+    // The "HTTP allowed" handle, created before the proxy so the proxy can
+    // enforce it from its first request. Seeded from settings.json in setup;
+    // false (blocked) until then.
+    let http_allowed = fetch_client::http_allowed_handle();
 
-    // HTTP client that dials only through the SSRF proxy, so direct fetches of
-    // remote content (inline PDF bytes) get the same protection as the webview.
-    let ssrf_http_client = reqwest::Client::builder()
-        .proxy(
-            reqwest::Proxy::all(format!("http://127.0.0.1:{ssrf_proxy_port}"))
-                .expect("valid SSRF proxy URL"),
-        )
-        .build()
-        .expect("failed to build SSRF-proxied HTTP client");
+    // Start the local SSRF-filtering proxy that every loader webview and every
+    // fetch client is routed through. Fail fast: binding 127.0.0.1:0
+    // essentially never fails, and running the loader without this proxy would
+    // silently reopen the SSRF hole.
+    let ssrf_proxy_port = tauri::async_runtime::block_on(ssrf_proxy::start(
+        ssrf_proxy::ProxyConfig::new(Arc::clone(&http_allowed)),
+    ))
+    .expect("failed to start SSRF filtering proxy for the article loader");
 
     // Pre-created Arcs shared between .manage() and the .setup() closure.
     let library: Arc<RwLock<PathBuf>> = Arc::new(RwLock::new(PathBuf::new()));
     let theme: Arc<RwLock<String>> = Arc::new(RwLock::new("auto".to_string()));
     let refresh_on_startup: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let loader_timeout_secs: Arc<RwLock<u64>> = Arc::new(RwLock::new(DEFAULT_LOADER_TIMEOUT_SECS));
+    let feed_timeout_secs: Arc<RwLock<u64>> = Arc::new(RwLock::new(DEFAULT_FEED_TIMEOUT_SECS));
+    let feed_max_body_bytes: Arc<RwLock<u64>> = Arc::new(RwLock::new(DEFAULT_FEED_MAX_BODY_BYTES));
+    let max_redirects: Arc<RwLock<u32>> =
+        Arc::new(RwLock::new(fetch_client::DEFAULT_MAX_REDIRECTS));
+    let referer_allowed: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let html_reader_font_family: Arc<RwLock<String>> = Arc::new(RwLock::new("system".to_string()));
     let html_reader_font_size: Arc<RwLock<f64>> = Arc::new(RwLock::new(16.0));
     let html_reader_line_height: Arc<RwLock<f64>> = Arc::new(RwLock::new(1.75));
@@ -259,11 +291,15 @@ pub fn run() {
     let setup_theme = Arc::clone(&theme);
     let setup_refresh_on_startup = Arc::clone(&refresh_on_startup);
     let setup_loader_timeout = Arc::clone(&loader_timeout_secs);
+    let setup_feed_timeout = Arc::clone(&feed_timeout_secs);
+    let setup_feed_max_body = Arc::clone(&feed_max_body_bytes);
+    let setup_http_allowed = Arc::clone(&http_allowed);
+    let setup_max_redirects = Arc::clone(&max_redirects);
+    let setup_referer_allowed = Arc::clone(&referer_allowed);
     let setup_reader_font_family = Arc::clone(&html_reader_font_family);
     let setup_reader_font_size = Arc::clone(&html_reader_font_size);
     let setup_reader_line_height = Arc::clone(&html_reader_line_height);
     let setup_svc = Arc::clone(&embedding_service);
-    let setup_http_client = http_client.clone();
 
     let app = tauri::Builder::default()
         .manage(AppState {
@@ -271,12 +307,13 @@ pub fn run() {
             theme: theme.clone(),
             refresh_on_startup,
             loader_timeout_secs,
+            feed_timeout_secs,
+            feed_max_body_bytes,
             html_reader_font_family,
             html_reader_font_size,
             html_reader_line_height,
             show_sidebar,
             embedding_service: embedding_service.clone(),
-            http_client,
             embeddings_read,
             allowed_domains,
             named_stores_supported,
@@ -284,7 +321,8 @@ pub fn run() {
             inline_pdf_reader,
             html_reader_view,
             ssrf_proxy_port,
-            ssrf_http_client,
+            max_redirects,
+            referer_allowed,
         })
         .manage(article_loader::PendingRequests::default())
         .plugin(
@@ -478,18 +516,15 @@ pub fn run() {
             "open_library" => {
                 app.emit("menu:open-library", ()).ok();
             }
-            "import_feeds" => {
-                app.emit("menu:import-feeds", ()).ok();
-            }
-            "export_feeds" => {
-                app.emit("menu:export-feeds", ()).ok();
-            }
-            "import_bookmarks" => {
-                app.emit("menu:import-bookmarks", ()).ok();
-            }
-            "export_bookmarks" => {
-                app.emit("menu:export-bookmarks", ()).ok();
-            }
+            // File-path operations are orchestrated entirely on the native side:
+            // the dialog opens in Rust and the work runs without a webview-facing
+            // command, so no path is ever taken from the renderer
+            // (docs/security/command_surface.md). Completion is reported back via
+            // the `feeds:*` / `bookmarks:*` events.
+            "import_feeds" => native::import_feeds_dialog(app),
+            "export_feeds" => native::export_feeds_dialog(app),
+            "import_bookmarks" => native::import_bookmarks_dialog(app),
+            "export_bookmarks" => native::export_bookmarks_dialog(app),
             "open_settings" => {
                 if let Some(win) = app.get_webview_window("settings") {
                     win.show().ok();
@@ -571,6 +606,16 @@ pub fn run() {
             let timeout = settings
                 .loader_timeout_secs
                 .unwrap_or(DEFAULT_LOADER_TIMEOUT_SECS);
+            let feed_timeout = settings
+                .feed_timeout_secs
+                .unwrap_or(DEFAULT_FEED_TIMEOUT_SECS);
+            let feed_max_body = settings
+                .feed_max_body_bytes
+                .unwrap_or(DEFAULT_FEED_MAX_BODY_BYTES);
+            let http_allowed_setting = settings.http_allowed.unwrap_or(false);
+            let max_redirects_setting =
+                fetch_client::effective_max_redirects(settings.max_redirects);
+            let referer_allowed_setting = settings.referer_allowed.unwrap_or(false);
             let font_family = settings
                 .html_reader_font_family
                 .unwrap_or_else(|| "system".to_string());
@@ -581,6 +626,11 @@ pub fn run() {
             *setup_theme.write().unwrap() = theme.clone();
             *setup_refresh_on_startup.write().unwrap() = refresh;
             *setup_loader_timeout.write().unwrap() = timeout;
+            *setup_feed_timeout.write().unwrap() = feed_timeout;
+            *setup_feed_max_body.write().unwrap() = feed_max_body;
+            *setup_http_allowed.write().unwrap() = http_allowed_setting;
+            *setup_max_redirects.write().unwrap() = max_redirects_setting;
+            *setup_referer_allowed.write().unwrap() = referer_allowed_setting;
             *setup_reader_font_family.write().unwrap() = font_family;
             *setup_reader_font_size.write().unwrap() = font_size;
             *setup_reader_line_height.write().unwrap() = line_height;
@@ -611,7 +661,7 @@ pub fn run() {
             // instance will not write to LanceDB.
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = xaga_core::embeddings::download_model_if_missing(&setup_http_client).await {
+                if let Err(e) = xaga_core::embeddings::download_model_if_missing(&http_client).await {
                     log::error!("startup: model download failed: {e}");
                 }
 
@@ -753,13 +803,9 @@ pub fn run() {
             commands::feeds::refresh_all_feeds,
             commands::feeds::rename_feed,
             commands::feeds::remove_feed,
-            commands::feeds::import_feeds,
-            commands::feeds::export_feeds,
             commands::feeds::list_entries,
             commands::bookmarks::add_bookmark,
             commands::bookmarks::remove_bookmark,
-            commands::bookmarks::import_bookmarks,
-            commands::bookmarks::export_bookmarks,
             commands::topics::create_topic,
             commands::topics::save_topic,
             commands::topics::list_topics,
@@ -821,7 +867,6 @@ pub fn run() {
         _ => {}
     });
 }
-
 
 /// Spawns a fresh copy of the current executable then exits the current
 /// process.  The new process boots against the already-updated settings.json.

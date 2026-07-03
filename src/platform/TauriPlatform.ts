@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { z } from "zod";
 import type {
@@ -14,7 +14,8 @@ import type {
   Feed,
   Filter,
   HtmlReaderView,
-  ImportResult,
+  ImportOutcome,
+  ExportOutcome,
   Item,
   ListItem,
   Topic,
@@ -393,34 +394,6 @@ export class TauriPlatform implements Platform {
     return await invoker("remove_feed", { url: feedUrl });
   }
 
-  async importFeeds(signal: AbortSignal): Promise<ImportResult<Feed> | null> {
-    const filePath = (await open({
-      filters: [{ name: "OPML", extensions: ["opml", "xml"] }],
-    })) as string | null;
-    if (!filePath) return null;
-
-    const name = "import_feeds";
-    const invoker = decorate(invoke)
-      .with(abortable, { signal })
-      .with(logged, { logger, name });
-
-    return invoker<ImportResult<Feed>>(name, { filePath });
-  }
-
-  async exportFeeds(signal: AbortSignal): Promise<void> {
-    const filePath = (await save({
-      filters: [{ name: "OPML", extensions: ["opml"] }],
-      defaultPath: "feeds.opml",
-    })) as string | null;
-    if (!filePath) return;
-
-    const invoker = decorate(invoke)
-      .with(abortable, { signal })
-      .with(logged, { logger, name: "export_feeds" });
-
-    await invoker("export_feeds", { filePath });
-  }
-
   // Entries -------------------------------------------------------------------
 
   async listEntries(
@@ -790,35 +763,6 @@ export class TauriPlatform implements Platform {
     return EntrySchema.transform(toEntry).parse(result);
   }
 
-  async importBookmarks(
-    signal: AbortSignal
-  ): Promise<ImportResult<Entry> | null> {
-    const filePath = (await open({
-      filters: [{ name: "Bookmarks", extensions: ["html", "htm"] }],
-    })) as string | null;
-    if (!filePath) return null;
-
-    const invoker = decorate(invoke)
-      .with(abortable, { signal })
-      .with(logged, { logger, name: "import_bookmarks" });
-
-    return invoker<ImportResult<Entry>>("import_bookmarks", { filePath });
-  }
-
-  async exportBookmarks(signal: AbortSignal): Promise<void> {
-    const filePath = (await save({
-      filters: [{ name: "Bookmarks", extensions: ["html"] }],
-      defaultPath: "bookmarks.html",
-    })) as string | null;
-    if (!filePath) return;
-
-    const invoker = decorate(invoke)
-      .with(abortable, { signal })
-      .with(logged, { logger, name: "export_bookmarks" });
-
-    await invoker("export_bookmarks", { filePath });
-  }
-
   // Embedding queries ---------------------------------------------------------
 
   async queryByItem(
@@ -891,16 +835,24 @@ export class TauriPlatform implements Platform {
     return listen(name, listener);
   }
 
-  onImportFeeds(callback: () => void): Promise<UnlistenFn> {
-    const name = "menu:import-feeds";
-    const listener = decorate(callback).with(logged, { logger, name });
-    return listen(name, listener);
+  onFeedsImported(
+    callback: (outcome: ImportOutcome<Feed>) => void
+  ): Promise<UnlistenFn> {
+    const name = "feeds:imported";
+    const listener = decorate((e: { payload: ImportOutcome<Feed> }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
+    return listen<ImportOutcome<Feed>>(name, listener);
   }
 
-  onExportFeeds(callback: () => void): Promise<UnlistenFn> {
-    const name = "menu:export-feeds";
-    const listener = decorate(callback).with(logged, { logger, name });
-    return listen(name, listener);
+  onFeedsExported(
+    callback: (outcome: ExportOutcome) => void
+  ): Promise<UnlistenFn> {
+    const name = "feeds:exported";
+    const listener = decorate((e: { payload: ExportOutcome }) =>
+      callback(e.payload)
+    ).with(logged, { logger, name });
+    return listen<ExportOutcome>(name, listener);
   }
 
   onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn> {
@@ -961,17 +913,6 @@ export class TauriPlatform implements Platform {
     return listen(name, listener);
   }
 
-  onImportBookmarks(callback: () => void): Promise<UnlistenFn> {
-    const name = "menu:import-bookmarks";
-    const listener = decorate(callback).with(logged, { logger, name });
-    return listen(name, listener);
-  }
-
-  onExportBookmarks(callback: () => void): Promise<UnlistenFn> {
-    const name = "menu:export-bookmarks";
-    const listener = decorate(callback).with(logged, { logger, name });
-    return listen(name, listener);
-  }
 
   async getTheme(): Promise<string> {
     const name = "get_theme";

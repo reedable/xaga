@@ -1,7 +1,7 @@
 pub mod articles;
 pub mod bookmarks;
-pub mod entries;
 pub mod embeddings;
+pub mod entries;
 pub mod feeds;
 pub mod library;
 pub mod settings;
@@ -54,11 +54,8 @@ pub(crate) fn parse_item_filter(
         .map_or(Ok(Default::default()), Ok)
 }
 
-pub(crate) fn parse_item_sort(
-    sort: Option<String>,
-) -> Result<xaga_core::types::ItemSort, String> {
-    sort
-        .as_deref()
+pub(crate) fn parse_item_sort(sort: Option<String>) -> Result<xaga_core::types::ItemSort, String> {
+    sort.as_deref()
         .map(|s| s.parse::<xaga_core::types::ItemSort>())
         .transpose()
         .map_err(|e| e)?

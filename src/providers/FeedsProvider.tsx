@@ -7,7 +7,7 @@ import {
 } from "react";
 import { subscribe } from "../hooks/useEvents";
 import { usePlatform } from "../platform/Platform";
-import type { Feed } from "../types";
+import type { ExportOutcome, Feed, ImportOutcome } from "../types";
 import { debounced } from "../utils/Decorator";
 import sortByUnreadCount from "../utils/sortByUnreadCount";
 import FeedsContext, { type FeedsContextType } from "./FeedsContext";
@@ -60,38 +60,40 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
     return subscribe(() => platform.onUnreadChanged(refresh));
   }, [platform, refreshFeeds]);
 
-  const handleImportFeeds = useCallback(async () => {
-    const signal = new AbortController().signal;
-    setError(null);
-    try {
-      const result = await platform.importFeeds(signal);
-      if (result !== null && result !== undefined) {
+  // Import/export are orchestrated natively (no webview command — see
+  // docs/security/command_surface.md); the outcome arrives by event. On
+  // success we re-list feeds; on failure we surface the error, preserving the
+  // pre-refactor UX where the JS layer drove the call.
+  const handleFeedsImported = useCallback(
+    async (outcome: ImportOutcome<Feed>) => {
+      setError(null);
+      if (outcome.error !== null) {
+        setError(outcome.error);
+        return;
+      }
+      const signal = new AbortController().signal;
+      try {
         const results = await platform.listFeeds(signal);
         if (results) setFeeds([...results].sort(sortByUnreadCount));
+      } catch (e) {
+        setError(e);
       }
-    } catch (e) {
-      setError(e);
-    }
-  }, [platform, setFeeds]);
+    },
+    [platform, setFeeds]
+  );
 
-  const handleExportFeeds = useCallback(async () => {
-    const signal = new AbortController().signal;
-    setError(null);
-    try {
-      await platform.exportFeeds(signal);
-    } catch (e) {
-      setError(e);
-    }
-  }, [platform]);
+  const handleFeedsExported = useCallback((outcome: ExportOutcome) => {
+    setError(outcome.error);
+  }, []);
 
   useEffect(
-    () => subscribe(() => platform.onImportFeeds(handleImportFeeds)),
-    [platform, handleImportFeeds]
+    () => subscribe(() => platform.onFeedsImported(handleFeedsImported)),
+    [platform, handleFeedsImported]
   );
 
   useEffect(
-    () => subscribe(() => platform.onExportFeeds(handleExportFeeds)),
-    [platform, handleExportFeeds]
+    () => subscribe(() => platform.onFeedsExported(handleFeedsExported)),
+    [platform, handleFeedsExported]
   );
 
   const value = useMemo<FeedsContextType>(

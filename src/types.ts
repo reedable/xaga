@@ -103,6 +103,21 @@ export type ImportResult<T> = {
   failed: string[];
 };
 
+/**
+ * Payload of a native-triggered import/export completion event. Import/export
+ * are orchestrated on the native side (no webview command — see
+ * docs/security/command_surface.md); the outcome is delivered by event, with
+ * `result` present on success and `error` present on failure.
+ */
+export type ImportOutcome<T> = {
+  result: ImportResult<T> | null;
+  error: string | null;
+};
+
+export type ExportOutcome = {
+  error: string | null;
+};
+
 // ── Navigation ───────────────────────────────────────────────────────────────
 
 export type NavigationState = {

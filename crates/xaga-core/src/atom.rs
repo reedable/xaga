@@ -436,6 +436,19 @@ fn to_atom_entry(src: &atom_parser::model::Entry) -> AtomEntry {
 /// Append entries from `new_entries` that are not already in `feed` (matched by id).
 /// Sorts all entries newest-first after merging.
 /// Returns the entries that were actually added.
+///
+/// Membership is append-only: the `.atom` file is allowed to grow indefinitely.
+/// The growth rate is capped by the payload size (`feed_max_body_bytes`,
+/// default 10 MiB per feed per fetch) and by the frequency of user-initiated
+/// refresh — no timer or scheduler refreshes feeds, so a hostile feed emitting
+/// endless unique entries grows only as fast as the user chooses to refresh
+/// it, and deleting the feed stops the growth (assessed 2026-07-02, not a
+/// security gap). That assessment rests on refresh being user-initiated,
+/// which is not incidental: Xaga is a PKM (see README.md), not a
+/// latest-news engagement product, and automatic/background refresh is
+/// contrary to that identity — there is no plan to add it. Should that
+/// premise somehow change, this assessment is void and unbounded `.atom`
+/// growth becomes a security risk.
 fn merge_entries(feed: &mut Atom, new_entries: Vec<AtomEntry>) -> Vec<AtomEntry> {
     let existing_ids: HashSet<String> = feed.entries().iter().map(|e| e.id().to_string()).collect();
 

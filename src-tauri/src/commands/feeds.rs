@@ -1,6 +1,3 @@
-use std::collections::HashSet;
-
-use serde::Serialize;
 use tauri::{Emitter, State};
 use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
 use xaga_core::persistence::feeds;
@@ -9,17 +6,13 @@ use xaga_core::types::{Entry, Feed, Kind};
 use super::parse_item_filter;
 use crate::{AppState, get_bookmarked_ids, get_unread_ids};
 
-#[derive(Serialize)]
-pub struct ImportResult {
-    pub added: Vec<Feed>,
-    pub skipped: Vec<String>,
-    pub failed: Vec<String>,
-}
-
 #[tauri::command]
 pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<Feed>, String> {
     let library = state.library.read().unwrap().clone();
-    let (unread, bookmarked) = (get_unread_ids(&state).await, get_bookmarked_ids(&state).await);
+    let (unread, bookmarked) = (
+        get_unread_ids(&state).await,
+        get_bookmarked_ids(&state).await,
+    );
     feeds::list_feeds(&library, &unread, &bookmarked)
         .await
         .map_err(|e| e.to_string())
@@ -28,10 +21,28 @@ pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<Feed>, String>
 #[tauri::command]
 pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, String> {
     let library = state.library.read().unwrap().clone();
-    let (unread, bookmarked) = (get_unread_ids(&state).await, get_bookmarked_ids(&state).await);
-    let (feed, created) = feeds::add_feed(&state.http_client, &library, &url, &unread, &bookmarked)
-        .await
-        .map_err(|e| e.to_string())?;
+    let timeout_secs = *state.feed_timeout_secs.read().unwrap();
+    let max_body_bytes = *state.feed_max_body_bytes.read().unwrap();
+    let client = crate::fetch_client::build(
+        state.ssrf_proxy_port,
+        *state.max_redirects.read().unwrap(),
+        *state.referer_allowed.read().unwrap(),
+    );
+    let (unread, bookmarked) = (
+        get_unread_ids(&state).await,
+        get_bookmarked_ids(&state).await,
+    );
+    let (feed, created) = feeds::add_feed(
+        &client,
+        &library,
+        &url,
+        &unread,
+        &bookmarked,
+        timeout_secs,
+        max_body_bytes,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     // User-initiated CRUD: the user invoked add_feed and is waiting on the result, so the
     // entry upsert rides Interactive (T1). Its entry embedding then follows to Regular via
     // `embed_follow`, per the priority definitions in the embedding service's `run_loop`.
@@ -47,9 +58,26 @@ pub async fn refresh_all_feeds(
     state: State<'_, AppState>,
 ) -> Result<Vec<Feed>, String> {
     let library = state.library.read().unwrap().clone();
-    let (unread, bookmarked) = (get_unread_ids(&state).await, get_bookmarked_ids(&state).await);
-    let results =
-        feeds::refresh_all_feeds(&state.http_client, &library, &unread, &bookmarked).await;
+    let timeout_secs = *state.feed_timeout_secs.read().unwrap();
+    let max_body_bytes = *state.feed_max_body_bytes.read().unwrap();
+    let client = crate::fetch_client::build(
+        state.ssrf_proxy_port,
+        *state.max_redirects.read().unwrap(),
+        *state.referer_allowed.read().unwrap(),
+    );
+    let (unread, bookmarked) = (
+        get_unread_ids(&state).await,
+        get_bookmarked_ids(&state).await,
+    );
+    let results = feeds::refresh_all_feeds(
+        &client,
+        &library,
+        &unread,
+        &bookmarked,
+        timeout_secs,
+        max_body_bytes,
+    )
+    .await;
     let mut refreshed = Vec::new();
 
     for (id, result) in results {
@@ -107,7 +135,10 @@ pub async fn rename_feed(
     state: State<'_, AppState>,
 ) -> Result<Feed, String> {
     let library = state.library.read().unwrap().clone();
-    let (unread, bookmarked) = (get_unread_ids(&state).await, get_bookmarked_ids(&state).await);
+    let (unread, bookmarked) = (
+        get_unread_ids(&state).await,
+        get_bookmarked_ids(&state).await,
+    );
 
     let feed = feeds::rename_feed(&library, &id, &title, &unread, &bookmarked)
         .await
@@ -128,93 +159,6 @@ pub async fn remove_feed(url: String, state: State<'_, AppState>) -> Result<Stri
         .await
         .map_err(|e| e.to_string())?;
     Ok(url)
-}
-
-#[tauri::command]
-pub async fn import_feeds(
-    file_path: String,
-    state: State<'_, AppState>,
-) -> Result<ImportResult, String> {
-    let library = state.library.read().unwrap().clone();
-
-    let xml = tokio::fs::read_to_string(&file_path)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let raw_urls = xaga_core::persistence::opml::parse_opml(&xml).map_err(|e| e.to_string())?;
-
-    let (unread, bookmarked) = (get_unread_ids(&state).await, get_bookmarked_ids(&state).await);
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut added: Vec<Feed> = Vec::new();
-    let mut skipped: Vec<String> = Vec::new();
-    let mut failed: Vec<String> = Vec::new();
-
-    for raw in raw_urls {
-        let normalized = match xaga_core::util::normalize_url(&raw) {
-            Ok(u) => u,
-            Err(e) => {
-                log::warn!("import_feeds: invalid URL {raw:?}: {e}");
-                failed.push(raw);
-                continue;
-            }
-        };
-
-        if !seen.insert(normalized.clone()) {
-            skipped.push(normalized);
-            continue;
-        }
-
-        match feeds::add_feed(
-            &state.http_client,
-            &library,
-            &normalized,
-            &unread,
-            &bookmarked,
-        )
-        .await
-        {
-            Ok((feed, created)) => {
-                // User-initiated CRUD (OPML import): the user is waiting, so the entry upsert
-                // rides Interactive (T1); its embedding follows to Regular via `embed_follow`,
-                // per the priority definitions in the service's `run_loop`.
-                for article in created {
-                    state.enqueue(Tier::Interactive, Job::UpsertEntry { article });
-                }
-                added.push(feed);
-            }
-            Err(e) => {
-                log::warn!("import_feeds: failed to add {normalized:?}: {e}");
-                failed.push(normalized);
-            }
-        }
-    }
-
-    Ok(ImportResult {
-        added,
-        skipped,
-        failed,
-    })
-}
-
-#[tauri::command]
-pub async fn export_feeds(file_path: String, state: State<'_, AppState>) -> Result<(), String> {
-    let library = state.library.read().unwrap().clone();
-
-    let (unread, bookmarked) = (get_unread_ids(&state).await, get_bookmarked_ids(&state).await);
-    let feed_list = feeds::list_feeds(&library, &unread, &bookmarked)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let pairs: Vec<(&str, &str)> = feed_list
-        .iter()
-        .map(|f| (f.url.as_str(), f.title.as_str()))
-        .collect();
-
-    let opml = xaga_core::persistence::opml::build_opml(&pairs);
-
-    tokio::fs::write(&file_path, opml)
-        .await
-        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -239,7 +183,10 @@ pub async fn list_entries(
     };
     db.reload().await.map_err(|e| e.to_string())?;
 
-    let entries = db.list_entries_by_ids(&ids).await.map_err(|e| e.to_string())?;
+    let entries = db
+        .list_entries_by_ids(&ids)
+        .await
+        .map_err(|e| e.to_string())?;
     let mut items = xaga_core::query::filter::filter_items(entries, &item_filter)
         .await
         .map_err(|e| e.to_string())?;

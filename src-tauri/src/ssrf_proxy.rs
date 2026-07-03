@@ -49,7 +49,7 @@ fn is_blocked_v4(v4: Ipv4Addr) -> bool {
         || v4.is_broadcast()      // 255.255.255.255
         || v4.is_documentation()  // 192.0.2/24, 198.51.100/24, 203.0.113/24
         || (o[0] == 100 && (o[1] & 0xc0) == 64)        // 100.64.0.0/10 CGNAT (RFC 6598)
-        || (o[0] == 192 && o[1] == 0 && o[2] == 0)     // 192.0.0.0/24 IETF protocol assignments
+        || (o[0] == 192 && o[1] == 0 && o[2] == 0) // 192.0.0.0/24 IETF protocol assignments
 }
 
 /// Returns true when `ip` is in a range the loader must never reach. This is the
@@ -75,9 +75,7 @@ fn is_blocked(ip: IpAddr) -> bool {
             //   NAT64        64:ff9b::/96  — well-known prefix, commonly routed
             //   IPv4-compat  ::/96         — deprecated ::a.b.c.d
             // Both carry the v4 in the final two hextets.
-            let nat64 = seg[0] == 0x0064
-                && seg[1] == 0xff9b
-                && seg[2..6].iter().all(|&s| s == 0);
+            let nat64 = seg[0] == 0x0064 && seg[1] == 0xff9b && seg[2..6].iter().all(|&s| s == 0);
             let v4_compat = seg[..6].iter().all(|&s| s == 0);
             if nat64 || v4_compat {
                 let v4 = Ipv4Addr::new(
@@ -237,30 +235,31 @@ async fn read_head(stream: &mut TcpStream) -> std::io::Result<Option<(Vec<u8>, V
 }
 
 fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    haystack
-        .windows(needle.len())
-        .position(|w| w == needle)
+    haystack.windows(needle.len()).position(|w| w == needle)
 }
 
 #[derive(Clone)]
 pub struct ProxyConfig {
     resolver: Arc<dyn HostResolver>,
     is_blocked_fn: fn(IpAddr) -> bool,
+    /// Whether plaintext `http://` requests (absolute-form) are forwarded.
+    /// Shared handle to the "HTTP allowed" setting, read per request; the proxy
+    /// starts before settings load, so it holds the handle, not the value.
+    /// `false` refuses with [`HTTP_BLOCKED_STATUS`]. Enforcing here (not via
+    /// reqwest `.https_only()`) covers every consumer that dials through the
+    /// proxy — the feed and PDF clients, the loader webview, its subresources,
+    /// and every redirect hop.
+    http_allowed: Arc<std::sync::RwLock<bool>>,
 }
 
 impl ProxyConfig {
     /// Production configuration: system DNS + the real address policy.
-    pub fn new() -> Self {
+    pub fn new(http_allowed: Arc<std::sync::RwLock<bool>>) -> Self {
         Self {
             resolver: Arc::new(SystemResolver),
             is_blocked_fn: is_blocked,
+            http_allowed,
         }
-    }
-}
-
-impl Default for ProxyConfig {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -291,6 +290,25 @@ async fn write_status(stream: &mut TcpStream, status: &str) -> std::io::Result<(
         .await
 }
 
+/// The refusal for plaintext HTTP when the "HTTP allowed" setting is off.
+/// Status is [`HTTP_BLOCKED_STATUS`] so fetch paths can tell this apart from a
+/// real server 4xx; the body is for the loader webview, whose capture would
+/// otherwise show an empty page with no explanation.
+async fn write_http_blocked(stream: &mut TcpStream) -> std::io::Result<()> {
+    let body = "Plaintext HTTP is disabled (Xaga \"HTTP allowed\" setting).";
+    stream
+        .write_all(
+            format!(
+                "HTTP/1.1 {} HTTP Blocked\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\n\r\n{}",
+                xaga_core::persistence::feeds::HTTP_BLOCKED_STATUS,
+                body.len(),
+                body
+            )
+            .as_bytes(),
+        )
+        .await
+}
+
 async fn handle_conn(mut client: TcpStream, cfg: ProxyConfig) -> std::io::Result<()> {
     let Some((head, leftover)) = read_head(&mut client).await? else {
         return Ok(());
@@ -314,7 +332,9 @@ async fn handle_conn(mut client: TcpStream, cfg: ProxyConfig) -> std::io::Result
             .await
             {
                 Ok(addr) => addr,
-                Err(ProxyError::Blocked) => return write_status(&mut client, "403 Forbidden").await,
+                Err(ProxyError::Blocked) => {
+                    return write_status(&mut client, "403 Forbidden").await;
+                }
                 Err(_) => return write_status(&mut client, "502 Bad Gateway").await,
             };
             let mut upstream = match TcpStream::connect(addr).await {
@@ -332,6 +352,9 @@ async fn handle_conn(mut client: TcpStream, cfg: ProxyConfig) -> std::io::Result
             Ok(())
         }
         Target::Http { host, port } => {
+            if !*cfg.http_allowed.read().unwrap() {
+                return write_http_blocked(&mut client).await;
+            }
             let addr = match validate_target_async(
                 host.clone(),
                 port,
@@ -341,7 +364,9 @@ async fn handle_conn(mut client: TcpStream, cfg: ProxyConfig) -> std::io::Result
             .await
             {
                 Ok(addr) => addr,
-                Err(ProxyError::Blocked) => return write_status(&mut client, "403 Forbidden").await,
+                Err(ProxyError::Blocked) => {
+                    return write_status(&mut client, "403 Forbidden").await;
+                }
                 Err(_) => return write_status(&mut client, "502 Bad Gateway").await,
             };
             let mut upstream = match TcpStream::connect(addr).await {
@@ -425,15 +450,15 @@ mod tests {
     #[test]
     fn blocks_private_and_local_ipv4() {
         for s in [
-            "127.0.0.1",         // loopback
-            "10.0.0.5",          // RFC1918
-            "172.16.3.4",        // RFC1918
-            "192.168.1.1",       // RFC1918
-            "169.254.169.254",   // cloud metadata (link-local)
-            "0.0.0.0",           // unspecified
-            "255.255.255.255",   // broadcast
-            "100.64.1.1",        // CGNAT
-            "192.0.0.1",         // IETF protocol assignments
+            "127.0.0.1",       // loopback
+            "10.0.0.5",        // RFC1918
+            "172.16.3.4",      // RFC1918
+            "192.168.1.1",     // RFC1918
+            "169.254.169.254", // cloud metadata (link-local)
+            "0.0.0.0",         // unspecified
+            "255.255.255.255", // broadcast
+            "100.64.1.1",      // CGNAT
+            "192.0.0.1",       // IETF protocol assignments
         ] {
             assert!(is_blocked(v4(s)), "{s} should be blocked");
         }
@@ -449,12 +474,12 @@ mod tests {
     #[test]
     fn blocks_private_and_local_ipv6() {
         for s in [
-            "::1",               // loopback
-            "::",                // unspecified
-            "fc00::1",           // ULA
-            "fd00:ec2::254",     // AWS IMDS over IPv6 (within fc00::/7)
-            "fe80::1",           // link-local
-            "::ffff:127.0.0.1",  // IPv4-mapped loopback
+            "::1",                    // loopback
+            "::",                     // unspecified
+            "fc00::1",                // ULA
+            "fd00:ec2::254",          // AWS IMDS over IPv6 (within fc00::/7)
+            "fe80::1",                // link-local
+            "::ffff:127.0.0.1",       // IPv4-mapped loopback
             "::ffff:169.254.169.254", // IPv4-mapped metadata
         ] {
             assert!(is_blocked(v6(s)), "{s} should be blocked");
@@ -473,13 +498,13 @@ mod tests {
         // NAT64 / 6to4 / IPv4-compatible wrappers around a private or loopback
         // IPv4 must be judged by the embedded address, not allowed as "public".
         for s in [
-            "64:ff9b::7f00:1",   // NAT64    → 127.0.0.1
+            "64:ff9b::7f00:1",    // NAT64    → 127.0.0.1
             "64:ff9b::a9fe:a9fe", // NAT64    → 169.254.169.254 (metadata)
-            "64:ff9b::a00:1",    // NAT64    → 10.0.0.1
-            "2002:7f00:1::",     // 6to4     → 127.0.0.1
-            "2002:a00:1::",      // 6to4     → 10.0.0.1
-            "::7f00:1",          // ::a.b.c.d → 127.0.0.1
-            "::a00:1",           // ::a.b.c.d → 10.0.0.1
+            "64:ff9b::a00:1",     // NAT64    → 10.0.0.1
+            "2002:7f00:1::",      // 6to4     → 127.0.0.1
+            "2002:a00:1::",       // 6to4     → 10.0.0.1
+            "::7f00:1",           // ::a.b.c.d → 127.0.0.1
+            "::a00:1",            // ::a.b.c.d → 10.0.0.1
         ] {
             assert!(is_blocked(v6(s)), "{s} should be blocked");
         }
@@ -508,7 +533,10 @@ mod tests {
     #[test]
     fn rejects_host_that_resolves_to_loopback() {
         // The anti-rebinding case: hostname looks fine, resolves to 127.0.0.1.
-        let r = FakeResolver(HashMap::from([("rebind.test".into(), vec![sa("127.0.0.1:443")])]));
+        let r = FakeResolver(HashMap::from([(
+            "rebind.test".into(),
+            vec![sa("127.0.0.1:443")],
+        )]));
         assert_eq!(
             validate_target("rebind.test", 443, &r, is_blocked),
             Err(ProxyError::Blocked)
@@ -530,7 +558,10 @@ mod tests {
 
     #[test]
     fn allows_public_host_and_pins_address() {
-        let r = FakeResolver(HashMap::from([("good.test".into(), vec![sa("93.184.216.34:443")])]));
+        let r = FakeResolver(HashMap::from([(
+            "good.test".into(),
+            vec![sa("93.184.216.34:443")],
+        )]));
         assert_eq!(
             validate_target("good.test", 443, &r, is_blocked),
             Ok(sa("93.184.216.34:443"))
@@ -585,6 +616,7 @@ mod tests {
         ProxyConfig {
             resolver: Arc::new(SystemResolver),
             is_blocked_fn: |_| false,
+            http_allowed: Arc::new(std::sync::RwLock::new(true)),
         }
     }
 
@@ -601,7 +633,9 @@ mod tests {
         });
 
         let port = start(permissive()).await.unwrap();
-        let mut c = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).await.unwrap();
+        let mut c = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
         c.write_all(format!("CONNECT 127.0.0.1:{echo_port} HTTP/1.1\r\n\r\n").as_bytes())
             .await
             .unwrap();
@@ -633,11 +667,71 @@ mod tests {
     #[tokio::test]
     async fn connect_to_blocked_target_is_refused() {
         // Real policy: a CONNECT to loopback must be rejected with 403.
-        let port = start(ProxyConfig::new()).await.unwrap();
-        let mut c = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).await.unwrap();
-        c.write_all(b"CONNECT 127.0.0.1:80 HTTP/1.1\r\n\r\n").await.unwrap();
+        let port = start(ProxyConfig::new(Arc::new(std::sync::RwLock::new(false))))
+            .await
+            .unwrap();
+        let mut c = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        c.write_all(b"CONNECT 127.0.0.1:80 HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
 
         let status = read_http_head(&mut c).await;
         assert!(status.starts_with("HTTP/1.1 403"), "got: {status:?}");
+    }
+
+    #[tokio::test]
+    async fn plain_http_refused_when_http_not_allowed() {
+        // http_allowed=false: absolute-form HTTP is answered with the
+        // HTTP_BLOCKED_STATUS signature before any DNS/dial happens.
+        let cfg = ProxyConfig {
+            resolver: Arc::new(SystemResolver),
+            is_blocked_fn: |_| false,
+            http_allowed: Arc::new(std::sync::RwLock::new(false)),
+        };
+        let port = start(cfg).await.unwrap();
+        let mut c = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        c.write_all(b"GET http://example.com/feed HTTP/1.1\r\nHost: example.com\r\n\r\n")
+            .await
+            .unwrap();
+
+        let status = read_http_head(&mut c).await;
+        let expected = format!(
+            "HTTP/1.1 {}",
+            xaga_core::persistence::feeds::HTTP_BLOCKED_STATUS
+        );
+        assert!(status.starts_with(&expected), "got: {status:?}");
+    }
+
+    #[tokio::test]
+    async fn plain_http_forwarded_when_http_allowed() {
+        // http_allowed=true: absolute-form HTTP reaches the upstream server.
+        let upstream = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let upstream_port = upstream.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut s, _) = upstream.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = s.read(&mut buf).await.unwrap();
+            s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+                .await
+                .unwrap();
+        });
+
+        let port = start(permissive()).await.unwrap();
+        let mut c = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        c.write_all(
+            format!("GET http://127.0.0.1:{upstream_port}/x HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+                .as_bytes(),
+        )
+        .await
+        .unwrap();
+
+        let status = read_http_head(&mut c).await;
+        assert!(status.starts_with("HTTP/1.1 200"), "got: {status:?}");
     }
 }

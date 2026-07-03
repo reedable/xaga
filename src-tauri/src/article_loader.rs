@@ -175,8 +175,8 @@ pub async fn load_via_webview(
     // show the existing (hidden) window to the user instead of closing it: the
     // real browser got past whatever refused reqwest, and a PDF can only be
     // presented this way.
-    let show_pdf = reqwest_error
-        && matches!(&result, Ok(Ok((mime, _))) if mime.as_str() == "application/pdf");
+    let show_pdf =
+        reqwest_error && matches!(&result, Ok(Ok((mime, _))) if mime.as_str() == "application/pdf");
 
     if show_pdf {
         keep_open_on_error.store(true, Ordering::Release);

@@ -115,7 +115,7 @@ annotations, `set_feed_pinned`, `save_article`) still commits per item, and Lanc
 versions on every commit no matter how writes are batched. Option 1 reduces the *rate* of
 bloat from one source; Option 2 *bounds* bloat from all sources. They solve different halves.
 
-Trade-off accepted: Option 2 bounds bloat but does not reduce commit count — a large refresh
+Known gap: Option 2 bounds bloat but does not reduce commit count — a large refresh
 / mark-all-read still issues N per-item commits. They now stay *cheap* (versions pruned every
 100 jobs) instead of decaying. And compaction now runs on the user-facing path, so every
 100th interactive action takes a visible pause; `INTERACTIVE_COMPACT_INTERVAL` is the knob for
@@ -162,3 +162,10 @@ If, in real use over the next few days, N cheap per-item commits from a big refr
 mark-all-read is still too heavy (commit-interval logs no longer flat, or the every-100th
 compaction pause is too noticeable), enumerate all rapid-update paths and design the batch
 commands (ingest + state-update) together.
+
+## Observation (2026-07-02)
+
+While testing feed fetch (a single click of refresh), the burst-queue behavior was
+observed again. It is not as bad as before Option 2: the pre-fix state paralyzed all
+db reads/writes, and that no longer happens. The interactive batch insert (Option 1)
+remains beneficial. Moved from docs/backlog to docs/sprint on this basis.

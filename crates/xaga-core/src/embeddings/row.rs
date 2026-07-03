@@ -42,7 +42,9 @@ pub(crate) fn topic_embed_text(topic: &Topic) -> &str {
 }
 
 /// The text embedded for a feed: its description (the `atom:subtitle`, mapped to the domain
-/// `description` by persistence); empty when absent.
+/// `description` by persistence); empty when absent. Embedding real feed content is what makes
+/// feeds surface as semantic search hits — the UI combines them with its local name/URL filter
+/// (hybrid feed search, `SearchResultList.tsx`).
 pub(crate) fn feed_embed_text(feed: &Feed) -> &str {
     feed.description.as_deref().unwrap_or("")
 }

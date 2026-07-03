@@ -1,0 +1,102 @@
+//! Factory for the SSRF-proxied reqwest clients (feed XML, inline-PDF probe).
+//!
+//! Clients are built per invocation — not held in `AppState` — so a
+//! settings.json change applies on the next fetch without a relaunch.
+
+use std::sync::Arc;
+
+/// Redirect cap when `max_redirects` is absent from settings.json. 3 is a UX
+/// exception to secure-by-default (0 would be the secure value) — see
+/// docs/security/fetching_untrusted_content.md, exception granted 2026-07-02.
+pub(crate) const DEFAULT_MAX_REDIRECTS: u32 = 3;
+
+/// Hard ceiling on the redirect cap; always in force, the setting cannot
+/// exceed it.
+pub(crate) const MAX_REDIRECTS_CEILING: u32 = 10;
+
+/// The redirect cap actually applied: the setting (or the default when
+/// absent), never above [`MAX_REDIRECTS_CEILING`].
+pub(crate) fn effective_max_redirects(setting: Option<u32>) -> u32 {
+    setting
+        .unwrap_or(DEFAULT_MAX_REDIRECTS)
+        .min(MAX_REDIRECTS_CEILING)
+}
+
+/// Build a reqwest client that dials only through the local SSRF-filtering
+/// proxy, following at most `max_redirects` redirects (0 = the initial
+/// request only; reqwest's `Policy::limited(0)` refuses the first redirect).
+/// `referer_allowed` controls whether redirect hops receive a `Referer`
+/// header naming the previous URL — i.e. whether the header is permitted to
+/// go out at all (reqwest defaults to sending it; `false` withholds it, so
+/// redirect targets don't learn the original feed URL).
+///
+/// Deliberately no `.https_only()`: the "HTTP allowed" setting is enforced in
+/// [`crate::ssrf_proxy`], which refuses absolute-form `http://` requests with
+/// `HTTP_BLOCKED_STATUS` when the setting is off. Enforcing there covers this
+/// client, the loader webview, its subresources, and every redirect hop at a
+/// single point; a client-side `.https_only()` would be a second, partial
+/// implementation of the same rule.
+pub(crate) fn build(proxy_port: u16, max_redirects: u32, referer_allowed: bool) -> reqwest::Client {
+    reqwest::Client::builder()
+        .proxy(
+            reqwest::Proxy::all(format!("http://127.0.0.1:{proxy_port}"))
+                .expect("valid SSRF proxy URL"),
+        )
+        .redirect(reqwest::redirect::Policy::limited(max_redirects as usize))
+        .referer(referer_allowed)
+        .build()
+        .expect("failed to build SSRF-proxied HTTP client")
+}
+
+/// The `http_allowed` handle shared between the SSRF proxy (enforcement) and
+/// setup (seeding from settings.json). Starts `false`: the proxy is up before
+/// settings are read, and the pre-settings window must be the secure state.
+pub(crate) fn http_allowed_handle() -> Arc<std::sync::RwLock<bool>> {
+    Arc::new(std::sync::RwLock::new(false))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    #[test]
+    fn effective_max_redirects_defaults_and_clamps() {
+        assert_eq!(effective_max_redirects(None), 3);
+        assert_eq!(effective_max_redirects(Some(0)), 0);
+        assert_eq!(effective_max_redirects(Some(7)), 7);
+        assert_eq!(effective_max_redirects(Some(10)), 10);
+        assert_eq!(effective_max_redirects(Some(50)), 10);
+    }
+
+    /// Pins the `Policy::limited(0)` semantics the factory relies on: the
+    /// first redirect is refused with a redirect error — "hit the server
+    /// once, honor no redirects". Uses a plain client with the same policy;
+    /// the factory's client can't be exercised here because the SSRF proxy
+    /// blocks loopback targets.
+    #[tokio::test]
+    async fn limited_zero_refuses_first_redirect() {
+        let server = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = server.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let (mut s, _) = server.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = s.read(&mut buf);
+            let _ = s.write_all(
+                b"HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
+        });
+
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::limited(0))
+            .build()
+            .unwrap();
+        let err = client
+            .get(format!("http://127.0.0.1:{port}/"))
+            .send()
+            .await
+            .expect_err("redirect should be refused");
+        assert!(err.is_redirect(), "expected a redirect error, got: {err}");
+    }
+}

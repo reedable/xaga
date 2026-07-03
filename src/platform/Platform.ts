@@ -10,7 +10,8 @@ import type {
   Feed,
   Filter,
   HtmlReaderView,
-  ImportResult,
+  ImportOutcome,
+  ExportOutcome,
   Item,
   ListItem,
   Topic,
@@ -35,8 +36,6 @@ export interface Platform {
   // Feeds
   listFeeds(signal: AbortSignal): Promise<Feed[]>;
   addFeed(signal: AbortSignal, feedUrl: string): Promise<Feed>;
-  importFeeds(signal: AbortSignal): Promise<ImportResult<Feed> | null>;
-  exportFeeds(signal: AbortSignal): Promise<void>;
   refreshAllFeeds(signal: AbortSignal): Promise<Feed[]>;
   renameFeed(signal: AbortSignal, feedId: string, title: string): Promise<Feed>;
   removeFeed(signal: AbortSignal, feedUrl: string): Promise<string>;
@@ -125,8 +124,6 @@ export interface Platform {
   // Bookmarks
   addBookmark(signal: AbortSignal, id: string): Promise<Entry>;
   removeBookmark(signal: AbortSignal, id: string): Promise<Entry>;
-  importBookmarks(signal: AbortSignal): Promise<ImportResult<Entry> | null>;
-  exportBookmarks(signal: AbortSignal): Promise<void>;
 
   // Embedding queries
   queryByItem(
@@ -168,16 +165,18 @@ export interface Platform {
   // Events
   onOpenLibrary(callback: () => void): Promise<UnlistenFn>;
   onOpenSettings(callback: () => void): Promise<UnlistenFn>;
-  onImportFeeds(callback: () => void): Promise<UnlistenFn>;
-  onExportFeeds(callback: () => void): Promise<UnlistenFn>;
+  onFeedsImported(
+    callback: (outcome: ImportOutcome<Feed>) => void
+  ): Promise<UnlistenFn>;
+  onFeedsExported(
+    callback: (outcome: ExportOutcome) => void
+  ): Promise<UnlistenFn>;
   onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn>;
   onUnreadChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
   onBookmarkChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
   onAnnotationChanged(callback: (item: ListItem) => void): Promise<UnlistenFn>;
   onAnnotationRemoved(callback: (id: string) => void): Promise<UnlistenFn>;
   onEmbeddingsChanged(callback: () => void): Promise<UnlistenFn>;
-  onImportBookmarks(callback: () => void): Promise<UnlistenFn>;
-  onExportBookmarks(callback: () => void): Promise<UnlistenFn>;
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;
   onShowSidebar(callback: (show: boolean) => void): Promise<UnlistenFn>;
   onLoaderClosed(

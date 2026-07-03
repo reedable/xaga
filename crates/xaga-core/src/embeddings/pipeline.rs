@@ -392,8 +392,10 @@ const MEMBERSHIP_CHUNK: usize = 1024;
 /// `add_batch` (not a per-row upsert), and the topic-row `items` base is **checkpointed after each
 /// chunk**. So a crash mid-fan-out resumes from the remaining members (the next diff sees the
 /// advanced base) instead of re-scanning the whole membership, and large changes don't explode
-/// fragments or block the loop. Crash window: a hard kill between a chunk's delete and its add loses
-/// that chunk's member rows until a later sync/recovery (accepted tradeoff of delete-then-add).
+/// fragments or block the loop. `delete_by_ids`+`add_batch` was chosen over `merge_insert` because
+/// it preserves `upsert`'s duplicate self-healing (a duplicated row is deleted with its id and
+/// re-added once). Crash window: a hard kill between a chunk's delete and its add loses that
+/// chunk's member rows until a later sync/recovery heals them (consequence of delete-then-add).
 ///
 /// This is the sole writer of the `topics` (member) and `items` (topic) columns — entry/annotation
 /// sync carry them forward untouched. Members whose rows don't exist yet are skipped (reconciled on a

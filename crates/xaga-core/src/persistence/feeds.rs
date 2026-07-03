@@ -19,6 +19,14 @@ use super::walk::for_each_atom;
 
 // ── Shared error + result ────────────────────────────────────────────────────
 
+/// Status code the app shell's SSRF proxy answers with when it refuses a
+/// plaintext `http://` request because the HTTP-allowed setting is off.
+/// Non-standard on purpose: it lets fetch paths distinguish "blocked by the
+/// user's own setting" from a real server 4xx. Produced in
+/// `src-tauri/src/ssrf_proxy.rs`; consumed here ([`fetch_xml`]) and by the
+/// PDF probe (`src-tauri/src/commands/articles.rs`).
+pub const HTTP_BLOCKED_STATUS: u16 = 470;
+
 #[derive(Debug, Error)]
 pub enum FeedError {
     #[error("invalid URL: {0}")]
@@ -39,6 +47,10 @@ pub enum FeedError {
     NotFound(String),
     #[error("feed missing self link: {0}")]
     MissingSelfLink(String),
+    #[error("response body for {url} exceeded {max_bytes} bytes")]
+    BodyTooLarge { url: String, max_bytes: u64 },
+    #[error("plaintext HTTP fetch blocked by the \"HTTP allowed\" setting: {url}")]
+    HttpBlocked { url: String },
 }
 
 /// FIXME Untangle FeedError for least visibility
@@ -105,6 +117,8 @@ pub async fn add_feed(
     url: &str,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
+    timeout_secs: u64,
+    max_body_bytes: u64,
 ) -> Result<(Feed, Vec<Article>)> {
     let url = if url.trim_start().starts_with("http://") {
         format!("https://{}", url.trim_start()[7..].trim_start())
@@ -120,7 +134,16 @@ pub async fn add_feed(
     let path = crate::library::feed_path(library_dir, &id);
 
     if path.exists() {
-        return refresh_feed(client, library_dir, &id, unread, bookmarked).await;
+        return refresh_feed(
+            client,
+            library_dir,
+            &id,
+            unread,
+            bookmarked,
+            timeout_secs,
+            max_body_bytes,
+        )
+        .await;
     }
 
     // New feed: serialize the entry-less domain Feed via atom.rs. Keep this seed so that, on any
@@ -131,7 +154,8 @@ pub async fn add_feed(
 
     let mut atom = empty_atom.clone();
 
-    let new_entries = match fetch_and_merge(client, &mut atom, &id).await {
+    let new_entries =
+        match fetch_and_merge(client, &mut atom, &id, timeout_secs, max_body_bytes).await {
         Ok(entries) => entries,
         Err(e) => {
             write_atom_atomic(library_dir, &id, &empty_atom).await?;
@@ -172,6 +196,8 @@ async fn refresh_feed(
     id: &str,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
+    timeout_secs: u64,
+    max_body_bytes: u64,
 ) -> Result<(Feed, Vec<Article>)> {
     let path = crate::library::feed_path(library_dir, id);
 
@@ -182,7 +208,8 @@ async fn refresh_feed(
     let mut existing =
         parse_atom(&tokio::fs::read_to_string(&path).await?).map_err(FeedError::AtomParse)?;
 
-    let new_entries = fetch_and_merge(client, &mut existing, id).await?;
+    let new_entries =
+        fetch_and_merge(client, &mut existing, id, timeout_secs, max_body_bytes).await?;
     let created = write_atom(library_dir, id, &existing, &new_entries).await?;
 
     Ok((atom_to_feed(id, &existing, unread, bookmarked), created))
@@ -194,16 +221,18 @@ async fn fetch_and_merge(
     client: &reqwest::Client,
     atom: &mut Atom,
     id: &str,
+    timeout_secs: u64,
+    max_body_bytes: u64,
 ) -> Result<Vec<AtomEntry>> {
     let url = self_link_url(atom).ok_or_else(|| FeedError::MissingSelfLink(id.to_string()))?;
-    let incoming_xml = fetch_xml(client, &url).await?;
+    let incoming_xml = fetch_xml(client, &url, timeout_secs, max_body_bytes).await?;
     apply_incoming_xml(atom, &incoming_xml, id).map_err(FeedError::FeedParse)
 }
 
 /// Commit a refreshed feed: persist each new entry's `.md` BEFORE writing the `.atom`. The `.md`
 /// is the irreplaceable content; the atom is only the membership label. A crash between the two
-/// leaves materialized entries that aren't yet in the atom — benign and self-healing: the next
-/// refresh re-adds them from the live feed (and `save_new_entries` skips the already-written `.md`).
+/// leaves materialized entries that aren't yet in the atom; the next refresh re-adds them from
+/// the live feed (and `save_new_entries` skips the already-written `.md`), so no content is lost.
 /// The reverse order would instead lose the content, forcing a reconciliation pass to rebuild it
 /// from the atom. This ordering is the one place that owns the invariant; callers must commit here.
 async fn write_atom(
@@ -223,6 +252,8 @@ pub async fn refresh_all_feeds(
     library_dir: &Path,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
+    timeout_secs: u64,
+    max_body_bytes: u64,
 ) -> Vec<(String, Result<(Feed, Vec<Article>)>)> {
     // Walk + parse each `.atom` once; the parsed feed flows straight into the refresh, so we
     // never re-read the file it was just walked from.
@@ -241,7 +272,8 @@ pub async fn refresh_all_feeds(
 
     for (id, mut existing) in feeds {
         let result: Result<(Feed, Vec<Article>)> = async {
-            let new_entries = fetch_and_merge(client, &mut existing, &id).await?;
+            let new_entries =
+                fetch_and_merge(client, &mut existing, &id, timeout_secs, max_body_bytes).await?;
             let created = write_atom(library_dir, &id, &existing, &new_entries).await?;
             Ok((atom_to_feed(&id, &existing, unread, bookmarked), created))
         }
@@ -362,26 +394,56 @@ pub async fn list_entry_ids(library_dir: &Path, url: Option<&str>) -> Result<Vec
 
 // ── Shared infrastructure (private) ──────────────────────────────────────────
 
-async fn fetch_xml(client: &reqwest::Client, url: &str) -> Result<String> {
-    client
+async fn fetch_xml(
+    client: &reqwest::Client,
+    url: &str,
+    timeout_secs: u64,
+    max_body_bytes: u64,
+) -> Result<String> {
+    let response = client
         .get(url)
+        .timeout(std::time::Duration::from_secs(timeout_secs))
         .send()
         .await
         .map_err(|e| FeedError::Http {
             url: url.to_string(),
             source: e,
-        })?
-        .error_for_status()
-        .map_err(|e| FeedError::Http {
+        })?;
+
+    // The SSRF proxy's "plaintext HTTP is disabled" refusal. Mapped before
+    // error_for_status so it doesn't surface as a generic server 4xx.
+    if response.status().as_u16() == HTTP_BLOCKED_STATUS {
+        return Err(FeedError::HttpBlocked {
             url: url.to_string(),
-            source: e,
-        })?
-        .text()
-        .await
-        .map_err(|e| FeedError::Http {
-            url: url.to_string(),
-            source: e,
-        })
+        });
+    }
+
+    let mut response = response.error_for_status().map_err(|e| FeedError::Http {
+        url: url.to_string(),
+        source: e,
+    })?;
+
+    // Streamed read with a byte cap: bounds the memory a single response can
+    // occupy. The `.timeout(...)` above spans this loop too — reqwest's total
+    // request timeout runs until the body is fully read.
+    let mut body: Vec<u8> = Vec::new();
+
+    while let Some(chunk) = response.chunk().await.map_err(|e| FeedError::Http {
+        url: url.to_string(),
+        source: e,
+    })? {
+        if body.len() as u64 + chunk.len() as u64 > max_body_bytes {
+            return Err(FeedError::BodyTooLarge {
+                url: url.to_string(),
+                max_bytes: max_body_bytes,
+            });
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    // reqwest is built without the `charset` feature (default-features = false),
+    // so the `.text()` this replaces decoded as lossy UTF-8; this preserves that.
+    Ok(String::from_utf8_lossy(&body).into_owned())
 }
 
 async fn write_atom_atomic(library_dir: &Path, id: &str, atom: &Atom) -> Result<()> {
