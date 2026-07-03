@@ -1,7 +1,7 @@
 //! Bookmark HTML import/export, orchestrated entirely on the native side.
 //!
 //! Same rationale as `super::feeds`: no path is accepted from the webview.
-//! See docs/security/command_surface.md and docs/architecture/layer_ownership.md.
+//! See docs/architecture/security/command_surface.md and docs/architecture/layer_ownership.md.
 
 use std::path::Path;
 

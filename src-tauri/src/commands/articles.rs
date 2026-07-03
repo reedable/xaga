@@ -230,6 +230,7 @@ pub async fn load_article(
             ssrf_proxy_port,
             *state.max_redirects.read().unwrap(),
             *state.referer_allowed.read().unwrap(),
+            *state.gzip_allowed.read().unwrap(),
         );
         match try_fetch_pdf(&client, &url, timeout_secs).await {
             Ok(PdfProbe::Pdf(bytes)) => {

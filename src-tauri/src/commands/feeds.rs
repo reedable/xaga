@@ -27,6 +27,7 @@ pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, S
         state.ssrf_proxy_port,
         *state.max_redirects.read().unwrap(),
         *state.referer_allowed.read().unwrap(),
+        *state.gzip_allowed.read().unwrap(),
     );
     let (unread, bookmarked) = (
         get_unread_ids(&state).await,
@@ -64,6 +65,7 @@ pub async fn refresh_all_feeds(
         state.ssrf_proxy_port,
         *state.max_redirects.read().unwrap(),
         *state.referer_allowed.read().unwrap(),
+        *state.gzip_allowed.read().unwrap(),
     );
     let (unread, bookmarked) = (
         get_unread_ids(&state).await,

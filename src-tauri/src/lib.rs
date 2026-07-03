@@ -51,6 +51,10 @@ pub(crate) struct AppState {
     /// (reqwest fetch paths); it names the previous URL. Off by default:
     /// redirect targets don't learn the original feed URL.
     pub(crate) referer_allowed: Arc<RwLock<bool>>,
+    /// Whether the reqwest fetch paths send `Accept-Encoding: gzip` (and
+    /// decompress compressed responses). Off by default: the request then
+    /// carries no `Accept-Encoding` header at all.
+    pub(crate) gzip_allowed: Arc<RwLock<bool>>,
 }
 
 impl AppState {
@@ -121,12 +125,18 @@ pub(crate) struct UserSettings {
     /// Maximum redirects per fetch on the reqwest paths (feed XML, PDF probe).
     /// 0 means the initial request only. Defaults to 3 if absent; clamped to
     /// 10. The default of 3 is a UX exception to secure-by-default — see
-    /// docs/security/fetching_untrusted_content.md.
+    /// docs/architecture/security/fetching_untrusted_content.md.
     pub(crate) max_redirects: Option<u32>,
     /// Whether the `Referer` header is allowed to go out on redirect hops
     /// (reqwest fetch paths); it names the previous URL to the redirect
     /// target. Defaults to false if absent.
     pub(crate) referer_allowed: Option<bool>,
+    /// Whether the reqwest fetch paths (feed XML, PDF probe) send
+    /// `Accept-Encoding: gzip` and decompress compressed responses. When
+    /// enabled, hosts learn the client negotiates gzip — one more property
+    /// of the build than the default request shape reveals. Defaults to
+    /// false if absent: no `Accept-Encoding` header is sent.
+    pub(crate) gzip_allowed: Option<bool>,
 }
 
 pub(crate) fn load_settings(path: &Path) -> UserSettings {
@@ -271,6 +281,7 @@ pub fn run() {
     let max_redirects: Arc<RwLock<u32>> =
         Arc::new(RwLock::new(fetch_client::DEFAULT_MAX_REDIRECTS));
     let referer_allowed: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
+    let gzip_allowed: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let html_reader_font_family: Arc<RwLock<String>> = Arc::new(RwLock::new("system".to_string()));
     let html_reader_font_size: Arc<RwLock<f64>> = Arc::new(RwLock::new(16.0));
     let html_reader_line_height: Arc<RwLock<f64>> = Arc::new(RwLock::new(1.75));
@@ -296,6 +307,7 @@ pub fn run() {
     let setup_http_allowed = Arc::clone(&http_allowed);
     let setup_max_redirects = Arc::clone(&max_redirects);
     let setup_referer_allowed = Arc::clone(&referer_allowed);
+    let setup_gzip_allowed = Arc::clone(&gzip_allowed);
     let setup_reader_font_family = Arc::clone(&html_reader_font_family);
     let setup_reader_font_size = Arc::clone(&html_reader_font_size);
     let setup_reader_line_height = Arc::clone(&html_reader_line_height);
@@ -323,6 +335,7 @@ pub fn run() {
             ssrf_proxy_port,
             max_redirects,
             referer_allowed,
+            gzip_allowed,
         })
         .manage(article_loader::PendingRequests::default())
         .plugin(
@@ -519,7 +532,7 @@ pub fn run() {
             // File-path operations are orchestrated entirely on the native side:
             // the dialog opens in Rust and the work runs without a webview-facing
             // command, so no path is ever taken from the renderer
-            // (docs/security/command_surface.md). Completion is reported back via
+            // (docs/architecture/security/command_surface.md). Completion is reported back via
             // the `feeds:*` / `bookmarks:*` events.
             "import_feeds" => native::import_feeds_dialog(app),
             "export_feeds" => native::export_feeds_dialog(app),
@@ -616,6 +629,7 @@ pub fn run() {
             let max_redirects_setting =
                 fetch_client::effective_max_redirects(settings.max_redirects);
             let referer_allowed_setting = settings.referer_allowed.unwrap_or(false);
+            let gzip_allowed_setting = settings.gzip_allowed.unwrap_or(false);
             let font_family = settings
                 .html_reader_font_family
                 .unwrap_or_else(|| "system".to_string());
@@ -631,6 +645,7 @@ pub fn run() {
             *setup_http_allowed.write().unwrap() = http_allowed_setting;
             *setup_max_redirects.write().unwrap() = max_redirects_setting;
             *setup_referer_allowed.write().unwrap() = referer_allowed_setting;
+            *setup_gzip_allowed.write().unwrap() = gzip_allowed_setting;
             *setup_reader_font_family.write().unwrap() = font_family;
             *setup_reader_font_size.write().unwrap() = font_size;
             *setup_reader_line_height.write().unwrap() = line_height;

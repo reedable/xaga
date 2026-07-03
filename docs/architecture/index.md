@@ -25,3 +25,23 @@ detail lives in the linked file, not here.
 5. [Single-Writer Library Lock](single_writer_library_lock.md) — at most one writing process per
    library, enforced by an exclusive advisory `flock` on `xaga.lock`; the lock is handle-tied
    (auto-released on any exit, no stale files). Non-holders read but do not write.
+
+## Security
+
+Architecture of the security-critical paths, in [security/](security/). These describe how a
+subsystem works and why — decided design and deliberate limits, not findings or status.
+
+1. [Fetching untrusted content](security/fetching_untrusted_content.md) — the network side.
+   Three invariants on every outbound request: containment (the SSRF proxy — resolve, validate,
+   pin), minimal truthful disclosure (withhold, never misrepresent), bounded resources.
+
+2. [Handling untrusted content](security/handling_untrusted_content.md) — the byte side: feed
+   XML and article HTML through parsing, transformation, storage, and rendering.
+
+3. [Command surface](security/command_surface.md) — every registered Tauri command is
+   webview-callable with any arguments at any time; the invoke surface is the boundary, and the
+   caller must be assumed hostile.
+
+4. [Performance trade-off](security/performance_tradeoff.md) — resource teardown as a privacy
+   tool: per-invocation clients and single-use loader webviews are rebuilt deliberately, not
+   pooled; conditional-GET validators are rejected as a server-writable tracking channel.

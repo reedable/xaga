@@ -61,7 +61,7 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
   }, [platform, refreshFeeds]);
 
   // Import/export are orchestrated natively (no webview command — see
-  // docs/security/command_surface.md); the outcome arrives by event. On
+  // docs/architecture/security/command_surface.md); the outcome arrives by event. On
   // success we re-list feeds; on failure we surface the error, preserving the
   // pre-refactor UX where the JS layer drove the call.
   const handleFeedsImported = useCallback(

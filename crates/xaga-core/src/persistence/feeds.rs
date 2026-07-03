@@ -451,3 +451,115 @@ async fn write_atom_atomic(library_dir: &Path, id: &str, atom: &Atom) -> Result<
     crate::fs::write_atomic_async(crate::library::feed_path(library_dir, id), buf).await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read as _, Write as _};
+    use std::net::TcpListener;
+
+    /// Serves one canned HTTP response on a random loopback port and hands
+    /// back the request head it received. Plain client, no SSRF proxy — the
+    /// proxied client can't be exercised here because the proxy blocks
+    /// loopback targets (same constraint as the fetch_client tests).
+    fn serve_once(response: Vec<u8>) -> (u16, std::sync::mpsc::Receiver<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut head = Vec::new();
+            let mut buf = [0u8; 1024];
+            while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+                match stream.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => head.extend_from_slice(&buf[..n]),
+                }
+            }
+            let _ = tx.send(String::from_utf8_lossy(&head).to_lowercase());
+            let _ = stream.write_all(&response);
+        });
+        (port, rx)
+    }
+
+    fn xml_response(body: &[u8], gzipped: bool) -> Vec<u8> {
+        let encoding = if gzipped {
+            "Content-Encoding: gzip\r\n"
+        } else {
+            ""
+        };
+        let mut response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\n{}Content-Length: {}\r\nConnection: close\r\n\r\n",
+            encoding,
+            body.len()
+        )
+        .into_bytes();
+        response.extend_from_slice(body);
+        response
+    }
+
+    fn gzip(bytes: &[u8]) -> Vec<u8> {
+        let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        enc.write_all(bytes).unwrap();
+        enc.finish().unwrap()
+    }
+
+    const TINY_XML: &[u8] = b"<feed xmlns=\"http://www.w3.org/2005/Atom\"></feed>";
+
+    /// `gzip(false)` sends no `Accept-Encoding` header at all — the request
+    /// shape must stay byte-identical to the pre-gzip-feature client, because
+    /// the header's absence is the documented default (see
+    /// docs/architecture/security/fetching_untrusted_content.md).
+    #[tokio::test]
+    async fn gzip_disabled_sends_no_accept_encoding() {
+        let (port, rx) = serve_once(xml_response(TINY_XML, false));
+        let client = reqwest::Client::builder().gzip(false).build().unwrap();
+        fetch_xml(&client, &format!("http://127.0.0.1:{port}/"), 5, 1 << 20)
+            .await
+            .unwrap();
+        let head = rx.recv().unwrap();
+        assert!(
+            !head.contains("accept-encoding"),
+            "expected no Accept-Encoding header, got:\n{head}"
+        );
+    }
+
+    /// `gzip(true)` negotiates gzip and transparently decompresses.
+    #[tokio::test]
+    async fn gzip_enabled_sends_accept_encoding_and_decompresses() {
+        let (port, rx) = serve_once(xml_response(&gzip(TINY_XML), true));
+        let client = reqwest::Client::builder().gzip(true).build().unwrap();
+        let body = fetch_xml(&client, &format!("http://127.0.0.1:{port}/"), 5, 1 << 20)
+            .await
+            .unwrap();
+        assert_eq!(body.as_bytes(), TINY_XML);
+        let head = rx.recv().unwrap();
+        assert!(
+            head.contains("accept-encoding: gzip"),
+            "expected Accept-Encoding: gzip, got:\n{head}"
+        );
+    }
+
+    /// The `max_body_bytes` cap counts *decompressed* bytes: reqwest inflates
+    /// before `chunk()` yields, so a small compressed response cannot smuggle
+    /// an over-limit body past the cap (decompression-bomb bound).
+    #[tokio::test]
+    async fn gzip_cap_counts_decompressed_bytes() {
+        let inflated = vec![b'a'; 64 * 1024];
+        let compressed = gzip(&inflated);
+        let cap: u64 = 1024;
+        assert!(
+            (compressed.len() as u64) < cap,
+            "test premise: compressed body must fit under the cap"
+        );
+        let (port, _rx) = serve_once(xml_response(&compressed, true));
+        let client = reqwest::Client::builder().gzip(true).build().unwrap();
+        let err = fetch_xml(&client, &format!("http://127.0.0.1:{port}/"), 5, cap)
+            .await
+            .expect_err("over-cap decompressed body must be refused");
+        assert!(
+            matches!(err, FeedError::BodyTooLarge { max_bytes, .. } if max_bytes == cap),
+            "expected BodyTooLarge, got: {err:?}"
+        );
+    }
+}

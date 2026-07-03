@@ -9,7 +9,7 @@
 //! (`{ result?, error? }`): the UI refreshes on success and shows the error on
 //! failure, exactly as when the JS layer drove the call.
 //!
-//! See docs/security/command_surface.md (why) and
+//! See docs/architecture/security/command_surface.md (why) and
 //! docs/architecture/layer_ownership.md (why the orchestration stays here).
 
 pub(crate) mod bookmarks;

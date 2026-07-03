@@ -3,7 +3,7 @@
 //! These are NOT `#[tauri::command]`s: they take no path from the webview.
 //! The menu handler opens the file dialog in Rust (`super::import_feeds_dialog`
 //! / `export_feeds_dialog`) and calls these directly, so a compromised renderer
-//! has no invoke door to reach them (see docs/security/command_surface.md).
+//! has no invoke door to reach them (see docs/architecture/security/command_surface.md).
 //! The write-then-enqueue orchestration stays in this layer per
 //! docs/architecture/layer_ownership.md.
 
@@ -42,6 +42,7 @@ pub(crate) async fn import_feeds(
         state.ssrf_proxy_port,
         *state.max_redirects.read().unwrap(),
         *state.referer_allowed.read().unwrap(),
+        *state.gzip_allowed.read().unwrap(),
     );
     let (unread, bookmarked) = (get_unread_ids(state).await, get_bookmarked_ids(state).await);
     let mut seen: HashSet<String> = HashSet::new();

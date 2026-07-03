@@ -19,5 +19,5 @@ but `embed_feed` (no `_vector`); `sync_entry_row` / `sync_topic_row` but no `syn
 ## The work
 
 Audit the verbs (sync / reconcile / recover / embed / upsert) against the controlled
-vocabulary (`docs/vocabulary/`): one verb per concept; align prose to identifiers; resolve the
+vocabulary (`docs/conventions/vocabulary/`): one verb per concept; align prose to identifiers; resolve the
 feed naming asymmetry. Renames are decisions — surface, don't apply unilaterally.

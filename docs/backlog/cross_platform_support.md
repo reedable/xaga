@@ -15,7 +15,7 @@ only. This item inventories the known platform-specific code, dependencies, and 
 2. **The SSRF proxy routing depends on a macOS feature flag.**
    `WebviewWindowBuilder::proxy_url` takes effect on macOS only with the `macos-proxy`
    feature (`src-tauri/Cargo.toml`). This is a load-bearing security control
-   (`docs/security/fetching_untrusted_content.md`); whether `proxy_url` is honored on
+   (`docs/architecture/security/fetching_untrusted_content.md`); whether `proxy_url` is honored on
    Windows (WebView2) and Linux (WebKitGTK) has not been verified — if it is not, the loader
    on those platforms has no SSRF protection and must not ship without an equivalent.
 3. **Private-API transparency is macOS-only.** The `macos-private-api` feature +

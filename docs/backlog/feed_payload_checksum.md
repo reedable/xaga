@@ -12,7 +12,7 @@ optimize away the network cost: the full body still downloads on every
 refresh. That network cost is a fair price for privacy — the alternative
 (conditional GET with `ETag`/`If-Modified-Since`) hands feed hosts a
 server-writable, read-back tracking channel and was rejected for that reason.
-See `docs/security/performance_tradeoff.md`.
+See `docs/architecture/security/performance_tradeoff.md`.
 
 ## Ordering constraint (crash consistency)
 

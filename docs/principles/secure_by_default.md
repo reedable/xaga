@@ -27,7 +27,7 @@ Each of these is verifiable in the source today:
   probe request is never made — the comment at the call site records the reason: not making the
   request avoids letting servers profile us (`commands/articles.rs`).
 - **All fetching of untrusted remote content routes through the SSRF proxy** — loader webviews,
-  feed XML, and the PDF probe (see `docs/security/fetching_untrusted_content.md`). Private,
+  feed XML, and the PDF probe (see `docs/architecture/security/fetching_untrusted_content.md`). Private,
   loopback, and link-local destinations are unreachable by default.
 - **Timeouts are on by default and user controllable** — `loader_timeout_secs` and
   `feed_timeout_secs` (both default 10 s, settings.json).

@@ -106,7 +106,7 @@ export type ImportResult<T> = {
 /**
  * Payload of a native-triggered import/export completion event. Import/export
  * are orchestrated on the native side (no webview command — see
- * docs/security/command_surface.md); the outcome is delivered by event, with
+ * docs/architecture/security/command_surface.md); the outcome is delivered by event, with
  * `result` present on success and `error` present on failure.
  */
 export type ImportOutcome<T> = {

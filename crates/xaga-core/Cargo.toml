@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-reqwest           = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+reqwest           = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip"] }
 feed-rs           = "1"
 atom_syndication  = "0.12"
 sha2              = "0.10"
@@ -36,3 +36,4 @@ arrow-schema        = "57"
 [dev-dependencies]
 tokio               = { version = "1", features = ["rt-multi-thread", "macros"] }
 tempfile            = "3"
+flate2              = "1"
