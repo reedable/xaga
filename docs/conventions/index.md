@@ -17,3 +17,8 @@ Naming rules for symbols, in [vocabulary/](vocabulary/):
    layer-relative rather than semantic (`load`, `map`, …), documented so usage stays
    consistent. The test: a word is semantic when it pins the boundary it crosses regardless
    of layer count; conventional when it leans on an implicit single-layer assumption.
+
+3. [Backlog Item Labels](vocabulary/backlog_item_labels.md) — the closed label set
+   (`compliance__`/`defect__`/`improvement__`/`refactor__`/`spike__`) prefixing every
+   `docs/_backlog/` filename. Unlike the symbol vocabularies above, a label names an item's
+   originator, not the shape of the work.

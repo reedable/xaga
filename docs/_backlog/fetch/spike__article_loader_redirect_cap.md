@@ -1,7 +1,7 @@
 # Redirect cap for the article loader
 
 Status (2026-07-02): no decision made. The maximum-redirects setting (see
-`docs/_backlog/fetch/enhance_user_settings.md`) is enforced on the reqwest fetch paths (feeds,
+`docs/_backlog/fetch/improvement__user_settings.md`) is enforced on the reqwest fetch paths (feeds,
 PDF probe) only. The article loader is not exempt from the cap — it is unaddressed.
 
 Facts known at time of writing:

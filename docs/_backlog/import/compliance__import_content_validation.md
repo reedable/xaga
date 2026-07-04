@@ -17,7 +17,7 @@ Open items:
     ceiling ~50 MB. A single ~64 MB cap clears both comfortably; ~8–16 MB
     (OPML) and ~64 MB (bookmarks) if sized per type. The value is a decision.
 Scheme vetting of imported URLs (rejecting `file://` etc.) lives with the
-`normalize_url` review — see `docs/_backlog/fetch/normalize_url.md`, which owns that
+`normalize_url` review — see `docs/_backlog/fetch/spike__normalize_url.md`, which owns that
 function because changes to it carry ID/migration consequences.
 
 Decided out of scope:
@@ -28,7 +28,7 @@ Decided out of scope:
   large list is a performance concern (the Interactive-tier burst, tracked in
   `docs/_sprint/interactive_batch_command.md`), not security, and the byte cap
   transitively bounds URL count anyway.
-- **Error hygiene** — moved to `docs/_backlog/cross_cutting/enhance_error_handling.md`.
+- **Error hygiene** — moved to `docs/_backlog/cross_cutting/improvement__error_handling.md`.
 - **Export** — nothing beyond the (already-fixed) path authority: content is
   app-generated and `build_opml` escapes all fields; size is bounded by the
   user's own library.
