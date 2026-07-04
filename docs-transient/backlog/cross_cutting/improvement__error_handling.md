@@ -30,7 +30,7 @@ Import/export are orchestrated natively and report completion by event
   malformed-file error, this one is user-actionable: the cap is a setting, so
   the message should direct the user to Settings to raise it. No such
   direction exists today because the setting itself has no UI yet — see
-  `docs/_backlog/fetch/improvement__user_settings.md`. This bullet is blocked
+  `docs-transient/backlog/fetch/improvement__user_settings.md`. This bullet is blocked
   on that item landing.
 
 ## Other error handling

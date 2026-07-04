@@ -24,5 +24,5 @@ The seven duplication findings from the decoupling audit, to be judged against
    no shared constant or helper. Partly pre-existing.
 
 Per `dry.md`: whether each is consolidated, parameterized, or kept-and-documented is a
-decision. Items 1–5 interact with `docs/_backlog/embeddings/spike__job_payload_modeling.md` (the per-kind split is their
-direct cause); item 7 interacts with `docs/_backlog/domain/spike__domain_tags_model.md`.
+decision. Items 1–5 interact with `docs-transient/backlog/embeddings/spike__job_payload_modeling.md` (the per-kind split is their
+direct cause); item 7 interacts with `docs-transient/backlog/domain/spike__domain_tags_model.md`.

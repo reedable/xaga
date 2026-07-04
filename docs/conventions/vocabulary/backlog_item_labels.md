@@ -1,6 +1,6 @@
 # Backlog Item Labels
 
-Every file under `docs/_backlog/<domain>/` and `docs/_sprint/` is named `<label>__<slug>.md`.
+Every file under `docs-transient/` is named `<label>__<slug>.md`.
 The label is a closed set of five words. Unlike [Semantic Vocabulary](semantic_vocabulary.md) and
 [Conventional Vocabulary](conventional_vocabulary.md), which name what a code symbol _does_,
 a backlog label names **why the item exists** — its originator — not the shape of the work

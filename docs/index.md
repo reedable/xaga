@@ -23,6 +23,6 @@ these.
 Work in motion. Items move between these directories and are deleted when resolved; nothing
 durable — no code comment, no doc under the three directories above — may cite them.
 
-- `_sprint/` — items pulled into active work.
-- `_backlog/` — recorded items waiting: one fact-stated defect, debt, or improvement per
-  file, with cited code locations.
+- `docs-transient/sprint/` — items pulled into active work.
+- `docs-transient/backlog/` — recorded items waiting: one fact-stated defect, debt, or
+  improvement per file, with cited code locations.
