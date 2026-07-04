@@ -11,7 +11,7 @@ There is no single answer to "what does a Job carry"
 
 The per-kind split (`UpsertEntry`/`UpsertTopic`, `EmbedEntry`/`EmbedTopic`) was chosen over a
 single kind-carrying variant during the decoupling work without approval, and is the direct
-cause of several of the duplications in `dry_consolidation.md`. The content variants were
+cause of several of the duplications in `docs/_backlog/cross_cutting/dry_consolidation.md`. The content variants were
 converted to carry objects; the rest were left as-is.
 
 ## Open decisions

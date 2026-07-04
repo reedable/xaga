@@ -6,7 +6,7 @@ presentation. This document records the verified current state, the verified
 history, hypotheses (clearly marked as hypotheses) for why the duplication
 might exist or be kept, and candidate solutions. Decisions are open.
 
-Related: `docs/backlog/secure_embedding_model_download.md` (security risks of
+Related: `docs/_backlog/embeddings/secure_embedding_model_download.md` (security risks of
 the download content; any verification mechanism chosen there interacts with
 the structure described here).
 

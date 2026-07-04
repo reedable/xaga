@@ -51,8 +51,16 @@ rebuilt from the source files on the next run.
   (`EntryError::ColorChangeRequiresReplace`). LanceDB side, `sync_annotations` moves the
   vector and `topics` from the same-checksum row it deletes in the same pass — the vector is
   a pure function of the checksummed content — so the re-keyed row costs no embedder run.
-  Every partial state a crash can leave differs from the files in a way an existing gate
-  detects: id-set diff, the `items` membership checkpoint, the unconditional reverse-index
-  rebuild, or the missing-vector check.
+- **Recovery reconciles the checksum of every row it knows about** — entries, topics, feeds,
+  and annotations alike; the backstop is not universal otherwise. The walk streams an
+  article when its entry embed-gate fires OR any of its annotations drifted: membership (id
+  set), content (the annotation row's stored checksum vs the `.md`), or a pending vector
+  (`annotations_differ`, `crates/xaga-core/src/recovery/embeddings.rs`). All compared
+  against the meta map loaded once before the walk — no per-entry query. The content term is
+  what makes a crash-stranded same-id **note** edit heal at the next startup: the entry
+  checksum excludes annotation content and the id set is unchanged, so no other gate can see
+  it. Every partial state a crash can leave thus differs from the files in a way some gate
+  detects: entry embed-gate, id-set diff, annotation checksum, missing vector, the `items`
+  membership checkpoint, or the unconditional reverse-index rebuild.
 - **Out-of-band changes are a recovery concern.** External edits and migrations are not
   reflected live; recovery reconciles them on its next run. Eventual sync, not live sync.

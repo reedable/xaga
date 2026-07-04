@@ -64,9 +64,10 @@ per-load.
 The costs of teardown are: client construction per command, cold connections
 per refresh pass, full body re-downloads on every refresh (no conditional
 GET), and webview construction per article. These are real and they are paid
-deliberately. The network cost in particular is a fair price for privacy —
-see `docs/backlog/feed_payload_checksum.md` for the local-work optimization
-that does not spend privacy to buy speed.
+deliberately. The network cost in particular is a fair price for privacy;
+optimizations that spend only local work (e.g. skipping reconciliation when
+the fetched payload is byte-identical to the last fetch) do not spend privacy
+to buy speed and are compatible with this trade-off.
 
 Any future change that pools, caches, or extends the lifetime of these
 resources should be treated as reopening the channels above and reviewed as

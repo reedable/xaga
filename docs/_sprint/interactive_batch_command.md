@@ -168,4 +168,4 @@ commands (ingest + state-update) together.
 While testing feed fetch (a single click of refresh), the burst-queue behavior was
 observed again. It is not as bad as before Option 2: the pre-fix state paralyzed all
 db reads/writes, and that no longer happens. The interactive batch insert (Option 1)
-remains beneficial. Moved from docs/backlog to docs/sprint on this basis.
+remains beneficial. Moved from docs/_backlog to docs/_sprint on this basis.

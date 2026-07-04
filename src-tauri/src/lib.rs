@@ -45,7 +45,8 @@ pub(crate) struct AppState {
     pub(crate) ssrf_proxy_port: u16,
     /// Redirect cap for the reqwest fetch paths (feed XML, PDF probe), already
     /// clamped to [`fetch_client::MAX_REDIRECTS_CEILING`]. The article loader
-    /// webview is not covered (docs/backlog/article_loader_redirect_cap.md).
+    /// webview is not covered (docs/architecture/security/fetching_untrusted_content.md,
+    /// "Limits").
     pub(crate) max_redirects: Arc<RwLock<u32>>,
     /// Whether the `Referer` header is allowed to go out on redirect hops
     /// (reqwest fetch paths); it names the previous URL. Off by default:

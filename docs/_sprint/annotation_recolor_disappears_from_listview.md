@@ -6,7 +6,7 @@ consequence in the ListView: the annotation the user selected in the item view i
 the color changes. The `replace_annotation` command emits `annotation:removed` for the old id
 (consumers evict it), and the new id arrives as a *new* annotation through the live
 `sync_annotations` event — but the list does not add newly created annotations
-(`docs/backlog/itemlist_annotation_added_not_listed.md`), so the recolored annotation
+(`docs/_backlog/itemlist_annotation_added_not_listed.md`), so the recolored annotation
 vanishes from the list until a reload, and any selection anchored to the old id is dropped.
 
 This is a UX gap, not a data defect: the `.md` and LanceDB are correct; only the live list

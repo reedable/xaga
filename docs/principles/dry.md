@@ -13,8 +13,7 @@ DRY governs where *logic* is.
 
 - Parallel implementations drift independently. A fix or a hardening measure applied to one copy
   does not constrain the others — the duplicated embedding-model download is the recorded case:
-  a verification mechanism implemented in one writer would not constrain what the app loads
-  (`docs/backlog/refactor_embedding_model_download.md`).
+  a verification mechanism implemented in one writer would not constrain what the app loads.
 - Duplication multiplies the audit surface: every security or correctness review must find and
   cover every copy.
 
@@ -40,7 +39,6 @@ findings, kept for decisions rather than silently fixed. Among them:
 ## Boundary
 
 Consolidation is not free and is itself a design change: unifying two implementations with
-genuinely different contracts moves the difference into parameters or modes (see the hypotheses
-in `docs/backlog/refactor_embedding_model_download.md`). Whether a given duplication is
-consolidated, parameterized, or kept-and-documented is a decision — recorded, with support,
-decided by the user.
+genuinely different contracts moves the difference into parameters or modes. Whether a given
+duplication is consolidated, parameterized, or kept-and-documented is a decision — recorded,
+with support, decided by the user.

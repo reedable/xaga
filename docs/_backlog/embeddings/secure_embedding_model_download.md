@@ -79,7 +79,7 @@ Ship the five files inside the app bundle; delete the download path entirely.
 - Pro: removes the network trust question, the startup dependency on HF
   availability, and the privacy signal (risks 1–6 all moot).
 - Pro: integrity becomes the app's own code-signing story (see
-  docs/backlog/macos_code_signing.md).
+  docs/_backlog/build/macos_code_signing.md).
 - Con: bundle grows by ~90 MB; every app update re-ships the model.
 - Con: model upgrades are coupled to app releases.
 - Con: the CLI (`xaga-cli embeddings download-model`) has its own download
@@ -104,5 +104,5 @@ Ship the five files inside the app bundle; delete the download path entirely.
   staging. Both writers feed the same model directory, and the reader checks
   file existence only, so a mechanism implemented in one writer does not
   constrain what the app loads — see
-  `docs/backlog/refactor_embedding_model_download.md` for the structure,
+  `docs/_backlog/embeddings/refactor_embedding_model_download.md` for the structure,
   history, and candidate solutions.
