@@ -12,8 +12,7 @@ DRY governs where *logic* is.
 ## Why
 
 - Parallel implementations drift independently. A fix or a hardening measure applied to one copy
-  does not constrain the others — the duplicated embedding-model download is the recorded case:
-  a verification mechanism implemented in one writer would not constrain what the app loads.
+  does not constrain the others.
 - Duplication multiplies the audit surface: every security or correctness review must find and
   cover every copy.
 
