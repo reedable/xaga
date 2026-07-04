@@ -1,21 +1,9 @@
-//! Local SSRF-filtering HTTP proxy for the article loader webviews.
-//!
-//! The loader navigates an off-screen WKWebView to untrusted, attacker-influenced
-//! URLs (links found in feeds/articles). A URL-string check can't stop SSRF
-//! because the WebView does its own DNS resolution and follows redirects in its
-//! own network stack — so a hostname that looks public can resolve to
-//! `127.0.0.1` / `169.254.169.254` / an intranet host (DNS rebinding), and
-//! redirects are never seen by the app.
-//!
-//! This proxy moves name resolution *out* of the WebView. The loader webview is
-//! pointed at this proxy (`WebviewWindowBuilder::proxy_url`), and the proxy:
-//!   1. resolves the target host itself,
-//!   2. rejects the request if *any* resolved address is private/loopback/etc.,
-//!   3. dials the validated IP it just resolved (pinning).
-//!
-//! Because the WebView never resolves or connects directly, DNS rebinding is
-//! defeated (there is no second lookup to rebind) and every redirect/subresource
-//! re-enters the proxy and is re-validated.
+//! Local SSRF-filtering HTTP proxy for the article loader webviews and the
+//! per-invocation fetch clients. The loader webview is pointed at this proxy via
+//! `WebviewWindowBuilder::proxy_url`, so it never resolves DNS or connects
+//! directly. See docs/architecture/security/fetching_remote_content.md,
+//! "Threat model" and "Containment: the SSRF proxy," for why this exists and how
+//! it defeats DNS rebinding.
 //!
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
@@ -122,11 +110,9 @@ impl HostResolver for SystemResolver {
 }
 
 /// Resolves `host:port` and returns a single validated address to dial, or an
-/// error if resolution failed or *any* resolved address is disallowed.
-///
-/// Rejecting when *any* address is blocked (rather than filtering to the allowed
-/// ones) prevents a host that publishes both a public and a private record from
-/// being reachable at all.
+/// error if resolution failed or *any* resolved address is disallowed. See
+/// docs/architecture/security/fetching_remote_content.md, "Containment: the
+/// SSRF proxy," point 2, for why rejecting on *any* blocked address matters.
 fn validate_target(
     host: &str,
     port: u16,
@@ -245,20 +231,27 @@ pub struct ProxyConfig {
     /// Whether plaintext `http://` requests (absolute-form) are forwarded.
     /// Shared handle to the "HTTP allowed" setting, read per request; the proxy
     /// starts before settings load, so it holds the handle, not the value.
-    /// `false` refuses with [`HTTP_BLOCKED_STATUS`]. Enforcing here (not via
-    /// reqwest `.https_only()`) covers every consumer that dials through the
-    /// proxy — the feed and PDF clients, the loader webview, its subresources,
-    /// and every redirect hop.
+    /// `false` refuses with [`HTTP_BLOCKED_STATUS`]. See
+    /// docs/architecture/security/fetching_remote_content.md, "CONNECT port
+    /// policy," for why this is enforced here rather than client-side.
     http_allowed: Arc<std::sync::RwLock<bool>>,
+    /// Whether `CONNECT` may target a port other than 443. Read per request,
+    /// same reason as `http_allowed`: the proxy starts before settings load.
+    /// `false` refuses non-443 `CONNECT` targets with 403 Forbidden.
+    connect_nonstandard_ports_allowed: Arc<std::sync::RwLock<bool>>,
 }
 
 impl ProxyConfig {
     /// Production configuration: system DNS + the real address policy.
-    pub fn new(http_allowed: Arc<std::sync::RwLock<bool>>) -> Self {
+    pub fn new(
+        http_allowed: Arc<std::sync::RwLock<bool>>,
+        connect_nonstandard_ports_allowed: Arc<std::sync::RwLock<bool>>,
+    ) -> Self {
         Self {
             resolver: Arc::new(SystemResolver),
             is_blocked_fn: is_blocked,
             http_allowed,
+            connect_nonstandard_ports_allowed,
         }
     }
 }
@@ -323,6 +316,9 @@ async fn handle_conn(mut client: TcpStream, cfg: ProxyConfig) -> std::io::Result
 
     match target {
         Target::Connect { host, port } => {
+            if port != 443 && !*cfg.connect_nonstandard_ports_allowed.read().unwrap() {
+                return write_status(&mut client, "403 Forbidden").await;
+            }
             let addr = match validate_target_async(
                 host.clone(),
                 port,
@@ -617,6 +613,7 @@ mod tests {
             resolver: Arc::new(SystemResolver),
             is_blocked_fn: |_| false,
             http_allowed: Arc::new(std::sync::RwLock::new(true)),
+            connect_nonstandard_ports_allowed: Arc::new(std::sync::RwLock::new(true)),
         }
     }
 
@@ -667,13 +664,39 @@ mod tests {
     #[tokio::test]
     async fn connect_to_blocked_target_is_refused() {
         // Real policy: a CONNECT to loopback must be rejected with 403.
-        let port = start(ProxyConfig::new(Arc::new(std::sync::RwLock::new(false))))
-            .await
-            .unwrap();
+        // Port 443 keeps this test isolated to the address check, not the
+        // separate non-443-port check.
+        let port = start(ProxyConfig::new(
+            Arc::new(std::sync::RwLock::new(false)),
+            Arc::new(std::sync::RwLock::new(false)),
+        ))
+        .await
+        .unwrap();
         let mut c = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
             .await
             .unwrap();
-        c.write_all(b"CONNECT 127.0.0.1:80 HTTP/1.1\r\n\r\n")
+        c.write_all(b"CONNECT 127.0.0.1:443 HTTP/1.1\r\n\r\n")
+            .await
+            .unwrap();
+
+        let status = read_http_head(&mut c).await;
+        assert!(status.starts_with("HTTP/1.1 403"), "got: {status:?}");
+    }
+
+    #[tokio::test]
+    async fn connect_to_nonstandard_port_refused_by_default() {
+        // connect_nonstandard_ports_allowed=false: CONNECT to a non-443 port
+        // is refused before address validation runs.
+        let port = start(ProxyConfig::new(
+            Arc::new(std::sync::RwLock::new(false)),
+            Arc::new(std::sync::RwLock::new(false)),
+        ))
+        .await
+        .unwrap();
+        let mut c = TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .unwrap();
+        c.write_all(b"CONNECT example.com:8443 HTTP/1.1\r\n\r\n")
             .await
             .unwrap();
 
@@ -689,6 +712,7 @@ mod tests {
             resolver: Arc::new(SystemResolver),
             is_blocked_fn: |_| false,
             http_allowed: Arc::new(std::sync::RwLock::new(false)),
+            connect_nonstandard_ports_allowed: Arc::new(std::sync::RwLock::new(false)),
         };
         let port = start(cfg).await.unwrap();
         let mut c = TcpStream::connect((Ipv4Addr::LOCALHOST, port))

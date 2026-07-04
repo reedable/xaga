@@ -95,7 +95,7 @@ Ship the five files inside the app bundle; delete the download path entirely.
 
 ## Related
 
-- `docs/architecture/security/fetching_untrusted_content.md` — Known gaps points here;
+- `docs/architecture/security/fetching_remote_content.md` — Known gaps points here;
   update that bullet when an option is implemented.
 - The CLI download command (`download_model`,
   `crates/xaga-cli/src/cmd/embeddings.rs`) is a separate implementation with

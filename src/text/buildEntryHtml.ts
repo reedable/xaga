@@ -87,18 +87,13 @@ export function buildEntryHtml(
   const fontStack = FONT_FAMILY_CSS[fontFamily];
 
   // Embed annotations in a non-executed <script type="application/json"> data
-  // island (see the return below) that the reader script reads at runtime.
-  // Keeping the data out of the executable <script> is what lets that script stay
-  // byte-stable, so its sha256 can be allow-listed in the bundled CSP (where
-  // script-src has no 'unsafe-inline'). Data blocks are not subject to script-src.
+  // island (see the return below). See
+  // docs/architecture/security/handling_persisted_content.md, "Rendering," for
+  // why this must stay out of the executable <script> and why "<" is escaped.
   //
   // If you change anything inside the executable <script> below, the bundled CSP
   // hash MUST be regenerated: run `node scripts/csp-hash.mjs` and paste the
   // printed value into app.security.csp (script-src) in src-tauri/tauri.conf.json.
-  //
-  // JSON.stringify does NOT escape "</script>" or "<!--", so annotation text
-  // containing those sequences would otherwise break out of the island element;
-  // replacing every "<" (so no literal "<" survives) keeps the value inert.
   const annotationsJson = JSON.stringify(annotations).replace(/</g, "\\u003c");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>

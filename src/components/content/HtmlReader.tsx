@@ -294,9 +294,9 @@ export function HtmlReader({
     function handleMessage(e: MessageEvent) {
       const log = Logger.getLogger("handleMessage");
 
-      // Only accept messages from our own reader iframe. Without this an
-      // unsandboxed sibling frame (e.g. the PDF viewer) or any window holding a
-      // reference to this one could spoof OPEN_LINK_URL and drive link loading.
+      // Only accept messages from our own reader iframe. See
+      // docs/architecture/security/handling_persisted_content.md, "Rendering,"
+      // for the spoofing this guards against.
       if (e.source !== iframeRef.current?.contentWindow) return;
 
       log.log("handleMessage", e.data);

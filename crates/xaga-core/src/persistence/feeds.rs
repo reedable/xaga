@@ -21,10 +21,10 @@ use super::walk::for_each_atom;
 
 /// Status code the app shell's SSRF proxy answers with when it refuses a
 /// plaintext `http://` request because the HTTP-allowed setting is off.
-/// Non-standard on purpose: it lets fetch paths distinguish "blocked by the
-/// user's own setting" from a real server 4xx. Produced in
-/// `src-tauri/src/ssrf_proxy.rs`; consumed here ([`fetch_xml`]) and by the
-/// PDF probe (`src-tauri/src/commands/articles.rs`).
+/// Non-standard on purpose — see
+/// docs/architecture/security/fetching_remote_content.md, "Plaintext HTTP
+/// enforcement." Produced in `src-tauri/src/ssrf_proxy.rs`; consumed here
+/// ([`fetch_xml`]) and by the PDF probe (`src-tauri/src/commands/articles.rs`).
 pub const HTTP_BLOCKED_STATUS: u16 = 470;
 
 #[derive(Debug, Error)]
@@ -229,12 +229,10 @@ async fn fetch_and_merge(
     apply_incoming_xml(atom, &incoming_xml, id).map_err(FeedError::FeedParse)
 }
 
-/// Commit a refreshed feed: persist each new entry's `.md` BEFORE writing the `.atom`. The `.md`
-/// is the irreplaceable content; the atom is only the membership label. A crash between the two
-/// leaves materialized entries that aren't yet in the atom; the next refresh re-adds them from
-/// the live feed (and `save_new_entries` skips the already-written `.md`), so no content is lost.
-/// The reverse order would instead lose the content, forcing a reconciliation pass to rebuild it
-/// from the atom. This ordering is the one place that owns the invariant; callers must commit here.
+/// Commit a refreshed feed: persist each new entry's `.md` BEFORE writing the `.atom`. This
+/// function is the one place that owns that ordering invariant — callers must commit here, not
+/// reimplement the sequence. See docs/architecture/security/handling_remote_content.md,
+/// "Persistence," for why the order matters.
 async fn write_atom(
     library_dir: &Path,
     id: &str,

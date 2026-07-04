@@ -65,12 +65,10 @@ export async function processEntry(
     throw new Error("Readability could not extract an entry");
   }
 
-  // Sanitize Readability's HTML output before anything else consumes it. This is
-  // the explicit security boundary for article bodies: DOMPurify strips <script>,
-  // event-handler attributes, javascript:/data: URIs, etc. We do NOT rely on the
-  // downstream HTML→markdown→HTML round-trip to incidentally drop dangerous
-  // markup — that behavior is a side effect, not a guarantee, and a dependency
-  // upgrade could quietly change it.
+  // Sanitize Readability's HTML output before anything else consumes it — the
+  // explicit security boundary for article bodies. See
+  // docs/architecture/security/handling_remote_content.md, "Processing," for why
+  // this must not be left to the downstream HTML round-trip.
   //
   // ASSUMPTION: neither DOMParser (above) nor Readability ever executes scripts
   // or fires event handlers — both operate on an inert, non-rendered document, so

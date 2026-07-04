@@ -1,10 +1,14 @@
 # Fetching untrusted remote content
 
 How Xaga secures the *network* side of loading remote content — feeds,
-article pages, and PDFs. The companion document,
-[handling_untrusted_content.md](handling_untrusted_content.md), covers what
-happens to the bytes after they arrive (parsing, processing, persistence,
-display).
+article pages, and PDFs. What happens to the bytes after they arrive
+(parsing, processing, the write into storage) is covered in the companion
+document, [handling_remote_content.md](handling_remote_content.md). Reading
+that content back and rendering it is a further boundary, covered in
+[handling_persisted_content.md](handling_persisted_content.md). Content the
+user supplies directly rather than fetches (OPML/bookmarks import) is
+covered in
+[handling_user_supplied_content.md](handling_user_supplied_content.md).
 
 Code: `src-tauri/src/ssrf_proxy.rs` (the proxy),
 `src-tauri/src/article_loader.rs` (loader webview),
@@ -111,6 +115,22 @@ user's own setting" from a real server 4xx: `fetch_xml` maps it to
 webview surfaces the explanation body. The proxy holds the setting handle and
 reads it per request; it starts before settings load, and the value is
 `false` (blocked) until seeded.
+
+### CONNECT port policy
+
+`CONNECT` establishes an opaque tunnel: once one is up, the proxy cannot see
+the bytes flowing through it, so it cannot tell TLS from plaintext (or any
+other protocol) inside the tunnel. The plaintext-HTTP refusal above only sees
+absolute-form `http://` requests — it does not fire for a `CONNECT
+host:80` that then carries plaintext HTTP through the tunnel.
+
+The `connect_nonstandard_ports_allowed` setting (default `false`) closes this
+at the port level instead of the content level: `CONNECT` to any port other
+than 443 is refused with `403 Forbidden` before address validation or
+dialing. When `true`, `CONNECT` is permitted to any port (address validation
+still applies); feeds served on non-443 https ports need this enabled to
+connect. Same setting-handle pattern as `http_allowed`: read per request,
+`false` until settings are loaded.
 
 The fetch clients deliberately do not set `.https_only()`: enforcing in the
 proxy covers every consumer at a single point; a client-side `.https_only()`
@@ -235,6 +255,11 @@ stated consequence.
 - **`allowed_domains`** (default empty) — domains granted persistent webview
   storage in the loader (see below). Consequence: those sites can recognize
   a returning reader.
+- **`connect_nonstandard_ports_allowed`** (default `false`) — allow `CONNECT`
+  to target a port other than 443. Consequence: `CONNECT` to any port is
+  tunneled opaquely, so a plaintext (or otherwise non-TLS) service on a
+  non-443 port is reachable through the tunnel with no visibility into what
+  the tunneled bytes are.
 
 ### Recorded exception to Secure by Default
 
@@ -279,11 +304,6 @@ gets loaded and what the loaded page can do:
 
 Places where the invariants are not fully upheld:
 
-- A `CONNECT` to port 80 would tunnel plaintext the proxy cannot see; the
-  plaintext-HTTP refusal covers absolute-form requests only. Today's
-  consumers do not do this (reqwest uses CONNECT only for https; the webview
-  uses absolute-form for http), so enforcement rests on client convention,
-  not on the proxy.
 - The redirect cap applies to the reqwest fetch paths only; the article
   loader webview follows redirects internally, uncapped.
 - Feeds or articles that resolve to private/loopback addresses
@@ -296,4 +316,4 @@ Places where the invariants are not fully upheld:
   (`resolve/main`) and feeds it to a native parser (onnxruntime).
 - Proxy behavior is a property of the bundled app; `tauri dev` runtime checks
   are not representative for webview-level policies (see the CSP note in
-  [handling_untrusted_content.md](handling_untrusted_content.md)).
+  [handling_persisted_content.md](handling_persisted_content.md)).

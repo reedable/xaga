@@ -1,68 +1,37 @@
 # Xaga
 
-Xaga is a Privacy-Focused Personal Knowledge Management (PKM) tool or a Smart RSS Reader.
+_A quiet tool for a noisy age._
 
-- Aggregate Content: Fetch web articles via RSS/Atom and convert them into readable formats using readability-js
-- Search & Discover: Use the Embeddings and LanceDB components to perform vector-based searches (likely AI-powered) across their saved documents and notes
-- Write & Edit: Use CodeMirror 6 to create and modify personal notes saved directly to their local file system (p. 1).
+News readers are built around FOMO. They optimize for speed and volume, selling the anxiety of missing out under the banner of "be the first to know." Xaga rejects that premise. Being first is not the goal. Understanding is.
 
-## Architecture
+**Discover, Understand, Connect, Insight.**
 
-Xaga is a cross-platform desktop application built using Tauri. Xaga has a React-based frontend (User Interface) and a Rust-based backend (File System and Database). The system is designed to handle three primary types of data:
+Xaga is a Personal Knowledge Management (PKM) tool.
 
-- Feeds: RSS/Atom web content parsed into XML.
-- Articles: Read-only .html and .md (Markdown) files.
-- Notes: Read-write .md files that the user can edit directly.
+You discover material worth your attention. You take the time to understand it. You connect it to what you already know. From that, you arrive at your own unique insight. The value is not in how fast something reaches you. It is in what it becomes once it does.
 
-## Type Hierarchy
+## We offer
 
-The domain model is expressed identically on both sides of the Tauri boundary.
+### Privacy
 
-### TypeScript (`src/types.ts`)
+Xaga has no account, no cloud, and no telemetry. Your library is a set of plain files on your own disk. Xaga does not know who you are, and it never reports what you read or save to anyone.
 
-```
-Item                id, title, created_at, updated_at
-|
-├── Document        + content
-|
-└── Entry           + source, summary, published_at
-    └── Article     + content
+Reading the open web means reaching servers you did not write and cannot trust. Xaga treats every one of them as hostile. It fetches carefully, discloses as little about you as the request allows, and refuses the covert tracking channels that ordinary readers leave open.
 
-Feed                id, url, title, entry_count, updated_at
-                    (subscribed RSS/Atom feed — not an Item)
-```
+### Accessibility
 
-`Item` is the minimal contract for list views and sorting across mixed collections
-(e.g. Search results, Related Items). `Document` marks types whose content is
-persisted to disk and indexed in LanceDB — `Entry` is explicitly excluded
-until the user saves it as a `Article`.
+Software should be usable by everyone, regardless of how they see, hear, or move. Xaga is built to that standard: keyboard navigation, screen reader support, and legible contrast are requirements, not enhancements. An interface that only some people can use is a defect.
 
-### Rust (`crates/xaga-core/src/item.rs`)
+## You bring
 
-Mirrors the TypeScript hierarchy using traits and struct composition:
+### Discernment
 
-| Rust                                          | TypeScript | Note                                       |
-| --------------------------------------------- | ---------- | ------------------------------------------ |
-| `trait Item`                                  | `Item`     | `title()`, `date()`                        |
-| `trait Document: Item`                        | `Document` | `content()` — gates the embedding pipeline |
-| `struct Entry { article: Article, feed_url }` | `Entry`    | `Item` only — not `Document`               |
-| `struct Article { meta: Article, content }`   | `Article`  | `#[serde(flatten)]` keeps JSON output flat |
+Xaga can protect you from hostile servers. It cannot protect you from hostile ideas.
 
-`Article` implements both `Item` and `Document`. `Entry` implements `Item` only.
-`Note` will implement both when the Notes pipeline is built.
+Everything in Privacy above guards the mechanics: how content is fetched, parsed, and stored. None of it speaks to whether the content is true. In an age of AI slop and manufactured consensus, that gap is the one that matters most. A polished article can be a marketing pitch. A popular feed can be propaganda.
 
-## xaga-cli
+Xaga cannot sort this for you. No tool can.
 
-`xaga-cli` can be thought of as a headless implementation of Xaga app. `xaga-cli` uses the Xaga's Rust back-end components without the WebviewWindow for React UI.
+## Next step
 
-## Development Plan
-
-| Phase | Name                   | Description                                                                                                                                                         |
-| ----- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0     | xaga-cli               | Headless Rust backend scaffold — Tauri project setup, CLI entry point, core module structure without WebviewWindow                                                  |
-| 1     | Feeds pipeline         | HTTPS fetch of Atom/RSS feeds, XML parsing, CRUD on `*.atom` files                                                                                                  |
-| 2     | ArticleLoader pipeline | Tauri scaffold + React UI WebViewWindow + off-screen WebViewWindow (Isolation Pattern, one-time encryption key) + `readability-js` producing `.md` with frontmatter |
-| 3     | Articles pipeline      | Synchronous Rust command for read-only `*.md` files, CRUD                                                                                                           |
-| 4     | Embeddings pipeline    | `notify` → `Debouncer (200ms)` → `Reconciler` → `flume` → `candle (Metal/CUDA/CPU)` → `LanceDB`; excludes Recovery                                                  |
-| 5     | Recovery pipeline      | Startup lazy reconciliation of LanceDB against the filesystem as source of truth                                                                                    |
-| 6     | React UI               | Full UI — feed viewer, `unified` remark pipeline (Web Worker), `CodeMirror 6` notes editor, vector search                                                           |
+This document is the why. Find out how Xaga is built. See [docs/](docs/): its principles, architecture, and conventions.

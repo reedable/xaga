@@ -22,6 +22,16 @@ Import/export are orchestrated natively and report completion by event
   quick-xml's message (which can quote file fragments), and the import result
   echoes raw failed entry strings back. Prefer a generic error to the
   user/event and full detail to the log.
+- **Import byte-cap rejection** — `import_feeds`/`import_bookmarks` reject a
+  file exceeding `import_max_bytes` with a raw
+  `format!("import file is {} bytes, exceeding the {} byte limit", ...)`
+  string (`src-tauri/src/native/feeds.rs`, `native/bookmarks.rs`), same
+  raw-string-to-event pattern as the gap above. Additionally, unlike a
+  malformed-file error, this one is user-actionable: the cap is a setting, so
+  the message should direct the user to Settings to raise it. No such
+  direction exists today because the setting itself has no UI yet — see
+  `docs/_backlog/fetch/improvement__user_settings.md`. This bullet is blocked
+  on that item landing.
 
 ## Other error handling
 

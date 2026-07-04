@@ -19,6 +19,9 @@ use xaga_core::embeddings::{
 pub(crate) const DEFAULT_LOADER_TIMEOUT_SECS: u64 = 10;
 pub(crate) const DEFAULT_FEED_TIMEOUT_SECS: u64 = 10;
 pub(crate) const DEFAULT_FEED_MAX_BODY_BYTES: u64 = 10 * 1024 * 1024;
+/// Maximum bytes read from a local import file (OPML or bookmarks.html), shared
+/// by both formats rather than one per format.
+pub(crate) const DEFAULT_IMPORT_MAX_BYTES: u64 = 64 * 1024 * 1024;
 
 pub(crate) struct AppState {
     pub(crate) library: Arc<RwLock<PathBuf>>,
@@ -27,6 +30,9 @@ pub(crate) struct AppState {
     pub(crate) loader_timeout_secs: Arc<RwLock<u64>>,
     pub(crate) feed_timeout_secs: Arc<RwLock<u64>>,
     pub(crate) feed_max_body_bytes: Arc<RwLock<u64>>,
+    /// Maximum bytes read from a local import file (OPML or bookmarks.html),
+    /// checked against file metadata before the read. Shared by both formats.
+    pub(crate) import_max_bytes: Arc<RwLock<u64>>,
     pub(crate) html_reader_font_family: Arc<RwLock<String>>,
     pub(crate) html_reader_font_size: Arc<RwLock<f64>>,
     pub(crate) html_reader_line_height: Arc<RwLock<f64>>,
@@ -109,6 +115,10 @@ pub(crate) struct UserSettings {
     /// limit. Bounds the memory a single response can occupy. Defaults to
     /// 10 MiB if absent.
     pub(crate) feed_max_body_bytes: Option<u64>,
+    /// Maximum bytes read from a local import file (OPML or bookmarks.html),
+    /// shared by both formats. The import is refused before reading the file
+    /// if its size exceeds this. Defaults to 64 MiB if absent.
+    pub(crate) import_max_bytes: Option<u64>,
     #[serde(alias = "reader_font_family")]
     pub(crate) html_reader_font_family: Option<String>,
     #[serde(alias = "reader_font_size")]
@@ -138,6 +148,12 @@ pub(crate) struct UserSettings {
     /// of the build than the default request shape reveals. Defaults to
     /// false if absent: no `Accept-Encoding` header is sent.
     pub(crate) gzip_allowed: Option<bool>,
+    /// Allow `CONNECT` to target a port other than 443. Enforced by the SSRF
+    /// proxy. Defaults to false if absent: `CONNECT` to any other port is
+    /// refused with 403. See
+    /// docs/architecture/security/fetching_remote_content.md, "CONNECT port
+    /// policy," for the plaintext-tunnel hole this closes.
+    pub(crate) connect_nonstandard_ports_allowed: Option<bool>,
 }
 
 pub(crate) fn load_settings(path: &Path) -> UserSettings {
@@ -262,15 +278,21 @@ pub fn run() {
     // enforce it from its first request. Seeded from settings.json in setup;
     // false (blocked) until then.
     let http_allowed = fetch_client::http_allowed_handle();
+    // Same startup-ordering reason as `http_allowed`: false (443 only) until
+    // settings load.
+    let connect_nonstandard_ports_allowed: Arc<std::sync::RwLock<bool>> =
+        Arc::new(std::sync::RwLock::new(false));
 
     // Start the local SSRF-filtering proxy that every loader webview and every
     // fetch client is routed through. Fail fast: binding 127.0.0.1:0
     // essentially never fails, and running the loader without this proxy would
     // silently reopen the SSRF hole.
-    let ssrf_proxy_port = tauri::async_runtime::block_on(ssrf_proxy::start(
-        ssrf_proxy::ProxyConfig::new(Arc::clone(&http_allowed)),
-    ))
-    .expect("failed to start SSRF filtering proxy for the article loader");
+    let ssrf_proxy_port =
+        tauri::async_runtime::block_on(ssrf_proxy::start(ssrf_proxy::ProxyConfig::new(
+            Arc::clone(&http_allowed),
+            Arc::clone(&connect_nonstandard_ports_allowed),
+        )))
+        .expect("failed to start SSRF filtering proxy for the article loader");
 
     // Pre-created Arcs shared between .manage() and the .setup() closure.
     let library: Arc<RwLock<PathBuf>> = Arc::new(RwLock::new(PathBuf::new()));
@@ -279,6 +301,7 @@ pub fn run() {
     let loader_timeout_secs: Arc<RwLock<u64>> = Arc::new(RwLock::new(DEFAULT_LOADER_TIMEOUT_SECS));
     let feed_timeout_secs: Arc<RwLock<u64>> = Arc::new(RwLock::new(DEFAULT_FEED_TIMEOUT_SECS));
     let feed_max_body_bytes: Arc<RwLock<u64>> = Arc::new(RwLock::new(DEFAULT_FEED_MAX_BODY_BYTES));
+    let import_max_bytes: Arc<RwLock<u64>> = Arc::new(RwLock::new(DEFAULT_IMPORT_MAX_BYTES));
     let max_redirects: Arc<RwLock<u32>> =
         Arc::new(RwLock::new(fetch_client::DEFAULT_MAX_REDIRECTS));
     let referer_allowed: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
@@ -293,6 +316,9 @@ pub fn run() {
     let expanded_sidebar_list: Arc<RwLock<Option<String>>> = Arc::new(RwLock::new(None));
     let inline_pdf_reader: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let html_reader_view: Arc<RwLock<String>> = Arc::new(RwLock::new("reader".to_string()));
+
+    // setup_ prefixed values are consumed by Tauri's .setup() closure.
+    // There is no semantic meaning here.
     let setup_embeddings_read = Arc::clone(&embeddings_read);
     let setup_allowed_domains = Arc::clone(&allowed_domains);
     let setup_expanded_sidebar_list = Arc::clone(&expanded_sidebar_list);
@@ -305,7 +331,9 @@ pub fn run() {
     let setup_loader_timeout = Arc::clone(&loader_timeout_secs);
     let setup_feed_timeout = Arc::clone(&feed_timeout_secs);
     let setup_feed_max_body = Arc::clone(&feed_max_body_bytes);
+    let setup_import_max_bytes = Arc::clone(&import_max_bytes);
     let setup_http_allowed = Arc::clone(&http_allowed);
+    let setup_connect_nonstandard_ports_allowed = Arc::clone(&connect_nonstandard_ports_allowed);
     let setup_max_redirects = Arc::clone(&max_redirects);
     let setup_referer_allowed = Arc::clone(&referer_allowed);
     let setup_gzip_allowed = Arc::clone(&gzip_allowed);
@@ -322,6 +350,7 @@ pub fn run() {
             loader_timeout_secs,
             feed_timeout_secs,
             feed_max_body_bytes,
+            import_max_bytes,
             html_reader_font_family,
             html_reader_font_size,
             html_reader_line_height,
@@ -626,7 +655,13 @@ pub fn run() {
             let feed_max_body = settings
                 .feed_max_body_bytes
                 .unwrap_or(DEFAULT_FEED_MAX_BODY_BYTES);
+            let import_max = settings
+                .import_max_bytes
+                .unwrap_or(DEFAULT_IMPORT_MAX_BYTES);
             let http_allowed_setting = settings.http_allowed.unwrap_or(false);
+            let connect_nonstandard_ports_allowed_setting = settings
+                .connect_nonstandard_ports_allowed
+                .unwrap_or(false);
             let max_redirects_setting =
                 fetch_client::effective_max_redirects(settings.max_redirects);
             let referer_allowed_setting = settings.referer_allowed.unwrap_or(false);
@@ -643,7 +678,10 @@ pub fn run() {
             *setup_loader_timeout.write().unwrap() = timeout;
             *setup_feed_timeout.write().unwrap() = feed_timeout;
             *setup_feed_max_body.write().unwrap() = feed_max_body;
+            *setup_import_max_bytes.write().unwrap() = import_max;
             *setup_http_allowed.write().unwrap() = http_allowed_setting;
+            *setup_connect_nonstandard_ports_allowed.write().unwrap() =
+                connect_nonstandard_ports_allowed_setting;
             *setup_max_redirects.write().unwrap() = max_redirects_setting;
             *setup_referer_allowed.write().unwrap() = referer_allowed_setting;
             *setup_gzip_allowed.write().unwrap() = gzip_allowed_setting;

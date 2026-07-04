@@ -9,7 +9,7 @@ other side of it must be assumed hostile.
 
 This matters because exploits are chains. A renderer compromise on its own may
 be contained (sandboxed iframe, CSP, no raw-HTML sinks — see
-[handling_untrusted_content.md](handling_untrusted_content.md)); a
+[handling_persisted_content.md](handling_persisted_content.md)); a
 path-accepting command on its own looks benign because "only the menu flow
 uses it." Chained, they are a weapon: whoever gets script into the webview
 gets every registered command as a local API, and a command that accepts a

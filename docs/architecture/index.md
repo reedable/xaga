@@ -31,17 +31,26 @@ detail lives in the linked file, not here.
 Architecture of the security-critical paths, in [security/](security/). These describe how a
 subsystem works and why — decided design and deliberate limits, not findings or status.
 
-1. [Fetching untrusted content](security/fetching_untrusted_content.md) — the network side.
+1. [Fetching untrusted content](security/fetching_remote_content.md) — the network side.
    Three invariants on every outbound request: containment (the SSRF proxy — resolve, validate,
    pin), minimal truthful disclosure (withhold, never misrepresent), bounded resources.
 
-2. [Handling untrusted content](security/handling_untrusted_content.md) — the byte side: feed
-   XML and article HTML through parsing, transformation, storage, and rendering.
+2. [Handling remote content](security/handling_remote_content.md) — the byte side of fetched
+   content: feed XML and article HTML through parsing, transformation, and the write into
+   storage.
 
-3. [Command surface](security/command_surface.md) — every registered Tauri command is
+3. [Handling persisted content](security/handling_persisted_content.md) — storage is a boundary:
+   reading previously-written content back and rendering it, regardless of whether it originally
+   arrived by remote fetch, user import, or IPC.
+
+4. [Handling user-supplied content](security/handling_user_supplied_content.md) — content the
+   user supplies directly rather than fetches: OPML feed lists and bookmarks.html imports, parsed
+   from a Rust-owned local file, never from the webview.
+
+5. [Command surface](security/command_surface.md) — every registered Tauri command is
    webview-callable with any arguments at any time; the invoke surface is the boundary, and the
    caller must be assumed hostile.
 
-4. [Performance trade-off](security/performance_tradeoff.md) — resource teardown as a privacy
+6. [Performance trade-off](security/performance_tradeoff.md) — resource teardown as a privacy
    tool: per-invocation clients and single-use loader webviews are rebuilt deliberately, not
    pooled; conditional-GET validators are rejected as a server-writable tracking channel.

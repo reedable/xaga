@@ -38,11 +38,9 @@ pub(crate) fn effective_max_redirects(setting: Option<u32>) -> u32 {
 /// explicitly here.
 ///
 /// Deliberately no `.https_only()`: the "HTTP allowed" setting is enforced in
-/// [`crate::ssrf_proxy`], which refuses absolute-form `http://` requests with
-/// `HTTP_BLOCKED_STATUS` when the setting is off. Enforcing there covers this
-/// client, the loader webview, its subresources, and every redirect hop at a
-/// single point; a client-side `.https_only()` would be a second, partial
-/// implementation of the same rule.
+/// [`crate::ssrf_proxy`] instead. See
+/// docs/architecture/security/fetching_remote_content.md, "CONNECT port
+/// policy," for why enforcement lives there and not here.
 pub(crate) fn build(
     proxy_port: u16,
     max_redirects: u32,

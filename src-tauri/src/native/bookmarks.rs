@@ -24,6 +24,19 @@ pub(crate) async fn import_bookmarks(
     file_path: &Path,
 ) -> Result<BookmarkImportResult, String> {
     let data_dir = state.library.read().unwrap().clone();
+
+    let max_bytes = *state.import_max_bytes.read().unwrap();
+    let metadata = tokio::fs::metadata(file_path)
+        .await
+        .map_err(|e| e.to_string())?;
+    if metadata.len() > max_bytes {
+        return Err(format!(
+            "import file is {} bytes, exceeding the {} byte limit",
+            metadata.len(),
+            max_bytes
+        ));
+    }
+
     let html = tokio::fs::read_to_string(file_path)
         .await
         .map_err(|e| e.to_string())?;

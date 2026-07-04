@@ -1,9 +1,14 @@
-# Handling untrusted remote content: parsing, processing, persistence, display
+# Handling untrusted remote content: parsing, processing, ingest persistence
 
 How Xaga secures remote bytes _after_ they arrive — feed XML and article HTML
-through parsing, transformation, storage, and rendering. The network side
+through parsing, transformation, and the write into storage. The network side
 (which hosts can be reached at all) is covered in
-[fetching_untrusted_content.md](fetching_untrusted_content.md).
+[fetching_remote_content.md](fetching_remote_content.md). What happens
+once content is in storage — including reading it back for rendering — is a
+separate boundary, covered in
+[handling_persisted_content.md](handling_persisted_content.md). Content
+supplied by the user rather than fetched (OPML/bookmarks import) is covered in
+[handling_user_supplied_content.md](handling_user_supplied_content.md).
 
 ## Feed XML (Atom)
 
@@ -97,44 +102,5 @@ The loader webview returns the page's raw DOM HTML. `processEntry`
 Article markdown is stored in the same `{hash12}.md` files as feed entries,
 with the same serde_yaml frontmatter boundary for title/summary/annotations
 (see above). What is on disk has already crossed the DOMPurify boundary.
-
-### Rendering (markdown → reader)
-
-Storage is a boundary. Anything loaded from storage is untrusted content
-even when what was written was sanitized at ingest. Stored content handling
-falls under this document. The rendering path applies its own controls and does
-not depend on ingest-time sanitization having happened or having been
-sufficient.
-
-- **Raw HTML in markdown is dropped at render.** `markdownToHtml`
-  (`markdownPipeline.ts`) uses `remark-rehype` without `allowDangerousHtml`,
-  so HTML embedded in stored markdown is discarded, not emitted.
-- **The reader is a sandboxed, opaque-origin iframe.**
-  `sandbox="allow-scripts"` only (`HtmlReader.tsx:340`) — no
-  `allow-same-origin` — so the reader document has an opaque origin: no access
-  to the app's DOM, IPC, or storage. Content is delivered as a `Blob` URL via
-  `location.replace` and the object URL is revoked after load.
-- **The reader's own script is CSP-hash-pinned.** The bundled CSP
-  (`tauri.conf.json`) has `script-src 'self' 'sha256-…'` with no
-  `unsafe-inline`; the single inline reader script is byte-stable and its hash
-  is allow-listed (regenerate with `node scripts/csp-hash.mjs` when it
-  changes). No other inline script can execute in the app's pages.
-- **Annotations enter the reader through a JSON data island**, a non-executed
-  `<script type="application/json">` block (`buildEntryHtml.ts:89-102`). Every
-  `<` in the JSON is escaped to `\u003c`, so annotation text containing
-  `</script>` or `<!--` cannot break out of the island element.
-- **`postMessage` traffic is source-checked.** The parent only accepts
-  messages whose `source` is the reader iframe's own `contentWindow`
-  (`HtmlReader.tsx:273-276`), so a sibling frame (e.g. the PDF viewer) or any
-  window holding a reference cannot spoof reader events such as link opens.
-- **No raw-HTML sinks in the app UI.** The React tree contains no
-  `dangerouslySetInnerHTML` and no `srcdoc`; feed titles/summaries render as
-  React text nodes, which are escaped by construction.
-- The app shell CSP also sets `object-src 'none'`, `base-uri 'self'`,
-  `form-action 'none'`, and restricts `connect-src` to the IPC endpoints.
-
-### Testing caveat
-
-The CSP is enforced only in the bundled Tauri app, not under the Vite dev
-server. Any verification of CSP/iframe/sandbox behavior must use
-`tauri build`, not `tauri dev`.
+Reading it back and rendering it is a separate boundary — see
+[handling_persisted_content.md](handling_persisted_content.md).

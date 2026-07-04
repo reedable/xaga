@@ -9,10 +9,12 @@ carry different labels, because they were raised for different reasons.
 
 ## Labels
 
-- **`compliance__`** — raised by a security, policy, or legal concern (all three are
+- **`compliance__`** — raised by a security, accessibility, policy, or legal concern (all are
   compliance concerns). Takes precedence over the other four: if a gap is security-,
-  policy-, or legal-relevant, it is `compliance__` regardless of whether the eventual fix
-  would otherwise read as a defect, an improvement, or a decision.
+  accessibility-, policy-, or legal-relevant, it is `compliance__` regardless of whether the
+  eventual fix would otherwise read as a defect, an improvement, or a decision. Accessibility
+  is a requirement, not a UX enhancement, so an accessibility gap is `compliance__`, never
+  `improvement__`.
 - **`defect__`** — raised because current behavior is defective relative to its documented or
   intended behavior.
 - **`improvement__`** — raised because new capability is wanted, whether that capability is
