@@ -568,6 +568,28 @@ export class TauriPlatform implements Platform {
     return ArticleSchema.transform(toArticle).parse(result);
   }
 
+  async replaceAnnotation(
+    signal: AbortSignal,
+    oldId: string,
+    annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">
+  ): Promise<Article> {
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "replace_annotation" });
+
+    const result = await invoker<unknown>("replace_annotation", {
+      articleId: annotation.reference,
+      oldId,
+      id: annotation.id,
+      text: annotation.text,
+      occurrence: annotation.occurrence,
+      color: annotation.color,
+      note: annotation.content || null,
+    });
+
+    return ArticleSchema.transform(toArticle).parse(result);
+  }
+
   async removeAnnotation(
     signal: AbortSignal,
     annotation: Pick<Annotation, "id" | "reference">

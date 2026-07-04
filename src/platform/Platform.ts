@@ -80,6 +80,13 @@ export interface Platform {
     signal: AbortSignal,
     annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">
   ): Promise<Article>;
+  /** Replaces an annotation under a new id in one atomic write — the color-change path
+   * (a color change is delete/create, not an update). `annotation.id` is the new id. */
+  replaceAnnotation(
+    signal: AbortSignal,
+    oldId: string,
+    annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">
+  ): Promise<Article>;
   removeAnnotation(
     signal: AbortSignal,
     annotation: Pick<Annotation, "id" | "reference">

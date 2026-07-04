@@ -6,6 +6,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
+use crate::embeddings::pipeline::annotation_checksum;
 use crate::embeddings::row::{article_embed_text, checksum, feed_embed_text, topic_embed_text};
 use crate::embeddings::{EmbeddingsDb, EmbeddingsError};
 use crate::library;
@@ -33,15 +34,25 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
         }
     };
 
-    // The annotation rows need reconciling when the entry's recorded annotation membership differs
-    // from the `.md`'s annotation set. Diffed against `db_meta` (already loaded) — no per-entry query.
-    // When the row is absent, `needs_embedding` already streams it, so this reports no extra work.
+    // The annotation rows need reconciling when the entry's recorded annotation membership
+    // differs from the `.md`'s annotation set, OR when any annotation row's content diverged:
+    // row absent, stored checksum ≠ the `.md`'s (a crash-stranded note edit), or vector still
+    // pending (crash between row sync and embed). All diffed against `db_meta` (already loaded)
+    // — no per-entry query. Recovery reconciles the checksum of every row it knows about;
+    // there is no reason not to (the universal-backstop contract, crash_consistency.md).
     let annotations_differ = |article: &Article| -> bool {
-        db_meta.get(&article.meta.id).is_some_and(|(.., recorded)| {
+        let membership_differs = db_meta.get(&article.meta.id).is_some_and(|(.., recorded)| {
             let recorded: HashSet<&str> = recorded.iter().map(|s| s.as_str()).collect();
             let current: HashSet<&str> = article.annotations.iter().map(|a| a.id.as_str()).collect();
             recorded != current
-        })
+        });
+        membership_differs
+            || article.annotations.iter().any(|a| match db_meta.get(&a.id) {
+                None => true,
+                Some((stored, _, has_vector, ..)) => {
+                    stored != &annotation_checksum(a) || !has_vector
+                }
+            })
     };
 
     // Reconcile as we walk: record every on-disk id (for `to_delete` below) and stream only the
@@ -64,8 +75,9 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
             &article.meta.id,
             &checksum(&article.meta.title, article_embed_text(&article)),
         );
-        // Stream when the entry needs (re)embedding OR its annotation membership drifted from the
-        // `.md` — the consumer's `sync_entry_row` re-checks each and does only the work required.
+        // Stream when the entry needs (re)embedding OR its annotations drifted from the `.md`
+        // (membership, content, or a pending vector) — the consumers re-check each and do only
+        // the work required (`sync_entry_row` for rows, `embed_annotations` for vectors).
         if needs_embed || annotations_differ(&article) {
             sink.article(article);
         }
@@ -113,4 +125,111 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
         to_embed_feeds,
         to_delete,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::embeddings::EmbeddingEntry;
+    use crate::persistence::articles::{add_annotation, read_article, save_article};
+    use crate::types::{Annotation, Topic};
+
+    struct CollectingSink {
+        articles: Vec<String>,
+    }
+    impl RepairSink for CollectingSink {
+        fn topic(&mut self, _topic: Topic) {}
+        fn article(&mut self, article: Article) {
+            self.articles.push(article.meta.id.clone());
+        }
+    }
+
+    fn annotation_row(annotation: &Annotation, checksum: &str) -> EmbeddingEntry {
+        EmbeddingEntry {
+            id: annotation.id.clone(),
+            kind: Kind::Annotation,
+            source: String::new(),
+            title: annotation.title.clone(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            published_at: String::new(),
+            updated_at: String::new(),
+            checksum: checksum.to_string(),
+            reference: annotation.reference.clone(),
+            color: annotation.color.clone(),
+            summary: String::new(),
+            tags: vec![],
+            topics: vec![],
+            items: vec![],
+            is_unread: false,
+            is_bookmarked: false,
+            is_pinned: false,
+            vector: Some(vec![0.5f32; 384]),
+        }
+    }
+
+    /// A crash-stranded note edit: the `.md`'s annotation content diverged from the stored row
+    /// while ids and the entry body are unchanged. The walk must stream the article (the embed
+    /// pass heals it); once the stored checksum matches the `.md` again, the walk streams
+    /// nothing.
+    #[tokio::test]
+    async fn stale_annotation_checksum_streams_the_article() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+
+        save_article(
+            lib,
+            "abcdef123456",
+            "https://example.com/a",
+            "Title",
+            None,
+            None,
+            None,
+            None,
+            "body",
+        )
+        .await
+        .unwrap();
+        add_annotation(
+            lib,
+            "abcdef123456",
+            Annotation {
+                id: "a1".to_string(),
+                title: "highlighted".to_string(),
+                reference: "abcdef123456".to_string(),
+                text: vec!["highlighted".to_string()],
+                occurrence: vec![0],
+                color: "yellow".to_string(),
+                content: "the edited note".to_string(),
+                created_at: String::new(),
+            },
+        )
+        .await
+        .unwrap();
+        let article = read_article(lib, "abcdef123456").await.unwrap();
+
+        let db = EmbeddingsDb::open(lib).await.unwrap();
+        // Entry row fully current: correct checksum, vector present, membership recorded.
+        let mut entry_row = EmbeddingEntry::from_article(&article, Some(vec![0.5f32; 384]));
+        entry_row.items = vec!["a1".to_string()];
+        db.upsert(entry_row).await.unwrap();
+        // Annotation row: vector present, membership matching — only the checksum is stale.
+        db.upsert(annotation_row(&article.annotations[0], "stale"))
+            .await
+            .unwrap();
+
+        let mut sink = CollectingSink { articles: vec![] };
+        repair_item_embeddings(lib, &db, &mut sink).await.unwrap();
+        assert_eq!(sink.articles, vec!["abcdef123456".to_string()]);
+
+        // Healed row → clean walk streams nothing.
+        db.upsert(annotation_row(
+            &article.annotations[0],
+            &annotation_checksum(&article.annotations[0]),
+        ))
+        .await
+        .unwrap();
+        let mut sink = CollectingSink { articles: vec![] };
+        repair_item_embeddings(lib, &db, &mut sink).await.unwrap();
+        assert_eq!(sink.articles, Vec::<String>::new());
+    }
 }

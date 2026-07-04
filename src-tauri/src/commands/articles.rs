@@ -426,6 +426,109 @@ pub async fn add_annotation(
     Ok(article)
 }
 
+/// Replaces an annotation under a new id — the write path for a color change, which is
+/// modeled as delete/create (color is part of the annotation's identity). The delete/create
+/// lands in one atomic `.md` write; a crash after it strands nothing silent, because the
+/// changed id set is exactly what the recovery and sync membership diffs detect. The cost
+/// (one annotation re-embed) is attributed to the annotation that changed.
+#[tauri::command]
+pub async fn replace_annotation(
+    window: tauri::Window,
+    article_id: String,
+    old_id: String,
+    id: String,
+    text: Vec<String>,
+    occurrence: Vec<u32>,
+    color: String,
+    note: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Article, String> {
+    let data_dir = state.library.read().unwrap().clone();
+    let annotation = xaga_core::types::Annotation {
+        id: id.clone(),
+        title: text.join(" "),
+        reference: article_id.clone(),
+        text,
+        occurrence,
+        color,
+        content: note.unwrap_or_default(),
+        created_at: String::new(),
+    };
+    let article = articles::replace_annotation(&data_dir, &article_id, &old_id, annotation)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Row reconcile first: SyncAnnotations deletes the old id's row (gone from the `.md`) and
+    // inserts the new one with a pending vector; the deferred EmbedEntry fills it. Enqueued
+    // before the member jobs below so the new row exists when AddMember writes its `topics`.
+    // Tier mirrors add_annotation.
+    state.enqueue(
+        Tier::Interactive,
+        Job::SyncAnnotations {
+            article: article.clone(),
+        },
+    );
+    state.enqueue(
+        Tier::Regular,
+        Job::EmbedEntry {
+            article: article.clone(),
+        },
+    );
+
+    // Migrate topic membership old id -> new id: swap in place in each topic `.md` (position
+    // and type preserved), then move the reverse index. Topics are read from the LanceDB
+    // reverse index, mirroring remove_annotation — best-effort; recovery's unconditional
+    // reverse-index rebuild corrects any miss.
+    let topic_ids: Vec<String> = {
+        let db = state.embeddings_read.lock().unwrap().clone();
+        match db {
+            Some(db) => match db.reload().await {
+                Ok(()) => db
+                    .get_entry(&old_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|e| e.topics)
+                    .unwrap_or_default(),
+                Err(_) => Vec::new(),
+            },
+            None => Vec::new(),
+        }
+    };
+    for topic_id in topic_ids {
+        let _ = topics::replace_topic_item(
+            &data_dir,
+            &topic_id,
+            &old_id,
+            xaga_core::types::CollectionItem::Annotation {
+                id: id.clone(),
+                reference: article_id.clone(),
+            },
+        )
+        .await;
+        state.enqueue(
+            Tier::Interactive,
+            Job::RemoveMember {
+                topic_id: topic_id.clone(),
+                member_id: old_id.clone(),
+            },
+        );
+        state.enqueue(
+            Tier::Interactive,
+            Job::AddMember {
+                topic_id,
+                member_id: id.clone(),
+            },
+        );
+    }
+
+    // The old id is gone; consumers holding it (topic item lists, related lists) evict it.
+    // The new row announces itself through the SyncAnnotations live event.
+    window.emit("annotation:removed", &old_id).ok();
+
+    Ok(article)
+}
+
 #[tauri::command]
 pub async fn remove_annotation(
     window: tauri::Window,

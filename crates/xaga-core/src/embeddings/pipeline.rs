@@ -44,8 +44,9 @@ async fn compute_vector(
     }
 }
 
-/// SHA-256 checksum of an annotation's embeddable content.
-fn annotation_checksum(annotation: &Annotation) -> String {
+/// SHA-256 checksum of an annotation's embeddable content. `pub(crate)` so the recovery
+/// diff can compare every annotation row's stored checksum against the `.md`.
+pub(crate) fn annotation_checksum(annotation: &Annotation) -> String {
     let mut h = sha2::Sha256::new();
     h.update(annotation.text.join(" ").as_bytes());
     if !annotation.content.is_empty() {
@@ -129,6 +130,33 @@ pub(crate) async fn sync_annotations(
         .filter(|id| !current_ids.contains(*id))
         .cloned()
         .collect();
+
+    // Re-keyed content: a row deleted in this pass whose checksum matches a current
+    // annotation is the same embedder input under a new id (a color change is delete/create).
+    // The vector is a pure function of the checksummed content, so it moves to the new row —
+    // the embed pass then checksum-skips it and no embedder run happens. `topics` moves with
+    // it (the later AddMember writes are idempotent). The pairing is inferred from content
+    // identity, not carried symbolically; at design scale the SHA-256 collision rate makes
+    // the inference practically guaranteed.
+    let current_checksums: HashSet<String> = article
+        .annotations
+        .iter()
+        .map(annotation_checksum)
+        .collect();
+    let mut carried: std::collections::HashMap<String, (Option<Vec<f32>>, Vec<String>)> =
+        std::collections::HashMap::new();
+    for id in &to_delete {
+        if let Some((stored_checksum, _)) = existing.get(id) {
+            if current_checksums.contains(stored_checksum)
+                && !carried.contains_key(stored_checksum)
+            {
+                if let Some(e) = db.get_entry(id).await? {
+                    carried.insert(e.checksum.clone(), (e.vector, e.topics));
+                }
+            }
+        }
+    }
+
     if !to_delete.is_empty() {
         log::debug!(
             "sync_annotations: removing {} stale annotation(s) for {article_id}",
@@ -159,15 +187,21 @@ pub(crate) async fn sync_annotations(
             _ => {}
         }
 
-        // New or content-changed: insert/refresh the row now with a pending (`None`) vector so it
-        // is immediately listable; embed_vector fills the vector later. Carry the existing row's
-        // topics forward (the topic path owns that column) so this write never clobbers the index.
+        // New or content-changed: insert/refresh the row now so it is immediately listable.
+        // The vector comes from a same-checksum row deleted above when one exists (re-keyed
+        // content — no embed needed); otherwise it is pending (`None`) and embed_vector fills
+        // it later. Carry the existing row's topics forward (the topic path owns that column)
+        // so this write never clobbers the index.
+        let (vector, carried_topics) = match carried.get(&checksum) {
+            Some((v, t)) => (v.clone(), Some(t.clone())),
+            None => (None, None),
+        };
         let topics = if existing.contains_key(&annotation.id) {
             db.get_entry(&annotation.id).await?.map(|e| e.topics).unwrap_or_default()
         } else {
-            Vec::new()
+            carried_topics.unwrap_or_default()
         };
-        db.upsert(annotation_embedding_entry(article, annotation, topics, None))
+        db.upsert(annotation_embedding_entry(article, annotation, topics, vector))
             .await?;
         let _ = annotation_tx.send(annotation_list_item(article, annotation));
     }
@@ -635,4 +669,89 @@ pub(crate) async fn embed_feed(
         compute_vector(embedder, feed.title.clone(), feed_embed_text(feed).to_string()).await?;
     db.upsert(EmbeddingEntry::from_feed(feed, Some(vector))).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn annotation(id: &str, color: &str) -> Annotation {
+        Annotation {
+            id: id.to_string(),
+            title: "highlighted".to_string(),
+            reference: "article-1".to_string(),
+            text: vec!["highlighted".to_string()],
+            occurrence: vec![0],
+            color: color.to_string(),
+            content: "a note".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    fn article(annotations: Vec<Annotation>) -> Article {
+        Article {
+            meta: Entry {
+                id: "article-1".to_string(),
+                url: "https://example.com/a".to_string(),
+                title: "Title".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+                published_at: None,
+                updated_at: None,
+                description: None,
+                is_unread: false,
+                is_bookmarked: false,
+                color: None,
+            },
+            content: "body".to_string(),
+            annotations,
+            favicon: None,
+        }
+    }
+
+    /// A recolor is delete/create under a new id with unchanged text — the deleted row's
+    /// vector and `topics` move to the new row (checksum match), so the embed pass has
+    /// nothing to do.
+    #[tokio::test]
+    async fn sync_annotations_carries_vector_and_topics_to_rekeyed_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        let old = annotation("old-id", "yellow");
+        let vector = vec![0.5f32; 384];
+        db.upsert(annotation_embedding_entry(
+            &article(vec![old.clone()]),
+            &old,
+            vec!["topic-1".to_string()],
+            Some(vector.clone()),
+        ))
+        .await
+        .unwrap();
+
+        // The `.md` now holds the same content under a new id with a new color.
+        let new = annotation("new-id", "red");
+        let (tx, _rx) = flume::unbounded::<ListItem>();
+        sync_annotations(&article(vec![new]), &db, &tx).await.unwrap();
+
+        assert!(db.get_entry("old-id").await.unwrap().is_none());
+        let row = db.get_entry("new-id").await.unwrap().unwrap();
+        assert_eq!(row.vector, Some(vector), "vector moved, not re-embedded");
+        assert_eq!(row.topics, vec!["topic-1".to_string()], "topics moved");
+        assert_eq!(row.color, "red");
+    }
+
+    /// Genuinely new content gets no carried vector — it stays pending for the embed pass.
+    #[tokio::test]
+    async fn sync_annotations_leaves_new_content_pending() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        let mut new = annotation("new-id", "red");
+        new.text = vec!["different text".to_string()];
+        new.title = "different text".to_string();
+        let (tx, _rx) = flume::unbounded::<ListItem>();
+        sync_annotations(&article(vec![new]), &db, &tx).await.unwrap();
+
+        let row = db.get_entry("new-id").await.unwrap().unwrap();
+        assert_eq!(row.vector, None);
+    }
 }

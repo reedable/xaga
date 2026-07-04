@@ -20,6 +20,8 @@ pub enum EntryError {
     InvalidId,
     #[error("Entry not found")]
     NotFound,
+    #[error("a color change is delete/create — use replace_annotation")]
+    ColorChangeRequiresReplace,
 }
 
 /// Returns true when `id` is safe to interpolate into a file path: a single

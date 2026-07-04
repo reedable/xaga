@@ -74,6 +74,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       annotations,
       setAnnotationsFromArticle,
       saveAnnotation,
+      replaceAnnotation,
       removeAnnotation,
     } = useAnnotations(abortControllerRef);
 
@@ -282,6 +283,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
                 annotationId={annotationId}
                 onClickLink={selectUrl}
                 onSaveAnnotation={saveAnnotation}
+                onReplaceAnnotation={replaceAnnotation}
                 onRemoveAnnotation={removeAnnotation}
               />
             )}

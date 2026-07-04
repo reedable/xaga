@@ -784,6 +784,7 @@ pub fn run() {
             commands::articles::read_article,
             commands::articles::create_article,
             commands::articles::add_annotation,
+            commands::articles::replace_annotation,
             commands::articles::remove_annotation,
             commands::articles::list_annotations,
             commands::entries::is_cache_ready,

@@ -49,6 +49,10 @@ interface HtmlReaderProps {
   onSaveAnnotation?: (
     annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">
   ) => void;
+  onReplaceAnnotation?: (
+    oldId: string,
+    annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">
+  ) => void;
   onRemoveAnnotation?: (
     annotation: Pick<Annotation, "id" | "reference">
   ) => void;
@@ -62,6 +66,7 @@ export function HtmlReader({
   annotationId,
   onClickLink,
   onSaveAnnotation,
+  onReplaceAnnotation,
   onRemoveAnnotation,
 }: HtmlReaderProps) {
   const { onFind } = useEvents();
@@ -121,10 +126,17 @@ export function HtmlReader({
     (color: string | null, note: string) => {
       if (!tooltip || !entryId) return;
 
+      // A color change on an already-saved annotation (tooltip.color non-null) is
+      // delete/create, not an update: the annotation is replaced under a new id —
+      // color is part of its identity — so a crash-stranded change is visible to the
+      // backend's id-set diffs. First save of a fresh selection keeps the minted id.
+      const isRecolor =
+        color !== null && tooltip.color !== null && color !== tooltip.color;
+      const id = isRecolor ? uuidv4() : tooltip.annotationId;
+
       if (tooltip.occurrence.length > 0) {
-        const id = tooltip.annotationId;
         iframeRef.current?.contentWindow?.postMessage(
-          { type: "remove-highlight", annotationId: id },
+          { type: "remove-highlight", annotationId: tooltip.annotationId },
           "*"
         );
         if (color !== null) {
@@ -146,9 +158,19 @@ export function HtmlReader({
         }
       }
 
-      if (color !== null && color !== tooltip.color) {
+      if (isRecolor) {
+        onReplaceAnnotation?.(tooltip.annotationId, {
+          id,
+          title: tooltip.text.join(" "),
+          reference: entryId,
+          text: tooltip.text,
+          occurrence: tooltip.occurrence,
+          color: color as string,
+          content: note,
+        });
+      } else if (color !== null && color !== tooltip.color) {
         onSaveAnnotation?.({
-          id: tooltip.annotationId,
+          id,
           title: tooltip.text.join(" "),
           reference: entryId,
           text: tooltip.text,
@@ -160,9 +182,11 @@ export function HtmlReader({
         onRemoveAnnotation?.({ id: tooltip.annotationId, reference: entryId });
       }
 
-      setTooltip((prev) => (prev ? { ...prev, color, note } : null));
+      setTooltip((prev) =>
+        prev ? { ...prev, annotationId: id, color, note } : null
+      );
     },
-    [tooltip, onSaveAnnotation, onRemoveAnnotation, entryId]
+    [tooltip, onSaveAnnotation, onReplaceAnnotation, onRemoveAnnotation, entryId]
   );
 
   const handleCloseTooltip = useCallback(async () => {

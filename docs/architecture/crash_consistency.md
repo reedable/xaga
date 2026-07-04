@@ -39,5 +39,20 @@ rebuilt from the source files on the next run.
   never touches the entry `.md`, so a gated rebuild would skip it. It backstops both a dropped
   topic event (graceful shutdown before it ran) and a crash mid-fan-out
   (`crates/xaga-core/src/recovery/`).
+- **Annotation color change is delete/create in one atomic write** (`replace_annotation`,
+  `crates/xaga-core/src/persistence/articles.rs`). Color is part of the annotation's identity:
+  a recolor replaces the annotation under a new id, and the delete and the create land in a
+  single atomic frontmatter write (`write_atomic_async`), so no crash point exists where the
+  annotation is deleted but not re-created. The changed id set is the crash story: a stranded
+  recolor is visible to the membership diffs that already run (`annotations_differ` in
+  recovery, the `items` compare in `sync_entry_row`), where a same-id color update would be
+  visible to no gate — the entry checksum excludes annotation data and the id set would be
+  unchanged. The same-id path is closed at the persistence layer
+  (`EntryError::ColorChangeRequiresReplace`). LanceDB side, `sync_annotations` moves the
+  vector and `topics` from the same-checksum row it deletes in the same pass — the vector is
+  a pure function of the checksummed content — so the re-keyed row costs no embedder run.
+  Every partial state a crash can leave differs from the files in a way an existing gate
+  detects: id-set diff, the `items` membership checkpoint, the unconditional reverse-index
+  rebuild, or the missing-vector check.
 - **Out-of-band changes are a recovery concern.** External edits and migrations are not
   reflected live; recovery reconciles them on its next run. Eventual sync, not live sync.

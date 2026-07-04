@@ -140,7 +140,10 @@ pub async fn read_article(library_dir: &Path, id: &str) -> Result<Article, Entry
     Ok(article_from_document(id, fm, body))
 }
 
-/// Adds or replaces an annotation in the article's frontmatter (upsert by id).
+/// Adds or updates an annotation in the article's frontmatter (upsert by id). A same-id
+/// update must not change the color: a color change is delete/create (color is part of the
+/// annotation's identity) and must go through [`replace_annotation`] — a same-id color write
+/// is exactly the pattern whose crash-stranded state no reconcile gate can see.
 /// Returns the updated Article.
 pub async fn add_annotation(
     library_dir: &Path,
@@ -155,6 +158,9 @@ pub async fn add_annotation(
 
     let mut annotations = fm.annotations.clone();
     if let Some(pos) = annotations.iter().position(|a| a.id == annotation.id) {
+        if annotations[pos].color != annotation.color {
+            return Err(EntryError::ColorChangeRequiresReplace);
+        }
         let created_at = annotations[pos].created_at.clone();
         annotations[pos] = Annotation {
             created_at,
@@ -170,6 +176,45 @@ pub async fn add_annotation(
     let favicon = fm.favicon.clone();
     let article = article_from_fm(article_id, fm, annotations, favicon, body);
     tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
+    Ok(article)
+}
+
+/// Replaces an annotation under a new id — the delete and the create land in one atomic
+/// frontmatter write, so no crash point exists where the annotation is deleted but not yet
+/// re-created. A color change is modeled as delete/create (color is part of the annotation's
+/// identity): the id-set change is what makes a crash-stranded color change visible to the
+/// membership diffs in recovery and `sync_entry_row`, which a same-id update would slip past.
+/// `created_at` carries over from the old annotation — the highlight is the same selection.
+/// Returns the updated [`Article`].
+pub async fn replace_annotation(
+    library_dir: &Path,
+    article_id: &str,
+    old_id: &str,
+    annotation: Annotation,
+) -> Result<Article, EntryError> {
+    let path = find_entry_path(library_dir, article_id)
+        .await
+        .ok_or(EntryError::NotFound)?;
+    let raw = tokio::fs::read_to_string(&path).await?;
+    let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
+
+    let mut annotations = fm.annotations.clone();
+    if let Some(pos) = annotations.iter().position(|a| a.id == old_id) {
+        let created_at = annotations[pos].created_at.clone();
+        annotations[pos] = Annotation {
+            created_at,
+            ..annotation
+        };
+    } else {
+        annotations.push(Annotation {
+            created_at: chrono::Utc::now().to_rfc3339(),
+            ..annotation
+        });
+    }
+
+    let favicon = fm.favicon.clone();
+    let article = article_from_fm(article_id, fm, annotations, favicon, body);
+    crate::fs::write_atomic_async(path, render_entry(&article).into_bytes()).await?;
     Ok(article)
 }
 
@@ -196,6 +241,135 @@ pub async fn remove_annotation(
     let article = article_from_fm(article_id, fm, annotations, favicon, body);
     tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
     Ok(article)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn annotation(id: &str, color: &str, note: &str) -> Annotation {
+        Annotation {
+            id: id.to_string(),
+            title: "highlighted text".to_string(),
+            reference: String::new(),
+            text: vec!["highlighted text".to_string()],
+            occurrence: vec![0],
+            color: color.to_string(),
+            content: note.to_string(),
+            created_at: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn replace_annotation_swaps_id_in_one_write_and_carries_created_at() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        save_article(
+            lib,
+            "abcdef123456",
+            "https://example.com/a",
+            "Title",
+            None,
+            None,
+            None,
+            None,
+            "body",
+        )
+        .await
+        .unwrap();
+
+        let article = add_annotation(lib, "abcdef123456", annotation("old-id", "yellow", "n"))
+            .await
+            .unwrap();
+        let created_at = article.annotations[0].created_at.clone();
+        assert!(!created_at.is_empty());
+
+        let article = replace_annotation(
+            lib,
+            "abcdef123456",
+            "old-id",
+            annotation("new-id", "red", "n"),
+        )
+        .await
+        .unwrap();
+
+        // In-memory result and the re-read file agree: old id gone, new id present with the
+        // new color and the original created_at.
+        for a in [
+            article.annotations.clone(),
+            read_article(lib, "abcdef123456").await.unwrap().annotations,
+        ] {
+            assert_eq!(a.len(), 1);
+            assert_eq!(a[0].id, "new-id");
+            assert_eq!(a[0].color, "red");
+            assert_eq!(a[0].created_at, created_at);
+        }
+    }
+
+    #[tokio::test]
+    async fn add_annotation_rejects_same_id_color_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        save_article(
+            lib,
+            "abcdef123456",
+            "https://example.com/a",
+            "Title",
+            None,
+            None,
+            None,
+            None,
+            "body",
+        )
+        .await
+        .unwrap();
+        add_annotation(lib, "abcdef123456", annotation("a1", "yellow", "n"))
+            .await
+            .unwrap();
+
+        // Same id, different color: refused — that path is replace_annotation's.
+        let err = add_annotation(lib, "abcdef123456", annotation("a1", "red", "n"))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, EntryError::ColorChangeRequiresReplace));
+
+        // Same id, same color, new note: a legitimate edit, accepted.
+        let article = add_annotation(lib, "abcdef123456", annotation("a1", "yellow", "edited"))
+            .await
+            .unwrap();
+        assert_eq!(article.annotations[0].content, "edited");
+    }
+
+    #[tokio::test]
+    async fn replace_annotation_missing_old_id_adds_the_new_annotation() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        save_article(
+            lib,
+            "abcdef123456",
+            "https://example.com/a",
+            "Title",
+            None,
+            None,
+            None,
+            None,
+            "body",
+        )
+        .await
+        .unwrap();
+
+        let article = replace_annotation(
+            lib,
+            "abcdef123456",
+            "never-existed",
+            annotation("new-id", "red", ""),
+        )
+        .await
+        .unwrap();
+        assert_eq!(article.annotations.len(), 1);
+        assert_eq!(article.annotations[0].id, "new-id");
+        assert!(!article.annotations[0].created_at.is_empty());
+    }
 }
 
 /// Builds the updated [`Article`] from its parsed frontmatter and the new annotation set, so the

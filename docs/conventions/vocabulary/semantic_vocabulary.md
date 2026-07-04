@@ -26,6 +26,7 @@ Where strict accuracy and the developer's mental model conflict, favor the menta
 - `delete` Deletes a record.
 - `update` Updates a record.
 - `upsert` Creates or updates a row (or rows), usually in a database.
+- `replace` Creates a record while deleting an equivalent record that existed previoiusly.
 
 #### Queue
 

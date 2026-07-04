@@ -238,6 +238,39 @@ pub async fn add_topic_item(
     .await
 }
 
+/// Swaps a member's id in place — same list position, same member type. Used when an
+/// annotation is replaced under a new id (a color change is delete/create); position is
+/// preserved because membership is ordered. No-op if `old_id` is not a member.
+pub async fn replace_topic_item(
+    library_dir: &Path,
+    topic_id: &str,
+    old_id: &str,
+    new_item: CollectionItem,
+) -> Result<Topic, TopicsError> {
+    let path = crate::library::topic_path(library_dir, topic_id);
+    if !tokio::fs::try_exists(&path).await? {
+        return Err(TopicsError::NotFound);
+    }
+    let raw = tokio::fs::read_to_string(&path).await?;
+    let (fm, body) = parse_document(&raw).ok_or(TopicsError::NotFound)?;
+    let Some(pos) = fm.items.iter().position(|i| i.id() == old_id) else {
+        return read_topic(library_dir, topic_id).await;
+    };
+    // Legacy fallback: pre-migration topics keep their blurb in the body.
+    let description = fm.summary.unwrap_or(body);
+    let mut items = fm.items;
+    items[pos] = new_item;
+    save_topic(
+        library_dir,
+        topic_id,
+        &fm.title,
+        &description,
+        fm.threshold,
+        items,
+    )
+    .await
+}
+
 /// Removes the item with the given ID from the topic's manual items list.
 pub async fn remove_topic_item(
     library_dir: &Path,

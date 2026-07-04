@@ -23,6 +23,24 @@ export function useAnnotations(abortControllerRef: RefObject<AbortController>) {
     [abortControllerRef, platform]
   );
 
+  /** Replaces an annotation under a new id — the color-change path (delete/create).
+   * The caller owns both ids; `annotation.id` is the new one. */
+  const replaceAnnotation = useCallback(
+    async (
+      oldId: string,
+      annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">
+    ): Promise<void> => {
+      const signal = abortControllerRef.current.signal;
+      const updatedArticle = await platform.replaceAnnotation(
+        signal,
+        oldId,
+        annotation
+      );
+      setAnnotations(updatedArticle.annotations);
+    },
+    [abortControllerRef, platform]
+  );
+
   /** Removes an annotation by id. */
   const removeAnnotation = useCallback(
     async (annotation: Pick<Annotation, "id" | "reference">): Promise<void> => {
@@ -40,6 +58,7 @@ export function useAnnotations(abortControllerRef: RefObject<AbortController>) {
     annotations,
     setAnnotationsFromArticle,
     saveAnnotation,
+    replaceAnnotation,
     removeAnnotation,
   };
 }
