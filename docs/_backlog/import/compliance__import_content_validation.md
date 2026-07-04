@@ -26,7 +26,7 @@ Decided out of scope:
   user-chosen, so a compromised webview cannot aim import at an attacker's
   huge OPML; the fetch-fan-out-amplifier threat is closed. A legit user's
   large list is a performance concern (the Interactive-tier burst, tracked in
-  `docs/_sprint/interactive_batch_command.md`), not security, and the byte cap
+  `docs/_sprint/improvement__interactive_batch_command.md`), not security, and the byte cap
   transitively bounds URL count anyway.
 - **Error hygiene** — moved to `docs/_backlog/cross_cutting/improvement__error_handling.md`.
 - **Export** — nothing beyond the (already-fixed) path authority: content is

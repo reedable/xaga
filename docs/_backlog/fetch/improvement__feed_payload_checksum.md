@@ -7,7 +7,7 @@ feed, skip the reconciliation of feed entries entirely — no parse, no
 
 Scope of the win: this reduces the **local** parsing/reconciliation work (and
 the refresh burst it feeds into the Interactive tier — see
-`docs/_sprint/interactive_batch_command.md`). It deliberately does **not**
+`docs/_sprint/improvement__interactive_batch_command.md`). It deliberately does **not**
 optimize away the network cost: the full body still downloads on every
 refresh. That network cost is a fair price for privacy — the alternative
 (conditional GET with `ETag`/`If-Modified-Since`) hands feed hosts a

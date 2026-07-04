@@ -20,5 +20,5 @@ Naming rules for symbols, in [vocabulary/](vocabulary/):
 
 3. [Backlog Item Labels](vocabulary/backlog_item_labels.md) — the closed label set
    (`compliance__`/`defect__`/`improvement__`/`refactor__`/`spike__`) prefixing every
-   `docs/_backlog/` filename. Unlike the symbol vocabularies above, a label names an item's
-   originator, not the shape of the work.
+   `docs/_backlog/` and `docs/_sprint/` filename. Unlike the symbol vocabularies above, a
+   label names an item's originator, not the shape of the work.

@@ -6,5 +6,5 @@ periodic compaction trigger as well (`crates/xaga-core/src/embeddings/service.rs
 `BACKGROUND_COMPACT_INTERVAL` and the per-arm triggers). The work: enumerate the current
 trigger paths and consolidate them under one policy. The interval's cost during backfill is
 recorded separately (`embed_backfill_per_row_costs.md`); the visible pause on the interactive
-path was recorded when periodic compaction was added there (`docs/_sprint/interactive_batch_command.md`,
+path was recorded when periodic compaction was added there (`docs/_sprint/improvement__interactive_batch_command.md`,
 known gap).
