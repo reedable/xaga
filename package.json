@@ -14,6 +14,7 @@
     "audit:report": "npm run audit || true",
     "icons": "node scripts/generate-icons.mjs",
     "check:uncommitted": "git diff --quiet && git diff --cached --quiet || (echo 'Working tree has uncommitted changes — commit or stash before releasing.' && exit 1)",
+    "version:bump": "node scripts/bump-version.mjs",
 
     "tauri": "tauri",
     "tauri:debug": "RUST_LOG=xaga=debug tauri dev",
