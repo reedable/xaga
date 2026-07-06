@@ -1,26 +1,30 @@
 {
   "name": "xaga",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "clean": "rm -rf dist target",
     "dev": "vite",
-    "audit": "cargo audit",
-    "audit:report": "npm run audit || true",
     "build": "tsc -b && vite build",
-    "icons": "node scripts/generate-icons.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
+
+    "audit": "cargo audit",
+    "audit:report": "npm run audit || true",
+    "icons": "node scripts/generate-icons.mjs",
+    "check:uncommitted": "git diff --quiet && git diff --cached --quiet || (echo 'Working tree has uncommitted changes — commit or stash before releasing.' && exit 1)",
 
     "tauri": "tauri",
     "tauri:debug": "RUST_LOG=xaga=debug tauri dev",
     "tauri:build": "npm run audit:report && npm run tauri build",
-    "tauri:build:release": "npm run audit && npm run clean && npm run tauri build",
+
+    "tauri:release:patch": "npm run check:uncommitted && npm run version:bump -- patch && npm run tauri:build",
+    "tauri:release:minor": "npm run check:uncommitted && npm run version:bump -- minor && npm run tauri:build",
+    "tauri:release:major": "npm run check:uncommitted && npm run version:bump -- major && npm run tauri:build",
 
     "cli:debug": "cargo run -p xaga-cli --",
-    "cli:build": "npm run audit:report && cargo build -p xaga-cli",
-    "cli:build:release": "npm run audit && cargo build -p xaga-cli --release"
+    "cli:build": "npm run audit:report && cargo build -p xaga-cli"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
