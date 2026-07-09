@@ -43,7 +43,6 @@ pub(crate) struct AppState {
     pub(crate) embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>>,
     pub(crate) allowed_domains: Arc<RwLock<Vec<String>>>,
     pub(crate) named_stores_supported: bool,
-    pub(crate) expanded_sidebar_list: Arc<RwLock<Option<String>>>,
     pub(crate) inline_pdf_reader: Arc<RwLock<bool>>,
     pub(crate) html_reader_view: Arc<RwLock<String>>,
     /// Port of the local SSRF-filtering proxy that loader webviews and the
@@ -125,7 +124,6 @@ pub(crate) struct UserSettings {
     pub(crate) html_reader_line_height: Option<f64>,
     pub(crate) show_sidebar: Option<bool>,
     pub(crate) allowed_domains: Option<Vec<String>>,
-    pub(crate) expanded_sidebar_list: Option<String>,
     pub(crate) inline_pdf_reader: Option<bool>,
     pub(crate) html_reader_view: Option<String>,
     /// Allow plaintext `http://` fetches (feeds, PDF probe, article loader).
@@ -311,7 +309,6 @@ pub fn run() {
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
     let embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>> = Arc::new(Mutex::new(None));
     let allowed_domains: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
-    let expanded_sidebar_list: Arc<RwLock<Option<String>>> = Arc::new(RwLock::new(None));
     let inline_pdf_reader: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let html_reader_view: Arc<RwLock<String>> = Arc::new(RwLock::new("reader".to_string()));
 
@@ -319,7 +316,6 @@ pub fn run() {
     // There is no semantic meaning here.
     let setup_embeddings_read = Arc::clone(&embeddings_read);
     let setup_allowed_domains = Arc::clone(&allowed_domains);
-    let setup_expanded_sidebar_list = Arc::clone(&expanded_sidebar_list);
     let setup_inline_pdf_reader = Arc::clone(&inline_pdf_reader);
     let setup_html_reader_view = Arc::clone(&html_reader_view);
     let setup_show_sidebar = Arc::clone(&show_sidebar);
@@ -357,7 +353,6 @@ pub fn run() {
             embeddings_read,
             allowed_domains,
             named_stores_supported,
-            expanded_sidebar_list,
             inline_pdf_reader,
             html_reader_view,
             ssrf_proxy_port,
@@ -688,7 +683,6 @@ pub fn run() {
             *setup_reader_line_height.write().unwrap() = line_height;
             *setup_show_sidebar.write().unwrap() = show_sidebar;
             *setup_allowed_domains.write().unwrap() = settings.allowed_domains.unwrap_or_default();
-            *setup_expanded_sidebar_list.write().unwrap() = settings.expanded_sidebar_list;
             *setup_inline_pdf_reader.write().unwrap() = settings.inline_pdf_reader.unwrap_or(false);
             let html_reader_view_str = settings.html_reader_view.unwrap_or_else(|| "reader".to_string());
             *setup_html_reader_view.write().unwrap() = html_reader_view_str.clone();
@@ -874,8 +868,6 @@ pub fn run() {
             commands::settings::set_html_reader_view,
             commands::feeds::set_feed_pinned,
             commands::topics::set_topic_pinned,
-            commands::settings::get_expanded_sidebar_list,
-            commands::settings::set_expanded_sidebar_list,
             commands::settings::get_inline_pdf_reader,
             commands::settings::set_inline_pdf_reader,
             commands::feeds::list_feeds,
@@ -903,7 +895,9 @@ pub fn run() {
             move |invoke: tauri::ipc::Invoke| {
                 let allowed = {
                     let label = invoke.message.webview_ref().label();
-                    commands::is_invoke_allowed(label, invoke.message.command())
+                    let command = invoke.message.command();
+                    log::info!("ipc: {label} → {command}");
+                    commands::is_invoke_allowed(label, command)
                 };
                 if !allowed {
                     invoke

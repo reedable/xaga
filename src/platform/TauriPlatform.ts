@@ -887,6 +887,12 @@ export class TauriPlatform implements Platform {
     return listen<unknown>(name, listener);
   }
 
+  onFeedsRefreshed(callback: () => void): Promise<UnlistenFn> {
+    const name = "feeds:refreshed";
+    const listener = decorate(() => callback()).with(logged, { logger, name });
+    return listen(name, listener);
+  }
+
   onUnreadChanged(callback: (entry: Entry) => void): Promise<UnlistenFn> {
     const name = "unread:changed";
     const listener = decorate((e) => {
@@ -1124,20 +1130,6 @@ export class TauriPlatform implements Platform {
       logger,
       name: "set_topic_pinned",
     })<void>("set_topic_pinned", { id, pinned });
-  }
-
-  getExpandedSidebarList(): Promise<string | null> {
-    return decorate(invoke).with(logged, {
-      logger,
-      name: "get_expanded_sidebar_list",
-    })<string | null>("get_expanded_sidebar_list");
-  }
-
-  setExpandedSidebarList(value: string | null): Promise<void> {
-    return decorate(invoke).with(logged, {
-      logger,
-      name: "set_expanded_sidebar_list",
-    })<void>("set_expanded_sidebar_list", { value });
   }
 
   getInlinePdfReader(): Promise<boolean> {

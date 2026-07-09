@@ -1,36 +1,22 @@
-import { useCallback, useEffect, useState, type RefObject } from "react";
+import { useCallback, useContext, useState, type RefObject } from "react";
 import { usePlatform } from "../platform/Platform";
+import ExpandedListContext from "../providers/ExpandedListContext";
 import type { Feed, Topic } from "../types";
 
-export type ListType = "SHORTCUTS" | "TOPICS" | "FEEDS";
+export type { ListType } from "../providers/ExpandedListContext";
 
 export function useSidebar(abortControllerRef: RefObject<AbortController>) {
   const platform = usePlatform();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const [expandedList, setExpandedListState] = useState<ListType | null>(
-    "SHORTCUTS"
-  );
 
-  useEffect(() => {
-    platform
-      .getExpandedSidebarList()
-      .then((v) => setExpandedListState((v as ListType | null) ?? "SHORTCUTS"))
-      .catch(console.error);
-  }, [platform]);
-
-  const setExpandedList = useCallback(
-    (
-      updater: ((prev: ListType | null) => ListType | null) | (ListType | null)
-    ) => {
-      setExpandedListState((prev) => {
-        const next = typeof updater === "function" ? updater(prev) : updater;
-        platform.setExpandedSidebarList(next).catch(console.error);
-        return next;
-      });
-    },
-    [platform]
-  );
+  // Which sidebar section is expanded is shared view state (persisted client-side via
+  // `ExpandedListProvider`), so every consumer reads one value rather than each fetching it.
+  const expandedContext = useContext(ExpandedListContext);
+  if (!expandedContext) {
+    throw new Error("useSidebar must be used inside ExpandedListProvider");
+  }
+  const { expandedList, setExpandedList } = expandedContext;
 
   const listFeeds = useCallback(
     async (compare?: (a: Feed, b: Feed) => number) => {

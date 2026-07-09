@@ -100,6 +100,11 @@ pub async fn refresh_all_feeds(
         }
     }
 
+    // One aggregate signal after the whole refresh completes, so list views re-fetch once
+    // instead of once per feed. The per-feed `feed:refreshed` above still drives the sidebar's
+    // per-feed unread-count patch.
+    window.emit("feeds:refreshed", ()).ok();
+
     Ok(refreshed)
 }
 

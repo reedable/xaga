@@ -94,7 +94,7 @@ export function ItemList({
     useEntries(abortControllerRef);
 
   const {
-    onFeedRefreshed,
+    onFeedsRefreshed,
     onUnreadChanged,
     onBookmarkChanged,
     onAnnotationChanged,
@@ -222,8 +222,8 @@ export function ItemList({
   }, [onAnnotationRemoved]);
 
   useEffect(() => {
-    return onFeedRefreshed(() => requestItems(selectedCollectionRef.current));
-  }, [onFeedRefreshed, requestItems]);
+    return onFeedsRefreshed(() => requestItems(selectedCollectionRef.current));
+  }, [onFeedsRefreshed, requestItems]);
 
   return (
     <div className={cx(className, css.ItemList)}>

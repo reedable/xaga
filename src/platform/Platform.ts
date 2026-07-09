@@ -179,6 +179,8 @@ export interface Platform {
     callback: (outcome: ExportOutcome) => void
   ): Promise<UnlistenFn>;
   onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn>;
+  /** Fires once after `refresh_all_feeds` completes (not per feed). */
+  onFeedsRefreshed(callback: () => void): Promise<UnlistenFn>;
   onUnreadChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
   onBookmarkChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
   onAnnotationChanged(callback: (item: ListItem) => void): Promise<UnlistenFn>;
@@ -227,8 +229,6 @@ export interface Platform {
   setTopicPinned(id: string, pinned: boolean): Promise<void>;
 
   // Persisted preferences
-  getExpandedSidebarList(): Promise<string | null>;
-  setExpandedSidebarList(value: string | null): Promise<void>;
   getInlinePdfReader(): Promise<boolean>;
   setInlinePdfReader(value: boolean): Promise<void>;
   onInlinePdfReaderChanged(

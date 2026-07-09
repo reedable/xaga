@@ -193,31 +193,6 @@ pub async fn set_html_reader_view(
 }
 
 #[tauri::command]
-pub async fn get_expanded_sidebar_list(
-    state: State<'_, AppState>,
-) -> Result<Option<String>, String> {
-    Ok(state.expanded_sidebar_list.read().unwrap().clone())
-}
-
-#[tauri::command]
-pub async fn set_expanded_sidebar_list(
-    value: Option<String>,
-    state: State<'_, AppState>,
-    app: AppHandle,
-) -> Result<(), String> {
-    let settings_path = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("settings.json");
-    let mut settings = load_settings(&settings_path);
-    settings.expanded_sidebar_list = value.clone();
-    save_settings(&settings_path, &settings).map_err(|e| e.to_string())?;
-    *state.expanded_sidebar_list.write().unwrap() = value;
-    Ok(())
-}
-
-#[tauri::command]
 pub async fn get_inline_pdf_reader(state: State<'_, AppState>) -> Result<bool, String> {
     Ok(*state.inline_pdf_reader.read().unwrap())
 }

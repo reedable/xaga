@@ -25,6 +25,12 @@ export function useEvents() {
     [platform]
   );
 
+  const onFeedsRefreshed = useCallback(
+    (callback: () => void) =>
+      subscribe(() => platform.onFeedsRefreshed(callback)),
+    [platform]
+  );
+
   const onUnreadChanged = useCallback(
     (callback: (entry: Entry) => void) =>
       subscribe(() => platform.onUnreadChanged(callback)),
@@ -89,6 +95,7 @@ export function useEvents() {
 
   return {
     onFeedRefreshed,
+    onFeedsRefreshed,
     onUnreadChanged,
     onBookmarkChanged,
     onAnnotationChanged,

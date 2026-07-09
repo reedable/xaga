@@ -12,6 +12,7 @@ import { Settings } from "./components/settings/Settings";
 import { useCacheReady } from "./hooks/useCacheReady";
 import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
+import { ExpandedListProvider } from "./providers/ExpandedListProvider";
 import FeedsProvider from "./providers/FeedsProvider";
 import { TopicsProvider } from "./providers/TopicsProvider";
 
@@ -46,14 +47,16 @@ export default function App({ entryPoint }: { entryPoint: string }) {
         </MemoryRouter>
       ) : (
         <BrowserRouter>
-          <TopicsProvider>
-            <FeedsProvider>
-              <Routes>
-                <Route path="/" element={cacheReady ? <AppLayout /> : null} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </FeedsProvider>
-          </TopicsProvider>
+          <ExpandedListProvider>
+            <TopicsProvider>
+              <FeedsProvider>
+                <Routes>
+                  <Route path="/" element={cacheReady ? <AppLayout /> : null} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </FeedsProvider>
+            </TopicsProvider>
+          </ExpandedListProvider>
         </BrowserRouter>
       )}
     </>
