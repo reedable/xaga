@@ -25,7 +25,7 @@ import {
   useState,
   type MouseEvent,
 } from "react";
-import { Virtuoso } from "react-virtuoso";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import useAbortController from "../../hooks/useAbortController";
 import useEntries from "../../hooks/useEntries";
 import { useEvents } from "../../hooks/useEvents";
@@ -105,6 +105,13 @@ export function ItemList({
   const [filterText, setFilterText] = useState("");
   const [topicSort, setTopicSort] = useState<TopicSort>("relevance");
 
+  // Virtuoso only renders on-screen rows, so moving the selection off-screen
+  // requires an imperative scroll to bring the target row into view before it
+  // can receive DOM focus. itemRefs holds the focusable node of each rendered
+  // row, keyed by item id.
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
+  const itemRefs = useRef(new Map<string, HTMLDivElement>());
+
   const handleEdit = useMemo(() => {
     if (isFeed(selectedCollection)) return () => onEditFeed(selectedCollection);
     if (isTopic(selectedCollection))
@@ -142,6 +149,36 @@ export function ItemList({
       return false;
     });
   }, [items, filterText]);
+
+  // Up/Down move the selection to the adjacent visible item, clamped at both
+  // ends (no wrap). Selecting reuses selectItem, so it loads the item's content
+  // and pushes history exactly like a click; the newly selected row is then
+  // scrolled into view and given DOM focus so keyboard operation can continue
+  // from there (WCAG 2.1.1).
+  const handleItemKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+
+      const currentIndex = displayItems.findIndex(
+        (i) => i.id === selectedItemId
+      );
+      if (currentIndex === -1) return;
+
+      const nextIndex = currentIndex + (e.key === "ArrowDown" ? 1 : -1);
+      if (nextIndex < 0 || nextIndex >= displayItems.length) return;
+
+      e.preventDefault();
+      const next = displayItems[nextIndex];
+      selectItem(next);
+      virtuosoRef.current?.scrollIntoView({
+        index: nextIndex,
+        behavior: "auto",
+        done: () => itemRefs.current.get(next.id)?.focus(),
+      });
+    },
+    [displayItems, selectedItemId, selectItem]
+  );
 
   const requestItems = useCallback(
     async (selectedList: Item) => {
@@ -388,13 +425,20 @@ export function ItemList({
 
       {displayItems.length > 0 && (
         <Virtuoso
+          ref={virtuosoRef}
           className={css.List}
           data={displayItems}
           itemContent={(_index, item) => (
             <div key={item.id} className={css.ListItem}>
               <ListItemButton
+                ref={(node: HTMLDivElement | null) => {
+                  if (node) itemRefs.current.set(item.id, node);
+                  else itemRefs.current.delete(item.id);
+                }}
                 className={css.ListItemButton}
                 selected={selectedItemId === item.id}
+                tabIndex={selectedItemId === item.id ? 0 : -1}
+                onKeyDown={handleItemKeyDown}
                 onClick={() => selectItem(item)}
               >
                 <ListItemText
