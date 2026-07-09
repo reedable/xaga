@@ -214,7 +214,6 @@ pub async fn list_entry_topics(
     let Some(db) = db else {
         return Err("embeddings read handle unavailable".to_string());
     };
-    db.reload().await.map_err(|e| e.to_string())?;
     Ok(db
         .get_entry(&entry_id)
         .await

@@ -82,7 +82,6 @@ pub(crate) async fn get_unread_ids(state: &AppState) -> std::collections::HashSe
     let Some(db) = db else {
         return Default::default();
     };
-    let _ = db.reload().await;
     db.unread_ids().await.unwrap_or_default()
 }
 
@@ -92,7 +91,6 @@ pub(crate) async fn get_bookmarked_ids(state: &AppState) -> std::collections::Ha
     let Some(db) = db else {
         return Default::default();
     };
-    let _ = db.reload().await;
     db.get_bookmarked_ids().await.unwrap_or_default()
 }
 
@@ -721,13 +719,10 @@ pub fn run() {
 
                 match EmbeddingService::start(lib_path.clone()).await {
                     Ok(svc) => {
-                        // Phase C: open a read handle for command reads, after the service
-                        // so it attaches to the existing table. Reads call reload() to see
-                        // the service's writes (handles are version-pinned).
-                        match EmbeddingsDb::open(&lib_path).await {
-                            Ok(rdb) => *setup_embeddings_read.lock().unwrap() = Some(rdb),
-                            Err(e) => log::error!("startup: read handle open failed: {e}"),
-                        }
+                        // The read handle shares the service's write handle (same underlying table
+                        // state), so command reads see the service's writes — and the synchronous
+                        // post-compaction reload — without any per-read reload.
+                        *setup_embeddings_read.lock().unwrap() = Some(svc.read_handle());
 
                         let embeddings_app_handle = app_handle.clone();
                         let priority_drained_rx = svc.subscribe_to_priority_drained();
@@ -794,12 +789,42 @@ pub fn run() {
                 }
             });
 
-            if cfg!(debug_assertions) {
+            // Logging is installed in every build (not only dev) so release recovery/startup
+            // diagnostics are captured — previously the plugin was gated behind
+            // `cfg!(debug_assertions)`, so release builds wrote nothing and issues like a wiped
+            // embeddings mirror left no trace. Targets are set explicitly (`.targets` replaces the
+            // plugin defaults) so the destination is deterministic: every build persists to the OS
+            // app-log dir (macOS: ~/Library/Logs/app.xaga/Xaga.log); dev additionally mirrors to
+            // stdout and the webview console. Release logs at Info (recovery's key lines are
+            // info!/warn!); dev stays at Debug.
+            //
+            // `lance` is pinned to Warn: at Info it logs one line *per row* during compaction
+            // (~1800 lines per pass), which — against the plugin's 40 KB default rotation — erases
+            // our own startup/recovery diagnostics within seconds. The file cap is also raised so a
+            // burst of noise can't rotate the useful lines away before they're read.
+            {
+                use tauri_plugin_log::{Target, TargetKind};
+
+                let crate_level = if cfg!(debug_assertions) {
+                    log::LevelFilter::Debug
+                } else {
+                    log::LevelFilter::Info
+                };
+
+                let mut targets = vec![Target::new(TargetKind::LogDir { file_name: None })];
+                if cfg!(debug_assertions) {
+                    targets.push(Target::new(TargetKind::Stdout));
+                    targets.push(Target::new(TargetKind::Webview));
+                }
+
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
                         .level(log::LevelFilter::Info)
-                        .level_for("xaga_lib", log::LevelFilter::Debug)
-                        .level_for("xaga_core", log::LevelFilter::Debug)
+                        .level_for("xaga_lib", crate_level)
+                        .level_for("xaga_core", crate_level)
+                        .level_for("lance", log::LevelFilter::Warn)
+                        .max_file_size(5_000_000)
+                        .targets(targets)
                         .build(),
                 )?;
             }

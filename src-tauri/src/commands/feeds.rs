@@ -183,7 +183,6 @@ pub async fn list_entries(
     let Some(db) = db else {
         return Err("embeddings read handle unavailable".to_string());
     };
-    db.reload().await.map_err(|e| e.to_string())?;
 
     let entries = db
         .list_entries_by_ids(&ids)

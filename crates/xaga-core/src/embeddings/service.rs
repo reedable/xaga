@@ -197,6 +197,8 @@ pub struct EmbeddingService {
     annotation_changed_rx: flume::Receiver<ListItem>,
     restart_requested: Arc<AtomicBool>,
     embedder: Arc<Embedder>,
+    // A read handle sharing the loop's write-handle inner; handed to the app via `read_handle()`.
+    read_db: EmbeddingsDb,
     // Held for the service's lifetime; released (file deleted) on Drop.
     _lock: FileLock,
 }
@@ -219,6 +221,9 @@ impl EmbeddingService {
         let service_embedder = Arc::clone(&embedder);
 
         let db = EmbeddingsDb::open(&library_dir).await?;
+        // A clone shares the same underlying table state; handed to the app as its read handle so
+        // reads see the service's writes (and the post-compaction reload) without a per-read reload.
+        let read_db = db.clone();
 
         let (control_tx, control_rx) = flume::unbounded::<Job>();
         let (interactive_tx, interactive_rx) = flume::unbounded::<Job>();
@@ -287,8 +292,15 @@ impl EmbeddingService {
             annotation_changed_rx,
             restart_requested,
             embedder: service_embedder,
+            read_db,
             _lock: lock,
         })
+    }
+
+    /// Returns a read handle that shares the service's underlying table state. Reads through it see
+    /// the service's writes and the synchronous post-compaction reload without any per-read reload.
+    pub fn read_handle(&self) -> EmbeddingsDb {
+        self.read_db.clone()
     }
 
     /// Enqueues a job onto the given priority tier. The tier *is* the priority;

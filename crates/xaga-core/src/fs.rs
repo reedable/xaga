@@ -85,20 +85,51 @@ fn unique_tmp_path(path: &Path) -> PathBuf {
 /// `(path, contents)` to `visit`. Yields between files so a large scan never starves higher-priority
 /// tasks. A missing directory, an unreadable directory entry, or a file that fails to read (e.g.
 /// non-UTF-8) is skipped. Pure traversal — no knowledge of file format or contents.
-pub(crate) async fn for_each_file<F>(dir: &Path, ext: &str, mut visit: F)
+/// Whether a directory walk reliably observed the directory's contents.
+///
+/// Distinguishes a *trustworthy* view of the source ("the directory is absent or genuinely holds
+/// these files") from an *incomplete* one ("the directory could not be read"). The distinction
+/// matters to any caller that deletes based on absence: recovery treats a walk as authoritative for
+/// pruning derived rows, so a permission/IO failure must never masquerade as "empty" — that would
+/// delete the rebuildable mirror it should be rebuilding from (Single Source of Truth).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WalkOutcome {
+    /// The directory was fully enumerated (it may legitimately hold zero matching files, or be
+    /// absent). Every matching file was read. A trustworthy view — deletes derived from absence are
+    /// safe.
+    Enumerated,
+    /// The directory could not be fully observed: `read_dir` failed (e.g. denied by the OS),
+    /// iteration was truncated by an error, or a matching file existed but could not be read. The
+    /// set of ids seen is incomplete; callers must not treat unseen ids as deleted.
+    Unreadable,
+}
+
+pub(crate) async fn for_each_file<F>(dir: &Path, ext: &str, mut visit: F) -> WalkOutcome
 where
     F: FnMut(PathBuf, String),
 {
-    if !dir.exists() {
-        return;
-    }
-
+    // A missing directory is a trustworthy empty; any *other* open error (permission denied, etc.)
+    // leaves the contents unknown. `exists()` is deliberately not used here — it also returns false
+    // on a permission error, which would collapse "denied" into "absent" and re-open the hole.
     let mut dir_entries = match tokio::fs::read_dir(dir).await {
         Ok(e) => e,
-        Err(_) => return,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return WalkOutcome::Enumerated,
+        Err(_) => return WalkOutcome::Unreadable,
     };
 
-    while let Ok(Some(dir_entry)) = dir_entries.next_entry().await {
+    let mut outcome = WalkOutcome::Enumerated;
+
+    loop {
+        let dir_entry = match dir_entries.next_entry().await {
+            Ok(Some(entry)) => entry,
+            Ok(None) => break,
+            // Iteration failed partway: the remaining entries are unseen, so the view is incomplete.
+            Err(_) => {
+                outcome = WalkOutcome::Unreadable;
+                break;
+            }
+        };
+
         let path = dir_entry.path();
 
         if path.extension().and_then(|e| e.to_str()) != Some(ext) {
@@ -107,13 +138,20 @@ where
 
         let raw = match tokio::fs::read_to_string(&path).await {
             Ok(r) => r,
-            Err(_) => continue,
+            // A matching file we could not read leaves its id unaccounted for. Keep walking the
+            // rest, but flag the view as incomplete so absence-based deletes are withheld.
+            Err(_) => {
+                outcome = WalkOutcome::Unreadable;
+                continue;
+            }
         };
 
         visit(path, raw);
 
         tokio::task::yield_now().await;
     }
+
+    outcome
 }
 
 /// An exclusive advisory lock on a file, used to guarantee a single writer.

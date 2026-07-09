@@ -443,70 +443,66 @@ pub struct EmbeddingsDb {
 }
 
 impl EmbeddingsDb {
-    /// Opens (or creates) the `embeddings.lance` database inside `library_dir`.
+    /// Opens the `embeddings.lance` database inside `library_dir`, creating an empty table only
+    /// on first run (when it does not exist yet).
     ///
-    /// If the directory is in an inconsistent state (open says "not found" while
-    /// create says "already exists"), the directory is destroyed and recreated once.
+    /// If the table exists but cannot be opened, this returns the open error rather than recreating
+    /// it. A transient open failure (corruption, fd exhaustion, an IO hiccup) must never be
+    /// "repaired" by overwriting or destroying a populated index — doing so has wiped the entire
+    /// embeddings mirror. Clearing a corrupt DB is a separate, explicit operation (the `reset`
+    /// command / [`Self::destroy`]).
     pub async fn open(library_dir: &Path) -> Result<Self, EmbeddingsError> {
         let schema = make_schema();
-        for attempt in 0..2u8 {
-            let db_path = crate::library::index_path(library_dir);
-            let connection = lancedb::connect(db_path.to_str().ok_or_else(|| {
-                EmbeddingsError::Io(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "non-UTF-8 path",
-                ))
-            })?)
-            .execute()
-            .await?;
+        let db_path = crate::library::index_path(library_dir);
+        let connection = lancedb::connect(db_path.to_str().ok_or_else(|| {
+            EmbeddingsError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "non-UTF-8 path",
+            ))
+        })?)
+        .execute()
+        .await?;
 
-            match connection.open_table("documents").execute().await {
-                Ok(table) => {
-                    // Roll the `items` column onto a table created before it existed. `AllNulls`
-                    // is metadata-only (no fragment rewrite, no re-embed) — see lance schema_evolution.
-                    if table.schema().await?.field_with_name("items").is_err() {
-                        log::info!(
-                            "EmbeddingsDb::open: adding 'items' column to existing table (metadata-only)"
-                        );
-                        let items_schema = Arc::new(Schema::new(vec![Field::new(
-                            "items",
-                            DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
-                            true,
-                        )]));
-                        table
-                            .add_columns(
-                                lancedb::table::NewColumnTransform::AllNulls(items_schema),
-                                None,
-                            )
-                            .await?;
-                    }
-                    return Ok(EmbeddingsDb {
-                        _connection: connection,
-                        table,
-                        schema,
-                    });
+        match connection.open_table("documents").execute().await {
+            Ok(table) => {
+                // Roll the `items` column onto a table created before it existed. `AllNulls`
+                // is metadata-only (no fragment rewrite, no re-embed) — see lance schema_evolution.
+                if table.schema().await?.field_with_name("items").is_err() {
+                    log::info!(
+                        "EmbeddingsDb::open: adding 'items' column to existing table (metadata-only)"
+                    );
+                    let items_schema = Arc::new(Schema::new(vec![Field::new(
+                        "items",
+                        DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
+                        true,
+                    )]));
+                    table
+                        .add_columns(
+                            lancedb::table::NewColumnTransform::AllNulls(items_schema),
+                            None,
+                        )
+                        .await?;
                 }
-                Err(_) => match create_empty_documents_table(&connection, &schema).await {
-                    Ok(()) => {
-                        let table = connection.open_table("documents").execute().await?;
-                        return Ok(EmbeddingsDb {
-                            _connection: connection,
-                            table,
-                            schema,
-                        });
-                    }
-                    Err(e) if attempt == 0 => {
-                        // Inconsistent state: open failed and create failed.
-                        // Destroy the directory and retry once with a clean slate.
-                        log::warn!("EmbeddingsDb::open: inconsistent state ({e}), resetting DB");
-                        drop(connection);
-                        Self::destroy(library_dir)?;
-                    }
-                    Err(e) => return Err(e),
-                },
+                Ok(EmbeddingsDb {
+                    _connection: connection,
+                    table,
+                    schema,
+                })
             }
+            // First run: the table genuinely does not exist yet — create it empty.
+            Err(lancedb::Error::TableNotFound { .. }) => {
+                create_empty_documents_table(&connection, &schema).await?;
+                let table = connection.open_table("documents").execute().await?;
+                Ok(EmbeddingsDb {
+                    _connection: connection,
+                    table,
+                    schema,
+                })
+            }
+            // The table exists but failed to open. Surface the error — never recreate/overwrite,
+            // which would destroy a populated index on a merely transient failure.
+            Err(e) => Err(e.into()),
         }
-        unreachable!()
     }
 
     /// Drops and recreates the "documents" table, erasing all indexed data.
@@ -1068,6 +1064,14 @@ impl EmbeddingsDb {
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
         log::info!("EmbeddingsDb::compact: done");
+
+        // Synchronously advance this handle — and every clone sharing its inner, including the
+        // app's read handle — to the just-compacted version. Reads share this handle and do NOT
+        // reload per-read, so this is the single point that makes post-compaction state visible to
+        // them. Must stay inside compact() (not a separate async signal) so the version the readers
+        // see never lags a prune.
+        self.reload().await?;
+        log::info!("EmbeddingsDb::compact: read handle reloaded to compacted version");
         Ok(())
     }
 

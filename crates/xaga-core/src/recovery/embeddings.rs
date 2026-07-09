@@ -9,6 +9,7 @@ use std::path::Path;
 use crate::embeddings::pipeline::annotation_checksum;
 use crate::embeddings::row::{article_embed_text, checksum, feed_embed_text, topic_embed_text};
 use crate::embeddings::{EmbeddingsDb, EmbeddingsError};
+use crate::fs::WalkOutcome;
 use crate::library;
 use crate::md::{md_to_article, md_to_topic};
 use crate::persistence::walk::for_each_md;
@@ -61,7 +62,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     let mut fs_ids: HashSet<String> = HashSet::new();
 
     // Topics first so they index before articles.
-    for_each_md(&library::topics_dir(library_dir), &md_to_topic, |topic| {
+    let topics_outcome = for_each_md(&library::topics_dir(library_dir), &md_to_topic, |topic| {
         fs_ids.insert(topic.id.clone());
         if needs_embedding(&topic.id, &checksum(&topic.title, topic_embed_text(&topic))) {
             sink.topic(topic);
@@ -69,7 +70,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     })
     .await;
 
-    for_each_md(&library::entries_dir(library_dir), &md_to_article, |article| {
+    let entries_outcome = for_each_md(&library::entries_dir(library_dir), &md_to_article, |article| {
         fs_ids.insert(article.meta.id.clone());
         let needs_embed = needs_embedding(
             &article.meta.id,
@@ -100,26 +101,45 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
         .filter(|f| needs_embedding(&f.id, &checksum(&f.title, feed_embed_text(f))))
         .collect();
 
+    // A delete is only legitimate when the source was actually read: an id absent from `fs_ids` /
+    // `feed_ids` means "gone from disk" only if the walk that built those sets was complete. If
+    // either item walk could not be fully observed (permission/IO failure — e.g. macOS TCC denying
+    // a bundled app access to the library), withhold *all* deletes rather than prune the mirror on
+    // a false "empty." The item walks proxy whole-library readability: entries/topics/feeds share
+    // one library root, so an access denial hits them together. Embeds/upserts for whatever *was*
+    // read still proceed, and deletes self-heal on the next recovery once the source is readable.
+    let source_reliable =
+        topics_outcome == WalkOutcome::Enumerated && entries_outcome == WalkOutcome::Enumerated;
+
     // Build to_delete: in LanceDB but no longer on disk. Item rows: the `.md` is gone (annotation
     // rows carry a non-empty `reference` to their parent article — check that). Feed rows: the feed
     // is gone from disk.
-    let to_delete: Vec<String> = db_meta
-        .into_iter()
-        .filter(|(id, (_, reference, _, kind, _))| {
-            if kind == Kind::Feed.as_str() {
-                return !feed_ids.contains(id);
-            }
+    let to_delete: Vec<String> = if source_reliable {
+        db_meta
+            .into_iter()
+            .filter(|(id, (_, reference, _, kind, _))| {
+                if kind == Kind::Feed.as_str() {
+                    return !feed_ids.contains(id);
+                }
 
-            let file_id = if reference.is_empty() {
-                id.as_str()
-            } else {
-                reference.as_str()
-            };
+                let file_id = if reference.is_empty() {
+                    id.as_str()
+                } else {
+                    reference.as_str()
+                };
 
-            !fs_ids.contains(file_id)
-        })
-        .map(|(id, _)| id)
-        .collect();
+                !fs_ids.contains(file_id)
+            })
+            .map(|(id, _)| id)
+            .collect()
+    } else {
+        log::warn!(
+            "recovery: library walk incomplete (topics={topics_outcome:?}, entries={entries_outcome:?}); \
+             withholding all deletes to protect the {}-row embeddings mirror",
+            db_meta.len()
+        );
+        Vec::new()
+    };
 
     Ok(RepairResidue {
         to_embed_feeds,
@@ -231,5 +251,61 @@ mod tests {
         let mut sink = CollectingSink { articles: vec![] };
         repair_item_embeddings(lib, &db, &mut sink).await.unwrap();
         assert_eq!(sink.articles, Vec::<String>::new());
+    }
+
+    /// The regression guard: when the entries directory cannot be read (e.g. macOS TCC denying a
+    /// bundled app access to the library), recovery must NOT read that as "the library is empty"
+    /// and delete every mirror row. An unreadable source withholds all deletes.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn unreadable_library_withholds_deletes() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+
+        // A populated DB whose backing `.md` is on disk (not deleted) but about to be unreadable.
+        save_article(
+            lib,
+            "abcdef123456",
+            "https://example.com/a",
+            "Title",
+            None,
+            None,
+            None,
+            None,
+            "body",
+        )
+        .await
+        .unwrap();
+        let article = read_article(lib, "abcdef123456").await.unwrap();
+
+        let db = EmbeddingsDb::open(lib).await.unwrap();
+        db.upsert(EmbeddingEntry::from_article(&article, Some(vec![0.5f32; 384])))
+            .await
+            .unwrap();
+
+        // Deny enumeration on the entries dir so the walk cannot observe the source.
+        let entries = crate::library::entries_dir(lib);
+        let original = std::fs::metadata(&entries).unwrap().permissions();
+        std::fs::set_permissions(&entries, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        // A root test runner bypasses chmod; without an enforced denial there is nothing to assert.
+        if tokio::fs::read_dir(&entries).await.is_ok() {
+            std::fs::set_permissions(&entries, original).unwrap();
+            return;
+        }
+
+        let mut sink = CollectingSink { articles: vec![] };
+        let residue = repair_item_embeddings(lib, &db, &mut sink).await.unwrap();
+
+        // Restore before asserting so the tempdir stays cleanable even on failure.
+        std::fs::set_permissions(&entries, original).unwrap();
+
+        assert!(
+            residue.to_delete.is_empty(),
+            "an unreadable library must not authorize deletes, got: {:?}",
+            residue.to_delete
+        );
     }
 }

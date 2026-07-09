@@ -482,16 +482,13 @@ pub async fn replace_annotation(
     let topic_ids: Vec<String> = {
         let db = state.embeddings_read.lock().unwrap().clone();
         match db {
-            Some(db) => match db.reload().await {
-                Ok(()) => db
-                    .get_entry(&old_id)
-                    .await
-                    .ok()
-                    .flatten()
-                    .map(|e| e.topics)
-                    .unwrap_or_default(),
-                Err(_) => Vec::new(),
-            },
+            Some(db) => db
+                .get_entry(&old_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|e| e.topics)
+                .unwrap_or_default(),
             None => Vec::new(),
         }
     };
@@ -549,16 +546,13 @@ pub async fn remove_annotation(
     let topic_ids: Vec<String> = {
         let db = state.embeddings_read.lock().unwrap().clone();
         match db {
-            Some(db) => match db.reload().await {
-                Ok(()) => db
-                    .get_entry(&annotation_id)
-                    .await
-                    .ok()
-                    .flatten()
-                    .map(|e| e.topics)
-                    .unwrap_or_default(),
-                Err(_) => Vec::new(),
-            },
+            Some(db) => db
+                .get_entry(&annotation_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|e| e.topics)
+                .unwrap_or_default(),
             None => Vec::new(),
         }
     };

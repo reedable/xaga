@@ -4,6 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::fs::WalkOutcome;
 use crate::md::{Markdown, parse_document};
 
 /// Walks `dir` for `.md` files, builds the `Markdown` IR for each (id from the file stem), maps it
@@ -11,7 +12,11 @@ use crate::md::{Markdown, parse_document};
 /// with each object — collect, fold, or filter — so a large scan need not be materialized. Malformed
 /// documents are skipped. Traversal yields between files (see `fs::for_each_file`), so this never
 /// starves higher-priority tasks.
-pub(crate) async fn for_each_md<T, P, V>(dir: &Path, parse: &P, mut visit: V)
+///
+/// Returns whether the directory was reliably observed ([`WalkOutcome`]); callers that prune based
+/// on a stem being *absent* must honor it — a malformed `.md` is skipped (a real observation), but
+/// an unreadable directory or file is not "empty."
+pub(crate) async fn for_each_md<T, P, V>(dir: &Path, parse: &P, mut visit: V) -> WalkOutcome
 where
     P: Fn(Markdown) -> T,
     V: FnMut(T),
@@ -25,7 +30,7 @@ where
             }));
         }
     })
-    .await;
+    .await
 }
 
 /// Walks `dir` for `.atom` files, parses each via the caller-supplied `parse`, and hands
@@ -34,7 +39,7 @@ where
 /// a later async `created_at` stat, which the sync visitor can't do, so a caller collects here and
 /// runs that pass afterward. Extension matching also excludes `.atom.tmp`. `parse` is injected (not
 /// hardcoded like `parse_document`) so this stays free of the atom parser, which is private to feeds.
-pub(crate) async fn for_each_atom<T, E, P, V>(dir: &Path, parse: &P, mut visit: V)
+pub(crate) async fn for_each_atom<T, E, P, V>(dir: &Path, parse: &P, mut visit: V) -> WalkOutcome
 where
     P: Fn(&str) -> Result<T, E>,
     V: FnMut(PathBuf, T),
@@ -44,5 +49,5 @@ where
             visit(path, parsed);
         }
     })
-    .await;
+    .await
 }
