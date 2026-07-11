@@ -1,7 +1,8 @@
 # OOBE: user chooses whether to download the embedding model
 
-Raised 2026-07-11 from the privacy item formerly on
-`docs-transient/sprint/compliance__embedding_model_download.md`.
+Raised 2026-07-11 from the privacy item formerly on the model-download
+sprint doc (since renamed to
+`docs-transient/sprint/improvement__model_download_visibility.md`).
 
 ## The concern
 

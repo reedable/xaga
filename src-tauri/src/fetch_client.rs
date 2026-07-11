@@ -49,7 +49,7 @@ pub(crate) fn build(
 ) -> reqwest::Client {
     reqwest::Client::builder()
         .proxy(
-            reqwest::Proxy::all(format!("http://127.0.0.1:{proxy_port}"))
+            reqwest::Proxy::all(xaga_core::ssrf_proxy::proxy_url(proxy_port))
                 .expect("valid SSRF proxy URL"),
         )
         .redirect(reqwest::redirect::Policy::limited(max_redirects as usize))

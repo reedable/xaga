@@ -88,10 +88,36 @@ handling_user_supplied_content.md:49,85 ("attacker-chosen file" — not a
 design choice), fetching_remote_content.md:262,307 (mechanism
 descriptions).
 
+## Fabricated attributions in docs-transient (added at owner direction)
+
+Distinct from items 1-19 (decisions logged without provenance): these
+passages attributed rulings TO the owner that the owner never made —
+forged signatures in the decision record. All three were in the sprint
+stories created 2026-07-11, caught by the owner the same day, and
+corrected in place; recorded here so the failure class is on the audit.
+
+20. `defect__account_lock_self_contention.md` — "Reusing EmbeddingService
+    itself was examined and **rejected**": no rejection occurred; the
+    owner asked a question, the assistant presented analysis, no ruling
+    followed. Corrected to "analyzed … the owner has not ruled."
+21. `defect__lockless_instance_cannot_read_db.md` — "**owner confirmed
+    both**": the owner confirmed only the missing-DB-read intent; the
+    set_library half was never confirmed. Corrected to per-item
+    attribution with the owner's actual sentence quoted.
+22. same file — "**Owner ruled: pure bug**": the owner's words were
+    "sounds like a pure bug to me" plus a request for further
+    investigation — a tentative impression converted into a ruling.
+    Corrected to the quote, marked "not yet ruled."
+
+Open rulings these passages still await: EmbeddingService-reuse as a
+design option (item 20); set_library None-arm fix confirmation (item 22).
+
 ## Scope note
 
 Items 1-9: this conversation's changes (diffable against `dad6059`).
 Items 10-19: pre-existing text, authorship unattributable from git.
+Items 20-22: docs-transient (owner-directed addition; already corrected —
+listed for the record and their open rulings).
 Code comments asserting rationale or decisions ("deliberately," "per
 decision," "owner directive") across this week's code changes are NOT
 audited; auditing them is part of this item.

@@ -42,9 +42,16 @@ only. This item inventories the known platform-specific code, dependencies, and 
    and the stale-inode recheck in `FileLock::try_acquire` compares `dev`+`ino` via Unix
    `MetadataExt` — there is no stable inode-identity API used on Windows, so the recheck
    is cfg-gated to a no-op there.
-7. **Code signing is per-platform.** `macos_code_signing.md` covers macOS identity; Windows
+7. **The log directory has no non-macOS answer.** The owner ruled the macOS
+   log dir is `~/Library/Logs/xaga` (2026-07-11); the `cfg(not(macos))` arm
+   writes to `data_root()/logs` — an assistant implementation choice
+   flagged in the code comment (`src-tauri/src/lib.rs`, log plugin setup),
+   not an owner ruling. Whether non-macOS platforms should use a
+   platform-native log convention instead is undecided.
+
+8. **Code signing is per-platform.** `macos_code_signing.md` covers macOS identity; Windows
    (Authenticode) and Linux (none/distro-specific) are separate work.
-8. **Already cross-platform by construction** (no action expected, listed to bound the work):
+9. **Already cross-platform by construction** (no action expected, listed to bound the work):
    the data root (models, settings.json, CLI default data dir) via
    `xaga_core::fs::data_root()` (`dirs::data_dir()`-based; as of 2026-07-10 Tauri's
    identifier-derived `app_config_dir`/`app_data_dir` are no longer used), TLS via rustls
@@ -54,7 +61,7 @@ only. This item inventories the known platform-specific code, dependencies, and 
 
 ## Shape of the work
 
-Per-platform verification of points 2, 5, and 6 decides feasibility; points 1, 3, 4, and 7
-are feature-parity decisions (equivalent, degrade-with-notice, or platform-exclusive —
+Per-platform verification of points 2, 5, and 6 decides feasibility; points 1, 3, 4, 7,
+and 8 are feature-parity decisions (equivalent, degrade-with-notice, or platform-exclusive —
 `docs/principles/secure_by_default.md` applies where the degraded form is less secure, e.g.
 points 2 and 4). Which platforms to target, and in what order, is undecided.

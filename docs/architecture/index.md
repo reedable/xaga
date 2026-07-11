@@ -26,6 +26,11 @@ detail lives in the linked file, not here.
    library, enforced by an exclusive advisory `flock` on `xaga.lock`; the lock is handle-tied
    (auto-released on any exit, no stale files). Non-holders read but do not write.
 
+6. [Single-Writer Account Lock](single_writer_account_lock.md) — the flock on `settings.json`
+   is the account-wide resource lock: the holder has the right to account-scoped resources
+   (settings writes, the model download); writes rotate the lock's inode with holder
+   continuity; writers fail fast, downloaders skip, readers never lock.
+
 ## Security
 
 Architecture of the security-critical paths, in [security/](security/). These describe how a

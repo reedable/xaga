@@ -321,7 +321,7 @@ Places where the invariants are not fully upheld:
 - The embedding model download client sets no timeout, and the model files
   are verified (pinned revision + per-file SHA-256 manifest, model.rs) at
   download time only — files already on disk are not re-verified at load
-  time — see docs-transient/sprint/compliance__embedding_model_download.md.
+  time — see docs-transient/sprint/improvement__model_download_visibility.md.
 - Proxy behavior is a property of the bundled app; `tauri dev` runtime checks
   are not representative for webview-level policies (see the CSP note in
   [handling_persisted_content.md](handling_persisted_content.md)).

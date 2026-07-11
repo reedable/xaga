@@ -277,12 +277,19 @@ pub async fn start(config: ProxyConfig) -> std::io::Result<u16> {
     Ok(port)
 }
 
+/// The URL a client uses to dial the proxy listening on `port` — the single
+/// construction of the proxy's address; every consumer (reqwest clients, the
+/// loader webview's `proxy_url`) derives it here.
+pub fn proxy_url(port: u16) -> String {
+    format!("http://127.0.0.1:{port}")
+}
+
 /// A reqwest client whose every request — including each redirect hop — dials
 /// through the proxy at `port`, so it inherits the proxy's address validation
 /// and plaintext-HTTP refusal.
 pub fn proxied_client(port: u16) -> reqwest::Result<reqwest::Client> {
     reqwest::Client::builder()
-        .proxy(reqwest::Proxy::all(format!("http://127.0.0.1:{port}"))?)
+        .proxy(reqwest::Proxy::all(proxy_url(port))?)
         .build()
 }
 

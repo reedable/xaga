@@ -105,7 +105,7 @@ pub async fn load_via_webview(
     // webview never resolves DNS or connects directly, so it cannot reach
     // private/loopback/intranet hosts and DNS rebinding / redirect-based SSRF
     // are defeated. Requires the `macos-proxy` feature to take effect on macOS.
-    if let Ok(proxy) = format!("http://127.0.0.1:{ssrf_proxy_port}").parse::<tauri::Url>() {
+    if let Ok(proxy) = xaga_core::ssrf_proxy::proxy_url(ssrf_proxy_port).parse::<tauri::Url>() {
         builder = builder.proxy_url(proxy);
     }
 
