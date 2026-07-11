@@ -13,6 +13,8 @@ import UnreadCount from "./UnreadCount";
 type TopicListProps = {
   isExpanded?: boolean;
   topics: Topic[];
+  /** Disables the add affordance (read-only instance). */
+  addDisabled?: boolean;
   onAddTopic: () => void;
   onClickHeader: () => void;
 };
@@ -20,6 +22,7 @@ type TopicListProps = {
 export default function TopicList({
   isExpanded = false,
   topics,
+  addDisabled = false,
   onAddTopic,
   onClickHeader,
 }: TopicListProps) {
@@ -41,9 +44,17 @@ export default function TopicList({
       onClickHeader={onClickHeader}
       renderHeaderAction={() => (
         <Tooltip title="Add topic">
-          <IconButton size="small" onClick={onAddTopic} aria-label="Add topic">
-            <Add className={css.AddIcon} />
-          </IconButton>
+          {/* span keeps the Tooltip working when the button is disabled */}
+          <span>
+            <IconButton
+              size="small"
+              disabled={addDisabled}
+              onClick={onAddTopic}
+              aria-label="Add topic"
+            >
+              <Add className={css.AddIcon} />
+            </IconButton>
+          </span>
         </Tooltip>
       )}
     >

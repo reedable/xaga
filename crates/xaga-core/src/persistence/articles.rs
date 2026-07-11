@@ -77,7 +77,7 @@ pub async fn save_article(
         annotations: with_reference(existing_annotations, id),
         favicon: favicon.map(str::to_string),
     };
-    tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
+    crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
     Ok(article)
 }
 
@@ -175,7 +175,7 @@ pub async fn add_annotation(
 
     let favicon = fm.favicon.clone();
     let article = article_from_fm(article_id, fm, annotations, favicon, body);
-    tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
+    crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
     Ok(article)
 }
 
@@ -239,7 +239,7 @@ pub async fn remove_annotation(
 
     let favicon = fm.favicon.clone();
     let article = article_from_fm(article_id, fm, annotations, favicon, body);
-    tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
+    crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
     Ok(article)
 }
 

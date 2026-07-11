@@ -7,16 +7,22 @@ export default {
     },
   },
   create(context) {
+    const isNamed = (element, name) =>
+      element?.type === "JSXElement" &&
+      element.openingElement?.name?.type === "JSXIdentifier" &&
+      element.openingElement?.name?.name === name;
+
     return {
       JSXOpeningElement(node) {
         if (node.name.type !== "JSXIdentifier" || node.name.name !== "IconButton") return;
 
         const parent = node.parent.parent;
-        if (
-          parent?.type === "JSXElement" &&
-          parent.openingElement?.name?.type === "JSXIdentifier" &&
-          parent.openingElement?.name?.name === "Tooltip"
-        ) return;
+        if (isNamed(parent, "Tooltip")) return;
+        // MUI's documented pattern for disabled buttons: Tooltip > span > IconButton
+        // (a disabled button swallows the events the Tooltip listens for, so a span
+        // must carry them). The span satisfies the rule only when the Tooltip is
+        // directly above it.
+        if (isNamed(parent, "span") && isNamed(parent.parent, "Tooltip")) return;
 
         context.report({ node, messageId: "missingTooltip" });
       },

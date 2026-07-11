@@ -171,7 +171,7 @@ pub(crate) async fn write_entry(
     );
 
     tokio::fs::create_dir_all(path.parent().unwrap()).await?;
-    tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
+    crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
 
     Ok(article)
 }
@@ -206,7 +206,7 @@ pub(crate) async fn write_read_entry(
 
     if !tokio::fs::try_exists(&path).await? {
         tokio::fs::create_dir_all(path.parent().unwrap()).await?;
-        tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
+        crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
     }
 
     Ok(article)
@@ -267,6 +267,6 @@ pub async fn set_entry_tags(
         annotations: fm.annotations,
         favicon: fm.favicon,
     };
-    tokio::fs::write(&path, render_entry(&article).as_bytes()).await?;
+    crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
     Ok(article.meta)
 }

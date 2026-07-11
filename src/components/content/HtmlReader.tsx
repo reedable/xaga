@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useEvents } from "../../hooks/useEvents";
+import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import {
   FIND_CLEAR,
   FIND_IN_PAGE,
@@ -70,6 +71,7 @@ export function HtmlReader({
   onRemoveAnnotation,
 }: HtmlReaderProps) {
   const { onFind } = useEvents();
+  const isLibraryReadOnly = useLibraryReadOnly();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const tooltipRef = useRef<AnnotationTooltipHandle | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -94,6 +96,9 @@ export function HtmlReader({
     (texts: string[], occurrences: number[], rect: HtmlReaderSelectionRect) => {
       // Annotation UI is unavailable until the Entry exists.
       if (!entryId) return;
+      // Read-only instance: creating annotations is a library write; don't offer it.
+      // (Backend refuses with E_READ_ONLY regardless — this is the affordance layer.)
+      if (isLibraryReadOnly) return;
       setTooltip({
         annotationId: uuidv4(),
         text: texts,
@@ -102,7 +107,7 @@ export function HtmlReader({
         position: toViewportPosition(rect),
       });
     },
-    [entryId, toViewportPosition]
+    [entryId, isLibraryReadOnly, toViewportPosition]
   );
 
   const handleClickHighlight = useCallback(

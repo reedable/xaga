@@ -32,6 +32,10 @@ export interface Platform {
   // Library
   getLibrary(): Promise<string>;
   setLibrary(path: string): Promise<string>;
+  /** Whether this instance is read-only for the open library (another xaga
+   *  instance holds the library lock). Same name as the Rust accessor, the
+   *  Tauri command, and the `library:mode-changed` event payload. */
+  isLibraryReadOnly(): Promise<boolean>;
 
   // Feeds
   listFeeds(signal: AbortSignal): Promise<Feed[]>;
@@ -181,6 +185,9 @@ export interface Platform {
   onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn>;
   /** Fires once after `refresh_all_feeds` completes (not per feed). */
   onFeedsRefreshed(callback: () => void): Promise<UnlistenFn>;
+  onLibraryModeChanged(
+    callback: (isLibraryReadOnly: boolean) => void
+  ): Promise<UnlistenFn>;
   onUnreadChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
   onBookmarkChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
   onAnnotationChanged(callback: (item: ListItem) => void): Promise<UnlistenFn>;

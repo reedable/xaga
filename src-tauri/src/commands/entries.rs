@@ -9,7 +9,7 @@ use crate::AppState;
 
 #[tauri::command]
 pub async fn read_entry(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     entries::read_entry(&data_dir, &id)
         .await
         .map_err(|e| e.to_string())
@@ -17,7 +17,7 @@ pub async fn read_entry(id: String, state: State<'_, AppState>) -> Result<Entry,
 
 #[tauri::command]
 pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let tags: Vec<String> = entries::read_entry_tags(&data_dir, &id)
         .await
         .map_err(|e| e.to_string())?
@@ -42,7 +42,7 @@ pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<E
 
 #[tauri::command]
 pub async fn mark_entry_unread(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let mut tags = entries::read_entry_tags(&data_dir, &id)
         .await
         .map_err(|e| e.to_string())?;
@@ -75,7 +75,7 @@ pub async fn list_all_items(
     item_filter: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<ListItem>, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let item_filter = parse_item_filter(item_filter)?;
 
     items::list_all_items(&data_dir, item_filter)

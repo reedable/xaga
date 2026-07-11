@@ -31,6 +31,11 @@ pub enum DomainEvent {
     FeedRefreshed(Feed),
     /// A refresh-all pass finished.
     FeedsRefreshed,
+    /// The library's runtime mode, announced at startup. `true` = this instance did not
+    /// win the library lock: write commands are refused (`E_READ_ONLY`) and the UI
+    /// disables write affordances. Mode is fixed for the process's lifetime — a library
+    /// switch restarts the process.
+    LibraryModeChanged { is_library_read_only: bool },
 }
 
 impl DomainEvent {
@@ -46,6 +51,7 @@ impl DomainEvent {
             DomainEvent::EmbeddingShutdown => "embedding:shutdown",
             DomainEvent::FeedRefreshed(_) => "feed:refreshed",
             DomainEvent::FeedsRefreshed => "feeds:refreshed",
+            DomainEvent::LibraryModeChanged { .. } => "library:mode-changed",
         }
     }
 }

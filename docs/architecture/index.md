@@ -24,7 +24,9 @@ detail lives in the linked file, not here.
 
 5. [Single-Writer Library Lock](single_writer_library_lock.md) — at most one writing process per
    library, enforced by an exclusive advisory `flock` on `xaga.lock`; the lock is handle-tied
-   (auto-released on any exit, no stale files). Non-holders read but do not write.
+   (auto-released on any exit, no stale files). Its scope is the whole library (`.md` files and
+   LanceDB): every process runs read-write (holds the lock) or read-only (write commands refused,
+   `E_READ_ONLY`), decided at startup; mode is derived from the held lock, never stored.
 
 6. [Single-Writer Account Lock](single_writer_account_lock.md) — the flock on `settings.json`
    is the account-wide resource lock: the holder has the right to account-scoped resources

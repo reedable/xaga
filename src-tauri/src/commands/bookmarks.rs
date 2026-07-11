@@ -7,7 +7,7 @@ use crate::AppState;
 
 #[tauri::command]
 pub async fn add_bookmark(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let mut tags = entries::read_entry_tags(&data_dir, &id)
         .await
         .map_err(|e| e.to_string())?;
@@ -32,7 +32,7 @@ pub async fn add_bookmark(id: String, state: State<'_, AppState>) -> Result<Entr
 
 #[tauri::command]
 pub async fn remove_bookmark(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let tags: Vec<String> = entries::read_entry_tags(&data_dir, &id)
         .await
         .map_err(|e| e.to_string())?

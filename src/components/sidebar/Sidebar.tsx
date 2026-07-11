@@ -3,6 +3,7 @@ import { IconButton, Tooltip } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
+import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import { useSidebar } from "../../hooks/useSidebar";
 import { useTopics } from "../../hooks/useTopics";
 import cx from "../../utils/cx";
@@ -20,6 +21,7 @@ type SidebarProps = {
 
 export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
   const [, abortControllerRef] = useAbortController();
+  const isLibraryReadOnly = useLibraryReadOnly();
 
   const { topics, pinnedTopicIds } = useTopics(abortControllerRef);
 
@@ -73,14 +75,23 @@ export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
   return (
     <div className={cx(className, css.Sidebar)}>
       <div className={css.Buttons}>
+        {isLibraryReadOnly && (
+          <Tooltip title="Another xaga instance holds this library — this window is read-only">
+            <span className={css.ReadOnlyBadge}>Read-only</span>
+          </Tooltip>
+        )}
         <Tooltip title="Refresh">
-          <IconButton
-            className={cx(css.RefreshButton, spin && css.Loading)}
-            size="small"
-            onClick={() => handleRefreshAllFeeds()}
-          >
-            <Refresh fontSize="small" />
-          </IconButton>
+          {/* span keeps the Tooltip working when the button is disabled */}
+          <span className={css.RefreshWrap}>
+            <IconButton
+              className={cx(css.RefreshButton, spin && css.Loading)}
+              size="small"
+              disabled={isLibraryReadOnly}
+              onClick={() => handleRefreshAllFeeds()}
+            >
+              <Refresh fontSize="small" />
+            </IconButton>
+          </span>
         </Tooltip>
       </div>
 
@@ -92,6 +103,7 @@ export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
 
       <TopicList
         topics={topics}
+        addDisabled={isLibraryReadOnly}
         onAddTopic={onAddTopic}
         onClickHeader={() => handleExpandedList("TOPICS")}
         isExpanded={expandedList === "TOPICS"}
@@ -99,6 +111,7 @@ export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
 
       <FeedList
         feeds={feeds}
+        addDisabled={isLibraryReadOnly}
         onAddFeed={onAddFeed}
         onClickHeader={() => handleExpandedList("FEEDS")}
         isExpanded={expandedList === "FEEDS"}

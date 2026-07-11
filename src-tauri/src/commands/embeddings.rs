@@ -14,7 +14,7 @@ pub async fn search_by_item(
     limit: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<Vec<EmbeddedEntry>, String> {
-    let library = state.library.read().unwrap().clone();
+    let library = state.library_path();
     let item_filter = parse_item_filter(item_filter)?;
     let result = items::list_embedded_items(
         &library,
@@ -44,7 +44,7 @@ pub async fn search_by_text(
     limit: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<Vec<EmbeddedItem>, String> {
-    let library = state.library.read().unwrap().clone();
+    let library = state.library_path();
     let item_filter = parse_item_filter(item_filter)?;
 
     let embedder = {
@@ -81,7 +81,7 @@ pub async fn search_by_text(
 
 #[tauri::command]
 pub async fn reset_embeddings(state: State<'_, AppState>) -> Result<(), String> {
-    let library = state.library.read().unwrap().clone();
+    let library = state.library_path();
     if let Some(svc) = state.embedding_service.lock().unwrap().as_ref() {
         svc.reset(library);
     }

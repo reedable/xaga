@@ -103,7 +103,7 @@ pub async fn save_topic(
         unread_count: 0,
         members: items.iter().map(crate::types::Reference::from).collect(),
     };
-    tokio::fs::write(&path, render_topic(&topic, &items).as_bytes()).await?;
+    crate::fs::write_atomic_async(path.clone(), render_topic(&topic, &items).into_bytes()).await?;
     Ok(topic)
 }
 
@@ -141,7 +141,7 @@ pub async fn set_topic_pinned(
     });
     topic.is_pinned = pinned;
     topic.updated_at = Some(updated_at);
-    tokio::fs::write(&path, render_topic(&topic, &items).as_bytes()).await?;
+    crate::fs::write_atomic_async(path.clone(), render_topic(&topic, &items).into_bytes()).await?;
     Ok(true)
 }
 

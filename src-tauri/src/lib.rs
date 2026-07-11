@@ -13,7 +13,7 @@ use tauri::window::Color;
 use tauri::{Manager, Runtime, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_window_state::StateFlags;
 use xaga_core::embeddings::{
-    EmbeddingService, EmbeddingsDb, EmbeddingsError, Job, ShutdownReason, Tier,
+    EmbeddingService, EmbeddingsDb, Job, ShutdownReason, Tier,
 };
 use xaga_core::ssrf_proxy;
 
@@ -33,8 +33,22 @@ pub(crate) const DEFAULT_FEED_MAX_BODY_BYTES: u64 = 10 * 1024 * 1024;
 /// by both formats rather than one per format.
 pub(crate) const DEFAULT_IMPORT_MAX_BYTES: u64 = 64 * 1024 * 1024;
 
+/// The open library and the write right to it, guarded as ONE unit: the path and its lock
+/// change together (both are settled at startup; `set_library` restarts the process), so a
+/// reader always sees "which library" and "may I write it" as one consistent snapshot.
+///
+/// The lock is the single source of truth for the runtime mode — no mode value is stored
+/// anywhere. `lock` is `None` when another xaga process holds the library's flock: this
+/// instance is read-only for the library (`.md` files and LanceDB alike). The `Arc` lets the
+/// `EmbeddingService` hold the lock for its own lifetime (its invariant since the
+/// LanceDB-only lock era) while the app holds it from startup.
+pub(crate) struct LibraryHandle {
+    pub(crate) path: PathBuf,
+    pub(crate) lock: Option<std::sync::Arc<xaga_core::fs::FileLock>>,
+}
+
 pub(crate) struct AppState {
-    pub(crate) library: Arc<RwLock<PathBuf>>,
+    pub(crate) library: Arc<RwLock<LibraryHandle>>,
     pub(crate) theme: Arc<RwLock<String>>,
     pub(crate) refresh_on_startup: Arc<RwLock<bool>>,
     pub(crate) loader_timeout_secs: Arc<RwLock<u64>>,
@@ -85,6 +99,19 @@ impl AppState {
         if let Some(svc) = self.embedding_service.lock().unwrap().as_ref() {
             svc.enqueue(tier, job);
         }
+    }
+
+    /// The open library's path.
+    pub(crate) fn library_path(&self) -> PathBuf {
+        self.library.read().unwrap().path.clone()
+    }
+
+    /// Whether this instance is read-only for the open library — true when another xaga
+    /// process holds the library lock. Derived from the held lock (the single source of
+    /// truth); no mode value is stored anywhere. The same name carries this concept at
+    /// every layer: this accessor, the Tauri command, and the domain-event field.
+    pub(crate) fn is_library_read_only(&self) -> bool {
+        self.library.read().unwrap().lock.is_none()
     }
 }
 
@@ -427,7 +454,10 @@ pub fn run() {
         .expect("failed to build the proxied model-download client");
 
     // Pre-created Arcs shared between .manage() and the .setup() closure.
-    let library: Arc<RwLock<PathBuf>> = Arc::new(RwLock::new(PathBuf::new()));
+    let library: Arc<RwLock<LibraryHandle>> = Arc::new(RwLock::new(LibraryHandle {
+        path: PathBuf::new(),
+        lock: None,
+    }));
     let theme: Arc<RwLock<String>> = Arc::new(RwLock::new("auto".to_string()));
     let refresh_on_startup: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let loader_timeout_secs: Arc<RwLock<u64>> = Arc::new(RwLock::new(DEFAULT_LOADER_TIMEOUT_SECS));
@@ -452,6 +482,7 @@ pub fn run() {
 
     // setup_ prefixed values are consumed by Tauri's .setup() closure.
     // There is no semantic meaning here.
+    let gate_library = Arc::clone(&library);
     let setup_embeddings_read = Arc::clone(&embeddings_read);
     let setup_allowed_domains = Arc::clone(&allowed_domains);
     let setup_inline_pdf_reader = Arc::clone(&inline_pdf_reader);
@@ -810,7 +841,31 @@ pub fn run() {
             let font_size = settings.html_reader_font_size.unwrap_or(16.0);
             let line_height = settings.html_reader_line_height.unwrap_or(1.75);
             let show_sidebar = settings.show_sidebar.unwrap_or(true);
-            *setup_library.write().unwrap() = lib_path.clone();
+            // Acquire the library lock (or learn we are read-only) BEFORE any command can
+            // run: the lock in the LibraryHandle is the single source of truth for the
+            // runtime mode, and the write-command gate derives from it. Lock lifetime is
+            // process-lifetime — `set_library` restarts the process, and the restart path
+            // releases the lock explicitly before spawning the successor.
+            std::fs::create_dir_all(&lib_path)?;
+            let library_lock = xaga_core::library::acquire_lock(&lib_path).map(Arc::new);
+            if library_lock.is_none() {
+                log::warn!(
+                    "startup: another instance holds the library lock — this instance is read-only"
+                );
+            }
+            *setup_library.write().unwrap() = LibraryHandle {
+                path: lib_path.clone(),
+                lock: library_lock.clone(),
+            };
+            // Announce the mode to any already-loaded frontend; late-loading frontends
+            // read it via the `is_library_read_only` command instead. Mode is fixed for
+            // the process's lifetime (a library switch restarts the process).
+            events::emit_domain(
+                app.handle(),
+                xaga_core::events::DomainEvent::LibraryModeChanged {
+                    is_library_read_only: library_lock.is_none(),
+                },
+            );
             *setup_theme.write().unwrap() = theme.clone();
             *setup_refresh_on_startup.write().unwrap() = refresh;
             *setup_loader_timeout.write().unwrap() = timeout;
@@ -856,7 +911,30 @@ pub fn run() {
                     log::error!("startup: model download failed: {e}");
                 }
 
-                match EmbeddingService::start(lib_path.clone()).await {
+                // Writer status was decided at setup (the lock in the LibraryHandle); a
+                // read-only instance runs without the service — embeddings stay readable,
+                // nothing is written. The service holds its own Arc of the lock for its
+                // lifetime, preserving its invariant of never running unlocked.
+                let Some(library_lock) = library_lock else {
+                    log::warn!("startup: read-only instance — embedding service not started");
+                    // Non-holders READ ("the library lock was only ever supposed to
+                    // protect concurrent write to the database" — owner): open a
+                    // standalone read-only handle so is_cache_ready turns true and
+                    // embeddings-backed reads work. The
+                    // handle is version-pinned at open (reads do not reload per-call):
+                    // this instance sees the library as of ITS startup; the writer's
+                    // later commits appear after relaunch — same visibility rule as the
+                    // `.md` side (no live watcher; recovery-at-startup is the answer).
+                    match EmbeddingsDb::open(&lib_path).await {
+                        Ok(db) => *setup_embeddings_read.lock().unwrap() = Some(db),
+                        Err(e) => {
+                            log::error!("startup: read-only embeddings open failed: {e}")
+                        }
+                    }
+                    return;
+                };
+
+                match EmbeddingService::start(lib_path.clone(), library_lock).await {
                     Ok(svc) => {
                         // The read handle shares the service's write handle (same underlying table
                         // state), so command reads see the service's writes — and the synchronous
@@ -920,9 +998,6 @@ pub fn run() {
 
                         svc.trigger_recovery(lib_path.clone());
                         *setup_svc.lock().unwrap() = Some(svc);
-                    }
-                    Err(EmbeddingsError::LockNotAcquired) => {
-                        log::warn!("startup: another instance holds the library lock — embeddings are read-only");
                     }
                     Err(e) => log::error!("startup: embedding service failed: {e}"),
                 }
@@ -1010,6 +1085,7 @@ pub fn run() {
             commands::entries::list_all_items,
             commands::library::get_library,
             commands::library::set_library,
+            commands::library::is_library_read_only,
             commands::settings::get_theme,
             commands::settings::set_theme,
             commands::settings::get_refresh_on_startup,
@@ -1051,16 +1127,27 @@ pub fn run() {
             commands::embeddings::reset_embeddings,
             ]);
             move |invoke: tauri::ipc::Invoke| {
-                let allowed = {
+                let (allowed, write_refused) = {
                     let label = invoke.message.webview_ref().label();
                     let command = invoke.message.command();
                     log::info!("ipc: {label} → {command}");
-                    commands::is_invoke_allowed(label, command)
+                    // Library-write gate: a read-only instance (no library lock) refuses
+                    // every library-writing command at this single choke point — mode is
+                    // derived from the held lock, never stored (see LibraryHandle).
+                    let is_library_read_only = gate_library.read().unwrap().lock.is_none();
+                    (
+                        commands::is_invoke_allowed(label, command),
+                        commands::is_write_refused(command, is_library_read_only),
+                    )
                 };
                 if !allowed {
                     invoke
                         .resolver
                         .reject("unauthorized: command not available from this window");
+                    return true;
+                }
+                if write_refused {
+                    invoke.resolver.reject(commands::E_READ_ONLY);
                     return true;
                 }
                 app_commands(invoke)
@@ -1125,12 +1212,26 @@ fn take_service(app: &tauri::AppHandle) -> Option<EmbeddingService> {
 fn shutdown_with_overlay(app: &tauri::AppHandle, svc: EmbeddingService) {
     log::info!("shutdown: waiting for embedding service to drain");
     events::emit_domain(app, xaga_core::events::DomainEvent::EmbeddingShutdown);
+    let library = Arc::clone(&app.state::<AppState>().library);
     tauri::async_runtime::spawn(async move {
         match svc.shutdown().await {
-            ShutdownReason::Restart => restart_process(),
+            ShutdownReason::Restart => {
+                release_library_lock(&library);
+                restart_process()
+            }
             ShutdownReason::Exit => std::process::exit(0),
         }
     });
+}
+
+/// Releases this process's hold on the library lock. Must run before
+/// [`restart_process`] spawns the successor: the successor acquires the lock at ITS
+/// startup, and if the (still-living) predecessor held it, the new instance would come
+/// up read-only. The service's own `Arc` of the lock is already gone by the time the
+/// restart paths call this (`svc.shutdown()` consumed the service), so dropping the
+/// `LibraryHandle`'s copy releases the flock.
+pub(crate) fn release_library_lock(library: &Arc<RwLock<LibraryHandle>>) {
+    library.write().unwrap().lock.take();
 }
 
 /// Installs a SIGINT/SIGTERM handler that drains the embedding service before exit.
@@ -1149,6 +1250,59 @@ fn install_signal_handler(
         std::process::exit(0);
     })
     .expect("failed to install signal handler");
+}
+
+#[cfg(test)]
+mod library_mode_tests {
+    use super::*;
+
+    fn handle_for(dir: &std::path::Path) -> Arc<RwLock<LibraryHandle>> {
+        Arc::new(RwLock::new(LibraryHandle {
+            path: dir.to_path_buf(),
+            lock: xaga_core::library::acquire_lock(dir).map(Arc::new),
+        }))
+    }
+
+    /// Mode is the lock, derived — winning the flock is read-write, losing is read-only,
+    /// with no stored state that could disagree.
+    #[test]
+    fn mode_derives_from_lock_ownership() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let writer = handle_for(dir.path());
+        assert!(writer.read().unwrap().lock.is_some(), "first instance wins the lock");
+
+        // A second "instance" (second handle in this process: flock conflicts across
+        // open file descriptions, so this models a contender) loses and is read-only.
+        let reader = handle_for(dir.path());
+        assert!(reader.read().unwrap().lock.is_none(), "contender must lose while held");
+    }
+
+    /// The restart-ordering invariant: releasing the handle's lock frees the flock for a
+    /// successor process — this is what `release_library_lock` must guarantee before
+    /// `restart_process` spawns one. Also covers the service's shared hold: while ANY
+    /// Arc of the lock lives (the EmbeddingService keeps one), the flock stays held.
+    #[test]
+    fn release_frees_the_lock_for_a_successor_only_after_every_holder_drops() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let writer = handle_for(dir.path());
+        // The service's clone of the lock (EmbeddingService::start receives one).
+        let service_hold = writer.read().unwrap().lock.clone().unwrap();
+
+        release_library_lock(&writer);
+        assert!(writer.read().unwrap().lock.is_none(), "handle hold released");
+        assert!(
+            xaga_core::library::acquire_lock(dir.path()).is_none(),
+            "flock must remain held while the service still holds its Arc"
+        );
+
+        drop(service_hold);
+        assert!(
+            xaga_core::library::acquire_lock(dir.path()).is_some(),
+            "successor must be able to win the lock once every holder is gone"
+        );
+    }
 }
 
 #[cfg(test)]

@@ -346,6 +346,12 @@ export class TauriPlatform implements Platform {
     return invoker<string>(name, { path });
   }
 
+  async isLibraryReadOnly(): Promise<boolean> {
+    const name = "is_library_read_only";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<boolean>(name);
+  }
+
   // Feeds ---------------------------------------------------------------------
 
   async listFeeds(signal: AbortSignal): Promise<Feed[]> {
@@ -893,6 +899,16 @@ export class TauriPlatform implements Platform {
     const name: DomainEvent = "feeds:refreshed";
     const listener = decorate(() => callback()).with(logged, { logger, name });
     return listen(name, listener);
+  }
+
+  onLibraryModeChanged(
+    callback: (isLibraryReadOnly: boolean) => void
+  ): Promise<UnlistenFn> {
+    const name: DomainEvent = "library:mode-changed";
+    const listener = decorate((e: { payload: unknown }) => {
+      if (typeof e.payload === "boolean") callback(e.payload);
+    }).with(logged, { logger, name });
+    return listen<unknown>(name, listener);
   }
 
   onUnreadChanged(callback: (entry: Entry) => void): Promise<UnlistenFn> {

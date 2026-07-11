@@ -14,7 +14,6 @@ pub enum ShutdownReason {
 use crate::types::{Article, Feed, Topic};
 
 use crate::fs::FileLock;
-use crate::library;
 use super::model::{Embedder, load_default_embedder};
 use super::pipeline::{
     add_topic_member, apply_state, embed_entry_vector, embed_feed, embed_topic_vector,
@@ -199,24 +198,23 @@ pub struct EmbeddingService {
     embedder: Arc<Embedder>,
     // A read handle sharing the loop's write-handle inner; handed to the app via `read_handle()`.
     read_db: EmbeddingsDb,
-    // Held for the service's lifetime; released (file deleted) on Drop.
-    _lock: FileLock,
+    // Held for the service's lifetime (shared with the app's LibraryHandle, which holds it
+    // from startup); the flock releases when the last holder drops.
+    _lock: std::sync::Arc<FileLock>,
 }
 
 impl EmbeddingService {
     /// Opens (or creates) the embeddings DB, loads the model, and starts the
     /// background loop.  Fails if the model files are missing.
     ///
-    /// Returns `Err(EmbeddingsError::LockNotAcquired)` if another instance
-    /// already holds the library lock.  In that case the caller should treat
-    /// the embeddings DB as read-only and not start this service.
-    pub async fn start(library_dir: PathBuf) -> Result<Self, EmbeddingsError> {
-        // Acquire the lock before touching LanceDB.  If the file already exists
-        // another instance is running against the same library; we must not
-        // write to the DB from this instance.
-        let lock = library::acquire_lock(&library_dir)
-            .ok_or(EmbeddingsError::LockNotAcquired)?;
-
+    /// `lock` is the library lock, acquired by the caller at library-open (the app's
+    /// setup, or the CLI's `require_write_lock`): only the lock-holding process may run
+    /// this service. The service keeps its own `Arc` of it for its lifetime, so it never
+    /// runs unlocked regardless of what the caller does with its copy.
+    pub async fn start(
+        library_dir: PathBuf,
+        lock: std::sync::Arc<FileLock>,
+    ) -> Result<Self, EmbeddingsError> {
         let embedder = load_default_embedder().await?;
         let service_embedder = Arc::clone(&embedder);
 

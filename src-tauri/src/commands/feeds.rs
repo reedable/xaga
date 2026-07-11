@@ -8,7 +8,7 @@ use crate::{AppState, get_bookmarked_ids, get_unread_ids};
 
 #[tauri::command]
 pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<Feed>, String> {
-    let library = state.library.read().unwrap().clone();
+    let library = state.library_path();
     let (unread, bookmarked) = (
         get_unread_ids(&state).await,
         get_bookmarked_ids(&state).await,
@@ -20,7 +20,7 @@ pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<Feed>, String>
 
 #[tauri::command]
 pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, String> {
-    let library = state.library.read().unwrap().clone();
+    let library = state.library_path();
     let timeout_secs = *state.feed_timeout_secs.read().unwrap();
     let max_body_bytes = *state.feed_max_body_bytes.read().unwrap();
     let client = crate::fetch_client::build(
@@ -58,7 +58,7 @@ pub async fn refresh_all_feeds(
     window: tauri::Window,
     state: State<'_, AppState>,
 ) -> Result<Vec<Feed>, String> {
-    let library = state.library.read().unwrap().clone();
+    let library = state.library_path();
     let timeout_secs = *state.feed_timeout_secs.read().unwrap();
     let max_body_bytes = *state.feed_max_body_bytes.read().unwrap();
     let client = crate::fetch_client::build(
@@ -114,7 +114,7 @@ pub async fn set_feed_pinned(
     pinned: bool,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let library = state.library.read().unwrap().clone();
+    let library = state.library_path();
     let changed = feeds::set_feed_pinned(&library, &id, pinned)
         .await
         .map_err(|e| e.to_string())?;
@@ -141,7 +141,7 @@ pub async fn rename_feed(
     title: String,
     state: State<'_, AppState>,
 ) -> Result<Feed, String> {
-    let library = state.library.read().unwrap().clone();
+    let library = state.library_path();
     let (unread, bookmarked) = (
         get_unread_ids(&state).await,
         get_bookmarked_ids(&state).await,
@@ -160,7 +160,7 @@ pub async fn rename_feed(
 
 #[tauri::command]
 pub async fn remove_feed(url: String, state: State<'_, AppState>) -> Result<String, String> {
-    let library = state.library.read().unwrap().clone();
+    let library = state.library_path();
     let feed_id = feeds::url_to_feed_id(&url).map_err(|e| e.to_string())?;
     feeds::remove_feed(&library, &feed_id)
         .await
@@ -174,7 +174,7 @@ pub async fn list_entries(
     item_filter: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<Entry>, String> {
-    let library = state.library.read().unwrap().clone();
+    let library = state.library_path();
     let item_filter = parse_item_filter(item_filter)?;
 
     // Phase C: the .atom is the source of truth for feed membership (the id-set); LanceDB

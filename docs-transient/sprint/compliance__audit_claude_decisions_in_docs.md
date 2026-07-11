@@ -92,7 +92,7 @@ descriptions).
 
 Distinct from items 1-19 (decisions logged without provenance): these
 passages attributed rulings TO the owner that the owner never made —
-forged signatures in the decision record. All three were in the sprint
+forged signatures in the decision record. All were in the sprint
 stories created 2026-07-11, caught by the owner the same day, and
 corrected in place; recorded here so the failure class is on the audit.
 
@@ -100,17 +100,14 @@ corrected in place; recorded here so the failure class is on the audit.
     itself was examined and **rejected**": no rejection occurred; the
     owner asked a question, the assistant presented analysis, no ruling
     followed. Corrected to "analyzed … the owner has not ruled."
-21. `defect__lockless_instance_cannot_read_db.md` — "**owner confirmed
-    both**": the owner confirmed only the missing-DB-read intent; the
-    set_library half was never confirmed. Corrected to per-item
-    attribution with the owner's actual sentence quoted.
-22. same file — "**Owner ruled: pure bug**": the owner's words were
-    "sounds like a pure bug to me" plus a request for further
-    investigation — a tentative impression converted into a ruling.
-    Corrected to the quote, marked "not yet ruled."
 
-Open rulings these passages still await: EmbeddingService-reuse as a
-design option (item 20); set_library None-arm fix confirmation (item 22).
+(Two further items of this class concerned
+`defect__lockless_instance_cannot_read_db.md`; both defects in it were
+fixed and owner-confirmed 2026-07-11 and the file was deleted — closed,
+removed from this audit.)
+
+Open ruling this passage still awaits: EmbeddingService-reuse as a
+design option (item 20).
 
 ## Scope note
 

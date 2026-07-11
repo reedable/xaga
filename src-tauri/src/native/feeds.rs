@@ -28,7 +28,7 @@ pub(crate) async fn import_feeds(
     state: &AppState,
     file_path: &Path,
 ) -> Result<ImportResult, String> {
-    let library = state.library.read().unwrap().clone();
+    let library = state.library_path();
 
     let max_bytes = *state.import_max_bytes.read().unwrap();
     let metadata = tokio::fs::metadata(file_path)
@@ -112,7 +112,7 @@ pub(crate) async fn import_feeds(
 }
 
 pub(crate) async fn export_feeds(state: &AppState, file_path: &Path) -> Result<(), String> {
-    let library = state.library.read().unwrap().clone();
+    let library = state.library_path();
 
     let (unread, bookmarked) = (get_unread_ids(state).await, get_bookmarked_ids(state).await);
     let feed_list = feeds::list_feeds(&library, &unread, &bookmarked)

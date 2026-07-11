@@ -13,6 +13,7 @@ export const DOMAIN_EVENT = [
   "embedding:shutdown", // payload: none
   "feed:refreshed", // payload: Feed (schema-minted)
   "feeds:refreshed", // payload: none
+  "library:mode-changed", // payload: boolean (isLibraryReadOnly)
 ] as const;
 export type DomainEvent = (typeof DOMAIN_EVENT)[number];
 

@@ -13,6 +13,8 @@ import UnreadCount from "./UnreadCount";
 type FeedListProps = {
   isExpanded?: boolean;
   feeds: Feed[];
+  /** Disables the add affordance (read-only instance). */
+  addDisabled?: boolean;
   onAddFeed: () => void;
   onClickHeader: () => void;
 };
@@ -20,6 +22,7 @@ type FeedListProps = {
 export default function FeedList({
   isExpanded = false,
   feeds,
+  addDisabled = false,
   onAddFeed,
   onClickHeader,
 }: FeedListProps) {
@@ -41,9 +44,17 @@ export default function FeedList({
       onClickHeader={onClickHeader}
       renderHeaderAction={() => (
         <Tooltip title="Add feed">
-          <IconButton size="small" onClick={onAddFeed} aria-label="Add feed">
-            <Add className={css.AddIcon} />
-          </IconButton>
+          {/* span keeps the Tooltip working when the button is disabled */}
+          <span>
+            <IconButton
+              size="small"
+              disabled={addDisabled}
+              onClick={onAddFeed}
+              aria-label="Add feed"
+            >
+              <Add className={css.AddIcon} />
+            </IconButton>
+          </span>
         </Tooltip>
       )}
     >

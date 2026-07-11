@@ -258,7 +258,7 @@ pub async fn save_article(
     markdown: String,
     state: State<'_, AppState>,
 ) -> Result<Article, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let article = articles::save_article(
         &data_dir,
         &id,
@@ -292,7 +292,7 @@ pub async fn create_article(
     markdown: String,
     state: State<'_, AppState>,
 ) -> Result<Article, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let article = articles::create_article(
         &data_dir,
         &url,
@@ -319,7 +319,7 @@ pub async fn find_article(
     url: String,
     state: State<'_, AppState>,
 ) -> Result<Option<Article>, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     articles::find_article(&data_dir, &url)
         .await
         .map_err(|e| e.to_string())
@@ -327,10 +327,17 @@ pub async fn find_article(
 
 #[tauri::command]
 pub async fn read_article(id: String, state: State<'_, AppState>) -> Result<Article, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let article = articles::read_article(&data_dir, &id)
         .await
         .map_err(|e| e.to_string())?;
+
+    // Mark-read is an incidental library write hiding in a read command. On a read-only
+    // instance it silently no-ops (owner decision: reading stays seamless; the entry
+    // simply stays unread here) — this command is deliberately NOT in WRITE_COMMANDS.
+    if state.is_library_read_only() {
+        return Ok(article);
+    }
 
     if let Ok(tags) = entries::read_entry_tags(&data_dir, &id).await {
         let tags: Vec<String> = tags
@@ -363,7 +370,7 @@ pub async fn add_annotation(
     note: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Article, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let annotation = xaga_core::types::Annotation {
         id,
         title: text.join(" "),
@@ -414,7 +421,7 @@ pub async fn replace_annotation(
     note: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Article, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let annotation = xaga_core::types::Annotation {
         id: id.clone(),
         title: text.join(" "),
@@ -504,7 +511,7 @@ pub async fn remove_annotation(
     annotation_id: String,
     state: State<'_, AppState>,
 ) -> Result<Article, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let article = articles::remove_annotation(&data_dir, &article_id, &annotation_id)
         .await
         .map_err(|e| e.to_string())?;
@@ -565,7 +572,7 @@ pub fn clear_webview_history(app: AppHandle) -> Result<(), String> {
 pub async fn list_annotations(
     state: State<'_, AppState>,
 ) -> Result<Vec<PartialAnnotation>, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let db = EmbeddingsDb::open(&data_dir)
         .await
         .map_err(|e| e.to_string())?;

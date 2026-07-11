@@ -23,6 +23,48 @@ pub(crate) const LOADER_COMMANDS: &[&str] = &[
     "capture_and_close_loader",
 ];
 
+/// Commands that write to the open library (`.md` entity files and/or LanceDB). A
+/// read-only instance — one that did not win the library lock at startup — has these
+/// rejected centrally in the global invoke handler with a typed `E_READ_ONLY` error, the
+/// same single-choke-point pattern as [`is_invoke_allowed`]. Account/app-scoped writes
+/// (`set_library`, `settings::set_*`) are NOT library writes and are not listed.
+/// `read_article` is not listed either: its incidental mark-read write is skipped
+/// in-command on a read-only instance so reading stays seamless.
+pub(crate) const WRITE_COMMANDS: &[&str] = &[
+    "save_article",
+    "create_article",
+    "add_annotation",
+    "replace_annotation",
+    "remove_annotation",
+    "mark_entry_read",
+    "mark_entry_unread",
+    "add_feed",
+    "refresh_all_feeds",
+    "rename_feed",
+    "remove_feed",
+    "set_feed_pinned",
+    "create_topic",
+    "save_topic",
+    "delete_topic",
+    "add_topic_item",
+    "remove_topic_item",
+    "set_topic_pinned",
+    "add_bookmark",
+    "remove_bookmark",
+    "reset_embeddings",
+];
+
+/// The typed error a read-only instance returns for [`WRITE_COMMANDS`]; the frontend
+/// matches on this prefix to show a read-only message instead of a generic failure.
+pub(crate) const E_READ_ONLY: &str =
+    "E_READ_ONLY: this instance is read-only — another xaga instance holds the library lock";
+
+/// The library-write gate's decision: refuse `command` iff this instance is read-only AND
+/// the command writes to the library. Enforced once in the global invoke handler.
+pub(crate) fn is_write_refused(command: &str, is_library_read_only: bool) -> bool {
+    is_library_read_only && WRITE_COMMANDS.contains(&command)
+}
+
 /// Central IPC access policy, enforced once in the global invoke handler so that
 /// every command — present and future — is covered without a per-command guard:
 ///
@@ -91,5 +133,39 @@ mod tests {
         assert!(!is_invoke_allowed("evil", "read_article"));
         assert!(!is_invoke_allowed("evil", "receive_html"));
         assert!(!is_invoke_allowed("", "get_library"));
+    }
+
+    #[test]
+    fn read_only_instance_refuses_every_write_command_and_nothing_else() {
+        for command in WRITE_COMMANDS {
+            assert!(
+                is_write_refused(command, true),
+                "{command} must be refused when read-only"
+            );
+            assert!(
+                !is_write_refused(command, false),
+                "{command} must pass on the writer instance"
+            );
+        }
+        // Read commands pass regardless of mode.
+        for command in ["read_article", "find_article", "list_annotations", "list_feeds"] {
+            assert!(!is_write_refused(command, true));
+        }
+        // Account/app-scope commands are not library writes and must never be gated:
+        // `set_library` must work FROM a read-only instance (it is how one becomes the
+        // writer of a different library), and settings/mode reads are process-local.
+        for command in ["set_library", "get_library", "is_library_read_only", "set_theme"] {
+            assert!(
+                !is_write_refused(command, true),
+                "{command} is not a library write and must not be gated"
+            );
+        }
+    }
+
+    #[test]
+    fn read_article_is_deliberately_not_a_gated_write_command() {
+        // Its incidental mark-read write no-ops in-command on a read-only instance
+        // (owner decision: reading stays seamless), so gating it here would break reads.
+        assert!(!WRITE_COMMANDS.contains(&"read_article"));
     }
 }

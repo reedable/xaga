@@ -12,8 +12,6 @@ use thiserror::Error;
 pub enum EmbeddingsError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("lock file already held by another instance — embeddings are read-only")]
-    LockNotAcquired,
     #[error("Model download failed: {0}")]
     ModelDownload(String),
     #[error("Model error: {0}")]

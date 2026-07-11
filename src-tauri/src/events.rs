@@ -120,6 +120,9 @@ pub(crate) fn emit_domain<R: Runtime>(target: &impl Emitter<R>, event: DomainEve
         DomainEvent::AnnotationChanged(item) => target.emit(name, item),
         DomainEvent::AnnotationRemoved { id } => target.emit(name, id),
         DomainEvent::FeedRefreshed(feed) => target.emit(name, feed),
+        DomainEvent::LibraryModeChanged {
+            is_library_read_only,
+        } => target.emit(name, is_library_read_only),
         DomainEvent::EmbeddingChanged
         | DomainEvent::EmbeddingShutdown
         | DomainEvent::FeedsRefreshed => target.emit(name, ()),

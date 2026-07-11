@@ -15,7 +15,7 @@ pub async fn save_topic(
     threshold: Option<f32>,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     // Preserve existing manual items when editing from the UI
     let existing_items = topics::read_topic_items(&data_dir, &id)
         .await
@@ -46,7 +46,7 @@ pub async fn create_topic(
     threshold: Option<f32>,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let topic = topics::create_topic(&data_dir, &title, &description, threshold)
         .await
         .map_err(|e| e.to_string())?;
@@ -65,7 +65,7 @@ pub async fn set_topic_pinned(
     pinned: bool,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     topics::set_topic_pinned(&data_dir, &id, pinned)
         .await
         .map_err(|e| e.to_string())?;
@@ -84,7 +84,7 @@ pub async fn set_topic_pinned(
 
 #[tauri::command]
 pub async fn list_topics(state: State<'_, AppState>) -> Result<Vec<Topic>, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let mut topics = topics::list_topics(&data_dir)
         .await
         .map_err(|e| e.to_string())?;
@@ -126,7 +126,7 @@ pub async fn list_topics(state: State<'_, AppState>) -> Result<Vec<Topic>, Strin
 
 #[tauri::command]
 pub async fn read_topic(id: String, state: State<'_, AppState>) -> Result<Topic, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     topics::read_topic(&data_dir, &id)
         .await
         .map_err(|e| e.to_string())
@@ -134,7 +134,7 @@ pub async fn read_topic(id: String, state: State<'_, AppState>) -> Result<Topic,
 
 #[tauri::command]
 pub async fn delete_topic(id: String, state: State<'_, AppState>) -> Result<(), String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     topics::delete_topic(&data_dir, &id)
         .await
         .map_err(|e| e.to_string())?;
@@ -153,7 +153,7 @@ pub async fn add_topic_item(
     item: CollectionItem,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let member_id = item.id().to_string();
     let topic = topics::add_topic_item(&data_dir, &topic_id, item)
         .await
@@ -174,7 +174,7 @@ pub async fn remove_topic_item(
     item_id: String,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let topic = topics::remove_topic_item(&data_dir, &topic_id, &item_id)
         .await
         .map_err(|e| e.to_string())?;
@@ -195,7 +195,7 @@ pub async fn list_topic_items(
     sort: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<ListItem>, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let item_filter = parse_item_filter(item_filter)?;
     let sort = parse_item_sort(sort)?;
     xaga_core::query::topics::list_topic_items(&data_dir, &id, item_filter, sort)
@@ -228,7 +228,7 @@ pub async fn rank_topics_by_item(
     min_similarity: Option<f32>,
     state: State<'_, AppState>,
 ) -> Result<Vec<RankedItem>, String> {
-    let data_dir = state.library.read().unwrap().clone();
+    let data_dir = state.library_path();
     let entries = items::list_embedded_items(
         &data_dir,
         EmbeddedItemSource::TopicsRelatedTo {

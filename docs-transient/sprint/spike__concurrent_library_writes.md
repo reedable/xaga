@@ -1,4 +1,16 @@
-# Concurrent library writes: annotation era invalidates the old tolerance (pending)
+# Concurrent library writes: annotation era invalidates the old tolerance (decided — phased B→C→A)
+
+> **Status 2026-07-11 (owner decisions; plan in progress):** Population 1 decided — the
+> library lock's scope expanded from LanceDB to the whole library; every process runs
+> read-write (lock holder, first-come, app or CLI) or read-only (write commands refused
+> with `E_READ_ONLY`, mark-read no-ops, frontend disables affordances). Implemented as
+> Phase B. Population 2 decided — a per-file-lane writer actor (`library_writer`,
+> Phase C, pending) serializes the read-modify-write unit in-process; requests are
+> tiered Interactive (user-authored, drained at shutdown) / Regular (re-derivable,
+> droppable). Population 3 decided — external edits are crash-equivalent: recovery at
+> startup reconciles them; live last-wins inside ms-scale RMW windows is accepted. The
+> doc-wording conflict below is resolved: `single_writer_library_lock.md` now describes
+> the two runtime modes at library scope. Phase A (write-capability token) pending.
 
 The tolerance for concurrent `.md` writers predates annotations. When it
 was decided, the only writes were frontmatter toggles + one-time content

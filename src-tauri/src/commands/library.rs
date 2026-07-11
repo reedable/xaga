@@ -7,7 +7,15 @@ use crate::{AppState, SettingsOutcome, restart_process, stale_view_error, update
 
 #[tauri::command]
 pub async fn get_library(state: State<'_, AppState>) -> Result<String, String> {
-    Ok(state.library.read().unwrap().to_string_lossy().to_string())
+    Ok(state.library_path().to_string_lossy().to_string())
+}
+
+/// Whether this instance is read-only for the open library (another xaga process holds
+/// the library lock). Same name as the `AppState` accessor and the `library:mode-changed`
+/// event field — one concept, one name at every layer.
+#[tauri::command]
+pub async fn is_library_read_only(state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(state.is_library_read_only())
 }
 
 #[tauri::command]
@@ -35,12 +43,25 @@ pub async fn set_library(
     if let Some(svc) = state.embedding_service.lock().unwrap().take() {
         svc.request_restart();
         crate::events::emit_domain(&app, xaga_core::events::DomainEvent::EmbeddingShutdown);
+        let library = std::sync::Arc::clone(&state.library);
         tauri::async_runtime::spawn(async move {
             match svc.shutdown().await {
-                ShutdownReason::Restart => restart_process(),
+                ShutdownReason::Restart => {
+                    // Release our hold on the (old) library's lock before the successor
+                    // process starts and tries to acquire the new library's.
+                    crate::release_library_lock(&library);
+                    restart_process()
+                }
                 ShutdownReason::Exit => std::process::exit(0),
             }
         });
+    } else {
+        // Read-only instance: no service to drain. Restart directly so the successor
+        // process attempts the NEW library's lock at its startup — a read-only instance
+        // may become the writer of a different library. (Without this, a read-only
+        // instance would keep running against the old library path.)
+        crate::release_library_lock(&state.library);
+        restart_process();
     }
 
     Ok(new_path.to_string_lossy().to_string())
