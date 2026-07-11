@@ -35,17 +35,6 @@ resolve/main/{file}` for five files.
    through the funnel in `src-tauri/src/events.rs`, named in
    `src/platform/events.ts`.
 
-3. **Cap enforcement is untested.** The 256 MB cap can't be exercised in a
-   test because `fetch_all_files` hardcodes the download URL — unlike the
-   feed path's injectable URL (whose cap is pinned by
-   `gzip_cap_counts_decompressed_bytes`). Verified by inspection only;
-   testing it requires URL injection.
-
-(The former privacy item — unprompted first-run contact with Hugging Face —
-moved to `docs-transient/backlog/ui/compliance__oobe_model_download_consent.md`
-on 2026-07-11: it is a consent/OOBE question, not specific to the download
-mechanism.)
-
 ## Options for item 1
 
 ### Option A — pin the HF revision

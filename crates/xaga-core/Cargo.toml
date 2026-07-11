@@ -24,6 +24,7 @@ thiserror         = "2"
 log               = "0.4"
 scraper           = "0.22"
 futures           = "0.3"
+bytes             = "1"
 
 # Embeddings pipeline
 fastembed           = "=3.14.1"

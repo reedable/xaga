@@ -110,8 +110,6 @@ pub async fn download_model_if_missing(
 }
 
 async fn fetch_all_files(client: &reqwest::Client, dir: &Path) -> Result<(), EmbeddingsError> {
-    use tokio::io::AsyncWriteExt;
-
     for &filename in MODEL_FILES {
         let url = format!(
             "{MODEL_DOWNLOAD_BASE}/{DEFAULT_MODEL_REPO}/resolve/main/{filename}"
@@ -131,25 +129,142 @@ async fn fetch_all_files(client: &reqwest::Client, dir: &Path) -> Result<(), Emb
         let mut file = tokio::fs::File::create(dir.join(filename))
             .await
             .map_err(|e| EmbeddingsError::ModelDownload(format!("{filename}: write: {e}")))?;
-        let mut written: u64 = 0;
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(|e| EmbeddingsError::ModelDownload(format!("{filename}: {e}")))?
-        {
-            if written + chunk.len() as u64 > MAX_FILE_BYTES {
-                return Err(EmbeddingsError::ModelDownload(format!(
-                    "{filename}: response exceeds the {MAX_FILE_BYTES}-byte cap"
-                )));
-            }
-            file.write_all(&chunk)
-                .await
-                .map_err(|e| EmbeddingsError::ModelDownload(format!("{filename}: write: {e}")))?;
-            written += chunk.len() as u64;
-        }
+        let written = write_capped(&mut response, &mut file, filename, MAX_FILE_BYTES).await?;
         log::info!("downloaded {filename} ({written} bytes)");
     }
     Ok(())
+}
+
+/// A pull-source of response body chunks. Abstracts `reqwest::Response` so
+/// [`write_capped`] is unit-testable without network I/O (no network calls
+/// from unit tests). Errors are the source's own text; [`write_capped`] adds
+/// the per-file context.
+trait ChunkSource {
+    async fn next_chunk(&mut self) -> Result<Option<bytes::Bytes>, String>;
+}
+
+impl ChunkSource for reqwest::Response {
+    async fn next_chunk(&mut self) -> Result<Option<bytes::Bytes>, String> {
+        self.chunk().await.map_err(|e| e.to_string())
+    }
+}
+
+/// Streams `source` to `file`, refusing before any write that would take the
+/// total past `cap`. At the reqwest boundary chunks arrive *decompressed*
+/// (pinned for reqwest by `persistence::feeds`'s
+/// `gzip_cap_counts_decompressed_bytes`), so the cap bounds a decompression
+/// bomb. Returns the byte count written.
+async fn write_capped(
+    source: &mut impl ChunkSource,
+    file: &mut tokio::fs::File,
+    filename: &str,
+    cap: u64,
+) -> Result<u64, EmbeddingsError> {
+    use tokio::io::AsyncWriteExt;
+
+    let mut written: u64 = 0;
+    while let Some(chunk) = source
+        .next_chunk()
+        .await
+        .map_err(|e| EmbeddingsError::ModelDownload(format!("{filename}: {e}")))?
+    {
+        if written + chunk.len() as u64 > cap {
+            return Err(EmbeddingsError::ModelDownload(format!(
+                "{filename}: response exceeds the {cap}-byte cap"
+            )));
+        }
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| EmbeddingsError::ModelDownload(format!("{filename}: write: {e}")))?;
+        written += chunk.len() as u64;
+    }
+    // tokio's File buffers: without this, drop completes the remaining write
+    // in the background with no ordering guarantee against the commit step's
+    // open-by-path fsync (`replace_dir_atomic`) — a truncated file could be
+    // committed. Flush awaits completion of every buffered write.
+    file.flush()
+        .await
+        .map_err(|e| EmbeddingsError::ModelDownload(format!("{filename}: write: {e}")))?;
+    Ok(written)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Scripted chunk source: yields the queued chunks, then `None`.
+    struct Chunks(std::collections::VecDeque<bytes::Bytes>);
+
+    impl ChunkSource for Chunks {
+        async fn next_chunk(&mut self) -> Result<Option<bytes::Bytes>, String> {
+            Ok(self.0.pop_front())
+        }
+    }
+
+    fn chunks(parts: &[&[u8]]) -> Chunks {
+        Chunks(parts.iter().map(|p| bytes::Bytes::copy_from_slice(p)).collect())
+    }
+
+    async fn temp_file(dir: &tempfile::TempDir) -> tokio::fs::File {
+        tokio::fs::File::create(dir.path().join("out")).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn under_cap_writes_everything_and_reports_the_count() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut file = temp_file(&dir).await;
+        let written = write_capped(&mut chunks(&[b"aaaa", b"bb"]), &mut file, "f", 10)
+            .await
+            .unwrap();
+        assert_eq!(written, 6);
+        drop(file);
+        assert_eq!(std::fs::read(dir.path().join("out")).unwrap(), b"aaaabb");
+    }
+
+    #[tokio::test]
+    async fn exactly_at_cap_is_allowed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut file = temp_file(&dir).await;
+        let written = write_capped(&mut chunks(&[b"aaaa", b"bbbb"]), &mut file, "f", 8)
+            .await
+            .unwrap();
+        assert_eq!(written, 8);
+    }
+
+    #[tokio::test]
+    async fn over_cap_refuses_before_the_offending_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut file = temp_file(&dir).await;
+        let err = write_capped(&mut chunks(&[b"aaaa", b"bbbb", b"cc"]), &mut file, "model.onnx", 9)
+            .await
+            .expect_err("third chunk would exceed the cap");
+        let msg = err.to_string();
+        assert!(msg.contains("model.onnx"), "names the file: {msg}");
+        assert!(msg.contains("9-byte cap"), "names the cap: {msg}");
+        // The refusal happened before the offending write: only the first two
+        // chunks are on disk. (Error path returns without flushing; flush here
+        // so the read below observes the completed writes.)
+        use tokio::io::AsyncWriteExt;
+        file.flush().await.unwrap();
+        drop(file);
+        assert_eq!(std::fs::read(dir.path().join("out")).unwrap(), b"aaaabbbb");
+    }
+
+    #[tokio::test]
+    async fn source_error_carries_the_file_context() {
+        struct Failing;
+        impl ChunkSource for Failing {
+            async fn next_chunk(&mut self) -> Result<Option<bytes::Bytes>, String> {
+                Err("connection reset".into())
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let mut file = temp_file(&dir).await;
+        let err = write_capped(&mut Failing, &mut file, "tokenizer.json", 10)
+            .await
+            .expect_err("source error must propagate");
+        assert!(err.to_string().contains("tokenizer.json: connection reset"));
+    }
 }
 
 /// Loads the default model from `default_model_dir()`.

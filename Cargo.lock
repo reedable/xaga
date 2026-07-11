@@ -10026,6 +10026,7 @@ dependencies = [
  "arrow-buffer",
  "arrow-schema",
  "atom_syndication",
+ "bytes",
  "chrono",
  "dirs 5.0.1",
  "fastembed",
