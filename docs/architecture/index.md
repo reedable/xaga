@@ -54,3 +54,8 @@ subsystem works and why — decided design and deliberate limits, not findings o
 6. [Performance trade-off](security/performance_tradeoff.md) — resource teardown as a privacy
    tool: per-invocation clients and single-use loader webviews are rebuilt deliberately, not
    pooled; conditional-GET validators are rejected as a server-writable tracking channel.
+
+7. [Embedding model trust](security/embedding_model_trust.md) — trust moved in time, not
+   eliminated: every download verifies against a pinned manifest; the chain runs
+   cryptographic → procedural → infrastructural → reputational, ending at the publisher and
+   the app's own binary.

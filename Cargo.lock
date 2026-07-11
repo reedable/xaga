@@ -9985,6 +9985,7 @@ version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "ctrlc",
+ "dirs 5.0.1",
  "flume",
  "log",
  "notify-debouncer-full",

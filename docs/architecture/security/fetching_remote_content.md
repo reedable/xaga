@@ -318,12 +318,10 @@ Places where the invariants are not fully upheld:
   there is no mechanism to reach them.
 - `import_feeds`/`export_feeds` accept an arbitrary `file_path` from the
   webview.
-- The embedding model download fetches unpinned, unverified content from a
-  moving third-party ref (`resolve/main`) and feeds it to a native parser
-  (onnxruntime); it is contained (proxied) and bounded (streamed to disk,
-  256 MB per-file cap on decompressed bytes), but its content is not yet
-  pinned or verified, and the client sets no timeout — see
-  docs-transient/sprint/compliance__embedding_model_download.md.
+- The embedding model download client sets no timeout, and the model files
+  are verified (pinned revision + per-file SHA-256 manifest, model.rs) at
+  download time only — files already on disk are not re-verified at load
+  time — see docs-transient/sprint/compliance__embedding_model_download.md.
 - Proxy behavior is a property of the bundled app; `tauri dev` runtime checks
   are not representative for webview-level policies (see the CSP note in
   [handling_persisted_content.md](handling_persisted_content.md)).

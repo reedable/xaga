@@ -10,13 +10,51 @@ const MODEL_DOWNLOAD_BASE: &str = "https://huggingface.co";
 /// write to the staging dir. Largest legitimate file is model.onnx ≈ 90 MB.
 const MAX_FILE_BYTES: u64 = 256 * 1024 * 1024;
 
+// ── The pinned model manifest ─────────────────────────────────────────────────
+//
+// The single source of content trust for the model download: the repo, the
+// immutable HF revision the URL pins (`resolve/{MODEL_REVISION}`), and the
+// SHA-256 of every file, verified before the staging dir is committed. The
+// revision keeps fresh installs working if the repo's `main` is force-pushed;
+// the checksums verify what actually arrived regardless of what any server
+// claims — a mismatch is unambiguous and never "the repo updated."
+//
+// Values anchored 2026-07-11:
+// - MODEL_REVISION = the repo's `main` sha from the HF API
+//   (`/api/models/{repo}`, lastModified 2025-06-09).
+// - model.onnx sha256 = the published Git-LFS oid from the HF tree API,
+//   which agreed with two independent fetches (an earlier download of
+//   `main` and a fresh fetch at the pinned revision).
+// - The four JSON files are plain git blobs (no LFS oid published); their
+//   sha256s were computed from the same two fetches, which agreed.
+// - The anchored set was behavior-checked by loading the embedder.
+//
+// Model upgrade: pick the new revision sha, re-derive every hash the same
+// way (HF tree API for LFS files, two-fetch self-computation for the rest),
+// replace this block wholesale.
 pub const DEFAULT_MODEL_REPO: &str = "Qdrant/all-MiniLM-L6-v2-onnx";
-const MODEL_FILES: &[&str] = &[
-    "model.onnx",
-    "tokenizer.json",
-    "config.json",
-    "special_tokens_map.json",
-    "tokenizer_config.json",
+const MODEL_REVISION: &str = "5f1b8cd78bc4fb444dd171e59b18f3a3af89a079";
+const MODEL_FILES: &[(&str, &str)] = &[
+    (
+        "model.onnx",
+        "bbd7b466f6d58e646fdc2bd5fd67b2f5e93c0b687011bd4548c420f7bd46f0c5",
+    ),
+    (
+        "tokenizer.json",
+        "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0",
+    ),
+    (
+        "config.json",
+        "1b4d8e2a3988377ed8b519a31d8d31025a25f1c5f8606998e8014111438efcd7",
+    ),
+    (
+        "special_tokens_map.json",
+        "5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a",
+    ),
+    (
+        "tokenizer_config.json",
+        "bd2e06a5b20fd1b13ca988bedc8763d332d242381b4fbc98f8fead4524158f79",
+    ),
 ];
 
 /// Returns the platform-appropriate directory for storing downloaded models.
@@ -30,7 +68,9 @@ pub fn default_model_dir() -> PathBuf {
 
 /// Returns true if all required model files are present in `model_dir`.
 pub fn model_files_present(model_dir: &Path) -> bool {
-    MODEL_FILES.iter().all(|f| model_dir.join(f).is_file())
+    MODEL_FILES
+        .iter()
+        .all(|(name, _)| model_dir.join(name).is_file())
 }
 
 /// How [`download_model_if_missing`] concluded.
@@ -110,9 +150,9 @@ pub async fn download_model_if_missing(
 }
 
 async fn fetch_all_files(client: &reqwest::Client, dir: &Path) -> Result<(), EmbeddingsError> {
-    for &filename in MODEL_FILES {
+    for &(filename, expected_sha256) in MODEL_FILES {
         let url = format!(
-            "{MODEL_DOWNLOAD_BASE}/{DEFAULT_MODEL_REPO}/resolve/main/{filename}"
+            "{MODEL_DOWNLOAD_BASE}/{DEFAULT_MODEL_REPO}/resolve/{MODEL_REVISION}/{filename}"
         );
         log::info!("downloading {filename}");
         let mut response = client
@@ -129,8 +169,26 @@ async fn fetch_all_files(client: &reqwest::Client, dir: &Path) -> Result<(), Emb
         let mut file = tokio::fs::File::create(dir.join(filename))
             .await
             .map_err(|e| EmbeddingsError::ModelDownload(format!("{filename}: write: {e}")))?;
-        let written = write_capped(&mut response, &mut file, filename, MAX_FILE_BYTES).await?;
-        log::info!("downloaded {filename} ({written} bytes)");
+        let (written, digest) =
+            write_capped(&mut response, &mut file, filename, MAX_FILE_BYTES).await?;
+        verify_checksum(filename, expected_sha256, &digest)?;
+        log::info!("downloaded {filename} ({written} bytes, sha256 verified)");
+    }
+    Ok(())
+}
+
+/// Compares a downloaded file's digest against its manifest entry. A mismatch
+/// refuses installation — the caller's error path deletes the staging dir, so
+/// unverified bytes never reach the model dir.
+fn verify_checksum(
+    filename: &str,
+    expected_sha256: &str,
+    digest_hex: &str,
+) -> Result<(), EmbeddingsError> {
+    if digest_hex != expected_sha256 {
+        return Err(EmbeddingsError::ModelDownload(format!(
+            "{filename}: checksum mismatch (expected {expected_sha256}, got {digest_hex}) — refusing to install"
+        )));
     }
     Ok(())
 }
@@ -153,15 +211,19 @@ impl ChunkSource for reqwest::Response {
 /// total past `cap`. At the reqwest boundary chunks arrive *decompressed*
 /// (pinned for reqwest by `persistence::feeds`'s
 /// `gzip_cap_counts_decompressed_bytes`), so the cap bounds a decompression
-/// bomb. Returns the byte count written.
+/// bomb. Every chunk is also fed to a SHA-256 incrementally (no extra read
+/// pass for checksum verification). Returns the byte count written and the
+/// digest as lowercase hex.
 async fn write_capped(
     source: &mut impl ChunkSource,
     file: &mut tokio::fs::File,
     filename: &str,
     cap: u64,
-) -> Result<u64, EmbeddingsError> {
+) -> Result<(u64, String), EmbeddingsError> {
+    use sha2::Digest;
     use tokio::io::AsyncWriteExt;
 
+    let mut hasher = sha2::Sha256::new();
     let mut written: u64 = 0;
     while let Some(chunk) = source
         .next_chunk()
@@ -176,6 +238,7 @@ async fn write_capped(
         file.write_all(&chunk)
             .await
             .map_err(|e| EmbeddingsError::ModelDownload(format!("{filename}: write: {e}")))?;
+        hasher.update(&chunk);
         written += chunk.len() as u64;
     }
     // tokio's File buffers: without this, drop completes the remaining write
@@ -185,7 +248,7 @@ async fn write_capped(
     file.flush()
         .await
         .map_err(|e| EmbeddingsError::ModelDownload(format!("{filename}: write: {e}")))?;
-    Ok(written)
+    Ok((written, hex::encode(hasher.finalize())))
 }
 
 #[cfg(test)]
@@ -213,7 +276,7 @@ mod tests {
     async fn under_cap_writes_everything_and_reports_the_count() {
         let dir = tempfile::tempdir().unwrap();
         let mut file = temp_file(&dir).await;
-        let written = write_capped(&mut chunks(&[b"aaaa", b"bb"]), &mut file, "f", 10)
+        let (written, _) = write_capped(&mut chunks(&[b"aaaa", b"bb"]), &mut file, "f", 10)
             .await
             .unwrap();
         assert_eq!(written, 6);
@@ -225,10 +288,34 @@ mod tests {
     async fn exactly_at_cap_is_allowed() {
         let dir = tempfile::tempdir().unwrap();
         let mut file = temp_file(&dir).await;
-        let written = write_capped(&mut chunks(&[b"aaaa", b"bbbb"]), &mut file, "f", 8)
+        let (written, _) = write_capped(&mut chunks(&[b"aaaa", b"bbbb"]), &mut file, "f", 8)
             .await
             .unwrap();
         assert_eq!(written, 8);
+    }
+
+    /// The digest is the SHA-256 of the concatenated chunks: "abc" split
+    /// across chunks hashes to the well-known test vector.
+    #[tokio::test]
+    async fn digest_is_sha256_of_the_stream() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut file = temp_file(&dir).await;
+        let (_, digest) = write_capped(&mut chunks(&[b"ab", b"c"]), &mut file, "f", 10)
+            .await
+            .unwrap();
+        assert_eq!(
+            digest,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
+    fn verify_checksum_accepts_match_and_refuses_mismatch() {
+        assert!(verify_checksum("f", "aa", "aa").is_ok());
+        let err = verify_checksum("model.onnx", "aa", "bb").expect_err("mismatch must refuse");
+        let msg = err.to_string();
+        assert!(msg.contains("model.onnx"), "names the file: {msg}");
+        assert!(msg.contains("checksum mismatch"), "names the refusal: {msg}");
     }
 
     #[tokio::test]
@@ -260,7 +347,7 @@ mod tests {
         }
         let dir = tempfile::tempdir().unwrap();
         let mut file = temp_file(&dir).await;
-        let err = write_capped(&mut Failing, &mut file, "tokenizer.json", 10)
+        let err: EmbeddingsError = write_capped(&mut Failing, &mut file, "tokenizer.json", 10)
             .await
             .expect_err("source error must propagate");
         assert!(err.to_string().contains("tokenizer.json: connection reset"));

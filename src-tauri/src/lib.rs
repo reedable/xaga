@@ -932,10 +932,11 @@ pub fn run() {
             // diagnostics are captured — previously the plugin was gated behind
             // `cfg!(debug_assertions)`, so release builds wrote nothing and issues like a wiped
             // embeddings mirror left no trace. Targets are set explicitly (`.targets` replaces the
-            // plugin defaults) so the destination is deterministic: every build persists to the OS
-            // app-log dir (macOS: ~/Library/Logs/app.xaga/Xaga.log); dev additionally mirrors to
-            // stdout and the webview console. Release logs at Info (recovery's key lines are
-            // info!/warn!); dev stays at Debug.
+            // plugin defaults) so the destination is deterministic: every build persists to
+            // the xaga log dir (macOS: ~/Library/Logs/xaga/Xaga.log — the plain `xaga` name,
+            // not Tauri's identifier-derived `app.xaga`, matching the data-root rule); dev
+            // additionally mirrors to stdout and the webview console. Release logs at Info
+            // (recovery's key lines are info!/warn!); dev stays at Debug.
             //
             // `lance` is pinned to Warn: at Info it logs one line *per row* during compaction
             // (~1800 lines per pass), which — against the plugin's 40 KB default rotation — erases
@@ -950,7 +951,19 @@ pub fn run() {
                     log::LevelFilter::Info
                 };
 
-                let mut targets = vec![Target::new(TargetKind::LogDir { file_name: None })];
+                // macOS: ~/Library/Logs/xaga (owner ruling 2026-07-11). Other
+                // platforms: logs under the data root — no platform-native log
+                // dir convention is asserted for them (cross-platform spike).
+                let log_dir = if cfg!(target_os = "macos") {
+                    dirs::home_dir().map(|h| h.join("Library/Logs/xaga"))
+                } else {
+                    xaga_core::fs::data_root().map(|d| d.join("logs"))
+                }
+                .ok_or("cannot determine log directory")?;
+                let mut targets = vec![Target::new(TargetKind::Folder {
+                    path: log_dir,
+                    file_name: None,
+                })];
                 if cfg!(debug_assertions) {
                     targets.push(Target::new(TargetKind::Stdout));
                     targets.push(Target::new(TargetKind::Webview));
