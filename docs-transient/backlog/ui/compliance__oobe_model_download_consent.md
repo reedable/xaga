@@ -1,0 +1,44 @@
+# OOBE: user chooses whether to download the embedding model
+
+Raised 2026-07-11 from the privacy item formerly on
+`docs-transient/sprint/compliance__embedding_model_download.md`.
+
+## The concern
+
+A fresh install (or wiped model dir) contacts Hugging Face at app startup,
+unprompted — revealing install/launch timing and IP to a third party the
+user never chose. The download mechanism itself is not the problem (the CLI
+invocation of the same path is user-initiated); the problem is the app
+deciding to make network contact without the user. It is currently the
+app's only unconditional unprompted outbound contact: the other automatic
+fetch, startup feed refresh, is opt-in (`refresh_on_startup`, default
+false) and goes to user-chosen hosts.
+
+## The ask
+
+An out-of-box experience: on first run (model files missing), the app asks
+before downloading — e.g. "Xaga uses a local embedding model (~91 MB,
+downloaded once from huggingface.co) for related-item search. Download
+now?" — with decline leaving the app in its existing degraded mode
+(embeddings reads return empty; everything else works) and a way to
+trigger the download later.
+
+## Facts available to the implementation
+
+- The download is consent-shaped already: `download_model_if_missing`
+  (`crates/xaga-core/src/embeddings/model.rs`) is a no-op when files are
+  present, returns a typed `DownloadOutcome`, holds the account-wide lock,
+  and is callable at any time — deferring it from startup to a
+  user-triggered moment is a call-site change, not a mechanism change.
+- Download-status/consent events have a home: `DomainEvent`
+  (`crates/xaga-core/src/events.rs`) → emit funnel
+  (`src-tauri/src/events.rs`) → `src/platform/events.ts`.
+- The app already degrades gracefully without the model (UI usable,
+  embeddings reads empty; `is_cache_ready` polling exists) — decline needs
+  no new degraded mode, only an honest status surface.
+- Overlaps sprint pending item 2 (stall handling / download visibility):
+  both need download state made visible to the UI and an on-demand
+  trigger; a consent gate is naturally the same surface.
+- `menu:open-settings` currently has a TS listener and no rust emitter
+  (found 2026-07-11); if OOBE/consent lands near settings UI, that orphan
+  is adjacent material.

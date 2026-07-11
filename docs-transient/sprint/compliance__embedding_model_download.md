@@ -41,18 +41,10 @@ resolve/main/{file}` for five files.
    `gzip_cap_counts_decompressed_bytes`). Verified by inspection only;
    testing it requires URL injection.
 
-4. **Privacy.** A fresh install (or wiped model dir) contacts Hugging Face
-   at app startup, revealing install/launch timing and IP to a third party.
-   Runs only when files are missing.
-
-5. ~~**Concurrent-writer staging collision.**~~ Resolved 2026-07-10 by the
-   account-wide xaga resource lock (the flock on settings.json,
-   `fs::try_acquire_account_lock`): `download_model_if_missing` holds it
-   across check + download + commit; a contender logs and skips (CLI prints
-   the skip). The same mechanism serializes settings.json writes through the
-   `update_settings` funnel (fail-fast on contention, stale-view check per
-   the owner's ts-at-read design), fixing the settings lost-update defect
-   that shared the root cause.
+(The former privacy item — unprompted first-run contact with Hugging Face —
+moved to `docs-transient/backlog/ui/compliance__oobe_model_download_consent.md`
+on 2026-07-11: it is a consent/OOBE question, not specific to the download
+mechanism.)
 
 ## Options for item 1
 
