@@ -1,5 +1,6 @@
 mod article_loader;
 mod commands;
+mod events;
 mod fetch_client;
 mod native;
 
@@ -9,7 +10,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
 use tauri::window::Color;
-use tauri::{Emitter, Manager, Runtime, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{Manager, Runtime, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_window_state::StateFlags;
 use xaga_core::embeddings::{
     EmbeddingService, EmbeddingsDb, EmbeddingsError, Job, ShutdownReason, Tier,
@@ -689,7 +690,7 @@ pub fn run() {
         })
         .on_menu_event(|app, event| match event.id().as_ref() {
             "open_library" => {
-                app.emit("menu:open-library", ()).ok();
+                events::emit_app(app, events::AppEvent::MenuOpenLibrary);
             }
             // File-path operations are orchestrated entirely on the native side:
             // the dialog opens in Rust and the work runs without a webview-facing
@@ -730,7 +731,7 @@ pub fn run() {
                     _ => "dark",
                 };
                 update_theme_checkmarks(app, theme);
-                app.emit("menu:set-theme", theme).ok();
+                events::emit_app(app, events::AppEvent::MenuSetTheme(theme.to_string()));
             }
             "show_sidebar" => {
                 let checked = app
@@ -749,18 +750,18 @@ pub fn run() {
                         _ => None,
                     })
                     .unwrap_or(true);
-                app.emit("menu:show-sidebar", checked).ok();
+                events::emit_app(app, events::AppEvent::MenuShowSidebar(checked));
             }
             id @ ("html_reader_view:summary" | "html_reader_view:reader") => {
                 let view = id.split(':').nth(1).unwrap_or("");
                 update_view_checkmarks(app, view);
-                app.emit("menu:html-reader-view", view).ok();
+                events::emit_app(app, events::AppEvent::MenuHtmlReaderView(view.to_string()));
             }
             "clear_history" => {
-                app.emit("menu:clear-history", ()).ok();
+                events::emit_app(app, events::AppEvent::MenuClearHistory);
             }
             "find" => {
-                app.emit("menu:find", ()).ok();
+                events::emit_app(app, events::AppEvent::MenuFind);
             }
             "quit" => {
                 app.exit(0);
@@ -869,7 +870,7 @@ pub fn run() {
                                 if priority_drained_rx.recv_async().await.is_err() {
                                     break;
                                 }
-                                embeddings_app_handle.emit("embedding:changed", ()).ok();
+                                events::emit_domain(&embeddings_app_handle, xaga_core::events::DomainEvent::EmbeddingChanged);
                             }
                         });
 
@@ -880,7 +881,7 @@ pub fn run() {
                                 if background_drained_rx.recv_async().await.is_err() {
                                     break;
                                 }
-                                embeddings_app_handle.emit("embedding:changed", ()).ok();
+                                events::emit_domain(&embeddings_app_handle, xaga_core::events::DomainEvent::EmbeddingChanged);
                             }
                         });
 
@@ -889,7 +890,7 @@ pub fn run() {
                         tauri::async_runtime::spawn(async move {
                             loop {
                                 match unread_rx.recv_async().await {
-                                    Ok(entry) => { unread_app_handle.emit("unread:changed", &entry).ok(); }
+                                    Ok(entry) => { events::emit_domain(&unread_app_handle, xaga_core::events::DomainEvent::UnreadChanged(entry)); }
                                     Err(_) => break,
                                 }
                             }
@@ -900,7 +901,7 @@ pub fn run() {
                         tauri::async_runtime::spawn(async move {
                             loop {
                                 match bookmarked_rx.recv_async().await {
-                                    Ok(entry) => { bookmarked_app_handle.emit("bookmark:changed", &entry).ok(); }
+                                    Ok(entry) => { events::emit_domain(&bookmarked_app_handle, xaga_core::events::DomainEvent::BookmarkChanged(entry)); }
                                     Err(_) => break,
                                 }
                             }
@@ -911,7 +912,7 @@ pub fn run() {
                         tauri::async_runtime::spawn(async move {
                             loop {
                                 match annotation_rx.recv_async().await {
-                                    Ok(item) => { annotation_app_handle.emit("annotation:changed", &item).ok(); }
+                                    Ok(item) => { events::emit_domain(&annotation_app_handle, xaga_core::events::DomainEvent::AnnotationChanged(item)); }
                                     Err(_) => break,
                                 }
                             }
@@ -1110,7 +1111,7 @@ fn take_service(app: &tauri::AppHandle) -> Option<EmbeddingService> {
 
 fn shutdown_with_overlay(app: &tauri::AppHandle, svc: EmbeddingService) {
     log::info!("shutdown: waiting for embedding service to drain");
-    app.emit("embedding:shutdown", ()).ok();
+    events::emit_domain(app, xaga_core::events::DomainEvent::EmbeddingShutdown);
     tauri::async_runtime::spawn(async move {
         match svc.shutdown().await {
             ShutdownReason::Restart => restart_process(),
@@ -1128,7 +1129,7 @@ fn install_signal_handler(
         let svc = embedding_service.lock().unwrap().take();
         if let Some(svc) = svc {
             log::info!("signal: waiting for embedding service to drain");
-            app_handle.emit("embedding:shutdown", ()).ok();
+            events::emit_domain(&app_handle, xaga_core::events::DomainEvent::EmbeddingShutdown);
             tauri::async_runtime::block_on(svc.shutdown());
             // Signals always exit — restart flag is intentionally ignored.
         }

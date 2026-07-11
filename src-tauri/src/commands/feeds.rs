@@ -1,4 +1,4 @@
-use tauri::{Emitter, State};
+use tauri::State;
 use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
 use xaga_core::persistence::feeds;
 use xaga_core::types::{Entry, Feed, Kind};
@@ -92,7 +92,7 @@ pub async fn refresh_all_feeds(
                     state.enqueue(Tier::Interactive, Job::UpsertEntry { article });
                 }
 
-                window.emit("feed:refreshed", &feed).ok();
+                crate::events::emit_domain(&window, xaga_core::events::DomainEvent::FeedRefreshed(feed.clone()));
                 refreshed.push(feed);
             }
 
@@ -103,7 +103,7 @@ pub async fn refresh_all_feeds(
     // One aggregate signal after the whole refresh completes, so list views re-fetch once
     // instead of once per feed. The per-feed `feed:refreshed` above still drives the sidebar's
     // per-feed unread-count patch.
-    window.emit("feeds:refreshed", ()).ok();
+    crate::events::emit_domain(&window, xaga_core::events::DomainEvent::FeedsRefreshed);
 
     Ok(refreshed)
 }

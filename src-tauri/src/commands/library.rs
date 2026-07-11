@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 use xaga_core::embeddings::ShutdownReason;
 
 use crate::{AppState, SettingsOutcome, restart_process, stale_view_error, update_settings};
@@ -34,7 +34,7 @@ pub async fn set_library(
     // new process will read it from disk on startup.
     if let Some(svc) = state.embedding_service.lock().unwrap().take() {
         svc.request_restart();
-        app.emit("embedding:shutdown", ()).ok();
+        crate::events::emit_domain(&app, xaga_core::events::DomainEvent::EmbeddingShutdown);
         tauri::async_runtime::spawn(async move {
             match svc.shutdown().await {
                 ShutdownReason::Restart => restart_process(),

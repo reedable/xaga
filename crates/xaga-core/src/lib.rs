@@ -8,6 +8,7 @@ mod consts; // intentional empty guardrail — keep; see consts.rs
 pub mod atom;
 pub mod domain;
 pub mod embeddings;
+pub mod events;
 pub mod fs;
 pub mod library;
 pub mod md;

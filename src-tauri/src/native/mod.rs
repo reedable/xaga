@@ -17,18 +17,10 @@ pub(crate) mod feeds;
 
 use std::path::PathBuf;
 
-use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::AppState;
-
-/// Event payload for a native-triggered import/export.
-#[derive(Serialize, Clone)]
-struct Outcome<T: Serialize + Clone> {
-    result: Option<T>,
-    error: Option<String>,
-}
 
 /// Convert the dialog's picked file to a `PathBuf`, or `None` (cancelled / bad
 /// path) — in which case no work runs and no event fires.
@@ -54,19 +46,19 @@ pub(crate) fn import_feeds_dialog(app: &AppHandle) {
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<AppState>();
                 let outcome = match feeds::import_feeds(state.inner(), &path).await {
-                    Ok(result) => Outcome {
+                    Ok(result) => crate::events::Outcome {
                         result: Some(result),
                         error: None,
                     },
                     Err(e) => {
                         log::warn!("import_feeds: {e}");
-                        Outcome {
+                        crate::events::Outcome {
                             result: None,
                             error: Some(e),
                         }
                     }
                 };
-                app.emit("feeds:imported", outcome).ok();
+                crate::events::emit_app(&app, crate::events::AppEvent::FeedsImported(outcome));
             });
         });
 }
@@ -87,8 +79,13 @@ pub(crate) fn export_feeds_dialog(app: &AppHandle) {
                 if let Some(ref e) = error {
                     log::warn!("export_feeds: {e}");
                 }
-                app.emit("feeds:exported", Outcome::<()> { result: None, error })
-                    .ok();
+                crate::events::emit_app(
+                    &app,
+                    crate::events::AppEvent::FeedsExported(crate::events::Outcome {
+                        result: None,
+                        error,
+                    }),
+                );
             });
         });
 }
@@ -105,19 +102,19 @@ pub(crate) fn import_bookmarks_dialog(app: &AppHandle) {
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<AppState>();
                 let outcome = match bookmarks::import_bookmarks(state.inner(), &path).await {
-                    Ok(result) => Outcome {
+                    Ok(result) => crate::events::Outcome {
                         result: Some(result),
                         error: None,
                     },
                     Err(e) => {
                         log::warn!("import_bookmarks: {e}");
-                        Outcome {
+                        crate::events::Outcome {
                             result: None,
                             error: Some(e),
                         }
                     }
                 };
-                app.emit("bookmarks:imported", outcome).ok();
+                crate::events::emit_app(&app, crate::events::AppEvent::BookmarksImported(outcome));
             });
         });
 }
@@ -138,8 +135,13 @@ pub(crate) fn export_bookmarks_dialog(app: &AppHandle) {
                 if let Some(ref e) = error {
                     log::warn!("export_bookmarks: {e}");
                 }
-                app.emit("bookmarks:exported", Outcome::<()> { result: None, error })
-                    .ok();
+                crate::events::emit_app(
+                    &app,
+                    crate::events::AppEvent::BookmarksExported(crate::events::Outcome {
+                        result: None,
+                        error,
+                    }),
+                );
             });
         });
 }

@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 use xaga_core::embeddings::{EmbeddingsDb, EntityRef, Job, StatePatch, Tier};
 use xaga_core::persistence::articles;
 use xaga_core::persistence::entries;
@@ -11,16 +11,8 @@ use crate::{AppState, article_loader};
 
 #[tauri::command]
 pub async fn loader_will_unload(app: AppHandle, url: String) -> Result<(), String> {
-    app.emit("loader:will-unload", url).ok();
+    crate::events::emit_app(&app, crate::events::AppEvent::LoaderWillUnload(url));
     Ok(())
-}
-
-#[derive(serde::Serialize, Clone)]
-struct LoaderPageLoaded {
-    url: String,
-    html: String,
-    #[serde(rename = "mimeType")]
-    mime_type: String,
 }
 
 #[tauri::command]
@@ -30,35 +22,15 @@ pub async fn loader_page_loaded(
     html: String,
     mime_type: String,
 ) -> Result<(), String> {
-    app.emit(
-        "loader:page-loaded",
-        LoaderPageLoaded {
+    crate::events::emit_app(
+        &app,
+        crate::events::AppEvent::LoaderPageLoaded(crate::events::LoaderPageLoaded {
             url,
             html,
             mime_type,
-        },
-    )
-    .ok();
+        }),
+    );
     Ok(())
-}
-
-#[derive(serde::Serialize, Clone)]
-struct LoaderClosed {
-    /// The URL the loader window was opened with (the main window's request).
-    #[serde(rename = "loaderUrl")]
-    loader_url: String,
-    /// The URL the page was actually on when the window closed (redirects,
-    /// SPA canonicalization, or user navigation may have moved it).
-    #[serde(rename = "pageUrl")]
-    page_url: String,
-    /// Whether `pageUrl` still denotes the same page as `loaderUrl` under
-    /// `normalize_url` — the captured `html` belongs to `pageUrl`, so a
-    /// mismatch means it must not be treated as content for `loaderUrl`.
-    #[serde(rename = "samePage")]
-    same_page: bool,
-    html: String,
-    #[serde(rename = "mimeType")]
-    mime_type: String,
 }
 
 #[tauri::command]
@@ -78,17 +50,16 @@ pub async fn capture_and_close_loader(
         // Unparseable URL on either side: fall back to exact equality.
         _ => loader_url == page_url,
     };
-    app.emit(
-        "loader:closed",
-        LoaderClosed {
+    crate::events::emit_app(
+        &app,
+        crate::events::AppEvent::LoaderClosed(crate::events::LoaderClosed {
             loader_url,
             page_url,
             same_page,
             html,
             mime_type,
-        },
-    )
-    .ok();
+        }),
+    );
     if let Some(w) = app.get_webview_window(&label) {
         let _ = w.close();
     }
@@ -521,7 +492,7 @@ pub async fn replace_annotation(
 
     // The old id is gone; consumers holding it (topic item lists, related lists) evict it.
     // The new row announces itself through the SyncAnnotations live event.
-    window.emit("annotation:removed", &old_id).ok();
+    crate::events::emit_domain(&window, xaga_core::events::DomainEvent::AnnotationRemoved { id: old_id.clone() });
 
     Ok(article)
 }
@@ -574,7 +545,7 @@ pub async fn remove_annotation(
         },
     );
 
-    window.emit("annotation:removed", &annotation_id).ok();
+    crate::events::emit_domain(&window, xaga_core::events::DomainEvent::AnnotationRemoved { id: annotation_id.clone() });
 
     Ok(article)
 }

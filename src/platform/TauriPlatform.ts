@@ -4,6 +4,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { z } from "zod";
+
+import type { AppEvent, DomainEvent } from "./events";
 import type {
   Annotation,
   PartialAnnotation,
@@ -281,7 +283,7 @@ const toAnyEmbeddedItem = (data: z.infer<typeof AnyEmbeddedItemSchema>) => {
   };
 };
 
-listen<string>("loader:will-unload", (e) => {
+listen<string>("loader:will-unload" satisfies AppEvent, (e) => {
   console.log("[diagnostic] loader:will-unload", e.payload);
 });
 
@@ -846,7 +848,7 @@ export class TauriPlatform implements Platform {
   // Events --------------------------------------------------------------------
 
   onOpenLibrary(callback: () => void): Promise<UnlistenFn> {
-    const name = "menu:open-library";
+    const name: AppEvent = "menu:open-library";
     const listener = decorate(callback).with(logged, { logger, name });
     return listen(name, listener);
   }
@@ -860,7 +862,7 @@ export class TauriPlatform implements Platform {
   onFeedsImported(
     callback: (outcome: ImportOutcome<Feed>) => void
   ): Promise<UnlistenFn> {
-    const name = "feeds:imported";
+    const name: AppEvent = "feeds:imported";
     const listener = decorate((e: { payload: ImportOutcome<Feed> }) =>
       callback(e.payload)
     ).with(logged, { logger, name });
@@ -870,7 +872,7 @@ export class TauriPlatform implements Platform {
   onFeedsExported(
     callback: (outcome: ExportOutcome) => void
   ): Promise<UnlistenFn> {
-    const name = "feeds:exported";
+    const name: AppEvent = "feeds:exported";
     const listener = decorate((e: { payload: ExportOutcome }) =>
       callback(e.payload)
     ).with(logged, { logger, name });
@@ -878,7 +880,7 @@ export class TauriPlatform implements Platform {
   }
 
   onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn> {
-    const name = "feed:refreshed";
+    const name: DomainEvent = "feed:refreshed";
     const listener = decorate((e) => {
       const result = FeedSchema.transform(toFeed).safeParse(e.payload);
       if (result.success) callback(result.data);
@@ -888,13 +890,13 @@ export class TauriPlatform implements Platform {
   }
 
   onFeedsRefreshed(callback: () => void): Promise<UnlistenFn> {
-    const name = "feeds:refreshed";
+    const name: DomainEvent = "feeds:refreshed";
     const listener = decorate(() => callback()).with(logged, { logger, name });
     return listen(name, listener);
   }
 
   onUnreadChanged(callback: (entry: Entry) => void): Promise<UnlistenFn> {
-    const name = "unread:changed";
+    const name: DomainEvent = "unread:changed";
     const listener = decorate((e) => {
       const result = EntrySchema.transform(toEntry).safeParse(e.payload);
       if (result.success) callback(result.data);
@@ -904,7 +906,7 @@ export class TauriPlatform implements Platform {
   }
 
   onBookmarkChanged(callback: (entry: Entry) => void): Promise<UnlistenFn> {
-    const name = "bookmark:changed";
+    const name: DomainEvent = "bookmark:changed";
     const listener = decorate((e) => {
       const result = EntrySchema.transform(toEntry).safeParse(e.payload);
       if (result.success) callback(result.data);
@@ -916,7 +918,7 @@ export class TauriPlatform implements Platform {
   onAnnotationChanged(
     callback: (item: ListItem) => void
   ): Promise<UnlistenFn> {
-    const name = "annotation:changed";
+    const name: DomainEvent = "annotation:changed";
     const listener = decorate((e) => {
       const result = ListItemSchema.transform(toListItem).safeParse(
         e.payload
@@ -928,7 +930,7 @@ export class TauriPlatform implements Platform {
   }
 
   onAnnotationRemoved(callback: (id: string) => void): Promise<UnlistenFn> {
-    const name = "annotation:removed";
+    const name: DomainEvent = "annotation:removed";
     const listener = decorate((e: { payload: string }) =>
       callback(e.payload)
     ).with(logged, { logger, name });
@@ -936,7 +938,7 @@ export class TauriPlatform implements Platform {
   }
 
   onEmbeddingsChanged(callback: () => void): Promise<UnlistenFn> {
-    const name = "embedding:changed";
+    const name: DomainEvent = "embedding:changed";
     const listener = decorate(callback).with(logged, { logger, name });
     return listen(name, listener);
   }
@@ -1011,7 +1013,7 @@ export class TauriPlatform implements Platform {
   }
 
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn> {
-    const name = "menu:set-theme";
+    const name: AppEvent = "menu:set-theme";
     const listener = decorate((e: { payload: string }) =>
       callback(e.payload)
     ).with(logged, { logger, name });
@@ -1035,7 +1037,7 @@ export class TauriPlatform implements Platform {
   onHtmlReaderView(
     callback: (view: HtmlReaderView) => void
   ): Promise<UnlistenFn> {
-    const name = "menu:html-reader-view";
+    const name: AppEvent = "menu:html-reader-view";
     const listener = decorate(callback).with(logged, { logger, name });
     return listen(name, (e) => listener(e.payload as HtmlReaderView));
   }
@@ -1043,13 +1045,13 @@ export class TauriPlatform implements Platform {
   onHtmlReaderViewChangedFromSettings(
     callback: (view: HtmlReaderView) => void
   ): Promise<UnlistenFn> {
-    const name = "settings:html-reader-view";
+    const name: AppEvent = "settings:html-reader-view";
     const listener = decorate(callback).with(logged, { logger, name });
     return listen(name, (e) => listener(e.payload as HtmlReaderView));
   }
 
   onShowSidebar(callback: (show: boolean) => void): Promise<UnlistenFn> {
-    const name = "menu:show-sidebar";
+    const name: AppEvent = "menu:show-sidebar";
     const listener = decorate((e: { payload: boolean }) =>
       callback(e.payload)
     ).with(logged, { logger, name });
@@ -1065,7 +1067,7 @@ export class TauriPlatform implements Platform {
       mimeType: string;
     }) => void
   ): Promise<UnlistenFn> {
-    const name = "loader:closed";
+    const name: AppEvent = "loader:closed";
     const listener = decorate(
       (e: {
         payload: {
@@ -1089,7 +1091,7 @@ export class TauriPlatform implements Platform {
   onLoaderPageLoaded(
     callback: (data: { url: string; html: string; mimeType: string }) => void
   ): Promise<UnlistenFn> {
-    const name = "loader:page-loaded";
+    const name: AppEvent = "loader:page-loaded";
     const listener = decorate(
       (e: { payload: { url: string; html: string; mimeType: string } }) =>
         callback(e.payload)
@@ -1101,13 +1103,13 @@ export class TauriPlatform implements Platform {
   }
 
   onFind(callback: () => void): Promise<UnlistenFn> {
-    const name = "menu:find";
+    const name: AppEvent = "menu:find";
     const listener = decorate(callback).with(logged, { logger, name });
     return listen(name, listener);
   }
 
   onClearHistory(callback: () => void): Promise<UnlistenFn> {
-    const name = "menu:clear-history";
+    const name: AppEvent = "menu:clear-history";
     const listener = decorate(callback).with(logged, { logger, name });
     return listen(name, listener);
   }
@@ -1149,7 +1151,7 @@ export class TauriPlatform implements Platform {
   onInlinePdfReaderChanged(
     callback: (value: boolean) => void
   ): Promise<UnlistenFn> {
-    const name = "settings:inline-pdf-reader";
+    const name: AppEvent = "settings:inline-pdf-reader";
     const listener = decorate(callback).with(logged, { logger, name });
     return listen(name, (e) => listener(e.payload as boolean));
   }
@@ -1169,7 +1171,7 @@ export class TauriPlatform implements Platform {
   onAllowedDomainsChanged(
     callback: (domains: string[]) => void
   ): Promise<UnlistenFn> {
-    const name = "settings:allowed-domains";
+    const name: AppEvent = "settings:allowed-domains";
     const listener = decorate((e: { payload: string[] }) =>
       callback(e.payload)
     ).with(logged, { logger, name });
@@ -1183,7 +1185,7 @@ export class TauriPlatform implements Platform {
   }
 
   onShutdown(callback: () => void): Promise<UnlistenFn> {
-    const name = "embedding:shutdown";
+    const name: DomainEvent = "embedding:shutdown";
     const listener = decorate(callback).with(logged, { logger, name });
     return listen(name, listener);
   }
@@ -1191,7 +1193,7 @@ export class TauriPlatform implements Platform {
   onThemeChangedFromSettings(
     callback: (theme: string) => void
   ): Promise<UnlistenFn> {
-    const name = "settings:theme";
+    const name: AppEvent = "settings:theme";
     const listener = decorate((e: { payload: string }) =>
       callback(e.payload)
     ).with(logged, { logger, name });
@@ -1201,7 +1203,7 @@ export class TauriPlatform implements Platform {
   onHtmlReaderFontFamilyChanged(
     callback: (value: string) => void
   ): Promise<UnlistenFn> {
-    const name = "settings:html-reader-font-family";
+    const name: AppEvent = "settings:html-reader-font-family";
     const listener = decorate((e: { payload: string }) =>
       callback(e.payload)
     ).with(logged, { logger, name });
@@ -1211,7 +1213,7 @@ export class TauriPlatform implements Platform {
   onHtmlReaderFontSizeChanged(
     callback: (value: number) => void
   ): Promise<UnlistenFn> {
-    const name = "settings:html-reader-font-size";
+    const name: AppEvent = "settings:html-reader-font-size";
     const listener = decorate((e: { payload: number }) =>
       callback(e.payload)
     ).with(logged, { logger, name });
@@ -1221,7 +1223,7 @@ export class TauriPlatform implements Platform {
   onHtmlReaderLineHeightChanged(
     callback: (value: number) => void
   ): Promise<UnlistenFn> {
-    const name = "settings:html-reader-line-height";
+    const name: AppEvent = "settings:html-reader-line-height";
     const listener = decorate((e: { payload: number }) =>
       callback(e.payload)
     ).with(logged, { logger, name });
@@ -1231,7 +1233,7 @@ export class TauriPlatform implements Platform {
   onRefreshOnStartupChanged(
     callback: (value: boolean) => void
   ): Promise<UnlistenFn> {
-    const name = "settings:refresh-on-startup";
+    const name: AppEvent = "settings:refresh-on-startup";
     const listener = decorate((e: { payload: boolean }) =>
       callback(e.payload)
     ).with(logged, { logger, name });

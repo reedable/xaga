@@ -1,5 +1,5 @@
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::{
     AppState, SettingsOutcome, stale_view_error, update_settings, update_theme_checkmarks,
@@ -33,7 +33,7 @@ pub async fn set_theme(
             *state.theme.write().unwrap() = theme.clone();
             update_theme_checkmarks(&app, &theme);
             if let Some(main) = app.get_webview_window("main") {
-                main.emit("settings:theme", &theme).ok();
+                crate::events::emit_app(&main, crate::events::AppEvent::SettingsTheme(theme.clone()));
             }
             Ok(())
         }
@@ -56,7 +56,7 @@ pub async fn set_refresh_on_startup(
         SettingsOutcome::Written(_) => {
             *state.refresh_on_startup.write().unwrap() = value;
             if let Some(main) = app.get_webview_window("main") {
-                main.emit("settings:refresh-on-startup", value).ok();
+                crate::events::emit_app(&main, crate::events::AppEvent::SettingsRefreshOnStartup(value));
             }
             Ok(())
         }
@@ -83,7 +83,7 @@ pub async fn set_html_reader_font_family(
         SettingsOutcome::Written(_) => {
             *state.html_reader_font_family.write().unwrap() = value.clone();
             if let Some(main) = app.get_webview_window("main") {
-                main.emit("settings:html-reader-font-family", &value).ok();
+                crate::events::emit_app(&main, crate::events::AppEvent::SettingsHtmlReaderFontFamily(value.clone()));
             }
             Ok(())
         }
@@ -101,7 +101,7 @@ pub async fn set_html_reader_font_size(
         SettingsOutcome::Written(_) => {
             *state.html_reader_font_size.write().unwrap() = value;
             if let Some(main) = app.get_webview_window("main") {
-                main.emit("settings:html-reader-font-size", value).ok();
+                crate::events::emit_app(&main, crate::events::AppEvent::SettingsHtmlReaderFontSize(value));
             }
             Ok(())
         }
@@ -119,7 +119,7 @@ pub async fn set_html_reader_line_height(
         SettingsOutcome::Written(_) => {
             *state.html_reader_line_height.write().unwrap() = value;
             if let Some(main) = app.get_webview_window("main") {
-                main.emit("settings:html-reader-line-height", value).ok();
+                crate::events::emit_app(&main, crate::events::AppEvent::SettingsHtmlReaderLineHeight(value));
             }
             Ok(())
         }
@@ -148,7 +148,7 @@ pub async fn set_html_reader_view(
             *state.html_reader_view.write().unwrap() = value.clone();
             update_view_checkmarks(&app, &value);
             if let Some(main) = app.get_webview_window("main") {
-                main.emit("settings:html-reader-view", &value).ok();
+                crate::events::emit_app(&main, crate::events::AppEvent::SettingsHtmlReaderView(value.clone()));
             }
             Ok(())
         }
@@ -171,7 +171,7 @@ pub async fn set_inline_pdf_reader(
         SettingsOutcome::Written(_) => {
             *state.inline_pdf_reader.write().unwrap() = value;
             if let Some(main) = app.get_webview_window("main") {
-                main.emit("settings:inline-pdf-reader", value).ok();
+                crate::events::emit_app(&main, crate::events::AppEvent::SettingsInlinePdfReader(value));
             }
             Ok(())
         }
@@ -194,7 +194,7 @@ pub async fn set_allowed_domains(
         SettingsOutcome::Written(_) => {
             *state.allowed_domains.write().unwrap() = domains.clone();
             if let Some(main) = app.get_webview_window("main") {
-                main.emit("settings:allowed-domains", &domains).ok();
+                crate::events::emit_app(&main, crate::events::AppEvent::SettingsAllowedDomains(domains.clone()));
             }
             Ok(())
         }

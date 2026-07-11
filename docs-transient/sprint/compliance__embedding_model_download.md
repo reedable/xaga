@@ -29,9 +29,11 @@ resolve/main/{file}` for five files.
    nothing reaches the UI, nothing retries in-session, and `is_cache_ready`
    cannot distinguish "downloading" from "failed" from "read-only (lock
    held)". Direction undecided: timeout, in-session retry, UI-visible
-   download/failure state, on-demand re-trigger, or a combination. Touches
-   the missing UI-event registry (no single enumeration of rust-raised
-   events exists; names are inline literals in six files + TauriPlatform.ts).
+   download/failure state, on-demand re-trigger, or a combination. The
+   event registry now exists (2026-07-11): new download-status events would
+   be `DomainEvent` variants (`crates/xaga-core/src/events.rs`), emitted
+   through the funnel in `src-tauri/src/events.rs`, named in
+   `src/platform/events.ts`.
 
 3. **Cap enforcement is untested.** The 256 MB cap can't be exercised in a
    test because `fetch_all_files` hardcodes the download URL — unlike the
