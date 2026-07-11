@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use xaga_core::embeddings::ShutdownReason;
 
-use crate::{AppState, load_settings, restart_process, save_settings};
+use crate::{AppState, SettingsOutcome, restart_process, stale_view_error, update_settings};
 
 #[tauri::command]
 pub async fn get_library(state: State<'_, AppState>) -> Result<String, String> {
@@ -20,15 +20,12 @@ pub async fn set_library(
 
     std::fs::create_dir_all(&new_path).map_err(|e| e.to_string())?;
 
-    let settings_path = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("settings.json");
-
-    let mut settings = load_settings(&settings_path);
-    settings.library = Some(new_path.to_string_lossy().to_string());
-    save_settings(&settings_path, &settings).map_err(|e| e.to_string())?;
+    match update_settings(&state, |s| {
+        s.library = Some(new_path.to_string_lossy().to_string())
+    })? {
+        SettingsOutcome::StaleView(fresh) => return Err(stale_view_error(&state, &fresh)),
+        SettingsOutcome::Written(_) => {}
+    }
 
     // The new library path is now persisted.  Signal the embedding service to
     // restart, wait for the run loop to finish its current in-flight LanceDB

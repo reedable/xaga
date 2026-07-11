@@ -4,11 +4,13 @@ use std::time::Instant;
 
 use clap::{Args, Subcommand};
 use xaga_core::embeddings::{
-    DEFAULT_MODEL_REPO, EmbeddingsDb, MODEL_FILES, default_model_dir, load_default_embedder,
+    DEFAULT_MODEL_REPO, DownloadOutcome, EmbeddingsDb, default_model_dir,
+    download_model_if_missing, load_default_embedder, model_files_present,
 };
 use xaga_core::fs::FileLock;
 use xaga_core::library;
 use xaga_core::recovery;
+use xaga_core::ssrf_proxy;
 
 use crate::die;
 
@@ -50,11 +52,7 @@ pub enum EmbeddingsCommand {
         path: PathBuf,
     },
     /// Download the embedding model from HuggingFace
-    DownloadModel {
-        /// HuggingFace repo ID to download (e.g. "Qdrant/all-MiniLM-L6-v2-onnx")
-        #[arg(long, default_value = DEFAULT_MODEL_REPO)]
-        repo: String,
-    },
+    DownloadModel,
     /// Sample pairwise similarities and print a histogram to help choose thresholds
     Calibrate {
         /// Number of items to sample (compared against the full corpus)
@@ -199,8 +197,8 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
             }
         }
 
-        EmbeddingsCommand::DownloadModel { repo } => {
-            download_model(&repo).await;
+        EmbeddingsCommand::DownloadModel => {
+            download_model().await;
         }
 
         EmbeddingsCommand::Calibrate { sample, min } => {
@@ -275,55 +273,48 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
     }
 }
 
-async fn download_model(repo: &str) {
+async fn download_model() {
     let model_dir = default_model_dir();
 
-    if let Err(e) = std::fs::create_dir_all(&model_dir) {
-        eprintln!("error: could not create model directory: {e}");
-        std::process::exit(1);
+    if model_files_present(&model_dir) {
+        println!("Model already present at {}", model_dir.display());
+        return;
     }
 
-    println!("Downloading model from {repo} into {}", model_dir.display());
+    println!(
+        "Downloading model {DEFAULT_MODEL_REPO} into {} (this may take a while)…",
+        model_dir.display()
+    );
 
-    let client = reqwest::Client::builder()
-        .build()
-        .unwrap_or_else(|e| die(e));
+    // Dial through the SSRF proxy so redirect hops are address-validated and
+    // plaintext HTTP is refused. Both settings stay at their secure defaults
+    // (no plaintext, CONNECT to 443 only): the download is https on 443, and
+    // the CLI has no reason to relax either for it.
+    let http_allowed = Arc::new(std::sync::RwLock::new(false));
+    let connect_nonstandard_ports_allowed = Arc::new(std::sync::RwLock::new(false));
+    let proxy_port = match ssrf_proxy::start(ssrf_proxy::ProxyConfig::new(
+        http_allowed,
+        connect_nonstandard_ports_allowed,
+    ))
+    .await
+    {
+        Ok(port) => port,
+        Err(e) => die(e),
+    };
+    let client = ssrf_proxy::proxied_client(proxy_port).unwrap_or_else(|e| die(e));
 
-    for &filename in MODEL_FILES {
-        let dest = model_dir.join(filename);
-        if dest.is_file() {
-            println!("  {filename}  (already present, skipping)");
-            continue;
+    match download_model_if_missing(&client).await {
+        Ok(DownloadOutcome::Ready) => {
+            println!("Done. You can now run:  {DOWNLOAD_CMD_DONE}");
         }
-        let url = format!("https://huggingface.co/{repo}/resolve/main/{filename}");
-        print!("  {filename} … ");
-        match fetch_file(&client, &url).await {
-            Ok(bytes) => {
-                if let Err(e) = std::fs::write(&dest, &bytes) {
-                    eprintln!("\nerror: failed to write {filename}: {e}");
-                    std::process::exit(1);
-                }
-                println!("{} MB", bytes.len() / 1_000_000);
-            }
-            Err(e) => {
-                eprintln!("\nerror: failed to download {filename}: {e}");
-                std::process::exit(1);
-            }
+        Ok(DownloadOutcome::SkippedLockHeld) => {
+            println!(
+                "Another xaga process holds the account lock (it may be \
+                 downloading the model right now) — skipped."
+            );
         }
+        Err(e) => die(e),
     }
-
-    println!("Done. You can now run:  {DOWNLOAD_CMD_DONE}");
 }
 
 const DOWNLOAD_CMD_DONE: &str = "xaga-cli embeddings reindex";
-
-async fn fetch_file(client: &reqwest::Client, url: &str) -> Result<Vec<u8>, reqwest::Error> {
-    Ok(client
-        .get(url)
-        .send()
-        .await?
-        .error_for_status()?
-        .bytes()
-        .await?
-        .to_vec())
-}

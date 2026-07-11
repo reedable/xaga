@@ -33,6 +33,22 @@ Import/export are orchestrated natively and report completion by event
   `docs-transient/backlog/fetch/improvement__user_settings.md`. This bullet is blocked
   on that item landing.
 
+## Settings-write refusals (account lock, 2026-07-10)
+
+Settings writes go through the `update_settings` funnel (`src-tauri/src/lib.rs`)
+under the account-wide lock (the flock on settings.json) and can now be
+refused. Both refusals reach the webview as plain error strings with no UI
+treatment:
+
+- **Lock contention** — "another xaga process holds the account lock":
+  returned immediately (fail-fast, by decision) when e.g. the other instance
+  is downloading the embedding model. Needs user-facing display; note the
+  hold can be minutes long during a download.
+- **Stale view** — "settings changed by another xaga process; view
+  refreshed — retry": the process's in-memory mirrors are refreshed from the
+  fresh content before the error returns, so a retry succeeds; the UI needs
+  to surface the refusal and re-render the refreshed values.
+
 ## Other error handling
 
 Believed incomplete elsewhere; enumerate when this item is picked up.

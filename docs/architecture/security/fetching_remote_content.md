@@ -10,7 +10,7 @@ user supplies directly rather than fetches (OPML/bookmarks import) is
 covered in
 [handling_user_supplied_content.md](handling_user_supplied_content.md).
 
-Code: `src-tauri/src/ssrf_proxy.rs` (the proxy),
+Code: `crates/xaga-core/src/ssrf_proxy.rs` (the proxy),
 `src-tauri/src/article_loader.rs` (loader webview),
 `src-tauri/src/commands/articles.rs` (PDF probe),
 `src-tauri/src/commands/feeds.rs` (feed fetch),
@@ -138,7 +138,7 @@ would be a second, partial implementation of the same rule.
 
 ### Who dials through it
 
-Everything that touches attacker-influenced URLs:
+Every outbound consumer:
 
 1. **The article loader webview** (`article_loader.rs:104-110`). Each loader
    window is built with `WebviewWindowBuilder::proxy_url` pointing at the
@@ -155,6 +155,13 @@ Everything that touches attacker-influenced URLs:
      normalized to https, so they use the CONNECT path.
    - **The inline-PDF probe** (`try_fetch_pdf`, `commands/articles.rs`),
      which fetches candidate PDFs directly instead of via a webview.
+3. **The embedding model download** (`download_model_if_missing`,
+   `crates/xaga-core/src/embeddings/model.rs`). Its URL is a compile-time
+   constant, but its redirect chain is server-controlled (`resolve/main`
+   redirects to HF's CDN), so it dials through the proxy like everything
+   else: the app passes a client built by `ssrf_proxy::proxied_client`
+   (`lib.rs`); the CLI's `download-model` command starts its own proxy
+   instance with both settings at their secure defaults.
 
 ## What a fetch discloses
 
@@ -311,9 +318,12 @@ Places where the invariants are not fully upheld:
   there is no mechanism to reach them.
 - `import_feeds`/`export_feeds` accept an arbitrary `file_path` from the
   webview.
-- The embedding model download over the unproxied `http_client` fetches
-  unpinned, unverified content from a moving third-party ref
-  (`resolve/main`) and feeds it to a native parser (onnxruntime).
+- The embedding model download fetches unpinned, unverified content from a
+  moving third-party ref (`resolve/main`) and feeds it to a native parser
+  (onnxruntime); it is contained (proxied) and bounded (streamed to disk,
+  256 MB per-file cap on decompressed bytes), but its content is not yet
+  pinned or verified, and the client sets no timeout — see
+  docs-transient/sprint/compliance__embedding_model_download.md.
 - Proxy behavior is a property of the bundled app; `tauri dev` runtime checks
   are not representative for webview-level policies (see the CSP note in
   [handling_persisted_content.md](handling_persisted_content.md)).

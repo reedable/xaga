@@ -7,6 +7,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use fs2::FileExt;
 
+/// The per-user xaga data root, e.g. `~/Library/Application Support/xaga` on
+/// macOS. The single derivation of "platform data dir + app dir name": every
+/// consumer — the embedding model dir, the CLI's default data dir, the app's
+/// settings location — must obtain the root from here rather than deriving
+/// its own, so the name cannot drift between call sites (Single Source of
+/// Truth). `None` when the platform data dir is undeterminable; callers own
+/// their fallback.
+pub fn data_root() -> Option<PathBuf> {
+    dirs::data_dir().map(|d| d.join("xaga"))
+}
+
 /// Atomically writes `bytes` to `path`: writes to a unique sibling temp file,
 /// fsyncs it, then renames it over `path`. `rename(2)` is atomic, so a reader
 /// never observes a partial file, and a crash mid-write leaves the previous
@@ -57,6 +68,66 @@ pub(crate) async fn write_atomic_async(path: PathBuf, bytes: Vec<u8>) -> std::io
         Ok(res) => res,
         Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
     }
+}
+
+/// The directory sibling of [`write_atomic`]: atomically replaces `dest` with
+/// the fully-staged directory `staging`. Fsyncs every file under `staging`
+/// (recursively), removes an existing `dest`, renames `staging` over it, then
+/// fsyncs `dest`'s parent — so a crash or power loss never yields a `dest`
+/// whose files exist but hold truncated contents.
+///
+/// Unlike a file rename, a directory rename cannot replace a non-empty target
+/// in one step, so an existing `dest` is removed first: *creation* is atomic
+/// (readers see no `dest`, then a complete one), but *replacement* has a
+/// window where `dest` is absent. Callers replacing a directory that readers
+/// may currently consider valid must account for that window.
+///
+/// On failure `staging` is left in place; callers own its cleanup (or reuse).
+pub(crate) fn replace_dir_atomic(staging: &Path, dest: &Path) -> std::io::Result<()> {
+    sync_dir_contents(staging)?;
+
+    if dest.exists() {
+        fs::remove_dir_all(dest)?;
+    }
+
+    fs::rename(staging, dest)?;
+
+    // Same best-effort parent fsync as `write_atomic`: makes the rename itself
+    // durable where the platform supports opening a directory for sync.
+    if let Some(parent) = dest.parent().filter(|p| !p.as_os_str().is_empty()) {
+        if let Ok(dir) = File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+
+    Ok(())
+}
+
+/// Async wrapper around [`replace_dir_atomic`], mirroring [`write_atomic_async`]:
+/// the blocking fsync/rename work runs on tokio's blocking thread pool.
+pub(crate) async fn replace_dir_atomic_async(
+    staging: PathBuf,
+    dest: PathBuf,
+) -> std::io::Result<()> {
+    match tokio::task::spawn_blocking(move || replace_dir_atomic(&staging, &dest)).await {
+        Ok(res) => res,
+        Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e)),
+    }
+}
+
+/// Fsyncs the contents of every file under `dir`, recursively. The durability
+/// half of [`replace_dir_atomic`]: without it, the rename can outlive a power
+/// loss that the file contents do not.
+fn sync_dir_contents(dir: &Path) -> std::io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            sync_dir_contents(&path)?;
+        } else {
+            File::open(&path)?.sync_all()?;
+        }
+    }
+    Ok(())
 }
 
 /// A unique sibling temp path for `path`, e.g. `settings.json` →
@@ -154,6 +225,148 @@ where
     outcome
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replace_dir_atomic_creates_dest_and_consumes_staging() {
+        let tmp = tempfile::tempdir().unwrap();
+        let staging = tmp.path().join("model-download");
+        fs::create_dir_all(staging.join("nested")).unwrap();
+        fs::write(staging.join("model.onnx"), b"weights").unwrap();
+        fs::write(staging.join("nested").join("extra.json"), b"{}").unwrap();
+        let dest = tmp.path().join("model");
+
+        replace_dir_atomic(&staging, &dest).unwrap();
+
+        assert!(!staging.exists());
+        assert_eq!(fs::read(dest.join("model.onnx")).unwrap(), b"weights");
+        assert_eq!(fs::read(dest.join("nested/extra.json")).unwrap(), b"{}");
+    }
+
+    #[test]
+    fn replace_dir_atomic_replaces_existing_dest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let staging = tmp.path().join("staging");
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(staging.join("new.txt"), b"new").unwrap();
+        let dest = tmp.path().join("dest");
+        fs::create_dir_all(&dest).unwrap();
+        fs::write(dest.join("stale.txt"), b"stale").unwrap();
+
+        replace_dir_atomic(&staging, &dest).unwrap();
+
+        assert!(!dest.join("stale.txt").exists());
+        assert_eq!(fs::read(dest.join("new.txt")).unwrap(), b"new");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn try_acquire_lands_on_the_current_inode_after_rename_over() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("lockfile");
+        fs::write(&path, b"v1").unwrap();
+
+        // Hold a lock on the original inode via a raw handle (not the
+        // recheck-protected path), then rename a new inode over the path —
+        // the situation a waiter can find itself in.
+        let old_handle = OpenOptions::new().read(true).write(true).open(&path).unwrap();
+        old_handle.try_lock_exclusive().unwrap();
+        let replacement = tmp.path().join("replacement");
+        fs::write(&replacement, b"v2").unwrap();
+        fs::rename(&replacement, &path).unwrap();
+
+        // The old handle's lock is now stale: it guards an unlinked inode.
+        assert!(!is_path_inode(&old_handle, &path));
+
+        // try_acquire must succeed on the *new* inode despite the old lock
+        // still being held — they are different inodes.
+        let lock = FileLock::try_acquire(path.clone()).expect("acquire new inode");
+        assert!(is_path_inode(&lock._file, &path));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_locked_keeps_the_path_locked_by_the_holder() {
+        use std::os::unix::fs::MetadataExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        fs::write(&path, b"old").unwrap();
+
+        let lock = FileLock::try_acquire(path.clone()).unwrap();
+        let new_lock = write_locked(lock, &path, b"new").unwrap();
+
+        // Continuity: the returned lock's inode is the path's inode.
+        assert!(is_path_inode(&new_lock._file, &path));
+        assert_eq!(fs::read(&path).unwrap(), b"new");
+        // The tmp is gone (renamed into place).
+        assert!(!path.with_file_name("settings.json.tmp").exists());
+        // And a contender cannot acquire while the holder lives.
+        let contender = OpenOptions::new().read(true).write(true).open(&path).unwrap();
+        assert_eq!(
+            contender.metadata().unwrap().ino(),
+            new_lock._file.metadata().unwrap().ino()
+        );
+        assert!(contender.try_lock_exclusive().is_err());
+    }
+
+    #[test]
+    fn write_locked_reclaims_a_crashed_writers_tmp() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        fs::write(&path, b"old").unwrap();
+        // Junk left by a hypothetical crashed writer.
+        fs::write(tmp.path().join("settings.json.tmp"), b"corrupt-garbage").unwrap();
+
+        let lock = FileLock::try_acquire(path.clone()).unwrap();
+        let _lock = write_locked(lock, &path, b"new").unwrap();
+
+        assert_eq!(fs::read(&path).unwrap(), b"new");
+    }
+
+    #[test]
+    fn locked_read_modify_write_loses_no_updates() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("counter");
+        fs::write(&path, b"0").unwrap();
+
+        const THREADS: usize = 2;
+        const ITERS: usize = 50;
+        let mut handles = Vec::new();
+        for _ in 0..THREADS {
+            let path = path.clone();
+            handles.push(std::thread::spawn(move || {
+                for _ in 0..ITERS {
+                    // Funnel pattern: acquire → load inside the hold →
+                    // mutate → write_locked → release.
+                    let lock = loop {
+                        match FileLock::try_acquire(path.clone()) {
+                            Some(l) => break l,
+                            None => std::thread::yield_now(),
+                        }
+                    };
+                    let n: u64 = String::from_utf8(fs::read(&path).unwrap())
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+                    let _lock =
+                        write_locked(lock, &path, (n + 1).to_string().as_bytes()).unwrap();
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        let final_n: u64 = String::from_utf8(fs::read(&path).unwrap())
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(final_n, (THREADS * ITERS) as u64);
+    }
+}
+
 /// An exclusive advisory lock on a file, used to guarantee a single writer.
 ///
 /// `try_acquire` opens the path and requests a non-blocking exclusive advisory
@@ -175,16 +388,102 @@ impl FileLock {
     /// Returns `Some(FileLock)` if the lock was granted, or `None` if another
     /// live process already holds it. The lock is released automatically when the
     /// returned value is dropped.
-    pub(crate) fn try_acquire(path: PathBuf) -> Option<Self> {
-        let file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(path)
-            .ok()?;
+    ///
+    /// A granted lock is verified against the path before being returned: flock
+    /// binds to the inode behind the handle, so a contender can win a lock on an
+    /// inode that was renamed away (see [`write_locked`]) between its open and
+    /// its flock. On mismatch the stale lock is dropped and acquisition retries
+    /// on whatever the path names now.
+    pub fn try_acquire(path: PathBuf) -> Option<Self> {
+        loop {
+            let file = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(&path)
+                .ok()?;
 
-        file.try_lock_exclusive().ok()?;
+            file.try_lock_exclusive().ok()?;
 
-        Some(Self { _file: file })
+            if is_path_inode(&file, &path) {
+                return Some(Self { _file: file });
+            }
+            // Stale: the path was renamed-over while we acquired. Drop (which
+            // releases the lock) and retry on the new inode.
+        }
     }
+}
+
+/// Whether `file`'s inode is the one `path` currently names. Unix-only
+/// identity check; on other platforms this returns `true` (no stable inode
+/// identity API) — recorded in the cross-platform spike.
+#[cfg(unix)]
+fn is_path_inode(file: &File, path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (file.metadata(), fs::metadata(path)) {
+        (Ok(held), Ok(at_path)) => held.dev() == at_path.dev() && held.ino() == at_path.ino(),
+        _ => false,
+    }
+}
+
+#[cfg(not(unix))]
+fn is_path_inode(_file: &File, _path: &Path) -> bool {
+    true
+}
+
+/// The account-wide xaga resource lock. The lock file is `settings.json`
+/// under [`data_root`]: holding its flock grants the right to write
+/// settings.json, download the embedding model, and use any future
+/// account-wide resource. Non-blocking: `None` means another live process
+/// holds it (or the data root is undeterminable).
+pub fn try_acquire_account_lock() -> Option<FileLock> {
+    FileLock::try_acquire(data_root()?.join("settings.json"))
+}
+
+/// Writes `bytes` to `path` while holding `held` — the lock on `path`'s
+/// current inode — and returns the lock on the *new* inode, so the caller's
+/// exclusive hold survives the replacement without a gap.
+///
+/// Protocol (ordering is load-bearing):
+/// 1. open `<path>.tmp` *without* truncating — a crashed writer's leftover
+///    must not be destroyed before we hold its lock;
+/// 2. flock the tmp — always uncontended under the protocol (only the main
+///    holder touches the tmp), and required *before* the rename so the path
+///    never resolves to an unlocked inode;
+/// 3. truncate, write, fsync;
+/// 4. rename tmp over `path` — the locked tmp inode becomes the path's inode;
+/// 5. fsync the parent (best-effort, as in [`write_atomic`]);
+/// 6. release the old inode's lock by dropping `held`.
+pub fn write_locked(held: FileLock, path: &Path, bytes: &[u8]) -> std::io::Result<FileLock> {
+    let tmp_path = {
+        let mut name = path.file_name().map(|f| f.to_os_string()).unwrap_or_default();
+        name.push(".tmp");
+        match path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            Some(parent) => parent.join(name),
+            None => PathBuf::from(name),
+        }
+    };
+
+    let mut tmp = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&tmp_path)?;
+    tmp.try_lock_exclusive()
+        .map_err(|e| std::io::Error::other(format!("tmp lock (protocol violation?): {e}")))?;
+    tmp.set_len(0)?;
+    tmp.write_all(bytes)?;
+    tmp.sync_all()?;
+
+    fs::rename(&tmp_path, path)?;
+
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        if let Ok(dir) = File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+
+    drop(held);
+    Ok(FileLock { _file: tmp })
 }

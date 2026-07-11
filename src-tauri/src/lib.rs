@@ -2,7 +2,6 @@ mod article_loader;
 mod commands;
 mod fetch_client;
 mod native;
-mod ssrf_proxy;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
@@ -15,6 +14,16 @@ use tauri_plugin_window_state::StateFlags;
 use xaga_core::embeddings::{
     EmbeddingService, EmbeddingsDb, EmbeddingsError, Job, ShutdownReason, Tier,
 };
+use xaga_core::ssrf_proxy;
+
+/// The app's settings.json path, under xaga-core's data root — the single
+/// shared derivation, deliberately not Tauri's identifier-derived
+/// `app_config_dir()` (which resolves to a different directory, `app.xaga`).
+pub(crate) fn settings_path() -> Result<PathBuf, String> {
+    Ok(xaga_core::fs::data_root()
+        .ok_or("cannot determine platform data directory")?
+        .join("settings.json"))
+}
 
 pub(crate) const DEFAULT_LOADER_TIMEOUT_SECS: u64 = 10;
 pub(crate) const DEFAULT_FEED_TIMEOUT_SECS: u64 = 10;
@@ -57,6 +66,10 @@ pub(crate) struct AppState {
     /// (reqwest fetch paths); it names the previous URL. Off by default:
     /// redirect targets don't learn the original feed URL.
     pub(crate) referer_allowed: Arc<RwLock<bool>>,
+    /// settings.json's mtime at the read that formed this process's view of
+    /// the settings (startup load; refreshed on every funnel outcome). The
+    /// baseline for the stale-view check in [`update_settings`].
+    pub(crate) settings_baseline: Arc<RwLock<Option<std::time::SystemTime>>>,
     /// Whether the reqwest fetch paths send `Accept-Encoding: gzip` (and
     /// decompress compressed responses). Off by default: the request then
     /// carries no `Accept-Encoding` header at all.
@@ -160,9 +173,126 @@ pub(crate) fn load_settings(path: &Path) -> UserSettings {
     .unwrap_or_default()
 }
 
-pub(crate) fn save_settings(path: &Path, settings: &UserSettings) -> std::io::Result<()> {
-    let json = serde_json::to_string_pretty(settings).unwrap();
-    xaga_core::fs::write_atomic(path, json.as_bytes())
+// ── Settings write funnel ─────────────────────────────────────────────────────
+//
+// Every settings.json write in the app goes through `update_settings`. The
+// account-wide xaga resource lock IS the flock on settings.json (holding it
+// grants the right to write settings.json, download the embedding model, and
+// use any future account-wide resource); writers fail fast on contention.
+
+/// Outcome of a settings write attempt. `StaleView` is a normal concurrency
+/// outcome, not an error: another process changed settings.json since this
+/// process formed its view, so the write was refused and the *fresh* content
+/// (read under the lock) is returned for the caller to refresh from.
+pub(crate) enum SettingsOutcome {
+    // The payload is the committed state — part of the funnel's API (and read
+    // by its tests); the current commands use their own captured values, so
+    // non-test builds see the field as unread.
+    Written(#[allow(dead_code)] UserSettings),
+    StaleView(UserSettings),
+}
+
+/// settings.json's current mtime; `None` when the file does not exist *or is
+/// empty*. The empty case matters because acquiring the account lock creates
+/// the file (`create(true)`) — a zero-length settings.json carries no
+/// settings (`load_settings` yields defaults for it), so for baseline
+/// purposes it is the same as absent.
+fn settings_mtime(path: &Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(path)
+        .ok()
+        .filter(|m| m.len() > 0)
+        .and_then(|m| m.modified().ok())
+}
+
+/// Core of the settings write funnel, factored free of Tauri state so it is
+/// unit-testable: takes the caller's view baseline, returns the outcome plus
+/// the new baseline (the file's mtime as of this attempt, captured under the
+/// lock).
+///
+/// INVARIANT (owner directive): the write payload must be built only from the
+/// state loaded *inside* the hold plus the caller's delta — never from data
+/// read before the lock. Callers therefore pass a mutation closure, not a
+/// settings struct.
+fn update_settings_file(
+    path: &Path,
+    baseline: Option<std::time::SystemTime>,
+    delta: impl FnOnce(&mut UserSettings),
+) -> Result<(SettingsOutcome, Option<std::time::SystemTime>), String> {
+    let lock = xaga_core::fs::FileLock::try_acquire(path.to_path_buf())
+        .ok_or("another xaga process holds the account lock")?;
+
+    // Stale-view check (owner's ts-at-read design): the baseline was captured
+    // at the read that formed this process's view, not here. A mismatch means
+    // another process wrote since then; refuse, and hand back the fresh
+    // content read under the lock.
+    let current = settings_mtime(path);
+    if current != baseline {
+        let fresh = load_settings(path);
+        return Ok((SettingsOutcome::StaleView(fresh), current));
+    }
+
+    let mut settings = load_settings(path);
+    delta(&mut settings);
+    let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    let lock = xaga_core::fs::write_locked(lock, path, json.as_bytes())
+        .map_err(|e| e.to_string())?;
+    // Still holding the lock on the new inode, so this mtime is authoritative.
+    let new_baseline = settings_mtime(path);
+    drop(lock);
+    Ok((SettingsOutcome::Written(settings), new_baseline))
+}
+
+/// The settings write funnel: applies `delta` under the account lock with the
+/// stale-view check, keeping this process's baseline current on every outcome.
+pub(crate) fn update_settings(
+    state: &AppState,
+    delta: impl FnOnce(&mut UserSettings),
+) -> Result<SettingsOutcome, String> {
+    let path = settings_path()?;
+    let baseline = *state.settings_baseline.read().unwrap();
+    let (outcome, new_baseline) = update_settings_file(&path, baseline, delta)?;
+    *state.settings_baseline.write().unwrap() = new_baseline;
+    Ok(outcome)
+}
+
+/// Refreshes this process's in-memory settings mirrors from `s` — used when a
+/// write came back `StaleView` so the UI-facing state reflects what is
+/// actually on disk. Defaults mirror the setup seeding. `library` is
+/// deliberately not touched: switching the open library is `set_library`'s
+/// job, not a side effect of a refused preference write.
+pub(crate) fn refresh_state_from_settings(state: &AppState, s: &UserSettings) {
+    let s = s.clone();
+    *state.theme.write().unwrap() = s.theme.unwrap_or_else(|| "auto".to_string());
+    *state.refresh_on_startup.write().unwrap() = s.refresh_on_startup.unwrap_or(false);
+    *state.loader_timeout_secs.write().unwrap() =
+        s.loader_timeout_secs.unwrap_or(DEFAULT_LOADER_TIMEOUT_SECS);
+    *state.feed_timeout_secs.write().unwrap() =
+        s.feed_timeout_secs.unwrap_or(DEFAULT_FEED_TIMEOUT_SECS);
+    *state.feed_max_body_bytes.write().unwrap() =
+        s.feed_max_body_bytes.unwrap_or(DEFAULT_FEED_MAX_BODY_BYTES);
+    *state.import_max_bytes.write().unwrap() =
+        s.import_max_bytes.unwrap_or(DEFAULT_IMPORT_MAX_BYTES);
+    *state.max_redirects.write().unwrap() =
+        fetch_client::effective_max_redirects(s.max_redirects);
+    *state.referer_allowed.write().unwrap() = s.referer_allowed.unwrap_or(false);
+    *state.gzip_allowed.write().unwrap() = s.gzip_allowed.unwrap_or(false);
+    *state.html_reader_font_family.write().unwrap() =
+        s.html_reader_font_family.unwrap_or_else(|| "system".to_string());
+    *state.html_reader_font_size.write().unwrap() = s.html_reader_font_size.unwrap_or(16.0);
+    *state.html_reader_line_height.write().unwrap() =
+        s.html_reader_line_height.unwrap_or(1.75);
+    *state.show_sidebar.write().unwrap() = s.show_sidebar.unwrap_or(true);
+    *state.allowed_domains.write().unwrap() = s.allowed_domains.unwrap_or_default();
+    *state.inline_pdf_reader.write().unwrap() = s.inline_pdf_reader.unwrap_or(false);
+    *state.html_reader_view.write().unwrap() =
+        s.html_reader_view.unwrap_or_else(|| "reader".to_string());
+}
+
+/// The uniform caller-side handling of a [`SettingsOutcome::StaleView`]:
+/// refresh the mirrors and report the refusal to the webview.
+pub(crate) fn stale_view_error(state: &AppState, fresh: &UserSettings) -> String {
+    refresh_state_from_settings(state, fresh);
+    "settings changed by another xaga process; view refreshed — retry".to_string()
 }
 
 // ── Appearance helpers ───────────────────────────────────────────────────────────
@@ -267,7 +397,6 @@ fn set_find_enabled(app: tauri::AppHandle, enabled: bool) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let http_client = reqwest::Client::new();
     let named_stores_supported = article_loader::supports_named_data_stores();
 
     // The "HTTP allowed" handle, created before the proxy so the proxy can
@@ -290,6 +419,12 @@ pub fn run() {
         )))
         .expect("failed to start SSRF filtering proxy for the article loader");
 
+    // The model download dials through the proxy like every other outbound
+    // request (docs/architecture/security/fetching_remote_content.md,
+    // "Who dials through it").
+    let model_download_client = ssrf_proxy::proxied_client(ssrf_proxy_port)
+        .expect("failed to build the proxied model-download client");
+
     // Pre-created Arcs shared between .manage() and the .setup() closure.
     let library: Arc<RwLock<PathBuf>> = Arc::new(RwLock::new(PathBuf::new()));
     let theme: Arc<RwLock<String>> = Arc::new(RwLock::new("auto".to_string()));
@@ -311,6 +446,8 @@ pub fn run() {
     let allowed_domains: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
     let inline_pdf_reader: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let html_reader_view: Arc<RwLock<String>> = Arc::new(RwLock::new("reader".to_string()));
+    let settings_baseline: Arc<RwLock<Option<std::time::SystemTime>>> =
+        Arc::new(RwLock::new(None));
 
     // setup_ prefixed values are consumed by Tauri's .setup() closure.
     // There is no semantic meaning here.
@@ -335,6 +472,7 @@ pub fn run() {
     let setup_reader_font_size = Arc::clone(&html_reader_font_size);
     let setup_reader_line_height = Arc::clone(&html_reader_line_height);
     let setup_svc = Arc::clone(&embedding_service);
+    let setup_settings_baseline = Arc::clone(&settings_baseline);
 
     let app = tauri::Builder::default()
         .manage(AppState {
@@ -359,6 +497,7 @@ pub fn run() {
             max_redirects,
             referer_allowed,
             gzip_allowed,
+            settings_baseline,
         })
         .manage(article_loader::PendingRequests::default())
         .plugin(
@@ -630,9 +769,14 @@ pub fn run() {
         })
         .setup(move |app| {
             // Resolve settings: persisted settings.json or defaults.
-            let settings_path = app.path().app_config_dir()?.join("settings.json");
-            let default_library = app.path().app_data_dir()?;
+            let settings_path = settings_path()?;
+            let default_library =
+                xaga_core::fs::data_root().ok_or("cannot determine platform data directory")?;
             let settings = load_settings(&settings_path);
+            // The read that forms this process's view of the settings — its
+            // mtime is the baseline for the stale-view check in
+            // `update_settings`.
+            *setup_settings_baseline.write().unwrap() = settings_mtime(&settings_path);
             let lib_path = settings
                 .library
                 .map(PathBuf::from)
@@ -707,7 +851,7 @@ pub fn run() {
             // instance will not write to LanceDB.
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = xaga_core::embeddings::download_model_if_missing(&http_client).await {
+                if let Err(e) = xaga_core::embeddings::download_model_if_missing(&model_download_client).await {
                     log::error!("startup: model download failed: {e}");
                 }
 
@@ -991,4 +1135,55 @@ fn install_signal_handler(
         std::process::exit(0);
     })
     .expect("failed to install signal handler");
+}
+
+#[cfg(test)]
+mod settings_funnel_tests {
+    use super::*;
+
+    /// Plan test 5: the stale-view outcome. A write attempted with a baseline
+    /// older than the file's mtime is refused with the fresh content; a retry
+    /// with the refreshed baseline succeeds against the fresh state.
+    #[test]
+    fn stale_view_refused_then_retry_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        // First-ever write: baseline None matches the missing file.
+        let (outcome, baseline) =
+            update_settings_file(&path, None, |s| s.theme = Some("dark".into())).unwrap();
+        let SettingsOutcome::Written(written) = outcome else {
+            panic!("expected Written");
+        };
+        assert_eq!(written.theme.as_deref(), Some("dark"));
+
+        // A second writer (simulating another process, which read the file and
+        // holds the then-current baseline) writes.
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let (outcome2, baseline_after_other) =
+            update_settings_file(&path, baseline, |s| s.theme = Some("light".into())).unwrap();
+        assert!(matches!(outcome2, SettingsOutcome::Written(_)));
+
+        // The first process still holds its old baseline → refused, and the
+        // payload is the fresh on-disk content.
+        let (outcome3, refreshed_baseline) =
+            update_settings_file(&path, baseline, |s| s.theme = Some("auto".into())).unwrap();
+        let SettingsOutcome::StaleView(fresh) = outcome3 else {
+            panic!("expected StaleView");
+        };
+        assert_eq!(fresh.theme.as_deref(), Some("light"));
+        assert_eq!(refreshed_baseline, baseline_after_other);
+
+        // Retry with the refreshed baseline: succeeds, delta applied to the
+        // fresh state.
+        let (outcome4, _) =
+            update_settings_file(&path, refreshed_baseline, |s| s.theme = Some("auto".into()))
+                .unwrap();
+        let SettingsOutcome::Written(w) = outcome4 else {
+            panic!("expected Written");
+        };
+        assert_eq!(w.theme.as_deref(), Some("auto"));
+        // The stale writer's intended value never landed silently: the file
+        // holds the retry's value, written knowingly against the fresh view.
+    }
 }

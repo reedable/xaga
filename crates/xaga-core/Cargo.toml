@@ -10,7 +10,7 @@ atom_syndication  = "0.12"
 sha2              = "0.10"
 hex               = "0.4"
 chrono            = { version = "0.4", features = ["serde"] }
-tokio             = { version = "1", features = ["rt", "fs", "sync"] }
+tokio             = { version = "1", features = ["rt", "fs", "sync", "net", "io-util"] }
 flume             = "0.11"
 dirs              = "5"
 serde             = { version = "1", features = ["derive"] }

@@ -38,7 +38,7 @@ pub(crate) fn effective_max_redirects(setting: Option<u32>) -> u32 {
 /// explicitly here.
 ///
 /// Deliberately no `.https_only()`: the "HTTP allowed" setting is enforced in
-/// [`crate::ssrf_proxy`] instead. See
+/// [`xaga_core::ssrf_proxy`] instead. See
 /// docs/architecture/security/fetching_remote_content.md, "CONNECT port
 /// policy," for why enforcement lives there and not here.
 pub(crate) fn build(

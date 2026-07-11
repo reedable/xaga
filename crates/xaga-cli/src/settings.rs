@@ -49,7 +49,7 @@ pub fn save(config: &Config) -> Result<(), String> {
 pub fn resolve_data_dir(cli_override: Option<PathBuf>, rc: &Config) -> PathBuf {
     cli_override
         .or_else(|| rc.data_dir.clone())
-        .or_else(|| dirs::data_dir().map(|d| d.join("xaga")))
+        .or_else(xaga_core::fs::data_root)
         .unwrap_or_else(|| {
             eprintln!(
                 "warning: cannot determine platform data directory; \

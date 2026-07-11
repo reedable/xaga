@@ -1,108 +1,89 @@
 # Secure the embedding model download (pending)
 
 The embedding model is downloaded at startup when missing, by
-`download_model_if_missing` (`crates/xaga-core/src/embeddings/model.rs`), over
-the **unproxied** `http_client` (`src-tauri/src/lib.rs`, setup closure). The
-download URL is a compile-time constant —
-`https://huggingface.co/Qdrant/all-MiniLM-L6-v2-onnx/resolve/main/{file}` for
-five files (`model.onnx`, `tokenizer.json`, `config.json`,
-`special_tokens_map.json`, `tokenizer_config.json`) — so no
-attacker-influenced input reaches this client and SSRF does not apply. The
-download is staged and atomically renamed into place, and runs only when files
-are missing.
+`download_model_if_missing` (`crates/xaga-core/src/embeddings/model.rs`),
+shared by the app (`src-tauri/src/lib.rs`, proxied client) and the CLI
+(`download_model`, `crates/xaga-cli/src/cmd/embeddings.rs`, own proxy
+instance). Fetches go through the SSRF proxy (per-hop address validation,
+plaintext refused), stream to disk under a 256 MB per-file cap (decompressed
+bytes; gzip stays on), and commit via `fs::replace_dir_atomic`. The URL is a
+compile-time constant — `https://huggingface.co/Qdrant/all-MiniLM-L6-v2-onnx/
+resolve/main/{file}` for five files.
 
-The unaddressed risks are about the *content*, which is neither pinned nor
-verified, and which is executed-adjacent: `model.onnx` and the tokenizer files
-are parsed by native code (onnxruntime via fastembed,
-`Embedder::load`, model.rs).
+## Pending
 
-## Risks
+1. **Content trust (decision open: Option A or B below).** `resolve/main` is
+   a moving ref — a compromised or force-pushed third-party repo (Qdrant org
+   on HF) changes what every fresh install receives, silently. And nothing
+   verifies the bytes: no checksum, no signature — `model.onnx` and the
+   tokenizer files are attacker-controlled input to a native parser
+   (onnxruntime via fastembed, `Embedder::load`) if HF, its CDN, or the CA
+   ecosystem is compromised. The proxy validates where bytes come from, not
+   what they are.
 
-1. **`resolve/main` is a moving ref.** The app downloads whatever the
-   `Qdrant/all-MiniLM-L6-v2-onnx` repo's main branch holds at that moment.
-   That repo is a third party (the Qdrant org on Hugging Face). A compromised
-   or force-pushed repo changes what every fresh install receives, silently.
-2. **No integrity verification.** No checksum, no signature, no size sanity
-   check — bytes go straight from `.bytes()` to disk (`fetch_all_files`,
-   model.rs) and then into onnxruntime. A malicious `model.onnx` is not just
-   "wrong embeddings": it is attacker-controlled input to a native parser.
-   `tokenizer.json` likewise.
-3. **The transitive trust set is wider than huggingface.co.**
-   `resolve/main` redirects to HF's LFS CDN; the default reqwest policy
-   follows up to 10 redirects wherever the server points, with no
-   `https_only` guard. The real trust set is HF, its CDN, the CA ecosystem,
-   and every hop between.
-4. **No timeout.** The client is `reqwest::Client::new()` — a stalled server
-   hangs the setup-time model step indefinitely.
-5. **Unbounded buffering.** Each file (model.onnx ≈ 90 MB) is buffered fully
-   in memory via `.bytes()` before being written.
-6. **Privacy.** A fresh install (or wiped model dir) contacts Hugging Face at
-   app startup, revealing install/launch timing and IP to a third party. Runs
-   only when files are missing.
+2. **Stall handling.** The download has no timeout; a stalled server hangs
+   the model step indefinitely. Discussion of 2026-07-09: the app degrades
+   gracefully during download (UI usable, embeddings reads return empty), so
+   a timeout alone converts an invisible hang into an equally invisible
+   permanently-degraded session — download/service failures are logged only,
+   nothing reaches the UI, nothing retries in-session, and `is_cache_ready`
+   cannot distinguish "downloading" from "failed" from "read-only (lock
+   held)". Direction undecided: timeout, in-session retry, UI-visible
+   download/failure state, on-demand re-trigger, or a combination. Touches
+   the missing UI-event registry (no single enumeration of rust-raised
+   events exists; names are inline literals in six files + TauriPlatform.ts).
 
-## Hardening options
+3. **Cap enforcement is untested.** The 256 MB cap can't be exercised in a
+   test because `fetch_all_files` hardcodes the download URL — unlike the
+   feed path's injectable URL (whose cap is pinned by
+   `gzip_cap_counts_decompressed_bytes`). Verified by inspection only;
+   testing it requires URL injection.
 
-Options A–C address content trust (risks 1–3); which risks each one covers is
-stated per option. Option D addresses client behavior (risks 3–5) and
-combines with any of them.
+4. **Privacy.** A fresh install (or wiped model dir) contacts Hugging Face
+   at app startup, revealing install/launch timing and IP to a third party.
+   Runs only when files are missing.
+
+5. ~~**Concurrent-writer staging collision.**~~ Resolved 2026-07-10 by the
+   account-wide xaga resource lock (the flock on settings.json,
+   `fs::try_acquire_account_lock`): `download_model_if_missing` holds it
+   across check + download + commit; a contender logs and skips (CLI prints
+   the skip). The same mechanism serializes settings.json writes through the
+   `update_settings` funnel (fail-fast on contention, stale-view check per
+   the owner's ts-at-read design), fixing the settings lost-update defect
+   that shared the root cause.
+
+## Options for item 1
 
 ### Option A — pin the HF revision
 
 Change `resolve/main` to `resolve/<commit-sha>` in the URL.
 
-- Pro: removes the moving-ref problem (risk 1); HF commit shas are immutable
+- Pro: removes the moving-ref problem; HF commit shas are immutable
   identifiers. Estimated change: the URL format string in `fetch_all_files`
   (model.rs).
 - Con: still trusts HF's servers (and the redirect chain) to serve honest
-  content for that sha — no client-side verification (risks 2–3 remain).
+  content for that sha — no client-side verification.
 - Con: model upgrades require a code change (also true of B).
 
 ### Option B — pinned SHA-256 checksums, verified after download
 
 Embed the known SHA-256 of each of the five files in the binary; after
 `fetch_all_files` writes the staging dir, hash each file and compare before
-the rename into place. Mismatch: delete staging, fail with a distinct error.
+the commit rename. Mismatch: delete staging, fail with a distinct error.
+The streamed-download loop can hash incrementally (no extra read pass), and
+`fs::replace_dir_atomic` is the natural verify-then-commit seam.
 
 - Pro: server compromise, CDN compromise, redirect manipulation, and TLS
-  interception all reduce to "download fails" (risks 1–3).
+  interception all reduce to "download fails". Subsumes A's protection.
 - The file set is five files, fixed at compile time. Estimated runtime cost:
   hashing ~90 MB once per download.
 - Con: a model upgrade requires updating five hashes in code.
 - Con: does not protect files already on disk from later local tampering
-  (same as every option here; load-time verification would be a further
-  step with its own startup-latency cost at ~90 MB).
-
-### Option C — bundle the model with the app
-
-Ship the five files inside the app bundle; delete the download path entirely.
-
-- Pro: removes the network trust question, the startup dependency on HF
-  availability, and the privacy signal (risks 1–6 all moot).
-- Pro: integrity becomes the app's own code-signing story (see
-  docs-transient/backlog/build/defect__macos_code_signing.md).
-- Con: bundle grows by ~90 MB; every app update re-ships the model.
-- Con: model upgrades are coupled to app releases.
-- Con: the CLI (`xaga-cli embeddings download-model`) has its own download
-  path that would need the same decision.
-
-### Option D — client hygiene (combines with A/B/C; moot under C)
-
-- `.timeout(...)` / `.connect_timeout(...)` on the client (risk 4).
-- Stream to disk instead of `.bytes()` (risk 5).
-- `.https_only(true)` and a lower redirect cap (narrows risk 3).
-- Estimated change: confined to `fetch_all_files` and the client builder.
-- Con: none of it verifies content; on its own it leaves risks 1–2 untouched.
+  (true of A as well; load-time verification would be a further step with
+  its own startup-latency cost at ~90 MB).
 
 ## Related
 
-- `docs/architecture/security/fetching_remote_content.md` — Known gaps points here;
-  update that bullet when an option is implemented.
-- The CLI download command (`download_model`,
-  `crates/xaga-cli/src/cmd/embeddings.rs`) is a separate implementation with
-  the same unverified-download shape; it additionally takes the repo as a
-  command-line argument and writes directly into the live model dir without
-  staging. Both writers feed the same model directory, and the reader checks
-  file existence only, so a mechanism implemented in one writer does not
-  constrain what the app loads — see
-  `docs/_backlog/embeddings/refactor__embedding_model_download.md` for the structure,
-  history, and candidate solutions.
+- `docs/architecture/security/fetching_remote_content.md` — its Limits
+  section carries the content-trust and timeout gaps; update it as items
+  close.

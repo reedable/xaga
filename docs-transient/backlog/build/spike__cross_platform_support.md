@@ -36,12 +36,21 @@ only. This item inventories the known platform-specific code, dependencies, and 
    behavior on Windows (`LockFileEx` semantics via whatever the implementation uses) has not
    been verified — the single-writer guarantee
    (`docs/architecture/single_writer_library_lock.md`) must hold on every shipped platform.
+   Additionally (2026-07-10), the account-wide lock protocol on settings.json is
+   POSIX-verified only: `fs::write_locked` renames a new locked inode over the locked
+   path (rename-over-a-locked-file — Windows `LockFileEx`/sharing semantics unverified),
+   and the stale-inode recheck in `FileLock::try_acquire` compares `dev`+`ino` via Unix
+   `MetadataExt` — there is no stable inode-identity API used on Windows, so the recheck
+   is cfg-gated to a no-op there.
 7. **Code signing is per-platform.** `macos_code_signing.md` covers macOS identity; Windows
    (Authenticode) and Linux (none/distro-specific) are separate work.
 8. **Already cross-platform by construction** (no action expected, listed to bound the work):
-   model dir via `dirs::data_dir()` (`crates/xaga-core/src/embeddings/model.rs`), settings
-   and library paths via Tauri's `app_config_dir`/`app_data_dir`, TLS via rustls (no system
-   OpenSSL dependency), and the SSRF proxy itself (a plain TCP listener on 127.0.0.1).
+   the data root (models, settings.json, CLI default data dir) via
+   `xaga_core::fs::data_root()` (`dirs::data_dir()`-based; as of 2026-07-10 Tauri's
+   identifier-derived `app_config_dir`/`app_data_dir` are no longer used), TLS via rustls
+   (no system OpenSSL dependency), and the SSRF proxy itself (a plain TCP listener on
+   127.0.0.1). One nuance: on XDG platforms `dirs::data_dir()` is the *data* dir
+   (`~/.local/share`), so settings.json lives there rather than in `~/.config`.
 
 ## Shape of the work
 

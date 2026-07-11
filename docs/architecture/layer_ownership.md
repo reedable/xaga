@@ -24,9 +24,6 @@ A capability's home is determined by what it is, not by who first needed it:
 
 - Fetch/stage/verify logic belongs in core; progress printing and `--flag` surfaces belong in the
   CLI; write-then-enqueue sequencing belongs in the command layer.
-- The rule is the measure the CLI-duplication finding was taken against: the embedding-model
-  download logic exists in both core and the CLI — a known deviation, recorded in the backlog
-  with hypotheses and candidate solutions, decision open.
 
 ## Boundary tension to weigh at design time
 

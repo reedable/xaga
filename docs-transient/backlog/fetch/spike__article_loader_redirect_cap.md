@@ -11,7 +11,7 @@ Facts known at time of writing:
   stack.
 - The proxy cannot count redirects for https traffic: each hop arrives as an
   independent `CONNECT`, indistinguishable from a subresource fetch
-  (`src-tauri/src/ssrf_proxy.rs`).
+  (`crates/xaga-core/src/ssrf_proxy.rs`).
 - Tauri 2.10.3 (in use) exposes `WebviewWindowBuilder::on_navigation(Fn(&Url) -> bool)`,
   which could reject or count top-level navigations. Not verified: whether WKWebView on
   macOS invokes it once per server-redirect hop. Any verification must use the bundled

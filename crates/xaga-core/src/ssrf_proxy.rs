@@ -94,12 +94,12 @@ fn is_blocked(ip: IpAddr) -> bool {
 
 /// Resolves a host to socket addresses. Abstracted so tests can simulate DNS
 /// (including rebinding) deterministically and offline.
-pub trait HostResolver: Send + Sync {
+trait HostResolver: Send + Sync {
     fn resolve(&self, host: &str, port: u16) -> std::io::Result<Vec<SocketAddr>>;
 }
 
 /// Production resolver backed by the system resolver.
-pub struct SystemResolver;
+struct SystemResolver;
 
 impl HostResolver for SystemResolver {
     fn resolve(&self, host: &str, port: u16) -> std::io::Result<Vec<SocketAddr>> {
@@ -277,6 +277,15 @@ pub async fn start(config: ProxyConfig) -> std::io::Result<u16> {
     Ok(port)
 }
 
+/// A reqwest client whose every request — including each redirect hop — dials
+/// through the proxy at `port`, so it inherits the proxy's address validation
+/// and plaintext-HTTP refusal.
+pub fn proxied_client(port: u16) -> reqwest::Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .proxy(reqwest::Proxy::all(format!("http://127.0.0.1:{port}"))?)
+        .build()
+}
+
 async fn write_status(stream: &mut TcpStream, status: &str) -> std::io::Result<()> {
     stream
         .write_all(format!("HTTP/1.1 {status}\r\nConnection: close\r\n\r\n").as_bytes())
@@ -293,7 +302,7 @@ async fn write_http_blocked(stream: &mut TcpStream) -> std::io::Result<()> {
         .write_all(
             format!(
                 "HTTP/1.1 {} HTTP Blocked\r\nConnection: close\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\n\r\n{}",
-                xaga_core::persistence::feeds::HTTP_BLOCKED_STATUS,
+                crate::persistence::feeds::HTTP_BLOCKED_STATUS,
                 body.len(),
                 body
             )
@@ -725,7 +734,7 @@ mod tests {
         let status = read_http_head(&mut c).await;
         let expected = format!(
             "HTTP/1.1 {}",
-            xaga_core::persistence::feeds::HTTP_BLOCKED_STATUS
+            crate::persistence::feeds::HTTP_BLOCKED_STATUS
         );
         assert!(status.starts_with(&expected), "got: {status:?}");
     }

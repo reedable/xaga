@@ -14,6 +14,7 @@ pub mod md;
 pub mod persistence;
 pub mod query;
 pub mod recovery;
+pub mod ssrf_proxy;
 pub mod tags;
 pub mod types;
 pub mod util;

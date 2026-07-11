@@ -9998,6 +9998,7 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-opener",
  "tauri-plugin-window-state",
+ "tempfile",
  "tokio",
  "xaga-core",
 ]
@@ -10009,7 +10010,6 @@ dependencies = [
  "chrono",
  "clap",
  "dirs 5.0.1",
- "reqwest 0.12.28",
  "serde",
  "serde_json",
  "similar",
