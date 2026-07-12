@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use crate::{
     library,
-    library_writer::{LibraryWriter, TagPatch, Tier as WriteTier},
+    library_writer::{BookmarkOutcome, LibraryWriter, Tier as WriteTier},
     md::md_to_entry,
     persistence::walk::for_each_md,
     types::{Article, Entry},
@@ -179,11 +179,9 @@ pub struct BookmarkImportResult {
 /// Duplicate URLs within the file are skipped after the first occurrence.
 /// The caller is responsible for queuing embed messages for the returned ids.
 pub async fn import_bookmarks(
-    library_dir: &Path,
     writer: &LibraryWriter,
     html: &str,
 ) -> Result<BookmarkImportResult, BookmarksError> {
-    let bookmark_tag = crate::tags::BOOKMARK.to_string();
     let parsed = parse(html);
     let mut seen = std::collections::HashSet::new();
     let mut added: Vec<Article> = Vec::new();
@@ -191,45 +189,29 @@ pub async fn import_bookmarks(
     let mut failed: Vec<String> = Vec::new();
 
     // Bookmarks are user-authored intent (not re-derivable), so imports write on the
-    // Interactive tier — the shutdown drain must not drop them.
+    // Interactive tier — the shutdown drain must not drop them. The existing-vs-new
+    // decision lives INSIDE the entry lane (one `bookmark_entry` op), so a concurrent
+    // create of the same URL can never cause the bookmark tag to be silently dropped.
     for entry in parsed {
         if !seen.insert(entry.url.clone()) {
             continue;
         }
 
-        let id = url_hash12(&entry.url);
-
-        if crate::persistence::entries::find_entry_path(library_dir, &id)
+        match writer
+            .bookmark_entry(
+                WriteTier::Interactive,
+                entry.url.clone(),
+                entry.title,
+                entry.created_at,
+                entry.published_at,
+                entry.updated_at,
+                entry.description,
+            )
             .await
-            .is_some()
         {
-            // Entry exists — add the bookmark tag through its entry lane (idempotent; the
-            // tag RMW happens inside the lane, uninterleavable with a concurrent tag write).
-            match writer
-                .patch_entry_tags(WriteTier::Interactive, id.clone(), TagPatch::AddBookmark)
-                .await
-            {
-                Ok(_) => updated.push(id),
-                Err(_) => failed.push(entry.url),
-            }
-        } else {
-            // No Entry exists — create one (already-read) with the bookmark tag.
-            match writer
-                .write_read_entry(
-                    WriteTier::Interactive,
-                    entry.url.clone(),
-                    entry.title,
-                    entry.created_at,
-                    entry.published_at,
-                    entry.updated_at,
-                    entry.description,
-                    vec![bookmark_tag.clone()],
-                )
-                .await
-            {
-                Ok(content) => added.push(content),
-                Err(_) => failed.push(entry.url),
-            }
+            Ok(BookmarkOutcome::Added(article)) => added.push(*article),
+            Ok(BookmarkOutcome::Updated(id)) => updated.push(id),
+            Err(_) => failed.push(entry.url),
         }
     }
 

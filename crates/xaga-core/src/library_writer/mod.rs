@@ -24,6 +24,30 @@ use crate::persistence::topics::TopicsError;
 use crate::persistence::{articles, entries, feeds, topics};
 use crate::types::{Annotation, Article, CollectionItem, Entry, Feed, Topic};
 
+/// Proof of the write right: a zero-sized capability that every `pub(crate)` persistence
+/// write requires. Its field is private to this module, so it can be constructed ONLY here
+/// (the writer mints one at `start`, having taken the library lock). A future in-crate
+/// caller that tried to call a persistence write directly — bypassing the writer's per-file
+/// serialization — could not, because it cannot obtain a `WriteToken`. C5 already made the
+/// write functions `pub(crate)` (no src-tauri caller); this makes even an in-crate bypass a
+/// compile error. Copy so the writer can hand it to each spawned lane task freely.
+#[derive(Clone, Copy)]
+pub struct WriteToken(());
+
+impl WriteToken {
+    /// Private: only the writer, holding the lock, mints tokens.
+    fn new() -> Self {
+        WriteToken(())
+    }
+
+    /// Test-only constructor so persistence-layer unit tests can call write functions
+    /// directly without standing up a writer.
+    #[cfg(test)]
+    pub(crate) fn for_test() -> Self {
+        WriteToken(())
+    }
+}
+
 /// Cap on concurrently executing lane writes. Writes are ms-scale file RMWs; the cap
 /// bounds spawn pressure during bulk intake (feed refresh) without approaching the
 /// design-scale corpus limits — lanes above the cap simply wait their turn.
@@ -67,6 +91,14 @@ pub enum WriterError {
     /// The writer is gone (channel closed) — should not happen while the app runs.
     #[error("library writer is not running")]
     Closed,
+}
+
+/// The result of a [`LibraryWriter::bookmark_entry`]: whether the bookmark created a new
+/// entry (carrying its Article, for indexing) or tagged an existing one (its id). The
+/// Article is boxed so the two variants are similar in size.
+pub enum BookmarkOutcome {
+    Added(Box<Article>),
+    Updated(String),
 }
 
 /// A typed tag mutation, applied to the entry's current tags INSIDE its lane — the
@@ -145,17 +177,19 @@ enum Op {
         patch: TagPatch,
         resp: oneshot::Sender<Result<Entry, WriterError>>,
     },
-    /// Create a read (already-read) entry if one does not already exist at its id — the
-    /// bookmark-import create path. Idempotent: an existing file is left untouched.
-    WriteReadEntry {
+    /// Bookmark an entry — the bookmark-import path — deciding existing-vs-new INSIDE the
+    /// entry lane so a concurrent create (a feed carrying the same URL) cannot slip between
+    /// the check and the write and cause the bookmark tag to be silently dropped. If the
+    /// entry exists, the bookmark tag is ensured; otherwise a read (already-read) entry is
+    /// created carrying the tag.
+    BookmarkEntry {
         url: String,
         title: String,
         created_at: String,
         published_at: Option<String>,
         updated_at: Option<String>,
         summary: Option<String>,
-        tags: Vec<String>,
-        resp: oneshot::Sender<Result<Article, WriterError>>,
+        resp: oneshot::Sender<Result<BookmarkOutcome, WriterError>>,
     },
     SaveTopic {
         id: String,
@@ -230,10 +264,15 @@ enum Op {
     },
     /// Write a feed's `.atom` (feed lane). Submitted by the orchestration only AFTER every
     /// `WriteFeedEntry` for the feed has completed, preserving the entries-before-atom
-    /// ordering invariant across the per-entry lanes.
+    /// ordering invariant across the per-entry lanes. `require_exists` gates the write on
+    /// the feed still being present (a refresh must not resurrect a feed the user removed
+    /// during the network fetch); it is `false` for `add_feed`, which creates the feed. The
+    /// existence check and the write are atomic on the feed lane, serialized against
+    /// `remove_feed`.
     WriteFeedAtom {
         id: String,
         atom: Box<Atom>,
+        require_exists: bool,
         resp: oneshot::Sender<Result<(), WriterError>>,
     },
 }
@@ -248,7 +287,7 @@ impl Op {
             | Op::ReplaceAnnotation { article_id: id, .. }
             | Op::RemoveAnnotation { article_id: id, .. }
             | Op::PatchEntryTags { id, .. } => format!("entry/{id}"),
-            Op::WriteReadEntry { url, .. } | Op::WriteFeedEntry { url, .. } => {
+            Op::BookmarkEntry { url, .. } | Op::WriteFeedEntry { url, .. } => {
                 // Same id the persistence layer derives, so this shares the entry's lane.
                 let id = crate::util::normalize_url(url)
                     .map(|u| crate::util::url_hash12(&u))
@@ -277,7 +316,7 @@ impl Op {
             Op::ReplaceAnnotation { .. } => "replace_annotation",
             Op::RemoveAnnotation { .. } => "remove_annotation",
             Op::PatchEntryTags { .. } => "patch_entry_tags",
-            Op::WriteReadEntry { .. } => "write_read_entry",
+            Op::BookmarkEntry { .. } => "bookmark_entry",
             Op::SaveTopic { .. } => "save_topic",
             Op::EditTopicMeta { .. } => "edit_topic_meta",
             Op::DeleteTopic { .. } => "delete_topic",
@@ -301,7 +340,7 @@ impl Op {
             Op::ReplaceAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RemoveAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::PatchEntryTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
-            Op::WriteReadEntry { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::BookmarkEntry { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SaveTopic { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::DeleteTopic { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::EditTopicMeta { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -319,7 +358,7 @@ impl Op {
 
     /// Execute against `library_dir` and deliver the result through the responder.
     /// Runs inside the op's lane: nothing else touches this file concurrently.
-    async fn execute(self, library_dir: &std::path::Path) {
+    async fn execute(self, library_dir: &std::path::Path, token: WriteToken) {
         match self {
             Op::SaveArticle {
                 id,
@@ -342,6 +381,7 @@ impl Op {
                     summary.as_deref(),
                     favicon.as_deref(),
                     &markdown,
+                    token,
                 )
                 .await
                 .map_err(WriterError::from);
@@ -352,7 +392,7 @@ impl Op {
                 annotation,
                 resp,
             } => {
-                let r = articles::add_annotation(library_dir, &article_id, annotation)
+                let r = articles::add_annotation(library_dir, &article_id, annotation, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
@@ -363,7 +403,8 @@ impl Op {
                 annotation,
                 resp,
             } => {
-                let r = articles::replace_annotation(library_dir, &article_id, &old_id, annotation)
+                let r =
+                    articles::replace_annotation(library_dir, &article_id, &old_id, annotation, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
@@ -373,7 +414,7 @@ impl Op {
                 annotation_id,
                 resp,
             } => {
-                let r = articles::remove_annotation(library_dir, &article_id, &annotation_id)
+                let r = articles::remove_annotation(library_dir, &article_id, &annotation_id, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
@@ -383,32 +424,53 @@ impl Op {
                 // command layer used to do, now uninterleavable.
                 let r = async {
                     let tags = entries::read_entry_tags(library_dir, &id).await?;
-                    entries::set_entry_tags(library_dir, &id, patch.apply(tags)).await
+                    entries::set_entry_tags(library_dir, &id, patch.apply(tags), token).await
                 }
                 .await
                 .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
-            Op::WriteReadEntry {
+            Op::BookmarkEntry {
                 url,
                 title,
                 created_at,
                 published_at,
                 updated_at,
                 summary,
-                tags,
                 resp,
             } => {
-                let r = entries::write_read_entry(
-                    library_dir,
-                    &url,
-                    &title,
-                    &created_at,
-                    published_at.as_deref(),
-                    updated_at.as_deref(),
-                    summary.as_deref(),
-                    &tags,
-                )
+                // Existing-vs-new decided INSIDE the entry lane: a concurrent create of the
+                // same URL (a feed) cannot slip between the check and the write, so the
+                // bookmark tag is never silently dropped.
+                let r = async {
+                    let id = crate::util::url_hash12(&crate::util::normalize_url(&url)?);
+                    let outcome = if entries::find_entry_path(library_dir, &id).await.is_some() {
+                        let tags = entries::read_entry_tags(library_dir, &id).await?;
+                        entries::set_entry_tags(
+                            library_dir,
+                            &id,
+                            TagPatch::AddBookmark.apply(tags),
+                            token,
+                        )
+                        .await?;
+                        BookmarkOutcome::Updated(id)
+                    } else {
+                        let article = entries::write_read_entry(
+                            library_dir,
+                            &url,
+                            &title,
+                            &created_at,
+                            published_at.as_deref(),
+                            updated_at.as_deref(),
+                            summary.as_deref(),
+                            &[crate::tags::BOOKMARK.to_string()],
+                            token,
+                        )
+                        .await?;
+                        BookmarkOutcome::Added(Box::new(article))
+                    };
+                    Ok::<BookmarkOutcome, EntryError>(outcome)
+                }
                 .await
                 .map_err(WriterError::from);
                 let _ = resp.send(r);
@@ -421,9 +483,17 @@ impl Op {
                 items,
                 resp,
             } => {
-                let r = topics::save_topic(library_dir, &id, &title, &description, threshold, items)
-                    .await
-                    .map_err(WriterError::from);
+                let r = topics::save_topic(
+                    library_dir,
+                    &id,
+                    &title,
+                    &description,
+                    threshold,
+                    items,
+                    token,
+                )
+                .await
+                .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
             Op::EditTopicMeta {
@@ -439,21 +509,29 @@ impl Op {
                     let items = topics::read_topic_items(library_dir, &id)
                         .await
                         .unwrap_or_default();
-                    topics::save_topic(library_dir, &id, &title, &description, threshold, items)
-                        .await
+                    topics::save_topic(
+                        library_dir,
+                        &id,
+                        &title,
+                        &description,
+                        threshold,
+                        items,
+                        token,
+                    )
+                    .await
                 }
                 .await
                 .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
             Op::DeleteTopic { id, resp } => {
-                let r = topics::delete_topic(library_dir, &id)
+                let r = topics::delete_topic(library_dir, &id, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
             Op::SetTopicPinned { id, pinned, resp } => {
-                let r = topics::set_topic_pinned(library_dir, &id, pinned)
+                let r = topics::set_topic_pinned(library_dir, &id, pinned, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
@@ -463,7 +541,7 @@ impl Op {
                 item,
                 resp,
             } => {
-                let r = topics::add_topic_item(library_dir, &topic_id, item)
+                let r = topics::add_topic_item(library_dir, &topic_id, item, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
@@ -474,7 +552,7 @@ impl Op {
                 item,
                 resp,
             } => {
-                let r = topics::replace_topic_item(library_dir, &topic_id, &old_id, item)
+                let r = topics::replace_topic_item(library_dir, &topic_id, &old_id, item, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
@@ -484,13 +562,13 @@ impl Op {
                 item_id,
                 resp,
             } => {
-                let r = topics::remove_topic_item(library_dir, &topic_id, &item_id)
+                let r = topics::remove_topic_item(library_dir, &topic_id, &item_id, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
             Op::SetFeedPinned { id, pinned, resp } => {
-                let r = feeds::set_feed_pinned(library_dir, &id, pinned)
+                let r = feeds::set_feed_pinned(library_dir, &id, pinned, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
@@ -502,13 +580,13 @@ impl Op {
                 bookmarked,
                 resp,
             } => {
-                let r = feeds::rename_feed(library_dir, &id, &title, &unread, &bookmarked)
+                let r = feeds::rename_feed(library_dir, &id, &title, &unread, &bookmarked, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
             Op::RemoveFeed { id, resp } => {
-                let r = feeds::remove_feed(library_dir, &id)
+                let r = feeds::remove_feed(library_dir, &id, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
@@ -537,6 +615,7 @@ impl Op {
                             published_at.as_deref(),
                             updated_at.as_deref(),
                             summary.as_deref(),
+                            token,
                         )
                         .await
                         .map(Some)
@@ -546,8 +625,13 @@ impl Op {
                 .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
-            Op::WriteFeedAtom { id, atom, resp } => {
-                let r = feeds::write_feed_atom(library_dir, &id, &atom)
+            Op::WriteFeedAtom {
+                id,
+                atom,
+                require_exists,
+                resp,
+            } => {
+                let r = feeds::write_feed_atom(library_dir, &id, &atom, require_exists, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
@@ -593,7 +677,7 @@ impl LibraryWriter {
                     .enable_all()
                     .build()
                     .expect("failed to build library writer runtime");
-                rt.block_on(dispatch_loop(dir, rx));
+                rt.block_on(dispatch_loop(dir, rx, WriteToken::new()));
             })
             .expect("failed to spawn library writer thread");
 
@@ -766,9 +850,11 @@ impl LibraryWriter {
         self.submit(tier, op, rx).await
     }
 
-    /// Create an already-read entry if absent (bookmark-import create path). Idempotent.
+    /// Bookmark an entry (bookmark-import path): ensure it exists as a read entry and
+    /// carries the bookmark tag, deciding existing-vs-new inside the entry lane so a
+    /// concurrent create cannot cause the tag to be dropped.
     #[allow(clippy::too_many_arguments)]
-    pub async fn write_read_entry(
+    pub async fn bookmark_entry(
         &self,
         tier: Tier,
         url: String,
@@ -777,17 +863,15 @@ impl LibraryWriter {
         published_at: Option<String>,
         updated_at: Option<String>,
         summary: Option<String>,
-        tags: Vec<String>,
-    ) -> Result<Article, WriterError> {
+    ) -> Result<BookmarkOutcome, WriterError> {
         let (resp, rx) = oneshot::channel();
-        let op = Op::WriteReadEntry {
+        let op = Op::BookmarkEntry {
             url,
             title,
             created_at,
             published_at,
             updated_at,
             summary,
-            tags,
             resp,
         };
         self.submit(tier, op, rx).await
@@ -975,17 +1059,20 @@ impl LibraryWriter {
 
     /// Write a feed's `.atom` on the feed lane. `pub(crate)`: the orchestration calls this
     /// only AFTER every `write_feed_entry` for the feed has completed (entries-before-atom).
+    /// `require_exists` = update-only (a refresh): skip if the feed was removed concurrently.
     /// `Atom` is a crate-internal type, so this is unreachable from the command layer.
     pub(crate) async fn write_feed_atom(
         &self,
         tier: Tier,
         id: String,
         atom: Atom,
+        require_exists: bool,
     ) -> Result<(), WriterError> {
         let (resp, rx) = oneshot::channel();
         let op = Op::WriteFeedAtom {
             id,
             atom: Box::new(atom),
+            require_exists,
             resp,
         };
         self.submit(tier, op, rx).await
@@ -1002,7 +1089,7 @@ struct Lane {
     listed: bool,
 }
 
-async fn dispatch_loop(library_dir: PathBuf, rx: flume::Receiver<Msg>) {
+async fn dispatch_loop(library_dir: PathBuf, rx: flume::Receiver<Msg>, token: WriteToken) {
     let mut lanes: HashMap<String, Lane> = HashMap::new();
     // Cross-lane priority: Interactive-headed lanes dispatch before Regular-headed ones.
     let mut ready_interactive: VecDeque<String> = VecDeque::new();
@@ -1056,7 +1143,7 @@ async fn dispatch_loop(library_dir: PathBuf, rx: flume::Receiver<Msg>) {
             let done = completion_tx.clone();
             let lane_key = key.clone();
             tokio::spawn(async move {
-                op.execute(&dir).await;
+                op.execute(&dir, token).await;
                 let _ = done.send(lane_key);
             });
         }
@@ -1294,6 +1381,38 @@ mod tests {
             }
         }
         assert_eq!(created, 1, "exactly one concurrent create should win; rest are no-ops");
+    }
+
+    /// Regression: bookmarking an entry that is created concurrently (a feed carrying the
+    /// same URL) must still end with the bookmark tag present — the existing-vs-new
+    /// decision is inside the entry lane, so the tag is never dropped. Races
+    /// `bookmark_entry` against `write_feed_entry` for the same URL; whichever lands first,
+    /// the entry ends up bookmarked.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn bookmark_racing_feed_create_keeps_the_bookmark_tag() {
+        let dir = tempfile::tempdir().unwrap();
+        let w = start_writer(dir.path());
+        let url = "https://example.com/in-a-feed-and-bookmarked";
+
+        let (wa, wb) = (w.clone(), w.clone());
+        let feed = tokio::spawn(async move {
+            wa.write_feed_entry(Tier::Regular, url.to_string(), "T".into(), None, None, None)
+                .await
+        });
+        let bookmark = tokio::spawn(async move {
+            wb.bookmark_entry(Tier::Interactive, url.to_string(), "T".into(), "".into(), None, None, None)
+                .await
+        });
+        feed.await.unwrap().unwrap();
+        bookmark.await.unwrap().unwrap();
+
+        // Regardless of ordering, the entry exists AND carries the bookmark tag.
+        let id = crate::util::url_hash12(&crate::util::normalize_url(url).unwrap());
+        let tags = entries::read_entry_tags(dir.path(), &id).await.unwrap();
+        assert!(
+            tags.iter().any(|t| t == crate::tags::BOOKMARK),
+            "bookmark tag must survive a concurrent feed create; tags = {tags:?}"
+        );
     }
 
     /// Writes to different files proceed independently (lanes, not a global queue).

@@ -48,8 +48,9 @@ scope, not just LanceDB scope.**
 - Every library-writing command is refused centrally at the IPC boundary with a typed
   `E_READ_ONLY` error — the `WRITE_COMMANDS` registry next to `is_invoke_allowed`
   (`src-tauri/src/commands/mod.rs`), the same single-choke-point pattern as the window
-  allowlist. New write commands must be added to that registry (until the Phase A
-  capability token makes bypass structurally impossible).
+  allowlist. New write commands must be added to that registry (it drives the early,
+  uniform read-only rejection and the frontend affordance list; the ultimate enforcement is
+  that a read-only instance has no writer, so `require_writer` errors regardless).
 - Incidental writes hiding in read flows no-op silently: `read_article`'s mark-read is
   skipped, so reading stays seamless (owner decision) — the entry simply stays unread.
 - The frontend learns the mode (`is_library_read_only` command + `library:mode-changed`
@@ -87,9 +88,19 @@ destroy each other's change.
   ITS OWN entry lane (create-if-absent, atomic against another feed carrying the same entry
   or a user write to it — a single entry can appear in multiple feeds), and only once every
   entry has landed is the `.atom` written on the feed lane; awaiting the entry writes before
-  the atom preserves the entries-before-atom ordering invariant.
+  the atom preserves the entries-before-atom ordering invariant. A refresh's `.atom` write is
+  existence-gated (`require_exists`): if the user removed the feed during the fetch, the
+  write is skipped rather than resurrecting it — the check and write are atomic on the feed
+  lane, serialized against `remove_feed`. `add_feed` writes unconditionally (it creates the
+  feed).
 - **Classification rule for a new write feature:** does it need the writer? Then it is a
-  write. (Phase A will make this a compile-time requirement via a capability token.)
+  write. This is enforced at compile time by the **`WriteToken`** capability: every
+  `pub(crate)` persistence write takes a `&WriteToken` / `WriteToken`, and the token's
+  constructor is private to `library_writer` (minted once at `start`, having taken the
+  lock). So a persistence write can be called ONLY from within the writer — a future
+  in-crate caller that tried to write directly, bypassing the per-file lanes, would not
+  compile (it cannot obtain a token). `WriteToken::for_test()` (test-only) lets
+  persistence unit tests call writes directly.
 
 ## Known limits (accepted, Phase B)
 

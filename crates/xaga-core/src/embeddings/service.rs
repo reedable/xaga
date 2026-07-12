@@ -13,7 +13,6 @@ pub enum ShutdownReason {
 
 use crate::types::{Article, Feed, Topic};
 
-use crate::fs::FileLock;
 use super::model::{Embedder, load_default_embedder};
 use super::pipeline::{
     add_topic_member, apply_state, embed_entry_vector, embed_feed, embed_topic_vector,
@@ -21,6 +20,7 @@ use super::pipeline::{
     sync_topic_row,
 };
 use super::{EmbeddingsDb, EmbeddingsError};
+use crate::fs::FileLock;
 
 /// A reference to a library entity: its id plus what kind it is, so the consumer
 /// never has to probe LanceDB to learn what it is handling.
@@ -347,7 +347,8 @@ impl EmbeddingService {
 
     /// Resets the embeddings DB and re-runs recovery (non-blocking).
     pub fn reset(&self, library_dir: PathBuf) {
-        self.senders.enqueue(Tier::Control, Job::Reset { library_dir });
+        self.senders
+            .enqueue(Tier::Control, Job::Reset { library_dir });
     }
 
     /// Marks the service as needing a restart after shutdown.  Must be called
@@ -436,7 +437,7 @@ async fn run_loop(
                     }
                 }
                 Ok(Job::Shutdown) => {
-                    log::info!("embedding service: shutdown requested — draining");
+                    log::info!("embedding service: shutdown requested — breaking");
                     break;
                 }
                 Ok(_) => log::warn!("control tier: unexpected non-control job"),

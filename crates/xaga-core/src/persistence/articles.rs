@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::{
+    library_writer::WriteToken,
     md::Frontmatter,
     md::{Markdown, md_to_entry, parse_document},
     persistence::entries::{EntryError, find_entry_path, render_entry},
@@ -24,6 +25,7 @@ fn with_reference(mut annotations: Vec<Annotation>, article_id: &str) -> Vec<Ann
 /// Writes full content to the item's file wherever it lives, preserving `created_at`
 /// and any existing annotations. Does not change the item's read state.
 /// Returns the saved Article.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn save_article(
     library_dir: &Path,
     id: &str,
@@ -34,6 +36,7 @@ pub(crate) async fn save_article(
     summary: Option<&str>,
     favicon: Option<&str>,
     markdown: &str,
+    _token: WriteToken,
 ) -> Result<Article, EntryError> {
     if !crate::persistence::entries::is_safe_id(id) {
         return Err(EntryError::InvalidId);
@@ -121,6 +124,7 @@ pub(crate) async fn add_annotation(
     library_dir: &Path,
     article_id: &str,
     annotation: Annotation,
+    _token: WriteToken,
 ) -> Result<Article, EntryError> {
     let path = find_entry_path(library_dir, article_id)
         .await
@@ -163,6 +167,7 @@ pub(crate) async fn replace_annotation(
     article_id: &str,
     old_id: &str,
     annotation: Annotation,
+    _token: WriteToken,
 ) -> Result<Article, EntryError> {
     let path = find_entry_path(library_dir, article_id)
         .await
@@ -195,6 +200,7 @@ pub(crate) async fn remove_annotation(
     library_dir: &Path,
     article_id: &str,
     annotation_id: &str,
+    _token: WriteToken,
 ) -> Result<Article, EntryError> {
     let path = find_entry_path(library_dir, article_id)
         .await
@@ -246,11 +252,17 @@ mod tests {
             None,
             None,
             "body",
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
 
-        let article = add_annotation(lib, "abcdef123456", annotation("old-id", "yellow", "n"))
+        let article = add_annotation(
+            lib,
+            "abcdef123456",
+            annotation("old-id", "yellow", "n"),
+            WriteToken::for_test(),
+        )
             .await
             .unwrap();
         let created_at = article.annotations[0].created_at.clone();
@@ -261,6 +273,7 @@ mod tests {
             "abcdef123456",
             "old-id",
             annotation("new-id", "red", "n"),
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
@@ -292,21 +305,37 @@ mod tests {
             None,
             None,
             "body",
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
-        add_annotation(lib, "abcdef123456", annotation("a1", "yellow", "n"))
-            .await
-            .unwrap();
+        add_annotation(
+            lib,
+            "abcdef123456",
+            annotation("a1", "yellow", "n"),
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
 
         // Same id, different color: refused — that path is replace_annotation's.
-        let err = add_annotation(lib, "abcdef123456", annotation("a1", "red", "n"))
-            .await
-            .unwrap_err();
+        let err = add_annotation(
+            lib,
+            "abcdef123456",
+            annotation("a1", "red", "n"),
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, EntryError::ColorChangeRequiresReplace));
 
         // Same id, same color, new note: a legitimate edit, accepted.
-        let article = add_annotation(lib, "abcdef123456", annotation("a1", "yellow", "edited"))
+        let article = add_annotation(
+            lib,
+            "abcdef123456",
+            annotation("a1", "yellow", "edited"),
+            WriteToken::for_test(),
+        )
             .await
             .unwrap();
         assert_eq!(article.annotations[0].content, "edited");
@@ -326,6 +355,7 @@ mod tests {
             None,
             None,
             "body",
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
@@ -335,6 +365,7 @@ mod tests {
             "abcdef123456",
             "never-existed",
             annotation("new-id", "red", ""),
+            WriteToken::for_test(),
         )
         .await
         .unwrap();

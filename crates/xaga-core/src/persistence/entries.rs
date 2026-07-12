@@ -4,6 +4,7 @@ use chrono::Utc;
 use thiserror::Error;
 
 use crate::{
+    library_writer::WriteToken,
     md::{FrontmatterAnnotation, parse_frontmatter},
     md::{Markdown, md_to_entry, parse_document},
     types::{Article, Entry},
@@ -111,6 +112,7 @@ pub(crate) async fn find_entry_path(library_dir: &Path, id: &str) -> Option<Path
 
 /// Builds the [`Article`] for a freshly-written entry (empty body, no annotations) from its parts,
 /// so the producer hands the domain object to the queue and the consumer never re-reads the file.
+#[allow(clippy::too_many_arguments)]
 fn entry_article(
     id: String,
     normalized_url: String,
@@ -152,6 +154,7 @@ pub(crate) async fn write_entry(
     published_at: Option<&str>,
     updated_at: Option<&str>,
     summary: Option<&str>,
+    _token: WriteToken,
 ) -> Result<Article, EntryError> {
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
@@ -179,6 +182,7 @@ pub(crate) async fn write_entry(
 /// Writes a new Entry to `entries/{hash12}.md` without the `unread` tag (already read).
 /// If an Entry already exists at that path it is left untouched. Returns the [`Article`] for the
 /// entry so the caller can queue an embed without re-reading the file.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn write_read_entry(
     library_dir: &Path,
     url: &str,
@@ -188,6 +192,7 @@ pub(crate) async fn write_read_entry(
     updated_at: Option<&str>,
     summary: Option<&str>,
     tags: &[String],
+    _token: WriteToken,
 ) -> Result<Article, EntryError> {
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
@@ -242,6 +247,7 @@ pub(crate) async fn set_entry_tags(
     library_dir: &Path,
     id: &str,
     tags: Vec<String>,
+    _token: WriteToken,
 ) -> Result<Entry, EntryError> {
     let path = find_entry_path(library_dir, id)
         .await

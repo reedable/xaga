@@ -11,7 +11,7 @@ use crate::{
         Atom, AtomEntry, apply_incoming_xml, atom_to_entry, atom_to_feed, atom_to_xml, entry_ids,
         feed_to_atom, parse_atom, self_link_url, set_pinned, set_title,
     },
-    library_writer::{LibraryWriter, Tier as WriteTier},
+    library_writer::{LibraryWriter, Tier as WriteTier, WriteToken},
     types::{Article, Feed},
     util::{normalize_url, url_hash12},
 };
@@ -73,6 +73,7 @@ pub fn url_to_feed_id(url: &str) -> Result<String> {
 /// commits once. If either the fetch/merge or the commit fails, the seeded (entry-less) `.atom` is
 /// still written so the feed exists and can be refreshed later, and the original error is propagated.
 /// Idempotent: re-adding an existing feed just refreshes it.
+#[allow(clippy::too_many_arguments)]
 pub async fn add_feed(
     client: &reqwest::Client,
     library_dir: &Path,
@@ -124,15 +125,15 @@ pub async fn add_feed(
         match fetch_and_merge(client, &mut atom, &id, timeout_secs, max_body_bytes).await {
         Ok(entries) => entries,
         Err(e) => {
-            commit_via_writer(writer, &id, &empty_atom, Vec::new()).await?;
+            commit_via_writer(writer, &id, &empty_atom, Vec::new(), false).await?;
             return Err(e);
         }
     };
 
-    match commit_via_writer(writer, &id, &atom, new_entries).await {
+    match commit_via_writer(writer, &id, &atom, new_entries, false).await {
         Ok(created) => Ok((atom_to_feed(&id, &atom, unread, bookmarked), created)),
         Err(e) => {
-            commit_via_writer(writer, &id, &empty_atom, Vec::new()).await?;
+            commit_via_writer(writer, &id, &empty_atom, Vec::new(), false).await?;
             Err(e)
         }
     }
@@ -156,6 +157,7 @@ fn seed_atom(id: String, url: String) -> Atom {
 /// Re-fetch a feed by ID: read and parse the `.atom`, fetch + merge in memory, then commit.
 /// Returns the summary and the Articles created, so the caller can enqueue them for indexing.
 /// Plain ingestion — persistence only.
+#[allow(clippy::too_many_arguments)]
 async fn refresh_feed(
     client: &reqwest::Client,
     library_dir: &Path,
@@ -177,7 +179,7 @@ async fn refresh_feed(
 
     let new_entries =
         fetch_and_merge(client, &mut existing, id, timeout_secs, max_body_bytes).await?;
-    let created = commit_via_writer(writer, id, &existing, new_entries).await?;
+    let created = commit_via_writer(writer, id, &existing, new_entries, true).await?;
 
     Ok((atom_to_feed(id, &existing, unread, bookmarked), created))
 }
@@ -208,6 +210,7 @@ async fn commit_via_writer(
     id: &str,
     atom: &Atom,
     new_entries: Vec<AtomEntry>,
+    require_exists: bool,
 ) -> Result<Vec<Article>> {
     let mut created = Vec::new();
     for atom_entry in &new_entries {
@@ -233,7 +236,7 @@ async fn commit_via_writer(
         }
     }
     writer
-        .write_feed_atom(WriteTier::Regular, id.to_string(), atom.clone())
+        .write_feed_atom(WriteTier::Regular, id.to_string(), atom.clone(), require_exists)
         .await
         .map_err(|e| FeedError::Writer(e.to_string()))?;
     Ok(created)
@@ -241,8 +244,21 @@ async fn commit_via_writer(
 
 /// Write a feed's `.atom` file. Invoked by the writer's `WriteFeedAtom` op, on the feed
 /// lane, after all of the feed's entries have been committed (the ordering invariant now
-/// lives in `commit_via_writer`, which awaits the entry writes before this).
-pub(crate) async fn write_feed_atom(library_dir: &Path, id: &str, atom: &Atom) -> Result<()> {
+/// lives in `commit_via_writer`, which awaits the entry writes before this). When
+/// `require_exists` is set (a refresh), skip the write if the feed file is gone — the user
+/// removed it during the network fetch, and the refresh must not resurrect it. The check
+/// and the write are atomic on the feed lane, serialized against `remove_feed`.
+pub(crate) async fn write_feed_atom(
+    library_dir: &Path,
+    id: &str,
+    atom: &Atom,
+    require_exists: bool,
+    _token: WriteToken,
+) -> Result<()> {
+    if require_exists && !tokio::fs::try_exists(crate::library::feed_path(library_dir, id)).await? {
+        log::info!("feed refresh: {id} was removed during fetch — not resurrecting");
+        return Ok(());
+    }
     write_atom_atomic(library_dir, id, atom).await
 }
 
@@ -275,7 +291,7 @@ pub async fn refresh_all_feeds(
         let result: Result<(Feed, Vec<Article>)> = async {
             let new_entries =
                 fetch_and_merge(client, &mut existing, &id, timeout_secs, max_body_bytes).await?;
-            let created = commit_via_writer(writer, &id, &existing, new_entries).await?;
+            let created = commit_via_writer(writer, &id, &existing, new_entries, true).await?;
             Ok((atom_to_feed(&id, &existing, unread, bookmarked), created))
         }
         .await;
@@ -310,7 +326,12 @@ pub async fn list_feeds(
 
 /// Adds (or removes) the app-local `pinned` category on a feed's `.atom`, under
 /// [`TAG_CATEGORY_SCHEME`]. Idempotent. Returns whether the file changed.
-pub(crate) async fn set_feed_pinned(library_dir: &Path, id: &str, pinned: bool) -> Result<bool> {
+pub(crate) async fn set_feed_pinned(
+    library_dir: &Path,
+    id: &str,
+    pinned: bool,
+    _token: WriteToken,
+) -> Result<bool> {
     let path = crate::library::feed_path(library_dir, id);
     let xml = tokio::fs::read_to_string(&path).await?;
     let mut atom = parse_atom(&xml).map_err(FeedError::AtomParse)?;
@@ -330,6 +351,7 @@ pub(crate) async fn rename_feed(
     new_title: &str,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
+    _token: WriteToken,
 ) -> Result<Feed> {
     let path = crate::library::feed_path(library_dir, id);
     if !path.exists() {
@@ -343,7 +365,11 @@ pub(crate) async fn rename_feed(
 }
 
 /// Remove a feed (deletes `{id}.atom`).
-pub(crate) async fn remove_feed(library_dir: &Path, id: &str) -> Result<()> {
+pub(crate) async fn remove_feed(
+    library_dir: &Path,
+    id: &str,
+    _token: WriteToken,
+) -> Result<()> {
     let path = crate::library::feed_path(library_dir, id);
     if !path.exists() {
         return Err(FeedError::NotFound(id.to_string()));
@@ -562,5 +588,49 @@ mod tests {
             matches!(err, FeedError::BodyTooLarge { max_bytes, .. } if max_bytes == cap),
             "expected BodyTooLarge, got: {err:?}"
         );
+    }
+
+    /// A refresh commit (`require_exists = true`) must NOT recreate a feed the user removed
+    /// during the network fetch; an add commit (`require_exists = false`) creates it. This
+    /// is the existence gate that closes the remove-during-refresh resurrection.
+    #[tokio::test]
+    async fn refresh_commit_does_not_resurrect_a_removed_feed() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        let id = "feedid123456";
+        tokio::fs::create_dir_all(crate::library::feeds_dir(lib))
+            .await
+            .unwrap();
+        let atom = feed_to_atom(&Feed {
+            id: id.into(),
+            url: "https://example.com/feed".into(),
+            title: "T".into(),
+            created_at: String::new(),
+            updated_at: None,
+            description: None,
+            is_pinned: false,
+            entry_count: 0,
+            unread_count: 0,
+            members: vec![],
+        });
+        let path = crate::library::feed_path(lib, id);
+
+        // Add creates it.
+        write_feed_atom(lib, id, &atom, false, WriteToken::for_test()).await.unwrap();
+        assert!(tokio::fs::try_exists(&path).await.unwrap());
+
+        // User removes it (as if during a refresh's fetch).
+        tokio::fs::remove_file(&path).await.unwrap();
+
+        // Refresh commit must skip — no resurrection.
+        write_feed_atom(lib, id, &atom, true, WriteToken::for_test()).await.unwrap();
+        assert!(
+            !tokio::fs::try_exists(&path).await.unwrap(),
+            "refresh must not resurrect a removed feed"
+        );
+
+        // Sanity: an add commit still would.
+        write_feed_atom(lib, id, &atom, false, WriteToken::for_test()).await.unwrap();
+        assert!(tokio::fs::try_exists(&path).await.unwrap());
     }
 }

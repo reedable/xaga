@@ -206,6 +206,7 @@ mod tests {
             None,
             None,
             "body",
+            crate::library_writer::WriteToken::for_test(),
         )
         .await
         .unwrap();
@@ -222,6 +223,7 @@ mod tests {
                 content: "the edited note".to_string(),
                 created_at: String::new(),
             },
+            crate::library_writer::WriteToken::for_test(),
         )
         .await
         .unwrap();
@@ -275,6 +277,7 @@ mod tests {
             None,
             None,
             "body",
+            crate::library_writer::WriteToken::for_test(),
         )
         .await
         .unwrap();

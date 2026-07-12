@@ -4,6 +4,7 @@ use chrono::Utc;
 use thiserror::Error;
 
 use crate::{
+    library_writer::WriteToken,
     md::parse_frontmatter,
     md::{Markdown, md_to_topic, parse_document},
     persistence::walk::for_each_md,
@@ -71,6 +72,7 @@ pub(crate) async fn save_topic(
     description: &str,
     threshold: Option<f32>,
     items: Vec<CollectionItem>,
+    _token: WriteToken,
 ) -> Result<Topic, TopicsError> {
     let dir = crate::library::topics_dir(library_dir);
     tokio::fs::create_dir_all(&dir).await?;
@@ -113,6 +115,7 @@ pub(crate) async fn set_topic_pinned(
     library_dir: &Path,
     id: &str,
     pinned: bool,
+    _token: WriteToken,
 ) -> Result<bool, TopicsError> {
     let path = crate::library::topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
@@ -174,7 +177,11 @@ pub async fn read_topic_items(
 }
 
 /// Deletes the topic file for the given id.
-pub(crate) async fn delete_topic(library_dir: &Path, id: &str) -> Result<(), TopicsError> {
+pub(crate) async fn delete_topic(
+    library_dir: &Path,
+    id: &str,
+    _token: WriteToken,
+) -> Result<(), TopicsError> {
     let path = crate::library::topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
@@ -200,6 +207,7 @@ pub(crate) async fn add_topic_item(
     library_dir: &Path,
     topic_id: &str,
     item: CollectionItem,
+    token: WriteToken,
 ) -> Result<Topic, TopicsError> {
     let path = crate::library::topic_path(library_dir, topic_id);
     if !tokio::fs::try_exists(&path).await? {
@@ -221,6 +229,7 @@ pub(crate) async fn add_topic_item(
         &description,
         fm.threshold,
         items,
+        token,
     )
     .await
 }
@@ -233,6 +242,7 @@ pub(crate) async fn replace_topic_item(
     topic_id: &str,
     old_id: &str,
     new_item: CollectionItem,
+    token: WriteToken,
 ) -> Result<Topic, TopicsError> {
     let path = crate::library::topic_path(library_dir, topic_id);
     if !tokio::fs::try_exists(&path).await? {
@@ -254,6 +264,7 @@ pub(crate) async fn replace_topic_item(
         &description,
         fm.threshold,
         items,
+        token,
     )
     .await
 }
@@ -263,6 +274,7 @@ pub(crate) async fn remove_topic_item(
     library_dir: &Path,
     topic_id: &str,
     item_id: &str,
+    token: WriteToken,
 ) -> Result<Topic, TopicsError> {
     let path = crate::library::topic_path(library_dir, topic_id);
     if !tokio::fs::try_exists(&path).await? {
@@ -284,6 +296,7 @@ pub(crate) async fn remove_topic_item(
         &description,
         fm.threshold,
         items,
+        token,
     )
     .await
 }
