@@ -49,6 +49,9 @@ pub(crate) struct LibraryHandle {
 
 pub(crate) struct AppState {
     pub(crate) library: Arc<RwLock<LibraryHandle>>,
+    /// The account-wide write right (flock on `settings.json`), shared in-process and
+    /// reference-counted so settings writes and the model download never self-contend.
+    pub(crate) account_lock: Arc<Mutex<AccountLock>>,
     pub(crate) theme: Arc<RwLock<String>>,
     pub(crate) refresh_on_startup: Arc<RwLock<bool>>,
     pub(crate) loader_timeout_secs: Arc<RwLock<u64>>,
@@ -250,33 +253,135 @@ fn settings_mtime(path: &Path) -> Option<std::time::SystemTime> {
 /// state loaded *inside* the hold plus the caller's delta — never from data
 /// read before the lock. Callers therefore pass a mutation closure, not a
 /// settings struct.
+/// The account-wide write right (the flock on `settings.json` under `data_root`), shared
+/// in-process and reference-counted. The bug this fixes: acquiring a fresh `FileLock` per
+/// call means the model download (a long hold) and a settings write open two handles on the
+/// same file, and `flock(2)` contends between open file descriptions even within one process
+/// — so the process locked itself out.
+///
+/// Operation-scoped, NOT process-lifetime: the flock is acquired when the first in-process
+/// account operation begins and released when the last finishes, so a second instance (e.g.
+/// on a different library) can still write settings while this process is idle — required
+/// because the library path lives in `settings.json`, so `set_library` is an account write.
+///
+/// Settings writes are synchronous critical sections that hold the mutex across `write_locked`
+/// (single-streamed → no two concurrent whole-file read-modify-writes clobber each other). The
+/// model download holds a [`AccountLease`] that carries only `lease_count` across its async
+/// fetch (it never writes settings), so a settings write can rotate the handle underneath it.
+#[derive(Default)]
+pub(crate) struct AccountLock {
+    /// Number of long-lived holders (download leases). Settings writes are transient (they run
+    /// fully inside one mutex hold) and are not counted; they consult this to decide whether to
+    /// release the handle after writing.
+    lease_count: usize,
+    /// The held flock, on the CURRENT `settings.json` inode. `write_locked` rotates the inode
+    /// and returns the lock on the new one; the shared handle is swapped in place, so a lease's
+    /// exclusion transfers to the new inode without the lease holding a specific handle.
+    handle: Option<xaga_core::fs::FileLock>,
+}
+
+impl AccountLock {
+    /// Acquire the flock if not already held. `Err` means another *process* holds it.
+    fn ensure_handle(&mut self, path: &Path) -> Result<(), String> {
+        if self.handle.is_none() {
+            self.handle = Some(
+                xaga_core::fs::FileLock::try_acquire(path.to_path_buf())
+                    .ok_or("another xaga process holds the account lock")?,
+            );
+        }
+        Ok(())
+    }
+
+    /// Release the flock iff no lease still needs it (operation-scoped).
+    fn release_if_idle(&mut self) {
+        if self.lease_count == 0 {
+            self.handle = None; // drops the FileLock → releases the flock
+        }
+    }
+
+    /// Apply `delta` to `settings.json` under the held right, with the stale-view check inside
+    /// the turn. Synchronous and mutex-guarded (single-streamed).
+    fn write_settings(
+        &mut self,
+        path: &Path,
+        baseline: Option<std::time::SystemTime>,
+        delta: impl FnOnce(&mut UserSettings),
+    ) -> Result<(SettingsOutcome, Option<std::time::SystemTime>), String> {
+        self.ensure_handle(path)?;
+
+        // Stale-view check (owner's ts-at-read design), read inside the turn: a mismatch means
+        // another process wrote since this process's baseline; refuse, hand back the fresh content.
+        let current = settings_mtime(path);
+        if current != baseline {
+            let fresh = load_settings(path);
+            self.release_if_idle();
+            return Ok((SettingsOutcome::StaleView(fresh), current));
+        }
+
+        let mut settings = load_settings(path);
+        delta(&mut settings);
+        let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+
+        let held = self.handle.take().expect("handle ensured above");
+        match xaga_core::fs::write_locked(held, path, json.as_bytes()) {
+            Ok(new_handle) => self.handle = Some(new_handle),
+            Err((e, held)) => {
+                // Hand-back: keep the still-valid lock (a lease may need it), then release
+                // only if idle.
+                self.handle = Some(held);
+                self.release_if_idle();
+                return Err(e.to_string());
+            }
+        }
+        // Still holding the lock on the new inode, so this mtime is authoritative.
+        let new_baseline = settings_mtime(path);
+        self.release_if_idle();
+        Ok((SettingsOutcome::Written(settings), new_baseline))
+    }
+}
+
+/// A refcount token proving the account right is held for the token's lifetime — held by the
+/// model download across its async fetch. Dropping it releases the flock when it was the last
+/// holder. `None` from [`account_lease`] means another process holds the right.
+pub(crate) struct AccountLease {
+    registry: Arc<Mutex<AccountLock>>,
+}
+
+impl Drop for AccountLease {
+    fn drop(&mut self) {
+        let mut g = self.registry.lock().unwrap();
+        g.lease_count -= 1;
+        g.release_if_idle();
+    }
+}
+
+/// Take an account lease (bumping the refcount, acquiring the flock if this is the first
+/// holder). `None` if another process holds the right.
+pub(crate) fn account_lease(
+    registry: &Arc<Mutex<AccountLock>>,
+    path: &Path,
+) -> Option<AccountLease> {
+    let mut g = registry.lock().unwrap();
+    if g.ensure_handle(path).is_err() {
+        return None;
+    }
+    g.lease_count += 1;
+    drop(g);
+    Some(AccountLease {
+        registry: Arc::clone(registry),
+    })
+}
+
 fn update_settings_file(
+    registry: &Mutex<AccountLock>,
     path: &Path,
     baseline: Option<std::time::SystemTime>,
     delta: impl FnOnce(&mut UserSettings),
 ) -> Result<(SettingsOutcome, Option<std::time::SystemTime>), String> {
-    let lock = xaga_core::fs::FileLock::try_acquire(path.to_path_buf())
-        .ok_or("another xaga process holds the account lock")?;
-
-    // Stale-view check (owner's ts-at-read design): the baseline was captured
-    // at the read that formed this process's view, not here. A mismatch means
-    // another process wrote since then; refuse, and hand back the fresh
-    // content read under the lock.
-    let current = settings_mtime(path);
-    if current != baseline {
-        let fresh = load_settings(path);
-        return Ok((SettingsOutcome::StaleView(fresh), current));
-    }
-
-    let mut settings = load_settings(path);
-    delta(&mut settings);
-    let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    let lock = xaga_core::fs::write_locked(lock, path, json.as_bytes())
-        .map_err(|e| e.to_string())?;
-    // Still holding the lock on the new inode, so this mtime is authoritative.
-    let new_baseline = settings_mtime(path);
-    drop(lock);
-    Ok((SettingsOutcome::Written(settings), new_baseline))
+    registry
+        .lock()
+        .unwrap()
+        .write_settings(path, baseline, delta)
 }
 
 /// The settings write funnel: applies `delta` under the account lock with the
@@ -287,7 +392,7 @@ pub(crate) fn update_settings(
 ) -> Result<SettingsOutcome, String> {
     let path = settings_path()?;
     let baseline = *state.settings_baseline.read().unwrap();
-    let (outcome, new_baseline) = update_settings_file(&path, baseline, delta)?;
+    let (outcome, new_baseline) = update_settings_file(&state.account_lock, &path, baseline, delta)?;
     *state.settings_baseline.write().unwrap() = new_baseline;
     Ok(outcome)
 }
@@ -467,6 +572,7 @@ pub fn run() {
         path: PathBuf::new(),
         writer: None,
     }));
+    let account_lock: Arc<Mutex<AccountLock>> = Arc::new(Mutex::new(AccountLock::default()));
     let theme: Arc<RwLock<String>> = Arc::new(RwLock::new("auto".to_string()));
     let refresh_on_startup: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let loader_timeout_secs: Arc<RwLock<u64>> = Arc::new(RwLock::new(DEFAULT_LOADER_TIMEOUT_SECS));
@@ -492,6 +598,7 @@ pub fn run() {
     // setup_ prefixed values are consumed by Tauri's .setup() closure.
     // There is no semantic meaning here.
     let gate_library = Arc::clone(&library);
+    let setup_account_lock = Arc::clone(&account_lock);
     let setup_embeddings_read = Arc::clone(&embeddings_read);
     let setup_allowed_domains = Arc::clone(&allowed_domains);
     let setup_inline_pdf_reader = Arc::clone(&inline_pdf_reader);
@@ -518,6 +625,7 @@ pub fn run() {
     let app = tauri::Builder::default()
         .manage(AppState {
             library,
+            account_lock,
             theme: theme.clone(),
             refresh_on_startup,
             loader_timeout_secs,
@@ -919,9 +1027,25 @@ pub fn run() {
             // service entirely — embeddings are available for reading but this
             // instance will not write to LanceDB.
             let app_handle = app.handle().clone();
+            let account_settings_path = settings_path.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = xaga_core::embeddings::download_model_if_missing(&model_download_client).await {
-                    log::error!("startup: model download failed: {e}");
+                // Model download (caller-acquires the account right): outer check, then take an
+                // in-process account lease held across the whole fetch (so a concurrent settings
+                // write shares the same handle instead of self-contending). Another process
+                // holding the right → skip; the next launch retries.
+                if !xaga_core::embeddings::model_present() {
+                    match account_lease(&setup_account_lock, &account_settings_path) {
+                        Some(_lease) => {
+                            if let Err(e) =
+                                xaga_core::embeddings::download_model(&model_download_client).await
+                            {
+                                log::error!("startup: model download failed: {e}");
+                            }
+                        }
+                        None => log::info!(
+                            "startup: another xaga process holds the account lock — skipping model download"
+                        ),
+                    }
                 }
 
                 // Writer status was decided at setup (the LibraryWriter in the
@@ -1351,10 +1475,13 @@ mod settings_funnel_tests {
     fn stale_view_refused_then_retry_succeeds() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("settings.json");
+        // One registry: the stale-view mechanic is baseline-vs-mtime, independent of the
+        // in-process handle sharing, so a single registry exercises it faithfully.
+        let registry = Mutex::new(AccountLock::default());
 
         // First-ever write: baseline None matches the missing file.
         let (outcome, baseline) =
-            update_settings_file(&path, None, |s| s.theme = Some("dark".into())).unwrap();
+            update_settings_file(&registry, &path, None, |s| s.theme = Some("dark".into())).unwrap();
         let SettingsOutcome::Written(written) = outcome else {
             panic!("expected Written");
         };
@@ -1364,13 +1491,13 @@ mod settings_funnel_tests {
         // holds the then-current baseline) writes.
         std::thread::sleep(std::time::Duration::from_millis(10));
         let (outcome2, baseline_after_other) =
-            update_settings_file(&path, baseline, |s| s.theme = Some("light".into())).unwrap();
+            update_settings_file(&registry, &path, baseline, |s| s.theme = Some("light".into())).unwrap();
         assert!(matches!(outcome2, SettingsOutcome::Written(_)));
 
         // The first process still holds its old baseline → refused, and the
         // payload is the fresh on-disk content.
         let (outcome3, refreshed_baseline) =
-            update_settings_file(&path, baseline, |s| s.theme = Some("auto".into())).unwrap();
+            update_settings_file(&registry, &path, baseline, |s| s.theme = Some("auto".into())).unwrap();
         let SettingsOutcome::StaleView(fresh) = outcome3 else {
             panic!("expected StaleView");
         };
@@ -1380,7 +1507,7 @@ mod settings_funnel_tests {
         // Retry with the refreshed baseline: succeeds, delta applied to the
         // fresh state.
         let (outcome4, _) =
-            update_settings_file(&path, refreshed_baseline, |s| s.theme = Some("auto".into()))
+            update_settings_file(&registry, &path, refreshed_baseline, |s| s.theme = Some("auto".into()))
                 .unwrap();
         let SettingsOutcome::Written(w) = outcome4 else {
             panic!("expected Written");
@@ -1388,5 +1515,28 @@ mod settings_funnel_tests {
         assert_eq!(w.theme.as_deref(), Some("auto"));
         // The stale writer's intended value never landed silently: the file
         // holds the retry's value, written knowingly against the fresh view.
+    }
+
+    /// The self-contention bug this whole change fixes: a held account lease (simulating an
+    /// in-progress model download) must NOT block a settings write in the *same* process —
+    /// they share the one refcounted handle instead of opening two contending `flock`s. And
+    /// the flock is released only once the last holder (the lease) drops.
+    #[test]
+    fn settings_write_succeeds_while_a_lease_is_held() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let registry = Arc::new(Mutex::new(AccountLock::default()));
+
+        let lease = account_lease(&registry, &path).expect("first holder acquires the flock");
+        // A settings write while the lease is held goes through (shared handle, no self-contention).
+        let (outcome, _) =
+            update_settings_file(&registry, &path, None, |s| s.theme = Some("dark".into())).unwrap();
+        assert!(matches!(outcome, SettingsOutcome::Written(_)));
+        // Still held while the lease is alive (not released after the transient write).
+        assert!(registry.lock().unwrap().handle.is_some());
+
+        drop(lease);
+        // Last holder gone → flock released (operation-scoped), so another instance could take it.
+        assert!(registry.lock().unwrap().handle.is_none());
     }
 }

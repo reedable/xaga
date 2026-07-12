@@ -36,6 +36,31 @@ lock file.
   releases and retries on whatever the path names now. Unix-only identity
   check (POSIX-verified protocol overall).
 
+## In-process sharing (one holder, reference-counted)
+
+Within a process the flock is held by a single shared, reference-counted handle
+(`AccountLock`, `src-tauri/src/lib.rs`), **not** re-acquired per call site. Acquiring a fresh
+`FileLock` per operation was a bug: the model download holds the lock across its whole fetch,
+and `flock(2)` binds to the open file description, so a settings write during the download
+opened a *second* handle and the process contended with itself ("another xaga process holds
+the account lock" — but it was the same one).
+
+- **Operation-scoped, not process-lifetime.** The flock is acquired when the first in-process
+  account operation begins and released when the last finishes. It is *not* held for the
+  process's life, because the library path lives in `settings.json` and `set_library` is an
+  account write — a process-lifetime hold would stop any *other* instance (on a different
+  library) from ever selecting its library.
+- **Settings writes are synchronous, single-streamed.** Each holds the registry mutex across
+  `write_locked`, so two whole-file read-modify-writes can never interleave (the same clean
+  invariant `write_locked`'s tmp flock assumes).
+- **The model download holds a lease** (`AccountLease`) that carries only the refcount across
+  its async fetch — it never writes settings, so a settings write can rotate the inode
+  underneath it; the download's exclusion transfers to the new handle because the lease
+  references the count, not a specific handle.
+- **`write_locked` hands the lock back on error** (`fs.rs`): a failed rotation returns the
+  original still-valid lock rather than dropping it, so a settings-write failure never releases
+  the flock a concurrent lease still needs.
+
 ## Writing settings.json: the rotation protocol
 
 Every settings.json write in the app goes through one funnel

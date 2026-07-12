@@ -82,30 +82,29 @@ pub enum DownloadOutcome {
     SkippedLockHeld,
 }
 
+/// Whether the model files are present — the caller's outer check before deciding to acquire
+/// the account right and download.
+pub fn model_present() -> bool {
+    model_files_present(&default_model_dir())
+}
+
 /// Downloads the model into a staging directory and atomically renames it into
 /// place only once all files have been fetched.  A leftover staging directory
 /// from a previous failed attempt is removed before starting.
 ///
-/// Returns immediately (no-op) if the model files are already present. The
-/// download runs under the account-wide xaga resource lock (the flock on
-/// settings.json — see `fs::try_acquire_account_lock`), held across
-/// check + download + commit, so concurrent downloaders (app startup vs CLI)
-/// cannot collide in the staging dir; a contender skips.
-pub async fn download_model_if_missing(
+/// **The caller must already hold the account-wide xaga resource right** (the flock on
+/// settings.json) across this call — the app via its in-process account lease, the CLI via a
+/// direct `fs::try_acquire_account_lock`. This function does NOT acquire it (xaga-core cannot
+/// name the app's lease guard). It re-checks `model_files_present` under the held right (a
+/// raced contender may have finished between the caller's check and its acquire), then
+/// downloads + commits.
+pub async fn download_model(
     client: &reqwest::Client,
 ) -> Result<DownloadOutcome, EmbeddingsError> {
     let model_dir = default_model_dir();
-    if model_files_present(&model_dir) {
-        return Ok(DownloadOutcome::Ready);
-    }
 
-    let Some(_account_lock) = crate::fs::try_acquire_account_lock() else {
-        log::info!("another xaga process holds the account lock — skipping model download");
-        return Ok(DownloadOutcome::SkippedLockHeld);
-    };
-
-    // Re-check under the lock: a raced contender may have completed the
-    // download between our first check and the acquire.
+    // Re-check under the caller's held right: a raced contender may have completed the
+    // download between the caller's outer check and its acquire.
     if model_files_present(&model_dir) {
         return Ok(DownloadOutcome::Ready);
     }

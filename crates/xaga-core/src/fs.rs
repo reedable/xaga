@@ -295,7 +295,7 @@ mod tests {
         fs::write(&path, b"old").unwrap();
 
         let lock = FileLock::try_acquire(path.clone()).unwrap();
-        let new_lock = write_locked(lock, &path, b"new").unwrap();
+        let new_lock = write_locked(lock, &path, b"new").map_err(|(e, _)| e).unwrap();
 
         // Continuity: the returned lock's inode is the path's inode.
         assert!(is_path_inode(&new_lock._file, &path));
@@ -320,7 +320,7 @@ mod tests {
         fs::write(tmp.path().join("settings.json.tmp"), b"corrupt-garbage").unwrap();
 
         let lock = FileLock::try_acquire(path.clone()).unwrap();
-        let _lock = write_locked(lock, &path, b"new").unwrap();
+        let _lock = write_locked(lock, &path, b"new").map_err(|(e, _)| e).unwrap();
 
         assert_eq!(fs::read(&path).unwrap(), b"new");
     }
@@ -351,7 +351,7 @@ mod tests {
                         .parse()
                         .unwrap();
                     let _lock =
-                        write_locked(lock, &path, (n + 1).to_string().as_bytes()).unwrap();
+                        write_locked(lock, &path, (n + 1).to_string().as_bytes()).map_err(|(e, _)| e).unwrap();
                 }
             }));
         }
@@ -454,7 +454,15 @@ pub fn try_acquire_account_lock() -> Option<FileLock> {
 /// 4. rename tmp over `path` — the locked tmp inode becomes the path's inode;
 /// 5. fsync the parent (best-effort, as in [`write_atomic`]);
 /// 6. release the old inode's lock by dropping `held`.
-pub fn write_locked(held: FileLock, path: &Path, bytes: &[u8]) -> std::io::Result<FileLock> {
+/// On error the ORIGINAL `held` lock is returned in the `Err` variant, never dropped: every
+/// failure is before or at the rename, so the old inode's lock is still valid and exclusion
+/// must not be lost (a shared holder — e.g. a concurrent account-lock lease — may still need
+/// it). The caller decides whether to retry or release.
+pub fn write_locked(
+    held: FileLock,
+    path: &Path,
+    bytes: &[u8],
+) -> Result<FileLock, (std::io::Error, FileLock)> {
     let tmp_path = {
         let mut name = path.file_name().map(|f| f.to_os_string()).unwrap_or_default();
         name.push(".tmp");
@@ -464,19 +472,25 @@ pub fn write_locked(held: FileLock, path: &Path, bytes: &[u8]) -> std::io::Resul
         }
     };
 
-    let mut tmp = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(&tmp_path)?;
-    tmp.try_lock_exclusive()
-        .map_err(|e| std::io::Error::other(format!("tmp lock (protocol violation?): {e}")))?;
-    tmp.set_len(0)?;
-    tmp.write_all(bytes)?;
-    tmp.sync_all()?;
-
-    fs::rename(&tmp_path, path)?;
+    // Fallible steps in a closure so any early return hands `held` back instead of dropping it.
+    let tmp = match (|| -> std::io::Result<File> {
+        let mut tmp = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&tmp_path)?;
+        tmp.try_lock_exclusive()
+            .map_err(|e| std::io::Error::other(format!("tmp lock (protocol violation?): {e}")))?;
+        tmp.set_len(0)?;
+        tmp.write_all(bytes)?;
+        tmp.sync_all()?;
+        fs::rename(&tmp_path, path)?;
+        Ok(tmp)
+    })() {
+        Ok(tmp) => tmp,
+        Err(e) => return Err((e, held)),
+    };
 
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         if let Ok(dir) = File::open(parent) {

@@ -4,8 +4,8 @@ use std::time::Instant;
 
 use clap::{Args, Subcommand};
 use xaga_core::embeddings::{
-    DEFAULT_MODEL_REPO, DownloadOutcome, EmbeddingsDb, default_model_dir,
-    download_model_if_missing, load_default_embedder, model_files_present,
+    DEFAULT_MODEL_REPO, EmbeddingsDb, default_model_dir, load_default_embedder,
+    model_files_present,
 };
 use xaga_core::fs::FileLock;
 use xaga_core::library;
@@ -303,15 +303,22 @@ async fn download_model() {
     };
     let client = ssrf_proxy::proxied_client(proxy_port).unwrap_or_else(|e| die(e));
 
-    match download_model_if_missing(&client).await {
-        Ok(DownloadOutcome::Ready) => {
+    if xaga_core::embeddings::model_present() {
+        println!("Done. You can now run:  {DOWNLOAD_CMD_DONE}");
+        return;
+    }
+    // Caller acquires the account right (a single CLI invocation → one holder, no
+    // self-contention); direct flock. Another process holding it → skip.
+    let Some(_account_lock) = xaga_core::fs::try_acquire_account_lock() else {
+        println!(
+            "Another xaga process holds the account lock (it may be \
+             downloading the model right now) — skipped."
+        );
+        return;
+    };
+    match xaga_core::embeddings::download_model(&client).await {
+        Ok(_) => {
             println!("Done. You can now run:  {DOWNLOAD_CMD_DONE}");
-        }
-        Ok(DownloadOutcome::SkippedLockHeld) => {
-            println!(
-                "Another xaga process holds the account lock (it may be \
-                 downloading the model right now) — skipped."
-            );
         }
         Err(e) => die(e),
     }
