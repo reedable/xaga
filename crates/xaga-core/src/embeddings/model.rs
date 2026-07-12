@@ -73,13 +73,11 @@ pub fn model_files_present(model_dir: &Path) -> bool {
         .all(|(name, _)| model_dir.join(name).is_file())
 }
 
-/// How [`download_model_if_missing`] concluded.
+/// How [`download_model`] concluded. (The "another process holds the account lock" outcome
+/// is handled by the caller, which owns the acquire, so it isn't a variant here.)
 pub enum DownloadOutcome {
     /// The model files are present (already there, or downloaded just now).
     Ready,
-    /// Another xaga process holds the account-wide lock (e.g. it is
-    /// downloading right now, or writing settings); this attempt was skipped.
-    SkippedLockHeld,
 }
 
 /// Whether the model files are present — the caller's outer check before deciding to acquire

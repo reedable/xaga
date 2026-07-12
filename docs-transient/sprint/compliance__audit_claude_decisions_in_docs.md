@@ -106,8 +106,9 @@ corrected in place; recorded here so the failure class is on the audit.
 fixed and owner-confirmed 2026-07-11 and the file was deleted — closed,
 removed from this audit.)
 
-Open ruling this passage still awaits: EmbeddingService-reuse as a
-design option (item 20).
+(Item 20's open ruling is now closed: the owner chose the synchronous
+refcounted account-lock registry over EmbeddingService-reuse; the defect
+was fixed and `defect__account_lock_self_contention.md` deleted 2026-07-12.)
 
 ## Scope note
 
