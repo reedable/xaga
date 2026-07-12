@@ -1,6 +1,6 @@
 [package]
 name = "xaga"
-version = "0.3.1"
+version = "0.3.2"
 description = "Privacy-Focused Personal Knowledge Management"
 edition = "2024"
 

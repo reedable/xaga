@@ -9981,7 +9981,7 @@ dependencies = [
 
 [[package]]
 name = "xaga"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "base64 0.22.1",
  "ctrlc",
@@ -10006,7 +10006,7 @@ dependencies = [
 
 [[package]]
 name = "xaga-cli"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "chrono",
  "clap",
@@ -10021,7 +10021,7 @@ dependencies = [
 
 [[package]]
 name = "xaga-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
