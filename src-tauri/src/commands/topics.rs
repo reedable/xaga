@@ -1,5 +1,6 @@
 use tauri::State;
 use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
+use xaga_core::library_writer::Tier as WriteTier;
 use xaga_core::persistence::topics;
 use xaga_core::query::items::{self, EmbeddedItemSource};
 use xaga_core::types::{CollectionItem, ItemFilter, Kind, ListItem, RankedItem, Topic};
@@ -15,21 +16,13 @@ pub async fn save_topic(
     threshold: Option<f32>,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
-    let data_dir = state.library_path();
-    // Preserve existing manual items when editing from the UI
-    let existing_items = topics::read_topic_items(&data_dir, &id)
+    let writer = crate::commands::require_writer(&state)?;
+    // Edit metadata while preserving existing manual items — the read+write happens
+    // inside the writer's topic lane, so a concurrent item change can't be clobbered.
+    let topic = writer
+        .edit_topic_meta(WriteTier::Interactive, id, title, description, threshold)
         .await
-        .unwrap_or_default();
-    let topic = topics::save_topic(
-        &data_dir,
-        &id,
-        &title,
-        &description,
-        threshold,
-        existing_items,
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?;
     state.enqueue(
         Tier::Interactive,
         Job::UpsertTopic {
@@ -46,8 +39,9 @@ pub async fn create_topic(
     threshold: Option<f32>,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
-    let data_dir = state.library_path();
-    let topic = topics::create_topic(&data_dir, &title, &description, threshold)
+    let writer = crate::commands::require_writer(&state)?;
+    let topic = writer
+        .create_topic(WriteTier::Interactive, title, description, threshold)
         .await
         .map_err(|e| e.to_string())?;
     state.enqueue(
@@ -65,8 +59,9 @@ pub async fn set_topic_pinned(
     pinned: bool,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let data_dir = state.library_path();
-    topics::set_topic_pinned(&data_dir, &id, pinned)
+    let writer = crate::commands::require_writer(&state)?;
+    writer
+        .set_topic_pinned(WriteTier::Interactive, id.clone(), pinned)
         .await
         .map_err(|e| e.to_string())?;
     state.enqueue(
@@ -134,8 +129,9 @@ pub async fn read_topic(id: String, state: State<'_, AppState>) -> Result<Topic,
 
 #[tauri::command]
 pub async fn delete_topic(id: String, state: State<'_, AppState>) -> Result<(), String> {
-    let data_dir = state.library_path();
-    topics::delete_topic(&data_dir, &id)
+    let writer = crate::commands::require_writer(&state)?;
+    writer
+        .delete_topic(WriteTier::Interactive, id.clone())
         .await
         .map_err(|e| e.to_string())?;
     state.enqueue(
@@ -153,9 +149,10 @@ pub async fn add_topic_item(
     item: CollectionItem,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
-    let data_dir = state.library_path();
+    let writer = crate::commands::require_writer(&state)?;
     let member_id = item.id().to_string();
-    let topic = topics::add_topic_item(&data_dir, &topic_id, item)
+    let topic = writer
+        .add_topic_item(WriteTier::Interactive, topic_id.clone(), item)
         .await
         .map_err(|e| e.to_string())?;
     state.enqueue(
@@ -174,8 +171,9 @@ pub async fn remove_topic_item(
     item_id: String,
     state: State<'_, AppState>,
 ) -> Result<Topic, String> {
-    let data_dir = state.library_path();
-    let topic = topics::remove_topic_item(&data_dir, &topic_id, &item_id)
+    let writer = crate::commands::require_writer(&state)?;
+    let topic = writer
+        .remove_topic_item(WriteTier::Interactive, topic_id.clone(), item_id.clone())
         .await
         .map_err(|e| e.to_string())?;
     state.enqueue(

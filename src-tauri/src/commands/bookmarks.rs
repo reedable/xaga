@@ -1,20 +1,15 @@
 use tauri::State;
 use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
-use xaga_core::persistence::entries;
+use xaga_core::library_writer::{TagPatch, Tier as WriteTier};
 use xaga_core::types::{Entry, Kind};
 
 use crate::AppState;
 
 #[tauri::command]
 pub async fn add_bookmark(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
-    let data_dir = state.library_path();
-    let mut tags = entries::read_entry_tags(&data_dir, &id)
-        .await
-        .map_err(|e| e.to_string())?;
-    if !xaga_core::tags::is_bookmarked(&tags) {
-        tags.push(xaga_core::tags::BOOKMARK.to_string());
-    }
-    let entry = entries::set_entry_tags(&data_dir, &id, tags)
+    let writer = crate::commands::require_writer(&state)?;
+    let entry = writer
+        .patch_entry_tags(WriteTier::Interactive, id.clone(), TagPatch::AddBookmark)
         .await
         .map_err(|e| e.to_string())?;
     state.enqueue(
@@ -32,14 +27,9 @@ pub async fn add_bookmark(id: String, state: State<'_, AppState>) -> Result<Entr
 
 #[tauri::command]
 pub async fn remove_bookmark(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
-    let data_dir = state.library_path();
-    let tags: Vec<String> = entries::read_entry_tags(&data_dir, &id)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .filter(|t| t != xaga_core::tags::BOOKMARK)
-        .collect();
-    let entry = entries::set_entry_tags(&data_dir, &id, tags)
+    let writer = crate::commands::require_writer(&state)?;
+    let entry = writer
+        .patch_entry_tags(WriteTier::Interactive, id.clone(), TagPatch::RemoveBookmark)
         .await
         .map_err(|e| e.to_string())?;
     state.enqueue(

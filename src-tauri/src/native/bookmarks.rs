@@ -24,6 +24,7 @@ pub(crate) async fn import_bookmarks(
     file_path: &Path,
 ) -> Result<BookmarkImportResult, String> {
     let data_dir = state.library_path();
+    let writer = crate::commands::require_writer(state)?;
 
     let max_bytes = *state.import_max_bytes.read().unwrap();
     let metadata = tokio::fs::metadata(file_path)
@@ -40,7 +41,7 @@ pub(crate) async fn import_bookmarks(
     let html = tokio::fs::read_to_string(file_path)
         .await
         .map_err(|e| e.to_string())?;
-    let result = bookmarks::import_bookmarks(&data_dir, &html)
+    let result = bookmarks::import_bookmarks(&data_dir, &writer, &html)
         .await
         .map_err(|e| e.to_string())?;
 

@@ -5,8 +5,8 @@ use scraper::{ElementRef, Html, Selector};
 use thiserror::Error;
 
 use crate::{
-    md::parse_frontmatter,
     library,
+    library_writer::{LibraryWriter, TagPatch, Tier as WriteTier},
     md::md_to_entry,
     persistence::walk::for_each_md,
     types::{Article, Entry},
@@ -180,6 +180,7 @@ pub struct BookmarkImportResult {
 /// The caller is responsible for queuing embed messages for the returned ids.
 pub async fn import_bookmarks(
     library_dir: &Path,
+    writer: &LibraryWriter,
     html: &str,
 ) -> Result<BookmarkImportResult, BookmarksError> {
     let bookmark_tag = crate::tags::BOOKMARK.to_string();
@@ -189,6 +190,8 @@ pub async fn import_bookmarks(
     let mut updated: Vec<String> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
 
+    // Bookmarks are user-authored intent (not re-derivable), so imports write on the
+    // Interactive tier — the shutdown drain must not drop them.
     for entry in parsed {
         if !seen.insert(entry.url.clone()) {
             continue;
@@ -196,40 +199,33 @@ pub async fn import_bookmarks(
 
         let id = url_hash12(&entry.url);
 
-        if let Some(path) = crate::persistence::entries::find_entry_path(library_dir, &id).await {
-            // Entry already exists — add "bookmark" tag if not already present. Tags are a
-            // persistence detail (not on the domain Entry), so read them from the file.
-            match tokio::fs::read_to_string(&path).await {
-                Ok(raw) => {
-                    let mut tags = parse_frontmatter(&raw)
-                        .map(|fm| fm.tags)
-                        .unwrap_or_default();
-                    if !tags.contains(&bookmark_tag) {
-                        tags.push(bookmark_tag.clone());
-                        match crate::persistence::entries::set_entry_tags(library_dir, &id, tags).await
-                        {
-                            Ok(_) => updated.push(id),
-                            Err(_) => failed.push(entry.url),
-                        }
-                    } else {
-                        updated.push(id);
-                    }
-                }
+        if crate::persistence::entries::find_entry_path(library_dir, &id)
+            .await
+            .is_some()
+        {
+            // Entry exists — add the bookmark tag through its entry lane (idempotent; the
+            // tag RMW happens inside the lane, uninterleavable with a concurrent tag write).
+            match writer
+                .patch_entry_tags(WriteTier::Interactive, id.clone(), TagPatch::AddBookmark)
+                .await
+            {
+                Ok(_) => updated.push(id),
                 Err(_) => failed.push(entry.url),
             }
         } else {
-            // No Entry exists — create one in read/ with the bookmark tag.
-            match crate::persistence::entries::write_read_entry(
-                library_dir,
-                &entry.url,
-                &entry.title,
-                &entry.created_at,
-                entry.published_at.as_deref(),
-                entry.updated_at.as_deref(),
-                entry.description.as_deref(),
-                &[bookmark_tag.clone()],
-            )
-            .await
+            // No Entry exists — create one (already-read) with the bookmark tag.
+            match writer
+                .write_read_entry(
+                    WriteTier::Interactive,
+                    entry.url.clone(),
+                    entry.title,
+                    entry.created_at,
+                    entry.published_at,
+                    entry.updated_at,
+                    entry.description,
+                    vec![bookmark_tag.clone()],
+                )
+                .await
             {
                 Ok(content) => added.push(content),
                 Err(_) => failed.push(entry.url),

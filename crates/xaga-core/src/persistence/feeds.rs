@@ -11,6 +11,7 @@ use crate::{
         Atom, AtomEntry, apply_incoming_xml, atom_to_entry, atom_to_feed, atom_to_xml, entry_ids,
         feed_to_atom, parse_atom, self_link_url, set_pinned, set_title,
     },
+    library_writer::{LibraryWriter, Tier as WriteTier},
     types::{Article, Feed},
     util::{normalize_url, url_hash12},
 };
@@ -51,6 +52,8 @@ pub enum FeedError {
     BodyTooLarge { url: String, max_bytes: u64 },
     #[error("plaintext HTTP fetch blocked by the \"HTTP allowed\" setting: {url}")]
     HttpBlocked { url: String },
+    #[error("library writer: {0}")]
+    Writer(String),
 }
 
 /// FIXME Untangle FeedError for least visibility
@@ -65,47 +68,6 @@ pub fn url_to_feed_id(url: &str) -> Result<String> {
     Ok(url_hash12(&normalized))
 }
 
-/// Save an `.md` for each entry that doesn't already exist on disk, returning the Articles
-/// created. The shared ingestion step behind `add_feed`, `refresh_feed`, and recovery's
-/// `reconcile_atom_file`. This function is a noop if the file already exists.
-async fn save_new_atom_entries(library_dir: &Path, atom_entries: &[AtomEntry]) -> Vec<Article> {
-    let mut created: Vec<Article> = Vec::new();
-
-    for atom_entry in atom_entries {
-        // Convert the storage AtomEntry to the domain Entry via the serialization layer, at the
-        // point the domain fields are actually needed to write the `.md`.
-        let entry = atom_to_entry(atom_entry);
-
-        if entry.url.is_empty() {
-            continue;
-        }
-
-        // Only create an Entry if one doesn't already exist on disk.
-        if crate::persistence::entries::find_entry_path(library_dir, &entry.id)
-            .await
-            .is_some()
-        {
-            continue;
-        }
-
-        match crate::persistence::entries::write_entry(
-            library_dir,
-            &entry.url,
-            &entry.title,
-            entry.published_at.as_deref(),
-            entry.updated_at.as_deref(),
-            entry.description.as_deref(),
-        )
-        .await
-        {
-            Ok(content) => created.push(content),
-            Err(err) => log::warn!("save_new_entries: write_entry {}: {err}", entry.id),
-        }
-    }
-
-    created
-}
-
 /// Add a feed by URL. For an already-present feed, just refreshes it. For a new feed, builds the
 /// entry-less domain [`Feed`], serializes it via `feed_to_atom`, fetches and merges in memory, then
 /// commits once. If either the fetch/merge or the commit fails, the seeded (entry-less) `.atom` is
@@ -114,6 +76,7 @@ async fn save_new_atom_entries(library_dir: &Path, atom_entries: &[AtomEntry]) -
 pub async fn add_feed(
     client: &reqwest::Client,
     library_dir: &Path,
+    writer: &LibraryWriter,
     url: &str,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
@@ -137,6 +100,7 @@ pub async fn add_feed(
         return refresh_feed(
             client,
             library_dir,
+            writer,
             &id,
             unread,
             bookmarked,
@@ -149,7 +113,9 @@ pub async fn add_feed(
     // New feed: serialize the entry-less domain Feed via atom.rs. Keep this seed so that, on any
     // later failure (fetch/merge or commit), a valid `.atom` is still persisted — the feed exists
     // and is refreshable, and the merge work just retries on the next refresh. The seed is the
-    // entry-less atom, which serializes even when a merged entry would not.
+    // entry-less atom, which serializes even when a merged entry would not. A seed commit is
+    // `commit_via_writer` with no new entries (just the `.atom`), so even the fallback goes
+    // through the feed lane.
     let empty_atom = seed_atom(id.clone(), url.clone());
 
     let mut atom = empty_atom.clone();
@@ -158,15 +124,15 @@ pub async fn add_feed(
         match fetch_and_merge(client, &mut atom, &id, timeout_secs, max_body_bytes).await {
         Ok(entries) => entries,
         Err(e) => {
-            write_atom_atomic(library_dir, &id, &empty_atom).await?;
+            commit_via_writer(writer, &id, &empty_atom, Vec::new()).await?;
             return Err(e);
         }
     };
 
-    match write_atom(library_dir, &id, &atom, &new_entries).await {
+    match commit_via_writer(writer, &id, &atom, new_entries).await {
         Ok(created) => Ok((atom_to_feed(&id, &atom, unread, bookmarked), created)),
         Err(e) => {
-            write_atom_atomic(library_dir, &id, &empty_atom).await?;
+            commit_via_writer(writer, &id, &empty_atom, Vec::new()).await?;
             Err(e)
         }
     }
@@ -193,6 +159,7 @@ fn seed_atom(id: String, url: String) -> Atom {
 async fn refresh_feed(
     client: &reqwest::Client,
     library_dir: &Path,
+    writer: &LibraryWriter,
     id: &str,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
@@ -210,7 +177,7 @@ async fn refresh_feed(
 
     let new_entries =
         fetch_and_merge(client, &mut existing, id, timeout_secs, max_body_bytes).await?;
-    let created = write_atom(library_dir, id, &existing, &new_entries).await?;
+    let created = commit_via_writer(writer, id, &existing, new_entries).await?;
 
     Ok((atom_to_feed(id, &existing, unread, bookmarked), created))
 }
@@ -229,25 +196,61 @@ async fn fetch_and_merge(
     apply_incoming_xml(atom, &incoming_xml, id).map_err(FeedError::FeedParse)
 }
 
-/// Commit a refreshed feed: persist each new entry's `.md` BEFORE writing the `.atom`. This
-/// function is the one place that owns that ordering invariant — callers must commit here, not
-/// reimplement the sequence. See docs/architecture/security/handling_remote_content.md,
-/// "Persistence," for why the order matters.
-async fn write_atom(
-    library_dir: &Path,
+/// Commit a fetched+merged feed through the library writer, Regular-tier (re-derivable,
+/// droppable at shutdown). Each new entry is created on ITS OWN lane (create-if-absent,
+/// atomic against a concurrent create from another feed carrying the same entry, or a
+/// user's write to that entry), and only once every entry has landed is the `.atom`
+/// written on the feed lane — preserving the entries-before-atom ordering invariant.
+/// Per-entry write failures are logged and skipped (best-effort, as before); an `.atom`
+/// write failure fails the commit.
+async fn commit_via_writer(
+    writer: &LibraryWriter,
     id: &str,
     atom: &Atom,
-    new_atom_entries: &[AtomEntry],
+    new_entries: Vec<AtomEntry>,
 ) -> Result<Vec<Article>> {
-    let created = save_new_atom_entries(library_dir, new_atom_entries).await;
-    write_atom_atomic(library_dir, id, atom).await?;
+    let mut created = Vec::new();
+    for atom_entry in &new_entries {
+        let entry = atom_to_entry(atom_entry);
+        let url = entry.url;
+        if url.is_empty() {
+            continue;
+        }
+        match writer
+            .write_feed_entry(
+                WriteTier::Regular,
+                url.clone(),
+                entry.title,
+                entry.published_at,
+                entry.updated_at,
+                entry.description,
+            )
+            .await
+        {
+            Ok(Some(article)) => created.push(article),
+            Ok(None) => {} // already existed — left untouched
+            Err(e) => log::warn!("feed commit: entry {url}: {e}"),
+        }
+    }
+    writer
+        .write_feed_atom(WriteTier::Regular, id.to_string(), atom.clone())
+        .await
+        .map_err(|e| FeedError::Writer(e.to_string()))?;
     Ok(created)
+}
+
+/// Write a feed's `.atom` file. Invoked by the writer's `WriteFeedAtom` op, on the feed
+/// lane, after all of the feed's entries have been committed (the ordering invariant now
+/// lives in `commit_via_writer`, which awaits the entry writes before this).
+pub(crate) async fn write_feed_atom(library_dir: &Path, id: &str, atom: &Atom) -> Result<()> {
+    write_atom_atomic(library_dir, id, atom).await
 }
 
 /// Re-fetch all feeds. Per-feed errors are collected rather than propagated early.
 pub async fn refresh_all_feeds(
     client: &reqwest::Client,
     library_dir: &Path,
+    writer: &LibraryWriter,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
     timeout_secs: u64,
@@ -272,7 +275,7 @@ pub async fn refresh_all_feeds(
         let result: Result<(Feed, Vec<Article>)> = async {
             let new_entries =
                 fetch_and_merge(client, &mut existing, &id, timeout_secs, max_body_bytes).await?;
-            let created = write_atom(library_dir, &id, &existing, &new_entries).await?;
+            let created = commit_via_writer(writer, &id, &existing, new_entries).await?;
             Ok((atom_to_feed(&id, &existing, unread, bookmarked), created))
         }
         .await;
@@ -307,7 +310,7 @@ pub async fn list_feeds(
 
 /// Adds (or removes) the app-local `pinned` category on a feed's `.atom`, under
 /// [`TAG_CATEGORY_SCHEME`]. Idempotent. Returns whether the file changed.
-pub async fn set_feed_pinned(library_dir: &Path, id: &str, pinned: bool) -> Result<bool> {
+pub(crate) async fn set_feed_pinned(library_dir: &Path, id: &str, pinned: bool) -> Result<bool> {
     let path = crate::library::feed_path(library_dir, id);
     let xml = tokio::fs::read_to_string(&path).await?;
     let mut atom = parse_atom(&xml).map_err(FeedError::AtomParse)?;
@@ -321,7 +324,7 @@ pub async fn set_feed_pinned(library_dir: &Path, id: &str, pinned: bool) -> Resu
 }
 
 /// Rename a feed by updating its `<title>` in the stored Atom file.
-pub async fn rename_feed(
+pub(crate) async fn rename_feed(
     library_dir: &Path,
     id: &str,
     new_title: &str,
@@ -340,7 +343,7 @@ pub async fn rename_feed(
 }
 
 /// Remove a feed (deletes `{id}.atom`).
-pub async fn remove_feed(library_dir: &Path, id: &str) -> Result<()> {
+pub(crate) async fn remove_feed(library_dir: &Path, id: &str) -> Result<()> {
     let path = crate::library::feed_path(library_dir, id);
     if !path.exists() {
         return Err(FeedError::NotFound(id.to_string()));

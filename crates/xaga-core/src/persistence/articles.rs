@@ -24,7 +24,7 @@ fn with_reference(mut annotations: Vec<Annotation>, article_id: &str) -> Vec<Ann
 /// Writes full content to the item's file wherever it lives, preserving `created_at`
 /// and any existing annotations. Does not change the item's read state.
 /// Returns the saved Article.
-pub async fn save_article(
+pub(crate) async fn save_article(
     library_dir: &Path,
     id: &str,
     url: &str,
@@ -81,34 +81,6 @@ pub async fn save_article(
     Ok(article)
 }
 
-/// Creates a new article, deriving the ID from the URL hash.
-/// If an article with this URL already exists (same hash), it is overwritten.
-pub async fn create_article(
-    library_dir: &Path,
-    url: &str,
-    title: &str,
-    published_at: Option<&str>,
-    updated_at: Option<&str>,
-    summary: Option<&str>,
-    favicon: Option<&str>,
-    markdown: &str,
-) -> Result<Article, EntryError> {
-    let normalized = normalize_url(url)?;
-    let id = url_hash12(&normalized);
-    save_article(
-        library_dir,
-        &id,
-        url,
-        title,
-        published_at,
-        updated_at,
-        summary,
-        favicon,
-        markdown,
-    )
-    .await
-}
-
 /// Returns the article for the given URL if it exists, or `None` if not found.
 /// The ID is derived from the normalised URL hash, matching `create_article`.
 pub async fn find_article(library_dir: &Path, url: &str) -> Result<Option<Article>, EntryError> {
@@ -145,7 +117,7 @@ pub async fn read_article(library_dir: &Path, id: &str) -> Result<Article, Entry
 /// annotation's identity) and must go through [`replace_annotation`] — a same-id color write
 /// is exactly the pattern whose crash-stranded state no reconcile gate can see.
 /// Returns the updated Article.
-pub async fn add_annotation(
+pub(crate) async fn add_annotation(
     library_dir: &Path,
     article_id: &str,
     annotation: Annotation,
@@ -186,7 +158,7 @@ pub async fn add_annotation(
 /// membership diffs in recovery and `sync_entry_row`, which a same-id update would slip past.
 /// `created_at` carries over from the old annotation — the highlight is the same selection.
 /// Returns the updated [`Article`].
-pub async fn replace_annotation(
+pub(crate) async fn replace_annotation(
     library_dir: &Path,
     article_id: &str,
     old_id: &str,
@@ -219,7 +191,7 @@ pub async fn replace_annotation(
 }
 
 /// Removes an annotation by id. Returns the updated [`Article`].
-pub async fn remove_annotation(
+pub(crate) async fn remove_annotation(
     library_dir: &Path,
     article_id: &str,
     annotation_id: &str,

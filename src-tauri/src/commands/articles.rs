@@ -1,8 +1,7 @@
 use tauri::{AppHandle, Manager, State};
 use xaga_core::embeddings::{EmbeddingsDb, EntityRef, Job, StatePatch, Tier};
+use xaga_core::library_writer::Tier as WriteTier;
 use xaga_core::persistence::articles;
-use xaga_core::persistence::entries;
-use xaga_core::persistence::topics;
 use xaga_core::types::{Article, Kind, PartialAnnotation};
 
 use base64::Engine as _;
@@ -258,20 +257,21 @@ pub async fn save_article(
     markdown: String,
     state: State<'_, AppState>,
 ) -> Result<Article, String> {
-    let data_dir = state.library_path();
-    let article = articles::save_article(
-        &data_dir,
-        &id,
-        &url,
-        &title,
-        published_at.as_deref(),
-        updated_at.as_deref(),
-        summary.as_deref(),
-        favicon.as_deref(),
-        &markdown,
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    let writer = crate::commands::require_writer(&state)?;
+    let article = writer
+        .save_article(
+            WriteTier::Interactive,
+            id,
+            url,
+            title,
+            published_at,
+            updated_at,
+            summary,
+            favicon,
+            markdown,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
     state.enqueue(
         Tier::Interactive,
         Job::UpsertEntry {
@@ -292,19 +292,20 @@ pub async fn create_article(
     markdown: String,
     state: State<'_, AppState>,
 ) -> Result<Article, String> {
-    let data_dir = state.library_path();
-    let article = articles::create_article(
-        &data_dir,
-        &url,
-        &title,
-        published_at.as_deref(),
-        updated_at.as_deref(),
-        summary.as_deref(),
-        favicon.as_deref(),
-        &markdown,
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    let writer = crate::commands::require_writer(&state)?;
+    let article = writer
+        .create_article(
+            WriteTier::Interactive,
+            url,
+            title,
+            published_at,
+            updated_at,
+            summary,
+            favicon,
+            markdown,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
     state.enqueue(
         Tier::Interactive,
         Job::UpsertEntry {
@@ -335,17 +336,18 @@ pub async fn read_article(id: String, state: State<'_, AppState>) -> Result<Arti
     // Mark-read is an incidental library write hiding in a read command. On a read-only
     // instance it silently no-ops (owner decision: reading stays seamless; the entry
     // simply stays unread here) — this command is deliberately NOT in WRITE_COMMANDS.
-    if state.is_library_read_only() {
+    // When we are the writer, the tag RMW goes through the writer's entry lane like every
+    // other `.md` write (best-effort: a failure just leaves the entry unread).
+    let Some(writer) = state.writer() else {
         return Ok(article);
-    }
-
-    if let Ok(tags) = entries::read_entry_tags(&data_dir, &id).await {
-        let tags: Vec<String> = tags
-            .into_iter()
-            .filter(|t| t != xaga_core::tags::UNREAD)
-            .collect();
-        let _ = entries::set_entry_tags(&data_dir, &id, tags).await;
-    }
+    };
+    let _ = writer
+        .patch_entry_tags(
+            WriteTier::Interactive,
+            id.clone(),
+            xaga_core::library_writer::TagPatch::MarkRead,
+        )
+        .await;
 
     state.enqueue(
         Tier::Interactive,
@@ -370,7 +372,7 @@ pub async fn add_annotation(
     note: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Article, String> {
-    let data_dir = state.library_path();
+    let writer = crate::commands::require_writer(&state)?;
     let annotation = xaga_core::types::Annotation {
         id,
         title: text.join(" "),
@@ -381,7 +383,8 @@ pub async fn add_annotation(
         content: note.unwrap_or_default(),
         created_at: String::new(),
     };
-    let article = articles::add_annotation(&data_dir, &article_id, annotation)
+    let article = writer
+        .add_annotation(WriteTier::Interactive, article_id.clone(), annotation)
         .await
         .map_err(|e| e.to_string())?;
     // Insert/refresh the annotation row now (embedder-free, immediately listable), then defer the
@@ -421,7 +424,7 @@ pub async fn replace_annotation(
     note: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Article, String> {
-    let data_dir = state.library_path();
+    let writer = crate::commands::require_writer(&state)?;
     let annotation = xaga_core::types::Annotation {
         id: id.clone(),
         title: text.join(" "),
@@ -432,7 +435,13 @@ pub async fn replace_annotation(
         content: note.unwrap_or_default(),
         created_at: String::new(),
     };
-    let article = articles::replace_annotation(&data_dir, &article_id, &old_id, annotation)
+    let article = writer
+        .replace_annotation(
+            WriteTier::Interactive,
+            article_id.clone(),
+            old_id.clone(),
+            annotation,
+        )
         .await
         .map_err(|e| e.to_string())?;
 
@@ -471,16 +480,17 @@ pub async fn replace_annotation(
         }
     };
     for topic_id in topic_ids {
-        let _ = topics::replace_topic_item(
-            &data_dir,
-            &topic_id,
-            &old_id,
-            xaga_core::types::CollectionItem::Annotation {
-                id: id.clone(),
-                reference: article_id.clone(),
-            },
-        )
-        .await;
+        let _ = writer
+            .replace_topic_item(
+                WriteTier::Interactive,
+                topic_id.clone(),
+                old_id.clone(),
+                xaga_core::types::CollectionItem::Annotation {
+                    id: id.clone(),
+                    reference: article_id.clone(),
+                },
+            )
+            .await;
         state.enqueue(
             Tier::Interactive,
             Job::RemoveMember {
@@ -511,8 +521,13 @@ pub async fn remove_annotation(
     annotation_id: String,
     state: State<'_, AppState>,
 ) -> Result<Article, String> {
-    let data_dir = state.library_path();
-    let article = articles::remove_annotation(&data_dir, &article_id, &annotation_id)
+    let writer = crate::commands::require_writer(&state)?;
+    let article = writer
+        .remove_annotation(
+            WriteTier::Interactive,
+            article_id.clone(),
+            annotation_id.clone(),
+        )
         .await
         .map_err(|e| e.to_string())?;
 
@@ -535,7 +550,13 @@ pub async fn remove_annotation(
         }
     };
     for topic_id in topic_ids {
-        let _ = topics::remove_topic_item(&data_dir, &topic_id, &annotation_id).await;
+        let _ = writer
+            .remove_topic_item(
+                WriteTier::Interactive,
+                topic_id.clone(),
+                annotation_id.clone(),
+            )
+            .await;
         state.enqueue(
             Tier::Interactive,
             Job::RemoveMember {

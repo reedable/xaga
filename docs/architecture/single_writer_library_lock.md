@@ -13,13 +13,14 @@ scope, not just LanceDB scope.**
 - The lock is tied to the open file handle, not the file's contents (`FileLock`,
   `crates/xaga-core/src/fs.rs`): the OS releases it automatically when the handle drops —
   including on crashes and hard kills. There are no stale lock files to clean up.
-- **Mode is derived, never stored.** The app holds the acquired lock (or `None`) in the
-  `LibraryHandle` — path and lock guarded as one unit — and
-  `is_library_read_only()` reads it (`src-tauri/src/lib.rs`). There is no mode
-  enum/bool anywhere that could drift from lock ownership; the lock IS the mode
-  (single source of truth). The same name carries the concept at every layer: the Rust
-  accessor, the Tauri command, the `library:mode-changed` event payload, and the
-  frontend hook (`src/hooks/useLibraryReadOnly.tsx`).
+- **Mode is derived, never stored.** In read-write mode the app holds a `LibraryWriter`
+  (which owns the flock) in the `LibraryHandle` — path and writer guarded as one unit;
+  in read-only mode the writer is `None`. `is_library_read_only()` reads
+  `writer.is_none()` (`src-tauri/src/lib.rs`). There is no mode enum/bool anywhere that
+  could drift; the writer's presence IS the mode (single source of truth). The same name
+  carries the concept at every layer: the Rust accessor, the Tauri command, the
+  `library:mode-changed` event payload, and the frontend hook
+  (`src/hooks/useLibraryReadOnly.tsx`).
 
 ## Who takes it, and when
 
@@ -29,10 +30,15 @@ scope, not just LanceDB scope.**
   and restarts the process, and the restart path releases the lock before spawning the
   successor (`release_library_lock`, `src-tauri/src/lib.rs`) so the new process can win
   it.
-- **The `EmbeddingService`:** no longer acquires the lock; it receives it
-  (`EmbeddingService::start(dir, lock)`) and holds its own `Arc` of it for its lifetime,
-  preserving its invariant of never running unlocked. The service (LanceDB writes,
-  recovery, embedding queue) exists only in a read-write instance.
+- **The `LibraryWriter`:** owns the flock (`LibraryWriter::start(dir, lock)`,
+  `crates/xaga-core/src/library_writer/mod.rs`) and is the single component through which
+  every `.md` write flows. Dropping it releases the lock; the restart/shutdown paths drain
+  it first (`drain_and_release_writer`, `src-tauri/src/lib.rs`).
+- **The `EmbeddingService`:** no longer acquires the lock; it receives a shared `Arc` of
+  the writer's lock (`EmbeddingService::start(dir, lock)`, from `writer.lock()`) and holds
+  it for its lifetime, preserving its invariant of never running unlocked. The service
+  (LanceDB writes, recovery, embedding queue) exists only in a read-write instance. The
+  flock releases only once BOTH the writer and the service have dropped their `Arc`.
 - **The CLI:** write commands acquire it via `require_write_lock`
   (`crates/xaga-cli/src/cmd/embeddings.rs`), failing fast when another process holds it.
   The writer is whoever wins the flock — app or CLI, first-come (owner decision).
@@ -42,14 +48,48 @@ scope, not just LanceDB scope.**
 - Every library-writing command is refused centrally at the IPC boundary with a typed
   `E_READ_ONLY` error — the `WRITE_COMMANDS` registry next to `is_invoke_allowed`
   (`src-tauri/src/commands/mod.rs`), the same single-choke-point pattern as the window
-  allowlist. New write commands must be added to that registry (until the Phase C writer
-  actor / Phase A capability token make bypass structurally impossible).
+  allowlist. New write commands must be added to that registry (until the Phase A
+  capability token makes bypass structurally impossible).
 - Incidental writes hiding in read flows no-op silently: `read_article`'s mark-read is
   skipped, so reading stays seamless (owner decision) — the entry simply stays unread.
 - The frontend learns the mode (`is_library_read_only` command + `library:mode-changed`
   event), shows a read-only badge, and disables write affordances.
 - Reads are untouched: `.md` reads, LanceDB reads (`embeddings_read` when available),
   search, lists.
+
+## In-process write serialization (the writer, axis 2)
+
+The lock makes at most one process a writer; the `LibraryWriter` makes that process's own
+concurrent writes safe. Every `.md` write is submitted to the writer as a file-scoped
+request and dispatched on a **per-file lane**: same-file writes run strictly serially (the
+whole read-modify-write inside one lane, so two operations on one file can never
+interleave — the annotation-clobber class), while different files run in parallel. This is
+what closes the concurrent-write data loss the annotation era introduced (see the spike);
+before it, two async annotation writes on one article could each read-modify-write and
+destroy each other's change.
+
+- **Tiers.** Requests carry `Interactive` or `Regular` (`library_writer::Tier`). User
+  actions (annotations, tag toggles, topic edits, bookmark import) are Interactive; feed
+  writes are Regular. The dispatcher services Interactive ahead of Regular so a bulk feed
+  refresh cannot starve a user write. The tier also carries a **shutdown contract**:
+  Interactive = user-authored, exists only in the queue until written, MUST drain at
+  shutdown; Regular = re-derivable from source, droppable. **Admission rule: only enqueue
+  re-derivable content as Regular** — the shutdown drop is keyed to the tier.
+- **Shutdown** (`drain_and_release_writer`): the Interactive backlog drains to disk, the
+  Regular backlog is dropped (refused with `ShuttingDown`), in-flight writes complete; only
+  then is the writer dropped and the flock released. A `shutting_down` flag makes late
+  submits fast-fail rather than strand in a channel the dispatcher will no longer drain.
+- **Boundary with `EmbeddingService`:** two serialized subsystems, split by what they own —
+  the writer owns every `.md` write; the service owns every LanceDB write. A command
+  submits the file write, then enqueues the LanceDB sync job. Files stay the source of
+  truth; LanceDB is the derived mirror written downstream.
+- **Feeds:** the network fetch stays OUTSIDE the lane. Each new entry `.md` is committed on
+  ITS OWN entry lane (create-if-absent, atomic against another feed carrying the same entry
+  or a user write to it — a single entry can appear in multiple feeds), and only once every
+  entry has landed is the `.atom` written on the feed lane; awaiting the entry writes before
+  the atom preserves the entries-before-atom ordering invariant.
+- **Classification rule for a new write feature:** does it need the writer? Then it is a
+  write. (Phase A will make this a compile-time requirement via a capability token.)
 
 ## Known limits (accepted, Phase B)
 

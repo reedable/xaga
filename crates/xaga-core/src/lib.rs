@@ -11,6 +11,7 @@ pub mod embeddings;
 pub mod events;
 pub mod fs;
 pub mod library;
+pub mod library_writer;
 pub mod md;
 pub mod persistence;
 pub mod query;

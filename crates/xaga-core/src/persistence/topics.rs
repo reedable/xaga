@@ -3,8 +3,6 @@ use std::path::Path;
 use chrono::Utc;
 use thiserror::Error;
 
-use uuid::Uuid;
-
 use crate::{
     md::parse_frontmatter,
     md::{Markdown, md_to_topic, parse_document},
@@ -66,7 +64,7 @@ pub(crate) fn render_topic(topic: &Topic, items: &[CollectionItem]) -> String {
 /// Creates or updates a topic at `topics/{id}.md`.
 /// Preserves the original `created_at` if the file already exists.
 /// Always sets `updated_at` to the current UTC time.
-pub async fn save_topic(
+pub(crate) async fn save_topic(
     library_dir: &Path,
     id: &str,
     title: &str,
@@ -111,7 +109,7 @@ pub async fn save_topic(
 /// Preserves the topic's timestamps (a pin toggle is not a content edit). The `is_pinned` LanceDB
 /// column is updated by the watcher → `sync_row` re-read; membership is unchanged so the reconcile
 /// sees no member delta. Mirrors `feeds::set_feed_pinned`.
-pub async fn set_topic_pinned(
+pub(crate) async fn set_topic_pinned(
     library_dir: &Path,
     id: &str,
     pinned: bool,
@@ -145,17 +143,6 @@ pub async fn set_topic_pinned(
     Ok(true)
 }
 
-/// Creates a new topic with a UUID as its ID.
-pub async fn create_topic(
-    library_dir: &Path,
-    title: &str,
-    description: &str,
-    threshold: Option<f32>,
-) -> Result<Topic, TopicsError> {
-    let id = Uuid::new_v4().to_string();
-    save_topic(library_dir, &id, title, description, threshold, vec![]).await
-}
-
 /// Returns the topic for the given id.
 pub async fn read_topic(library_dir: &Path, id: &str) -> Result<Topic, TopicsError> {
     let path = crate::library::topic_path(library_dir, id);
@@ -187,7 +174,7 @@ pub async fn read_topic_items(
 }
 
 /// Deletes the topic file for the given id.
-pub async fn delete_topic(library_dir: &Path, id: &str) -> Result<(), TopicsError> {
+pub(crate) async fn delete_topic(library_dir: &Path, id: &str) -> Result<(), TopicsError> {
     let path = crate::library::topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
@@ -209,7 +196,7 @@ pub async fn list_topics(library_dir: &Path) -> Result<Vec<Topic>, TopicsError> 
 }
 
 /// Appends `item` to the topic's manual items list. No-op if already present.
-pub async fn add_topic_item(
+pub(crate) async fn add_topic_item(
     library_dir: &Path,
     topic_id: &str,
     item: CollectionItem,
@@ -241,7 +228,7 @@ pub async fn add_topic_item(
 /// Swaps a member's id in place — same list position, same member type. Used when an
 /// annotation is replaced under a new id (a color change is delete/create); position is
 /// preserved because membership is ordered. No-op if `old_id` is not a member.
-pub async fn replace_topic_item(
+pub(crate) async fn replace_topic_item(
     library_dir: &Path,
     topic_id: &str,
     old_id: &str,
@@ -272,7 +259,7 @@ pub async fn replace_topic_item(
 }
 
 /// Removes the item with the given ID from the topic's manual items list.
-pub async fn remove_topic_item(
+pub(crate) async fn remove_topic_item(
     library_dir: &Path,
     topic_id: &str,
     item_id: &str,

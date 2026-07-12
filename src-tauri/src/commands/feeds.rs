@@ -1,5 +1,6 @@
 use tauri::State;
 use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
+use xaga_core::library_writer::Tier as WriteTier;
 use xaga_core::persistence::feeds;
 use xaga_core::types::{Entry, Feed, Kind};
 
@@ -21,6 +22,7 @@ pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<Feed>, String>
 #[tauri::command]
 pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, String> {
     let library = state.library_path();
+    let writer = crate::commands::require_writer(&state)?;
     let timeout_secs = *state.feed_timeout_secs.read().unwrap();
     let max_body_bytes = *state.feed_max_body_bytes.read().unwrap();
     let client = crate::fetch_client::build(
@@ -36,6 +38,7 @@ pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, S
     let (feed, created) = feeds::add_feed(
         &client,
         &library,
+        &writer,
         &url,
         &unread,
         &bookmarked,
@@ -59,6 +62,7 @@ pub async fn refresh_all_feeds(
     state: State<'_, AppState>,
 ) -> Result<Vec<Feed>, String> {
     let library = state.library_path();
+    let writer = crate::commands::require_writer(&state)?;
     let timeout_secs = *state.feed_timeout_secs.read().unwrap();
     let max_body_bytes = *state.feed_max_body_bytes.read().unwrap();
     let client = crate::fetch_client::build(
@@ -74,6 +78,7 @@ pub async fn refresh_all_feeds(
     let results = feeds::refresh_all_feeds(
         &client,
         &library,
+        &writer,
         &unread,
         &bookmarked,
         timeout_secs,
@@ -114,8 +119,9 @@ pub async fn set_feed_pinned(
     pinned: bool,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let library = state.library_path();
-    let changed = feeds::set_feed_pinned(&library, &id, pinned)
+    let writer = crate::commands::require_writer(&state)?;
+    let changed = writer
+        .set_feed_pinned(WriteTier::Interactive, id.clone(), pinned)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -141,13 +147,14 @@ pub async fn rename_feed(
     title: String,
     state: State<'_, AppState>,
 ) -> Result<Feed, String> {
-    let library = state.library_path();
+    let writer = crate::commands::require_writer(&state)?;
     let (unread, bookmarked) = (
         get_unread_ids(&state).await,
         get_bookmarked_ids(&state).await,
     );
 
-    let feed = feeds::rename_feed(&library, &id, &title, &unread, &bookmarked)
+    let feed = writer
+        .rename_feed(WriteTier::Interactive, id.clone(), title, unread, bookmarked)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -160,9 +167,10 @@ pub async fn rename_feed(
 
 #[tauri::command]
 pub async fn remove_feed(url: String, state: State<'_, AppState>) -> Result<String, String> {
-    let library = state.library_path();
+    let writer = crate::commands::require_writer(&state)?;
     let feed_id = feeds::url_to_feed_id(&url).map_err(|e| e.to_string())?;
-    feeds::remove_feed(&library, &feed_id)
+    writer
+        .remove_feed(WriteTier::Interactive, feed_id)
         .await
         .map_err(|e| e.to_string())?;
     Ok(url)

@@ -65,6 +65,15 @@ pub(crate) fn is_write_refused(command: &str, is_library_read_only: bool) -> boo
     is_library_read_only && WRITE_COMMANDS.contains(&command)
 }
 
+/// The library writer, or the typed read-only error. A write command's body calls this to
+/// get the writer through which every `.md` write flows. The IPC gate already refuses write
+/// commands on a read-only instance, so reaching the `None` case here is defense in depth.
+pub(crate) fn require_writer(
+    state: &crate::AppState,
+) -> Result<xaga_core::library_writer::LibraryWriter, String> {
+    state.writer().ok_or_else(|| E_READ_ONLY.to_string())
+}
+
 /// Central IPC access policy, enforced once in the global invoke handler so that
 /// every command — present and future — is covered without a per-command guard:
 ///

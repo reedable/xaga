@@ -45,22 +45,21 @@ pub async fn set_library(
         crate::events::emit_domain(&app, xaga_core::events::DomainEvent::EmbeddingShutdown);
         let library = std::sync::Arc::clone(&state.library);
         tauri::async_runtime::spawn(async move {
-            match svc.shutdown().await {
-                ShutdownReason::Restart => {
-                    // Release our hold on the (old) library's lock before the successor
-                    // process starts and tries to acquire the new library's.
-                    crate::release_library_lock(&library);
-                    restart_process()
-                }
+            let reason = svc.shutdown().await;
+            // Drain and drop the writer (Interactive backlog to disk) to release the
+            // (old) library's flock before the successor tries to acquire the new one.
+            crate::drain_and_release_writer(&library).await;
+            match reason {
+                ShutdownReason::Restart => restart_process(),
                 ShutdownReason::Exit => std::process::exit(0),
             }
         });
     } else {
-        // Read-only instance: no service to drain. Restart directly so the successor
-        // process attempts the NEW library's lock at its startup — a read-only instance
-        // may become the writer of a different library. (Without this, a read-only
-        // instance would keep running against the old library path.)
-        crate::release_library_lock(&state.library);
+        // Read-only instance: no service to drain (and no writer to release). Restart
+        // directly so the successor attempts the NEW library's lock at its startup — a
+        // read-only instance may become the writer of a different library. (Without this,
+        // a read-only instance would keep running against the old library path.)
+        crate::drain_and_release_writer(&state.library).await;
         restart_process();
     }
 

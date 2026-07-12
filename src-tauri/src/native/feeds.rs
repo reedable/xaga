@@ -29,6 +29,7 @@ pub(crate) async fn import_feeds(
     file_path: &Path,
 ) -> Result<ImportResult, String> {
     let library = state.library_path();
+    let writer = crate::commands::require_writer(state)?;
 
     let max_bytes = *state.import_max_bytes.read().unwrap();
     let metadata = tokio::fs::metadata(file_path)
@@ -80,6 +81,7 @@ pub(crate) async fn import_feeds(
         match feeds::add_feed(
             &client,
             &library,
+            &writer,
             &normalized,
             &unread,
             &bookmarked,

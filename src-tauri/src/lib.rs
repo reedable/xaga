@@ -33,18 +33,18 @@ pub(crate) const DEFAULT_FEED_MAX_BODY_BYTES: u64 = 10 * 1024 * 1024;
 /// by both formats rather than one per format.
 pub(crate) const DEFAULT_IMPORT_MAX_BYTES: u64 = 64 * 1024 * 1024;
 
-/// The open library and the write right to it, guarded as ONE unit: the path and its lock
-/// change together (both are settled at startup; `set_library` restarts the process), so a
+/// The open library and the write right to it, guarded as ONE unit: the path and the writer
+/// change together (both settled at startup; `set_library` restarts the process), so a
 /// reader always sees "which library" and "may I write it" as one consistent snapshot.
 ///
-/// The lock is the single source of truth for the runtime mode — no mode value is stored
-/// anywhere. `lock` is `None` when another xaga process holds the library's flock: this
-/// instance is read-only for the library (`.md` files and LanceDB alike). The `Arc` lets the
-/// `EmbeddingService` hold the lock for its own lifetime (its invariant since the
-/// LanceDB-only lock era) while the app holds it from startup.
+/// The `LibraryWriter` (present only in read-write mode) owns the library flock and is the
+/// single component through which every `.md` write flows. Its presence IS the runtime mode
+/// — no mode value is stored anywhere. `writer` is `None` when another xaga process holds
+/// the library's flock: this instance is read-only (`.md` files and LanceDB alike). The
+/// `EmbeddingService` shares the writer's lock (`writer.lock()`) for its own lifetime.
 pub(crate) struct LibraryHandle {
     pub(crate) path: PathBuf,
-    pub(crate) lock: Option<std::sync::Arc<xaga_core::fs::FileLock>>,
+    pub(crate) writer: Option<xaga_core::library_writer::LibraryWriter>,
 }
 
 pub(crate) struct AppState {
@@ -107,11 +107,20 @@ impl AppState {
     }
 
     /// Whether this instance is read-only for the open library — true when another xaga
-    /// process holds the library lock. Derived from the held lock (the single source of
-    /// truth); no mode value is stored anywhere. The same name carries this concept at
-    /// every layer: this accessor, the Tauri command, and the domain-event field.
+    /// process holds the library lock (so there is no writer). Derived from the writer's
+    /// presence (the single source of truth); no mode value is stored anywhere. The same
+    /// name carries this concept at every layer: this accessor, the Tauri command, and the
+    /// domain-event field.
     pub(crate) fn is_library_read_only(&self) -> bool {
-        self.library.read().unwrap().lock.is_none()
+        self.library.read().unwrap().writer.is_none()
+    }
+
+    /// The library writer, if this instance is the writer (read-write mode). `None` in
+    /// read-only mode — but write commands are already refused at the IPC gate, so a
+    /// write command body that reaches for this and finds `None` is a defense-in-depth
+    /// path, mapped to `E_READ_ONLY`. Cloneable; all clones feed the one dispatcher.
+    pub(crate) fn writer(&self) -> Option<xaga_core::library_writer::LibraryWriter> {
+        self.library.read().unwrap().writer.clone()
     }
 }
 
@@ -456,7 +465,7 @@ pub fn run() {
     // Pre-created Arcs shared between .manage() and the .setup() closure.
     let library: Arc<RwLock<LibraryHandle>> = Arc::new(RwLock::new(LibraryHandle {
         path: PathBuf::new(),
-        lock: None,
+        writer: None,
     }));
     let theme: Arc<RwLock<String>> = Arc::new(RwLock::new("auto".to_string()));
     let refresh_on_startup: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
@@ -842,20 +851,24 @@ pub fn run() {
             let line_height = settings.html_reader_line_height.unwrap_or(1.75);
             let show_sidebar = settings.show_sidebar.unwrap_or(true);
             // Acquire the library lock (or learn we are read-only) BEFORE any command can
-            // run: the lock in the LibraryHandle is the single source of truth for the
-            // runtime mode, and the write-command gate derives from it. Lock lifetime is
+            // run, and — if we won it — start the LibraryWriter that takes ownership of the
+            // lock. The writer's presence is the single source of truth for the runtime
+            // mode, and the write-command gate derives from it. Writer/lock lifetime is
             // process-lifetime — `set_library` restarts the process, and the restart path
-            // releases the lock explicitly before spawning the successor.
+            // drops the writer (releasing the lock) before spawning the successor.
             std::fs::create_dir_all(&lib_path)?;
-            let library_lock = xaga_core::library::acquire_lock(&lib_path).map(Arc::new);
-            if library_lock.is_none() {
+            let writer = xaga_core::library::acquire_lock(&lib_path)
+                .map(|lock| xaga_core::library_writer::LibraryWriter::start(lib_path.clone(), lock));
+            // The EmbeddingService shares the writer's lock for its lifetime.
+            let service_lock = writer.as_ref().map(|w| w.lock());
+            if writer.is_none() {
                 log::warn!(
                     "startup: another instance holds the library lock — this instance is read-only"
                 );
             }
             *setup_library.write().unwrap() = LibraryHandle {
                 path: lib_path.clone(),
-                lock: library_lock.clone(),
+                writer,
             };
             // Announce the mode to any already-loaded frontend; late-loading frontends
             // read it via the `is_library_read_only` command instead. Mode is fixed for
@@ -863,7 +876,7 @@ pub fn run() {
             events::emit_domain(
                 app.handle(),
                 xaga_core::events::DomainEvent::LibraryModeChanged {
-                    is_library_read_only: library_lock.is_none(),
+                    is_library_read_only: service_lock.is_none(),
                 },
             );
             *setup_theme.write().unwrap() = theme.clone();
@@ -911,11 +924,12 @@ pub fn run() {
                     log::error!("startup: model download failed: {e}");
                 }
 
-                // Writer status was decided at setup (the lock in the LibraryHandle); a
-                // read-only instance runs without the service — embeddings stay readable,
-                // nothing is written. The service holds its own Arc of the lock for its
-                // lifetime, preserving its invariant of never running unlocked.
-                let Some(library_lock) = library_lock else {
+                // Writer status was decided at setup (the LibraryWriter in the
+                // LibraryHandle); a read-only instance runs without the service —
+                // embeddings stay readable, nothing is written. The service holds its own
+                // Arc of the writer's lock for its lifetime, preserving its invariant of
+                // never running unlocked.
+                let Some(library_lock) = service_lock else {
                     log::warn!("startup: read-only instance — embedding service not started");
                     // Non-holders READ ("the library lock was only ever supposed to
                     // protect concurrent write to the database" — owner): open a
@@ -1134,7 +1148,7 @@ pub fn run() {
                     // Library-write gate: a read-only instance (no library lock) refuses
                     // every library-writing command at this single choke point — mode is
                     // derived from the held lock, never stored (see LibraryHandle).
-                    let is_library_read_only = gate_library.read().unwrap().lock.is_none();
+                    let is_library_read_only = gate_library.read().unwrap().writer.is_none();
                     (
                         commands::is_invoke_allowed(label, command),
                         commands::is_write_refused(command, is_library_read_only),
@@ -1214,24 +1228,30 @@ fn shutdown_with_overlay(app: &tauri::AppHandle, svc: EmbeddingService) {
     events::emit_domain(app, xaga_core::events::DomainEvent::EmbeddingShutdown);
     let library = Arc::clone(&app.state::<AppState>().library);
     tauri::async_runtime::spawn(async move {
-        match svc.shutdown().await {
-            ShutdownReason::Restart => {
-                release_library_lock(&library);
-                restart_process()
-            }
+        let reason = svc.shutdown().await;
+        // The service's lock Arc is now gone; drain and drop the writer to release the
+        // library flock before (only on restart) the successor tries to acquire it.
+        drain_and_release_writer(&library).await;
+        match reason {
+            ShutdownReason::Restart => restart_process(),
             ShutdownReason::Exit => std::process::exit(0),
         }
     });
 }
 
-/// Releases this process's hold on the library lock. Must run before
-/// [`restart_process`] spawns the successor: the successor acquires the lock at ITS
-/// startup, and if the (still-living) predecessor held it, the new instance would come
-/// up read-only. The service's own `Arc` of the lock is already gone by the time the
-/// restart paths call this (`svc.shutdown()` consumed the service), so dropping the
-/// `LibraryHandle`'s copy releases the flock.
-pub(crate) fn release_library_lock(library: &Arc<RwLock<LibraryHandle>>) {
-    library.write().unwrap().lock.take();
+/// Drains the library writer (Interactive backlog to disk, Regular dropped — the tier
+/// contract) and drops it, releasing this process's hold on the library flock. Must run
+/// before [`restart_process`] spawns the successor: the successor acquires the lock at ITS
+/// startup, and if the (still-living) predecessor's writer held it, the new instance would
+/// come up read-only. Caller must have already shut the `EmbeddingService` down (its Arc of
+/// the same lock must be gone) so that dropping the writer releases the flock. No-op in a
+/// read-only instance (no writer).
+pub(crate) async fn drain_and_release_writer(library: &Arc<RwLock<LibraryHandle>>) {
+    let writer = library.write().unwrap().writer.take();
+    if let Some(writer) = writer {
+        writer.shutdown().await;
+        // `writer` drops here: its lock Arc is the last one, so the flock releases.
+    }
 }
 
 /// Installs a SIGINT/SIGTERM handler that drains the embedding service before exit.
@@ -1241,12 +1261,15 @@ fn install_signal_handler(
 ) {
     ctrlc::set_handler(move || {
         let svc = embedding_service.lock().unwrap().take();
+        let library = Arc::clone(&app_handle.state::<AppState>().library);
         if let Some(svc) = svc {
             log::info!("signal: waiting for embedding service to drain");
             events::emit_domain(&app_handle, xaga_core::events::DomainEvent::EmbeddingShutdown);
             tauri::async_runtime::block_on(svc.shutdown());
             // Signals always exit — restart flag is intentionally ignored.
         }
+        // Drain the writer's Interactive backlog to disk before exit (Regular dropped).
+        tauri::async_runtime::block_on(drain_and_release_writer(&library));
         std::process::exit(0);
     })
     .expect("failed to install signal handler");
@@ -1257,41 +1280,53 @@ mod library_mode_tests {
     use super::*;
 
     fn handle_for(dir: &std::path::Path) -> Arc<RwLock<LibraryHandle>> {
+        let writer = xaga_core::library::acquire_lock(dir)
+            .map(|lock| xaga_core::library_writer::LibraryWriter::start(dir.to_path_buf(), lock));
         Arc::new(RwLock::new(LibraryHandle {
             path: dir.to_path_buf(),
-            lock: xaga_core::library::acquire_lock(dir).map(Arc::new),
+            writer,
         }))
     }
 
-    /// Mode is the lock, derived — winning the flock is read-write, losing is read-only,
-    /// with no stored state that could disagree.
+    /// Mode is the writer's presence, derived — winning the flock starts a writer
+    /// (read-write), losing leaves none (read-only), with no stored mode that could
+    /// disagree.
     #[test]
-    fn mode_derives_from_lock_ownership() {
+    fn mode_derives_from_writer_presence() {
         let dir = tempfile::tempdir().unwrap();
 
         let writer = handle_for(dir.path());
-        assert!(writer.read().unwrap().lock.is_some(), "first instance wins the lock");
+        assert!(
+            writer.read().unwrap().writer.is_some(),
+            "first instance wins the lock and starts a writer"
+        );
 
         // A second "instance" (second handle in this process: flock conflicts across
         // open file descriptions, so this models a contender) loses and is read-only.
         let reader = handle_for(dir.path());
-        assert!(reader.read().unwrap().lock.is_none(), "contender must lose while held");
+        assert!(
+            reader.read().unwrap().writer.is_none(),
+            "contender must lose while held"
+        );
     }
 
-    /// The restart-ordering invariant: releasing the handle's lock frees the flock for a
-    /// successor process — this is what `release_library_lock` must guarantee before
-    /// `restart_process` spawns one. Also covers the service's shared hold: while ANY
-    /// Arc of the lock lives (the EmbeddingService keeps one), the flock stays held.
-    #[test]
-    fn release_frees_the_lock_for_a_successor_only_after_every_holder_drops() {
+    /// The restart-ordering invariant: draining and dropping the writer frees the flock
+    /// for a successor process — what the restart path must guarantee before
+    /// `restart_process` spawns one. Also covers the service's shared hold: while the
+    /// EmbeddingService's Arc of the lock lives, the flock stays held.
+    #[tokio::test]
+    async fn drain_and_release_frees_the_lock_only_after_every_holder_drops() {
         let dir = tempfile::tempdir().unwrap();
 
-        let writer = handle_for(dir.path());
+        let library = handle_for(dir.path());
         // The service's clone of the lock (EmbeddingService::start receives one).
-        let service_hold = writer.read().unwrap().lock.clone().unwrap();
+        let service_hold = library.read().unwrap().writer.as_ref().unwrap().lock();
 
-        release_library_lock(&writer);
-        assert!(writer.read().unwrap().lock.is_none(), "handle hold released");
+        drain_and_release_writer(&library).await;
+        assert!(
+            library.read().unwrap().writer.is_none(),
+            "writer removed (mode is now read-only)"
+        );
         assert!(
             xaga_core::library::acquire_lock(dir.path()).is_none(),
             "flock must remain held while the service still holds its Arc"
@@ -1300,7 +1335,7 @@ mod library_mode_tests {
         drop(service_hold);
         assert!(
             xaga_core::library::acquire_lock(dir.path()).is_some(),
-            "successor must be able to win the lock once every holder is gone"
+            "successor must win the lock once every holder is gone"
         );
     }
 }

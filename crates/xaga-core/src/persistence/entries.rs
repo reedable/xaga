@@ -238,7 +238,7 @@ pub async fn read_entry_tags(library_dir: &Path, id: &str) -> Result<Vec<String>
 
 /// Replaces the tags on an entry's frontmatter and writes the file back.
 /// The file watcher picks up the write and queues a priority LanceDB update.
-pub async fn set_entry_tags(
+pub(crate) async fn set_entry_tags(
     library_dir: &Path,
     id: &str,
     tags: Vec<String>,
