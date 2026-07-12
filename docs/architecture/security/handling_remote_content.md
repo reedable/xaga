@@ -68,10 +68,11 @@ https://xaga.app/ns/tag`), so publisher-supplied categories can never
   not interpreted. Frontmatter injection cannot flip tags or add keys.
 - **Writes are atomic and crash-ordered.** `.atom` files are written via
   `write_atomic_async`; on refresh, entry `.md` files are persisted _before_
-  the `.atom` membership (`write_atom`, `persistence/feeds.rs`). After a crash
-  between the two, the next refresh re-adds the missing membership from the
-  live feed and skips the already-written `.md` files; no content is lost.
-  The reverse order could lose content.
+  the `.atom` membership (`commit_via_writer`, `persistence/feeds.rs`, which
+  awaits the entry writes before the `.atom` write). After a crash between the
+  two, the next refresh re-adds the missing membership from the live feed and
+  skips the already-written `.md` files; no content is lost. The reverse order
+  could lose content.
 
 ## Article HTML
 

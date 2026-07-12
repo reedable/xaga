@@ -27,9 +27,9 @@ scope, not just LanceDB scope.**
 - **The app:** at setup, immediately after resolving the library path and before any
   command can run. Winning = read-write; losing = read-only for the process's lifetime.
   Mode never changes in-process: a library switch (`set_library`) persists the new path
-  and restarts the process, and the restart path releases the lock before spawning the
-  successor (`release_library_lock`, `src-tauri/src/lib.rs`) so the new process can win
-  it.
+  and restarts the process, and the restart path drains and releases the writer before
+  spawning the successor (`drain_and_release_writer`, `src-tauri/src/lib.rs`) so the new
+  process can win the lock.
 - **The `LibraryWriter`:** owns the flock (`LibraryWriter::start(dir, lock)`,
   `crates/xaga-core/src/library_writer/mod.rs`) and is the single component through which
   every `.md` write flows. Dropping it releases the lock; the restart/shutdown paths drain
@@ -65,9 +65,11 @@ concurrent writes safe. Every `.md` write is submitted to the writer as a file-s
 request and dispatched on a **per-file lane**: same-file writes run strictly serially (the
 whole read-modify-write inside one lane, so two operations on one file can never
 interleave — the annotation-clobber class), while different files run in parallel. This is
-what closes the concurrent-write data loss the annotation era introduced (see the spike);
-before it, two async annotation writes on one article could each read-modify-write and
-destroy each other's change.
+what closes the concurrent-write data loss the annotation era introduced: annotations made
+entity files the sole store of user-authored content, and before per-file serialization two
+async annotation writes on one article could each read-modify-write and destroy each
+other's change (unhealable, because recovery reconciles FROM files — a clobbered file is
+truth).
 
 - **Tiers.** Requests carry `Interactive` or `Regular` (`library_writer::Tier`). User
   actions (annotations, tag toggles, topic edits, bookmark import) are Interactive; feed
@@ -102,17 +104,19 @@ destroy each other's change.
   compile (it cannot obtain a token). `WriteToken::for_test()` (test-only) lets
   persistence unit tests call writes directly.
 
-## Known limits (accepted, Phase B)
+## Known limits (accepted)
 
 - A read-only instance stays read-only until relaunch or library switch — no lock-retry
   loop watches for the writer's exit.
-- Check-to-use window: the gate answers "read-only at this instant"; an in-flight write
-  can in principle overlap the shutdown path releasing the lock. Closed structurally by
-  the Phase C writer actor (it owns the lock; no actor, no writes).
+- Check-to-use window (now closed): the read-only gate answers "at this instant," but a
+  write command that passed it cannot execute against a released lock — it gets the writer
+  handle via `require_writer`, and if shutdown has begun the writer's `shutting_down` flag
+  fast-fails the submit rather than writing.
 - The lock binds only xaga processes. External tools (Obsidian) are not participants by
   design: external edits are architecturally equivalent to a crash — reconciled from
-  files by recovery at startup, not coordinated live (owner decision; see the concurrent
-  library writes spike).
+  files by recovery at startup, not coordinated live (owner decision). Live last-wins
+  inside the ms-scale read-modify-write window is accepted; no external-editor detection is
+  built.
 
 ## Relation to the other rules
 

@@ -1,8 +1,7 @@
 # Read-only mode: complete the UI experience (pending)
 
-Raised 2026-07-11 from the runtime-modes work (Phase B of the concurrent-library-writes
-plan; see `docs/architecture/single_writer_library_lock.md` and
-`docs-transient/sprint/spike__concurrent_library_writes.md`). The backend enforcement is
+Raised 2026-07-11 from the runtime-modes work (the read-write/read-only split; see
+`docs/architecture/single_writer_library_lock.md`). The backend enforcement is
 complete and is the safety boundary: a read-only instance (one that did not win the
 library flock) has every library-write command refused centrally with a typed
 `E_READ_ONLY` error. The UI shipped with a minimal affordance layer; this item is the

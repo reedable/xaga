@@ -19,11 +19,12 @@ rebuilt from the source files on the next run.
 
 ## Instances
 
-- **Entry `.md` before feed `.atom`** (`write_atom`, `crates/xaga-core/src/persistence/feeds.rs`).
-  Entry content — the irreplaceable part — is persisted before feed membership. A crash between
-  the two leaves entries not yet in the atom; the next refresh re-adds the membership from the
-  live feed and skips the already-written `.md` files, so no content is lost. The reverse order
-  could lose content.
+- **Entry `.md` before feed `.atom`** (`commit_via_writer`,
+  `crates/xaga-core/src/persistence/feeds.rs`, which awaits every entry write on its own lane
+  before submitting the `.atom` write on the feed lane). Entry content — the irreplaceable part
+  — is persisted before feed membership. A crash between the two leaves entries not yet in the
+  atom; the next refresh re-adds the membership from the live feed and skips the already-written
+  `.md` files, so no content is lost. The reverse order could lose content.
 - **Chunked fan-out with per-chunk checkpoints** (`reconcile_topic_membership`,
   `crates/xaga-core/src/embeddings/pipeline.rs`). The mechanism: the topic's LanceDB row stores
   its member-id list (`items`) as the prior-membership base — persisted on the row rather than

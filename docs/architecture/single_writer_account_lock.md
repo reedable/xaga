@@ -12,8 +12,9 @@ The account is machine/user scope: everything under the data root
 (`xaga_core::fs::data_root()`) that exists independently of any library —
 settings.json and the model directory today. This is a different domain
 from the [library lock](single_writer_library_lock.md), which is
-per-library and protects concurrent writes to the database; the two locks
-answer different questions and neither substitutes for the other.
+per-library and protects concurrent writes to the whole library (`.md`
+files and LanceDB); the two locks answer different questions and neither
+substitutes for the other.
 
 settings.json doubles as the lock file by design: it is itself the
 account resource most in need of write coordination (its writes are
