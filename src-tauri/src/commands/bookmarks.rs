@@ -4,14 +4,15 @@ use xaga_core::library_writer::{TagPatch, Tier as WriteTier};
 use xaga_core::types::{Entry, Kind};
 
 use crate::AppState;
+use crate::error::AppError;
 
 #[tauri::command]
-pub async fn add_bookmark(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
+pub async fn add_bookmark(id: String, state: State<'_, AppState>) -> Result<Entry, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let entry = writer
         .patch_entry_tags(WriteTier::Interactive, id.clone(), TagPatch::AddBookmark)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
     state.enqueue(
         Tier::Interactive,
         Job::SyncState {
@@ -26,12 +27,12 @@ pub async fn add_bookmark(id: String, state: State<'_, AppState>) -> Result<Entr
 }
 
 #[tauri::command]
-pub async fn remove_bookmark(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
+pub async fn remove_bookmark(id: String, state: State<'_, AppState>) -> Result<Entry, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let entry = writer
         .patch_entry_tags(WriteTier::Interactive, id.clone(), TagPatch::RemoveBookmark)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
     state.enqueue(
         Tier::Interactive,
         Job::SyncState {

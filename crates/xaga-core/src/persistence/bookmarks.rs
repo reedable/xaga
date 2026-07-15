@@ -21,6 +21,24 @@ pub enum BookmarksError {
     InvalidUrl(#[from] url::ParseError),
 }
 
+impl BookmarksError {
+    /// Stable code the UI matches on — mirrored in `src/platform/errors.ts`.
+    pub fn code(&self) -> &'static str {
+        match self {
+            BookmarksError::Io(_) => "bookmark:io",
+            BookmarksError::InvalidUrl(_) => "bookmark:invalid-url",
+        }
+    }
+
+    /// User-safe message. Full detail stays in `Display`.
+    pub fn user_message(&self) -> &'static str {
+        match self {
+            BookmarksError::Io(_) => "Couldn't read or write bookmark data.",
+            BookmarksError::InvalidUrl(_) => "This bookmark's address is invalid.",
+        }
+    }
+}
+
 // ── Serialisation helpers ─────────────────────────────────────────────────────
 
 fn escape_html(s: &str) -> String {

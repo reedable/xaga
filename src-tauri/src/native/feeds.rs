@@ -29,7 +29,9 @@ pub(crate) async fn import_feeds(
     file_path: &Path,
 ) -> Result<ImportResult, String> {
     let library = state.library_path();
-    let writer = crate::commands::require_writer(state)?;
+    // Native import/export report via `Outcome.error` (a `String`) for now;
+    // phase 2 moves that channel onto `AppError`. Until then, stay on `String`.
+    let writer = crate::commands::require_writer(state).map_err(|e| e.to_string())?;
 
     let max_bytes = *state.import_max_bytes.read().unwrap();
     let metadata = tokio::fs::metadata(file_path)

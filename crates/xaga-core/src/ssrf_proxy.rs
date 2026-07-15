@@ -15,14 +15,37 @@ use tokio::net::{TcpListener, TcpStream};
 /// complete. Bounds memory and rejects slow/oversized header floods.
 const MAX_HEAD_BYTES: usize = 16 * 1024;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ProxyError {
     /// The request could not be parsed (bad request line / target).
+    #[error("proxy request could not be parsed")]
     BadRequest,
     /// DNS resolution failed or returned no addresses.
+    #[error("proxy DNS resolution failed")]
     Dns,
     /// The target resolved to a disallowed (private/loopback/etc.) address.
+    #[error("proxy target resolved to a disallowed address")]
     Blocked,
+}
+
+impl ProxyError {
+    /// Stable code the UI matches on — mirrored in `src/platform/errors.ts`.
+    pub fn code(&self) -> &'static str {
+        match self {
+            ProxyError::BadRequest => "proxy:bad-request",
+            ProxyError::Dns => "proxy:dns",
+            ProxyError::Blocked => "proxy:blocked",
+        }
+    }
+
+    /// User-safe message. Full detail stays in `Display`.
+    pub fn user_message(&self) -> &'static str {
+        match self {
+            ProxyError::BadRequest => "The request couldn't be processed.",
+            ProxyError::Dns => "Couldn't resolve the address.",
+            ProxyError::Blocked => "This address is not allowed.",
+        }
+    }
 }
 
 // ── Address policy ──────────────────────────────────────────────────────────────

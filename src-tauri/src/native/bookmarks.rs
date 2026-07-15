@@ -23,7 +23,8 @@ pub(crate) async fn import_bookmarks(
     state: &AppState,
     file_path: &Path,
 ) -> Result<BookmarkImportResult, String> {
-    let writer = crate::commands::require_writer(state)?;
+    // See import_feeds: native stays on `String` until phase 2.
+    let writer = crate::commands::require_writer(state).map_err(|e| e.to_string())?;
 
     let max_bytes = *state.import_max_bytes.read().unwrap();
     let metadata = tokio::fs::metadata(file_path)

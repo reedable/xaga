@@ -3,10 +3,11 @@ use std::path::PathBuf;
 use tauri::{AppHandle, State};
 use xaga_core::embeddings::ShutdownReason;
 
+use crate::error::AppError;
 use crate::{AppState, SettingsOutcome, restart_process, stale_view_error, update_settings};
 
 #[tauri::command]
-pub async fn get_library(state: State<'_, AppState>) -> Result<String, String> {
+pub async fn get_library(state: State<'_, AppState>) -> Result<String, AppError> {
     Ok(state.library_path().to_string_lossy().to_string())
 }
 
@@ -14,7 +15,7 @@ pub async fn get_library(state: State<'_, AppState>) -> Result<String, String> {
 /// the library lock). Same name as the `AppState` accessor and the `library:mode-changed`
 /// event field — one concept, one name at every layer.
 #[tauri::command]
-pub async fn is_library_read_only(state: State<'_, AppState>) -> Result<bool, String> {
+pub async fn is_library_read_only(state: State<'_, AppState>) -> Result<bool, AppError> {
     Ok(state.is_library_read_only())
 }
 
@@ -23,7 +24,7 @@ pub async fn set_library(
     path: String,
     state: State<'_, AppState>,
     app: AppHandle,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     let new_path = PathBuf::from(&path);
 
     std::fs::create_dir_all(&new_path).map_err(|e| e.to_string())?;

@@ -46,6 +46,25 @@ pub enum ItemError {
     Io(#[from] std::io::Error),
 }
 
+impl ItemError {
+    /// Stable code the UI matches on. Embeddings failures delegate to the inner
+    /// code. Mirrored in `src/platform/errors.ts`.
+    pub fn code(&self) -> &'static str {
+        match self {
+            ItemError::Embeddings(e) => e.code(),
+            ItemError::Io(_) => "item:io",
+        }
+    }
+
+    /// User-safe message. Full detail stays in `Display`.
+    pub fn user_message(&self) -> &'static str {
+        match self {
+            ItemError::Embeddings(e) => e.user_message(),
+            ItemError::Io(_) => "Couldn't read this item.",
+        }
+    }
+}
+
 pub(crate) type Result<T> = std::result::Result<T, ItemError>;
 
 // ── Public API ────────────────────────────────────────────────────────────────

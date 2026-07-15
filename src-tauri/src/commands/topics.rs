@@ -6,6 +6,7 @@ use xaga_core::query::items::{self, EmbeddedItemSource};
 use xaga_core::types::{CollectionItem, ItemFilter, Kind, ListItem, RankedItem, Topic};
 
 use super::{parse_item_filter, parse_item_sort};
+use crate::error::AppError;
 use crate::{AppState, get_unread_ids};
 
 #[tauri::command]
@@ -15,14 +16,14 @@ pub async fn save_topic(
     description: String,
     threshold: Option<f32>,
     state: State<'_, AppState>,
-) -> Result<Topic, String> {
+) -> Result<Topic, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     // Edit metadata while preserving existing manual items — the read+write happens
     // inside the writer's topic lane, so a concurrent item change can't be clobbered.
     let topic = writer
         .edit_topic_meta(WriteTier::Interactive, id, title, description, threshold)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
     state.enqueue(
         Tier::Interactive,
         Job::UpsertTopic {
@@ -38,12 +39,12 @@ pub async fn create_topic(
     description: String,
     threshold: Option<f32>,
     state: State<'_, AppState>,
-) -> Result<Topic, String> {
+) -> Result<Topic, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let topic = writer
         .create_topic(WriteTier::Interactive, title, description, threshold)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
     state.enqueue(
         Tier::Interactive,
         Job::UpsertTopic {
@@ -58,12 +59,12 @@ pub async fn set_topic_pinned(
     id: String,
     pinned: bool,
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let writer = crate::commands::require_writer(&state)?;
     writer
         .set_topic_pinned(WriteTier::Interactive, id.clone(), pinned)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
     state.enqueue(
         Tier::Interactive,
         Job::SyncState {
@@ -78,11 +79,11 @@ pub async fn set_topic_pinned(
 }
 
 #[tauri::command]
-pub async fn list_topics(state: State<'_, AppState>) -> Result<Vec<Topic>, String> {
+pub async fn list_topics(state: State<'_, AppState>) -> Result<Vec<Topic>, AppError> {
     let data_dir = state.library_path();
     let mut topics = topics::list_topics(&data_dir)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
 
     let unread = get_unread_ids(&state).await;
 
@@ -120,20 +121,20 @@ pub async fn list_topics(state: State<'_, AppState>) -> Result<Vec<Topic>, Strin
 }
 
 #[tauri::command]
-pub async fn read_topic(id: String, state: State<'_, AppState>) -> Result<Topic, String> {
+pub async fn read_topic(id: String, state: State<'_, AppState>) -> Result<Topic, AppError> {
     let data_dir = state.library_path();
     topics::read_topic(&data_dir, &id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn delete_topic(id: String, state: State<'_, AppState>) -> Result<(), String> {
+pub async fn delete_topic(id: String, state: State<'_, AppState>) -> Result<(), AppError> {
     let writer = crate::commands::require_writer(&state)?;
     writer
         .delete_topic(WriteTier::Interactive, id.clone())
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
     state.enqueue(
         Tier::Interactive,
         Job::Delete {
@@ -148,13 +149,13 @@ pub async fn add_topic_item(
     topic_id: String,
     item: CollectionItem,
     state: State<'_, AppState>,
-) -> Result<Topic, String> {
+) -> Result<Topic, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let member_id = item.id().to_string();
     let topic = writer
         .add_topic_item(WriteTier::Interactive, topic_id.clone(), item)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
     state.enqueue(
         Tier::Interactive,
         Job::AddMember {
@@ -170,12 +171,12 @@ pub async fn remove_topic_item(
     topic_id: String,
     item_id: String,
     state: State<'_, AppState>,
-) -> Result<Topic, String> {
+) -> Result<Topic, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let topic = writer
         .remove_topic_item(WriteTier::Interactive, topic_id.clone(), item_id.clone())
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
     state.enqueue(
         Tier::Interactive,
         Job::RemoveMember {
@@ -192,30 +193,32 @@ pub async fn list_topic_items(
     item_filter: Option<String>,
     sort: Option<String>,
     state: State<'_, AppState>,
-) -> Result<Vec<ListItem>, String> {
+) -> Result<Vec<ListItem>, AppError> {
     let data_dir = state.library_path();
     let item_filter = parse_item_filter(item_filter)?;
     let sort = parse_item_sort(sort)?;
     xaga_core::query::topics::list_topic_items(&data_dir, &id, item_filter, sort)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn list_entry_topics(
     entry_id: String,
     state: State<'_, AppState>,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<String>, AppError> {
     // Phase C: read the entry's topics from the LanceDB reverse index (the `topics` column,
     // maintained by the topic-membership reconcile) instead of scanning every topic file.
     let db = state.embeddings_read.lock().unwrap().clone();
     let Some(db) = db else {
-        return Err("embeddings read handle unavailable".to_string());
+        return Err(AppError::Message(
+            "embeddings read handle unavailable".to_string(),
+        ));
     };
     Ok(db
         .get_entry(&entry_id)
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(AppError::from)?
         .map(|e| e.topics)
         .unwrap_or_default())
 }
@@ -225,7 +228,7 @@ pub async fn rank_topics_by_item(
     item_id: String,
     min_similarity: Option<f32>,
     state: State<'_, AppState>,
-) -> Result<Vec<RankedItem>, String> {
+) -> Result<Vec<RankedItem>, AppError> {
     let data_dir = state.library_path();
     let entries = items::list_embedded_items(
         &data_dir,
@@ -237,7 +240,7 @@ pub async fn rank_topics_by_item(
         ItemFilter::All,
     )
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(AppError::from)?;
 
     Ok(entries
         .into_iter()

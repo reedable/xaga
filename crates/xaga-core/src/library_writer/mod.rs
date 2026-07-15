@@ -93,6 +93,32 @@ pub enum WriterError {
     Closed,
 }
 
+impl WriterError {
+    /// Stable code the UI matches on. Wrapped errors delegate to the inner
+    /// code — a write that fails on an entry surfaces as `entry:*`, not a
+    /// generic writer code. Mirrored in `src/platform/errors.ts`.
+    pub fn code(&self) -> &'static str {
+        match self {
+            WriterError::Entry(e) => e.code(),
+            WriterError::Topic(e) => e.code(),
+            WriterError::Feed(e) => e.code(),
+            WriterError::ShuttingDown => "writer:shutting-down",
+            WriterError::Closed => "writer:closed",
+        }
+    }
+
+    /// User-safe message. Full detail stays in `Display`.
+    pub fn user_message(&self) -> &'static str {
+        match self {
+            WriterError::Entry(e) => e.user_message(),
+            WriterError::Topic(e) => e.user_message(),
+            WriterError::Feed(e) => e.user_message(),
+            WriterError::ShuttingDown => "The app is shutting down; your change wasn't saved.",
+            WriterError::Closed => "Couldn't save your change right now.",
+        }
+    }
+}
+
 /// The result of a [`LibraryWriter::bookmark_entry`]: whether the bookmark created a new
 /// entry (carrying its Article, for indexing) or tagged an existing one (its id). The
 /// Article is boxed so the two variants are similar in size.

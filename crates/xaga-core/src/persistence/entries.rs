@@ -25,6 +25,32 @@ pub enum EntryError {
     ColorChangeRequiresReplace,
 }
 
+impl EntryError {
+    /// Stable code the UI matches on — mirrored in `src/platform/errors.ts`.
+    /// See `crate::error::DomainError` for the funnel that carries it.
+    pub fn code(&self) -> &'static str {
+        match self {
+            EntryError::Io(_) => "entry:io",
+            EntryError::InvalidUrl(_) => "entry:invalid-url",
+            EntryError::InvalidId => "entry:invalid-id",
+            EntryError::NotFound => "entry:not-found",
+            EntryError::ColorChangeRequiresReplace => "entry:color-change-requires-replace",
+        }
+    }
+
+    /// User-safe message (no file fragments, ids, or URLs). The full technical
+    /// text stays in `Display`, which the funnel logs as the error's detail.
+    pub fn user_message(&self) -> &'static str {
+        match self {
+            EntryError::Io(_) => "Couldn't read or write this item.",
+            EntryError::InvalidUrl(_) => "This item's address is invalid.",
+            EntryError::InvalidId => "This item's identifier is invalid.",
+            EntryError::NotFound => "This item could not be found.",
+            EntryError::ColorChangeRequiresReplace => "Couldn't update the highlight color.",
+        }
+    }
+}
+
 /// Returns true when `id` is safe to interpolate into a file path: a single
 /// path component with no separators or parent-directory references. Entry and
 /// article ids are URL hashes (`url_hash12`) or Atom ids — never paths — so a

@@ -7,22 +7,23 @@ use xaga_core::types::{Entry, Kind, ListItem};
 
 use super::parse_item_filter;
 use crate::AppState;
+use crate::error::AppError;
 
 #[tauri::command]
-pub async fn read_entry(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
+pub async fn read_entry(id: String, state: State<'_, AppState>) -> Result<Entry, AppError> {
     let data_dir = state.library_path();
     entries::read_entry(&data_dir, &id)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
+pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<Entry, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let entry = writer
         .patch_entry_tags(WriteTier::Interactive, id.clone(), TagPatch::MarkRead)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
     state.enqueue(
         Tier::Interactive,
         Job::SyncState {
@@ -37,12 +38,12 @@ pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<E
 }
 
 #[tauri::command]
-pub async fn mark_entry_unread(id: String, state: State<'_, AppState>) -> Result<Entry, String> {
+pub async fn mark_entry_unread(id: String, state: State<'_, AppState>) -> Result<Entry, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let entry = writer
         .patch_entry_tags(WriteTier::Interactive, id.clone(), TagPatch::MarkUnread)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
     state.enqueue(
         Tier::Interactive,
         Job::SyncState {
@@ -65,11 +66,11 @@ pub fn is_cache_ready(state: State<'_, AppState>) -> bool {
 pub async fn list_all_items(
     item_filter: Option<String>,
     state: State<'_, AppState>,
-) -> Result<Vec<ListItem>, String> {
+) -> Result<Vec<ListItem>, AppError> {
     let data_dir = state.library_path();
     let item_filter = parse_item_filter(item_filter)?;
 
     items::list_all_items(&data_dir, item_filter)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }

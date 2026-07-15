@@ -1,4 +1,5 @@
 import { useCallback, useState, type RefObject } from "react";
+import { errorCode } from "../platform/errors";
 import { usePlatform } from "../platform/Platform";
 import { processEntry } from "../text/entryWorker";
 import { type Entry } from "../types";
@@ -58,7 +59,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         // The inline-PDF probe rejected the URL as a spoof (Content-Type claimed
         // PDF, body isn't). Surface it so the reader pane can show a block
         // message rather than swallowing it as a generic failure.
-        if (String(e).includes("E_SPOOFED_PDF")) {
+        if (errorCode(e) === "article:spoofed-pdf") {
           return { article: null, blockedSpoof: true };
         }
         setError(e);

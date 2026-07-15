@@ -19,6 +19,24 @@ pub enum TopicsError {
     NotFound,
 }
 
+impl TopicsError {
+    /// Stable code the UI matches on — mirrored in `src/platform/errors.ts`.
+    pub fn code(&self) -> &'static str {
+        match self {
+            TopicsError::Io(_) => "topic:io",
+            TopicsError::NotFound => "topic:not-found",
+        }
+    }
+
+    /// User-safe message. Full detail stays in `Display`.
+    pub fn user_message(&self) -> &'static str {
+        match self {
+            TopicsError::Io(_) => "Couldn't read or write this topic.",
+            TopicsError::NotFound => "This topic could not be found.",
+        }
+    }
+}
+
 /// Encodes a [`Topic`] (plus its membership `items`) to its `.md` representation — the single topic
 /// encoder. `items` is passed alongside the domain object because `Topic.members` (`Vec<Reference>`)
 /// is a lossy view of the stored `Vec<CollectionItem>` (it drops the annotation parent `reference`);

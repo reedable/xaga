@@ -28,6 +28,34 @@ pub enum EmbeddingsError {
     Parse(String),
 }
 
+impl EmbeddingsError {
+    /// Stable code the UI matches on — mirrored in `src/platform/errors.ts`.
+    pub fn code(&self) -> &'static str {
+        match self {
+            EmbeddingsError::Io(_) => "embeddings:io",
+            EmbeddingsError::ModelDownload(_) => "embeddings:model-download",
+            EmbeddingsError::Model(_) => "embeddings:model",
+            EmbeddingsError::Tokenize(_) => "embeddings:tokenize",
+            EmbeddingsError::LanceDb(_) => "embeddings:lancedb",
+            EmbeddingsError::Arrow(_) => "embeddings:arrow",
+            EmbeddingsError::Json(_) => "embeddings:json",
+            EmbeddingsError::Parse(_) => "embeddings:parse",
+        }
+    }
+
+    /// User-safe message. Full detail stays in `Display`.
+    pub fn user_message(&self) -> &'static str {
+        match self {
+            EmbeddingsError::Io(_) => "Couldn't read or write search data.",
+            EmbeddingsError::ModelDownload(_) => "Couldn't download the search model.",
+            EmbeddingsError::Model(_) => "The search model failed.",
+            EmbeddingsError::Tokenize(_) => "Couldn't process text for search.",
+            EmbeddingsError::LanceDb(_) | EmbeddingsError::Arrow(_) => "The search database failed.",
+            EmbeddingsError::Json(_) | EmbeddingsError::Parse(_) => "Couldn't process search data.",
+        }
+    }
+}
+
 impl From<lancedb::Error> for EmbeddingsError {
     fn from(e: lancedb::Error) -> Self {
         EmbeddingsError::LanceDb(e.to_string())

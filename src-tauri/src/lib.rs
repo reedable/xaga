@@ -1,5 +1,6 @@
 mod article_loader;
 mod commands;
+mod error;
 mod events;
 mod fetch_client;
 mod native;
@@ -432,9 +433,9 @@ pub(crate) fn refresh_state_from_settings(state: &AppState, s: &UserSettings) {
 
 /// The uniform caller-side handling of a [`SettingsOutcome::StaleView`]:
 /// refresh the mirrors and report the refusal to the webview.
-pub(crate) fn stale_view_error(state: &AppState, fresh: &UserSettings) -> String {
+pub(crate) fn stale_view_error(state: &AppState, fresh: &UserSettings) -> crate::error::AppError {
     refresh_state_from_settings(state, fresh);
-    "settings changed by another xaga process; view refreshed — retry".to_string()
+    crate::error::AppError::SettingsStaleView
 }
 
 // ── Appearance helpers ───────────────────────────────────────────────────────────
@@ -1279,13 +1280,11 @@ pub fn run() {
                     )
                 };
                 if !allowed {
-                    invoke
-                        .resolver
-                        .reject("unauthorized: command not available from this window");
+                    invoke.resolver.reject(crate::error::AppError::Unauthorized);
                     return true;
                 }
                 if write_refused {
-                    invoke.resolver.reject(commands::E_READ_ONLY);
+                    invoke.resolver.reject(crate::error::AppError::ReadOnly);
                     return true;
                 }
                 app_commands(invoke)

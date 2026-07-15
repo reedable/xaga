@@ -56,6 +56,39 @@ pub enum FeedError {
     Writer(String),
 }
 
+impl FeedError {
+    /// Stable code the UI matches on — mirrored in `src/platform/errors.ts`.
+    pub fn code(&self) -> &'static str {
+        match self {
+            FeedError::InvalidUrl(_) => "feed:invalid-url",
+            FeedError::Http { .. } => "feed:http",
+            FeedError::Io(_) => "feed:io",
+            FeedError::AtomParse(_) => "feed:atom-parse",
+            FeedError::FeedParse(_) => "feed:parse",
+            FeedError::NotFound(_) => "feed:not-found",
+            FeedError::MissingSelfLink(_) => "feed:missing-self-link",
+            FeedError::BodyTooLarge { .. } => "feed:body-too-large",
+            FeedError::HttpBlocked { .. } => "feed:http-blocked",
+            FeedError::Writer(_) => "feed:writer",
+        }
+    }
+
+    /// User-safe message (no URLs or parser fragments). Full detail stays in `Display`.
+    pub fn user_message(&self) -> &'static str {
+        match self {
+            FeedError::InvalidUrl(_) => "This feed's address is invalid.",
+            FeedError::Http { .. } => "Couldn't reach this feed.",
+            FeedError::Io(_) => "Couldn't read or write feed data.",
+            FeedError::AtomParse(_) | FeedError::FeedParse(_) => "This feed couldn't be read.",
+            FeedError::NotFound(_) => "This feed could not be found.",
+            FeedError::MissingSelfLink(_) => "This feed is missing required information.",
+            FeedError::BodyTooLarge { .. } => "This feed's response was too large.",
+            FeedError::HttpBlocked { .. } => "This feed uses insecure HTTP, which is turned off.",
+            FeedError::Writer(_) => "Couldn't save feed changes.",
+        }
+    }
+}
+
 /// FIXME Untangle FeedError for least visibility
 pub(crate) type Result<T> = std::result::Result<T, FeedError>;
 

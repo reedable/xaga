@@ -54,24 +54,19 @@ pub(crate) const WRITE_COMMANDS: &[&str] = &[
     "reset_embeddings",
 ];
 
-/// The typed error a read-only instance returns for [`WRITE_COMMANDS`]; the frontend
-/// matches on this prefix to show a read-only message instead of a generic failure.
-pub(crate) const E_READ_ONLY: &str =
-    "E_READ_ONLY: this instance is read-only — another xaga instance holds the library lock";
-
 /// The library-write gate's decision: refuse `command` iff this instance is read-only AND
 /// the command writes to the library. Enforced once in the global invoke handler.
 pub(crate) fn is_write_refused(command: &str, is_library_read_only: bool) -> bool {
     is_library_read_only && WRITE_COMMANDS.contains(&command)
 }
 
-/// The library writer, or the typed read-only error. A write command's body calls this to
+/// The library writer, or [`AppError::ReadOnly`]. A write command's body calls this to
 /// get the writer through which every `.md` write flows. The IPC gate already refuses write
 /// commands on a read-only instance, so reaching the `None` case here is defense in depth.
 pub(crate) fn require_writer(
     state: &crate::AppState,
-) -> Result<xaga_core::library_writer::LibraryWriter, String> {
-    state.writer().ok_or_else(|| E_READ_ONLY.to_string())
+) -> Result<xaga_core::library_writer::LibraryWriter, crate::error::AppError> {
+    state.writer().ok_or(crate::error::AppError::ReadOnly)
 }
 
 /// Central IPC access policy, enforced once in the global invoke handler so that

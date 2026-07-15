@@ -4,6 +4,7 @@ use xaga_core::types::{EmbeddedEntry, EmbeddedItem};
 
 use super::parse_item_filter;
 use crate::AppState;
+use crate::error::AppError;
 
 #[tauri::command]
 pub async fn search_by_item(
@@ -13,7 +14,7 @@ pub async fn search_by_item(
     max_similarity: Option<f32>,
     limit: Option<usize>,
     state: State<'_, AppState>,
-) -> Result<Vec<EmbeddedEntry>, String> {
+) -> Result<Vec<EmbeddedEntry>, AppError> {
     let library = state.library_path();
     let item_filter = parse_item_filter(item_filter)?;
     let result = items::list_embedded_items(
@@ -27,7 +28,7 @@ pub async fn search_by_item(
         item_filter,
     )
     .await
-    .map_err(|e| e.to_string());
+    .map_err(AppError::from);
     match &result {
         Ok(entries) => log::debug!("search_by_item: ok ({} entries)", entries.len()),
         Err(e) => log::debug!("search_by_item: err — {e}"),
@@ -43,7 +44,7 @@ pub async fn search_by_text(
     max_similarity: Option<f32>,
     limit: Option<usize>,
     state: State<'_, AppState>,
-) -> Result<Vec<EmbeddedItem>, String> {
+) -> Result<Vec<EmbeddedItem>, AppError> {
     let library = state.library_path();
     let item_filter = parse_item_filter(item_filter)?;
 
@@ -59,7 +60,7 @@ pub async fn search_by_text(
     let vector = tokio::task::spawn_blocking(move || embedder.embed("", &text_clone))
         .await
         .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
 
     let entries = items::list_embedded_items(
         &library,
@@ -72,7 +73,7 @@ pub async fn search_by_text(
         item_filter,
     )
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(AppError::from)?;
 
     let result = items::enrich_embedded(&library, entries).await;
     log::debug!("search_by_text: ok ({} entries)", result.len());
@@ -80,7 +81,7 @@ pub async fn search_by_text(
 }
 
 #[tauri::command]
-pub async fn reset_embeddings(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn reset_embeddings(state: State<'_, AppState>) -> Result<(), AppError> {
     let library = state.library_path();
     if let Some(svc) = state.embedding_service.lock().unwrap().as_ref() {
         svc.reset(library);

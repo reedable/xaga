@@ -6,10 +6,11 @@ use xaga_core::types::{Article, Kind, PartialAnnotation};
 
 use base64::Engine as _;
 
+use crate::error::AppError;
 use crate::{AppState, article_loader};
 
 #[tauri::command]
-pub async fn loader_will_unload(app: AppHandle, url: String) -> Result<(), String> {
+pub async fn loader_will_unload(app: AppHandle, url: String) -> Result<(), AppError> {
     crate::events::emit_app(&app, crate::events::AppEvent::LoaderWillUnload(url));
     Ok(())
 }
@@ -20,7 +21,7 @@ pub async fn loader_page_loaded(
     url: String,
     html: String,
     mime_type: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     crate::events::emit_app(
         &app,
         crate::events::AppEvent::LoaderPageLoaded(crate::events::LoaderPageLoaded {
@@ -40,7 +41,7 @@ pub async fn capture_and_close_loader(
     loader_url: String,
     page_url: String,
     mime_type: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     let same_page = match (
         xaga_core::util::normalize_url(&loader_url),
         xaga_core::util::normalize_url(&page_url),
@@ -72,7 +73,7 @@ pub async fn receive_html(
     id: String,
     html: String,
     mime_type: String,
-) -> Result<bool, String> {
+) -> Result<bool, AppError> {
     let mut map = pending.lock().map_err(|e| e.to_string())?;
     if let Some((tx, keep_open, reqwest_error)) = map.remove(&id) {
         let _ = tx.send((mime_type, html));
@@ -117,14 +118,14 @@ async fn try_fetch_pdf(
     client: &reqwest::Client,
     url: &str,
     timeout_secs: u64,
-) -> Result<PdfProbe, String> {
+) -> Result<PdfProbe, AppError> {
     // Only ever fetch real remote web content (mirror the loader's scheme guard).
     let parsed = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
     if !matches!(parsed.scheme(), "http" | "https") {
-        return Err(format!(
+        return Err(AppError::Message(format!(
             "refusing to fetch non-web URL scheme: {}",
             parsed.scheme()
-        ));
+        )));
     }
 
     let resp = client
@@ -138,7 +139,9 @@ async fn try_fetch_pdf(
     // content-type check so it doesn't read as a server error; the caller falls
     // back to the loader webview, which surfaces the proxy's explanation body.
     if resp.status().as_u16() == xaga_core::persistence::feeds::HTTP_BLOCKED_STATUS {
-        return Err("plaintext HTTP fetch blocked by the \"HTTP allowed\" setting".to_string());
+        return Err(AppError::Message(
+            "plaintext HTTP fetch blocked by the \"HTTP allowed\" setting".to_string(),
+        ));
     }
 
     // MIME type only — ignore parameters like charset.
@@ -160,7 +163,10 @@ async fn try_fetch_pdf(
     }
 
     if !resp.status().is_success() {
-        return Err(format!("PDF request returned HTTP {}", resp.status()));
+        return Err(AppError::Message(format!(
+            "PDF request returned HTTP {}",
+            resp.status()
+        )));
     }
 
     let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
@@ -181,7 +187,7 @@ pub async fn load_article(
     app: AppHandle,
     pending: State<'_, article_loader::PendingRequests>,
     state: State<'_, AppState>,
-) -> Result<LoadArticleResult, String> {
+) -> Result<LoadArticleResult, AppError> {
     let timeout_secs = *state.loader_timeout_secs.read().unwrap();
     let allowed_domains = state.allowed_domains.read().unwrap().clone();
     let named_stores_supported = state.named_stores_supported;
@@ -215,7 +221,7 @@ pub async fn load_article(
             // Spoofed: Content-Type claimed PDF but the body isn't one. Dead-end;
             // do NOT render it in a webview. The `E_SPOOFED_PDF` code lets the
             // frontend show a "blocked" message instead of a generic failure.
-            Ok(PdfProbe::Invalid(msg)) => return Err(format!("E_SPOOFED_PDF: {msg}")),
+            Ok(PdfProbe::Invalid(msg)) => return Err(AppError::SpoofedPdf(msg)),
             // Transport error (e.g. the site refused the non-browser client). We
             // can't confirm it's a PDF; hand it to the loader with reqwest_error so
             // the close decision is deferred until the webview reports the type.
@@ -256,7 +262,7 @@ pub async fn save_article(
     favicon: Option<String>,
     markdown: String,
     state: State<'_, AppState>,
-) -> Result<Article, String> {
+) -> Result<Article, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let article = writer
         .save_article(
@@ -271,7 +277,7 @@ pub async fn save_article(
             markdown,
         )
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
     state.enqueue(
         Tier::Interactive,
         Job::UpsertEntry {
@@ -291,7 +297,7 @@ pub async fn create_article(
     favicon: Option<String>,
     markdown: String,
     state: State<'_, AppState>,
-) -> Result<Article, String> {
+) -> Result<Article, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let article = writer
         .create_article(
@@ -305,7 +311,7 @@ pub async fn create_article(
             markdown,
         )
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
     state.enqueue(
         Tier::Interactive,
         Job::UpsertEntry {
@@ -319,19 +325,19 @@ pub async fn create_article(
 pub async fn find_article(
     url: String,
     state: State<'_, AppState>,
-) -> Result<Option<Article>, String> {
+) -> Result<Option<Article>, AppError> {
     let data_dir = state.library_path();
     articles::find_article(&data_dir, &url)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn read_article(id: String, state: State<'_, AppState>) -> Result<Article, String> {
+pub async fn read_article(id: String, state: State<'_, AppState>) -> Result<Article, AppError> {
     let data_dir = state.library_path();
     let article = articles::read_article(&data_dir, &id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
 
     // Mark-read is an incidental library write hiding in a read command. On a read-only
     // instance it silently no-ops (owner decision: reading stays seamless; the entry
@@ -371,7 +377,7 @@ pub async fn add_annotation(
     color: String,
     note: Option<String>,
     state: State<'_, AppState>,
-) -> Result<Article, String> {
+) -> Result<Article, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let annotation = xaga_core::types::Annotation {
         id,
@@ -386,7 +392,7 @@ pub async fn add_annotation(
     let article = writer
         .add_annotation(WriteTier::Interactive, article_id.clone(), annotation)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
     // Insert/refresh the annotation row now (embedder-free, immediately listable), then defer the
     // ONNX embed so the new annotation gets a vector — without it, search_related/rank_topics_by_item
     // raise "id not found". embed_entry_vector is checksum-gated, so it skips the unchanged article
@@ -423,7 +429,7 @@ pub async fn replace_annotation(
     color: String,
     note: Option<String>,
     state: State<'_, AppState>,
-) -> Result<Article, String> {
+) -> Result<Article, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let annotation = xaga_core::types::Annotation {
         id: id.clone(),
@@ -443,7 +449,7 @@ pub async fn replace_annotation(
             annotation,
         )
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
 
     // Row reconcile first: SyncAnnotations deletes the old id's row (gone from the `.md`) and
     // inserts the new one with a pending vector; the deferred EmbedEntry fills it. Enqueued
@@ -520,7 +526,7 @@ pub async fn remove_annotation(
     article_id: String,
     annotation_id: String,
     state: State<'_, AppState>,
-) -> Result<Article, String> {
+) -> Result<Article, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let article = writer
         .remove_annotation(
@@ -529,7 +535,7 @@ pub async fn remove_annotation(
             annotation_id.clone(),
         )
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
 
     // Evict the deleted annotation from any topic items lists immediately, so topic item
     // lists don't serve stale data before LanceDB catches up. Read the annotation's topics
@@ -579,7 +585,7 @@ pub async fn remove_annotation(
 }
 
 #[tauri::command]
-pub fn clear_webview_history(app: AppHandle) -> Result<(), String> {
+pub fn clear_webview_history(app: AppHandle) -> Result<(), AppError> {
     let home = app.path().home_dir().map_err(|e| e.to_string())?;
     let webkit_name = app.config().product_name.as_deref().unwrap_or("xaga");
     let webkit_dir = home.join("Library/WebKit").join(webkit_name);
@@ -592,10 +598,10 @@ pub fn clear_webview_history(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn list_annotations(
     state: State<'_, AppState>,
-) -> Result<Vec<PartialAnnotation>, String> {
+) -> Result<Vec<PartialAnnotation>, AppError> {
     let data_dir = state.library_path();
     let db = EmbeddingsDb::open(&data_dir)
         .await
-        .map_err(|e| e.to_string())?;
-    db.list_annotations().await.map_err(|e| e.to_string())
+        .map_err(AppError::from)?;
+    db.list_annotations().await.map_err(AppError::from)
 }
