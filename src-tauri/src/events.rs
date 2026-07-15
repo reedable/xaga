@@ -19,11 +19,13 @@ use xaga_core::events::DomainEvent;
 use crate::native::bookmarks::BookmarkImportResult;
 use crate::native::feeds::ImportResult;
 
-/// Event payload for a native-triggered import/export.
+/// Event payload for a native-triggered import/export. On failure `error`
+/// carries the typed [`SerializedError`] (`{ code, message, detail }`) — the
+/// same shape a rejected command returns, so the UI treats both channels alike.
 #[derive(Serialize, Clone)]
 pub(crate) struct Outcome<T: Serialize + Clone> {
     pub(crate) result: Option<T>,
-    pub(crate) error: Option<String>,
+    pub(crate) error: Option<crate::error::SerializedError>,
 }
 
 /// Payload of `loader:page-loaded`.
@@ -114,7 +116,7 @@ impl AppEvent {
 /// delivery scope is unchanged).
 pub(crate) fn emit_domain<R: Runtime>(target: &impl Emitter<R>, event: DomainEvent) {
     let name = event.name();
-    let _ = match &event {
+    let result = match &event {
         DomainEvent::UnreadChanged(entry) => target.emit(name, entry),
         DomainEvent::BookmarkChanged(entry) => target.emit(name, entry),
         DomainEvent::AnnotationChanged(item) => target.emit(name, item),
@@ -127,13 +129,16 @@ pub(crate) fn emit_domain<R: Runtime>(target: &impl Emitter<R>, event: DomainEve
         | DomainEvent::EmbeddingShutdown
         | DomainEvent::FeedsRefreshed => target.emit(name, ()),
     };
+    if let Err(e) = result {
+        log::warn!("emit {name} failed: {e}");
+    }
 }
 
 /// Emits an app-layer event to `target`. Same delivery-scope contract as
 /// [`emit_domain`].
 pub(crate) fn emit_app<R: Runtime>(target: &impl Emitter<R>, event: AppEvent) {
     let name = event.name();
-    let _ = match &event {
+    let result = match &event {
         AppEvent::SettingsTheme(v)
         | AppEvent::SettingsHtmlReaderFontFamily(v)
         | AppEvent::SettingsHtmlReaderView(v)
@@ -156,6 +161,9 @@ pub(crate) fn emit_app<R: Runtime>(target: &impl Emitter<R>, event: AppEvent) {
         AppEvent::LoaderPageLoaded(v) => target.emit(name, v),
         AppEvent::LoaderClosed(v) => target.emit(name, v),
     };
+    if let Err(e) = result {
+        log::warn!("emit {name} failed: {e}");
+    }
 }
 
 #[cfg(test)]

@@ -3,6 +3,7 @@
 
 export * from "./domain";
 
+import type { AppError } from "./platform/errors";
 import {
   isItem,
   type Entry,
@@ -111,11 +112,11 @@ export type ImportResult<T> = {
  */
 export type ImportOutcome<T> = {
   result: ImportResult<T> | null;
-  error: string | null;
+  error: AppError | null;
 };
 
 export type ExportOutcome = {
-  error: string | null;
+  error: AppError | null;
 };
 
 // ── Navigation ───────────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@ use xaga_core::embeddings::{Job, Tier};
 use xaga_core::persistence::feeds;
 use xaga_core::types::Feed;
 
+use crate::error::AppError;
 use crate::{AppState, get_bookmarked_ids, get_unread_ids};
 
 #[derive(Serialize, Clone)]
@@ -27,22 +28,22 @@ pub(crate) struct ImportResult {
 pub(crate) async fn import_feeds(
     state: &AppState,
     file_path: &Path,
-) -> Result<ImportResult, String> {
+) -> Result<ImportResult, AppError> {
     let library = state.library_path();
-    // Native import/export report via `Outcome.error` (a `String`) for now;
-    // phase 2 moves that channel onto `AppError`. Until then, stay on `String`.
-    let writer = crate::commands::require_writer(state).map_err(|e| e.to_string())?;
+    let writer = crate::commands::require_writer(state)?;
 
     let max_bytes = *state.import_max_bytes.read().unwrap();
     let metadata = tokio::fs::metadata(file_path)
         .await
         .map_err(|e| e.to_string())?;
     if metadata.len() > max_bytes {
-        return Err(format!(
+        // TODO(phase 3): a typed, user-actionable variant directing to Settings
+        // to raise the cap — blocked on the import-cap setting UI landing.
+        return Err(AppError::Message(format!(
             "import file is {} bytes, exceeding the {} byte limit",
             metadata.len(),
             max_bytes
-        ));
+        )));
     }
 
     let xml = tokio::fs::read_to_string(file_path)
@@ -115,13 +116,13 @@ pub(crate) async fn import_feeds(
     })
 }
 
-pub(crate) async fn export_feeds(state: &AppState, file_path: &Path) -> Result<(), String> {
+pub(crate) async fn export_feeds(state: &AppState, file_path: &Path) -> Result<(), AppError> {
     let library = state.library_path();
 
     let (unread, bookmarked) = (get_unread_ids(state).await, get_bookmarked_ids(state).await);
     let feed_list = feeds::list_feeds(&library, &unread, &bookmarked)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
 
     let pairs: Vec<(&str, &str)> = feed_list
         .iter()
@@ -132,5 +133,5 @@ pub(crate) async fn export_feeds(state: &AppState, file_path: &Path) -> Result<(
 
     tokio::fs::write(file_path, opml)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| AppError::Message(e.to_string()))
 }

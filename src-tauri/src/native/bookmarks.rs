@@ -11,6 +11,7 @@ use xaga_core::persistence::bookmarks;
 use xaga_core::types::Kind;
 
 use crate::AppState;
+use crate::error::AppError;
 
 #[derive(Serialize, Clone)]
 pub(crate) struct BookmarkImportResult {
@@ -22,20 +23,20 @@ pub(crate) struct BookmarkImportResult {
 pub(crate) async fn import_bookmarks(
     state: &AppState,
     file_path: &Path,
-) -> Result<BookmarkImportResult, String> {
-    // See import_feeds: native stays on `String` until phase 2.
-    let writer = crate::commands::require_writer(state).map_err(|e| e.to_string())?;
+) -> Result<BookmarkImportResult, AppError> {
+    let writer = crate::commands::require_writer(state)?;
 
     let max_bytes = *state.import_max_bytes.read().unwrap();
     let metadata = tokio::fs::metadata(file_path)
         .await
         .map_err(|e| e.to_string())?;
     if metadata.len() > max_bytes {
-        return Err(format!(
+        // TODO(phase 3): typed, user-actionable variant directing to Settings.
+        return Err(AppError::Message(format!(
             "import file is {} bytes, exceeding the {} byte limit",
             metadata.len(),
             max_bytes
-        ));
+        )));
     }
 
     let html = tokio::fs::read_to_string(file_path)
@@ -43,7 +44,7 @@ pub(crate) async fn import_bookmarks(
         .map_err(|e| e.to_string())?;
     let result = bookmarks::import_bookmarks(&writer, &html)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(AppError::from)?;
 
     // Newly-created entries carry their parsed payload — enqueue content indexing so the consumer
     // never re-reads. This is user-initiated CRUD (the user ran the import and is waiting), so the
@@ -74,9 +75,9 @@ pub(crate) async fn import_bookmarks(
     })
 }
 
-pub(crate) async fn export_bookmarks(state: &AppState, file_path: &Path) -> Result<(), String> {
+pub(crate) async fn export_bookmarks(state: &AppState, file_path: &Path) -> Result<(), AppError> {
     let data_dir = state.library_path();
     bookmarks::export_bookmarks(&data_dir, file_path)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(AppError::from)
 }

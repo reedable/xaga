@@ -23,7 +23,6 @@
 //! keep working once a command's signature moves to `AppError`. Phase 2/3 of
 //! the error-handling work promotes the user-actionable ones to typed variants.
 
-use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
 use xaga_core::embeddings::EmbeddingsError;
 use xaga_core::error::DomainError;
@@ -127,15 +126,37 @@ app_from_domain!(
     ProxyError,
 );
 
-/// Serialized to the webview as `{ code, message, detail }`. `message` is the
-/// only user-facing field; `detail` (full `Display`) is console/log-only.
+/// The owned, `Clone` wire shape of an error: `{ code, message, detail }`.
+///
+/// `AppError` itself can't be `Clone` (it wraps non-`Clone` foreign errors like
+/// `reqwest::Error`), so event payloads that need `Clone` — the import/export
+/// [`crate::events::Outcome`] — carry this instead. It serializes identically to
+/// a directly-returned `AppError`, so the webview sees one shape on both
+/// channels. `message` is the only user-facing field; `detail` is log-only.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct SerializedError {
+    pub(crate) code: &'static str,
+    pub(crate) message: &'static str,
+    pub(crate) detail: String,
+}
+
+impl AppError {
+    /// The owned wire shape, for event payloads that need `Clone`.
+    pub(crate) fn serialized(&self) -> SerializedError {
+        SerializedError {
+            code: self.code(),
+            message: self.user_message(),
+            detail: self.to_string(),
+        }
+    }
+}
+
+/// Serialized to the webview as `{ code, message, detail }` — the same shape as
+/// [`SerializedError`], so a returned error and an event-carried one are
+/// indistinguishable on the JS side.
 impl Serialize for AppError {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut st = serializer.serialize_struct("AppError", 3)?;
-        st.serialize_field("code", self.code())?;
-        st.serialize_field("message", self.user_message())?;
-        st.serialize_field("detail", &self.to_string())?;
-        st.end()
+        self.serialized().serialize(serializer)
     }
 }
 

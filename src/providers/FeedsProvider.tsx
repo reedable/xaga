@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useErrorSink } from "../hooks/useErrorSink";
 import { subscribe } from "../hooks/useEvents";
 import { usePlatform } from "../platform/Platform";
 import type { ExportOutcome, Feed, ImportOutcome } from "../types";
@@ -14,6 +15,7 @@ import FeedsContext, { type FeedsContextType } from "./FeedsContext";
 
 export default function FeedsProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
+  const { pushError } = useErrorSink();
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [loadingSet, setLoadingSet] = useState<Set<string>>(new Set());
@@ -69,6 +71,7 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
       setError(null);
       if (outcome.error !== null) {
         setError(outcome.error);
+        pushError(outcome.error);
         return;
       }
       const signal = new AbortController().signal;
@@ -77,14 +80,19 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
         if (results) setFeeds([...results].sort(sortByUnreadCount));
       } catch (e) {
         setError(e);
+        pushError(e);
       }
     },
-    [platform, setFeeds]
+    [platform, setFeeds, pushError]
   );
 
-  const handleFeedsExported = useCallback((outcome: ExportOutcome) => {
-    setError(outcome.error);
-  }, []);
+  const handleFeedsExported = useCallback(
+    (outcome: ExportOutcome) => {
+      setError(outcome.error);
+      if (outcome.error !== null) pushError(outcome.error);
+    },
+    [pushError]
+  );
 
   useEffect(
     () => subscribe(() => platform.onFeedsImported(handleFeedsImported)),
