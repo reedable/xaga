@@ -25,6 +25,9 @@ export default function ErrorSinkProvider({
   const [message, setMessage] = useState<string | null>(null);
 
   const pushError = useCallback((e: unknown) => {
+    // Aborts (navigation/unmount cancelling an in-flight request) are not
+    // failures — never surface them. Every catch can forward safely.
+    if (e instanceof DOMException && e.name === "AbortError") return;
     if (isAppError(e)) {
       // Full technical text to the console/log only — never to the user.
       console.error(`[${e.code}] ${e.detail}`);

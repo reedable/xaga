@@ -3,6 +3,7 @@ import { usePlatform } from "../platform/Platform";
 import TopicsContext from "../providers/TopicsContext";
 import type { Annotation, Entry, Filter, Topic, TopicSort } from "../types";
 import sortByUnreadCount from "../utils/sortByUnreadCount";
+import { useErrorSink } from "./useErrorSink";
 import { useSidebar } from "./useSidebar";
 
 export function useTopics(abortControllerRef: RefObject<AbortController>) {
@@ -12,6 +13,7 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
   const { topics, pinnedTopicIds, setTopics, setTopicPinned } = ctx;
 
   const platform = usePlatform();
+  const { pushError } = useErrorSink();
   const { listTopics } = useSidebar(abortControllerRef);
 
   const createTopic = useCallback(
@@ -24,11 +26,11 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
       const signal = abortControllerRef.current.signal;
       try {
         return await platform.createTopic(signal, topic);
-      } catch {
-        // surfaced via dialog
+      } catch (e) {
+        pushError(e);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, platform, pushError]
   );
 
   const saveTopic = useCallback(
@@ -36,11 +38,11 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
       const signal = abortControllerRef.current.signal;
       try {
         return await platform.saveTopic(signal, topic);
-      } catch {
-        // surfaced via dialog
+      } catch (e) {
+        pushError(e);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, platform, pushError]
   );
 
   const deleteTopic = useCallback(
@@ -48,11 +50,11 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
       const signal = abortControllerRef.current.signal;
       try {
         await platform.deleteTopic(signal, id);
-      } catch {
-        // surfaced via dialog
+      } catch (e) {
+        pushError(e);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, platform, pushError]
   );
 
   const listTopicItems = useCallback(
@@ -72,11 +74,11 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
       const signal = abortControllerRef.current.signal;
       try {
         return await platform.addTopicItem(signal, topicId, item);
-      } catch {
-        // surfaced via dialog
+      } catch (e) {
+        pushError(e);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, platform, pushError]
   );
 
   const removeTopicItem = useCallback(
@@ -84,11 +86,11 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
       const signal = abortControllerRef.current.signal;
       try {
         return await platform.removeTopicItem(signal, topicId, itemId);
-      } catch {
-        // surfaced via dialog
+      } catch (e) {
+        pushError(e);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, platform, pushError]
   );
 
   const listEntryTopics = useCallback(

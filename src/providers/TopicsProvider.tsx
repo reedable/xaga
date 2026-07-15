@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useErrorSink } from "../hooks/useErrorSink";
 import { subscribe } from "../hooks/useEvents";
 import { usePlatform } from "../platform/Platform";
 import type { Topic } from "../types";
@@ -14,6 +15,7 @@ import TopicsContext, { type TopicsContextType } from "./TopicsContext";
 
 export function TopicsProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
+  const { pushError } = useErrorSink();
   const [topics, setTopics] = useState<Topic[]>([]);
 
   // Pinned state lives in each topic's `.md` tags (surfaced as `isPinned`); derive the id-set.
@@ -28,9 +30,11 @@ export function TopicsProvider({ children }: { children: ReactNode }) {
       setTopics((prev) =>
         prev.map((t) => (t.id === id ? { ...t, isPinned: pinned } : t))
       );
-      platform.setTopicPinned(id, pinned).catch(console.error);
+      // Optimistic; a refused persist (e.g. read-only library) surfaces to the
+      // user rather than being swallowed to the console.
+      platform.setTopicPinned(id, pinned).catch(pushError);
     },
-    [platform]
+    [platform, pushError]
   );
 
   const refreshTopics = useCallback(async () => {

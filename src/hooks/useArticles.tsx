@@ -1,6 +1,7 @@
 import { useCallback, useState, type RefObject } from "react";
 import { errorCode } from "../platform/errors";
 import { usePlatform } from "../platform/Platform";
+import { useErrorSink } from "./useErrorSink";
 import { processEntry } from "../text/entryWorker";
 import { type Entry } from "../types";
 
@@ -14,6 +15,7 @@ function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
 
 export function useArticles(abortControllerRef: RefObject<AbortController>) {
   const platform = usePlatform();
+  const { pushError } = useErrorSink();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -62,12 +64,12 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         if (errorCode(e) === "article:spoofed-pdf") {
           return { article: null, blockedSpoof: true };
         }
-        setError(e);
+        pushError(e);
       } finally {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, platform, pushError]
   );
 
   /**
@@ -102,12 +104,12 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
 
         return await platform.readArticle(signal, article.id);
       } catch (e) {
-        setError(e);
+        pushError(e);
       } finally {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, platform, pushError]
   );
 
   /**
@@ -120,10 +122,10 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       try {
         return await platform.readEntry(signal, entryId);
       } catch (e) {
-        setError(e);
+        pushError(e);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, platform, pushError]
   );
 
   /**
@@ -149,10 +151,10 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         // Content missing — fetch from network. loadArticle manages loading state.
         return await loadArticle(article);
       } catch (e) {
-        setError(e);
+        pushError(e);
       }
     },
-    [abortControllerRef, loadArticle, platform]
+    [abortControllerRef, loadArticle, platform, pushError]
   );
 
   const extractArticleFromHtml = useCallback(
@@ -189,12 +191,12 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
 
         return await platform.readArticle(signal, article.id);
       } catch (e) {
-        setError(e);
+        pushError(e);
       } finally {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, platform, pushError]
   );
 
   const findArticleByUrl = useCallback(
@@ -206,12 +208,12 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       try {
         return await platform.findArticle(signal, url);
       } catch (e) {
-        setError(e);
+        pushError(e);
       } finally {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, platform, pushError]
   );
 
   const createArticleFromHtml = useCallback(
@@ -231,12 +233,12 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         });
         return await platform.readArticle(signal, article.id);
       } catch (e) {
-        setError(e);
+        pushError(e);
       } finally {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, platform, pushError]
   );
 
   return {

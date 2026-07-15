@@ -33,9 +33,11 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
       setFeeds((prev) =>
         prev.map((f) => (f.id === id ? { ...f, isPinned: pinned } : f))
       );
-      platform.setFeedPinned(id, pinned).catch(console.error);
+      // Optimistic; a refused persist (e.g. read-only library) surfaces to the
+      // user rather than being swallowed to the console.
+      platform.setFeedPinned(id, pinned).catch(pushError);
     },
-    [platform]
+    [platform, pushError]
   );
 
   const refreshFeeds = useCallback(async () => {
