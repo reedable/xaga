@@ -1,53 +1,17 @@
 # Settings UI for fetch-policy settings
 
-These user-controllable fetch settings exist without UI;
-they are settable only by editing `settings.json` until this item is done.
+These user-controllable fetch settings exist without UI; they are settable only by editing `settings.json` until this item is done.
 
-- **HTTP allowed** — boolean, default `false`. When `false`, plaintext `http://` fetches
-  are refused (feeds, PDF probe, article loader).
-- **Maximum redirects** — integer, range 0–10, default `3`. `0` means the initial request
-  only, honoring no redirects. `3` means the initial request plus up to 3 redirect hops. `3` is not the most secure default, but for UX reasons, the project owner decided on this number on 2 July 2026.
-- **Referer allowed** (`referer_allowed`) — boolean, default `false`. When `false`, the
-  `Referer` header is withheld on redirect hops (reqwest fetch paths), so redirect
-  targets don't learn the original feed URL.
-- **Gzip allowed** (`gzip_allowed`) — boolean, default `false`. When `false`, no
-  `Accept-Encoding` header is sent and responses are never decompressed. When `true`,
-  both reqwest fetch paths (feed XML, PDF probe) send `Accept-Encoding: gzip` and
-  decompress transparently; transfers shrink substantially, and every fetched host
-  learns the client negotiates gzip (one more property narrowing which software the
-  client could be) — see docs/architecture/security/fetching_remote_content.md, "Encoding
-  negotiation".
-- **Non-standard CONNECT ports allowed** — boolean, single global setting, default
-  `false`. When `false`, the SSRF proxy refuses `CONNECT` to any port other than `443`.
-  When `true`, `CONNECT` is permitted to any port (address validation still applies).
-  Consequence: feeds served on nonstandard https ports fail to connect until this is
-  enabled — see docs/_sprint/compliance__connect_port_80_plaintext_tunnel.md.
-- **Maximum feed body bytes** (`feed_max_body_bytes`) — integer, default `10 * 1024 *
-  1024` (10 MiB, `DEFAULT_FEED_MAX_BODY_BYTES`, `src-tauri/src/lib.rs`). Feed response
-  bodies are read in chunks and the fetch aborts with `FeedError::BodyTooLarge` once
-  the accumulated bytes would exceed this cap, bounding the memory a single response
-  can occupy (`fetch_xml`, `persistence/feeds.rs`). Under gzip the cap counts
-  decompressed bytes. Compatibility of the 10 MiB default with large legitimate feeds
-  is unmeasured — see docs/architecture/security/fetching_remote_content.md,
-  "Resource bounds".
-- **Maximum import file bytes** — integer, one shared cap for both `import_feeds`
-  (OPML) and `import_bookmarks` (bookmarks.html), decided value 64 MiB. Not yet
-  implemented in code: `native::feeds::import_feeds` and
-  `native::bookmarks::import_bookmarks` currently call `tokio::fs::read_to_string`
-  unbounded (`src-tauri/src/native/feeds.rs`, `src-tauri/src/native/bookmarks.rs`).
-  Implementing the cap and the value decision itself are tracked in
-  `docs/_sprint/compliance__import_content_validation.md`; this line only tracks that,
-  once implemented, it should get a setting + UI here rather than being
-  settings.json/code-constant-only.
+- **HTTP allowed** — boolean, default `false`. When `false`, plaintext `http://` fetches are refused (feeds, PDF probe, article loader).
+- **Maximum redirects** — integer, range 0–10, default `3`. `0` means the initial request only, honoring no redirects. `3` means the initial request plus up to 3 redirect hops. `3` is not the most secure default, but for UX reasons, the project owner decided on this number on 2 July 2026.
+- **Referer allowed** (`referer_allowed`) — boolean, default `false`. When `false`, the `Referer` header is withheld on redirect hops (reqwest fetch paths), so redirect targets don't learn the original feed URL.
+- **Gzip allowed** (`gzip_allowed`) — boolean, default `false`. When `false`, no `Accept-Encoding` header is sent and responses are never decompressed. When `true`, both reqwest fetch paths (feed XML, PDF probe) send `Accept-Encoding: gzip` and decompress transparently; transfers shrink substantially, and every fetched host learns the client negotiates gzip (one more property narrowing which software the client could be) — see docs/architecture/security/fetching_remote_content.md, "Encoding negotiation".
+- **Non-standard CONNECT ports allowed** — boolean, single global setting, default `false`. When `false`, the SSRF proxy refuses `CONNECT` to any port other than `443`. When `true`, `CONNECT` is permitted to any port (address validation still applies). Consequence: feeds served on nonstandard https ports fail to connect until this is enabled — see docs/\_sprint/compliance\_\_connect_port_80_plaintext_tunnel.md.
+- **Maximum feed body bytes** (`feed_max_body_bytes`) — integer, default `10 * 1024 * 1024` (10 MiB, `DEFAULT_FEED_MAX_BODY_BYTES`, `src-tauri/src/lib.rs`). Feed response bodies are read in chunks and the fetch aborts with `FeedError::BodyTooLarge` once the accumulated bytes would exceed this cap, bounding the memory a single response can occupy (`fetch_xml`, `persistence/feeds.rs`). Under gzip the cap counts decompressed bytes. Compatibility of the 10 MiB default with large legitimate feeds is unmeasured — see docs/architecture/security/fetching_remote_content.md, "Resource bounds".
+- **Maximum import file bytes** — integer, one shared cap for both `import_feeds` (OPML) and `import_bookmarks` (bookmarks.html), decided value 64 MiB. Not yet implemented in code: `native::feeds::import_feeds` and `native::bookmarks::import_bookmarks` currently call `tokio::fs::read_to_string` unbounded (`src-tauri/src/native/feeds.rs`, `src-tauri/src/native/bookmarks.rs`). Implementing the cap and the value decision itself are tracked in `docs/_sprint/compliance__import_content_validation.md`; this line only tracks that, once implemented, it should get a setting + UI here rather than being settings.json/code-constant-only.
 
-Work: expose these in the settings UI with get/set commands, following the existing
-settings command pattern (`src-tauri/src/commands/settings.rs`).
+Work: expose these in the settings UI with get/set commands, following the existing settings command pattern (`src-tauri/src/commands/settings.rs`).
 
-Related fact: `feed_timeout_secs` is also settings.json-only today (no setter
-command, no UI); whether it joins this UI is an open decision.
+Related fact: `feed_timeout_secs` is also settings.json-only today (no setter command, no UI); whether it joins this UI is an open decision.
 
-Per docs/principles/secure_by_default.md, the UI should state the consequence of
-enabling HTTP, of raising the redirect cap, of allowing the Referer, of enabling
-gzip negotiation, and of allowing non-standard CONNECT ports. The default of 3
-redirects is an exception to that principle, granted 2026-07-02 (recorded in
-docs/architecture/security/fetching_remote_content.md).
+Per docs/principles/secure_by_default.md, the UI should state the consequence of enabling HTTP, of raising the redirect cap, of allowing the Referer, of enabling gzip negotiation, and of allowing non-standard CONNECT ports. The default of 3 redirects is an exception to that principle, granted 2026-07-02 (recorded in docs/architecture/security/fetching_remote_content.md).
