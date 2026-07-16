@@ -155,7 +155,7 @@ Every outbound consumer:
      normalized to https, so they use the CONNECT path.
    - **The inline-PDF probe** (`try_fetch_pdf`, `commands/articles.rs`),
      which fetches candidate PDFs directly instead of via a webview.
-3. **The embedding model download** (`download_model_if_missing`,
+3. **The embedding model download** (`download_model`,
    `crates/xaga-core/src/embeddings/model.rs`). Its URL is a compile-time
    constant, but its redirect chain is server-controlled (`resolve/main`
    redirects to HF's CDN), so it dials through the proxy like everything

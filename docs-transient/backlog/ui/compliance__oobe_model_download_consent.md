@@ -26,11 +26,13 @@ trigger the download later.
 
 ## Facts available to the implementation
 
-- The download is consent-shaped already: `download_model_if_missing`
-  (`crates/xaga-core/src/embeddings/model.rs`) is a no-op when files are
-  present, returns a typed `DownloadOutcome`, holds the account-wide lock,
-  and is callable at any time — deferring it from startup to a
-  user-triggered moment is a call-site change, not a mechanism change.
+- The download is consent-shaped already: `model_present` gates it (no-op
+  when files are present) and `download_model`
+  (`crates/xaga-core/src/embeddings/model.rs`) does the fetch, returning a
+  typed `DownloadOutcome`. The **caller** holds the account-wide lock across
+  it (the app via an in-process account lease, the CLI via a direct flock).
+  It is callable at any time — deferring it from startup to a user-triggered
+  moment is a call-site change, not a mechanism change.
 - Download-status/consent events have a home: `DomainEvent`
   (`crates/xaga-core/src/events.rs`) → emit funnel
   (`src-tauri/src/events.rs`) → `src/platform/events.ts`.

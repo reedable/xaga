@@ -49,3 +49,4 @@ pnpm-debug.log*
 
 # Claude
 .claude/
+.obsidian

@@ -36,7 +36,8 @@ cannot proceed past without the owner's call:
    inspection; recovery requires deleting the model dir and re-downloading
    (manual today; the stall-handling / OOBE work may later surface it).
 2. **Self-heal.** Delete the failed files and invoke the existing verified
-   download path (`download_model_if_missing`). Session recovers without
+   download path (`download_model`, with the account right held by the
+   caller). Session recovers without
    user action; costs: the on-disk evidence is destroyed, and an
    unprompted network fetch occurs — the same consent class as
    `docs-transient/backlog/ui/compliance__oobe_model_download_consent.md`.

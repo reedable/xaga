@@ -98,11 +98,12 @@ changed) and detects writers that bypassed the lock entirely.
 
 - **Settings writers** fail fast with an explicit error when another
   process holds the lock; nothing blocks.
-- **The model download** (`download_model_if_missing`,
-  `crates/xaga-core/src/embeddings/model.rs`) acquires the right for the
-  whole check + download + commit, and *skips* with a log line when another
-  process holds it — the raced loser re-checks and finds the winner's
-  files.
+- **The model download** (`download_model`,
+  `crates/xaga-core/src/embeddings/model.rs`) runs while its **caller** holds
+  the right for the whole check + download + commit — the app via its
+  in-process account lease, the CLI via a direct flock — and the caller
+  *skips* when another process holds it; the raced loser re-checks and finds
+  the winner's files.
 - **Readers never lock.** Rename atomicity guarantees a reader sees an
   old-complete or new-complete file, never a torn one.
 

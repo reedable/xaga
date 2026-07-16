@@ -22,7 +22,8 @@ Implementation facts for whichever direction is chosen:
 - Download-status events have a home: `DomainEvent` variants
   (`crates/xaga-core/src/events.rs`) → emit funnel
   (`src-tauri/src/events.rs`) → `src/platform/events.ts`.
-- `download_model_if_missing` is re-invokable at any time (no-op when
-  files are present, account-lock-serialized, checksum-verified).
+- The download (`model_present` gate + `download_model`) is re-invokable at
+  any time (no-op when files are present, account-lock-serialized by the
+  caller holding the right, checksum-verified).
 - Overlaps `docs-transient/backlog/ui/compliance__oobe_model_download_consent.md`
   (first-run consent wants the same status surface and trigger).
