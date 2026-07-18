@@ -339,11 +339,16 @@ pub async fn read_article(id: String, state: State<'_, AppState>) -> Result<Arti
         .await
         .map_err(AppError::from)?;
 
-    // Mark-read is an incidental library write hiding in a read command. On a read-only
-    // instance it silently no-ops (owner decision: reading stays seamless; the entry
-    // simply stays unread here) — this command is deliberately NOT in WRITE_COMMANDS.
-    // When we are the writer, the tag RMW goes through the writer's entry lane like every
-    // other `.md` write (best-effort: a failure just leaves the entry unread).
+    // Side effect: read_article also writes.
+    //
+    // This command saves the entry "read" status. When the app is in read-only mode
+    // (another app instance holds library lock), however, the write is skipped. The
+    // entry remains in "unread" status.
+    //
+    // NOTE: This command is NOT in WRITE_COMMANDS, so the command can be called by
+    //       app read-only instances.
+    //
+    // The tag update goes through the entry lane; a failure leaves the entry unread.
     let Some(writer) = state.writer() else {
         return Ok(article);
     };
@@ -515,7 +520,10 @@ pub async fn replace_annotation(
 
     // The old id is gone; consumers holding it (topic item lists, related lists) evict it.
     // The new row announces itself through the SyncAnnotations live event.
-    crate::events::emit_domain(&window, xaga_core::events::DomainEvent::AnnotationRemoved { id: old_id.clone() });
+    crate::events::emit_domain(
+        &window,
+        xaga_core::events::DomainEvent::AnnotationRemoved { id: old_id.clone() },
+    );
 
     Ok(article)
 }
@@ -579,7 +587,12 @@ pub async fn remove_annotation(
         },
     );
 
-    crate::events::emit_domain(&window, xaga_core::events::DomainEvent::AnnotationRemoved { id: annotation_id.clone() });
+    crate::events::emit_domain(
+        &window,
+        xaga_core::events::DomainEvent::AnnotationRemoved {
+            id: annotation_id.clone(),
+        },
+    );
 
     Ok(article)
 }

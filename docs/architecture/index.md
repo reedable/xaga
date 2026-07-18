@@ -10,13 +10,13 @@ Standing architecture rules for this project. Each has its own doc; keep this in
 
 4. [Type Identity](type_identity.md) — shape is the source of truth for intrinsic types; a brand (`__kind`) is a derived distillation, legitimate only for extrinsic role distinctions. Identity is shape AND brand together, never either alone; brands are minted at the wire boundary and never trusted over shape.
 
-5. [Single-Writer Library Lock](single_writer_library_lock.md) — at most one writing process per library, enforced by an exclusive advisory `flock` on `xaga.lock`; the lock is handle-tied (auto-released on any exit, no stale files). Its scope is the whole library (`.md` files and LanceDB): every process runs read-write (holds the lock) or read-only (write commands refused, `E_READ_ONLY`), decided at startup; mode is derived from the held lock, never stored.
+5. [Single-Writer Library Lock](single_writer_library_lock.md) — at most one writing process per library, enforced by an exclusive advisory `flock` on `xaga.lock`; the lock is handle-tied (auto-released on any exit, no stale files). Its scope is the whole library (`.md` files and LanceDB): every process runs read-write (holds the lock) or read-only (write commands refused, `E_READ_ONLY`); mode is derived from the held lock, never stored.
 
 6. [Single-Writer Account Lock](single_writer_account_lock.md) — the flock on `settings.json` is the account-wide resource lock: the holder has the right to account-scoped resources (settings writes, the model download); writes rotate the lock's inode with holder continuity; writers fail fast, downloaders skip, readers never lock.
 
 ## Security
 
-Architecture of the security-critical paths, in [security/](security/). These describe how a subsystem works and why — decided design and deliberate limits, not findings or status.
+Architecture of the security-critical paths, in [security/](security/). These describe how a subsystem works and why — design and limits, not findings or status.
 
 1. [Fetching untrusted content](security/fetching_remote_content.md) — the network side. Three invariants on every outbound request: containment (the SSRF proxy — resolve, validate, pin), minimal truthful disclosure (withhold, never misrepresent), bounded resources.
 
@@ -28,6 +28,6 @@ Architecture of the security-critical paths, in [security/](security/). These de
 
 5. [Command surface](security/command_surface.md) — every registered Tauri command is webview-callable with any arguments at any time; the invoke surface is the boundary, and the caller must be assumed hostile.
 
-6. [Performance trade-off](security/performance_tradeoff.md) — resource teardown as a privacy tool: per-invocation clients and single-use loader webviews are rebuilt deliberately, not pooled; conditional-GET validators are rejected as a server-writable tracking channel.
+6. [Performance trade-off](security/performance_tradeoff.md) — resource teardown as a privacy tool: per-invocation clients and single-use loader webviews are rebuilt, not pooled; conditional-GET validators are not sent (a server-writable tracking channel).
 
 7. [Embedding model trust](security/embedding_model_trust.md) — trust moved in time, not eliminated: every download verifies against a pinned manifest; the chain runs cryptographic → procedural → infrastructural → reputational, ending at the publisher and the app's own binary.

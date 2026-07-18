@@ -29,7 +29,3 @@ Extracted entries are persisted through `write_read_entry` / `set_entry_tags` (`
 - **Choose its own path or bypass the dialog.** Both `import_feeds` and `import_bookmarks` are `pub(crate)` functions, not `#[tauri::command]`s — the file dialog runs in Rust and the chosen path never round-trips through the webview (`native/feeds.rs:1-8`, `native/bookmarks.rs:1-4`). A compromised renderer has no invoke door to redirect an import at an arbitrary file.
 - **Aim a fetch at an attacker-controlled address via a huge URL list**, per the OPML section above — the SSRF proxy (`fetching_remote_content.md`) still validates every URL's resolved address regardless of how many the import produces.
 
-## Limits
-
-- The `import_max_bytes` cap's default (64 MiB) is chosen from unmeasured, order-of-magnitude estimates of realistic file sizes, not from measured legitimate-file data.
-- Error messages from a failed import (parse failure, byte-cap rejection, per-entry failure) are not yet hygienic at the source — raw parser/error strings can reach the user-facing event.

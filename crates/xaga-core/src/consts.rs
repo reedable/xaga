@@ -3,7 +3,7 @@
 //! This codebase does NOT collect constants in one place. The convention is the
 //! opposite: every constant lives colocated with the concept that owns it, at the
 //! narrowest visibility that compiles — tag vocabulary in `tags`, model config in
-//! `embeddings::model`, tuning knobs beside the code they tune, and so on.
+//! `embeddings::model`, tuning knobs beside the code they tune.
 //!
 //! If you landed here because you were tempted to "keep the constants together,"
 //! that is the tell that something is off. Grouping symbols by what they *are*

@@ -10,28 +10,9 @@ const MODEL_DOWNLOAD_BASE: &str = "https://huggingface.co";
 /// write to the staging dir. Largest legitimate file is model.onnx ≈ 90 MB.
 const MAX_FILE_BYTES: u64 = 256 * 1024 * 1024;
 
-// ── The pinned model manifest ─────────────────────────────────────────────────
-//
-// The single source of content trust for the model download: the repo, the
-// immutable HF revision the URL pins (`resolve/{MODEL_REVISION}`), and the
-// SHA-256 of every file, verified before the staging dir is committed. The
-// revision keeps fresh installs working if the repo's `main` is force-pushed;
-// the checksums verify what actually arrived regardless of what any server
-// claims — a mismatch is unambiguous and never "the repo updated."
-//
-// Values anchored 2026-07-11:
-// - MODEL_REVISION = the repo's `main` sha from the HF API
-//   (`/api/models/{repo}`, lastModified 2025-06-09).
-// - model.onnx sha256 = the published Git-LFS oid from the HF tree API,
-//   which agreed with two independent fetches (an earlier download of
-//   `main` and a fresh fetch at the pinned revision).
-// - The four JSON files are plain git blobs (no LFS oid published); their
-//   sha256s were computed from the same two fetches, which agreed.
-// - The anchored set was behavior-checked by loading the embedder.
-//
-// Model upgrade: pick the new revision sha, re-derive every hash the same
-// way (HF tree API for LFS files, two-fetch self-computation for the rest),
-// replace this block wholesale.
+// Security-critical: every downloaded model file is verified against these
+// pinned values. Before changing them, read
+// docs/architecture/security/embedding_model_trust.md.
 pub const DEFAULT_MODEL_REPO: &str = "Qdrant/all-MiniLM-L6-v2-onnx";
 const MODEL_REVISION: &str = "5f1b8cd78bc4fb444dd171e59b18f3a3af89a079";
 const MODEL_FILES: &[(&str, &str)] = &[

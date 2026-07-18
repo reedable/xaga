@@ -14,4 +14,4 @@ Work: expose these in the settings UI with get/set commands, following the exist
 
 Related fact: `feed_timeout_secs` is also settings.json-only today (no setter command, no UI); whether it joins this UI is an open decision.
 
-Per docs/principles/secure_by_default.md, the UI should state the consequence of enabling HTTP, of raising the redirect cap, of allowing the Referer, of enabling gzip negotiation, and of allowing non-standard CONNECT ports. The default of 3 redirects is an exception to that principle, granted 2026-07-02 (recorded in docs/architecture/security/fetching_remote_content.md).
+Per docs/principles/secure_by_default.md, the UI should state the consequence of enabling HTTP, of raising the redirect cap, of allowing the Referer, of enabling gzip negotiation, and of allowing non-standard CONNECT ports. The default of 3 redirects is an exception to that principle (recorded in docs/architecture/security/fetching_remote_content.md).

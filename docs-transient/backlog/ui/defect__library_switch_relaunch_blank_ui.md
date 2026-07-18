@@ -1,6 +1,6 @@
 # Library switch: relaunched window does not render (pending)
 
-Observed by the owner 2026-07-11, during Phase B verification of the runtime-modes work: switching the library triggers the automatic process relaunch, the new window opens, but the UI never renders.
+Observed 2026-07-11, during Phase B verification of the runtime-modes work: switching the library triggers the automatic process relaunch, the new window opens, but the UI never renders.
 
 ## Observed
 

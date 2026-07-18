@@ -7,7 +7,7 @@ Raised 2026-07-11 from the runtime-modes work (the read-write/read-only split; s
 - `useLibraryReadOnly()` hook (`src/hooks/useLibraryReadOnly.tsx`): initial value from the `is_library_read_only` command + the `library:mode-changed` event.
 - Sidebar: "Read-only" badge; Refresh, Add-feed, and Add-topic buttons disabled.
 - HtmlReader: text selection does not open the new-annotation tooltip.
-- `read_article`'s mark-read silently no-ops backend-side (owner decision: reading stays seamless).
+- `read_article`'s mark-read silently no-ops backend-side (reading stays seamless).
 
 ## What still shows write affordances (backend refuses; UI doesn't pre-disable)
 
@@ -30,4 +30,4 @@ Inventory as of writing — verify against current code when picking this up:
 ## Non-goals
 
 - No change to the enforcement model: the IPC gate remains the boundary; the UI layer is presentation only.
-- No live cross-process update mechanism (no file watcher; recovery-at-startup is the architecture's answer — owner decision).
+- No live cross-process update mechanism (no file watcher; recovery-at-startup is the architecture's answer).

@@ -2,7 +2,7 @@
 
 Xaga tears down its network-facing resources instead of pooling or reusing them: the reqwest fetch clients are built per command invocation (`src-tauri/src/fetch_client.rs`) and discarded afterward, and each article load gets a fresh loader webview that is killed as soon as its HTML is captured (`src-tauri/src/article_loader.rs`). Rebuilding these looks like an inefficiency to be eliminated. It is not only that: the teardown is itself a privacy mechanism, and pooling or reusing these resources would reopen tracking channels that the teardown currently closes.
 
-The underlying principle, shared with the decision not to implement conditional GET (`ETag`/`If-Modified-Since`): **the fetch path keeps no client-side state that a server can write to and read back.** Any such state — a session ticket, a cached validator, a cookie, a warm connection — lets a provider link one request to another and profile the reader. The provider tracking the consumer is the more immediate privacy risk; a third-party observer is secondary.
+The underlying principle, shared with the absence of conditional GET (`ETag`/`If-Modified-Since`): **the fetch path keeps no client-side state that a server can write to and read back.** Any such state — a session ticket, a cached validator, a cookie, a warm connection — lets a provider link one request to another and profile the reader. The provider tracking the consumer is the more immediate privacy risk; a third-party observer is secondary.
 
 ## Fetch clients (reqwest): what teardown discards
 
@@ -22,6 +22,6 @@ If loader webviews were reused across article loads: cookies, cache validators, 
 
 ## The price, stated plainly
 
-The costs of teardown are: client construction per command, cold connections per refresh pass, full body re-downloads on every refresh (no conditional GET), and webview construction per article. These are real and they are paid deliberately. The network cost in particular is a fair price for privacy; optimizations that spend only local work (e.g. skipping reconciliation when the fetched payload is byte-identical to the last fetch) do not spend privacy to buy speed and are compatible with this trade-off.
+The costs of teardown are: client construction per command, cold connections per refresh pass, full body re-downloads on every refresh (no conditional GET), and webview construction per article. The network cost buys the no-server-writable-state property; optimizations that spend only local work (e.g. skipping reconciliation when the fetched payload is byte-identical to the last fetch) do not spend privacy to buy speed and are compatible with this trade-off.
 
 Any future change that pools, caches, or extends the lifetime of these resources should be treated as reopening the channels above and reviewed as a privacy change, not a performance change.

@@ -1,27 +1,17 @@
-//! The app-layer error umbrella returned to the webview.
+//! Tauri command to webview error type
 //!
-//! `AppError` is the error sibling of `AppEvent` (`src-tauri/src/events.rs`):
-//! one typed value the command layer hands to the webview, each variant owning
-//! a stable `code()`. It wraps `xaga_core::error::DomainError` (core failures)
-//! and adds app-layer-only failures that have no core meaning (read-only
-//! refusal, unauthorized command, spoofed PDF, stale settings view).
+//! Wraps `xaga_core::error::DomainError` and adds app-layer failures
+//! (read-only refusal, unauthorized command, spoofed PDF, stale settings view).
 //!
-//! ## What crosses the boundary
-//!
-//! `AppError` serializes to the webview as `{ code, message, detail }`:
-//! - **`code`** — the stable identifier the UI switches on, mirrored in
+//! Serializes as `{ code, message, detail }`:
+//! - `code` — stable identifier the UI switches on. Mirrored in
 //!   `src/platform/errors.ts`.
-//! - **`message`** — a generic, user-safe sentence (no file fragments, ids, or
-//!   URLs). This is the only field the UI shows a user.
-//! - **`detail`** — the full technical `Display` text, for the console/log
-//!   only; the UI must never render it to a user.
+//! - `message` — user-safe sentence. The only field the UI may show.
+//! - `detail` — full technical text. Console/log only, never shown to a user.
 //!
-//! ## `Message` is transitional
-//!
-//! `From<String>`/`From<&str>` funnel the long tail of ad-hoc string errors
-//! into [`AppError::Message`], so existing `.map_err(|e| e.to_string())?` sites
-//! keep working once a command's signature moves to `AppError`. Phase 2/3 of
-//! the error-handling work promotes the user-actionable ones to typed variants.
+//! `Message` is transitional: `From<String>` funnels ad-hoc string errors so
+//! existing `.map_err(|e| e.to_string())?` sites keep working; later phases of
+//! the error work promote user-actionable ones to typed variants.
 
 use serde::{Serialize, Serializer};
 use xaga_core::embeddings::EmbeddingsError;
@@ -176,7 +166,14 @@ mod tests {
     /// The namespaces owned by `DomainError` (core). App codes must not collide
     /// with these — the two enums share one flat code namespace on the wire.
     const DOMAIN_NAMESPACES: &[&str] = &[
-        "entry", "feed", "embeddings", "topic", "bookmark", "item", "writer", "proxy",
+        "entry",
+        "feed",
+        "embeddings",
+        "topic",
+        "bookmark",
+        "item",
+        "writer",
+        "proxy",
     ];
 
     #[test]

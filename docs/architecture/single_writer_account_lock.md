@@ -54,7 +54,6 @@ A write can be refused for a reason other than contention: the baseline. Each pr
 ## Limits
 
 - The lock is _advisory_: it binds only participants that acquire it. An external program editing settings.json directly is not excluded — the stale-view check is the tripwire that keeps such writes from being silently overwritten, not a fence that prevents them.
-- The protocol (flock semantics, rename-over-a-locked-file, inode identity) is POSIX-verified only.
 
 ## Relation to the other rules
 

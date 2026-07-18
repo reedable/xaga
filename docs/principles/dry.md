@@ -2,7 +2,7 @@
 
 **A piece of logic has one implementation. Parallel implementations of the same logic are consolidated; where consolidation is deferred, the duplication is recorded as debt with fact and location.**
 
-This is standard engineering practice (Don't Repeat Yourself: every piece of knowledge has a single, authoritative representation), adopted here explicitly. It is the code-side sibling of [Single Source of Truth](single_source_of_truth.md): SoT governs where _data_ is authoritative; DRY governs where _logic_ is.
+This is standard engineering practice (Don't Repeat Yourself: every piece of knowledge has a single, authoritative representation). It is the code-side sibling of [Single Source of Truth](single_source_of_truth.md): SoT governs where _data_ is authoritative; DRY governs where _logic_ is.
 
 ## Why
 

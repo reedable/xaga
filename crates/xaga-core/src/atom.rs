@@ -144,12 +144,16 @@ pub(crate) fn atom_to_xml(feed: &Atom) -> Result<Vec<u8>, String> {
 
 // ── construction & mutation ────────────────────────────────────────────────────
 
-/// Serialize a domain [`Feed`] into a fresh `.atom`, recording `feed.url` as `<link rel="self">`.
-/// The inverse of [`atom_to_feed`] for the **creation** case only: the domain `Feed` cannot carry
-/// `<entry>` elements, so this writes none. It is therefore lossy by construction and must only be
-/// used to create an entry-less feed (`add_feed`). The mutation paths (refresh/pin/rename) round-trip
-/// the full `Atom` via `parse_atom` and must not route through here, or every entry would be dropped.
-/// `refresh_feed` then fetches from the self-link and fills the entries in.
+/// Creates an empty `.atom` file object for `feed`. `feed.url` is stored as
+/// `<link rel="self">`.
+///
+/// Use this for creating a new feed (`add_feed`).
+///
+/// WARNING: Writing an existing feed through here would erase its entries.
+///
+/// To update an existing feed (refresh/pin/rename): load the stored `.atom`
+/// with `parse_atom`, change it, write it back. `refresh_feed` gets new
+/// entries by fetching the self-link URL.
 pub(crate) fn feed_to_atom(feed: &Feed) -> Atom {
     let mut self_link = atom_persistence::Link::default();
     self_link.set_href(xml_attr_encode(&feed.url));

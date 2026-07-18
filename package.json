@@ -9,21 +9,17 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-
     "audit": "cargo audit",
     "audit:report": "npm run audit || true",
     "icons": "node scripts/generate-icons.mjs",
     "check:uncommitted": "git diff --quiet && git diff --cached --quiet || (echo 'Working tree has uncommitted changes — commit or stash before releasing.' && exit 1)",
     "version:bump": "node scripts/bump-version.mjs",
-
     "tauri": "tauri",
     "tauri:debug": "RUST_LOG=xaga=debug tauri dev",
     "tauri:build": "npm run audit:report && npm run tauri build",
-
     "tauri:release:patch": "npm run check:uncommitted && npm run version:bump -- patch && npm run tauri:build",
     "tauri:release:minor": "npm run check:uncommitted && npm run version:bump -- minor && npm run tauri:build",
     "tauri:release:major": "npm run check:uncommitted && npm run version:bump -- major && npm run tauri:build",
-
     "cli:debug": "cargo run -p xaga-cli --",
     "cli:build": "npm run audit:report && cargo build -p xaga-cli"
   },
@@ -44,6 +40,7 @@
     "react-router-dom": "^7.14.1",
     "react-virtuoso": "^4.18.3",
     "rehype-parse": "^9.0.1",
+    "rehype-raw": "^7.0.0",
     "rehype-remark": "^10.0.1",
     "rehype-stringify": "^10.0.1",
     "remark-gfm": "^4.0.1",

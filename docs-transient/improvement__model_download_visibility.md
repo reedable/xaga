@@ -3,7 +3,7 @@
 The startup model download is invisible to the user and unrecoverable within a session:
 
 - Download and service-start failures are logged only (`src-tauri/src/lib.rs`, setup task); nothing reaches the UI.
-- The download client sets no timeout: a stalled server leaves the session silently degraded until relaunch. (The account lock staying held for the stall's duration is functioning as designed — owner ruling 2026-07-11.)
+- The download client sets no timeout: a stalled server leaves the session silently degraded until relaunch. (The account lock stays held for the stall's duration.)
 - `is_cache_ready` is the UI's only readiness signal, a bare boolean that reports `false` identically for "downloading, ready shortly," "failed, never ready this session," and "read-only instance."
 - Nothing retries in-session and no user-facing trigger exists; recovery is relaunching the app (or `xaga-cli embeddings download-model`).
 

@@ -2,7 +2,7 @@
 
 **xaga-core is pure logic. Orchestration lives in the command layer. The CLI is presentation, data migration, and database management.**
 
-These were ratified as architectural decisions during the file-watcher retirement; this document records them as the standing layer rule they function as.
+This document records the standing layer rule.
 
 ## The layers
 

@@ -70,19 +70,17 @@ pub(crate) async fn write_atomic_async(path: PathBuf, bytes: Vec<u8>) -> std::io
     }
 }
 
-/// The directory sibling of [`write_atomic`]: atomically replaces `dest` with
-/// the fully-staged directory `staging`. Fsyncs every file under `staging`
-/// (recursively), removes an existing `dest`, renames `staging` over it, then
-/// fsyncs `dest`'s parent — so a crash or power loss never yields a `dest`
-/// whose files exist but hold truncated contents.
+/// Replaces `dest` with the staged directory `staging`; [`write_atomic`] for
+/// directories.
 ///
-/// Unlike a file rename, a directory rename cannot replace a non-empty target
-/// in one step, so an existing `dest` is removed first: *creation* is atomic
-/// (readers see no `dest`, then a complete one), but *replacement* has a
-/// window where `dest` is absent. Callers replacing a directory that readers
-/// may currently consider valid must account for that window.
+/// Crash-safe: files are fsynced before the rename. `dest` never holds
+/// truncated files.
 ///
-/// On failure `staging` is left in place; callers own its cleanup (or reuse).
+/// WARNING: replacing an existing `dest` is not atomic. A directory rename
+/// cannot replace a non-empty target, so `dest` is removed first — readers
+/// can see it absent. Creating a new `dest` is atomic.
+///
+/// On failure `staging` is left in place; the caller cleans it up.
 pub(crate) fn replace_dir_atomic(staging: &Path, dest: &Path) -> std::io::Result<()> {
     sync_dir_contents(staging)?;
 
@@ -271,7 +269,11 @@ mod tests {
         // Hold a lock on the original inode via a raw handle (not the
         // recheck-protected path), then rename a new inode over the path —
         // the situation a waiter can find itself in.
-        let old_handle = OpenOptions::new().read(true).write(true).open(&path).unwrap();
+        let old_handle = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
         old_handle.try_lock_exclusive().unwrap();
         let replacement = tmp.path().join("replacement");
         fs::write(&replacement, b"v2").unwrap();
@@ -295,7 +297,9 @@ mod tests {
         fs::write(&path, b"old").unwrap();
 
         let lock = FileLock::try_acquire(path.clone()).unwrap();
-        let new_lock = write_locked(lock, &path, b"new").map_err(|(e, _)| e).unwrap();
+        let new_lock = write_locked(lock, &path, b"new")
+            .map_err(|(e, _)| e)
+            .unwrap();
 
         // Continuity: the returned lock's inode is the path's inode.
         assert!(is_path_inode(&new_lock._file, &path));
@@ -303,7 +307,11 @@ mod tests {
         // The tmp is gone (renamed into place).
         assert!(!path.with_file_name("settings.json.tmp").exists());
         // And a contender cannot acquire while the holder lives.
-        let contender = OpenOptions::new().read(true).write(true).open(&path).unwrap();
+        let contender = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
         assert_eq!(
             contender.metadata().unwrap().ino(),
             new_lock._file.metadata().unwrap().ino()
@@ -320,7 +328,9 @@ mod tests {
         fs::write(tmp.path().join("settings.json.tmp"), b"corrupt-garbage").unwrap();
 
         let lock = FileLock::try_acquire(path.clone()).unwrap();
-        let _lock = write_locked(lock, &path, b"new").map_err(|(e, _)| e).unwrap();
+        let _lock = write_locked(lock, &path, b"new")
+            .map_err(|(e, _)| e)
+            .unwrap();
 
         assert_eq!(fs::read(&path).unwrap(), b"new");
     }
@@ -350,8 +360,9 @@ mod tests {
                         .unwrap()
                         .parse()
                         .unwrap();
-                    let _lock =
-                        write_locked(lock, &path, (n + 1).to_string().as_bytes()).map_err(|(e, _)| e).unwrap();
+                    let _lock = write_locked(lock, &path, (n + 1).to_string().as_bytes())
+                        .map_err(|(e, _)| e)
+                        .unwrap();
                 }
             }));
         }
@@ -464,7 +475,10 @@ pub fn write_locked(
     bytes: &[u8],
 ) -> Result<FileLock, (std::io::Error, FileLock)> {
     let tmp_path = {
-        let mut name = path.file_name().map(|f| f.to_os_string()).unwrap_or_default();
+        let mut name = path
+            .file_name()
+            .map(|f| f.to_os_string())
+            .unwrap_or_default();
         name.push(".tmp");
         match path.parent().filter(|p| !p.as_os_str().is_empty()) {
             Some(parent) => parent.join(name),

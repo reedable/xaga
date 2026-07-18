@@ -53,21 +53,13 @@ impl WriteToken {
 /// design-scale corpus limits — lanes above the cap simply wait their turn.
 const MAX_IN_FLIGHT: usize = 8;
 
-/// Queue priority for a write request. Same names as the embeddings queue's tiers
-/// (prevailing vocabulary — owner ruling); deliberately its own two-variant type, because
-/// the writer's tiers carry a shutdown CONTRACT the embeddings tiers do not:
+/// Queue priority for a write request.
 ///
-/// - `Interactive`: user-authored content that exists ONLY in this queue until written
-///   (annotations, tag toggles, topic edits). MUST drain at shutdown — dropping it
-///   destroys user intent permanently.
-/// - `Regular`: content re-derivable from its source (feed-refresh entry creates — the
-///   next refresh recreates them). Droppable at shutdown; the drop costs a re-fetch,
-///   never user content. **Admission rule: enqueue as Regular ONLY what is re-derivable
-///   from source** — the shutdown drop policy is keyed to this tier, so a
-///   non-re-derivable write enqueued as Regular would be silently destroyed at shutdown.
+/// NOTE: Different from the embeddings queue's tiers.
 ///
-/// Classification is by content re-derivability, not by trigger: a user-clicked
-/// Refresh All still enqueues its entry creates as Regular (owner ruling).
+/// - `Interactive`: user content (annotations, tag toggles, topic edits).
+///   Served first. Drained to disk at shutdown.
+/// - `Regular`: content a feed refresh can recreate. Dropped at shutdown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tier {
     Interactive,
@@ -166,7 +158,7 @@ impl TagPatch {
     }
 }
 
-/// One file-scoped write operation (owner ruling: the unit of work is the file; multi-file
+/// One file-scoped write operation (the unit of work is the file; multi-file
 /// commands submit N independent requests and cross-file intermediate states are
 /// recovery's concern). Each variant mirrors a persistence write function and carries its
 /// typed responder.
@@ -225,9 +217,9 @@ enum Op {
         items: Vec<CollectionItem>,
         resp: oneshot::Sender<Result<Topic, WriterError>>,
     },
-    /// Edit a topic's metadata while PRESERVING its current items — the read of the
-    /// existing items and the write happen inside the lane, so a concurrent
-    /// add/remove/replace item op can't be clobbered by a metadata edit.
+    /// Edits a topic's metadata without touching its item list. The existing
+    /// items are re-read and written back inside the topic's lane, so a
+    /// concurrent item add/remove cannot be lost.
     EditTopicMeta {
         id: String,
         title: String,
@@ -429,10 +421,15 @@ impl Op {
                 annotation,
                 resp,
             } => {
-                let r =
-                    articles::replace_annotation(library_dir, &article_id, &old_id, annotation, token)
-                    .await
-                    .map_err(WriterError::from);
+                let r = articles::replace_annotation(
+                    library_dir,
+                    &article_id,
+                    &old_id,
+                    annotation,
+                    token,
+                )
+                .await
+                .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
             Op::RemoveAnnotation {
@@ -440,9 +437,10 @@ impl Op {
                 annotation_id,
                 resp,
             } => {
-                let r = articles::remove_annotation(library_dir, &article_id, &annotation_id, token)
-                    .await
-                    .map_err(WriterError::from);
+                let r =
+                    articles::remove_annotation(library_dir, &article_id, &annotation_id, token)
+                        .await
+                        .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
             Op::PatchEntryTags { id, patch, resp } => {
@@ -1406,7 +1404,10 @@ mod tests {
                 created += 1;
             }
         }
-        assert_eq!(created, 1, "exactly one concurrent create should win; rest are no-ops");
+        assert_eq!(
+            created, 1,
+            "exactly one concurrent create should win; rest are no-ops"
+        );
     }
 
     /// Regression: bookmarking an entry that is created concurrently (a feed carrying the
@@ -1426,8 +1427,16 @@ mod tests {
                 .await
         });
         let bookmark = tokio::spawn(async move {
-            wb.bookmark_entry(Tier::Interactive, url.to_string(), "T".into(), "".into(), None, None, None)
-                .await
+            wb.bookmark_entry(
+                Tier::Interactive,
+                url.to_string(),
+                "T".into(),
+                "".into(),
+                None,
+                None,
+                None,
+            )
+            .await
         });
         feed.await.unwrap().unwrap();
         bookmark.await.unwrap().unwrap();
@@ -1492,7 +1501,11 @@ mod tests {
         let article = articles::read_article(dir.path(), "abcdef123456")
             .await
             .unwrap();
-        assert_eq!(article.annotations.len(), 5, "committed writes survive shutdown");
+        assert_eq!(
+            article.annotations.len(),
+            5,
+            "committed writes survive shutdown"
+        );
     }
 
     /// After shutdown begins, new submits are refused synchronously with a typed error —
@@ -1578,8 +1591,8 @@ mod tests {
             }
         }
 
-        // On-disk state is consistent with what was accepted: exactly the Ok annotations,
-        // none clobbered, none torn.
+        // The file holds one annotation per write that returned Ok — no
+        // accepted write was lost, no refused write landed.
         let article = articles::read_article(dir.path(), "abcdef123456")
             .await
             .unwrap();

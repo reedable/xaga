@@ -1152,10 +1152,10 @@ pub fn run() {
             // additionally mirrors to stdout and the webview console. Release logs at Info
             // (recovery's key lines are info!/warn!); dev stays at Debug.
             //
-            // `lance` is pinned to Warn: at Info it logs one line *per row* during compaction
-            // (~1800 lines per pass), which — against the plugin's 40 KB default rotation — erases
-            // our own startup/recovery diagnostics within seconds. The file cap is also raised so a
-            // burst of noise can't rotate the useful lines away before they're read.
+            // `lance` is pinned to Warn. At Info it logs one line per row during
+            // compaction (~1800 lines per pass), which fills the plugin's 40 KB
+            // default log file and rotates our startup/recovery lines away within
+            // seconds. The file cap is raised for the same reason.
             {
                 use tauri_plugin_log::{Target, TargetKind};
 
@@ -1165,7 +1165,7 @@ pub fn run() {
                     log::LevelFilter::Info
                 };
 
-                // macOS: ~/Library/Logs/xaga (owner ruling 2026-07-11). Other
+                // macOS: ~/Library/Logs/xaga. Other
                 // platforms: logs under the data root — no platform-native log
                 // dir convention is asserted for them (cross-platform spike).
                 let log_dir = if cfg!(target_os = "macos") {
@@ -1411,9 +1411,8 @@ mod library_mode_tests {
         }))
     }
 
-    /// Mode is the writer's presence, derived — winning the flock starts a writer
-    /// (read-write), losing leaves none (read-only), with no stored mode that could
-    /// disagree.
+    /// Read-write vs read-only is derived from one fact: whether a writer
+    /// exists. Winning the flock starts a writer; losing does not.
     #[test]
     fn mode_derives_from_writer_presence() {
         let dir = tempfile::tempdir().unwrap();

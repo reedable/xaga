@@ -2,7 +2,7 @@
 
 **Shape is the source of truth for intrinsic types. A brand (`__kind`) is a derived distillation, legitimate only for extrinsic role distinctions that structure cannot resolve. A brand is minted from the source of truth and never trusted over shape.**
 
-Ratified during the Feed/Entry branding design discussion; this document records it as the standing rule.
+This document records the standing rule.
 
 ## The rule
 

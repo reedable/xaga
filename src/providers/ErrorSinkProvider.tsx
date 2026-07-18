@@ -1,21 +1,23 @@
 import { Alert, Snackbar } from "@mui/material";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { errorMessage, isAppError } from "../platform/errors";
 import ErrorSinkContext, {
   type ErrorSinkContextType,
 } from "./ErrorSinkContext";
 
 /**
- * The single app-wide error surface. Every user-facing error funnels here
- * — the error sibling of the event funnel. It renders one MUI Snackbar (latest
- * error wins) showing only the user-safe `message`; the technical `detail` is
- * logged to the console, never shown.
+ * Shows user-facing error: one MUI Snackbar, latest error wins.
+ * Displays the user-safe `message`; `detail` goes to the console.
  *
- * Sources wired here:
- *  - Explicit `pushError(e)` calls from providers/hooks (e.g. import/export).
- *  - A window `unhandledrejection` catch-all for rejected `invoke` promises
- *    that no caller handled — filtered to serialized `AppError`s so unrelated
- *    promise rejections don't surface.
+ * Errors arrive two ways:
+ *  - `pushError(e)` calls.
+ *  - Unhandled promise rejections that carry an `AppError`.
  */
 export default function ErrorSinkProvider({
   children,
@@ -47,7 +49,10 @@ export default function ErrorSinkProvider({
     return () => window.removeEventListener("unhandledrejection", onRejection);
   }, [pushError]);
 
-  const value = useMemo<ErrorSinkContextType>(() => ({ pushError }), [pushError]);
+  const value = useMemo<ErrorSinkContextType>(
+    () => ({ pushError }),
+    [pushError]
+  );
 
   return (
     <ErrorSinkContext.Provider value={value}>

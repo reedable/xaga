@@ -1,6 +1,6 @@
 # Single-Writer Library Lock — the Two Runtime Modes
 
-**A library has at most one writing process at a time, enforced by an exclusive advisory file lock whose scope is the WHOLE library: entity `.md` files and LanceDB alike. Every xaga process runs in one of two modes, decided at startup by that lock: read-write (holds the lock) or read-only (does not). Non-holders read but do not write — now true at library scope, not just LanceDB scope.**
+**A library has at most one writing process at a time, enforced by an exclusive advisory file lock whose scope is the WHOLE library: entity `.md` files and LanceDB alike. Every xaga process runs in one of two modes, set by that lock: read-write (holds the lock) or read-only (does not). Non-holders read but do not write — now true at library scope, not just LanceDB scope.**
 
 ## The mechanism
 
@@ -10,15 +10,15 @@
 
 ## Who takes it, and when
 
-- **The app:** at setup, immediately after resolving the library path and before any command can run. Winning = read-write; losing = read-only for the process's lifetime. Mode never changes in-process: a library switch (`set_library`) persists the new path and restarts the process, and the restart path drains and releases the writer before spawning the successor (`drain_and_release_writer`, `src-tauri/src/lib.rs`) so the new process can win the lock.
+- **The app:** at setup, immediately after resolving the library path and before any command can run. Winning = read-write; losing = read-only. A library switch (`set_library`) persists the new path and restarts the process, and the restart path drains and releases the writer before spawning the successor (`drain_and_release_writer`, `src-tauri/src/lib.rs`) so the new process can win the lock.
 - **The `LibraryWriter`:** owns the flock (`LibraryWriter::start(dir, lock)`, `crates/xaga-core/src/library_writer/mod.rs`) and is the single component through which every `.md` write flows. Dropping it releases the lock; the restart/shutdown paths drain it first (`drain_and_release_writer`, `src-tauri/src/lib.rs`).
 - **The `EmbeddingService`:** no longer acquires the lock; it receives a shared `Arc` of the writer's lock (`EmbeddingService::start(dir, lock)`, from `writer.lock()`) and holds it for its lifetime, preserving its invariant of never running unlocked. The service (LanceDB writes, recovery, embedding queue) exists only in a read-write instance. The flock releases only once BOTH the writer and the service have dropped their `Arc`.
-- **The CLI:** write commands acquire it via `require_write_lock` (`crates/xaga-cli/src/cmd/embeddings.rs`), failing fast when another process holds it. The writer is whoever wins the flock — app or CLI, first-come (owner decision).
+- **The CLI:** write commands acquire it via `require_write_lock` (`crates/xaga-cli/src/cmd/embeddings.rs`), failing fast when another process holds it. The writer is whoever wins the flock — app or CLI, first-come.
 
 ## What read-only means
 
 - Every library-writing command is refused centrally at the IPC boundary with a typed `E_READ_ONLY` error — the `WRITE_COMMANDS` registry next to `is_invoke_allowed` (`src-tauri/src/commands/mod.rs`), the same single-choke-point pattern as the window allowlist. New write commands must be added to that registry (it drives the early, uniform read-only rejection and the frontend affordance list; the ultimate enforcement is that a read-only instance has no writer, so `require_writer` errors regardless).
-- Incidental writes hiding in read flows no-op silently: `read_article`'s mark-read is skipped, so reading stays seamless (owner decision) — the entry simply stays unread.
+- Incidental writes hiding in read flows no-op silently: `read_article`'s mark-read is skipped, so reading stays seamless — the entry simply stays unread.
 - The frontend learns the mode (`is_library_read_only` command + `library:mode-changed` event), shows a read-only badge, and disables write affordances.
 - Reads are untouched: `.md` reads, LanceDB reads (`embeddings_read` when available), search, lists.
 
@@ -32,11 +32,10 @@ The lock makes at most one process a writer; the `LibraryWriter` makes that proc
 - **Feeds:** the network fetch stays OUTSIDE the lane. Each new entry `.md` is committed on ITS OWN entry lane (create-if-absent, atomic against another feed carrying the same entry or a user write to it — a single entry can appear in multiple feeds), and only once every entry has landed is the `.atom` written on the feed lane; awaiting the entry writes before the atom preserves the entries-before-atom ordering invariant. A refresh's `.atom` write is existence-gated (`require_exists`): if the user removed the feed during the fetch, the write is skipped rather than resurrecting it — the check and write are atomic on the feed lane, serialized against `remove_feed`. `add_feed` writes unconditionally (it creates the feed).
 - **Classification rule for a new write feature:** does it need the writer? Then it is a write. This is enforced at compile time by the **`WriteToken`** capability: every `pub(crate)` persistence write takes a `&WriteToken` / `WriteToken`, and the token's constructor is private to `library_writer` (minted once at `start`, having taken the lock). So a persistence write can be called ONLY from within the writer — a future in-crate caller that tried to write directly, bypassing the per-file lanes, would not compile (it cannot obtain a token). `WriteToken::for_test()` (test-only) lets persistence unit tests call writes directly.
 
-## Known limits (accepted)
+## Known limits
 
-- A read-only instance stays read-only until relaunch or library switch — no lock-retry loop watches for the writer's exit.
 - Check-to-use window (now closed): the read-only gate answers "at this instant," but a write command that passed it cannot execute against a released lock — it gets the writer handle via `require_writer`, and if shutdown has begun the writer's `shutting_down` flag fast-fails the submit rather than writing.
-- The lock binds only xaga processes. External tools (Obsidian) are not participants by design: external edits are architecturally equivalent to a crash — reconciled from files by recovery at startup, not coordinated live (owner decision). Live last-wins inside the ms-scale read-modify-write window is accepted; no external-editor detection is built.
+- The lock binds only xaga processes. External tools (e.g. Obsidian) are not participants: external edits are architecturally equivalent to a crash — reconciled from files by recovery at startup, not coordinated live.
 
 ## Relation to the other rules
 

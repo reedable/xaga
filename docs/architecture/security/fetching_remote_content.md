@@ -61,7 +61,7 @@ The `http_allowed` setting (default `false`) is enforced in the proxy, not in th
 
 The `connect_nonstandard_ports_allowed` setting (default `false`) closes this at the port level instead of the content level: `CONNECT` to any port other than 443 is refused with `403 Forbidden` before address validation or dialing. When `true`, `CONNECT` is permitted to any port (address validation still applies); feeds served on non-443 https ports need this enabled to connect. Same setting-handle pattern as `http_allowed`: read per request, `false` until settings are loaded.
 
-The fetch clients deliberately do not set `.https_only()`: enforcing in the proxy covers every consumer at a single point; a client-side `.https_only()` would be a second, partial implementation of the same rule.
+The fetch clients do not set `.https_only()`: enforcing in the proxy covers every consumer at a single point; a client-side `.https_only()` would be a second, partial implementation of the same rule.
 
 ### Who dials through it
 
@@ -81,7 +81,7 @@ On the reqwest fetch paths, a request carries nothing about the app or the user 
 - **No `Accept-Encoding`.** Nothing is negotiated and responses are never decompressed; the bytes counted against `feed_max_body_bytes` are exactly the bytes on the wire. A request that asks for nothing discloses nothing about the build. (Opt-in: `gzip_allowed`, below.)
 - **No `Referer` on redirect hops**, so redirect targets don't learn the originating feed URL. (Opt-in: `referer_allowed`.)
 - **No cookies** — the clients have no cookie jar, so there is no cross-fetch state a host could use to correlate requests.
-- **No conditional-GET validators.** `ETag`/`If-Modified-Since` are rejected by decision, not missing: validators are a server-writable tracking channel — see [performance_tradeoff.md](performance_tradeoff.md).
+- **No conditional-GET validators.** `ETag`/`If-Modified-Since` are not sent: validators are a server-writable tracking channel — see [performance_tradeoff.md](performance_tradeoff.md).
 
 Scope: this covers the reqwest paths (feed XML, PDF probe). The article loader webview sends WebKit's platform-default UA — the genuine identity of the engine making that fetch, consistent with the "everything carried is true" intent.
 
@@ -111,7 +111,7 @@ Fetch behavior that trades an invariant against UX is exposed as a setting whose
 
 ### Recorded exception to Secure by Default
 
-Every setting above defaults to its secure state, with one deliberate exception: **the `max_redirects` default is 3, not 0.** The most secure default is 0 — if a URL does not load in one shot, no redirect is followed. The default of 3 was chosen for UX, not security. This violates docs/principles/secure_by_default.md; the project owner reviewed that conflict and granted the exception on 2 July 2026. Any change to this default, or to the principle, must revisit this record.
+Every setting above defaults to its secure state, with one exception: **the `max_redirects` default is 3, not 0.** The most secure default is 0 — if a URL does not load in one shot, no redirect is followed. The default of 3 serves UX, not security, and violates docs/principles/secure_by_default.md. Any change to this default, or to the principle, must revisit this record.
 
 ## Fetch-adjacent hardening in the loader
 
@@ -129,8 +129,4 @@ The proxy controls _where_ requests can go; the loader adds controls on _what_ g
 
 Places where the invariants are not fully upheld:
 
-- The redirect cap applies to the reqwest fetch paths only; the article loader webview follows redirects internally, uncapped.
-- Feeds or articles that resolve to private/loopback addresses (intranet/localhost dev feeds) are blocked by the proxy's address policy; there is no mechanism to reach them.
-- `import_feeds`/`export_feeds` accept an arbitrary `file_path` from the webview.
-- The embedding model download client sets no timeout, and the model files are verified (pinned revision + per-file SHA-256 manifest, model.rs) at download time only — files already on disk are not re-verified at load time — see docs-transient/sprint/improvement\_\_model_download_visibility.md.
 - Proxy behavior is a property of the bundled app; `tauri dev` runtime checks are not representative for webview-level policies (see the CSP note in [handling_persisted_content.md](handling_persisted_content.md)).

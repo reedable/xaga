@@ -167,9 +167,9 @@ mod tests {
     }
 
     #[test]
-    fn read_article_is_deliberately_not_a_gated_write_command() {
+    fn read_article_is_not_a_gated_write_command() {
         // Its incidental mark-read write no-ops in-command on a read-only instance
-        // (owner decision: reading stays seamless), so gating it here would break reads.
+        // (reading stays seamless), so gating it here would break reads.
         assert!(!WRITE_COMMANDS.contains(&"read_article"));
     }
 }
