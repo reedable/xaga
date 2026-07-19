@@ -21,8 +21,21 @@ pub enum EntryError {
     InvalidId,
     #[error("Entry not found")]
     NotFound,
+    #[error("malformed frontmatter: {0}")]
+    Malformed(#[from] crate::md::MdError),
+    #[error("file too large (max {max_bytes} bytes)")]
+    TooLarge { max_bytes: u64 },
     #[error("a color change is delete/create — use replace_annotation")]
     ColorChangeRequiresReplace,
+}
+
+impl From<crate::fs::ReadMdError> for EntryError {
+    fn from(e: crate::fs::ReadMdError) -> Self {
+        match e {
+            crate::fs::ReadMdError::TooLarge { max_bytes } => EntryError::TooLarge { max_bytes },
+            crate::fs::ReadMdError::Io(e) => EntryError::Io(e),
+        }
+    }
 }
 
 impl EntryError {
@@ -34,6 +47,8 @@ impl EntryError {
             EntryError::InvalidUrl(_) => "entry:invalid-url",
             EntryError::InvalidId => "entry:invalid-id",
             EntryError::NotFound => "entry:not-found",
+            EntryError::Malformed(_) => "entry:malformed",
+            EntryError::TooLarge { .. } => "entry:too-large",
             EntryError::ColorChangeRequiresReplace => "entry:color-change-requires-replace",
         }
     }
@@ -46,6 +61,8 @@ impl EntryError {
             EntryError::InvalidUrl(_) => "This item's address is invalid.",
             EntryError::InvalidId => "This item's identifier is invalid.",
             EntryError::NotFound => "This item could not be found.",
+            EntryError::Malformed(_) => "This item's file is malformed and couldn't be read.",
+            EntryError::TooLarge { .. } => "This item's file is too large to open.",
             EntryError::ColorChangeRequiresReplace => "Couldn't update the highlight color.",
         }
     }
@@ -116,8 +133,8 @@ pub(crate) fn render_entry(article: &Article) -> String {
         favicon: article.favicon.as_deref(),
     };
 
-    let yaml = serde_yaml::to_string(&fm).expect("frontmatter serialization is infallible");
-    format!("---\n{yaml}---\n\n{}\n", article.content)
+    let yaml = noyalib::to_string(&fm).expect("frontmatter serialization is infallible");
+    format!("---\n{}\n---\n\n{}\n", yaml.trim_end(), article.content)
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -248,8 +265,8 @@ pub async fn read_entry(library_dir: &Path, id: &str) -> Result<Entry, EntryErro
     let path = find_entry_path(library_dir, id)
         .await
         .ok_or(EntryError::NotFound)?;
-    let raw = tokio::fs::read_to_string(&path).await?;
-    let fm = parse_frontmatter(&raw).ok_or(EntryError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let fm = parse_frontmatter(&raw)?;
     Ok(md_to_entry(Markdown {
         id: id.to_string(),
         fm,
@@ -262,8 +279,8 @@ pub async fn read_entry_tags(library_dir: &Path, id: &str) -> Result<Vec<String>
     let path = find_entry_path(library_dir, id)
         .await
         .ok_or(EntryError::NotFound)?;
-    let raw = tokio::fs::read_to_string(&path).await?;
-    let fm = parse_frontmatter(&raw).ok_or(EntryError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let fm = parse_frontmatter(&raw)?;
     Ok(fm.tags)
 }
 
@@ -278,8 +295,8 @@ pub(crate) async fn set_entry_tags(
     let path = find_entry_path(library_dir, id)
         .await
         .ok_or(EntryError::NotFound)?;
-    let raw = tokio::fs::read_to_string(&path).await?;
-    let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let (fm, body) = parse_document(&raw)?;
     // Build the updated Article (the message) once, encode it, and return its meta. State comes from
     // the new `tags`; annotations/body/favicon are preserved from the parsed file.
     let article = Article {

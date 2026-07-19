@@ -150,10 +150,6 @@ fn unique_tmp_path(path: &Path) -> PathBuf {
     }
 }
 
-/// Visits every file in `dir` whose extension matches `ext`, reading each to a `String` and handing
-/// `(path, contents)` to `visit`. Yields between files so a large scan never starves higher-priority
-/// tasks. A missing directory, an unreadable directory entry, or a file that fails to read (e.g.
-/// non-UTF-8) is skipped. Pure traversal — no knowledge of file format or contents.
 /// Whether a directory walk reliably observed the directory's contents.
 ///
 /// Distinguishes a *trustworthy* view of the source ("the directory is absent or genuinely holds
@@ -173,6 +169,49 @@ pub(crate) enum WalkOutcome {
     Unreadable,
 }
 
+/// A `.md` over this limit is not read. The cap bounds the app's runtime memory
+/// use, and applies to hostile and legitimate files alike.
+pub(crate) const MAX_MD_BYTES: u64 = 12 * 1024 * 1024;
+
+/// Why a size-capped `.md` read failed.
+#[derive(Debug)]
+pub(crate) enum ReadMdError {
+    /// The file is larger than [`MAX_MD_BYTES`]; it was not read.
+    TooLarge {
+        max_bytes: u64,
+    },
+    Io(std::io::Error),
+}
+
+impl From<std::io::Error> for ReadMdError {
+    fn from(e: std::io::Error) -> Self {
+        ReadMdError::Io(e)
+    }
+}
+
+/// Reads a `.md`, rejecting one over [`MAX_MD_BYTES`]. Enforced on the read
+/// (reads at most the cap), not via `metadata` stat.
+pub(crate) async fn read_md_capped(path: &Path) -> Result<String, ReadMdError> {
+    use tokio::io::AsyncReadExt;
+    let file = tokio::fs::File::open(path).await?;
+    let mut buf = Vec::new();
+
+    file.take(MAX_MD_BYTES + 1).read_to_end(&mut buf).await?;
+
+    if buf.len() as u64 > MAX_MD_BYTES {
+        return Err(ReadMdError::TooLarge {
+            max_bytes: MAX_MD_BYTES,
+        });
+    }
+
+    String::from_utf8(buf)
+        .map_err(|e| ReadMdError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, e)))
+}
+
+/// Visits every file in `dir` whose extension matches `ext`, reading each to a `String` and handing
+/// `(path, contents)` to `visit`. Yields between files so a large scan never starves higher-priority
+/// tasks. A missing directory, an unreadable entry, a file that fails to read (e.g. non-UTF-8), or a
+/// `.md` over [`MAX_MD_BYTES`] is skipped. Pure traversal — no knowledge of file format or contents.
 pub(crate) async fn for_each_file<F>(dir: &Path, ext: &str, mut visit: F) -> WalkOutcome
 where
     F: FnMut(PathBuf, String),
@@ -205,11 +244,18 @@ where
             continue;
         }
 
-        let raw = match tokio::fs::read_to_string(&path).await {
+        // `.md` reads go through the size-bounded reader; `.atom` reads are not
+        // capped here. A file we could not read — including a `.md` over the cap
+        // — leaves its id unaccounted for: keep walking, but flag the view
+        // incomplete so absence-based deletes are withheld.
+        let read = if ext == "md" {
+            read_md_capped(&path).await.map_err(|_| ())
+        } else {
+            tokio::fs::read_to_string(&path).await.map_err(|_| ())
+        };
+        let raw = match read {
             Ok(r) => r,
-            // A matching file we could not read leaves its id unaccounted for. Keep walking the
-            // rest, but flag the view as incomplete so absence-based deletes are withheld.
-            Err(_) => {
+            Err(()) => {
                 outcome = WalkOutcome::Unreadable;
                 continue;
             }
@@ -226,6 +272,45 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn read_md_capped_rejects_oversize_and_reads_small() {
+        let tmp = tempfile::tempdir().unwrap();
+
+        let big = tmp.path().join("big.md");
+        tokio::fs::write(&big, vec![b'x'; (MAX_MD_BYTES + 1) as usize])
+            .await
+            .unwrap();
+        assert!(matches!(
+            read_md_capped(&big).await,
+            Err(ReadMdError::TooLarge { .. })
+        ));
+
+        let small = tmp.path().join("small.md");
+        tokio::fs::write(&small, b"hello").await.unwrap();
+        assert_eq!(read_md_capped(&small).await.unwrap(), "hello");
+    }
+
+    #[tokio::test]
+    async fn walk_skips_oversize_md_and_withholds_deletes() {
+        let tmp = tempfile::tempdir().unwrap();
+        tokio::fs::write(tmp.path().join("ok.md"), b"---\ntitle: T\n---\n\nx\n")
+            .await
+            .unwrap();
+        tokio::fs::write(
+            tmp.path().join("big.md"),
+            vec![b'x'; (MAX_MD_BYTES + 1) as usize],
+        )
+        .await
+        .unwrap();
+
+        let mut seen = 0usize;
+        let outcome = for_each_file(tmp.path(), "md", |_, _| seen += 1).await;
+        // The oversize file is skipped (not visited) and the view is incomplete,
+        // so absence-based deletes are withheld.
+        assert_eq!(seen, 1);
+        assert_eq!(outcome, WalkOutcome::Unreadable);
+    }
 
     #[test]
     fn replace_dir_atomic_creates_dest_and_consumes_staging() {

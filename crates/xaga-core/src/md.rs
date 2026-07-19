@@ -1,7 +1,28 @@
 //! Intersection of Markdown and domain
 //! File system concerns should be managed by `persistence` layer
 
+use std::sync::LazyLock;
+
+use noyalib::ParserConfig;
+use noyalib::policy::DenyAnchors;
+
 use crate::types::{Annotation, Article, CollectionItem, Entry, Topic};
+
+/// The frontmatter parser config. `DenyAnchors` rejects any `&anchor`,
+/// `*alias`, or `<<:` merge key at parse time; `strict()` applies noyalib's
+/// stricter parse preset on top. Anchors in yaml are not supported.
+/// Read docs/architecture/security/handling_persisted_content.md
+static FM_PARSER: LazyLock<ParserConfig> =
+    LazyLock::new(|| ParserConfig::strict().with_policy(DenyAnchors));
+
+/// A `.md` document that could not be read as frontmatter + body.
+#[derive(Debug, thiserror::Error)]
+pub enum MdError {
+    #[error("missing `---` frontmatter delimiters")]
+    Delimiter,
+    #[error("invalid frontmatter: {0}")]
+    Frontmatter(String),
+}
 
 /// Represends the .md storage format
 pub(crate) struct Markdown {
@@ -11,8 +32,7 @@ pub(crate) struct Markdown {
 }
 
 /// Parses both the header fields and the markdown body from a `---`-delimited document.
-/// Returns `None` if the format is invalid.
-pub(crate) fn parse_document(raw: &str) -> Option<(Frontmatter, String)> {
+pub(crate) fn parse_document(raw: &str) -> Result<(Frontmatter, String), MdError> {
     split_document(raw)
 }
 
@@ -100,9 +120,8 @@ pub struct Frontmatter {
 }
 
 /// Parses only the header fields from a `---`-delimited document.
-/// Returns `None` if the format is invalid.
-pub(crate) fn parse_frontmatter(raw: &str) -> Option<Frontmatter> {
-    Some(split_document(raw)?.0)
+pub(crate) fn parse_frontmatter(raw: &str) -> Result<Frontmatter, MdError> {
+    Ok(split_document(raw)?.0)
 }
 
 /// The `.md` frontmatter storage shape for an annotation. Storage keeps `note`; the domain
@@ -176,16 +195,17 @@ struct FrontmatterRaw {
     items: Vec<CollectionItem>,
 }
 
-pub(crate) fn split_document(raw: &str) -> Option<(Frontmatter, String)> {
+pub(crate) fn split_document(raw: &str) -> Result<(Frontmatter, String), MdError> {
     let raw = raw.trim_start();
-    let rest = raw.strip_prefix("---\n")?;
-    let end = rest.find("\n---\n")?;
+    let rest = raw.strip_prefix("---\n").ok_or(MdError::Delimiter)?;
+    let end = rest.find("\n---\n").ok_or(MdError::Delimiter)?;
     let yaml = &rest[..end];
     let body = rest[end + 5..].trim_matches('\n').to_string();
 
-    let fm: FrontmatterRaw = serde_yaml::from_str(yaml).ok()?;
+    let fm: FrontmatterRaw = noyalib::from_str_with_config(yaml, &FM_PARSER)
+        .map_err(|e| MdError::Frontmatter(e.to_string()))?;
 
-    Some((
+    Ok((
         Frontmatter {
             source: fm.source,
             title: fm.title,
@@ -201,4 +221,87 @@ pub(crate) fn split_document(raw: &str) -> Option<(Frontmatter, String)> {
         },
         body,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn doc(fm: &str) -> String {
+        format!("---\n{fm}\n---\n\nbody\n")
+    }
+
+    #[test]
+    fn parses_frontmatter_ending_in_a_block_sequence() {
+        let raw = doc(
+            "source: https://example.com/x\ntitle: T\ncreated: '2026-01-01'\n\
+             annotations:\n  - id: a1\n    text:\n      - hi\n    \
+             occurrence:\n      - 0\n    color: red\n    created_at: '2026-01-01'",
+        );
+        let (fm, body) = split_document(&raw).expect("valid frontmatter parses");
+        assert_eq!(fm.title, "T");
+        assert_eq!(fm.annotations.len(), 1);
+        assert_eq!(body, "body");
+    }
+
+    #[test]
+    fn rejects_anchors_and_aliases() {
+        let raw = doc("title: &a hello\nsource: *a");
+        assert!(matches!(split_document(&raw), Err(MdError::Frontmatter(_))));
+    }
+
+    #[test]
+    fn rejects_alias_expansion_bomb() {
+        // Nested-alias ladder (billion-laughs class): must be rejected.
+        let mut fm = String::from("a0: &a0 x\n");
+        for i in 1..=8 {
+            let p = format!("*a{}", i - 1);
+            fm.push_str(&format!(
+                "a{i}: &a{i} [{p},{p},{p},{p},{p},{p},{p},{p},{p},{p}]\n"
+            ));
+        }
+        fm.push_str("title: last");
+        assert!(split_document(&doc(&fm)).is_err());
+    }
+
+    #[test]
+    fn rejects_deeply_nested_frontmatter() {
+        // Recursion-depth guard (the non-alias half of the billion-laughs class):
+        // a pathologically deep structure must be rejected by the parser's depth
+        // limit, not recursed into. Depth far exceeds any sane limit, so a bounded
+        // parser errors early; an unbounded one would recurse (and could overflow).
+        let depth = 50_000;
+        let nested = format!("title: {}{}", "[".repeat(depth), "]".repeat(depth));
+        assert!(split_document(&doc(&nested)).is_err());
+    }
+
+    #[test]
+    fn parses_a_real_serde_yaml_written_file() {
+        // A file as serde_yaml 0.9 wrote it: unquoted RFC3339 dates, an
+        // `aliases:` field (a key literally named "aliases", NOT a YAML alias),
+        // HTML in `summary`. Must still parse under strict() + DenyAnchors.
+        let raw = "---\n\
+            source: https://thewrap.com/x\n\
+            title: 'Rob Bonta Rebuffs FCC'\n\
+            aliases:\n- 'Rob Bonta Rebuffs FCC'\n\
+            created: 2026-07-16T11:31:50.924447+00:00\n\
+            published: 2026-07-16T02:03:31+00:00\n\
+            updated: 2026-07-16T05:49:57+00:00\n\
+            summary: '<p>\"Spinning off one channel\" the AG adds</p>'\n\
+            tags:\n- unread\n\
+            ---\n\n\
+            body\n";
+        let (fm, _body) = split_document(raw).expect("real serde_yaml file parses");
+        assert_eq!(fm.created_at, "2026-07-16T11:31:50.924447+00:00");
+        assert_eq!(fm.tags, vec!["unread".to_string()]);
+        assert!(fm.summary.unwrap().contains("Spinning off"));
+    }
+
+    #[test]
+    fn missing_delimiters_is_a_delimiter_error() {
+        assert!(matches!(
+            split_document("no frontmatter here"),
+            Err(MdError::Delimiter)
+        ));
+    }
 }

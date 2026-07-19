@@ -55,37 +55,7 @@ The original summary bug demonstrates the class: a load-bearing behavior held
 only by a dependency default, with nothing to fail when it changed or when it
 was wrong.
 
-## 3. Dev-mode CSP — open verification and decision
-
-The standing limit lives in `handling_persisted_content.md`, "Testing caveat".
-Actionable items only:
-
-- **Verify the caveat's claim empirically.** The Tauri config schema
-  (`security.csp`) states: "If `dev_csp` is not specified, this value is also
-  injected on dev" — which contradicts the durable doc's statement that CSP is
-  not enforced under `tauri dev`. Run `tauri dev`, inspect the served document
-  for the injected CSP. If the CSP is present in dev, correct the durable
-  doc's caveat.
-- **Decide, informed by that result:** whether to set
-  `security.devCsp` (prod CSP plus minimal HMR allowances — the reader-script
-  hash is byte-stable and works in both). Pro: dev sessions rendering
-  untrusted content regain the img-src / hash-pinning layers. Con: the
-  standing limit applies regardless.
-
-## 4. fs read-back robustness (hostile `.md` as direct input)
-
-**Unverified, two items:**
-
-- `serde_yaml` on hostile frontmatter: alias/anchor expansion
-  (billion-laughs class) and recursion-depth behavior — limits not checked,
-  none visibly configured.
-- No size bound found on read-back: `read_article` uses
-  `tokio::fs::read_to_string`
-  (`crates/xaga-core/src/persistence/articles.rs`) — a multi-gigabyte `.md`
-  loads fully into memory and crosses IPC to the frontend. Ingest has
-  `feed_max_body_bytes`; a read-path bound was not found.
-
-## 5. Favicon path
+## 3. Favicon path
 
 **Verified 2026-07-16.** No Rust code fetches favicons; the fetch is made by
 the main app window's webview engine, twice:
@@ -108,18 +78,10 @@ Consequences:
   from inside the network.
 - **The only constraint is the app CSP** (`img-src 'self' data: https:`):
   `http:` blocked in the bundled app, `data:` and any `https:` host allowed;
-  no constraint under `tauri dev` (item 3).
+  no constraint under `tauri dev` (CSP not enforced there — see
+  `handling_persisted_content.md`, "Testing caveat").
 - **The fetch originates in the privileged window** (the context holding IPC
   access), not the sandboxed reader iframe.
 - Adjacent defect (correctness, not security): `getFavicon` attaches no
   `onerror`, so a failed load leaves the promise unsettled and the awaiting
   effect hangs (abandoned on the next effect run, never resolved).
-
-## 6. Feed logical ids
-
-**Verified as documented; consequence unverified.** A feed's `<entry><id>` is
-used verbatim as the logical id (`feed_entry_id`,
-`crates/xaga-core/src/util.rs`). Filenames are protected (hash-only stems,
-`is_safe_id` gate), but the logical id flows into events, state sync, and
-LanceDB rows. Whether a hostile feed claiming another entry's id can
-cross-contaminate state or embeddings was not traced.

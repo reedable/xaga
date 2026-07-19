@@ -20,3 +20,5 @@ The rendering path applies its own controls and does not depend on ingest-time s
 ## Testing caveat
 
 The CSP is enforced only in the bundled Tauri app, not under the Vite dev server. Any verification of CSP/iframe/sandbox behavior must use `tauri build`, not `tauri dev`.
+
+Verified against the running `tauri dev` server (Vite at `http://localhost:1420`): the served document has no CSP `<meta>` tag (`document.querySelector('meta[http-equiv="Content-Security-Policy"]')` returns `undefined`) and no `Content-Security-Policy` response header. Tauri's v2 config reference states the `csp` value is also injected on dev when `devCsp` is unset; Xaga's dev setup does not appear to match that.

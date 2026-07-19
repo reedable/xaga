@@ -22,7 +22,7 @@ where
     V: FnMut(T),
 {
     crate::fs::for_each_file(dir, "md", |path, raw| {
-        if let Some((fm, body)) = parse_document(&raw) {
+        if let Ok((fm, body)) = parse_document(&raw) {
             visit(parse(Markdown {
                 id: crate::util::item_id(&path),
                 fm,

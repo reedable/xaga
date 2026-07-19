@@ -95,6 +95,8 @@ mod tests {
         "entry:invalid-url",
         "entry:invalid-id",
         "entry:not-found",
+        "entry:malformed",
+        "entry:too-large",
         "entry:color-change-requires-replace",
         // FeedError
         "feed:invalid-url",
@@ -119,6 +121,8 @@ mod tests {
         // TopicsError
         "topic:io",
         "topic:not-found",
+        "topic:malformed",
+        "topic:too-large",
         // BookmarksError
         "bookmark:io",
         "bookmark:invalid-url",

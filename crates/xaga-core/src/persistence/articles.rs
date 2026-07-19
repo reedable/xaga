@@ -54,10 +54,10 @@ pub(crate) async fn save_article(
     };
 
     let (created_at, existing_annotations, existing_tags) = if file_exists {
-        let raw = tokio::fs::read_to_string(&path).await?;
+        let raw = crate::fs::read_md_capped(&path).await?;
         match parse_document(&raw) {
-            Some((fm, _)) => (fm.created_at, fm.annotations, fm.tags),
-            None => (chrono::Utc::now().to_rfc3339(), vec![], vec![]),
+            Ok((fm, _)) => (fm.created_at, fm.annotations, fm.tags),
+            Err(_) => (chrono::Utc::now().to_rfc3339(), vec![], vec![]),
         }
     } else {
         (chrono::Utc::now().to_rfc3339(), vec![], vec![])
@@ -110,8 +110,8 @@ pub async fn read_article(library_dir: &Path, id: &str) -> Result<Article, Entry
         .await
         .ok_or(EntryError::NotFound)?;
 
-    let raw = tokio::fs::read_to_string(&path).await?;
-    let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let (fm, body) = parse_document(&raw)?;
     Ok(article_from_document(id, fm, body))
 }
 
@@ -129,8 +129,8 @@ pub(crate) async fn add_annotation(
     let path = find_entry_path(library_dir, article_id)
         .await
         .ok_or(EntryError::NotFound)?;
-    let raw = tokio::fs::read_to_string(&path).await?;
-    let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let (fm, body) = parse_document(&raw)?;
 
     let mut annotations = fm.annotations.clone();
     if let Some(pos) = annotations.iter().position(|a| a.id == annotation.id) {
@@ -172,8 +172,8 @@ pub(crate) async fn replace_annotation(
     let path = find_entry_path(library_dir, article_id)
         .await
         .ok_or(EntryError::NotFound)?;
-    let raw = tokio::fs::read_to_string(&path).await?;
-    let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let (fm, body) = parse_document(&raw)?;
 
     let mut annotations = fm.annotations.clone();
     if let Some(pos) = annotations.iter().position(|a| a.id == old_id) {
@@ -205,8 +205,8 @@ pub(crate) async fn remove_annotation(
     let path = find_entry_path(library_dir, article_id)
         .await
         .ok_or(EntryError::NotFound)?;
-    let raw = tokio::fs::read_to_string(&path).await?;
-    let (fm, body) = parse_document(&raw).ok_or(EntryError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let (fm, body) = parse_document(&raw)?;
 
     let annotations: Vec<Annotation> = fm
         .annotations

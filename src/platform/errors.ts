@@ -15,6 +15,8 @@ export const ERROR_CODE = [
   "entry:invalid-url",
   "entry:invalid-id",
   "entry:not-found",
+  "entry:malformed",
+  "entry:too-large",
   "entry:color-change-requires-replace",
   // DomainError — FeedError
   "feed:invalid-url",
@@ -39,6 +41,8 @@ export const ERROR_CODE = [
   // DomainError — TopicsError
   "topic:io",
   "topic:not-found",
+  "topic:malformed",
+  "topic:too-large",
   // DomainError — BookmarksError
   "bookmark:io",
   "bookmark:invalid-url",

@@ -17,6 +17,19 @@ pub enum TopicsError {
     Io(#[from] std::io::Error),
     #[error("Topic not found")]
     NotFound,
+    #[error("malformed frontmatter: {0}")]
+    Malformed(#[from] crate::md::MdError),
+    #[error("file too large (max {max_bytes} bytes)")]
+    TooLarge { max_bytes: u64 },
+}
+
+impl From<crate::fs::ReadMdError> for TopicsError {
+    fn from(e: crate::fs::ReadMdError) -> Self {
+        match e {
+            crate::fs::ReadMdError::TooLarge { max_bytes } => TopicsError::TooLarge { max_bytes },
+            crate::fs::ReadMdError::Io(e) => TopicsError::Io(e),
+        }
+    }
 }
 
 impl TopicsError {
@@ -25,6 +38,8 @@ impl TopicsError {
         match self {
             TopicsError::Io(_) => "topic:io",
             TopicsError::NotFound => "topic:not-found",
+            TopicsError::Malformed(_) => "topic:malformed",
+            TopicsError::TooLarge { .. } => "topic:too-large",
         }
     }
 
@@ -33,6 +48,8 @@ impl TopicsError {
         match self {
             TopicsError::Io(_) => "Couldn't read or write this topic.",
             TopicsError::NotFound => "This topic could not be found.",
+            TopicsError::Malformed(_) => "This topic's file is malformed and couldn't be read.",
+            TopicsError::TooLarge { .. } => "This topic's file is too large to open.",
         }
     }
 }
@@ -76,8 +93,8 @@ pub(crate) fn render_topic(topic: &Topic, items: &[CollectionItem]) -> String {
         tags: &tags,
     };
 
-    let yaml = serde_yaml::to_string(&fm).expect("frontmatter serialization is infallible");
-    format!("---\n{yaml}---\n")
+    let yaml = noyalib::to_string(&fm).expect("frontmatter serialization is infallible");
+    format!("---\n{}\n---\n", yaml.trim_end())
 }
 
 /// Creates or updates a topic at `topics/{id}.md`.
@@ -98,10 +115,10 @@ pub(crate) async fn save_topic(
 
     // Preserve created_at and any existing tags (e.g. "pinned") across the rewrite.
     let (created_at, tags) = if tokio::fs::try_exists(&path).await? {
-        let raw = tokio::fs::read_to_string(&path).await?;
+        let raw = crate::fs::read_md_capped(&path).await?;
         match parse_frontmatter(&raw) {
-            Some(fm) => (fm.created_at, fm.tags),
-            None => (Utc::now().to_rfc3339(), vec![]),
+            Ok(fm) => (fm.created_at, fm.tags),
+            Err(_) => (Utc::now().to_rfc3339(), vec![]),
         }
     } else {
         (Utc::now().to_rfc3339(), vec![])
@@ -139,8 +156,8 @@ pub(crate) async fn set_topic_pinned(
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
-    let raw = tokio::fs::read_to_string(&path).await?;
-    let (fm, body) = parse_document(&raw).ok_or(TopicsError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let (fm, body) = parse_document(&raw)?;
 
     if crate::tags::is_pinned(&fm.tags) == pinned {
         return Ok(false);
@@ -170,8 +187,8 @@ pub async fn read_topic(library_dir: &Path, id: &str) -> Result<Topic, TopicsErr
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
-    let raw = tokio::fs::read_to_string(&path).await?;
-    let (fm, body) = parse_document(&raw).ok_or(TopicsError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let (fm, body) = parse_document(&raw)?;
     Ok(md_to_topic(Markdown {
         id: crate::util::item_id(&path),
         fm,
@@ -189,8 +206,8 @@ pub async fn read_topic_items(
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
-    let raw = tokio::fs::read_to_string(&path).await?;
-    let (fm, _body) = parse_document(&raw).ok_or(TopicsError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let (fm, _body) = parse_document(&raw)?;
     Ok(fm.items)
 }
 
@@ -231,8 +248,8 @@ pub(crate) async fn add_topic_item(
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
-    let raw = tokio::fs::read_to_string(&path).await?;
-    let (fm, body) = parse_document(&raw).ok_or(TopicsError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let (fm, body) = parse_document(&raw)?;
     if fm.items.iter().any(|i| i.id() == item.id()) {
         return read_topic(library_dir, topic_id).await;
     }
@@ -266,8 +283,8 @@ pub(crate) async fn replace_topic_item(
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
-    let raw = tokio::fs::read_to_string(&path).await?;
-    let (fm, body) = parse_document(&raw).ok_or(TopicsError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let (fm, body) = parse_document(&raw)?;
     let Some(pos) = fm.items.iter().position(|i| i.id() == old_id) else {
         return read_topic(library_dir, topic_id).await;
     };
@@ -298,8 +315,8 @@ pub(crate) async fn remove_topic_item(
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
-    let raw = tokio::fs::read_to_string(&path).await?;
-    let (fm, body) = parse_document(&raw).ok_or(TopicsError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let (fm, body) = parse_document(&raw)?;
     if !fm.items.iter().any(|i| i.id() == item_id) {
         return read_topic(library_dir, topic_id).await;
     }

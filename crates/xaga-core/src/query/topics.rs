@@ -17,8 +17,8 @@ pub async fn list_topic_items(
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
-    let raw = tokio::fs::read_to_string(&path).await?;
-    let (fm, _body) = parse_document(&raw).ok_or(TopicsError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let (fm, _body) = parse_document(&raw)?;
     let threshold = fm.threshold.unwrap_or(0.8);
 
     // Ungated similarity lookup: every embedded item ranked by similarity to the topic.
