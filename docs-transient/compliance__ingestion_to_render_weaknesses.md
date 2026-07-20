@@ -38,24 +38,7 @@ disclosure, bounded resources) are enforced on app-initiated requests; if
 iframe image loads bypass the proxy, they also bypass private-address
 validation (a content-authored `https://192.168.1.1/…` probe class).
 
-## 2. Security controls have no regression pinning
-
-**Verified.** The repo has no test runner (no `test` script; no test
-dependencies in `package.json`). Nothing pins:
-
-- DOMPurify being called on the render path
-  (`src/text/markdownPipeline.ts`);
-- the sanitizer stripping scripts / event-handler attributes /
-  `javascript:` hrefs;
-- the `openUrl` scheme allowlist (`src/platform/TauriPlatform.ts`);
-- (not checked: whether `render_entry`'s YAML frontmatter-injection escaping
-  has Rust-side tests).
-
-The original summary bug demonstrates the class: a load-bearing behavior held
-only by a dependency default, with nothing to fail when it changed or when it
-was wrong.
-
-## 3. Favicon path
+## 2. Favicon path
 
 **Verified 2026-07-16.** No Rust code fetches favicons; the fetch is made by
 the main app window's webview engine, twice:

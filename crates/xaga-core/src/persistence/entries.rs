@@ -319,3 +319,43 @@ pub(crate) async fn set_entry_tags(
     crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
     Ok(article.meta)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_entry_escapes_frontmatter_injection_in_title() {
+        // A title crafted to break out of the YAML string and inject a `bookmark`
+        // tag into the frontmatter. The serializer must escape it so it survives
+        // as data, not structure — otherwise a hostile title could flip state.
+        let hostile = "safe\n---\ntags:\n- bookmark";
+        let article = Article {
+            meta: Entry {
+                id: "abc123".into(),
+                url: "https://example.com/x".into(),
+                title: hostile.into(),
+                created_at: "2026-01-01".into(),
+                published_at: None,
+                updated_at: None,
+                description: None,
+                is_unread: false,
+                is_bookmarked: false,
+                color: None,
+            },
+            content: "body".into(),
+            annotations: vec![],
+            favicon: None,
+        };
+
+        let rendered = render_entry(&article);
+        let (fm, _body) = crate::md::parse_document(&rendered).expect("re-parses");
+
+        assert_eq!(fm.title, hostile, "title must round-trip as data, not inject");
+        assert!(
+            !fm.tags.iter().any(|t| t == "bookmark"),
+            "injected `bookmark` tag must not appear: {:?}",
+            fm.tags
+        );
+    }
+}
