@@ -70,11 +70,12 @@ pub async fn load_via_webview(
     // serde_json::to_string produces valid JSON string literals, preventing
     // any injection via special characters in id, label, or url.
     let vars = format!(
-        "window.__LOADER_ID__={id};window.__LOADER_LABEL__={label};window.__LOADER_URL__={url};window.__LOADER_KEEP_OPEN__={keep_open};",
+        "window.__LOADER_ID__={id};window.__LOADER_LABEL__={label};window.__LOADER_URL__={url};window.__LOADER_KEEP_OPEN__={keep_open};window.__LOADER_TIMEOUT_MS__={timeout_ms};",
         id = serde_json::to_string(&id).unwrap_or_default(),
         label = serde_json::to_string(&label).unwrap_or_default(),
         url = serde_json::to_string(url).unwrap_or_default(),
         keep_open = keep_open,
+        timeout_ms = timeout_secs.saturating_mul(1000),
     );
 
     let init_script = format!("{}\n{}", vars, include_str!("article_loader.js"));
@@ -193,8 +194,32 @@ pub async fn load_via_webview(
     }
 
     match result {
-        Ok(Ok((mime_type, html))) => Ok((mime_type, html)),
+        Ok(Ok((mime_type, html))) => {
+            log_inline_stats(url, &html);
+            Ok((mime_type, html))
+        }
         Ok(Err(_)) => Err("channel closed before HTML was received".to_string()),
         Err(_) => Err("timed out waiting for page to load".to_string()),
     }
+}
+
+/// EXPERIMENT (measurement only): surface the image-inlining stats that
+/// `article_loader.js` embeds as `<meta name="xaga-inline-stats">`.
+///
+/// The stats ride inside the captured HTML rather than arriving over IPC on
+/// purpose: `commands::LOADER_COMMANDS` is a closed allow-list for untrusted
+/// loader webviews, and this measurement is not worth widening it. The content
+/// is attacker-influenced (any page can inject a meta tag with this name), so it
+/// is only ever logged — never parsed into a decision — and is truncated.
+fn log_inline_stats(url: &str, html: &str) {
+    const MARKER: &str = r#"name="xaga-inline-stats" content=""#;
+    let Some(start) = html.find(MARKER) else {
+        return;
+    };
+    let rest = &html[start + MARKER.len()..];
+    let Some(end) = rest.find('"') else {
+        return;
+    };
+    let raw: String = rest[..end].chars().take(600).collect();
+    log::info!("inline-images stats for {url}: {raw}");
 }

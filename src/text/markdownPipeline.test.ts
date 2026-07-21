@@ -35,3 +35,48 @@ describe("markdownToHtml", () => {
     expect(html.toLowerCase()).not.toContain("javascript:");
   });
 });
+
+// Characterization of the remote-fetch channel described in
+// docs-transient/compliance__rendered_content_remote_fetches.md. These pin what
+// the sanitizer does TODAY, including the parts that are the finding rather than
+// the fix: a `https:` image surviving here is what lets rendered content call
+// home at read time. If the inert-content option is taken (inline as data URLs,
+// then drop `https:` from `img-src`), the "passes through" cases below are the
+// ones expected to flip, deliberately.
+describe("markdownToHtml — remote-fetch surface", () => {
+  it("passes remote https: image sources through (the open channel)", async () => {
+    const html = await markdownToHtml('<img src="https://tracker.test/p.gif">');
+    expect(html).toContain('src="https://tracker.test/p.gif"');
+  });
+
+  it("preserves data: image sources (inert content is renderable)", async () => {
+    const dataUri =
+      "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+    const html = await markdownToHtml(`<img src="${dataUri}">`);
+    expect(html).toContain(dataUri);
+  });
+
+  it("preserves data: images written as markdown image syntax", async () => {
+    const dataUri =
+      "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+    const html = await markdownToHtml(`![alt](${dataUri})`);
+    expect(html).toContain(dataUri);
+    expect(html).toContain("<img");
+  });
+
+  it("records whether style attributes survive (background-image channel)", async () => {
+    const html = await markdownToHtml(
+      '<div style="background-image: url(https://tracker.test/bg.png)">x</div>'
+    );
+    // The compliance doc asserts this is a second copy of the image channel.
+    // Whichever way this lands, it is now pinned rather than assumed.
+    expect(html).toMatchInlineSnapshot(`"<div style="background-image: url(https://tracker.test/bg.png)">x</div>"`);
+  });
+
+  it("records whether <iframe> survives (frame-src https: reachability)", async () => {
+    const html = await markdownToHtml(
+      '<iframe src="https://embed.test/v"></iframe>'
+    );
+    expect(html).toMatchInlineSnapshot(`""`);
+  });
+});
