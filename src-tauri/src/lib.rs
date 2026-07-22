@@ -1212,6 +1212,7 @@ pub fn run() {
             commands::articles::save_article,
             commands::articles::find_article,
             commands::articles::read_article,
+            commands::articles::read_entry_images,
             commands::articles::create_article,
             commands::articles::add_annotation,
             commands::articles::replace_annotation,

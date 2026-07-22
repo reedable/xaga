@@ -79,4 +79,25 @@ describe("markdownToHtml — remote-fetch surface", () => {
     );
     expect(html).toMatchInlineSnapshot(`""`);
   });
+
+  // The entry-image feature stores `![alt](../images/<id>/<hash>.ext)` in the
+  // body and rewrites it to a data: URI at render (inlineEntryImages), AFTER this
+  // sanitizer. If DOMPurify ever stripped the relative src, every stored image
+  // would silently stop resolving. This pins that the relative ref and its
+  // data-xaga-* neutralised-remote sibling both survive sanitization.
+  it("preserves relative ../images src and data-xaga-src through sanitization", async () => {
+    const relative = await markdownToHtml(
+      "![local](../images/a3f2c1d0e9b8/4f2a91c3e0b7.png)"
+    );
+    expect(relative).toContain('src="../images/a3f2c1d0e9b8/4f2a91c3e0b7.png"');
+
+    const neutralised = await markdownToHtml(
+      '<img alt="pixel" data-xaga-src="https://tracker.test/p.gif">'
+    );
+    expect(neutralised).toContain('data-xaga-src="https://tracker.test/p.gif"');
+    // A neutralised remote image carries no real src attribute (only the inert
+    // data-xaga-src), so it fetches nothing. A leading space distinguishes a
+    // standalone `src=` from the `-src=` tail of `data-xaga-src=`.
+    expect(neutralised).not.toContain(' src=');
+  });
 });

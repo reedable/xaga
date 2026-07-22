@@ -2,25 +2,12 @@ window.open = function() { return null; };
 window.focus = function() {};
 
 // ---------------------------------------------------------------------------
-// EXPERIMENT (measurement only): inline remote images as data: URLs before the
-// HTML is captured, and record how often that succeeds.
-//
-// The open question is whether the page can *read* its own images: an image
-// from a host that sends no `Access-Control-Allow-Origin` can be displayed but
-// not read, so fetch() rejects and canvas becomes tainted. That is a WKWebView
-// runtime behaviour — no unit test answers it. This measures the real hit rate
-// against real articles.
-//
-// Failures leave the original remote `src` untouched, so rendering behaviour is
-// unchanged from today. That is a property of the experiment (measure without
-// changing what the user sees), not a decision about what the shipped feature
-// should do on failure — that behaviour is still open.
-//
-// Stats ride out in a <meta> tag inside the captured HTML and are logged in
-// load_via_webview. They are NOT sent via a new IPC command: LOADER_COMMANDS
-// (src-tauri/src/commands/mod.rs) is a closed allow-list for untrusted loader
-// webviews, and widening it for a throwaway measurement is not worth it.
-// Set __XAGA_INLINE_IMAGES__ to false to disable.
+// Inline remote images as data: URLs before the HTML is captured, so the stored
+// article carries its images locally and rendering it later makes no network
+// request. An image whose host sends no `Access-Control-Allow-Origin` cannot be
+// read (fetch() rejects); those keep their original remote `src` and are
+// neutralised downstream (extract_images -> data-xaga-src). Set
+// __XAGA_INLINE_IMAGES__ to false to disable.
 // ---------------------------------------------------------------------------
 var __XAGA_INLINE_IMAGES__ = true;
 var __XAGA_INLINE_MAX_BYTES__ = 2 * 1024 * 1024;
@@ -45,49 +32,38 @@ function __xagaWithTimeout(promise, ms, onTimeout) {
     ]);
 }
 
-function __xagaFetchAsDataUrl(url, stats) {
+// Fetches an image and returns a data: URL, or null if it cannot be read
+// (opaque/CORS-blocked response, HTTP error, non-image, or over the per-image
+// cap). `budget` carries the running total of inlined bytes to enforce the
+// per-load cap. Never throws — a rejection (typically a cross-origin image
+// without permissive CORS headers) resolves to null.
+function __xagaFetchAsDataUrl(url, budget) {
     return fetch(url, { credentials: 'omit', cache: 'force-cache' })
         .then(function(res) {
-            // An opaque response (no-cors fallback) has unreadable bytes.
-            if (res.type === 'opaque') { stats.failedOpaque++; return null; }
-            if (!res.ok) { stats.failedHttp++; return null; }
+            if (res.type === 'opaque' || !res.ok) return null;
             var len = res.headers.get('content-length');
-            if (len && Number(len) > __XAGA_INLINE_MAX_BYTES__) { stats.failedTooBig++; return null; }
+            if (len && Number(len) > __XAGA_INLINE_MAX_BYTES__) return null;
             return res.blob();
         })
         .then(function(blob) {
             if (!blob) return null;
-            if (blob.size > __XAGA_INLINE_MAX_BYTES__) { stats.failedTooBig++; return null; }
-            if (blob.type && blob.type.indexOf('image/') !== 0) { stats.failedNotImage++; return null; }
-            if (stats.bytes + blob.size > __XAGA_INLINE_TOTAL_BYTES__) { stats.failedBudget++; return null; }
+            if (blob.size > __XAGA_INLINE_MAX_BYTES__) return null;
+            if (blob.type && blob.type.indexOf('image/') !== 0) return null;
+            if (budget.bytes + blob.size > __XAGA_INLINE_TOTAL_BYTES__) return null;
             return new Promise(function(resolve) {
                 var reader = new FileReader();
-                reader.onload = function() { stats.bytes += blob.size; resolve(reader.result); };
-                reader.onerror = function() { stats.failedRead++; resolve(null); };
+                reader.onload = function() { budget.bytes += blob.size; resolve(reader.result); };
+                reader.onerror = function() { resolve(null); };
                 reader.readAsDataURL(blob);
             });
         })
-        .catch(function(e) {
-            // A cross-origin image without permissive CORS headers lands here as
-            // a TypeError. Network errors are indistinguishable from this side.
-            stats.failedFetch++;
-            stats.errors[e && e.name ? e.name : 'Error'] =
-                (stats.errors[e && e.name ? e.name : 'Error'] || 0) + 1;
-            return null;
-        });
+        .catch(function() { return null; });
 }
 
 function __xagaInlineImages() {
-    var stats = {
-        total: 0, inlined: 0, sameOrigin: 0, alreadyData: 0,
-        failedFetch: 0, failedOpaque: 0, failedHttp: 0, failedTooBig: 0,
-        failedNotImage: 0, failedRead: 0, failedBudget: 0, failedTimeout: 0,
-        withSrcset: 0, cssBackgrounds: 0, bytes: 0, errors: {}, elapsedMs: 0
-    };
+    if (!__XAGA_INLINE_IMAGES__) return Promise.resolve();
 
-    if (!__XAGA_INLINE_IMAGES__) return Promise.resolve(stats);
-
-    var started = Date.now();
+    var budget = { bytes: 0 };
     var imgs = [];
     var all = document.images ? [].slice.call(document.images) : [];
 
@@ -95,22 +71,10 @@ function __xagaInlineImages() {
         var img = all[i];
         var src = img.currentSrc || img.src || '';
         if (!src) continue;
-        stats.total++;
-        if (src.indexOf('data:') === 0) { stats.alreadyData++; continue; }
+        if (src.indexOf('data:') === 0) continue;
         if (!/^https?:/i.test(src)) continue;
-        if (img.getAttribute('srcset') || img.getAttribute('sizes')) stats.withSrcset++;
         imgs.push(img);
     }
-
-    // Count CSS background images too — a second copy of the same channel that
-    // rewriting <img> does not touch. Counted only, not inlined.
-    try {
-        var els = document.querySelectorAll('*');
-        for (var k = 0; k < els.length; k++) {
-            var bg = els[k].style && els[k].style.backgroundImage;
-            if (bg && bg.indexOf('url(') !== -1 && bg.indexOf('data:') === -1) stats.cssBackgrounds++;
-        }
-    } catch (e) {}
 
     var cursor = 0;
     function worker() {
@@ -118,18 +82,16 @@ function __xagaInlineImages() {
         var img = imgs[cursor++];
         var src = img.currentSrc || img.src;
         return __xagaWithTimeout(
-            __xagaFetchAsDataUrl(src, stats),
+            __xagaFetchAsDataUrl(src, budget),
             __XAGA_INLINE_PER_IMAGE_MS__,
-            '__timeout__'
+            null
         ).then(function(dataUrl) {
-            if (dataUrl === '__timeout__') { stats.failedTimeout++; return; }
             if (!dataUrl) return;
             img.setAttribute('src', dataUrl);
             // srcset would let the renderer pick a remote candidate anyway.
             img.removeAttribute('srcset');
             img.removeAttribute('sizes');
             img.removeAttribute('loading');
-            stats.inlined++;
         }).catch(function() {}).then(worker);
     }
 
@@ -137,17 +99,7 @@ function __xagaInlineImages() {
     for (var w = 0; w < Math.min(__XAGA_INLINE_CONCURRENCY__, imgs.length); w++) pool.push(worker());
 
     return __xagaWithTimeout(Promise.all(pool), __XAGA_INLINE_OVERALL_MS__, null)
-        .catch(function() {})
-        .then(function() {
-            stats.elapsedMs = Date.now() - started;
-            try {
-                var meta = document.createElement('meta');
-                meta.setAttribute('name', 'xaga-inline-stats');
-                meta.setAttribute('content', JSON.stringify(stats));
-                (document.head || document.documentElement).appendChild(meta);
-            } catch (e) {}
-            return stats;
-        });
+        .catch(function() {});
 }
 
 window.addEventListener('beforeunload', function() {

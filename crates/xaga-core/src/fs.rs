@@ -312,6 +312,35 @@ mod tests {
         assert_eq!(outcome, WalkOutcome::Unreadable);
     }
 
+    #[tokio::test]
+    async fn walk_stays_enumerated_with_stray_non_md_files() {
+        // Baseline for the entry-image feature: files that are not the requested
+        // extension — stored images, and `write_atomic`'s `.tmp` leftovers — must
+        // be filtered out by extension BEFORE any read, so they neither get
+        // visited nor degrade the outcome. Contrast with the oversize-`.md` case
+        // above, which is deliberately `Unreadable`. If this ever flips to
+        // `Unreadable`, a stray file could suppress recovery's absence-deletes.
+        let tmp = tempfile::tempdir().unwrap();
+        tokio::fs::write(tmp.path().join("ok.md"), b"---\ntitle: T\n---\n\nx\n")
+            .await
+            .unwrap();
+        // Non-UTF-8 bytes on purpose: these must never reach `read_to_string`.
+        tokio::fs::write(tmp.path().join("photo.jpg"), [0xFF, 0xD8, 0xFF, 0x00])
+            .await
+            .unwrap();
+        tokio::fs::write(tmp.path().join("chart.png"), [0x89, b'P', b'N', b'G'])
+            .await
+            .unwrap();
+        tokio::fs::write(tmp.path().join("ok.md.1234.0.tmp"), b"partial")
+            .await
+            .unwrap();
+
+        let mut seen = 0usize;
+        let outcome = for_each_file(tmp.path(), "md", |_, _| seen += 1).await;
+        assert_eq!(seen, 1);
+        assert_eq!(outcome, WalkOutcome::Enumerated);
+    }
+
     #[test]
     fn replace_dir_atomic_creates_dest_and_consumes_staging() {
         let tmp = tempfile::tempdir().unwrap();

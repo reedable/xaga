@@ -27,7 +27,9 @@ import {
   buildEntryHtml,
   type HtmlReaderStyle,
 } from "../../text/buildEntryHtml";
+import { inlineEntryImages } from "../../text/inlineEntryImages";
 import { markdownToHtml } from "../../text/markdownPipeline";
+import { usePlatform } from "../../platform/Platform";
 import cx from "../../utils/cx";
 import { FONT_FAMILY_CSS } from "../../utils/FontFamily";
 import Logger from "../../utils/Logger";
@@ -58,6 +60,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       htmlReaderLineHeight,
     } = useAppearance();
 
+    const platform = usePlatform();
     const [abort, abortControllerRef] = useAbortController();
     const [title, setTitle] = useState<string | null>(null);
     const [summaryHtml, setSummaryHtml] = useState<string | null>(null);
@@ -91,6 +94,13 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
         htmlReaderFontSize,
         htmlReaderLineHeight,
       ]
+    );
+
+    // Resolve an entry's stored `../images/…` references to data: URIs at render.
+    const resolveEntryImages = useCallback(
+      (id: string, refs: string[]) =>
+        platform.readEntryImages(abortControllerRef.current.signal, id, refs),
+      [platform, abortControllerRef]
     );
 
     const {
@@ -145,12 +155,18 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
         }
 
         const html = await markdownToHtml(article.content);
-        setContentHtml(buildEntryHtml(html, htmlReaderStyle));
+        const inlined = await inlineEntryImages(
+          html,
+          article.id,
+          resolveEntryImages
+        );
+        setContentHtml(buildEntryHtml(inlined, htmlReaderStyle));
       },
       [
         findArticleByUrl,
         htmlReaderStyle,
         loadArticle,
+        resolveEntryImages,
         setAnnotationsFromArticle,
         url,
       ]
@@ -171,13 +187,21 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
       if (article.content) {
         const html = await markdownToHtml(article.content);
-        if (html) setContentHtml(buildEntryHtml(html, htmlReaderStyle));
+        if (html) {
+          const inlined = await inlineEntryImages(
+            html,
+            article.id,
+            resolveEntryImages
+          );
+          setContentHtml(buildEntryHtml(inlined, htmlReaderStyle));
+        }
       }
     }, [
       entryId,
       htmlReaderStyle,
       pendingUpdate,
       readEntry,
+      resolveEntryImages,
       saveExtractedArticle,
       setAnnotationsFromArticle,
     ]);

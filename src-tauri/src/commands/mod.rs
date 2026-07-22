@@ -118,6 +118,7 @@ mod tests {
         assert!(is_invoke_allowed("loader-7", "capture_and_close_loader"));
         // Loader content must not reach the main command surface.
         assert!(!is_invoke_allowed("loader-7", "read_article"));
+        assert!(!is_invoke_allowed("loader-7", "read_entry_images"));
         assert!(!is_invoke_allowed("loader-7", "set_library"));
         assert!(!is_invoke_allowed("loader-7", "get_library"));
     }

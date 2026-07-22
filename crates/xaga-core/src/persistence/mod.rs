@@ -7,6 +7,7 @@ pub mod articles;
 pub mod bookmarks;
 pub mod entries;
 pub mod feeds;
+pub mod images;
 pub mod opml;
 pub mod topics;
 pub(crate) mod walk;

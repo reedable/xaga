@@ -194,32 +194,8 @@ pub async fn load_via_webview(
     }
 
     match result {
-        Ok(Ok((mime_type, html))) => {
-            log_inline_stats(url, &html);
-            Ok((mime_type, html))
-        }
+        Ok(Ok((mime_type, html))) => Ok((mime_type, html)),
         Ok(Err(_)) => Err("channel closed before HTML was received".to_string()),
         Err(_) => Err("timed out waiting for page to load".to_string()),
     }
-}
-
-/// EXPERIMENT (measurement only): surface the image-inlining stats that
-/// `article_loader.js` embeds as `<meta name="xaga-inline-stats">`.
-///
-/// The stats ride inside the captured HTML rather than arriving over IPC on
-/// purpose: `commands::LOADER_COMMANDS` is a closed allow-list for untrusted
-/// loader webviews, and this measurement is not worth widening it. The content
-/// is attacker-influenced (any page can inject a meta tag with this name), so it
-/// is only ever logged — never parsed into a decision — and is truncated.
-fn log_inline_stats(url: &str, html: &str) {
-    const MARKER: &str = r#"name="xaga-inline-stats" content=""#;
-    let Some(start) = html.find(MARKER) else {
-        return;
-    };
-    let rest = &html[start + MARKER.len()..];
-    let Some(end) = rest.find('"') else {
-        return;
-    };
-    let raw: String = rest[..end].chars().take(600).collect();
-    log::info!("inline-images stats for {url}: {raw}");
 }

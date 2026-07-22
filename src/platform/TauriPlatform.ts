@@ -71,6 +71,10 @@ const EntrySchema = ItemSchema.extend({
   color: z.string().nullable().optional(),
 });
 
+// read_entry_images returns a positional array aligned with the requested refs:
+// a resolved `data:` URI, or null where the reference did not resolve.
+const ReadEntryImagesSchema = z.array(z.string().nullable());
+
 const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
   return {
     ...toItem(data),
@@ -528,6 +532,22 @@ export class TauriPlatform implements Platform {
 
     const result = await invoker<unknown>("read_article", { id });
     return ArticleSchema.transform(toArticle).parse(result);
+  }
+
+  async readEntryImages(
+    signal: AbortSignal,
+    id: string,
+    refs: string[]
+  ): Promise<(string | null)[]> {
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "read_entry_images" });
+
+    const result = await invoker<(string | null)[]>("read_entry_images", {
+      id,
+      refs,
+    });
+    return ReadEntryImagesSchema.parse(result);
   }
 
   // `__kind` is minted on the way back by ArticleSchema.transform(toArticle)

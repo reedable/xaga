@@ -71,6 +71,15 @@ export interface Platform {
   findArticle(signal: AbortSignal, url: string): Promise<Article | null>;
   saveArticle(signal: AbortSignal, article: Article): Promise<Article>;
   readArticle(signal: AbortSignal, id: string): Promise<Article>;
+  // Resolves an entry's stored `../images/…` references to `data:` URIs for
+  // rendering, index-aligned with `refs`. A `null` at index i means that
+  // reference did not resolve (missing/oversize/foreign) and its `src` should be
+  // left as-is.
+  readEntryImages(
+    signal: AbortSignal,
+    id: string,
+    refs: string[]
+  ): Promise<(string | null)[]>;
   // `__kind` is minted at the boundary (toArticle), not caller-supplied,
   // so it's omitted from the input. Tactical fix — see TECH_DEBT.md
   // "Frontend type branding (`__kind`)".

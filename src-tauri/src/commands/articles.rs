@@ -373,6 +373,32 @@ pub async fn read_article(id: String, state: State<'_, AppState>) -> Result<Arti
     Ok(article)
 }
 
+/// Cap on how many image references one call may request, bounding the IPC
+/// response. Refs past this are answered `None` without touching disk.
+const MAX_IMAGE_REFS_PER_CALL: usize = 256;
+
+/// Resolves an article's stored image references to `data:` URIs for rendering,
+/// index-aligned with `refs`. A reference that is not a well-formed
+/// `../images/<id>/<file>` for this entry, or whose file is missing/oversize,
+/// resolves to `null` — a bad reference is data, not a fault, so the reader
+/// simply leaves that image's `src` untouched.
+///
+/// NOT in `WRITE_COMMANDS` (it only reads, so it must work on a read-only
+/// instance) and NOT in `LOADER_COMMANDS` (loader webviews render untrusted
+/// remote content and must never read library files).
+#[tauri::command]
+pub async fn read_entry_images(
+    id: String,
+    refs: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<Option<String>>, AppError> {
+    if refs.len() > MAX_IMAGE_REFS_PER_CALL {
+        return Ok(vec![None; refs.len()]);
+    }
+    let data_dir = state.library_path();
+    Ok(xaga_core::persistence::images::read_entry_images(&data_dir, &id, &refs).await)
+}
+
 #[tauri::command]
 pub async fn add_annotation(
     article_id: String,
