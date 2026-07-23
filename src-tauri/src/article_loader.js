@@ -2,28 +2,28 @@ window.open = function() { return null; };
 window.focus = function() {};
 
 // ---------------------------------------------------------------------------
-// Inline remote images as data: URLs before the HTML is captured, so the stored
+// Fetch remote images as data: URLs before the HTML is captured, so the stored
 // article carries its images locally and rendering it later makes no network
 // request. An image whose host sends no `Access-Control-Allow-Origin` cannot be
 // read (fetch() rejects); those keep their original remote `src` and are
 // neutralised downstream (extract_images -> data-xaga-src). Set
-// __XAGA_INLINE_IMAGES__ to false to disable.
+// __XAGA_FETCH_IMAGES__ to false to disable.
 // ---------------------------------------------------------------------------
-var __XAGA_INLINE_IMAGES__ = true;
-var __XAGA_INLINE_MAX_BYTES__ = 2 * 1024 * 1024;
-var __XAGA_INLINE_TOTAL_BYTES__ = 24 * 1024 * 1024;
-var __XAGA_INLINE_CONCURRENCY__ = 6;
+var __XAGA_FETCH_IMAGES__ = true;
+var __XAGA_IMAGE_MAX_BYTES__ = 2 * 1024 * 1024;
+var __XAGA_IMAGE_TOTAL_BYTES__ = 24 * 1024 * 1024;
+var __XAGA_IMAGE_CONCURRENCY__ = 6;
 
 // The Rust side aborts the whole load after __LOADER_TIMEOUT_MS__
 // (DEFAULT_LOADER_TIMEOUT_SECS = 10s), and that budget must also cover the page
-// load itself. Inlining therefore gets a fraction of what remains, never a fixed
+// load itself. Fetching therefore gets a fraction of what remains, never a fixed
 // figure — overrunning it does not merely skip images, it fails the article.
 var __XAGA_LOADER_BUDGET_MS__ =
     typeof window.__LOADER_TIMEOUT_MS__ === 'number' && window.__LOADER_TIMEOUT_MS__ > 0
         ? window.__LOADER_TIMEOUT_MS__
         : 10000;
-var __XAGA_INLINE_OVERALL_MS__ = Math.max(1500, Math.floor(__XAGA_LOADER_BUDGET_MS__ * 0.45));
-var __XAGA_INLINE_PER_IMAGE_MS__ = Math.max(750, Math.floor(__XAGA_INLINE_OVERALL_MS__ / 3));
+var __XAGA_IMAGE_OVERALL_MS__ = Math.max(1500, Math.floor(__XAGA_LOADER_BUDGET_MS__ * 0.45));
+var __XAGA_IMAGE_PER_IMAGE_MS__ = Math.max(750, Math.floor(__XAGA_IMAGE_OVERALL_MS__ / 3));
 
 function __xagaWithTimeout(promise, ms, onTimeout) {
     return Promise.race([
@@ -34,7 +34,7 @@ function __xagaWithTimeout(promise, ms, onTimeout) {
 
 // Fetches an image and returns a data: URL, or null if it cannot be read
 // (opaque/CORS-blocked response, HTTP error, non-image, or over the per-image
-// cap). `budget` carries the running total of inlined bytes to enforce the
+// cap). `budget` carries the running total of fetched bytes to enforce the
 // per-load cap. Never throws — a rejection (typically a cross-origin image
 // without permissive CORS headers) resolves to null.
 function __xagaFetchAsDataUrl(url, budget) {
@@ -42,14 +42,14 @@ function __xagaFetchAsDataUrl(url, budget) {
         .then(function(res) {
             if (res.type === 'opaque' || !res.ok) return null;
             var len = res.headers.get('content-length');
-            if (len && Number(len) > __XAGA_INLINE_MAX_BYTES__) return null;
+            if (len && Number(len) > __XAGA_IMAGE_MAX_BYTES__) return null;
             return res.blob();
         })
         .then(function(blob) {
             if (!blob) return null;
-            if (blob.size > __XAGA_INLINE_MAX_BYTES__) return null;
+            if (blob.size > __XAGA_IMAGE_MAX_BYTES__) return null;
             if (blob.type && blob.type.indexOf('image/') !== 0) return null;
-            if (budget.bytes + blob.size > __XAGA_INLINE_TOTAL_BYTES__) return null;
+            if (budget.bytes + blob.size > __XAGA_IMAGE_TOTAL_BYTES__) return null;
             return new Promise(function(resolve) {
                 var reader = new FileReader();
                 reader.onload = function() { budget.bytes += blob.size; resolve(reader.result); };
@@ -60,8 +60,8 @@ function __xagaFetchAsDataUrl(url, budget) {
         .catch(function() { return null; });
 }
 
-function __xagaInlineImages() {
-    if (!__XAGA_INLINE_IMAGES__) return Promise.resolve();
+function __xagaFetchImages() {
+    if (!__XAGA_FETCH_IMAGES__) return Promise.resolve();
 
     var budget = { bytes: 0 };
     var imgs = [];
@@ -83,7 +83,7 @@ function __xagaInlineImages() {
         var src = img.currentSrc || img.src;
         return __xagaWithTimeout(
             __xagaFetchAsDataUrl(src, budget),
-            __XAGA_INLINE_PER_IMAGE_MS__,
+            __XAGA_IMAGE_PER_IMAGE_MS__,
             null
         ).then(function(dataUrl) {
             if (!dataUrl) return;
@@ -96,9 +96,9 @@ function __xagaInlineImages() {
     }
 
     var pool = [];
-    for (var w = 0; w < Math.min(__XAGA_INLINE_CONCURRENCY__, imgs.length); w++) pool.push(worker());
+    for (var w = 0; w < Math.min(__XAGA_IMAGE_CONCURRENCY__, imgs.length); w++) pool.push(worker());
 
-    return __xagaWithTimeout(Promise.all(pool), __XAGA_INLINE_OVERALL_MS__, null)
+    return __xagaWithTimeout(Promise.all(pool), __XAGA_IMAGE_OVERALL_MS__, null)
         .catch(function() {});
 }
 
@@ -122,7 +122,7 @@ window.__captureAndClose = function() {
         });
         return;
     }
-    __xagaInlineImages().then(function() {
+    __xagaFetchImages().then(function() {
         window.__TAURI_INTERNALS__.invoke('capture_and_close_loader', {
             label: window.__LOADER_LABEL__,
             html: document.documentElement.outerHTML,
@@ -162,9 +162,9 @@ window.addEventListener('load', function() {
             } catch(e) {}
             return;
         }
-        // Inline before serialising. The observer is already disconnected, so
+        // Fetch before serialising. The observer is already disconnected, so
         // rewriting src attributes cannot retrigger the debounce.
-        __xagaInlineImages().then(function() {
+        __xagaFetchImages().then(function() {
             var html = document.documentElement.outerHTML;
             try {
                 window.__TAURI_INTERNALS__.invoke('receive_html', {

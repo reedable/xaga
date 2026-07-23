@@ -4,7 +4,7 @@ import { processEntry } from "./entryWorker";
 // `processEntry` is the ingestion boundary: loader-captured article HTML is
 // sanitized and converted to markdown, and markdown is what gets persisted
 // (`save_article` takes `markdown`, not HTML). Anything an upstream step writes
-// into the HTML — e.g. images inlined as data URLs inside the loader webview —
+// into the HTML — e.g. images fetched as data URLs inside the loader webview —
 // only reaches the reader if it survives this conversion.
 
 /** Readability needs a substantial body before it will extract anything. */
@@ -27,7 +27,7 @@ describe("processEntry — image URLs across the HTML→markdown boundary", () =
   it("carries data: image sources through to markdown", async () => {
     const { markdown } = await processEntry(
       "https://site.test/a",
-      articleHtml(`<img src="${DATA_URI}" alt="inline">`)
+      articleHtml(`<img src="${DATA_URI}" alt="photo">`)
     );
     expect(markdown).toContain(DATA_URI);
   });

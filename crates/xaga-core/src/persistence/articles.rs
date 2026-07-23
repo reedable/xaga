@@ -63,7 +63,7 @@ pub(crate) async fn save_article(
         (chrono::Utc::now().to_rfc3339(), vec![], vec![])
     };
 
-    // Move any inlined (`data:`) images out of the body into per-entry files and
+    // Move any `data:` images out of the body into per-entry files and
     // neutralise remote images, so the stored body is text-only. Images are
     // written BEFORE the `.md` below, so a committed `../images/…` reference
     // always has durable bytes behind it (see docs/architecture/crash_consistency.md).

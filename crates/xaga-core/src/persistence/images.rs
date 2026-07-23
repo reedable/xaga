@@ -1,7 +1,7 @@
-//! Entry image assets: extracting inlined images out of an entry's markdown
+//! Entry image assets: extracting `data:` images out of an entry's markdown
 //! body into per-entry files, and reading them back as `data:` URIs.
 //!
-//! The article loader inlines remote images as `data:` URIs before capture, so
+//! The article loader fetches remote images as `data:` URIs before capture, so
 //! the markdown handed to `save_article` can carry base64 image payloads. Two
 //! reasons those must not stay in the body: `article_embed_text`
 //! (`embeddings/row.rs`) falls back to the body when an entry has no summary, so
@@ -10,7 +10,7 @@
 //!
 //! [`extract_images`] rewrites the body — image bytes move to files under
 //! `library::entry_images_dir`, referenced by a relative `../images/<id>/<hash>`
-//! path; images that failed to inline (still `http(s):`) are neutralised to
+//! path; images that failed to fetch (still `http(s):`) are neutralised to
 //! `<img … data-xaga-src>` so they carry no `src` and fetch nothing. The scan
 //! is a targeted, fail-safe span replacement, never a markdown round-trip:
 //! anything it cannot parse with certainty is left byte-for-byte untouched, so a
@@ -26,7 +26,7 @@ use sha2::{Digest, Sha256};
 use crate::library_writer::WriteToken;
 
 /// Per-save cap on the total decoded image bytes extracted from one body,
-/// mirroring the loader's own `__XAGA_INLINE_TOTAL_BYTES__` budget. Images past
+/// mirroring the loader's own `__XAGA_IMAGE_TOTAL_BYTES__` budget. Images past
 /// this are dropped (alt text kept), never written.
 pub(crate) const MAX_ENTRY_IMAGE_BYTES: usize = 24 * 1024 * 1024;
 
@@ -99,7 +99,7 @@ pub(crate) fn image_hash12(bytes: &[u8]) -> String {
 /// Classification of a markdown image's destination URL.
 enum Dest<'a> {
     /// A base64 `data:` URI with an allowlisted image media type.
-    InlineImage { ext: &'static str, payload: &'a str },
+    DataImage { ext: &'static str, payload: &'a str },
     /// A `data:` URI we will not persist (unknown media type, or not base64).
     DropData,
     /// A remote reference to neutralise into `data-xaga-src`.
@@ -116,7 +116,7 @@ fn classify(url: &str) -> Dest<'_> {
         if let Some((meta, payload)) = rest.split_once(',') {
             if let Some(media_type) = meta.strip_suffix(";base64") {
                 if let Some(ext) = ext_for_media_type(media_type) {
-                    return Dest::InlineImage { ext, payload };
+                    return Dest::DataImage { ext, payload };
                 }
             }
         }
@@ -284,8 +284,8 @@ fn next_image(markdown: &str, from: usize) -> Option<ImageMatch<'_>> {
     None
 }
 
-/// Rewrites `markdown` so no image reference carries a remote or inline-data
-/// `src`: inlined `data:` images become files referenced by `../images/<id>/…`,
+/// Rewrites `markdown` so no image reference carries a remote or `data:`
+/// `src`: `data:` images become files referenced by `../images/<id>/…`,
 /// unsupported/undecodable `data:` images are dropped to their alt text, and
 /// remote images are neutralised to `<img … data-xaga-src>`. Every byte outside
 /// a recognised image reference is preserved exactly.
@@ -309,7 +309,7 @@ pub(crate) fn extract_images(id: &str, markdown: &str) -> Extraction {
         out.push_str(&markdown[cursor..m.span.start]);
 
         match classify(m.url_raw) {
-            Dest::InlineImage { ext, payload } => {
+            Dest::DataImage { ext, payload } => {
                 match engine.decode(payload.trim()) {
                     Ok(bytes) if budget_used + bytes.len() <= MAX_ENTRY_IMAGE_BYTES => {
                         budget_used += bytes.len();
@@ -537,7 +537,7 @@ mod tests {
     }
 
     #[test]
-    fn inlines_data_image_to_file_and_keeps_alt() {
+    fn stores_data_image_to_file_and_keeps_alt() {
         let md = format!("before ![a cat]({PNG_DATA}) after");
         let out = extract_images("entry1", &md);
         assert_eq!(out.images.len(), 1);
