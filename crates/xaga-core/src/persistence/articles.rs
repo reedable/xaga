@@ -36,6 +36,7 @@ pub(crate) async fn save_article(
     summary: Option<&str>,
     favicon: Option<&str>,
     markdown: &str,
+    url_data: &std::collections::HashMap<String, String>,
     token: WriteToken,
 ) -> Result<Article, EntryError> {
     if !crate::persistence::entries::is_safe_id(id) {
@@ -63,12 +64,20 @@ pub(crate) async fn save_article(
         (chrono::Utc::now().to_rfc3339(), vec![], vec![])
     };
 
-    // Move any `data:` images out of the body into per-entry files and
-    // neutralise remote images, so the stored body is text-only. Images are
-    // written BEFORE the `.md` below, so a committed `../images/…` reference
-    // always has durable bytes behind it (see docs/architecture/crash_consistency.md).
-    let extraction = crate::persistence::images::extract_images(id, markdown);
+    // Rewrite every remote image reference to its ext-less local ref
+    // `../images/<id>/<hash>`, writing files for the URLs whose bytes `url_data`
+    // supplied. Images are written BEFORE the `.md` below, so a committed
+    // reference with a file behind it always has durable bytes (see
+    // docs/architecture/crash_consistency.md). The `hash → url` map is stored in
+    // frontmatter — the only place the remote URL survives.
+    let extraction = crate::persistence::images::extract_images(id, markdown, url_data);
     crate::persistence::images::write_entry_images(library_dir, id, &extraction.images, token).await;
+
+    let images: Vec<crate::types::ImageRef> = extraction
+        .url_map
+        .into_iter()
+        .map(|(hash, url)| crate::types::ImageRef { hash, url })
+        .collect();
 
     let article = Article {
         meta: Entry {
@@ -86,17 +95,19 @@ pub(crate) async fn save_article(
         content: extraction.body,
         annotations: with_reference(existing_annotations, id),
         favicon: favicon.map(str::to_string),
+        images,
     };
     crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
 
-    // Sweep image files this entry no longer references — including any left by a
-    // prior save. Keeps every name the committed body references (not only those
-    // that landed this round), so a write that failed this save is not deleted
-    // out from under a body that still points at it. Best-effort; never fails the save.
-    let keep: std::collections::HashSet<String> = extraction
+    // Sweep image files this entry's body no longer references. Keeps files whose
+    // hash the committed body still points at (matched by file stem, since the
+    // ref is ext-less and the file is `<hash>.<ext>`), so a previously-fetched
+    // image that is still referenced but not re-fetched this save is preserved.
+    // Best-effort; never fails the save.
+    let keep: std::collections::HashSet<String> = article
         .images
-        .into_iter()
-        .map(|img| img.file_name)
+        .iter()
+        .map(|img| img.hash.clone())
         .collect();
     crate::persistence::images::gc_entry_images(library_dir, id, &keep, token).await;
 
@@ -260,10 +271,19 @@ mod tests {
     const PNG_DATA: &str =
         "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
 
+    fn no_data() -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+
+    fn data(url: &str, data_uri: &str) -> std::collections::HashMap<String, String> {
+        std::iter::once((url.to_string(), data_uri.to_string())).collect()
+    }
+
     #[tokio::test]
-    async fn save_article_extracts_images_and_body_is_text_only() {
+    async fn save_article_stores_images_and_body_is_local_refs() {
         let dir = tempfile::tempdir().unwrap();
         let lib = dir.path();
+        let url = "https://example.com/p.png";
         save_article(
             lib,
             "abcdef123456",
@@ -273,20 +293,26 @@ mod tests {
             None,
             None,
             None,
-            &format!("intro ![a cat]({PNG_DATA}) outro"),
+            &format!("intro ![a cat]({url}) outro"),
+            &data(url, PNG_DATA),
             WriteToken::for_test(),
         )
         .await
         .unwrap();
 
-        // The re-read body references a file, holds no base64, and the file exists.
         let article = read_article(lib, "abcdef123456").await.unwrap();
-        assert!(article.content.contains("../images/abcdef123456/"));
+        let hash = crate::persistence::images::image_url_hash(url);
+        // Body is a local ref; no remote URL and no base64 survive.
+        assert!(article
+            .content
+            .contains(&format!("../images/abcdef123456/{hash}")));
+        assert!(!article.content.contains("http"));
         assert!(!article.content.contains("base64"));
-
+        // Frontmatter map retained the URL, and the file was written.
+        assert_eq!(article.images.len(), 1);
+        assert_eq!(article.images[0].url, url);
         let images_dir = crate::library::entry_images_dir(lib, "abcdef123456");
-        let count = std::fs::read_dir(&images_dir).unwrap().count();
-        assert_eq!(count, 1);
+        assert_eq!(std::fs::read_dir(&images_dir).unwrap().count(), 1);
     }
 
     #[tokio::test]
@@ -294,22 +320,23 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let lib = dir.path();
         let id = "abcdef123456";
+        let url_a = "https://example.com/a.png";
+        let url_b = "https://example.com/b.svg";
         let svg = "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=";
 
-        // First save: one PNG.
         save_article(
             lib, id, "https://example.com/a", "T", None, None, None, None,
-            &format!("![a]({PNG_DATA})"), WriteToken::for_test(),
+            &format!("![a]({url_a})"), &data(url_a, PNG_DATA), WriteToken::for_test(),
         )
         .await
         .unwrap();
         let images_dir = crate::library::entry_images_dir(lib, id);
         assert_eq!(std::fs::read_dir(&images_dir).unwrap().count(), 1);
 
-        // Re-save with a different image: the PNG is swept, only the SVG remains.
+        // Re-save referencing a different image: the first file is swept.
         save_article(
             lib, id, "https://example.com/a", "T", None, None, None, None,
-            &format!("![b]({svg})"), WriteToken::for_test(),
+            &format!("![b]({url_b})"), &data(url_b, svg), WriteToken::for_test(),
         )
         .await
         .unwrap();
@@ -322,19 +349,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn save_article_broken_ref_when_bytes_absent_but_url_mapped() {
+        // A failed fetch: no bytes → no file, body has a broken local ref, and the
+        // URL is retained in the frontmatter map for recovery.
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        let url = "https://example.com/missing.png";
+        save_article(
+            lib, "abcdef123456", "https://example.com/a", "T", None, None, None, None,
+            &format!("![x]({url})"), &no_data(), WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        let article = read_article(lib, "abcdef123456").await.unwrap();
+        let hash = crate::persistence::images::image_url_hash(url);
+        assert!(article
+            .content
+            .contains(&format!("../images/abcdef123456/{hash}")));
+        assert_eq!(article.images.len(), 1);
+        assert_eq!(article.images[0].url, url);
+        // No file was written.
+        let images_dir = crate::library::entry_images_dir(lib, "abcdef123456");
+        assert!(std::fs::read_dir(&images_dir).map(|d| d.count()).unwrap_or(0) == 0);
+    }
+
+    #[tokio::test]
     async fn save_article_leaves_an_image_free_body_unchanged() {
         let dir = tempfile::tempdir().unwrap();
         let lib = dir.path();
         let body = "# Heading\n\nProse with a [link](https://x.test/) only.\n";
         save_article(
             lib, "abcdef123456", "https://example.com/a", "T", None, None, None, None,
-            body, WriteToken::for_test(),
+            body, &no_data(), WriteToken::for_test(),
         )
         .await
         .unwrap();
         let article = read_article(lib, "abcdef123456").await.unwrap();
         assert_eq!(article.content, body.trim_end());
-        // No image directory is created for an image-free entry.
+        assert!(article.images.is_empty());
         assert!(!crate::library::entry_images_dir(lib, "abcdef123456").exists());
     }
 
@@ -352,6 +404,7 @@ mod tests {
             None,
             None,
             "body",
+            &no_data(),
             WriteToken::for_test(),
         )
         .await
@@ -405,6 +458,7 @@ mod tests {
             None,
             None,
             "body",
+            &no_data(),
             WriteToken::for_test(),
         )
         .await
@@ -455,6 +509,7 @@ mod tests {
             None,
             None,
             "body",
+            &no_data(),
             WriteToken::for_test(),
         )
         .await
@@ -484,6 +539,7 @@ fn article_from_fm(
     favicon: Option<String>,
     body: String,
 ) -> Article {
+    let images = fm.images.clone();
     Article {
         meta: md_to_entry(Markdown {
             id: article_id.to_string(),
@@ -493,5 +549,6 @@ fn article_from_fm(
         content: body,
         annotations: with_reference(annotations, article_id),
         favicon,
+        images,
     }
 }

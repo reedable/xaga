@@ -104,31 +104,36 @@ pub fn entry_image_path(library_dir: &Path, id: &str, file_name: &str) -> PathBu
 }
 
 /// The reference form written into an entry's markdown body:
-/// `../images/<id>/<file_name>`, relative to the entry `.md` in `entries/`, so
-/// the document resolves the image in any markdown editor. Built here and
-/// nowhere else — the layout literal must not be re-encoded by callers.
+/// `../images/<id>/<hash>`, relative to the entry `.md` in `entries/`.
+///
+/// Extension-agnostic on purpose: the `hash` is the url-hash, while the actual
+/// file on disk is `<hash>.<ext>` (the extension comes from the fetched media
+/// type, unknown for a failed fetch). Keeping the body ref ext-less means a
+/// failed image and a fetched one share the same ref shape, and recovery can
+/// drop in `<hash>.<ext>` later without rewriting the body. The file is located
+/// from this hash at read time. Built here and nowhere else.
 #[inline]
-pub fn entry_image_ref(id: &str, file_name: &str) -> String {
-    format!("../{IMAGES_SUBDIR}/{id}/{file_name}")
+pub fn entry_image_ref(id: &str, hash: &str) -> String {
+    format!("../{IMAGES_SUBDIR}/{id}/{hash}")
 }
 
 /// Inverse of [`entry_image_ref`], and the read-path traversal guard. Parses a
-/// body reference back to `(id, file_name)`, returning `None` unless it has the
-/// exact `../images/<id>/<file_name>` shape and both components are safe single
-/// path segments (no separators, `..`, or NUL). Anything else — an absolute
-/// URL, a differently-shaped relative path, an attempted traversal — yields
-/// `None` and is left untouched by the reader.
+/// body reference back to `(id, hash)`, returning `None` unless it has the exact
+/// `../images/<id>/<hash>` shape and both components are safe single path
+/// segments (no separators, `..`, or NUL). Anything else — an absolute URL, a
+/// differently-shaped relative path, an attempted traversal — yields `None` and
+/// is left untouched by the reader.
 pub fn parse_entry_image_ref(reference: &str) -> Option<(&str, &str)> {
     let tail = reference.strip_prefix("../")?.strip_prefix(IMAGES_SUBDIR)?;
     let tail = tail.strip_prefix('/')?;
-    let (id, file_name) = tail.split_once('/')?;
-    if file_name.contains('/') {
+    let (id, hash) = tail.split_once('/')?;
+    if hash.contains('/') {
         return None;
     }
     if crate::persistence::entries::is_safe_id(id)
-        && crate::persistence::entries::is_safe_id(file_name)
+        && crate::persistence::entries::is_safe_id(hash)
     {
-        Some((id, file_name))
+        Some((id, hash))
     } else {
         None
     }
@@ -155,11 +160,12 @@ mod tests {
 
     #[test]
     fn image_ref_round_trips_through_parse() {
-        let reference = entry_image_ref("a3f2c1d0e9b8", "4f2a91c3e0b7.jpg");
-        assert_eq!(reference, "../images/a3f2c1d0e9b8/4f2a91c3e0b7.jpg");
+        // The ref is extension-agnostic: it carries the url-hash, not a filename.
+        let reference = entry_image_ref("a3f2c1d0e9b8", "4f2a91c3e0b7");
+        assert_eq!(reference, "../images/a3f2c1d0e9b8/4f2a91c3e0b7");
         assert_eq!(
             parse_entry_image_ref(&reference),
-            Some(("a3f2c1d0e9b8", "4f2a91c3e0b7.jpg"))
+            Some(("a3f2c1d0e9b8", "4f2a91c3e0b7"))
         );
     }
 

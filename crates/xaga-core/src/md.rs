@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use noyalib::ParserConfig;
 use noyalib::policy::DenyAnchors;
 
-use crate::types::{Annotation, Article, CollectionItem, Entry, Topic};
+use crate::types::{Annotation, Article, CollectionItem, Entry, ImageRef, Topic};
 
 /// The frontmatter parser config. `DenyAnchors` rejects any `&anchor`,
 /// `*alias`, or `<<:` merge key at parse time; `strict()` applies noyalib's
@@ -65,12 +65,14 @@ pub(crate) fn md_to_article(md: Markdown) -> Article {
     let annotations = md.fm.annotations.clone();
     let content = md.body.clone();
     let favicon = md.fm.favicon.clone();
+    let images = md.fm.images.clone();
 
     Article {
         meta: md_to_entry(md),
         annotations: with_reference(annotations, &article_id),
         content,
         favicon,
+        images,
     }
 }
 
@@ -117,6 +119,7 @@ pub struct Frontmatter {
     pub tags: Vec<String>,
     pub favicon: Option<String>,
     pub items: Vec<CollectionItem>,
+    pub images: Vec<ImageRef>,
 }
 
 /// Parses only the header fields from a `---`-delimited document.
@@ -193,6 +196,8 @@ struct FrontmatterRaw {
     favicon: Option<String>,
     #[serde(default)]
     items: Vec<CollectionItem>,
+    #[serde(default)]
+    images: Vec<ImageRef>,
 }
 
 pub(crate) fn split_document(raw: &str) -> Result<(Frontmatter, String), MdError> {
@@ -218,6 +223,7 @@ pub(crate) fn split_document(raw: &str) -> Result<(Frontmatter, String), MdError
             tags: fm.tags,
             favicon: fm.favicon,
             items: fm.items,
+            images: fm.images,
         },
         body,
     ))

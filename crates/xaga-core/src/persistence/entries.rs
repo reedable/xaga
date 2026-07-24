@@ -104,6 +104,8 @@ pub(crate) fn render_entry(article: &Article) -> String {
         tags: &'a [String],
         #[serde(skip_serializing_if = "Option::is_none")]
         favicon: Option<&'a str>,
+        #[serde(skip_serializing_if = "<[_]>::is_empty")]
+        images: &'a [crate::types::ImageRef],
     }
 
     let meta = &article.meta;
@@ -131,6 +133,7 @@ pub(crate) fn render_entry(article: &Article) -> String {
         annotations: article.annotations.iter().map(Into::into).collect(),
         tags: &tags,
         favicon: article.favicon.as_deref(),
+        images: &article.images,
     };
 
     let yaml = noyalib::to_string(&fm).expect("frontmatter serialization is infallible");
@@ -182,6 +185,7 @@ fn entry_article(
         content: String::new(),
         annotations: vec![],
         favicon: None,
+        images: vec![],
     }
 }
 
@@ -315,6 +319,7 @@ pub(crate) async fn set_entry_tags(
         content: body,
         annotations: fm.annotations,
         favicon: fm.favicon,
+        images: fm.images,
     };
     crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
     Ok(article.meta)
@@ -346,6 +351,7 @@ mod tests {
             content: "body".into(),
             annotations: vec![],
             favicon: None,
+            images: vec![],
         };
 
         let rendered = render_entry(&article);

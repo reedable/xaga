@@ -1,23 +1,24 @@
-//! Entry image assets: extracting `data:` images out of an entry's markdown
-//! body into per-entry files, and reading them back as `data:` URIs.
+//! Entry image assets: rewriting an entry body's remote image references to
+//! local files, and reading those files back as `data:` URIs at render.
 //!
-//! The article loader fetches remote images as `data:` URIs before capture, so
-//! the markdown handed to `save_article` can carry base64 image payloads. Two
-//! reasons those must not stay in the body: `article_embed_text`
-//! (`embeddings/row.rs`) falls back to the body when an entry has no summary, so
-//! base64 would become embedding input; and keeping remote URLs in stored
-//! content is the read-time tracking surface this feature removes.
+//! The body handed to `save_article` carries remote image URLs (`![](https://…)`);
+//! `processEntry` supplies a `url → data:` map for the images the loader actually
+//! fetched. [`extract_images`] hashes each remote URL and rewrites the reference
+//! to an extension-agnostic local ref `../images/<id>/<hash>`, writing a file
+//! `<hash>.<ext>` for URLs whose bytes were supplied and leaving a broken local
+//! ref for the rest. Every remote URL is recorded in the returned `hash → url`
+//! map, which the caller stores in frontmatter — the only place the URL survives,
+//! so a broken ref is recoverable. Keeping URLs out of the stored body is the
+//! point: `article_embed_text` (`embeddings/row.rs`) falls back to the body for
+//! embedding when an entry has no summary, and a body full of remote URLs is the
+//! read-time tracking surface this feature removes.
 //!
-//! [`extract_images`] rewrites the body — image bytes move to files under
-//! `library::entry_images_dir`, referenced by a relative `../images/<id>/<hash>`
-//! path; images that failed to fetch (still `http(s):`) are neutralised to
-//! `<img … data-xaga-src>` so they carry no `src` and fetch nothing. The scan
-//! is a targeted, fail-safe span replacement, never a markdown round-trip:
-//! anything it cannot parse with certainty is left byte-for-byte untouched, so a
-//! parse it doesn't understand degrades to today's behaviour rather than
-//! corrupting an irreplaceable body.
+//! The scan is a targeted, fail-safe span replacement, never a markdown
+//! round-trip: anything it cannot parse with certainty is left byte-for-byte
+//! untouched, so a parse it doesn't understand degrades rather than corrupting
+//! an irreplaceable body.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use base64::Engine;
@@ -39,21 +40,28 @@ pub(crate) const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 /// `None`.
 pub(crate) const MAX_READ_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
 
-/// An image decoded out of a body, ready to be written to disk. `file_name`
-/// already carries its content-derived name and extension.
+/// An image decoded out of the caller-supplied `url → data:` map, ready to be
+/// written to disk. `file_name` is `<url-hash>.<ext>` (the extension from the
+/// fetched media type).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ExtractedImage {
     pub file_name: String,
     pub bytes: Vec<u8>,
 }
 
-/// The result of rewriting a body: the new text-only markdown and the images to
-/// persist. `images` is deduplicated by `file_name` (identical bytes appearing
-/// twice yield one file, two references).
+/// The result of rewriting a body:
+/// - `body` — markdown with every remote image reference rewritten to its
+///   extension-agnostic local ref `../images/<id>/<hash>`.
+/// - `images` — the files to write (only for URLs whose bytes were supplied),
+///   deduplicated by `file_name`.
+/// - `url_map` — `(hash, url)` for every remote image, whether or not its bytes
+///   were supplied; this becomes the entry's frontmatter image map and is the
+///   only place the remote URL survives, so a broken local ref is recoverable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Extraction {
     pub body: String,
     pub images: Vec<ExtractedImage>,
+    pub url_map: Vec<(String, String)>,
 }
 
 /// Maps an image media type to the file extension used on disk. The extension
@@ -87,61 +95,44 @@ pub(crate) fn media_type_for_ext(ext: &str) -> Option<&'static str> {
     }
 }
 
-/// First 12 hex chars of the SHA-256 of the bytes — the same compact,
-/// filesystem-safe idiom as `util::url_hash12`, but content-addressed: identical
-/// bytes always yield the same filename, so re-saving an unchanged article
-/// rewrites nothing and duplicate images within one article store once.
-pub(crate) fn image_hash12(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
+/// First 12 hex chars of the SHA-256 of the (raw, unescaped) image URL — the
+/// same compact, filesystem-safe idiom as `util::url_hash12`, but over the image
+/// URL rather than a normalised entry URL. The URL is the identity: the same URL
+/// always names the same file, and the reader recomputes this from the URL to
+/// find the file. Raw (not normalised) because image URLs carry meaningful query
+/// params (`?quality=75`) that a normaliser would strip.
+pub(crate) fn image_url_hash(url: &str) -> String {
+    let digest = Sha256::digest(url.as_bytes());
     hex::encode(digest)[..12].to_string()
 }
 
-/// Classification of a markdown image's destination URL.
-enum Dest<'a> {
-    /// A base64 `data:` URI with an allowlisted image media type.
-    DataImage { ext: &'static str, payload: &'a str },
-    /// A `data:` URI we will not persist (unknown media type, or not base64).
-    DropData,
-    /// A remote reference to neutralise into `data-xaga-src`.
-    Remote,
-    /// Anything else (already-local `../images/…`, other relative paths): leave
-    /// the whole reference untouched.
-    Leave,
+/// Decodes a `data:<media-type>;base64,<payload>` into `(<hash>.<ext>, bytes)`,
+/// or `None` if it is not a base64 image of an allowlisted media type, fails to
+/// decode, or exceeds the per-image cap. The extension comes from the media type.
+fn decode_data_uri(
+    hash: &str,
+    data_uri: &str,
+    engine: &base64::engine::GeneralPurpose,
+) -> Option<ExtractedImage> {
+    let rest = data_uri.strip_prefix("data:")?;
+    let (meta, payload) = rest.split_once(',')?;
+    let media_type = meta.strip_suffix(";base64")?;
+    let ext = ext_for_media_type(media_type)?;
+    let bytes = engine.decode(payload.trim()).ok()?;
+    if bytes.len() > MAX_ENTRY_IMAGE_BYTES {
+        return None;
+    }
+    Some(ExtractedImage {
+        file_name: format!("{hash}.{ext}"),
+        bytes,
+    })
 }
 
-fn classify(url: &str) -> Dest<'_> {
-    if let Some(rest) = url.strip_prefix("data:") {
-        // `data:<media-type>;base64,<payload>`. Only base64 image payloads are
-        // stored; percent-encoded (`data:<mt>,<payload>`) is dropped.
-        if let Some((meta, payload)) = rest.split_once(',') {
-            if let Some(media_type) = meta.strip_suffix(";base64") {
-                if let Some(ext) = ext_for_media_type(media_type) {
-                    return Dest::DataImage { ext, payload };
-                }
-            }
-        }
-        return Dest::DropData;
-    }
+/// Whether a markdown image's destination is a remote URL we localise, or
+/// anything else (an already-local `../images/…` ref, a relative path) we leave.
+fn is_remote(url: &str) -> bool {
     let lower = url.to_ascii_lowercase();
-    if lower.starts_with("http://") || lower.starts_with("https://") {
-        return Dest::Remote;
-    }
-    Dest::Leave
-}
-
-/// Escapes a string for use inside a double-quoted HTML attribute.
-fn html_attr_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            _ => out.push(c),
-        }
-    }
-    out
+    lower.starts_with("http://") || lower.starts_with("https://")
 }
 
 /// Removes markdown backslash-escapes before ASCII punctuation, recovering the
@@ -284,72 +275,81 @@ fn next_image(markdown: &str, from: usize) -> Option<ImageMatch<'_>> {
     None
 }
 
-/// Rewrites `markdown` so no image reference carries a remote or `data:`
-/// `src`: `data:` images become files referenced by `../images/<id>/…`,
-/// unsupported/undecodable `data:` images are dropped to their alt text, and
-/// remote images are neutralised to `<img … data-xaga-src>`. Every byte outside
-/// a recognised image reference is preserved exactly.
-pub(crate) fn extract_images(id: &str, markdown: &str) -> Extraction {
+/// Rewrites `markdown` so every remote image reference becomes an
+/// extension-agnostic local ref `../images/<id>/<hash>`, where `hash` is the
+/// url-hash of the image URL. `url_data` maps a remote image URL to its `data:`
+/// payload (present only for images the loader fetched); a URL found there
+/// yields a file to write, a URL not found there yields a broken local ref that
+/// is still recorded in `url_map` for recovery. Already-local `../images/…` refs
+/// and non-remote references are left byte-for-byte untouched. `url_map` collects
+/// `(hash, url)` for every remote image — the frontmatter map, and the only
+/// place the remote URL is retained.
+pub(crate) fn extract_images(
+    id: &str,
+    markdown: &str,
+    url_data: &std::collections::HashMap<String, String>,
+) -> Extraction {
     // No image syntax at all: nothing to do, return the body unchanged. (This
     // is the common no-op path for image-free entries.)
     if !markdown.contains("![") {
         return Extraction {
             body: markdown.to_string(),
             images: Vec::new(),
+            url_map: Vec::new(),
         };
     }
 
     let engine = base64::engine::general_purpose::STANDARD;
     let mut out = String::with_capacity(markdown.len());
     let mut images: Vec<ExtractedImage> = Vec::new();
-    let mut budget_used: usize = 0;
+    let mut url_map: Vec<(String, String)> = Vec::new();
     let mut cursor = 0usize;
 
     while let Some(m) = next_image(markdown, cursor) {
         out.push_str(&markdown[cursor..m.span.start]);
 
-        match classify(m.url_raw) {
-            Dest::DataImage { ext, payload } => {
-                match engine.decode(payload.trim()) {
-                    Ok(bytes) if budget_used + bytes.len() <= MAX_ENTRY_IMAGE_BYTES => {
-                        budget_used += bytes.len();
-                        let file_name = format!("{}.{ext}", image_hash12(&bytes));
-                        if !images.iter().any(|img| img.file_name == file_name) {
-                            images.push(ExtractedImage {
-                                file_name: file_name.clone(),
-                                bytes,
-                            });
-                        }
-                        // Preserve the alt bytes verbatim — no re-escaping.
-                        out.push_str("![");
-                        out.push_str(m.alt_raw);
-                        out.push_str("](");
-                        out.push_str(&crate::library::entry_image_ref(id, &file_name));
-                        out.push(')');
+        if is_remote(m.url_raw) {
+            // The body carries the markdown-escaped URL; recover the real URL to
+            // hash it and to key `url_data` (whose keys are raw URLs).
+            let url = markdown_unescape(m.url_raw);
+            let hash = image_url_hash(&url);
+
+            if !url_map.iter().any(|(h, _)| h == &hash) {
+                url_map.push((hash.clone(), url.clone()));
+            }
+            // Write a file only when the fetched bytes were supplied for this URL.
+            if let Some(data_uri) = url_data.get(&url) {
+                if let Some(image) = decode_data_uri(&hash, data_uri, &engine) {
+                    if !images.iter().any(|img| img.file_name == image.file_name) {
+                        images.push(image);
                     }
-                    // Undecodable or over budget: drop to alt text, never leave
-                    // base64 in the body.
-                    _ => out.push_str(m.alt_raw),
                 }
             }
-            Dest::DropData => out.push_str(m.alt_raw),
-            Dest::Remote => {
-                let alt = html_attr_escape(&markdown_unescape(m.alt_raw));
-                let url = html_attr_escape(&markdown_unescape(m.url_raw));
-                out.push_str("<img alt=\"");
-                out.push_str(&alt);
-                out.push_str("\" data-xaga-src=\"");
-                out.push_str(&url);
-                out.push_str("\">");
-            }
-            Dest::Leave => out.push_str(&markdown[m.span.clone()]),
+            // Rewrite to the ext-less local ref; preserve the alt bytes verbatim.
+            out.push_str("![");
+            out.push_str(m.alt_raw);
+            out.push_str("](");
+            out.push_str(&crate::library::entry_image_ref(id, &hash));
+            out.push(')');
+        } else if m.url_raw.starts_with("data:") {
+            // A stray `data:` image (an original page data-URI, not one the loader
+            // fetched via a URL — those are restored to their URL before this
+            // runs). Drop it to alt text; never leave base64 in the stored body.
+            out.push_str(m.alt_raw);
+        } else {
+            // Already-local or other non-remote reference: leave untouched.
+            out.push_str(&markdown[m.span.clone()]);
         }
 
         cursor = m.span.end;
     }
     out.push_str(&markdown[cursor..]);
 
-    Extraction { body: out, images }
+    Extraction {
+        body: out,
+        images,
+        url_map,
+    }
 }
 
 // ── Disk I/O ──────────────────────────────────────────────────────────────────
@@ -399,7 +399,9 @@ pub(crate) async fn write_entry_images(
 /// failed GC leaves only benign orphans and must never fail the save. `keep`
 /// deliberately holds every referenced name (not only the ones that landed this
 /// save), so a write that failed this round is not deleted out from under a body
-/// that still references it. Also sweeps `write_atomic`'s `.tmp` leftovers.
+/// that still references it. `keep` holds the referenced url-hashes; a file
+/// `<hash>.<ext>` is kept iff its stem is in `keep`. Also sweeps `write_atomic`'s
+/// `.tmp` leftovers (no matching stem).
 pub(crate) async fn gc_entry_images(
     library_dir: &Path,
     id: &str,
@@ -417,7 +419,9 @@ pub(crate) async fn gc_entry_images(
             Ok(Some(entry)) => {
                 let name = entry.file_name();
                 let name = name.to_string_lossy();
-                if !keep.contains(name.as_ref()) {
+                // The ref is ext-less, so keep by file stem (`<hash>` of `<hash>.<ext>`).
+                let stem = name.rsplit_once('.').map(|(s, _)| s).unwrap_or(name.as_ref());
+                if !keep.contains(stem) {
                     let path = entry.path();
                     if let Err(e) = tokio::fs::remove_file(&path).await {
                         log::warn!("gc could not remove {}: {e}", path.display());
@@ -440,12 +444,12 @@ pub(crate) async fn gc_entry_images(
     let _ = tokio::fs::remove_dir(&dir).await;
 }
 
-/// The set of image file names an entry body references (the `<file>` in each
-/// `../images/<id>/<file>`). Used by the CLI sweep to decide which stored files
-/// are still live. Scans for the reference prefix and reads each file name up to
-/// the first delimiter (`)`, `]`, quote, or whitespace) — the shapes a markdown
-/// image or raw `<img>` src can end with.
-pub fn referenced_image_files(id: &str, body: &str) -> HashSet<String> {
+/// The set of image hashes an entry body references (the `<hash>` in each
+/// `../images/<id>/<hash>`). Used by the CLI sweep to decide which stored files
+/// are still live — a file `<hash>.<ext>` is live iff its `<hash>` is in this
+/// set. Scans for the reference prefix and reads each hash up to the first
+/// delimiter (`)`, `]`, quote, or whitespace).
+pub fn referenced_image_hashes(id: &str, body: &str) -> HashSet<String> {
     let prefix = crate::library::entry_image_ref(id, "");
     let mut out = HashSet::new();
     let mut rest = body;
@@ -464,40 +468,59 @@ pub fn referenced_image_files(id: &str, body: &str) -> HashSet<String> {
     out
 }
 
+/// The stored image files of one entry, mapped `hash → (path, ext)` — the entry
+/// directory read once so a batch of refs resolves without one `read_dir` each.
+async fn list_entry_image_files(library_dir: &Path, id: &str) -> HashMap<String, (std::path::PathBuf, String)> {
+    let dir = crate::library::entry_images_dir(library_dir, id);
+    let mut out = HashMap::new();
+    let Ok(mut rd) = tokio::fs::read_dir(&dir).await else {
+        return out;
+    };
+    while let Ok(Some(entry)) = rd.next_entry().await {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if let Some((stem, ext)) = name.rsplit_once('.') {
+            out.insert(stem.to_string(), (entry.path(), ext.to_string()));
+        }
+    }
+    out
+}
+
 /// Reads bytes back for each body reference, returning a complete `data:` URI or
 /// `None`, index-aligned with `refs`. `None` covers every non-fault case: a ref
-/// that is not a well-formed `../images/<id>/<file>` for THIS entry, an
-/// unknown extension, a missing/oversize file, or the response byte budget being
-/// exhausted. A bad reference is data, never an error — the reader leaves the
-/// original `src` in place, and in the sandboxed blob iframe that fetches
-/// nothing.
+/// that is not a well-formed `../images/<id>/<hash>` for THIS entry, a missing
+/// file (a not-yet-fetched image is a broken local ref), an unknown extension,
+/// an oversize file, or the response byte budget being exhausted. A bad
+/// reference is data, never an error — the reader leaves the ref in place, and
+/// in the sandboxed blob iframe a relative ref fetches nothing.
 pub async fn read_entry_images(library_dir: &Path, id: &str, refs: &[String]) -> Vec<Option<String>> {
     let engine = base64::engine::general_purpose::STANDARD;
+    let files = list_entry_image_files(library_dir, id).await;
     let mut out = Vec::with_capacity(refs.len());
     let mut total: usize = 0;
     for reference in refs {
-        out.push(resolve_ref(library_dir, id, reference, &engine, &mut total).await);
+        out.push(resolve_ref(id, reference, &files, &engine, &mut total).await);
     }
     out
 }
 
 async fn resolve_ref(
-    library_dir: &Path,
     id: &str,
     reference: &str,
+    files: &HashMap<String, (std::path::PathBuf, String)>,
     engine: &base64::engine::GeneralPurpose,
     total: &mut usize,
 ) -> Option<String> {
-    let (ref_id, file_name) = crate::library::parse_entry_image_ref(reference)?;
+    let (ref_id, hash) = crate::library::parse_entry_image_ref(reference)?;
     // An entry may only reach into its own image directory.
     if ref_id != id {
         return None;
     }
-    let ext = file_name.rsplit_once('.').map(|(_, e)| e)?;
+    // Resolve the ext-less hash to the stored `<hash>.<ext>` file, if present.
+    let (path, ext) = files.get(hash)?;
     let media_type = media_type_for_ext(ext)?;
 
-    let path = crate::library::entry_image_path(library_dir, id, file_name);
-    let bytes = read_capped_bytes(&path, MAX_IMAGE_BYTES).await?;
+    let bytes = read_capped_bytes(path, MAX_IMAGE_BYTES).await?;
 
     *total = total.checked_add(bytes.len())?;
     if *total > MAX_READ_RESPONSE_BYTES {
@@ -528,112 +551,138 @@ mod tests {
     const PNG_DATA: &str =
         "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
 
+    fn map(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs.iter().map(|(u, d)| (u.to_string(), d.to_string())).collect()
+    }
+
     #[test]
     fn noop_when_no_image_syntax() {
         let md = "# Title\n\nJust prose with a [link](https://x.test/) and no images.\n";
-        let out = extract_images("abc123", md);
+        let out = extract_images("abc123", md, &HashMap::new());
         assert_eq!(out.body, md);
         assert!(out.images.is_empty());
+        assert!(out.url_map.is_empty());
     }
 
     #[test]
-    fn stores_data_image_to_file_and_keeps_alt() {
-        let md = format!("before ![a cat]({PNG_DATA}) after");
-        let out = extract_images("entry1", &md);
+    fn remote_image_with_bytes_becomes_file_and_local_ref() {
+        let url = "https://x.test/p.png";
+        let md = format!("before ![a cat]({url}) after");
+        let out = extract_images("entry1", &md, &map(&[(url, PNG_DATA)]));
+
+        let hash = image_url_hash(url);
         assert_eq!(out.images.len(), 1);
-        let file = &out.images[0].file_name;
-        assert!(file.ends_with(".png"));
+        assert_eq!(out.images[0].file_name, format!("{hash}.png"));
         assert_eq!(
             out.body,
-            format!("before ![a cat](../images/entry1/{file}) after")
+            format!("before ![a cat](../images/entry1/{hash}) after")
         );
+        assert_eq!(out.url_map, vec![(hash, url.to_string())]);
+        // No remote URL and no base64 survive in the body.
+        assert!(!out.body.contains("http"));
         assert!(!out.body.contains("base64"));
     }
 
     #[test]
-    fn leaves_https_and_relative_spans_byte_identical_outside_the_ref() {
-        // A body with only a relative ../images ref and prose must round-trip
-        // unchanged (idempotent re-save).
-        let md = "text ![local](../images/entry1/4f2a91c3e0b7.png) more text\n";
-        let out = extract_images("entry1", md);
+    fn remote_image_without_bytes_is_broken_ref_but_mapped() {
+        // A failed fetch: no bytes supplied → no file, but the body still gets a
+        // (broken) local ref and the URL is retained in the map for recovery.
+        let url = "https://x.test/q.png";
+        let md = format!("![b]({url})");
+        let out = extract_images("entry1", &md, &HashMap::new());
+
+        let hash = image_url_hash(url);
+        assert!(out.images.is_empty());
+        assert_eq!(out.body, format!("![b](../images/entry1/{hash})"));
+        assert_eq!(out.url_map, vec![(hash, url.to_string())]);
+    }
+
+    #[test]
+    fn leaves_local_and_non_remote_refs_untouched() {
+        // Already-local refs and prose round-trip unchanged (idempotent re-save).
+        let md = "text ![local](../images/entry1/4f2a91c3e0b7) more text\n";
+        let out = extract_images("entry1", md, &HashMap::new());
         assert_eq!(out.body, md);
         assert!(out.images.is_empty());
+        assert!(out.url_map.is_empty());
     }
 
     #[test]
-    fn neutralises_remote_image_and_unescapes_url() {
-        // remark escapes `&` as `\&`; the stored attribute must hold the real URL.
-        let md = "![pixel \\[x\\]](https://tracker.test/p.gif?u=1\\&v=2)";
-        let out = extract_images("e", md);
-        assert!(out.images.is_empty());
+    fn unescapes_url_for_hash_and_map() {
+        // remark escapes `&` as `\&` in the body; the real URL keys `url_data`
+        // and is stored in the map, so extraction must unescape before hashing.
+        let raw = "https://tracker.test/p.gif?u=1&v=2";
+        let md = "![pixel](https://tracker.test/p.gif?u=1\\&v=2)";
+        let out = extract_images("e", md, &map(&[(raw, PNG_DATA)]));
+
+        let hash = image_url_hash(raw);
+        assert_eq!(out.images.len(), 1);
+        assert_eq!(out.body, format!("![pixel](../images/e/{hash})"));
+        assert_eq!(out.url_map, vec![(hash, raw.to_string())]);
+    }
+
+    #[test]
+    fn dedupes_same_url_to_one_file_two_refs() {
+        let url = "https://x.test/p.png";
+        let md = format!("![one]({url}) and ![two]({url})");
+        let out = extract_images("e", &md, &map(&[(url, PNG_DATA)]));
+
+        let hash = image_url_hash(url);
+        assert_eq!(out.images.len(), 1);
+        assert_eq!(out.url_map.len(), 1);
         assert_eq!(
             out.body,
-            "<img alt=\"pixel [x]\" data-xaga-src=\"https://tracker.test/p.gif?u=1&amp;v=2\">"
+            format!("![one](../images/e/{hash}) and ![two](../images/e/{hash})")
         );
     }
 
     #[test]
-    fn dedupes_identical_bytes_to_one_file_two_refs() {
-        let md = format!("![one]({PNG_DATA}) and ![two]({PNG_DATA})");
-        let out = extract_images("e", &md);
-        assert_eq!(out.images.len(), 1);
-        let file = &out.images[0].file_name;
-        let expected = format!(
-            "![one](../images/e/{file}) and ![two](../images/e/{file})"
-        );
-        assert_eq!(out.body, expected);
-    }
-
-    #[test]
-    fn drops_unknown_media_type_without_leaking_base64() {
-        let md = "![x](data:application/pdf;base64,JVBERi0=)";
-        let out = extract_images("e", &md);
-        assert!(out.images.is_empty());
-        assert_eq!(out.body, "x");
-        assert!(!out.body.contains("base64"));
-    }
-
-    #[test]
-    fn keeps_svg_data_image() {
+    fn keeps_svg() {
+        let url = "https://x.test/d.svg";
         let svg = "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=";
-        let md = format!("![diagram]({svg})");
-        let out = extract_images("e", &md);
+        let out = extract_images("e", &format!("![d]({url})"), &map(&[(url, svg)]));
         assert_eq!(out.images.len(), 1);
         assert!(out.images[0].file_name.ends_with(".svg"));
     }
 
     #[test]
-    fn stops_at_total_byte_budget() {
-        // Two distinct large images; only the first fits the budget.
-        let big_a = base64::engine::general_purpose::STANDARD
-            .encode(vec![0xABu8; MAX_ENTRY_IMAGE_BYTES - 100]);
-        let big_b = base64::engine::general_purpose::STANDARD
-            .encode(vec![0xCDu8; MAX_ENTRY_IMAGE_BYTES - 100]);
-        let md = format!(
-            "![a](data:image/png;base64,{big_a}) ![b](data:image/png;base64,{big_b})"
-        );
-        let out = extract_images("e", &md);
-        assert_eq!(out.images.len(), 1);
-        // The dropped one falls back to alt text, no base64 remains.
-        assert!(out.body.contains("![a](../images/e/"));
-        assert!(out.body.ends_with(" b"));
+    fn bad_media_type_yields_no_file_but_still_refs_and_maps() {
+        let url = "https://x.test/doc.pdf";
+        let bad = "data:application/pdf;base64,JVBERi0=";
+        let out = extract_images("e", &format!("![x]({url})"), &map(&[(url, bad)]));
+        let hash = image_url_hash(url);
+        assert!(out.images.is_empty());
+        assert_eq!(out.body, format!("![x](../images/e/{hash})"));
+        assert_eq!(out.url_map.len(), 1);
+        assert!(!out.body.contains("base64"));
+    }
+
+    #[test]
+    fn drops_stray_data_image_without_leaking_base64() {
+        // An original page data-URI (no URL to hash) is dropped to alt text.
+        let md = "![icon](data:image/png;base64,AAAA)";
+        let out = extract_images("e", md, &HashMap::new());
+        assert_eq!(out.body, "icon");
+        assert!(out.images.is_empty());
+        assert!(out.url_map.is_empty());
         assert!(!out.body.contains("base64"));
     }
 
     #[test]
     fn ignores_escaped_bang_and_plain_links() {
-        // `\!` is not an image; `[text](data:...)` is a link, not an image.
-        let md = "\\![notimg](https://x.test/a.png) and [text](data:image/png;base64,AAAA)";
-        let out = extract_images("e", md);
+        // `\!` is not an image; `[text](url)` is a link, not an image.
+        let md = "\\![notimg](https://x.test/a.png) and [text](https://x.test/b)";
+        let out = extract_images("e", md, &HashMap::new());
         assert_eq!(out.body, md);
         assert!(out.images.is_empty());
+        assert!(out.url_map.is_empty());
     }
 
     #[test]
-    fn hash_is_stable_and_content_addressed() {
-        assert_eq!(image_hash12(b"hello"), image_hash12(b"hello"));
-        assert_ne!(image_hash12(b"hello"), image_hash12(b"world"));
-        assert_eq!(image_hash12(b"hello").len(), 12);
+    fn url_hash_is_stable_and_distinct() {
+        assert_eq!(image_url_hash("https://x/a"), image_url_hash("https://x/a"));
+        assert_ne!(image_url_hash("https://x/a"), image_url_hash("https://x/b"));
+        assert_eq!(image_url_hash("https://x/a").len(), 12);
     }
 
     // ── I/O round-trip ──────────────────────────────────────────────────────
@@ -643,62 +692,62 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_then_read_round_trips_a_data_uri() {
+    async fn write_then_read_round_trips_via_ext_less_ref() {
         let tmp = tempfile::tempdir().unwrap();
         let lib = tmp.path();
 
-        let ex = extract_images("e1", &format!("![c]({PNG_DATA})"));
+        let url = "https://x.test/p.png";
+        let ex = extract_images("e1", &format!("![c]({url})"), &map(&[(url, PNG_DATA)]));
         let landed = write_entry_images(lib, "e1", &ex.images, token()).await;
         assert_eq!(landed.len(), 1);
 
-        // The stored ref, pulled from the rewritten body, reads back as a data URI.
-        let file = &ex.images[0].file_name;
-        let reference = crate::library::entry_image_ref("e1", file);
+        // The stored body ref is ext-less; read resolves it to <hash>.<ext>.
+        let hash = image_url_hash(url);
+        let reference = crate::library::entry_image_ref("e1", &hash);
         let read = read_entry_images(lib, "e1", &[reference]).await;
         assert_eq!(read.len(), 1);
-        let uri = read[0].as_ref().expect("should resolve");
-        assert!(uri.starts_with("data:image/png;base64,"));
+        assert!(read[0].as_ref().unwrap().starts_with("data:image/png;base64,"));
     }
 
     #[tokio::test]
     async fn read_refuses_traversal_and_foreign_entry() {
         let tmp = tempfile::tempdir().unwrap();
         let lib = tmp.path();
-        // Plant a real file under entry `victim`.
-        let ex = extract_images("victim", &format!("![x]({PNG_DATA})"));
+        let url = "https://x.test/p.png";
+        let ex = extract_images("victim", &format!("![x]({url})"), &map(&[(url, PNG_DATA)]));
         write_entry_images(lib, "victim", &ex.images, token()).await;
-        let victim_file = &ex.images[0].file_name;
+        let hash = image_url_hash(url);
 
         let bad = vec![
             // Another entry reaching into victim's dir.
-            crate::library::entry_image_ref("victim", victim_file),
+            crate::library::entry_image_ref("victim", &hash),
             "../images/victim/../../entries/x.md".to_string(),
             "https://evil.test/x.png".to_string(),
         ];
-        // Caller id is `attacker`, so even the well-formed victim ref must be None.
         let read = read_entry_images(lib, "attacker", &bad).await;
         assert_eq!(read, vec![None, None, None]);
     }
 
     #[tokio::test]
-    async fn gc_removes_unreferenced_and_keeps_referenced() {
+    async fn gc_keeps_referenced_hashes_and_removes_the_rest() {
         let tmp = tempfile::tempdir().unwrap();
         let lib = tmp.path();
 
-        let a = extract_images("e", &format!("![a]({PNG_DATA})"));
+        let url = "https://x.test/a.png";
+        let a = extract_images("e", &format!("![a]({url})"), &map(&[(url, PNG_DATA)]));
         write_entry_images(lib, "e", &a.images, token()).await;
-        let keep_name = a.images[0].file_name.clone();
+        let hash = image_url_hash(url);
+        let kept_file = format!("{hash}.png");
 
-        // A stray file that nothing references.
         let dir = crate::library::entry_images_dir(lib, "e");
         tokio::fs::write(dir.join("orphan.png"), b"stale").await.unwrap();
 
-        let keep: HashSet<String> = std::iter::once(keep_name.clone()).collect();
+        // keep is the set of referenced HASHES; files kept by stem.
+        let keep: HashSet<String> = std::iter::once(hash).collect();
         gc_entry_images(lib, "e", &keep, token()).await;
 
-        assert!(dir.join(&keep_name).exists());
+        assert!(dir.join(&kept_file).exists());
         assert!(!dir.join("orphan.png").exists());
-        // A file survived, so the directory must remain.
         assert!(dir.exists());
     }
 
@@ -707,13 +756,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let lib = tmp.path();
 
-        let a = extract_images("e", &format!("![a]({PNG_DATA})"));
+        let url = "https://x.test/a.png";
+        let a = extract_images("e", &format!("![a]({url})"), &map(&[(url, PNG_DATA)]));
         write_entry_images(lib, "e", &a.images, token()).await;
         let dir = crate::library::entry_images_dir(lib, "e");
         assert!(dir.exists());
 
-        // A later save references no images: keep is empty, so every file is
-        // swept and the now-empty directory is removed.
         gc_entry_images(lib, "e", &HashSet::new(), token()).await;
         assert!(!dir.exists());
     }
@@ -724,12 +772,15 @@ mod tests {
         let lib = tmp.path();
         let dir = crate::library::entry_images_dir(lib, "e");
         tokio::fs::create_dir_all(&dir).await.unwrap();
-        let name = "0123456789ab.png";
-        tokio::fs::write(dir.join(name), vec![0u8; (MAX_IMAGE_BYTES + 1) as usize])
-            .await
-            .unwrap();
+        let hash = "0123456789ab";
+        tokio::fs::write(
+            dir.join(format!("{hash}.png")),
+            vec![0u8; (MAX_IMAGE_BYTES + 1) as usize],
+        )
+        .await
+        .unwrap();
 
-        let reference = crate::library::entry_image_ref("e", name);
+        let reference = crate::library::entry_image_ref("e", hash);
         let read = read_entry_images(lib, "e", &[reference]).await;
         assert_eq!(read, vec![None]);
     }
@@ -737,23 +788,21 @@ mod tests {
     #[tokio::test]
     async fn read_missing_file_is_none_not_error() {
         let tmp = tempfile::tempdir().unwrap();
-        let reference = crate::library::entry_image_ref("e", "deadbeef0000.png");
+        let reference = crate::library::entry_image_ref("e", "deadbeef0000");
         let read = read_entry_images(tmp.path(), "e", &[reference]).await;
         assert_eq!(read, vec![None]);
     }
 
     #[test]
-    fn referenced_image_files_extracts_names_for_this_entry_only() {
+    fn referenced_image_hashes_for_this_entry_only() {
         let body = "\
-intro ![a](../images/e1/4f2a91c3e0b7.png) and \
-![b](../images/e1/9c1d55ae32f0.jpg) then a foreign one \
-![c](../images/other/deadbeef0000.png) and a remote \
-<img data-xaga-src=\"https://x.test/p.gif\">";
-        let files = referenced_image_files("e1", body);
-        assert_eq!(files.len(), 2);
-        assert!(files.contains("4f2a91c3e0b7.png"));
-        assert!(files.contains("9c1d55ae32f0.jpg"));
-        // The other entry's ref is not attributed to e1.
-        assert!(!files.contains("deadbeef0000.png"));
+intro ![a](../images/e1/4f2a91c3e0b7) and \
+![b](../images/e1/9c1d55ae32f0) then a foreign one \
+![c](../images/other/deadbeef0000)";
+        let hashes = referenced_image_hashes("e1", body);
+        assert_eq!(hashes.len(), 2);
+        assert!(hashes.contains("4f2a91c3e0b7"));
+        assert!(hashes.contains("9c1d55ae32f0"));
+        assert!(!hashes.contains("deadbeef0000"));
     }
 }

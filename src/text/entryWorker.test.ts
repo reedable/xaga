@@ -24,20 +24,39 @@ const DATA_URI =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 describe("processEntry — image URLs across the HTML→markdown boundary", () => {
-  it("carries data: image sources through to markdown", async () => {
-    const { markdown } = await processEntry(
+  it("restores a fetched image's URL to the body and returns its bytes", async () => {
+    // The loader fetched this image: data: src + the stashed remote URL.
+    const url = "https://cdn.test/photo.jpg";
+    const { markdown, imageData } = await processEntry(
       "https://site.test/a",
-      articleHtml(`<img src="${DATA_URI}" alt="photo">`)
+      articleHtml(`<img src="${DATA_URI}" data-xaga-url="${url}" alt="photo">`)
     );
-    expect(markdown).toContain(DATA_URI);
+    // Body carries the URL (Rust hashes it to a local ref), not the data: bytes.
+    expect(markdown).toContain(url);
+    expect(markdown).not.toContain(DATA_URI);
+    // The bytes are returned to the caller, keyed by URL.
+    expect(imageData[url]).toBe(DATA_URI);
   });
 
-  it("carries remote https: image sources through to markdown", async () => {
-    const { markdown } = await processEntry(
+  it("keeps a non-fetched remote image as a URL with no bytes", async () => {
+    // A CORS-missed image: still remote https, no data: and no stash.
+    const { markdown, imageData } = await processEntry(
       "https://site.test/a",
       articleHtml('<img src="https://tracker.test/p.gif" alt="remote">')
     );
     expect(markdown).toContain("https://tracker.test/p.gif");
+    expect(Object.keys(imageData)).toHaveLength(0);
+  });
+
+  it("returns no bytes for a stray data: image with no stashed URL", async () => {
+    // An original page data-URI (not loader-fetched): no URL to pair, so no
+    // entry in imageData. Rust extraction drops it from the stored body.
+    const { markdown, imageData } = await processEntry(
+      "https://site.test/a",
+      articleHtml(`<img src="${DATA_URI}" alt="icon">`)
+    );
+    expect(markdown).toContain(DATA_URI);
+    expect(Object.keys(imageData)).toHaveLength(0);
   });
 
   it("records whether style background-image survives ingestion", async () => {

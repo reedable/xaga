@@ -69,7 +69,9 @@ async fn gc(data_dir: &Path, dry_run: bool) {
         // directories; NotFound (or any read error) means the images are orphans.
         match articles::read_article(data_dir, &id).await {
             Ok(article) => {
-                let keep = images::referenced_image_files(&id, &article.content);
+                // The body references ext-less url-hashes; a file `<hash>.<ext>`
+                // is live iff its stem is referenced.
+                let keep = images::referenced_image_hashes(&id, &article.content);
                 let files = match std::fs::read_dir(&path) {
                     Ok(files) => files,
                     Err(e) => die(e),
@@ -80,7 +82,8 @@ async fn gc(data_dir: &Path, dry_run: bool) {
                         Err(e) => die(e),
                     };
                     let name = file.file_name().to_string_lossy().into_owned();
-                    if keep.contains(&name) {
+                    let stem = name.rsplit_once('.').map(|(s, _)| s).unwrap_or(&name);
+                    if keep.contains(stem) {
                         continue;
                     }
                     let file_path = file.path();

@@ -172,6 +172,9 @@ enum Op {
         summary: Option<String>,
         favicon: Option<String>,
         markdown: String,
+        /// `url → data:` for the images the loader fetched, so the persistence
+        /// layer can write files and build the frontmatter map.
+        url_data: std::collections::HashMap<String, String>,
         resp: oneshot::Sender<Result<Article, WriterError>>,
     },
     AddAnnotation {
@@ -387,6 +390,7 @@ impl Op {
                 summary,
                 favicon,
                 markdown,
+                url_data,
                 resp,
             } => {
                 let r = articles::save_article(
@@ -399,6 +403,7 @@ impl Op {
                     summary.as_deref(),
                     favicon.as_deref(),
                     &markdown,
+                    &url_data,
                     token,
                 )
                 .await
@@ -769,6 +774,7 @@ impl LibraryWriter {
         summary: Option<String>,
         favicon: Option<String>,
         markdown: String,
+        url_data: std::collections::HashMap<String, String>,
     ) -> Result<Article, WriterError> {
         let (resp, rx) = oneshot::channel();
         let op = Op::SaveArticle {
@@ -780,6 +786,7 @@ impl LibraryWriter {
             summary,
             favicon,
             markdown,
+            url_data,
             resp,
         };
         self.submit(tier, op, rx).await
@@ -798,6 +805,7 @@ impl LibraryWriter {
         summary: Option<String>,
         favicon: Option<String>,
         markdown: String,
+        url_data: std::collections::HashMap<String, String>,
     ) -> Result<Article, WriterError> {
         let normalized = crate::util::normalize_url(&url)
             .map_err(|e| WriterError::Entry(EntryError::from(e)))?;
@@ -812,6 +820,7 @@ impl LibraryWriter {
             summary,
             favicon,
             markdown,
+            url_data,
         )
         .await
     }
@@ -1331,6 +1340,7 @@ mod tests {
             None,
             None,
             "body".to_string(),
+            std::collections::HashMap::new(),
         )
         .await
         .unwrap();
@@ -1469,6 +1479,7 @@ mod tests {
                     None,
                     None,
                     "body".to_string(),
+                    std::collections::HashMap::new(),
                 )
                 .await
             }));
@@ -1568,6 +1579,7 @@ mod tests {
                     None,
                     None,
                     "body".to_string(),
+                    std::collections::HashMap::new(),
                 )
                 .await
             }));

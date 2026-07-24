@@ -272,6 +272,17 @@ impl Pinnable for Topic {
 
 // ── Article (a loaded, content-bearing Entry; kind stays "entry") ───────────────
 
+/// A stored image's identity: the url-hash that names its local file and body
+/// ref (`../images/<id>/<hash>`), paired with the remote URL it came from. The
+/// body carries only the ext-less `hash` ref, so this map (persisted in the
+/// entry frontmatter) is the sole place the URL survives — which is what makes a
+/// broken (not-yet-fetched) image recoverable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImageRef {
+    pub hash: String,
+    pub url: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Article {
     #[serde(flatten)]
@@ -279,6 +290,10 @@ pub struct Article {
     pub content: String,
     pub annotations: Vec<Annotation>,
     pub favicon: Option<String>,
+    /// `hash → url` for every remote image referenced by the body. Carried on the
+    /// domain object so a read-modify-write (annotation edit) preserves it.
+    #[serde(default)]
+    pub images: Vec<ImageRef>,
 }
 
 impl Item for Article {

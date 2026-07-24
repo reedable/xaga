@@ -43,15 +43,22 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           return { article: null, mimeType, pdfBytes };
         }
 
-        const { title, markdown, favicon } = await processEntry(url, html);
-
-        const article = await platform.createArticle(signal, {
-          title,
-          content: markdown,
+        const { title, markdown, favicon, imageData } = await processEntry(
           url,
-          annotations: [],
-          favicon: favicon ?? undefined,
-        });
+          html
+        );
+
+        const article = await platform.createArticle(
+          signal,
+          {
+            title,
+            content: markdown,
+            url,
+            annotations: [],
+            favicon: favicon ?? undefined,
+          },
+          imageData
+        );
 
         return {
           article: await platform.readArticle(signal, article.id),
@@ -88,19 +95,23 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           entry.url,
           keepOpen
         );
-        const { title, markdown, favicon } = await processEntry(
+        const { title, markdown, favicon, imageData } = await processEntry(
           entry.url,
           html
         );
 
         const article = await platform.readArticle(signal, entry.id);
 
-        await platform.saveArticle(signal, {
-          ...article,
-          title,
-          content: markdown,
-          favicon: favicon ?? undefined,
-        });
+        await platform.saveArticle(
+          signal,
+          {
+            ...article,
+            title,
+            content: markdown,
+            favicon: favicon ?? undefined,
+          },
+          imageData
+        );
 
         return await platform.readArticle(signal, article.id);
       } catch (e) {
@@ -173,7 +184,12 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
   const saveExtractedArticle = useCallback(
     async (
       entry: Entry,
-      extracted: { title: string; markdown: string; favicon: string | null }
+      extracted: {
+        title: string;
+        markdown: string;
+        favicon: string | null;
+        imageData?: Record<string, string>;
+      }
     ) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
@@ -182,12 +198,16 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       try {
         const article = await platform.readArticle(signal, entry.id);
 
-        await platform.saveArticle(signal, {
-          ...article,
-          title: extracted.title,
-          content: extracted.markdown,
-          favicon: extracted.favicon ?? undefined,
-        });
+        await platform.saveArticle(
+          signal,
+          {
+            ...article,
+            title: extracted.title,
+            content: extracted.markdown,
+            favicon: extracted.favicon ?? undefined,
+          },
+          extracted.imageData ?? {}
+        );
 
         return await platform.readArticle(signal, article.id);
       } catch (e) {
@@ -223,14 +243,21 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       setLoading(true);
 
       try {
-        const { title, markdown, favicon } = await processEntry(url, html);
-        const article = await platform.createArticle(signal, {
-          title,
-          content: markdown,
+        const { title, markdown, favicon, imageData } = await processEntry(
           url,
-          annotations: [],
-          favicon: favicon ?? undefined,
-        });
+          html
+        );
+        const article = await platform.createArticle(
+          signal,
+          {
+            title,
+            content: markdown,
+            url,
+            annotations: [],
+            favicon: favicon ?? undefined,
+          },
+          imageData
+        );
         return await platform.readArticle(signal, article.id);
       } catch (e) {
         pushError(e);

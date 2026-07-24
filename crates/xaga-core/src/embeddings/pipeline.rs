@@ -705,6 +705,7 @@ mod tests {
             content: "body".to_string(),
             annotations,
             favicon: None,
+            images: vec![],
         }
     }
 

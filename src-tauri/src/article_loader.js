@@ -87,6 +87,10 @@ function __xagaFetchImages() {
             null
         ).then(function(dataUrl) {
             if (!dataUrl) return;
+            // Stash the original remote URL so processEntry can pair it with the
+            // data: bytes (read pre-Readability, then stripped there so it does
+            // not trip Readability's lazy-load src rewrite).
+            img.setAttribute('data-xaga-url', src);
             img.setAttribute('src', dataUrl);
             // srcset would let the renderer pick a remote candidate anyway.
             img.removeAttribute('srcset');

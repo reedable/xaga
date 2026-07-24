@@ -497,7 +497,11 @@ export class TauriPlatform implements Platform {
     return ArticleSchema.transform(toArticle).parse(result);
   }
 
-  async saveArticle(signal: AbortSignal, article: Article): Promise<Article> {
+  async saveArticle(
+    signal: AbortSignal,
+    article: Article,
+    imageData: Record<string, string> = {}
+  ): Promise<Article> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "save_article" });
@@ -511,6 +515,7 @@ export class TauriPlatform implements Platform {
       summary: article.description,
       favicon: article.favicon ?? null,
       markdown: article.content,
+      imageData,
     });
 
     return ArticleSchema.transform(toArticle).parse(result);
@@ -555,7 +560,8 @@ export class TauriPlatform implements Platform {
   // "Frontend type branding (`__kind`)".
   async createArticle(
     signal: AbortSignal,
-    article: Omit<Article, "id" | "createdAt" | "__kind" | "isBookmarked">
+    article: Omit<Article, "id" | "createdAt" | "__kind" | "isBookmarked">,
+    imageData: Record<string, string> = {}
   ): Promise<Article> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -569,6 +575,7 @@ export class TauriPlatform implements Platform {
       summary: article.description,
       favicon: article.favicon ?? null,
       markdown: article.content,
+      imageData,
     });
 
     return ArticleSchema.transform(toArticle).parse(result);

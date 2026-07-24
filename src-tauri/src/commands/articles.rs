@@ -252,6 +252,7 @@ pub async fn load_article(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn save_article(
     id: String,
     url: String,
@@ -261,6 +262,7 @@ pub async fn save_article(
     summary: Option<String>,
     favicon: Option<String>,
     markdown: String,
+    image_data: std::collections::HashMap<String, String>,
     state: State<'_, AppState>,
 ) -> Result<Article, AppError> {
     let writer = crate::commands::require_writer(&state)?;
@@ -275,6 +277,7 @@ pub async fn save_article(
             summary,
             favicon,
             markdown,
+            image_data,
         )
         .await
         .map_err(AppError::from)?;
@@ -288,6 +291,7 @@ pub async fn save_article(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn create_article(
     url: String,
     title: String,
@@ -296,6 +300,7 @@ pub async fn create_article(
     summary: Option<String>,
     favicon: Option<String>,
     markdown: String,
+    image_data: std::collections::HashMap<String, String>,
     state: State<'_, AppState>,
 ) -> Result<Article, AppError> {
     let writer = crate::commands::require_writer(&state)?;
@@ -309,6 +314,7 @@ pub async fn create_article(
             summary,
             favicon,
             markdown,
+            image_data,
         )
         .await
         .map_err(AppError::from)?;

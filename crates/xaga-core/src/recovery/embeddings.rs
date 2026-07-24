@@ -206,6 +206,7 @@ mod tests {
             None,
             None,
             "body",
+            &std::collections::HashMap::new(),
             crate::library_writer::WriteToken::for_test(),
         )
         .await
@@ -277,6 +278,7 @@ mod tests {
             None,
             None,
             "body",
+            &std::collections::HashMap::new(),
             crate::library_writer::WriteToken::for_test(),
         )
         .await

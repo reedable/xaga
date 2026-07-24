@@ -123,6 +123,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       title: string;
       markdown: string;
       favicon: string | null;
+      imageData?: Record<string, string>;
     } | null>(null);
 
     // Reads and renders the already-resolved article for the current route.

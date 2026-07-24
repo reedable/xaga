@@ -50,7 +50,15 @@ function extractFavicon(doc: Document, url: string): string | null {
 export async function processEntry(
   url: string,
   html: string
-): Promise<{ title: string; markdown: string; favicon: string | null }> {
+): Promise<{
+  title: string;
+  markdown: string;
+  favicon: string | null;
+  /** `url → data:` for the images the loader fetched that survived extraction.
+   * The body carries the remote URLs; Rust hashes them, writes files from these
+   * bytes, and records the `hash → url` map. */
+  imageData: Record<string, string>;
+}> {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
 
@@ -60,12 +68,52 @@ export async function processEntry(
 
   const favicon = extractFavicon(doc, url);
 
+  // Pre-Readability: the loader inlined each fetched image as a `data:` src and
+  // stashed the remote URL in `data-xaga-url`. Capture that pairing now, then
+  // strip the stash — otherwise Readability treats the `data:`-plus-URL pattern
+  // as a lazy-load hint and overwrites the src with the URL, destroying the
+  // fetched bytes.
+  const dataToUrl = new Map<string, string>();
+
+  for (const img of Array.from(doc.querySelectorAll("img"))) {
+    const stashed = img.getAttribute("data-xaga-url");
+    if (!stashed) continue;
+
+    const src = img.getAttribute("src");
+    if (src && src.startsWith("data:")) dataToUrl.set(src, stashed);
+
+    img.removeAttribute("data-xaga-url");
+  }
+
   const entry = new Readability(doc).parse();
+
   if (!entry) {
     throw new Error("Readability could not extract an entry");
   }
 
-  // Sanitize Readability's HTML output before anything else consumes it — the
+  // Post-Readability: restore each surviving fetched image's src to its remote
+  // URL (so the body carries URLs, which Rust rewrites to `../images/<hash>`),
+  // and collect `url → data:` for those kept images.
+  const contentDoc = parser.parseFromString(entry.content ?? "", "text/html");
+  const imageData: Record<string, string> = {};
+
+  for (const img of Array.from(contentDoc.querySelectorAll("img"))) {
+    const src = img.getAttribute("src");
+    if (!src || !src.startsWith("data:")) continue;
+
+    const remote = dataToUrl.get(src);
+    if (remote) {
+      img.setAttribute("src", remote);
+      imageData[remote] = src;
+    }
+
+    // A `data:` with no known URL is an original page data-URI; leave it — Rust's
+    // extraction drops stray `data:` images so no base64 reaches the stored body.
+  }
+
+  const restoredContent = contentDoc.body.innerHTML;
+
+  // Sanitize the (URL-restored) content before anything else consumes it — the
   // explicit security boundary for article bodies. See
   // docs/architecture/security/handling_remote_content.md, "Processing," for why
   // this must not be left to the downstream HTML round-trip.
@@ -74,7 +122,7 @@ export async function processEntry(
   // or fires event handlers — both operate on an inert, non-rendered document, so
   // sanitizing the *output* here is sufficient. If that ever stops holding, the
   // untrusted HTML would need to be sanitized *before* it is parsed instead.
-  const sanitizedContent = DOMPurify.sanitize(entry.content ?? "");
+  const sanitizedContent = DOMPurify.sanitize(restoredContent);
 
   const file = await unified()
     .use(rehypeParse, { fragment: true })
@@ -85,5 +133,6 @@ export async function processEntry(
 
   const readabilityTitle = entry.title?.trim();
   const title = readabilityTitle || extractHeadingTitle(doc);
-  return { title, markdown: String(file), favicon };
+
+  return { title, markdown: String(file), favicon, imageData };
 }

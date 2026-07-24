@@ -69,7 +69,14 @@ export interface Platform {
     pdfBase64?: string | null;
   }>;
   findArticle(signal: AbortSignal, url: string): Promise<Article | null>;
-  saveArticle(signal: AbortSignal, article: Article): Promise<Article>;
+  // `imageData` maps each fetched image's remote URL to its `data:` bytes (from
+  // processEntry); the backend writes the files and the frontmatter `hash → url`
+  // map. Omit/empty when saving without freshly-fetched images.
+  saveArticle(
+    signal: AbortSignal,
+    article: Article,
+    imageData?: Record<string, string>
+  ): Promise<Article>;
   readArticle(signal: AbortSignal, id: string): Promise<Article>;
   // Resolves an entry's stored `../images/…` references to `data:` URIs for
   // rendering, index-aligned with `refs`. A `null` at index i means that
@@ -85,7 +92,8 @@ export interface Platform {
   // "Frontend type branding (`__kind`)".
   createArticle(
     signal: AbortSignal,
-    article: Omit<Article, "id" | "createdAt" | "__kind" | "isBookmarked">
+    article: Omit<Article, "id" | "createdAt" | "__kind" | "isBookmarked">,
+    imageData?: Record<string, string>
   ): Promise<Article>;
 
   // Annotations
