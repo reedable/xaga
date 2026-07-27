@@ -36,13 +36,13 @@ describe("markdownToHtml", () => {
   });
 });
 
-// Characterization of the remote-fetch channel described in
-// docs-transient/compliance__rendered_content_remote_fetches.md. These pin what
-// the sanitizer does TODAY, including the parts that are the finding rather than
-// the fix: a `https:` image surviving here is what lets rendered content call
-// home at read time. If the inert-content option is taken (inline as data URLs,
-// then drop `https:` from `img-src`), the "passes through" cases below are the
-// ones expected to flip, deliberately.
+// Characterization of the remote-fetch channel at the render boundary for
+// untrusted stored content. These pin what the sanitizer does TODAY, including
+// the parts that are the finding rather than the fix: a `https:` image
+// surviving here is what lets rendered content call home at read time. If
+// rendered content is made inert (bytes inlined as data URLs, `https:` dropped
+// from `img-src`), the "passes through" cases below are the ones expected to
+// flip, deliberately.
 describe("markdownToHtml — remote-fetch surface", () => {
   it("passes remote https: image sources through (the open channel)", async () => {
     const html = await markdownToHtml('<img src="https://tracker.test/p.gif">');

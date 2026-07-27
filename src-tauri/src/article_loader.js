@@ -106,6 +106,51 @@ function __xagaFetchImages() {
         .catch(function() {});
 }
 
+// ---------------------------------------------------------------------------
+// Favicon. Only the URL is resolved here — the bytes cannot be read from this
+// document, because a favicon is usually served from a CDN host that sends no
+// Access-Control-Allow-Origin and every in-page readback (fetch, XHR, canvas)
+// requires it. Rust navigates this same webview to the URL instead; the
+// resulting image document is same-origin with the image, so the branch at the
+// bottom of this file can read it off a canvas. See the loader-navigation
+// section of docs/architecture/security/fetching_remote_content.md.
+// ---------------------------------------------------------------------------
+function __xagaFaviconUrl() {
+    // Same preference order as extractFavicon in entryWorker.ts.
+    var links = [].slice.call(document.querySelectorAll('link[rel~="icon"]'));
+    var preferred = null;
+    for (var i = 0; i < links.length && !preferred; i++) {
+        if (links[i].getAttribute('sizes') === '32x32') preferred = links[i];
+    }
+    for (var j = 0; j < links.length && !preferred; j++) {
+        if (links[j].getAttribute('sizes') === '16x16') preferred = links[j];
+    }
+    if (!preferred && links.length) preferred = links[0];
+
+    if (preferred) {
+        var href = preferred.getAttribute('href');
+        if (href) {
+            try {
+                return new URL(href, document.baseURI).href;
+            } catch (e) {
+                // Unparseable href: fall through to the conventional path.
+            }
+        }
+    }
+    // The page declares none: try the conventional location, which is the guess
+    // the toolbar used to make from the main window.
+    try {
+        return new URL('/favicon.ico', document.baseURI).href;
+    } catch (e) {
+        return null;
+    }
+}
+
+/** True when this document is the favicon itself, not an article. */
+function __xagaIsImageDocument() {
+    return (document.contentType || '').indexOf('image/') === 0;
+}
+
 window.addEventListener('beforeunload', function() {
     try {
         window.__TAURI_INTERNALS__.invoke('loader_will_unload', {
@@ -132,12 +177,76 @@ window.__captureAndClose = function() {
             html: document.documentElement.outerHTML,
             loaderUrl: window.__LOADER_URL__,
             pageUrl: window.location.href,
-            mimeType: mimeType
+            mimeType: mimeType,
+            // URL only: this window is visible and the user may be browsing it,
+            // so it is never navigated away to read the favicon's bytes.
+            favicon: __xagaFaviconUrl(),
+            faviconData: null
         });
     });
 };
 
+// ---------------------------------------------------------------------------
+// Favicon capture mode. Rust navigates this window here after the article HTML
+// is captured, so the document IS the favicon: same-origin with the image, and
+// therefore readable off a canvas without the CORS grant an in-page fetch of a
+// cross-origin favicon would have needed.
+//
+// The re-encode to PNG is deliberate — it means the stored bytes are always an
+// allowlisted media type, so `.ico` favicons need no special handling in
+// ext_for_media_type on the Rust side.
+//
+// This must always invoke, including on failure: Rust is holding the loader
+// window open waiting for it, and only the overall load timeout would otherwise
+// end that wait.
+// ---------------------------------------------------------------------------
+function __xagaCaptureFavicon() {
+    var dataUri = null;
+    // Why the read produced nothing, reported so a silent failure here is
+    // diagnosable from the app log rather than only visible as a missing icon.
+    var reason = null;
+    try {
+        var img = document.images && document.images[0];
+        if (!img) {
+            reason = 'no image element in document';
+        } else if (!img.complete) {
+            reason = 'image not complete at load';
+        } else if (!img.naturalWidth) {
+            reason = 'image decoded to zero width';
+        } else {
+            var size = Math.min(img.naturalWidth, img.naturalHeight, 64) || 16;
+            var canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            canvas.getContext('2d').drawImage(img, 0, 0, size, size);
+            dataUri = canvas.toDataURL('image/png');
+            if (!dataUri || dataUri.indexOf('data:image/png') !== 0) {
+                reason = 'canvas produced ' + String(dataUri).slice(0, 32);
+                dataUri = null;
+            }
+        }
+    } catch (e) {
+        dataUri = null;
+        reason = String((e && e.message) || e);
+    }
+    try {
+        window.__TAURI_INTERNALS__.invoke('receive_favicon', {
+            id: window.__LOADER_ID__,
+            dataUri: dataUri,
+            reason: reason
+        });
+    } catch (e) {}
+}
+
+if (__xagaIsImageDocument()) {
+    if (document.readyState === 'complete') __xagaCaptureFavicon();
+    else window.addEventListener('load', __xagaCaptureFavicon);
+}
+
 window.addEventListener('load', function() {
+    // Favicon documents are handled above; none of the article capture applies.
+    if (__xagaIsImageDocument()) return;
+
     var debounceTimer = null;
     var sent = false;
 
@@ -146,7 +255,10 @@ window.addEventListener('load', function() {
             window.__TAURI_INTERNALS__.invoke('loader_page_loaded', {
                 url: url,
                 html: html,
-                mimeType: mimeType
+                mimeType: mimeType,
+                // URL only, for the same reason as capture_and_close_loader.
+                favicon: __xagaFaviconUrl(),
+                faviconData: null
             });
         } catch(e) {}
     }
@@ -170,11 +282,17 @@ window.addEventListener('load', function() {
         // rewriting src attributes cannot retrigger the debounce.
         __xagaFetchImages().then(function() {
             var html = document.documentElement.outerHTML;
+            var favicon = __xagaFaviconUrl();
             try {
                 window.__TAURI_INTERNALS__.invoke('receive_html', {
                     id: window.__LOADER_ID__,
                     html: html,
-                    mimeType: mimeType
+                    mimeType: mimeType,
+                    // URL only. On the hidden single-shot path Rust navigates
+                    // this window to it next and the bytes come back through
+                    // receive_favicon; other paths keep the URL and no bytes.
+                    favicon: favicon,
+                    faviconData: null
                 }).then(function(consumed) {
                     // For subsequent page loads (consumed=false), the pending request
                     // was already resolved by a prior load, so notify the main window
@@ -208,7 +326,7 @@ window.addEventListener('load', function() {
             clearTimeout(spaTimer);
             spaTimer = setTimeout(function() {
                 var spaMimeType = document.contentType || 'text/html';
-            notifyPageLoaded(window.location.href, spaMimeType === 'application/pdf' ? '' : document.documentElement.outerHTML, spaMimeType);
+                notifyPageLoaded(window.location.href, spaMimeType === 'application/pdf' ? '' : document.documentElement.outerHTML, spaMimeType);
             }, 300);
         }
 

@@ -1204,6 +1204,7 @@ pub fn run() {
                 Box::new(tauri::generate_handler![
             set_find_enabled,
             commands::articles::receive_html,
+            commands::articles::receive_favicon,
             commands::articles::loader_will_unload,
             commands::articles::loader_page_loaded,
             commands::articles::capture_and_close_loader,

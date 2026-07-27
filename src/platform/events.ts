@@ -1,8 +1,9 @@
 // The event names the rust layer raises:
 //   DOMAIN_EVENT ↔ DomainEvent  (crates/xaga-core/src/events.rs)
 //   APP_EVENT    ↔ AppEvent     (src-tauri/src/events.rs)
-// Hand-maintained against the rust enums (the rust name tests pin each list;
-// codegen to replace this mirror: docs-transient/backlog/build/spike__ts_type_codegen.md).
+// Hand-maintained against the rust enums. The rust `name()` tests pin each
+// list and this file pins the same set, so a name added on one side without
+// the other fails a test rather than becoming an event nobody listens for.
 
 export const DOMAIN_EVENT = [
   "unread:changed", // payload: Entry (schema-minted)

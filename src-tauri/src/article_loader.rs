@@ -4,12 +4,37 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::oneshot;
 
-/// Pending loader request: the channel to deliver `(mimeType, html)` back, the
-/// caller's `keep_open`, and whether the inline-PDF reqwest probe errored
-/// (`reqwest_error`) — the latter defers the close decision to `load_via_webview`
-/// so the window can be kept open and shown when the content turns out to be a PDF.
-pub type PendingRequests =
-    Arc<Mutex<HashMap<String, (oneshot::Sender<(String, String)>, bool, bool)>>>;
+/// What one loader window captured. A struct rather than a tuple because the
+/// loader is the only context permitted to fetch remote content: anything the
+/// app must not fetch later has to travel back on this payload. The favicon
+/// bytes ride here alongside the page HTML for exactly that reason.
+#[derive(Debug, Clone, Default)]
+pub struct LoaderCapture {
+    pub mime_type: String,
+    pub html: String,
+    /// The URL the loader resolved the favicon from, if it found one.
+    pub favicon: Option<String>,
+    /// That favicon's bytes as a `data:` URI, if the fetch succeeded.
+    pub favicon_data: Option<String>,
+}
+
+/// One in-flight loader request.
+pub struct PendingRequest {
+    /// Delivers the finished capture back to `load_via_webview`.
+    pub tx: oneshot::Sender<LoaderCapture>,
+    pub keep_open: bool,
+    /// Whether the inline-PDF reqwest probe errored — defers the close decision
+    /// to `load_via_webview` so the window can be kept open and shown when the
+    /// content turns out to be a PDF.
+    pub reqwest_error: bool,
+    /// Set while the window is being navigated to the favicon to read its bytes:
+    /// the article HTML is already captured and waiting here for the favicon to
+    /// arrive (or fail) before the capture is completed. `None` at every other
+    /// moment.
+    pub partial: Option<LoaderCapture>,
+}
+
+pub type PendingRequests = Arc<Mutex<HashMap<String, PendingRequest>>>;
 
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -55,16 +80,21 @@ pub async fn load_via_webview(
     allowed_domains: &[String],
     named_stores_supported: bool,
     ssrf_proxy_port: u16,
-) -> Result<(String, String), String> {
+) -> Result<LoaderCapture, String> {
     let id = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed).to_string();
     let label = format!("loader-{}", id);
 
-    let (tx, rx) = oneshot::channel::<(String, String)>();
+    let (tx, rx) = oneshot::channel::<LoaderCapture>();
 
-    pending
-        .lock()
-        .map_err(|e| e.to_string())?
-        .insert(id.clone(), (tx, keep_open, reqwest_error));
+    pending.lock().map_err(|e| e.to_string())?.insert(
+        id.clone(),
+        PendingRequest {
+            tx,
+            keep_open,
+            reqwest_error,
+            partial: None,
+        },
+    );
 
     // Prepend window globals so the static init script can reference them.
     // serde_json::to_string produces valid JSON string literals, preventing
@@ -176,8 +206,8 @@ pub async fn load_via_webview(
     // show the existing (hidden) window to the user instead of closing it: the
     // real browser got past whatever refused reqwest, and a PDF can only be
     // presented this way.
-    let show_pdf =
-        reqwest_error && matches!(&result, Ok(Ok((mime, _))) if mime.as_str() == "application/pdf");
+    let show_pdf = reqwest_error
+        && matches!(&result, Ok(Ok(capture)) if capture.mime_type == "application/pdf");
 
     if show_pdf {
         keep_open_on_error.store(true, Ordering::Release);
@@ -194,7 +224,7 @@ pub async fn load_via_webview(
     }
 
     match result {
-        Ok(Ok((mime_type, html))) => Ok((mime_type, html)),
+        Ok(Ok(capture)) => Ok(capture),
         Ok(Err(_)) => Err("channel closed before HTML was received".to_string()),
         Err(_) => Err("timed out waiting for page to load".to_string()),
     }

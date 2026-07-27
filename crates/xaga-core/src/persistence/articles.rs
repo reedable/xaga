@@ -70,7 +70,35 @@ pub(crate) async fn save_article(
     // reference with a file behind it always has durable bytes (see
     // docs/architecture/crash_consistency.md). The `hash → url` map is stored in
     // frontmatter — the only place the remote URL survives.
-    let extraction = crate::persistence::images::extract_images(id, markdown, url_data);
+    let mut extraction = crate::persistence::images::extract_images(id, markdown, url_data);
+
+    // The favicon is localised exactly like a body image: its bytes join the same
+    // per-entry directory and the stored value becomes a local ref, so displaying
+    // the entry issues no request from the main window. `extract_favicon` returns
+    // `None` for a value that is already local, which is what makes a re-save a
+    // no-op rather than a re-hash.
+    let favicon = match favicon {
+        Some(url) => match crate::persistence::images::extract_favicon(url, url_data) {
+            Some((hash, image)) => {
+                if let Some(image) = image {
+                    if !extraction
+                        .images
+                        .iter()
+                        .any(|existing| existing.file_name == image.file_name)
+                    {
+                        extraction.images.push(image);
+                    }
+                }
+                if !extraction.url_map.iter().any(|(h, _)| h == &hash) {
+                    extraction.url_map.push((hash.clone(), url.to_string()));
+                }
+                Some(crate::library::entry_image_ref(id, &hash))
+            }
+            None => Some(url.to_string()),
+        },
+        None => None,
+    };
+
     crate::persistence::images::write_entry_images(library_dir, id, &extraction.images, token).await;
 
     let images: Vec<crate::types::ImageRef> = extraction
@@ -94,7 +122,7 @@ pub(crate) async fn save_article(
         },
         content: extraction.body,
         annotations: with_reference(existing_annotations, id),
-        favicon: favicon.map(str::to_string),
+        favicon,
         images,
     };
     crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
@@ -388,6 +416,104 @@ mod tests {
         assert_eq!(article.content, body.trim_end());
         assert!(article.images.is_empty());
         assert!(!crate::library::entry_images_dir(lib, "abcdef123456").exists());
+    }
+
+    #[tokio::test]
+    async fn save_article_stores_the_favicon_and_frontmatter_holds_a_local_ref() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        let id = "abcdef123456";
+        let favicon_url = "https://example.com/favicon.ico";
+
+        save_article(
+            lib, id, "https://example.com/a", "T", None, None, None, Some(favicon_url),
+            "body", &data(favicon_url, PNG_DATA), WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+
+        let article = read_article(lib, id).await.unwrap();
+        let hash = crate::persistence::images::image_url_hash(favicon_url);
+
+        // Stored value is a local ref — nothing for the main window to fetch.
+        assert_eq!(
+            article.favicon.as_deref(),
+            Some(crate::library::entry_image_ref(id, &hash).as_str())
+        );
+        // The URL survives only in the frontmatter map, so a lost file is recoverable.
+        assert!(article.images.iter().any(|i| i.url == favicon_url));
+        assert!(crate::library::entry_image_path(lib, id, &format!("{hash}.png")).exists());
+    }
+
+    #[tokio::test]
+    async fn save_article_keeps_the_favicon_ref_when_bytes_are_absent() {
+        // A failed favicon fetch degrades to a broken ref, never to a live URL.
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        let id = "abcdef123456";
+        let favicon_url = "https://example.com/favicon.ico";
+
+        save_article(
+            lib, id, "https://example.com/a", "T", None, None, None, Some(favicon_url),
+            "body", &no_data(), WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+
+        let article = read_article(lib, id).await.unwrap();
+        assert!(article.favicon.as_deref().unwrap().starts_with("../images/"));
+        assert!(!article.favicon.as_deref().unwrap().contains("http"));
+        assert!(article.images.iter().any(|i| i.url == favicon_url));
+    }
+
+    #[tokio::test]
+    async fn save_article_does_not_re_hash_an_already_local_favicon() {
+        // The re-save path: a second save is fed the ref it wrote last time.
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        let id = "abcdef123456";
+        let favicon_url = "https://example.com/favicon.ico";
+
+        save_article(
+            lib, id, "https://example.com/a", "T", None, None, None, Some(favicon_url),
+            "body", &data(favicon_url, PNG_DATA), WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        let first = read_article(lib, id).await.unwrap().favicon.unwrap();
+
+        save_article(
+            lib, id, "https://example.com/a", "T", None, None, None, Some(&first),
+            "body", &no_data(), WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+
+        let article = read_article(lib, id).await.unwrap();
+        assert_eq!(article.favicon.as_deref(), Some(first.as_str()));
+    }
+
+    #[tokio::test]
+    async fn save_article_gc_keeps_the_favicon_file() {
+        // The favicon is referenced from frontmatter, not the body — the sweep
+        // must still treat it as live.
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        let id = "abcdef123456";
+        let favicon_url = "https://example.com/favicon.ico";
+        let body_url = "https://example.com/p.png";
+        let mut url_data = data(favicon_url, PNG_DATA);
+        url_data.insert(body_url.to_string(), PNG_DATA.to_string());
+
+        save_article(
+            lib, id, "https://example.com/a", "T", None, None, None, Some(favicon_url),
+            &format!("![a]({body_url})"), &url_data, WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+
+        let hash = crate::persistence::images::image_url_hash(favicon_url);
+        assert!(crate::library::entry_image_path(lib, id, &format!("{hash}.png")).exists());
     }
 
     #[tokio::test]

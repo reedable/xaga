@@ -20,7 +20,7 @@ import {
 import useAbortController from "../../hooks/useAbortController";
 import { useAnnotations } from "../../hooks/useAnnotations";
 import { useAppearance } from "../../hooks/useAppearance";
-import { useArticles } from "../../hooks/useArticles";
+import { toLoaderFavicon, useArticles } from "../../hooks/useArticles";
 import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
 import {
@@ -258,7 +258,14 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
     useEffect(() => {
       return onLoaderClosed(
-        async ({ loaderUrl, samePage, html: loaderHtml, mimeType }) => {
+        async ({
+          loaderUrl,
+          samePage,
+          html: loaderHtml,
+          mimeType,
+          favicon,
+          faviconData,
+        }) => {
           if (url !== loaderUrl) return;
           // The captured html belongs to pageUrl; when the loader was
           // redirected or navigated to a different page, it must not be
@@ -266,7 +273,11 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
           if (!samePage) return;
           if (mimeType === "application/pdf") return;
 
-          const extracted = await extractArticleFromHtml(url, loaderHtml);
+          const extracted = await extractArticleFromHtml(
+            url,
+            loaderHtml,
+            toLoaderFavicon(favicon, faviconData)
+          );
           if (!extracted?.markdown) return;
 
           setPendingUpdate(extracted);

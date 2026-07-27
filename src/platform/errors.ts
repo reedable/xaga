@@ -6,8 +6,9 @@
 // `message` is the only user-safe field; `detail` is the full technical text,
 // for the console/log only — never render it to a user.
 //
-// Hand-maintained against the rust enums (the rust code tests pin each list;
-// codegen to replace this mirror: docs-transient/backlog/build/spike__ts_type_codegen.md).
+// Hand-maintained against the rust enums. The rust tests pin each code list
+// and this file pins the same set, so a code added on one side without the
+// other fails a test rather than reaching the UI as an unhandled string.
 
 export const ERROR_CODE = [
   // DomainError — EntryError

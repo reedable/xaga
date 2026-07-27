@@ -80,3 +80,96 @@ describe("processEntry — image URLs across the HTML→markdown boundary", () =
     expect(markdown).not.toContain("embed.test");
   });
 });
+
+// The favicon is fetched in the loader webview, never here — the main window
+// must not issue that request. `processEntry` only pairs the loader's URL with
+// its bytes and puts them where `save_article` already looks.
+describe("processEntry — favicon", () => {
+  it("prefers the loader's pair and carries its bytes in imageData", async () => {
+    const loaderFavicon = {
+      url: "https://cdn.test/icon.png",
+      dataUri: DATA_URI,
+    };
+    const { favicon, imageData } = await processEntry(
+      "https://site.test/a",
+      articleHtml("<p>text</p>").replace(
+        "<head>",
+        '<head><link rel="icon" href="/declared.ico">'
+      ),
+      loaderFavicon
+    );
+    // The loader's URL wins: it is the one whose bytes we hold, so it is the one
+    // the backend must hash.
+    expect(favicon).toBe(loaderFavicon.url);
+    expect(imageData[loaderFavicon.url]).toBe(DATA_URI);
+  });
+
+  it("falls back to the declared link with no bytes when the loader sent none", async () => {
+    const { favicon, imageData } = await processEntry(
+      "https://site.test/a",
+      articleHtml("<p>text</p>").replace(
+        "<head>",
+        '<head><link rel="icon" href="/declared.ico">'
+      )
+    );
+    expect(favicon).toBe("https://site.test/declared.ico");
+    expect(Object.keys(imageData)).toHaveLength(0);
+  });
+});
+
+// `extract_images` (Rust) rewrites exactly one shape: a markdown image
+// `![alt](url)`. So the security property of this boundary is that no construct
+// capable of issuing a request survives it in any *other* shape — no raw HTML
+// tag, no CSS `url()`, no `srcset`. A remote URL left in markdown link syntax is
+// fine: a link is not fetched.
+describe("processEntry — no fetchable markup survives ingestion", () => {
+  const CONSTRUCTS: [string, string][] = [
+    ["img", '<img src="https://t.test/a.png">'],
+    ["img srcset", '<img src="https://t.test/a.png" srcset="https://t.test/2x.png 2x">'],
+    [
+      "picture/source",
+      '<picture><source srcset="https://t.test/s.webp"><img src="https://t.test/a.png"></picture>',
+    ],
+    ["video poster", '<video poster="https://t.test/p.jpg" src="https://t.test/v.mp4"></video>'],
+    ["audio", '<audio src="https://t.test/a.mp3"></audio>'],
+    ["track", '<video><track src="https://t.test/t.vtt"></video>'],
+    ["object", '<object data="https://t.test/o.bin"></object>'],
+    ["embed", '<embed src="https://t.test/e">'],
+    ["input type=image", '<input type="image" src="https://t.test/i.png">'],
+    ["svg image", '<svg><image href="https://t.test/i.png"/></svg>'],
+    ["link stylesheet", '<link rel="stylesheet" href="https://t.test/s.css">'],
+    ["style block", "<style>body{background:url(https://t.test/bg.png)}</style>"],
+    ["inline style", '<div style="background-image:url(https://t.test/bg.png)">x</div>'],
+  ];
+
+  it.each(CONSTRUCTS)("%s leaves no fetchable markup", async (_name, body) => {
+    const { markdown } = await processEntry(
+      "https://site.test/a",
+      articleHtml(body)
+    );
+    expect(markdown).not.toMatch(
+      /<(img|iframe|object|embed|source|picture|video|audio|input|svg|image|link|style|track)\b/i
+    );
+    expect(markdown).not.toMatch(/url\(/i);
+    expect(markdown).not.toMatch(/srcset/i);
+  });
+});
+
+// Rust's `is_remote` matches an `http`/`https` prefix, so a relative or
+// protocol-relative `src` that reached it unresolved would be left in the body
+// verbatim and fetch at render. Readability resolves against the injected
+// `<base>` before that, and this pins it.
+describe("processEntry — src shapes arrive absolute", () => {
+  it.each([
+    ["protocol-relative", "//cdn.test/a.png", "https://cdn.test/a.png"],
+    ["root-relative", "/a.png", "https://site.test/a.png"],
+    ["path-relative", "a.png", "https://site.test/a.png"],
+    ["uppercase scheme", "HTTPS://CDN.TEST/a.png", "https://cdn.test/a.png"],
+  ])("resolves a %s src", async (_name, src, expected) => {
+    const { markdown } = await processEntry(
+      "https://site.test/a",
+      articleHtml(`<img src="${src}">`)
+    );
+    expect(markdown).toContain(`![](${expected})`);
+  });
+});

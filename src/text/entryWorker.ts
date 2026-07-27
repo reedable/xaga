@@ -47,9 +47,17 @@ function extractFavicon(doc: Document, url: string): string | null {
   }
 }
 
+/**
+ * The favicon the loader resolved and fetched, when it managed to. Supplied by
+ * the caller rather than derived here: the loader webview is the only context
+ * permitted to fetch remote content, so the bytes have to come from it.
+ */
+export type LoaderFavicon = { url: string; dataUri: string };
+
 export async function processEntry(
   url: string,
-  html: string
+  html: string,
+  loaderFavicon?: LoaderFavicon | null
 ): Promise<{
   title: string;
   markdown: string;
@@ -66,7 +74,11 @@ export async function processEntry(
   base.href = url;
   doc.head.prepend(base);
 
-  const favicon = extractFavicon(doc, url);
+  // Prefer the loader's pair: that URL is the one whose bytes we actually hold,
+  // so it is the one the backend must hash. Without it we fall back to reading
+  // the declared `<link rel~=icon>`, which yields a URL and no bytes — the entry
+  // then stores a remote favicon URL, as it did before this path existed.
+  const favicon = loaderFavicon?.url ?? extractFavicon(doc, url);
 
   // Pre-Readability: the loader inlined each fetched image as a `data:` src and
   // stashed the remote URL in `data-xaga-url`. Capture that pairing now, then
@@ -96,6 +108,10 @@ export async function processEntry(
   // and collect `url → data:` for those kept images.
   const contentDoc = parser.parseFromString(entry.content ?? "", "text/html");
   const imageData: Record<string, string> = {};
+
+  // The favicon rides in the same `url → data:` map as the body images, so it
+  // reaches the backend without widening the save API.
+  if (loaderFavicon) imageData[loaderFavicon.url] = loaderFavicon.dataUri;
 
   for (const img of Array.from(contentDoc.querySelectorAll("img"))) {
     const src = img.getAttribute("src");

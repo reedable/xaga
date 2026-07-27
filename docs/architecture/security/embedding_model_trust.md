@@ -22,7 +22,7 @@ Ordered from download backwards. Each link states what secures it.
 
 5. **The publisher → upstream.** _Claimed, unverified._ The artifact is presented as a conversion of the upstream sentence-transformers model; the derivation has not been reproduced. Reproducing the ONNX export from upstream weights would replace link 4's trust in Qdrant with trust in upstream plus the conversion toolchain.
 
-6. **The manifest → the binary.** _Deferred to the platform._ Users receive the manifest inside the app; whoever can modify the shipped binary can rewrite the checksums. The manifest's forward integrity is therefore exactly the app's code-signing/distribution story (docs-transient/backlog/build/defect\_\_macos_code_signing.md), and, for this repository, the integrity of its git history.
+6. **The manifest → the binary.** _Deferred to the platform._ Users receive the manifest inside the app; whoever can modify the shipped binary can rewrite the checksums. The manifest's forward integrity is therefore exactly the app's code-signing/distribution story — which this project has not yet established, so nothing today stops a modified build from shipping rewritten checksums — and, for this repository, the integrity of its git history.
 
 ## What the behavior check proves
 

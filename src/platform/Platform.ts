@@ -67,6 +67,10 @@ export interface Platform {
     mimeType: string;
     html: string;
     pdfBase64?: string | null;
+    // The favicon the loader resolved and fetched for this page. Fetched there
+    // so the main window never issues the request itself.
+    favicon?: string | null;
+    faviconData?: string | null;
   }>;
   findArticle(signal: AbortSignal, url: string): Promise<Article | null>;
   // `imageData` maps each fetched image's remote URL to its `data:` bytes (from
@@ -219,10 +223,18 @@ export interface Platform {
       samePage: boolean;
       html: string;
       mimeType: string;
+      favicon?: string | null;
+      faviconData?: string | null;
     }) => void
   ): Promise<UnlistenFn>;
   onLoaderPageLoaded(
-    callback: (data: { url: string; html: string; mimeType: string }) => void
+    callback: (data: {
+      url: string;
+      html: string;
+      mimeType: string;
+      favicon?: string | null;
+      faviconData?: string | null;
+    }) => void
   ): Promise<UnlistenFn>;
   onFind(callback: () => void): Promise<UnlistenFn>;
   setFindEnabled(enabled: boolean): Promise<void>;

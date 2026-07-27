@@ -57,6 +57,7 @@ export function Toolbar({ reload }: ToolbarProps) {
 
   const { url, entryId } = state;
   const [latestEntry, setLatestEntry] = useState<Entry | null>(null);
+  const [favicon, setFavicon] = useState<string | null>(null);
 
   // Reset on navigation so button states stay cleared until the current
   // entry is loaded; a lingering latestEntry from a previous visit to the
@@ -65,10 +66,20 @@ export function Toolbar({ reload }: ToolbarProps) {
   if (lastEntryId !== entryId) {
     setLastEntryId(entryId);
     setLatestEntry(null);
+    setFavicon(null);
   }
 
   const entry = latestEntry?.id === entryId ? latestEntry : null;
-  const [favicon, setFavicon] = useState<string | null>(null);
+
+  // A stored favicon is either a local `../images/…` ref, resolved to bytes
+  // over IPC below, or a remote URL. The latter only occurs for entries saved
+  // before ingestion began storing favicon bytes; it is rendered as-is, which
+  // is a remote request from this (privileged) window, and reloading the
+  // article rewrites it to a local ref.
+  const storedFavicon = isArticle(entry) ? entry.favicon : undefined;
+  const isLocalFaviconRef = !!storedFavicon?.startsWith("../images/");
+  const displayFavicon = isLocalFaviconRef ? favicon : (storedFavicon ?? null);
+
   const qrButtonRef = useRef<HTMLButtonElement>(null);
   const [qrOpen, setQrOpen] = useState(false);
 
@@ -110,23 +121,6 @@ export function Toolbar({ reload }: ToolbarProps) {
   const handleQrOpen = useCallback(() => setQrOpen(true), []);
   const handleQrClose = useCallback(() => setQrOpen(false), []);
 
-  const getFavicon = useCallback(async (url?: string) => {
-    if (!url) return null;
-
-    try {
-      const img = new Image();
-
-      await new Promise<void>((resolve) => {
-        img.onload = () => resolve();
-        img.src = url;
-      });
-
-      return url;
-    } catch {
-      return null;
-    }
-  }, []);
-
   useEffect(() => {
     if (!entryId) return;
     const controller = new AbortController();
@@ -140,22 +134,23 @@ export function Toolbar({ reload }: ToolbarProps) {
     return () => controller.abort();
   }, [entryId, platform]);
 
+  // The favicon is fetched inside the article loader at ingestion and stored
+  // under the entry's image directory, so displaying it makes no network request
+  // from this (privileged) window. Only that case needs an effect — the bytes
+  // come back over IPC.
   useEffect(() => {
-    (async () => {
-      setFavicon(null);
-      if (!url) return;
-      const faviconUrl = `${new URL(url).origin}/favicon.ico`;
-      setFavicon(await getFavicon(faviconUrl));
-    })();
-  }, [getFavicon, url]);
+    if (!entry || !storedFavicon || !isLocalFaviconRef) return;
 
-  useEffect(() => {
-    (async () => {
-      if (isArticle(entry) && entry.favicon) {
-        setFavicon(await getFavicon(entry.favicon));
-      }
-    })();
-  }, [getFavicon, entry]);
+    const controller = new AbortController();
+    platform
+      .readEntryImages(controller.signal, entry.id, [storedFavicon])
+      .then(([dataUri]) => {
+        if (controller.signal.aborted) return;
+        setFavicon(dataUri ?? null);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [entry, storedFavicon, isLocalFaviconRef, platform]);
 
   useEffect(
     () =>
@@ -184,6 +179,7 @@ export function Toolbar({ reload }: ToolbarProps) {
           <ArrowBack fontSize="small" />
         </IconButton>
       </Tooltip>
+
       <Tooltip title="Forward">
         <IconButton
           size="small"
@@ -194,6 +190,7 @@ export function Toolbar({ reload }: ToolbarProps) {
           <ArrowForward fontSize="small" />
         </IconButton>
       </Tooltip>
+
       <div className={css.AddressBarContainer}>
         <div>
           <div className={css.AddressBar}>
@@ -204,10 +201,10 @@ export function Toolbar({ reload }: ToolbarProps) {
                 disabled={!entry}
                 aria-label="Show Original Site"
               >
-                {favicon ? (
+                {displayFavicon ? (
                   <div className={css.Favicon}>
                     <img
-                      src={favicon}
+                      src={displayFavicon}
                       width={16}
                       height={16}
                       alt="Show original site"

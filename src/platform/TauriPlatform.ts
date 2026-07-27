@@ -472,6 +472,8 @@ export class TauriPlatform implements Platform {
     mimeType: string;
     html: string;
     pdfBase64?: string | null;
+    favicon?: string | null;
+    faviconData?: string | null;
   }> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -481,6 +483,8 @@ export class TauriPlatform implements Platform {
       mimeType: string;
       html: string;
       pdfBase64?: string | null;
+      favicon?: string | null;
+      faviconData?: string | null;
     }>("load_article", {
       url,
       keepOpen: keepOpen ?? false,
@@ -1108,6 +1112,8 @@ export class TauriPlatform implements Platform {
       samePage: boolean;
       html: string;
       mimeType: string;
+      favicon?: string | null;
+      faviconData?: string | null;
     }) => void
   ): Promise<UnlistenFn> {
     const name: AppEvent = "loader:closed";
@@ -1119,6 +1125,8 @@ export class TauriPlatform implements Platform {
           samePage: boolean;
           html: string;
           mimeType: string;
+          favicon?: string | null;
+          faviconData?: string | null;
         };
       }) => callback(e.payload)
     ).with(logged, { logger, name });
@@ -1128,18 +1136,38 @@ export class TauriPlatform implements Platform {
       samePage: boolean;
       html: string;
       mimeType: string;
+      favicon?: string | null;
+      faviconData?: string | null;
     }>(name, listener);
   }
 
   onLoaderPageLoaded(
-    callback: (data: { url: string; html: string; mimeType: string }) => void
+    callback: (data: {
+      url: string;
+      html: string;
+      mimeType: string;
+      favicon?: string | null;
+      faviconData?: string | null;
+    }) => void
   ): Promise<UnlistenFn> {
     const name: AppEvent = "loader:page-loaded";
     const listener = decorate(
-      (e: { payload: { url: string; html: string; mimeType: string } }) =>
+      (e: { payload: {
+      url: string;
+      html: string;
+      mimeType: string;
+      favicon?: string | null;
+      faviconData?: string | null;
+    } }) =>
         callback(e.payload)
     ).with(logged, { logger, name });
-    return listen<{ url: string; html: string; mimeType: string }>(
+    return listen<{
+      url: string;
+      html: string;
+      mimeType: string;
+      favicon?: string | null;
+      faviconData?: string | null;
+    }>(
       name,
       listener
     );

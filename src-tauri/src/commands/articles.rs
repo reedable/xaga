@@ -21,6 +21,8 @@ pub async fn loader_page_loaded(
     url: String,
     html: String,
     mime_type: String,
+    favicon: Option<String>,
+    favicon_data: Option<String>,
 ) -> Result<(), AppError> {
     crate::events::emit_app(
         &app,
@@ -28,6 +30,8 @@ pub async fn loader_page_loaded(
             url,
             html,
             mime_type,
+            favicon,
+            favicon_data,
         }),
     );
     Ok(())
@@ -41,6 +45,8 @@ pub async fn capture_and_close_loader(
     loader_url: String,
     page_url: String,
     mime_type: String,
+    favicon: Option<String>,
+    favicon_data: Option<String>,
 ) -> Result<(), AppError> {
     let same_page = match (
         xaga_core::util::normalize_url(&loader_url),
@@ -58,6 +64,8 @@ pub async fn capture_and_close_loader(
             same_page,
             html,
             mime_type,
+            favicon,
+            favicon_data,
         }),
     );
     if let Some(w) = app.get_webview_window(&label) {
@@ -68,26 +76,106 @@ pub async fn capture_and_close_loader(
 
 #[tauri::command]
 pub async fn receive_html(
-    window: tauri::Window,
+    window: tauri::WebviewWindow,
     pending: State<'_, article_loader::PendingRequests>,
     id: String,
     html: String,
     mime_type: String,
+    favicon: Option<String>,
+    favicon_data: Option<String>,
 ) -> Result<bool, AppError> {
     let mut map = pending.lock().map_err(|e| e.to_string())?;
-    if let Some((tx, keep_open, reqwest_error)) = map.remove(&id) {
-        let _ = tx.send((mime_type, html));
-        if !keep_open && !reqwest_error {
-            // Terminate the webview immediately so untrusted scripts cannot
-            // continue running or spamming IPC. When the inline-PDF reqwest
-            // probe errored, defer the close to load_via_webview, which keeps
-            // the window alive to show it if the content is a PDF.
+    let Some(mut request) = map.remove(&id) else {
+        return Ok(false);
+    };
+
+    let capture = article_loader::LoaderCapture {
+        mime_type,
+        html,
+        favicon,
+        favicon_data,
+    };
+
+    // The favicon's bytes cannot be read from the article's own document (a
+    // cross-origin favicon without CORS is unreadable there), so this window is
+    // navigated to the favicon URL and the bytes come back through
+    // `receive_favicon`, which then completes this capture and closes the
+    // window. Only on the hidden single-shot path: a `keep_open` window is
+    // visible and may be in use, and the reqwest-error path may still need to
+    // show this window as a PDF.
+    let favicon_target =
+        if !request.keep_open && !request.reqwest_error && capture.mime_type != "application/pdf" {
+            capture
+                .favicon
+                .as_deref()
+                .and_then(|url| url.parse::<tauri::Url>().ok())
+                .filter(|url| matches!(url.scheme(), "http" | "https"))
+        } else {
+            None
+        };
+
+    if let Some(favicon_url) = favicon_target {
+        if window.navigate(favicon_url).is_ok() {
+            // Deliberately neither resolves nor closes yet. This defers the
+            // "kill after capture" close (see fetching_remote_content.md,
+            // "Fetch-adjacent hardening in the loader") by one IPC round trip —
+            // the article document is destroyed by the navigation instead, so
+            // its scripts stop either way. `load_via_webview`'s overall timeout
+            // still bounds the wait and closes the window if nothing arrives.
+            request.partial = Some(capture);
+            map.insert(id, request);
+            return Ok(true);
+        }
+        // Navigation refused: fall through and complete without favicon bytes.
+    }
+
+    let _ = request.tx.send(capture);
+    if !request.keep_open && !request.reqwest_error {
+        // Terminate the webview immediately so untrusted scripts cannot
+        // continue running or spamming IPC. When the inline-PDF reqwest
+        // probe errored, defer the close to load_via_webview, which keeps
+        // the window alive to show it if the content is a PDF.
+        let _ = window.close();
+    }
+    Ok(true)
+}
+
+/// Receives the favicon bytes read off a canvas in the favicon's own document,
+/// after `receive_html` navigated this window there. `data_uri` is `None` when
+/// the read failed — the capture still completes, with the URL recorded and no
+/// bytes, so the entry stores a recoverable broken ref rather than stalling.
+#[tauri::command]
+pub async fn receive_favicon(
+    window: tauri::WebviewWindow,
+    pending: State<'_, article_loader::PendingRequests>,
+    id: String,
+    data_uri: Option<String>,
+    reason: Option<String>,
+) -> Result<(), AppError> {
+    if data_uri.is_none() {
+        log::warn!(
+            "favicon capture produced no bytes for loader {id}: {}",
+            reason.as_deref().unwrap_or("no reason reported")
+        );
+    }
+    let mut map = pending.lock().map_err(|e| e.to_string())?;
+    let Some(request) = map.remove(&id) else {
+        return Ok(());
+    };
+
+    match request.partial {
+        Some(mut capture) => {
+            capture.favicon_data = data_uri;
+            let _ = request.tx.send(capture);
             let _ = window.close();
         }
-        Ok(true)
-    } else {
-        Ok(false)
+        // No article capture is waiting: this window is not in the favicon
+        // phase, so put the request back untouched rather than dropping it.
+        None => {
+            map.insert(id, request);
+        }
     }
+    Ok(())
 }
 
 #[derive(serde::Serialize)]
@@ -98,6 +186,11 @@ pub struct LoadArticleResult {
     /// Base64-encoded PDF bytes, present only on the inline-PDF fast path.
     #[serde(rename = "pdfBase64")]
     pub pdf_base64: Option<String>,
+    /// The favicon URL the loader resolved for this page, and its bytes as a
+    /// `data:` URI. Fetched inside the loader so the main window never has to.
+    pub favicon: Option<String>,
+    #[serde(rename = "faviconData")]
+    pub favicon_data: Option<String>,
 }
 
 enum PdfProbe {
@@ -214,6 +307,8 @@ pub async fn load_article(
                     mime_type: "application/pdf".to_string(),
                     html: String::new(),
                     pdf_base64: Some(base64::engine::general_purpose::STANDARD.encode(&bytes)),
+                    favicon: None,
+                    favicon_data: None,
                 });
             }
             // Not a PDF — fall through to the webview unchanged.
@@ -232,7 +327,7 @@ pub async fn load_article(
         }
     }
 
-    let (mime_type, html) = article_loader::load_via_webview(
+    let capture = article_loader::load_via_webview(
         &app,
         &pending,
         &url,
@@ -245,9 +340,11 @@ pub async fn load_article(
     )
     .await?;
     Ok(LoadArticleResult {
-        mime_type,
-        html,
+        mime_type: capture.mime_type,
+        html: capture.html,
         pdf_base64: None,
+        favicon: capture.favicon,
+        favicon_data: capture.favicon_data,
     })
 }
 

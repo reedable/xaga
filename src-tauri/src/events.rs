@@ -9,8 +9,9 @@
 //! INVARIANT: `.emit(` appears only in this module. Raising an event
 //! anywhere else goes through [`emit_domain`] / [`emit_app`], so an event
 //! cannot exist without a typed definition and a registered name. The UI
-//! side of the names is `src/platform/events.ts` (hand-maintained; see
-//! docs-transient/backlog/build/spike__ts_type_codegen.md).
+//! side of the names is `src/platform/events.ts`, hand-maintained against
+//! this enum — the `name()` test here and the TS list pin each other, so a
+//! name added on one side alone fails a test.
 
 use serde::Serialize;
 use tauri::{Emitter, Runtime};
@@ -35,6 +36,12 @@ pub(crate) struct LoaderPageLoaded {
     pub(crate) html: String,
     #[serde(rename = "mimeType")]
     pub(crate) mime_type: String,
+    /// Favicon the loader resolved and fetched for this page. Carried here
+    /// because the loader is the only context allowed to fetch it — see
+    /// `docs/architecture/security/fetching_remote_content.md`.
+    pub(crate) favicon: Option<String>,
+    #[serde(rename = "faviconData")]
+    pub(crate) favicon_data: Option<String>,
 }
 
 /// Payload of `loader:closed`.
@@ -55,6 +62,10 @@ pub(crate) struct LoaderClosed {
     pub(crate) html: String,
     #[serde(rename = "mimeType")]
     pub(crate) mime_type: String,
+    /// See `LoaderPageLoaded::favicon`.
+    pub(crate) favicon: Option<String>,
+    #[serde(rename = "faviconData")]
+    pub(crate) favicon_data: Option<String>,
 }
 
 pub(crate) enum AppEvent {
@@ -199,6 +210,8 @@ mod tests {
                 url: String::new(),
                 html: String::new(),
                 mime_type: String::new(),
+                favicon: None,
+                favicon_data: None,
             }),
             AppEvent::LoaderClosed(LoaderClosed {
                 loader_url: String::new(),
@@ -206,6 +219,8 @@ mod tests {
                 same_page: false,
                 html: String::new(),
                 mime_type: String::new(),
+                favicon: None,
+                favicon_data: None,
             }),
         ]
     }

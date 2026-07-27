@@ -70,8 +70,19 @@ async fn gc(data_dir: &Path, dry_run: bool) {
         match articles::read_article(data_dir, &id).await {
             Ok(article) => {
                 // The body references ext-less url-hashes; a file `<hash>.<ext>`
-                // is live iff its stem is referenced.
-                let keep = images::referenced_image_hashes(&id, &article.content);
+                // is live iff its stem is referenced. The favicon is referenced
+                // from frontmatter rather than the body, so it has to be added
+                // by hand or every sweep would delete it.
+                let mut keep = images::referenced_image_hashes(&id, &article.content);
+                if let Some(hash) = article
+                    .favicon
+                    .as_deref()
+                    .and_then(library::parse_entry_image_ref)
+                    .filter(|(ref_id, _)| *ref_id == id)
+                    .map(|(_, hash)| hash.to_string())
+                {
+                    keep.insert(hash);
+                }
                 let files = match std::fs::read_dir(&path) {
                     Ok(files) => files,
                     Err(e) => die(e),

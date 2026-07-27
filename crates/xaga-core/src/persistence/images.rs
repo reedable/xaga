@@ -352,6 +352,30 @@ pub(crate) fn extract_images(
     }
 }
 
+/// Localises an entry's favicon the same way [`extract_images`] localises a body
+/// image: hash the remote URL, and decode the bytes when the loader supplied
+/// them. Returns `None` when `url` is not a remote reference — an already-local
+/// `../images/…` ref (a re-save) or anything else passes through untouched.
+///
+/// A `Some((hash, None))` means the URL is ours to rewrite but no bytes arrived
+/// (the fetch failed, or the media type is off the allowlist): the caller stores
+/// a broken local ref and keeps the URL in the frontmatter map, exactly as a
+/// body image with no bytes degrades.
+pub(crate) fn extract_favicon(
+    url: &str,
+    url_data: &HashMap<String, String>,
+) -> Option<(String, Option<ExtractedImage>)> {
+    if !is_remote(url) {
+        return None;
+    }
+    let engine = base64::engine::general_purpose::STANDARD;
+    let hash = image_url_hash(url);
+    let image = url_data
+        .get(url)
+        .and_then(|data_uri| decode_data_uri(&hash, data_uri, &engine));
+    Some((hash, image))
+}
+
 // ── Disk I/O ──────────────────────────────────────────────────────────────────
 //
 // Ordering invariant (see docs/architecture/crash_consistency.md): images are
@@ -676,6 +700,41 @@ mod tests {
         assert_eq!(out.body, md);
         assert!(out.images.is_empty());
         assert!(out.url_map.is_empty());
+    }
+
+    // ── Favicon ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn favicon_with_bytes_yields_hash_and_file() {
+        let url = "https://x.test/favicon.ico";
+        let (hash, image) = extract_favicon(url, &map(&[(url, PNG_DATA)])).expect("remote");
+        assert_eq!(hash, image_url_hash(url));
+        assert_eq!(image.expect("bytes").file_name, format!("{hash}.png"));
+    }
+
+    #[test]
+    fn favicon_without_bytes_yields_hash_only() {
+        // A failed fetch: the caller still records the URL and writes a broken
+        // local ref, so a reload can heal it.
+        let url = "https://x.test/favicon.ico";
+        let (hash, image) = extract_favicon(url, &HashMap::new()).expect("remote");
+        assert_eq!(hash, image_url_hash(url));
+        assert!(image.is_none());
+    }
+
+    #[test]
+    fn favicon_off_allowlist_media_type_yields_no_file() {
+        let url = "https://x.test/favicon.ico";
+        let bad = "data:application/pdf;base64,JVBERi0=";
+        let (_, image) = extract_favicon(url, &map(&[(url, bad)])).expect("remote");
+        assert!(image.is_none());
+    }
+
+    #[test]
+    fn favicon_that_is_already_local_is_left_alone() {
+        // The re-save path: a second save must not re-hash an existing ref.
+        assert!(extract_favicon("../images/e1/4f2a91c3e0b7", &HashMap::new()).is_none());
+        assert!(extract_favicon("data:image/png;base64,AAAA", &HashMap::new()).is_none());
     }
 
     #[test]

@@ -18,6 +18,7 @@ pub(crate) const TRUSTED_WINDOW_LABELS: &[&str] = &["main", "settings"];
 /// call them, and a loader window may call *nothing else*.
 pub(crate) const LOADER_COMMANDS: &[&str] = &[
     "receive_html",
+    "receive_favicon",
     "loader_will_unload",
     "loader_page_loaded",
     "capture_and_close_loader",
@@ -115,6 +116,7 @@ mod tests {
     #[test]
     fn loader_windows_may_call_only_loader_commands() {
         assert!(is_invoke_allowed("loader-7", "receive_html"));
+        assert!(is_invoke_allowed("loader-7", "receive_favicon"));
         assert!(is_invoke_allowed("loader-7", "capture_and_close_loader"));
         // Loader content must not reach the main command surface.
         assert!(!is_invoke_allowed("loader-7", "read_article"));
@@ -130,6 +132,7 @@ mod tests {
             assert!(is_invoke_allowed(label, "set_library"));
             // The UI must never invoke a loader callback.
             assert!(!is_invoke_allowed(label, "receive_html"));
+            assert!(!is_invoke_allowed(label, "receive_favicon"));
         }
     }
 

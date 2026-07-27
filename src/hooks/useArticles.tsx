@@ -2,8 +2,20 @@ import { useCallback, useState, type RefObject } from "react";
 import { errorCode } from "../platform/errors";
 import { usePlatform } from "../platform/Platform";
 import { useErrorSink } from "./useErrorSink";
-import { processEntry } from "../text/entryWorker";
+import { processEntry, type LoaderFavicon } from "../text/entryWorker";
 import { type Entry } from "../types";
+
+/**
+ * Pairs the loader's favicon URL with its bytes, or null when the loader did not
+ * come back with both. Only a complete pair is usable: the URL is what the
+ * backend hashes, and the bytes are what it writes.
+ */
+export function toLoaderFavicon(
+  url?: string | null,
+  dataUri?: string | null
+): LoaderFavicon | null {
+  return url && dataUri ? { url, dataUri } : null;
+}
 
 /** Decode base64 (PDF bytes from the Rust inline-PDF path) into a byte array. */
 function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
@@ -32,11 +44,8 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       setLoading(true);
 
       try {
-        const { mimeType, html, pdfBase64 } = await platform.loadArticle(
-          signal,
-          url,
-          keepOpen
-        );
+        const { mimeType, html, pdfBase64, favicon: faviconUrl, faviconData } =
+          await platform.loadArticle(signal, url, keepOpen);
 
         if (mimeType === "application/pdf") {
           const pdfBytes = pdfBase64 ? base64ToBytes(pdfBase64) : null;
@@ -45,7 +54,8 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
 
         const { title, markdown, favicon, imageData } = await processEntry(
           url,
-          html
+          html,
+          toLoaderFavicon(faviconUrl, faviconData)
         );
 
         const article = await platform.createArticle(
@@ -90,14 +100,15 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       setLoading(true);
 
       try {
-        const { html } = await platform.loadArticle(
-          signal,
-          entry.url,
-          keepOpen
-        );
+        const {
+          html,
+          favicon: faviconUrl,
+          faviconData,
+        } = await platform.loadArticle(signal, entry.url, keepOpen);
         const { title, markdown, favicon, imageData } = await processEntry(
           entry.url,
-          html
+          html,
+          toLoaderFavicon(faviconUrl, faviconData)
         );
 
         const article = await platform.readArticle(signal, entry.id);
@@ -169,9 +180,9 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
   );
 
   const extractArticleFromHtml = useCallback(
-    async (url: string, html: string) => {
+    async (url: string, html: string, loaderFavicon?: LoaderFavicon | null) => {
       try {
-        const result = await processEntry(url, html);
+        const result = await processEntry(url, html, loaderFavicon);
         if (!result.markdown) return null;
         return result;
       } catch {
@@ -237,7 +248,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
   );
 
   const createArticleFromHtml = useCallback(
-    async (url: string, html: string) => {
+    async (url: string, html: string, loaderFavicon?: LoaderFavicon | null) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
@@ -245,7 +256,8 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       try {
         const { title, markdown, favicon, imageData } = await processEntry(
           url,
-          html
+          html,
+          loaderFavicon
         );
         const article = await platform.createArticle(
           signal,

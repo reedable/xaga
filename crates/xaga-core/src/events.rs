@@ -3,9 +3,10 @@
 //! Each variant pairs an event with its typed payload, and the enum owns the
 //! event name the UI receives (`name()`). The app layer (src-tauri) forwards
 //! these through its single emit funnel; the UI listens by the same names
-//! (`src/platform/events.ts`, hand-maintained — see
-//! docs-transient/backlog/build/spike__ts_type_codegen.md for the codegen
-//! candidate that would derive it from here).
+//! (`src/platform/events.ts`, hand-maintained). Keeping the two in step is
+//! manual: the `name()` tests below pin this list, and the TS side pins its
+//! own, so a name added on one side without the other fails a test rather
+//! than silently dropping events.
 //!
 //! App-layer events (settings, menu, loader, import/export) are deliberately
 //! not here: their payload types and semantics belong to src-tauri (see

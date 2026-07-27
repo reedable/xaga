@@ -71,6 +71,8 @@ export function useEvents() {
         samePage: boolean;
         html: string;
         mimeType: string;
+        favicon?: string | null;
+        faviconData?: string | null;
       }) => void
     ) => subscribe(() => platform.onLoaderClosed(callback)),
     [platform]
@@ -78,7 +80,13 @@ export function useEvents() {
 
   const onLoaderPageLoaded = useCallback(
     (
-      callback: (data: { url: string; html: string; mimeType: string }) => void
+      callback: (data: {
+        url: string;
+        html: string;
+        mimeType: string;
+        favicon?: string | null;
+        faviconData?: string | null;
+      }) => void
     ) => subscribe(() => platform.onLoaderPageLoaded(callback)),
     [platform]
   );
