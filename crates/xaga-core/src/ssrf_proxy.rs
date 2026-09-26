@@ -126,9 +126,13 @@ struct SystemResolver;
 
 impl HostResolver for SystemResolver {
     fn resolve(&self, host: &str, port: u16) -> std::io::Result<Vec<SocketAddr>> {
-        // The `(&str, u16)` ToSocketAddrs impl parses IP literals (v4 and v6
-        // without brackets) and resolves hostnames.
-        Ok((host, port).to_socket_addrs()?.collect())
+        if let Ok(ip) = host.parse::<IpAddr>() {
+            return Ok(vec![SocketAddr::new(ip, port)]);
+        }
+        // Absolute DNS names prevent resolver search domains from turning a
+        // public hostname into a .local lookup.
+        let absolute = format!("{}.", host.trim_end_matches('.'));
+        Ok((absolute.as_str(), port).to_socket_addrs()?.collect())
     }
 }
 
@@ -142,6 +146,16 @@ fn validate_target(
     resolver: &dyn HostResolver,
     is_blocked_fn: fn(IpAddr) -> bool,
 ) -> Result<SocketAddr, ProxyError> {
+    // Reject before invoking the system resolver: resolving .local itself can
+    // issue mDNS traffic and trigger macOS's Local Network permission prompt.
+    // Unqualified names are also forbidden; they can expand via search domains.
+    let name = host.trim_end_matches('.');
+    if name.eq_ignore_ascii_case("local")
+        || name.to_ascii_lowercase().ends_with(".local")
+        || (!name.contains('.') && name.parse::<IpAddr>().is_err())
+    {
+        return Err(ProxyError::Blocked);
+    }
     let addrs = resolver.resolve(host, port).map_err(|_| ProxyError::Dns)?;
     if addrs.is_empty() {
         return Err(ProxyError::Dns);
@@ -563,6 +577,46 @@ mod tests {
     }
     fn sa(s: &str) -> SocketAddr {
         s.parse().unwrap()
+    }
+
+    #[test]
+    fn rejects_local_names_without_resolving() {
+        struct MustNotResolve;
+        impl HostResolver for MustNotResolve {
+            fn resolve(&self, host: &str, _: u16) -> std::io::Result<Vec<SocketAddr>> {
+                panic!("forbidden DNS lookup: {host}");
+            }
+        }
+        for host in [
+            "printer.local",
+            "PRINTER.LoCaL",
+            "printer.local.",
+            "a.b.local",
+            "local",
+            "LOCAL.",
+            "printer",
+            "printer.",
+        ] {
+            assert_eq!(
+                validate_target(host, 443, &MustNotResolve, is_blocked),
+                Err(ProxyError::Blocked),
+                "{host}"
+            );
+        }
+    }
+
+    #[test]
+    fn local_substring_does_not_block_public_domains() {
+        for host in ["local.example.com", "notlocal.example", "example.local.com"] {
+            let r = FakeResolver(HashMap::from([(
+                host.into(),
+                vec![sa("93.184.216.34:443")],
+            )]));
+            assert_eq!(
+                validate_target(host, 443, &r, is_blocked),
+                Ok(sa("93.184.216.34:443"))
+            );
+        }
     }
 
     #[test]

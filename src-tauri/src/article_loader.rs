@@ -128,37 +128,65 @@ pub async fn load_via_webview(
 
     let host = parsed.host_str().unwrap_or("");
     let matched = find_matching_domain(host, allowed_domains);
+    let identifier = matched
+        .filter(|_| named_stores_supported)
+        .map(domain_store_id);
 
-    let mut builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(parsed))
-        .initialization_script(&init_script);
+    // WKWebViewConfiguration must be created on the main thread and hardened
+    // BEFORE WebView construction starts the first navigation.
+    let build_app = app.clone();
+    let build_label = label.clone();
+    let (built_tx, built_rx) = oneshot::channel();
+    let scheduled = app.run_on_main_thread(move || {
+        let result = (|| {
+            let mut builder =
+                WebviewWindowBuilder::new(&build_app, &build_label, WebviewUrl::External(parsed))
+                    .initialization_script(&init_script)
+                    // Do not let remote content create unmanaged browser windows.
+                    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny);
 
-    // Route all loader traffic through the local SSRF-filtering proxy: the
-    // webview never resolves DNS or connects directly, so it cannot reach
-    // private/loopback/intranet hosts and DNS rebinding / redirect-based SSRF
-    // are defeated. Requires the `macos-proxy` feature to take effect on macOS.
-    if let Ok(proxy) = xaga_core::ssrf_proxy::proxy_url(ssrf_proxy_port).parse::<tauri::Url>() {
-        builder = builder.proxy_url(proxy);
-    }
+            let proxy = xaga_core::ssrf_proxy::proxy_url(ssrf_proxy_port)
+                .parse::<tauri::Url>()
+                .map_err(|e| e.to_string())?;
+            builder = builder.proxy_url(proxy);
 
-    // Default: incognito (ephemeral — no cookies written to disk).
-    // Allow-listed domains on macOS get a persistent, per-domain named store.
-    builder = match matched {
-        Some(domain) if named_stores_supported => {
-            builder.data_store_identifier(domain_store_id(domain))
+            #[cfg(target_os = "macos")]
+            {
+                builder = builder.with_webview_configuration(
+                    crate::webview_policy::loader_configuration(identifier)?,
+                );
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                builder = match identifier {
+                    Some(id) => builder.data_store_identifier(id),
+                    None => builder.incognito(true),
+                };
+            }
+
+            builder = if keep_open {
+                builder
+                    .visible(true)
+                    .inner_size(1200.0, 900.0)
+                    .position(100.0, 100.0)
+            } else {
+                builder.visible(false).position(-10000.0, -10000.0)
+            };
+            builder.build().map_err(|e| e.to_string())
+        })();
+        let _ = built_tx.send(result);
+    });
+    let built = match scheduled {
+        Ok(()) => built_rx.await.map_err(|e| e.to_string()).and_then(|r| r),
+        Err(error) => Err(error.to_string()),
+    };
+    let loader = match built {
+        Ok(loader) => loader,
+        Err(error) => {
+            pending.lock().map_err(|e| e.to_string())?.remove(&id);
+            return Err(error);
         }
-        _ => builder.incognito(true),
     };
-
-    builder = if keep_open {
-        builder
-            .visible(true)
-            .inner_size(1200.0, 900.0)
-            .position(100.0, 100.0)
-    } else {
-        builder.visible(false).position(-10000.0, -10000.0)
-    };
-
-    let loader = builder.build().map_err(|e| e.to_string())?;
 
     // Set when an inline-PDF reqwest error is followed by the loader detecting a
     // PDF: the hidden window is then shown to the user (only the webview can fetch

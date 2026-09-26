@@ -4,6 +4,8 @@ mod error;
 mod events;
 mod fetch_client;
 mod native;
+#[cfg(target_os = "macos")]
+mod webview_policy;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
@@ -854,23 +856,32 @@ pub fn run() {
                 if let Some(win) = app.get_webview_window("settings") {
                     win.show().ok();
                     win.set_focus().ok();
-                } else if let Ok(win) = WebviewWindowBuilder::new(
-                    app,
-                    "settings",
-                    WebviewUrl::App("index.html".into()),
-                )
-                .title("Settings")
-                .inner_size(680.0, 520.0)
-                .visible(false)
-                .build()
-                {
-                    // Build hidden, paint the theme color, then reveal — same
-                    // anti-flash treatment as the main window (A3).
-                    let theme = app.state::<AppState>().theme.read().unwrap().clone();
-                    let color = theme_background_color(&theme, &win);
-                    let _ = win.set_background_color(Some(color));
-                    let _ = win.show();
-                    let _ = win.set_focus();
+                } else {
+                    let builder = WebviewWindowBuilder::new(
+                        app,
+                        "settings",
+                        WebviewUrl::App("index.html".into()),
+                    )
+                    .title("Settings")
+                    .inner_size(680.0, 520.0)
+                    .visible(false);
+                    #[cfg(target_os = "macos")]
+                    let builder = match webview_policy::configuration() {
+                        Ok(config) => builder.with_webview_configuration(config),
+                        Err(error) => {
+                            log::error!("settings WebView policy: {error}");
+                            return;
+                        }
+                    };
+                    if let Ok(win) = builder.build() {
+                        // Build hidden, paint the theme color, then reveal — same
+                        // anti-flash treatment as the main window (A3).
+                        let theme = app.state::<AppState>().theme.read().unwrap().clone();
+                        let color = theme_background_color(&theme, &win);
+                        let _ = win.set_background_color(Some(color));
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                    }
                 }
             }
             id @ ("theme_auto" | "theme_light" | "theme_dark") => {
@@ -918,6 +929,14 @@ pub fn run() {
             _ => {}
         })
         .setup(move |app| {
+            // Build explicitly so the native WebRTC policy precedes even the
+            // first document. The config's `create: false` prevents auto-build.
+            let builder = WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?;
+            #[cfg(target_os = "macos")]
+            let builder = builder.with_webview_configuration(
+                webview_policy::configuration().map_err(std::io::Error::other)?,
+            );
+            builder.build()?;
             // Resolve settings: persisted settings.json or defaults.
             let settings_path = settings_path()?;
             let default_library =

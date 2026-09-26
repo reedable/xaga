@@ -39,5 +39,20 @@ ctrlc               = { version = "3", features = ["termination"] }
 sha2                = "0.10"
 base64              = "0.22"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSObject", "NSUUID"] }
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "WKPreferences", "WKWebViewConfiguration", "WKWebsiteDataStore"] }
+
 [dev-dependencies]
 tempfile = "3"
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+block2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSApplication", "NSResponder"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["NSDate", "NSError", "NSGeometry", "NSRunLoop", "NSString", "NSURL"] }
+objc2-web-kit = { version = "0.3", default-features = false, features = ["WKWebView", "WKNavigation", "block2", "objc2-app-kit", "objc2-core-foundation"] }
+
+[[test]]
+name = "webview_policy"
+harness = false

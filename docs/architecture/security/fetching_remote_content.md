@@ -28,7 +28,7 @@ A URL-string denylist cannot stop this (see the module docs at `ssrf_proxy.rs:1-
 
 The proxy moves name resolution _out_ of the client. Every consumer (webview or reqwest) is pointed at a local HTTP proxy on `127.0.0.1:<random port>` (bound at startup, `lib.rs`), and for each request the proxy:
 
-1. **Resolves** the target host itself (`validate_target`, `ssrf_proxy.rs:132-147`) — on the blocking pool, so DNS never stalls a runtime worker.
+1. **Rejects local names before DNS**, including `.local` (case-insensitive, with or without a trailing dot) and unqualified names. Otherwise **resolves** the target host itself (`validate_target`, `ssrf_proxy.rs`) — on the blocking pool, so DNS never stalls a runtime worker. DNS names are made absolute to prevent search-domain expansion into `.local`; IP literals skip DNS. This prevents direct local-name requests from triggering mDNS and macOS's Local Network permission prompt before the address filter runs.
 2. **Rejects** the request if _any_ resolved address is disallowed — not filtered to the allowed ones. A host publishing both a public and a private record is unreachable entirely, closing the "one good record smuggles the request past the check" hole.
 3. **Dials the exact validated IP** (pinning). There is no second lookup for a rebind to exploit.
 
@@ -117,6 +117,8 @@ Every setting above defaults to its secure state, with one exception: **the `max
 
 The proxy controls _where_ requests can go; the loader adds controls on _what_ gets loaded and what the loaded page can do:
 
+- **WebRTC disabled on macOS** (`webview_policy.rs`): every Xaga-created WebView receives a native `WKWebViewConfiguration` with peer connections disabled before construction and the first navigation. This applies to subframes and later navigations, including persistent allow-listed loader sessions. JavaScript cannot undo the engine preference. The WebKit `_setPeerConnectionEnabled:` SPI is availability-checked and read back; if enforcement fails, the WebView is not created. The main window is built explicitly in setup for the same reason. This SPI is private API, as is the existing macOS proxy integration. Other platforms do not yet have an equivalent native WebRTC policy.
+- **Remote popups denied**: loader content cannot create unmanaged WebViews through `window.open` or new-window links.
 - **Scheme guard** (`article_loader.rs:87-96`): only `http`/`https` URLs are ever loaded. Without this, a crafted feed link (`file://`, `data:`, custom schemes) would be loaded and its DOM shipped back by the init script — local-file and intranet disclosure. The PDF probe mirrors the same guard (`commands/articles.rs:151-158`).
 - **Ephemeral state by default**: loader windows are incognito — no cookies written to disk. Only user-allow-listed domains (the `allowed_domains` setting) get a persistent, per-domain `WKWebsiteDataStore` whose identifier is derived by hashing the domain (`domain_store_id`), so sites cannot correlate visits through shared storage.
 - **Injection-safe bootstrap**: the values prepended to the init script are emitted via `serde_json::to_string`, so special characters in the URL cannot break out of the script context (`article_loader.rs:69-78`).
@@ -130,3 +132,5 @@ The proxy controls _where_ requests can go; the loader adds controls on _what_ g
 Places where the invariants are not fully upheld:
 
 - Proxy behavior is a property of the bundled app; `tauri dev` runtime checks are not representative for webview-level policies (see the CSP note in [handling_persisted_content.md](handling_persisted_content.md)).
+
+The macOS native policy has a GUI smoke test: `cargo test -p xaga --test webview_policy`. It checks that standard and prefixed peer-connection constructors are absent at document-start, in a subframe, and after another navigation, using only in-memory HTML and ephemeral storage. Proxy unit tests verify that local names never reach the resolver. These controls do not establish the cause of any previously observed permission prompt.
