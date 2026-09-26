@@ -1,7 +1,7 @@
 //! Native macOS policy, applied before constructing a WKWebView.
 //!
-//! An HTTP proxy does not contain WebRTC. Disable peer connections in the
-//! engine, including subframes, rather than replacing JavaScript globals.
+//! An HTTP proxy does not contain WebRTC or all speculative DNS lookups.
+//! Disable these in the engine, including subframes, before loading content.
 
 use objc2::{MainThreadMarker, msg_send, rc::Retained, runtime::Bool, sel};
 use objc2_foundation::{NSObjectProtocol, NSUUID};
@@ -25,6 +25,19 @@ pub fn configuration() -> Result<Retained<WKWebViewConfiguration>, String> {
         let enabled: Bool = msg_send![&*prefs, _peerConnectionEnabled];
         if enabled.as_bool() {
             return Err("WebKit did not disable WebRTC".into());
+        }
+        // Speculative DNS can bypass an HTTP proxy on some WebKit versions.
+        // Disable it in the engine too; a page's dns-prefetch hint must not
+        // resolve .local before the proxy ever receives a request.
+        if !prefs.respondsToSelector(sel!(_setDNSPrefetchingEnabled:))
+            || !prefs.respondsToSelector(sel!(_dnsPrefetchingEnabled))
+        {
+            return Err("WebKit cannot enforce Xaga's DNS prefetch policy".into());
+        }
+        let _: () = msg_send![&*prefs, _setDNSPrefetchingEnabled: Bool::NO];
+        let enabled: Bool = msg_send![&*prefs, _dnsPrefetchingEnabled];
+        if enabled.as_bool() {
+            return Err("WebKit did not disable DNS prefetch".into());
         }
     }
     Ok(config)

@@ -23,8 +23,8 @@ pub enum ProxyError {
     /// DNS resolution failed or returned no addresses.
     #[error("proxy DNS resolution failed")]
     Dns,
-    /// The target resolved to a disallowed (private/loopback/etc.) address.
-    #[error("proxy target resolved to a disallowed address")]
+    /// The hostname is local-only or resolves to a disallowed address.
+    #[error("proxy target hostname or address is disallowed")]
     Blocked,
 }
 
