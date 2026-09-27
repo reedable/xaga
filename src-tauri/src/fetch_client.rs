@@ -47,16 +47,25 @@ pub(crate) fn build(
     referer_allowed: bool,
     gzip_allowed: bool,
 ) -> reqwest::Client {
+    try_build(proxy_port, max_redirects, referer_allowed, gzip_allowed)
+        .expect("failed to build SSRF-proxied HTTP client")
+}
+
+/// Fallible construction for callers that collect per-step diagnostics.
+pub(crate) fn try_build(
+    proxy_port: u16,
+    max_redirects: u32,
+    referer_allowed: bool,
+    gzip_allowed: bool,
+) -> reqwest::Result<reqwest::Client> {
     reqwest::Client::builder()
-        .proxy(
-            reqwest::Proxy::all(xaga_core::ssrf_proxy::proxy_url(proxy_port))
-                .expect("valid SSRF proxy URL"),
-        )
+        .proxy(reqwest::Proxy::all(xaga_core::ssrf_proxy::proxy_url(
+            proxy_port,
+        ))?)
         .redirect(reqwest::redirect::Policy::limited(max_redirects as usize))
         .referer(referer_allowed)
         .gzip(gzip_allowed)
         .build()
-        .expect("failed to build SSRF-proxied HTTP client")
 }
 
 /// The `http_allowed` handle shared between the SSRF proxy (enforcement) and

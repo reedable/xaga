@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
 use xaga_core::embeddings::{EmbeddingsDb, EntityRef, Job, StatePatch, Tier};
 use xaga_core::library_writer::Tier as WriteTier;
@@ -6,6 +7,9 @@ use xaga_core::types::{Article, Kind, PartialAnnotation};
 
 use base64::Engine as _;
 
+use crate::article_diagnostics::{
+    ArticleDiagnostic, ArticleDiagnosticOutcome, ArticleDiagnostics, ArticleLoadAttempt,
+};
 use crate::error::AppError;
 use crate::{AppState, article_loader};
 
@@ -84,11 +88,29 @@ pub async fn receive_html(
     favicon: Option<String>,
     favicon_data: Option<String>,
 ) -> Result<bool, AppError> {
+    if window.label() != format!("loader-{id}") {
+        return Err(AppError::Unauthorized);
+    }
     let mut map = pending.lock().map_err(|e| e.to_string())?;
     let Some(mut request) = map.remove(&id) else {
         return Ok(false);
     };
 
+    // A failed favicon navigation can load an HTML error document. Never
+    // replace the already captured article with that document.
+    if let Some(capture) = request.partial.take() {
+        request.attempt.add_event(
+            "native",
+            "favicon",
+            ArticleDiagnosticOutcome::Warning,
+            "article:favicon-not-image",
+            "favicon returned a non-image document",
+        );
+        let _ = request.tx.send(capture);
+        let _ = window.close();
+        return Ok(true);
+    }
+    request.attempt.add_succeeded_event("capture_delivery");
     let capture = article_loader::LoaderCapture {
         mime_type,
         html,
@@ -115,6 +137,7 @@ pub async fn receive_html(
         };
 
     if let Some(favicon_url) = favicon_target {
+        request.attempt.add_started_event("favicon");
         if window.navigate(favicon_url).is_ok() {
             // Deliberately neither resolves nor closes yet. This defers the
             // "kill after capture" close (see fetching_remote_content.md,
@@ -126,6 +149,13 @@ pub async fn receive_html(
             map.insert(id, request);
             return Ok(true);
         }
+        request.attempt.add_event(
+            "native",
+            "favicon",
+            ArticleDiagnosticOutcome::Warning,
+            "article:favicon-navigation",
+            "navigation refused",
+        );
         // Navigation refused: fall through and complete without favicon bytes.
     }
 
@@ -152,11 +182,8 @@ pub async fn receive_favicon(
     data_uri: Option<String>,
     reason: Option<String>,
 ) -> Result<(), AppError> {
-    if data_uri.is_none() {
-        log::warn!(
-            "favicon capture produced no bytes for loader {id}: {}",
-            reason.as_deref().unwrap_or("no reason reported")
-        );
+    if window.label() != format!("loader-{id}") {
+        return Err(AppError::Unauthorized);
     }
     let mut map = pending.lock().map_err(|e| e.to_string())?;
     let Some(request) = map.remove(&id) else {
@@ -165,6 +192,39 @@ pub async fn receive_favicon(
 
     match request.partial {
         Some(mut capture) => {
+            request.attempt.add_event(
+                "native",
+                "favicon",
+                if data_uri.is_some() {
+                    ArticleDiagnosticOutcome::Succeeded
+                } else {
+                    ArticleDiagnosticOutcome::Warning
+                },
+                if data_uri.is_some() {
+                    ""
+                } else {
+                    "article:favicon-unavailable"
+                },
+                "",
+            );
+            if let Some(reason) = reason.as_deref().filter(|r| {
+                [
+                    "no-image",
+                    "incomplete",
+                    "decode-failed",
+                    "encode-failed",
+                    "canvas-unreadable",
+                ]
+                .contains(r)
+            }) {
+                request.attempt.add_event(
+                    "loader",
+                    "favicon",
+                    ArticleDiagnosticOutcome::Warning,
+                    reason,
+                    "page-reported reason",
+                );
+            }
             capture.favicon_data = data_uri;
             let _ = request.tx.send(capture);
             let _ = window.close();
@@ -173,6 +233,116 @@ pub async fn receive_favicon(
         // phase, so put the request back untouched rather than dropping it.
         None => {
             map.insert(id, request);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub(crate) fn create_article_diagnostic(
+    diagnostics: State<'_, ArticleDiagnostics>,
+    mode: String,
+) -> String {
+    let mode = match mode.as_str() {
+        "refresh" | "visible" | "extract" | "read" | "render" => mode.as_str(),
+        _ => "load",
+    };
+    diagnostics.create_attempt(mode).get_id()
+}
+
+#[tauri::command]
+pub(crate) fn get_article_diagnostic(
+    diagnostics: State<'_, ArticleDiagnostics>,
+    id: String,
+) -> Option<ArticleDiagnostic> {
+    diagnostics.get_attempt(&id).map(|t| t.get_diagnostic())
+}
+
+#[tauri::command]
+pub(crate) fn add_article_diagnostic_event(
+    diagnostics: State<'_, ArticleDiagnostics>,
+    id: String,
+    step: String,
+    outcome: ArticleDiagnosticOutcome,
+    code: String,
+) -> Result<(), AppError> {
+    crate::article_diagnostics::validate_event(&step, &code).map_err(|_| AppError::Unauthorized)?;
+    if let Some(attempt) = diagnostics.get_attempt(&id) {
+        attempt.add_event("frontend", &step, outcome, &code, "");
+    }
+    Ok(())
+}
+
+/// Remote loader reports vocabulary only; identity comes from the invoking
+/// window, never an arbitrary attempt ID supplied by the page.
+#[tauri::command]
+pub(crate) fn add_loader_diagnostic_event(
+    window: tauri::WebviewWindow,
+    pending: State<'_, article_loader::PendingRequests>,
+    event: String,
+    count: Option<u32>,
+) -> Result<(), AppError> {
+    let Some(id) = window.label().strip_prefix("loader-") else {
+        return Err(AppError::Unauthorized);
+    };
+    let (step, outcome, code) = match event.as_str() {
+        "script_started" => ("script", ArticleDiagnosticOutcome::Started, ""),
+        "page_loaded" => ("page_load", ArticleDiagnosticOutcome::Succeeded, ""),
+        "dom_settled" => ("dom_settle", ArticleDiagnosticOutcome::Succeeded, ""),
+        "images_started" => ("images", ArticleDiagnosticOutcome::Started, ""),
+        "images_finished" => ("images", ArticleDiagnosticOutcome::Succeeded, ""),
+        "image_captured" => (
+            "images",
+            ArticleDiagnosticOutcome::Succeeded,
+            "image:captured",
+        ),
+        "image_timeout" => ("images", ArticleDiagnosticOutcome::Warning, "image:timeout"),
+        "image_http" => ("images", ArticleDiagnosticOutcome::Warning, "image:http"),
+        "image_size" => (
+            "images",
+            ArticleDiagnosticOutcome::Warning,
+            "image:size-limit",
+        ),
+        "image_type" => (
+            "images",
+            ArticleDiagnosticOutcome::Warning,
+            "image:not-image",
+        ),
+        "image_unreadable" => (
+            "images",
+            ArticleDiagnosticOutcome::Warning,
+            "image:unreadable",
+        ),
+        "capture_started" => (
+            "capture_serialization",
+            ArticleDiagnosticOutcome::Started,
+            "",
+        ),
+        "capture_sent" => ("capture_delivery", ArticleDiagnosticOutcome::Started, ""),
+        "capture_failed" => (
+            "capture_delivery",
+            ArticleDiagnosticOutcome::Failed,
+            "article:capture",
+        ),
+        "ipc_failed" => (
+            "capture_delivery",
+            ArticleDiagnosticOutcome::Failed,
+            "article:ipc",
+        ),
+        "favicon_started" => ("favicon", ArticleDiagnosticOutcome::Started, ""),
+        _ => return Err(AppError::Unauthorized),
+    };
+    let mut map = pending.lock().map_err(|e| e.to_string())?;
+    if let Some(request) = map.get_mut(id) {
+        if request.diagnostic_event_count < 64 {
+            request.diagnostic_event_count += 1;
+            request.attempt.add_event(
+                "loader",
+                step,
+                outcome,
+                code,
+                &format!("page-reported; count={}", count.unwrap_or(1).min(100000)),
+            );
         }
     }
     Ok(())
@@ -211,6 +381,7 @@ async fn try_fetch_pdf(
     client: &reqwest::Client,
     url: &str,
     timeout_secs: u64,
+    attempt: &ArticleLoadAttempt,
 ) -> Result<PdfProbe, AppError> {
     // Only ever fetch real remote web content (mirror the loader's scheme guard).
     let parsed = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
@@ -226,7 +397,60 @@ async fn try_fetch_pdf(
         .timeout(std::time::Duration::from_secs(timeout_secs))
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            attempt.add_event(
+                "native",
+                "pdf_probe",
+                ArticleDiagnosticOutcome::Warning,
+                if e.is_timeout() {
+                    "article:timeout"
+                } else if e.is_redirect() {
+                    "article:redirect-limit"
+                } else if e.is_connect() {
+                    "article:connect"
+                } else {
+                    "article:transport"
+                },
+                &error_chain(&e),
+            );
+            AppError::Message(crate::article_diagnostics::sanitize_detail(&error_chain(
+                &e,
+            )))
+        })?;
+    attempt.add_event(
+        "native",
+        "pdf_response",
+        if resp.status().is_success() {
+            ArticleDiagnosticOutcome::Succeeded
+        } else {
+            ArticleDiagnosticOutcome::Warning
+        },
+        if resp.status().is_success() {
+            ""
+        } else {
+            "article:http"
+        },
+        &format!(
+            "status={}; content_type={}",
+            resp.status().as_u16(),
+            if resp
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .map(|v| v
+                    .split(';')
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .eq_ignore_ascii_case("application/pdf"))
+                .unwrap_or(false)
+            {
+                "application/pdf"
+            } else {
+                "other or missing"
+            }
+        ),
+    );
 
     // The SSRF proxy's "plaintext HTTP is disabled" refusal. Mapped before the
     // content-type check so it doesn't read as a server error; the caller falls
@@ -262,90 +486,200 @@ async fn try_fetch_pdf(
         )));
     }
 
-    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    attempt.add_started_event("pdf_body");
+    let bytes = resp.bytes().await.map_err(|e| {
+        attempt.add_event(
+            "native",
+            "pdf_body",
+            ArticleDiagnosticOutcome::Warning,
+            "article:pdf-body",
+            &error_chain(&e),
+        );
+        AppError::Message(crate::article_diagnostics::sanitize_detail(&error_chain(
+            &e,
+        )))
+    })?;
+    attempt.add_succeeded_event("pdf_body");
+    attempt.add_started_event("pdf_signature");
 
     if !bytes.starts_with(b"%PDF-") {
+        attempt.add_failed_event(
+            "pdf_signature",
+            "article:spoofed-pdf",
+            "PDF signature missing",
+        );
         return Ok(PdfProbe::Invalid(
             "Content-Type was application/pdf but body is not a PDF".to_string(),
         ));
     }
 
+    attempt.add_succeeded_event("pdf_signature");
     Ok(PdfProbe::Pdf(bytes.to_vec()))
+}
+
+fn storage_error_detail(error: &AppError) -> String {
+    // Parser errors may quote article frontmatter. Preserve the classification
+    // but do not put those fragments into diagnostics or the clipboard.
+    if error.code() == "entry:malformed" {
+        return "article frontmatter could not be parsed".into();
+    }
+    error_chain(error)
+}
+
+fn error_chain(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut parts = vec![error.to_string()];
+    let mut source = error.source();
+    while let Some(error) = source {
+        if parts.len() == 8 {
+            break;
+        }
+        parts.push(error.to_string());
+        source = error.source();
+    }
+    parts.join("; caused by: ")
 }
 
 #[tauri::command]
 pub async fn load_article(
     url: String,
     keep_open: bool,
+    diagnostic_id: Option<String>,
+    diagnostics: State<'_, ArticleDiagnostics>,
+    proxy_config: State<'_, xaga_core::ssrf_proxy::ProxyConfig>,
     app: AppHandle,
     pending: State<'_, article_loader::PendingRequests>,
     state: State<'_, AppState>,
 ) -> Result<LoadArticleResult, AppError> {
-    let timeout_secs = *state.loader_timeout_secs.read().unwrap();
-    let allowed_domains = state.allowed_domains.read().unwrap().clone();
-    let named_stores_supported = state.named_stores_supported;
-    let ssrf_proxy_port = state.ssrf_proxy_port;
-    let inline_pdf_reader = *state.inline_pdf_reader.read().unwrap();
-
-    let mut reqwest_error = false;
-
-    // Inline-PDF fast path: only when the setting is on and the caller isn't
-    // explicitly asking for the visible webview. Fetch the URL through the SSRF
-    // proxy; a PDF is returned as bytes for inline rendering and skips the
-    // webview entirely. Not making this request when the setting is off avoids
-    // letting servers profile us.
-    if inline_pdf_reader && !keep_open {
-        let client = crate::fetch_client::build(
-            ssrf_proxy_port,
-            *state.max_redirects.read().unwrap(),
-            *state.referer_allowed.read().unwrap(),
-            *state.gzip_allowed.read().unwrap(),
+    let attempt = diagnostic_id
+        .as_deref()
+        .and_then(|id| diagnostics.get_attempt(id))
+        .unwrap_or_else(|| diagnostics.create_attempt(if keep_open { "visible" } else { "load" }));
+    let result = async {
+        attempt.add_started_event("proxy_start");
+        let proxy_attempt = attempt.clone();
+        let proxy = Arc::new(
+            xaga_core::ssrf_proxy::start_scoped(proxy_config.inner().clone().with_observer(
+                Arc::new(move |code, detail| {
+                    proxy_attempt.add_event(
+                        "proxy",
+                        "network",
+                        ArticleDiagnosticOutcome::Warning,
+                        code,
+                        detail,
+                    );
+                }),
+            ))
+            .await
+            .map_err(|e| AppError::Message(e.to_string()))?,
         );
-        match try_fetch_pdf(&client, &url, timeout_secs).await {
-            Ok(PdfProbe::Pdf(bytes)) => {
-                return Ok(LoadArticleResult {
-                    mime_type: "application/pdf".to_string(),
-                    html: String::new(),
-                    pdf_base64: Some(base64::engine::general_purpose::STANDARD.encode(&bytes)),
-                    favicon: None,
-                    favicon_data: None,
-                });
+        attempt.add_succeeded_event("proxy_start");
+        let timeout_secs = *state.loader_timeout_secs.read().unwrap();
+        let allowed_domains = state.allowed_domains.read().unwrap().clone();
+        let named_stores_supported = state.named_stores_supported;
+        let ssrf_proxy_port = proxy.port;
+        let inline_pdf_reader = *state.inline_pdf_reader.read().unwrap();
+
+        let mut reqwest_error = false;
+
+        // Inline-PDF fast path: only when the setting is on and the caller isn't
+        // explicitly asking for the visible webview. Fetch the URL through the SSRF
+        // proxy; a PDF is returned as bytes for inline rendering and skips the
+        // webview entirely. Not making this request when the setting is off avoids
+        // letting servers profile us.
+        if inline_pdf_reader && !keep_open {
+            attempt.add_started_event("pdf_client");
+            let client = crate::fetch_client::try_build(
+                ssrf_proxy_port,
+                *state.max_redirects.read().unwrap(),
+                *state.referer_allowed.read().unwrap(),
+                *state.gzip_allowed.read().unwrap(),
+            )
+            .map_err(|e| AppError::Message(error_chain(&e)))?;
+            attempt.add_succeeded_event("pdf_client");
+            attempt.add_started_event("pdf_probe");
+            match try_fetch_pdf(&client, &url, timeout_secs, &attempt).await {
+                Ok(PdfProbe::Pdf(bytes)) => {
+                    return Ok(LoadArticleResult {
+                        mime_type: "application/pdf".to_string(),
+                        html: String::new(),
+                        pdf_base64: Some(base64::engine::general_purpose::STANDARD.encode(&bytes)),
+                        favicon: None,
+                        favicon_data: None,
+                    });
+                }
+                // Not a PDF — fall through to the webview unchanged.
+                Ok(PdfProbe::NotPdf) => {
+                    attempt.add_event(
+                        "native",
+                        "pdf_probe",
+                        ArticleDiagnosticOutcome::Skipped,
+                        "",
+                        "response is not PDF; continue with browser",
+                    );
+                }
+                // Spoofed: Content-Type claimed PDF but the body isn't one. Dead-end;
+                // do NOT render it in a webview. The `E_SPOOFED_PDF` code lets the
+                // frontend show a "blocked" message instead of a generic failure.
+                Ok(PdfProbe::Invalid(msg)) => return Err(AppError::SpoofedPdf(msg)),
+                // Transport error (e.g. the site refused the non-browser client). We
+                // can't confirm it's a PDF; hand it to the loader with reqwest_error so
+                // the close decision is deferred until the webview reports the type.
+                Err(e) => {
+                    attempt.add_event(
+                        "native",
+                        "pdf_probe",
+                        ArticleDiagnosticOutcome::Warning,
+                        e.code(),
+                        &e.to_string(),
+                    );
+                    attempt.add_event(
+                        "native",
+                        "browser_fallback",
+                        ArticleDiagnosticOutcome::Started,
+                        "",
+                        "PDF probe failed; browser may still succeed",
+                    );
+                    reqwest_error = true;
+                }
             }
-            // Not a PDF — fall through to the webview unchanged.
-            Ok(PdfProbe::NotPdf) => {}
-            // Spoofed: Content-Type claimed PDF but the body isn't one. Dead-end;
-            // do NOT render it in a webview. The `E_SPOOFED_PDF` code lets the
-            // frontend show a "blocked" message instead of a generic failure.
-            Ok(PdfProbe::Invalid(msg)) => return Err(AppError::SpoofedPdf(msg)),
-            // Transport error (e.g. the site refused the non-browser client). We
-            // can't confirm it's a PDF; hand it to the loader with reqwest_error so
-            // the close decision is deferred until the webview reports the type.
-            Err(e) => {
-                log::warn!("inline PDF probe failed for {url}: {e}");
-                reqwest_error = true;
-            }
+        } else {
+            attempt.add_event(
+                "native",
+                "pdf_probe",
+                ArticleDiagnosticOutcome::Skipped,
+                "",
+                "inline probe disabled or visible browser requested",
+            );
+        }
+
+        let capture = article_loader::load_via_webview(
+            &app,
+            &pending,
+            &url,
+            timeout_secs,
+            keep_open,
+            reqwest_error,
+            &allowed_domains,
+            named_stores_supported,
+            proxy,
+            attempt.clone(),
+        )
+        .await?;
+        Ok(LoadArticleResult {
+            mime_type: capture.mime_type,
+            html: capture.html,
+            pdf_base64: None,
+            favicon: capture.favicon,
+            favicon_data: capture.favicon_data,
+        })
+    }
+    .await;
+    if let Err(ref error) = result {
+        if !attempt.is_failure_recorded() {
+            attempt.add_failed_event(&attempt.get_last_step(), error.code(), &error.to_string());
         }
     }
-
-    let capture = article_loader::load_via_webview(
-        &app,
-        &pending,
-        &url,
-        timeout_secs,
-        keep_open,
-        reqwest_error,
-        &allowed_domains,
-        named_stores_supported,
-        ssrf_proxy_port,
-    )
-    .await?;
-    Ok(LoadArticleResult {
-        mime_type: capture.mime_type,
-        html: capture.html,
-        pdf_base64: None,
-        favicon: capture.favicon,
-        favicon_data: capture.favicon_data,
-    })
+    result
 }
 
 #[tauri::command]
@@ -361,30 +695,44 @@ pub async fn save_article(
     markdown: String,
     image_data: std::collections::HashMap<String, String>,
     state: State<'_, AppState>,
+    diagnostic_id: Option<String>,
+    diagnostics: State<'_, ArticleDiagnostics>,
 ) -> Result<Article, AppError> {
-    let writer = crate::commands::require_writer(&state)?;
-    let article = writer
-        .save_article(
-            WriteTier::Interactive,
-            id,
-            url,
-            title,
-            published_at,
-            updated_at,
-            summary,
-            favicon,
-            markdown,
-            image_data,
-        )
-        .await
-        .map_err(AppError::from)?;
-    state.enqueue(
-        Tier::Interactive,
-        Job::UpsertEntry {
-            article: article.clone(),
-        },
-    );
-    Ok(article)
+    let result: Result<_, AppError> = async {
+        let writer = crate::commands::require_writer(&state)?;
+        let article = writer
+            .save_article(
+                WriteTier::Interactive,
+                id,
+                url,
+                title,
+                published_at,
+                updated_at,
+                summary,
+                favicon,
+                markdown,
+                image_data,
+            )
+            .await
+            .map_err(AppError::from)?;
+        state.enqueue(
+            Tier::Interactive,
+            Job::UpsertEntry {
+                article: article.clone(),
+            },
+        );
+        Ok(article)
+    }
+    .await;
+    if let Err(ref error) = result {
+        if let Some(attempt) = diagnostic_id
+            .as_deref()
+            .and_then(|id| diagnostics.get_attempt(id))
+        {
+            attempt.add_failed_event("save", error.code(), &storage_error_detail(error));
+        }
+    }
+    result
 }
 
 #[tauri::command]
@@ -399,81 +747,126 @@ pub async fn create_article(
     markdown: String,
     image_data: std::collections::HashMap<String, String>,
     state: State<'_, AppState>,
+    diagnostic_id: Option<String>,
+    diagnostics: State<'_, ArticleDiagnostics>,
 ) -> Result<Article, AppError> {
-    let writer = crate::commands::require_writer(&state)?;
-    let article = writer
-        .create_article(
-            WriteTier::Interactive,
-            url,
-            title,
-            published_at,
-            updated_at,
-            summary,
-            favicon,
-            markdown,
-            image_data,
-        )
-        .await
-        .map_err(AppError::from)?;
-    state.enqueue(
-        Tier::Interactive,
-        Job::UpsertEntry {
-            article: article.clone(),
-        },
-    );
-    Ok(article)
+    let result: Result<_, AppError> = async {
+        let writer = crate::commands::require_writer(&state)?;
+        let article = writer
+            .create_article(
+                WriteTier::Interactive,
+                url,
+                title,
+                published_at,
+                updated_at,
+                summary,
+                favicon,
+                markdown,
+                image_data,
+            )
+            .await
+            .map_err(AppError::from)?;
+        state.enqueue(
+            Tier::Interactive,
+            Job::UpsertEntry {
+                article: article.clone(),
+            },
+        );
+        Ok(article)
+    }
+    .await;
+    if let Err(ref error) = result {
+        if let Some(attempt) = diagnostic_id
+            .as_deref()
+            .and_then(|id| diagnostics.get_attempt(id))
+        {
+            attempt.add_failed_event("create", error.code(), &storage_error_detail(error));
+        }
+    }
+    result
 }
 
 #[tauri::command]
 pub async fn find_article(
     url: String,
     state: State<'_, AppState>,
+    diagnostic_id: Option<String>,
+    diagnostics: State<'_, ArticleDiagnostics>,
 ) -> Result<Option<Article>, AppError> {
-    let data_dir = state.library_path();
-    articles::find_article(&data_dir, &url)
-        .await
-        .map_err(AppError::from)
+    let result: Result<_, AppError> = async {
+        let data_dir = state.library_path();
+        articles::find_article(&data_dir, &url)
+            .await
+            .map_err(AppError::from)
+    }
+    .await;
+    if let Err(ref error) = result {
+        if let Some(attempt) = diagnostic_id
+            .as_deref()
+            .and_then(|id| diagnostics.get_attempt(id))
+        {
+            attempt.add_failed_event("lookup", error.code(), &storage_error_detail(error));
+        }
+    }
+    result
 }
 
 #[tauri::command]
-pub async fn read_article(id: String, state: State<'_, AppState>) -> Result<Article, AppError> {
-    let data_dir = state.library_path();
-    let article = articles::read_article(&data_dir, &id)
-        .await
-        .map_err(AppError::from)?;
+pub async fn read_article(
+    id: String,
+    state: State<'_, AppState>,
+    diagnostic_id: Option<String>,
+    diagnostics: State<'_, ArticleDiagnostics>,
+) -> Result<Article, AppError> {
+    let result: Result<_, AppError> = async {
+        let data_dir = state.library_path();
+        let article = articles::read_article(&data_dir, &id)
+            .await
+            .map_err(AppError::from)?;
 
-    // Side effect: read_article also writes.
-    //
-    // This command saves the entry "read" status. When the app is in read-only mode
-    // (another app instance holds library lock), however, the write is skipped. The
-    // entry remains in "unread" status.
-    //
-    // NOTE: This command is NOT in WRITE_COMMANDS, so the command can be called by
-    //       app read-only instances.
-    //
-    // The tag update goes through the entry lane; a failure leaves the entry unread.
-    let Some(writer) = state.writer() else {
-        return Ok(article);
-    };
-    let _ = writer
-        .patch_entry_tags(
-            WriteTier::Interactive,
-            id.clone(),
-            xaga_core::library_writer::TagPatch::MarkRead,
-        )
-        .await;
+        // Side effect: read_article also writes.
+        //
+        // This command saves the entry "read" status. When the app is in read-only mode
+        // (another app instance holds library lock), however, the write is skipped. The
+        // entry remains in "unread" status.
+        //
+        // NOTE: This command is NOT in WRITE_COMMANDS, so the command can be called by
+        //       app read-only instances.
+        //
+        // The tag update goes through the entry lane; a failure leaves the entry unread.
+        let Some(writer) = state.writer() else {
+            return Ok(article);
+        };
+        let _ = writer
+            .patch_entry_tags(
+                WriteTier::Interactive,
+                id.clone(),
+                xaga_core::library_writer::TagPatch::MarkRead,
+            )
+            .await;
 
-    state.enqueue(
-        Tier::Interactive,
-        Job::SyncState {
-            entity: EntityRef::new(id, Kind::Entry),
-            state: StatePatch {
-                is_unread: Some(false),
-                ..Default::default()
+        state.enqueue(
+            Tier::Interactive,
+            Job::SyncState {
+                entity: EntityRef::new(id, Kind::Entry),
+                state: StatePatch {
+                    is_unread: Some(false),
+                    ..Default::default()
+                },
             },
-        },
-    );
-    Ok(article)
+        );
+        Ok(article)
+    }
+    .await;
+    if let Err(ref error) = result {
+        if let Some(attempt) = diagnostic_id
+            .as_deref()
+            .and_then(|id| diagnostics.get_attempt(id))
+        {
+            attempt.add_failed_event("readback", error.code(), &storage_error_detail(error));
+        }
+    }
+    result
 }
 
 /// Cap on how many image references one call may request, bounding the IPC

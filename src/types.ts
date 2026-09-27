@@ -131,3 +131,46 @@ export type NavigationState = {
   mimeType?: string;
   filter?: Filter;
 };
+
+// ── Article diagnostics ──────────────────────────────────────────────────────
+
+export type ArticleDiagnosticOutcome =
+  | "started"
+  | "succeeded"
+  | "failed"
+  | "warning"
+  | "skipped"
+  | "cancelled";
+
+export type ArticleDiagnosticStep =
+  | "attempt"
+  | "lookup"
+  | "read"
+  | "fetch"
+  | "parse"
+  | "readability"
+  | "images"
+  | "sanitize"
+  | "markdown"
+  | "create"
+  | "save"
+  | "readback"
+  | "pdf_decode"
+  | "render"
+  | "extract";
+
+export type ArticleDiagnostic = {
+  id: string;
+  startedAtMs: number;
+  mode: string;
+  outcome: ArticleDiagnosticOutcome | null;
+  events: {
+    elapsedMs: number;
+    source: string;
+    step: string;
+    outcome: ArticleDiagnosticOutcome;
+    code: string;
+    detail: string;
+  }[];
+  droppedEvents: number;
+};

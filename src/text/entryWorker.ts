@@ -10,6 +10,7 @@ import rehypeRemark from "rehype-remark";
 import remarkGfm from "remark-gfm";
 import remarkStringify from "remark-stringify";
 import { unified } from "unified";
+import type { ArticleDiagnosticStep } from "../types";
 
 const HEADING_SELECTORS = [
   ...[1, 2, 3, 4, 5, 6].map(
@@ -57,7 +58,8 @@ export type LoaderFavicon = { url: string; dataUri: string };
 export async function processEntry(
   url: string,
   html: string,
-  loaderFavicon?: LoaderFavicon | null
+  loaderFavicon?: LoaderFavicon | null,
+  phase?: (step: ArticleDiagnosticStep) => void
 ): Promise<{
   title: string;
   markdown: string;
@@ -67,6 +69,7 @@ export async function processEntry(
    * bytes, and records the `hash → url` map. */
   imageData: Record<string, string>;
 }> {
+  phase?.("parse");
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
 
@@ -97,6 +100,7 @@ export async function processEntry(
     img.removeAttribute("data-xaga-url");
   }
 
+  phase?.("readability");
   const entry = new Readability(doc).parse();
 
   if (!entry) {
@@ -106,6 +110,7 @@ export async function processEntry(
   // Post-Readability: restore each surviving fetched image's src to its remote
   // URL (so the body carries URLs, which Rust rewrites to `../images/<hash>`),
   // and collect `url → data:` for those kept images.
+  phase?.("images");
   const contentDoc = parser.parseFromString(entry.content ?? "", "text/html");
   const imageData: Record<string, string> = {};
 
@@ -138,8 +143,10 @@ export async function processEntry(
   // or fires event handlers — both operate on an inert, non-rendered document, so
   // sanitizing the *output* here is sufficient. If that ever stops holding, the
   // untrusted HTML would need to be sanitized *before* it is parsed instead.
+  phase?.("sanitize");
   const sanitizedContent = DOMPurify.sanitize(restoredContent);
 
+  phase?.("markdown");
   const file = await unified()
     .use(rehypeParse, { fragment: true })
     .use(rehypeRemark)

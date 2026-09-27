@@ -21,18 +21,20 @@ import useAbortController from "../../hooks/useAbortController";
 import { useAnnotations } from "../../hooks/useAnnotations";
 import { useAppearance } from "../../hooks/useAppearance";
 import { toLoaderFavicon, useArticles } from "../../hooks/useArticles";
+import { useErrorSink } from "../../hooks/useErrorSink";
 import { useEvents } from "../../hooks/useEvents";
 import useRouter from "../../hooks/useRouter";
+import { usePlatform } from "../../platform/Platform";
 import {
   buildEntryHtml,
   type HtmlReaderStyle,
 } from "../../text/buildEntryHtml";
 import { inlineEntryImages } from "../../text/inlineEntryImages";
 import { markdownToHtml } from "../../text/markdownPipeline";
-import { usePlatform } from "../../platform/Platform";
-import cx from "../../utils/cx";
+import { isAbortError } from "../../types";
+import ArticleLoadAttempt from "../../utils/ArticleLoadAttempt";
 import { FONT_FAMILY_CSS } from "../../utils/FontFamily";
-import Logger from "../../utils/Logger";
+import cx from "../../utils/cx";
 import css from "./ArticleReader.module.css";
 import { HtmlReader } from "./HtmlReader";
 import { RelatedItemList } from "./RelatedItemList";
@@ -44,8 +46,6 @@ export interface ArticleReaderHandle {
 export interface ArticleReaderProps {
   className?: string;
 }
-
-const logger = Logger.getLogger("ArticleReader");
 
 const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
   function ArticleReader({ className }, ref) {
@@ -61,6 +61,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     } = useAppearance();
 
     const platform = usePlatform();
+    const { pushError } = useErrorSink();
     const [abort, abortControllerRef] = useAbortController();
     const [title, setTitle] = useState<string | null>(null);
     const [summaryHtml, setSummaryHtml] = useState<string | null>(null);
@@ -132,38 +133,67 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     // body from the network when it's missing or a reload was requested).
     const requestContent = useCallback(
       async (reload = false) => {
-        logger.info("requestContent", url);
         if (!url) return;
         setTitle(null);
         setSummaryHtml(null);
         setContentHtml(null);
 
-        const article = await findArticleByUrl(url);
-        if (!article) return;
-
-        setTitle(article.title ?? "Untitled");
-
-        if (article.description) {
-          const html = await markdownToHtml(article.description);
-          setSummaryHtml(buildEntryHtml(html, htmlReaderStyle));
-        }
-
-        setAnnotationsFromArticle(article);
-
-        if (!article.content || reload) {
-          const content = (await loadArticle(article))?.content;
-          if (content) article.content = content;
-        }
-
-        const html = await markdownToHtml(article.content);
-        const inlined = await inlineEntryImages(
-          html,
-          article.id,
-          resolveEntryImages
+        const attempt = await ArticleLoadAttempt.create(
+          platform,
+          reload ? "refresh" : "render",
+          abortControllerRef.current.signal
         );
-        setContentHtml(buildEntryHtml(inlined, htmlReaderStyle));
+        let outcome: "succeeded" | "failed" | "cancelled" = "succeeded";
+        try {
+          const article = await findArticleByUrl(url, attempt);
+          if (!article) return;
+
+          setTitle(article.title ?? "Untitled");
+
+          if (article.description) {
+            const html = await attempt.runStep("render", () =>
+              markdownToHtml(article.description!)
+            );
+            setSummaryHtml(
+              await attempt.runStep("render", () =>
+                buildEntryHtml(html, htmlReaderStyle)
+              )
+            );
+          }
+
+          setAnnotationsFromArticle(article);
+
+          if (!article.content || reload) {
+            const content = (await loadArticle(article, false, attempt))
+              ?.content;
+            if (content) article.content = content;
+          }
+
+          const html = await attempt.runStep("render", () =>
+            markdownToHtml(article.content)
+          );
+          const inlined = await attempt.runStep("render", () =>
+            inlineEntryImages(html, article.id, resolveEntryImages)
+          );
+          setContentHtml(
+            await attempt.runStep("render", () =>
+              buildEntryHtml(inlined, htmlReaderStyle)
+            )
+          );
+        } catch (error) {
+          outcome =
+            isAbortError(error)
+              ? "cancelled"
+              : "failed";
+          pushError(error);
+        } finally {
+          await attempt.complete(outcome);
+        }
       },
       [
+        platform,
+        pushError,
+        abortControllerRef,
         findArticleByUrl,
         htmlReaderStyle,
         loadArticle,
@@ -217,7 +247,6 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
     useEffect(() => {
       abort();
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       requestContent();
       return abort;
     }, [abort, requestContent]);

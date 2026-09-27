@@ -1,4 +1,5 @@
 mod article_loader;
+mod article_diagnostics;
 mod commands;
 mod error;
 mod events;
@@ -557,11 +558,9 @@ pub fn run() {
     // fetch client is routed through. Fail fast: binding 127.0.0.1:0
     // essentially never fails, and running the loader without this proxy would
     // silently reopen the SSRF hole.
-    let ssrf_proxy_port =
-        tauri::async_runtime::block_on(ssrf_proxy::start(ssrf_proxy::ProxyConfig::new(
-            Arc::clone(&http_allowed),
-            Arc::clone(&connect_nonstandard_ports_allowed),
-        )))
+    let proxy_config = ssrf_proxy::ProxyConfig::new(
+        Arc::clone(&http_allowed), Arc::clone(&connect_nonstandard_ports_allowed));
+    let ssrf_proxy_port = tauri::async_runtime::block_on(ssrf_proxy::start(proxy_config.clone()))
         .expect("failed to start SSRF filtering proxy for the article loader");
 
     // The model download dials through the proxy like every other outbound
@@ -652,6 +651,8 @@ pub fn run() {
             settings_baseline,
         })
         .manage(article_loader::PendingRequests::default())
+        .manage(article_diagnostics::ArticleDiagnostics::default())
+        .manage(proxy_config)
         .plugin(
             // Transient article-loader webviews (label "loader-{id}", see
             // article_loader.rs) are created and closed constantly; persisting
@@ -1228,6 +1229,10 @@ pub fn run() {
             commands::articles::loader_page_loaded,
             commands::articles::capture_and_close_loader,
             commands::articles::load_article,
+            commands::articles::create_article_diagnostic,
+            commands::articles::add_article_diagnostic_event,
+            commands::articles::get_article_diagnostic,
+            commands::articles::add_loader_diagnostic_event,
             commands::articles::clear_webview_history,
             commands::articles::save_article,
             commands::articles::find_article,
@@ -1290,7 +1295,9 @@ pub fn run() {
                 let (allowed, write_refused) = {
                     let label = invoke.message.webview_ref().label();
                     let command = invoke.message.command();
-                    log::info!("ipc: {label} → {command}");
+                    if !matches!(command, "add_loader_diagnostic_event" | "add_article_diagnostic_event") {
+                        log::info!("ipc: {label} → {command}");
+                    }
                     // Library-write gate: a read-only instance (no library lock) refuses
                     // every library-writing command at this single choke point — mode is
                     // derived from the held lock, never stored (see LibraryHandle).

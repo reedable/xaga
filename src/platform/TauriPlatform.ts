@@ -7,6 +7,9 @@ import { z } from "zod";
 
 import type { AppEvent, DomainEvent } from "./events";
 import type {
+  ArticleDiagnostic,
+  ArticleDiagnosticOutcome,
+  ArticleDiagnosticStep,
   Annotation,
   PartialAnnotation,
   Article,
@@ -28,6 +31,33 @@ import Logger from "../utils/Logger";
 import type { Platform } from "./Platform";
 
 const logger = Logger.getLogger("TauriPlatform");
+
+const ArticleDiagnosticOutcomeSchema = z.enum([
+  "started",
+  "succeeded",
+  "failed",
+  "warning",
+  "skipped",
+  "cancelled",
+]);
+
+const ArticleDiagnosticSchema: z.ZodType<ArticleDiagnostic> = z.object({
+  id: z.string(),
+  startedAtMs: z.number(),
+  mode: z.string(),
+  outcome: ArticleDiagnosticOutcomeSchema.nullable(),
+  events: z.array(
+    z.object({
+      elapsedMs: z.number(),
+      source: z.string(),
+      step: z.string(),
+      outcome: ArticleDiagnosticOutcomeSchema,
+      code: z.string(),
+      detail: z.string(),
+    })
+  ),
+  droppedEvents: z.number(),
+});
 
 const ItemSchema = z.object({
   id: z.string(),
@@ -464,10 +494,39 @@ export class TauriPlatform implements Platform {
 
   // Articles ------------------------------------------------------------------
 
+  async createArticleDiagnostic(mode: string): Promise<string> {
+    const name = "create_article_diagnostic";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+
+    const result = await invoker<unknown>(name, { mode });
+    return z.string().parse(result);
+  }
+
+  addArticleDiagnosticEvent(
+    id: string,
+    step: ArticleDiagnosticStep,
+    outcome: ArticleDiagnosticOutcome,
+    code: string
+  ): Promise<void> {
+    const name = "add_article_diagnostic_event";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+
+    return invoker<void>(name, { id, step, outcome, code });
+  }
+
+  async getArticleDiagnostic(id: string): Promise<ArticleDiagnostic | null> {
+    const name = "get_article_diagnostic";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+
+    const result = await invoker<unknown>(name, { id });
+    return ArticleDiagnosticSchema.nullable().parse(result);
+  }
+
   async loadArticle(
     signal: AbortSignal,
     url: string,
-    keepOpen?: boolean
+    keepOpen?: boolean,
+    diagnosticId?: string
   ): Promise<{
     mimeType: string;
     html: string;
@@ -488,15 +547,23 @@ export class TauriPlatform implements Platform {
     }>("load_article", {
       url,
       keepOpen: keepOpen ?? false,
+      diagnosticId,
     });
   }
 
-  async findArticle(signal: AbortSignal, url: string): Promise<Article | null> {
+  async findArticle(
+    signal: AbortSignal,
+    url: string,
+    diagnosticId?: string
+  ): Promise<Article | null> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "find_article" });
 
-    const result = await invoker<unknown | null>("find_article", { url });
+    const result = await invoker<unknown | null>("find_article", {
+      diagnosticId,
+      url,
+    });
     if (result === null || result === undefined) return null;
     return ArticleSchema.transform(toArticle).parse(result);
   }
@@ -504,13 +571,15 @@ export class TauriPlatform implements Platform {
   async saveArticle(
     signal: AbortSignal,
     article: Article,
-    imageData: Record<string, string> = {}
+    imageData: Record<string, string> = {},
+    diagnosticId?: string
   ): Promise<Article> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "save_article" });
 
     const result = await invoker<unknown>("save_article", {
+      diagnosticId,
       id: article.id,
       url: article.url,
       title: article.title,
@@ -534,12 +603,16 @@ export class TauriPlatform implements Platform {
     return EntrySchema.transform(toEntry).parse(result);
   }
 
-  async readArticle(signal: AbortSignal, id: string): Promise<Article> {
+  async readArticle(
+    signal: AbortSignal,
+    id: string,
+    diagnosticId?: string
+  ): Promise<Article> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "read_article" });
 
-    const result = await invoker<unknown>("read_article", { id });
+    const result = await invoker<unknown>("read_article", { diagnosticId, id });
     return ArticleSchema.transform(toArticle).parse(result);
   }
 
@@ -565,13 +638,15 @@ export class TauriPlatform implements Platform {
   async createArticle(
     signal: AbortSignal,
     article: Omit<Article, "id" | "createdAt" | "__kind" | "isBookmarked">,
-    imageData: Record<string, string> = {}
+    imageData: Record<string, string> = {},
+    diagnosticId?: string
   ): Promise<Article> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "create_article" });
 
     const result = await invoker<unknown>("create_article", {
+      diagnosticId,
       url: article.url,
       title: article.title,
       publishedAt: article.publishedAt,

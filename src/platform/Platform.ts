@@ -1,6 +1,9 @@
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { createContext, useContext } from "react";
 import type {
+  ArticleDiagnostic,
+  ArticleDiagnosticOutcome,
+  ArticleDiagnosticStep,
   Annotation,
   PartialAnnotation,
   Article,
@@ -58,11 +61,20 @@ export interface Platform {
   markEntryUnread(signal: AbortSignal, id: string): Promise<Entry>;
 
   // Articles
+  createArticleDiagnostic(mode: string): Promise<string>;
+  addArticleDiagnosticEvent(
+    id: string,
+    step: ArticleDiagnosticStep,
+    outcome: ArticleDiagnosticOutcome,
+    code: string
+  ): Promise<void>;
+  getArticleDiagnostic(id: string): Promise<ArticleDiagnostic | null>;
   readEntry(signal: AbortSignal, id: string): Promise<Entry>;
   loadArticle(
     signal: AbortSignal,
     url: string,
-    keepOpen?: boolean
+    keepOpen?: boolean,
+    diagnosticId?: string
   ): Promise<{
     mimeType: string;
     html: string;
@@ -72,16 +84,25 @@ export interface Platform {
     favicon?: string | null;
     faviconData?: string | null;
   }>;
-  findArticle(signal: AbortSignal, url: string): Promise<Article | null>;
+  findArticle(
+    signal: AbortSignal,
+    url: string,
+    diagnosticId?: string
+  ): Promise<Article | null>;
   // `imageData` maps each fetched image's remote URL to its `data:` bytes (from
   // processEntry); the backend writes the files and the frontmatter `hash → url`
   // map. Omit/empty when saving without freshly-fetched images.
   saveArticle(
     signal: AbortSignal,
     article: Article,
-    imageData?: Record<string, string>
+    imageData?: Record<string, string>,
+    diagnosticId?: string
   ): Promise<Article>;
-  readArticle(signal: AbortSignal, id: string): Promise<Article>;
+  readArticle(
+    signal: AbortSignal,
+    id: string,
+    diagnosticId?: string
+  ): Promise<Article>;
   // Resolves an entry's stored `../images/…` references to `data:` URIs for
   // rendering, index-aligned with `refs`. A `null` at index i means that
   // reference did not resolve (missing/oversize/foreign) and its `src` should be
@@ -97,7 +118,8 @@ export interface Platform {
   createArticle(
     signal: AbortSignal,
     article: Omit<Article, "id" | "createdAt" | "__kind" | "isBookmarked">,
-    imageData?: Record<string, string>
+    imageData?: Record<string, string>,
+    diagnosticId?: string
   ): Promise<Article>;
 
   // Annotations

@@ -14,6 +14,8 @@ Standing architecture rules for this project. Each has its own doc; keep this in
 
 6. [Single-Writer Account Lock](single_writer_account_lock.md) — the flock on `settings.json` is the account-wide resource lock: the holder has the right to account-scoped resources (settings writes, the model download); writes rotate the lock's inode with holder continuity; writers fail fast, downloaders skip, readers never lock.
 
+7. [Article loading diagnostics](article_loading_diagnostics.md) — per-attempt stage and failure records, local log/history, proxy attribution, privacy boundaries, and observation limits.
+
 ## Security
 
 Architecture of the security-critical paths, in [security/](security/). These describe how a subsystem works and why — design and limits, not findings or status.

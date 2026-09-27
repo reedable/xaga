@@ -1,9 +1,11 @@
 import { useCallback, useState, type RefObject } from "react";
-import { errorCode } from "../platform/errors";
 import { usePlatform } from "../platform/Platform";
-import { useErrorSink } from "./useErrorSink";
+import { errorCode } from "../platform/errors";
 import { processEntry, type LoaderFavicon } from "../text/entryWorker";
-import { type Entry } from "../types";
+import { isAbortError, type Entry } from "../types";
+import ArticleLoadAttempt from "../utils/ArticleLoadAttempt";
+import ArticleLoadError from "../utils/ArticleLoadError";
+import { useErrorSink } from "./useErrorSink";
 
 /**
  * Pairs the loader's favicon URL with its bytes, or null when the loader did not
@@ -38,51 +40,89 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
    * object. To refresh an existing article, call `loadArticle` instead.
    */
   const loadArticleByUrl = useCallback(
-    async (url: string, keepOpen = false) => {
+    async (url: string, keepOpen = false, parent?: ArticleLoadAttempt) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
 
+      const attempt =
+        parent ??
+        (await ArticleLoadAttempt.create(
+          platform,
+          keepOpen ? "visible" : "load",
+          signal
+        ));
+      let outcome: "succeeded" | "failed" | "cancelled" = "succeeded";
       try {
-        const { mimeType, html, pdfBase64, favicon: faviconUrl, faviconData } =
-          await platform.loadArticle(signal, url, keepOpen);
+        const {
+          mimeType,
+          html,
+          pdfBase64,
+          favicon: faviconUrl,
+          faviconData,
+        } = await attempt.runStep("fetch", () =>
+          platform.loadArticle(signal, url, keepOpen, attempt.id)
+        );
 
         if (mimeType === "application/pdf") {
-          const pdfBytes = pdfBase64 ? base64ToBytes(pdfBase64) : null;
+          const pdfBytes = pdfBase64
+            ? await attempt.runStep("pdf_decode", () => base64ToBytes(pdfBase64))
+            : null;
           return { article: null, mimeType, pdfBytes };
         }
 
-        const { title, markdown, favicon, imageData } = await processEntry(
-          url,
-          html,
-          toLoaderFavicon(faviconUrl, faviconData)
+        const { title, markdown, favicon, imageData } = await attempt.runStep(
+          "extract",
+          () =>
+            processEntry(
+              url,
+              html,
+              toLoaderFavicon(faviconUrl, faviconData),
+              attempt.setStep
+            )
         );
 
-        const article = await platform.createArticle(
-          signal,
-          {
-            title,
-            content: markdown,
-            url,
-            annotations: [],
-            favicon: favicon ?? undefined,
-          },
-          imageData
+        const article = await attempt.runStep("create", () =>
+          platform.createArticle(
+            signal,
+            {
+              title,
+              content: markdown,
+              url,
+              annotations: [],
+              favicon: favicon ?? undefined,
+            },
+            imageData,
+            attempt.id
+          )
         );
 
         return {
-          article: await platform.readArticle(signal, article.id),
+          article: await attempt.runStep("readback", () =>
+            platform.readArticle(signal, article.id, attempt.id)
+          ),
           mimeType,
         };
       } catch (e) {
+        outcome =
+          isAbortError(e)
+            ? "cancelled"
+            : "failed";
         // The inline-PDF probe rejected the URL as a spoof (Content-Type claimed
         // PDF, body isn't). Surface it so the reader pane can show a block
         // message rather than swallowing it as a generic failure.
-        if (errorCode(e) === "article:spoofed-pdf") {
+        if (
+          errorCode(e instanceof ArticleLoadError ? e.cause : e) ===
+          "article:spoofed-pdf"
+        ) {
+          pushError(e);
+          attempt.addEvent("attempt", "failed", "article:spoofed-pdf");
           return { article: null, blockedSpoof: true };
         }
+        if (parent) throw e;
         pushError(e);
       } finally {
+        if (!parent) await attempt.complete(outcome);
         setLoading(false);
       }
     },
@@ -94,40 +134,68 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
    * the disc.
    */
   const loadArticle = useCallback(
-    async (entry: Entry, keepOpen = false) => {
+    async (entry: Entry, keepOpen = false, parent?: ArticleLoadAttempt) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
 
+      const attempt =
+        parent ??
+        (await ArticleLoadAttempt.create(
+          platform,
+          keepOpen ? "visible" : "refresh",
+          signal
+        ));
+      let outcome: "succeeded" | "failed" | "cancelled" = "succeeded";
       try {
         const {
           html,
           favicon: faviconUrl,
           faviconData,
-        } = await platform.loadArticle(signal, entry.url, keepOpen);
-        const { title, markdown, favicon, imageData } = await processEntry(
-          entry.url,
-          html,
-          toLoaderFavicon(faviconUrl, faviconData)
+        } = await attempt.runStep("fetch", () =>
+          platform.loadArticle(signal, entry.url, keepOpen, attempt.id)
+        );
+        const { title, markdown, favicon, imageData } = await attempt.runStep(
+          "extract",
+          () =>
+            processEntry(
+              entry.url,
+              html,
+              toLoaderFavicon(faviconUrl, faviconData),
+              attempt.setStep
+            )
         );
 
-        const article = await platform.readArticle(signal, entry.id);
-
-        await platform.saveArticle(
-          signal,
-          {
-            ...article,
-            title,
-            content: markdown,
-            favicon: favicon ?? undefined,
-          },
-          imageData
+        const article = await attempt.runStep("readback", () =>
+          platform.readArticle(signal, entry.id, attempt.id)
         );
 
-        return await platform.readArticle(signal, article.id);
+        await attempt.runStep("save", () =>
+          platform.saveArticle(
+            signal,
+            {
+              ...article,
+              title,
+              content: markdown,
+              favicon: favicon ?? undefined,
+            },
+            imageData,
+            attempt.id
+          )
+        );
+
+        return await attempt.runStep("readback", () =>
+          platform.readArticle(signal, article.id, attempt.id)
+        );
       } catch (e) {
+        outcome =
+          isAbortError(e)
+            ? "cancelled"
+            : "failed";
+        if (parent) throw e;
         pushError(e);
       } finally {
+        if (!parent) await attempt.complete(outcome);
         setLoading(false);
       }
     },
@@ -141,10 +209,20 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
     async (entryId: Entry["id"]) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
+      const attempt = await ArticleLoadAttempt.create(platform, "read", signal);
+      let outcome: "succeeded" | "failed" | "cancelled" = "succeeded";
       try {
-        return await platform.readEntry(signal, entryId);
+        return await attempt.runStep("read", () =>
+          platform.readEntry(signal, entryId)
+        );
       } catch (e) {
+        outcome =
+          isAbortError(e)
+            ? "cancelled"
+            : "failed";
         pushError(e);
+      } finally {
+        await attempt.complete(outcome);
       }
     },
     [abortControllerRef, platform, pushError]
@@ -163,17 +241,27 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       const signal = abortControllerRef.current.signal;
       setError(null);
 
+      const attempt = await ArticleLoadAttempt.create(platform, "read", signal);
+      let outcome: "succeeded" | "failed" | "cancelled" = "succeeded";
       try {
-        const article = await platform.readArticle(signal, entryId);
+        const article = await attempt.runStep("readback", () =>
+          platform.readArticle(signal, entryId, attempt.id)
+        );
 
         if (article.content) {
           return article;
         }
 
         // Content missing — fetch from network. loadArticle manages loading state.
-        return await loadArticle(article);
+        return await loadArticle(article, false, attempt);
       } catch (e) {
+        outcome =
+          isAbortError(e)
+            ? "cancelled"
+            : "failed";
         pushError(e);
+      } finally {
+        await attempt.complete(outcome);
       }
     },
     [abortControllerRef, loadArticle, platform, pushError]
@@ -181,15 +269,25 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
 
   const extractArticleFromHtml = useCallback(
     async (url: string, html: string, loaderFavicon?: LoaderFavicon | null) => {
+      const attempt = await ArticleLoadAttempt.create(platform, "extract");
       try {
-        const result = await processEntry(url, html, loaderFavicon);
-        if (!result.markdown) return null;
+        const result = await attempt.runStep("extract", () =>
+          processEntry(url, html, loaderFavicon, attempt.setStep)
+        );
+        if (!result.markdown) {
+          attempt.addEvent("extract", "warning", "article:empty");
+          await attempt.complete("warning");
+          return null;
+        }
+        await attempt.complete();
         return result;
-      } catch {
+      } catch (error) {
+        await attempt.complete("failed");
+        pushError(error);
         return null;
       }
     },
-    []
+    [platform, pushError]
   );
 
   const saveExtractedArticle = useCallback(
@@ -206,24 +304,38 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       setError(null);
       setLoading(true);
 
+      const attempt = await ArticleLoadAttempt.create(platform, "refresh", signal);
+      let outcome: "succeeded" | "failed" | "cancelled" = "succeeded";
       try {
-        const article = await platform.readArticle(signal, entry.id);
-
-        await platform.saveArticle(
-          signal,
-          {
-            ...article,
-            title: extracted.title,
-            content: extracted.markdown,
-            favicon: extracted.favicon ?? undefined,
-          },
-          extracted.imageData ?? {}
+        const article = await attempt.runStep("readback", () =>
+          platform.readArticle(signal, entry.id, attempt.id)
         );
 
-        return await platform.readArticle(signal, article.id);
+        await attempt.runStep("save", () =>
+          platform.saveArticle(
+            signal,
+            {
+              ...article,
+              title: extracted.title,
+              content: extracted.markdown,
+              favicon: extracted.favicon ?? undefined,
+            },
+            extracted.imageData ?? {},
+            attempt.id
+          )
+        );
+
+        return await attempt.runStep("readback", () =>
+          platform.readArticle(signal, article.id, attempt.id)
+        );
       } catch (e) {
+        outcome =
+          isAbortError(e)
+            ? "cancelled"
+            : "failed";
         pushError(e);
       } finally {
+        await attempt.complete(outcome);
         setLoading(false);
       }
     },
@@ -231,16 +343,27 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
   );
 
   const findArticleByUrl = useCallback(
-    async (url: string) => {
+    async (url: string, parent?: ArticleLoadAttempt) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
 
+      const attempt =
+        parent ?? (await ArticleLoadAttempt.create(platform, "read", signal));
+      let outcome: "succeeded" | "failed" | "cancelled" = "succeeded";
       try {
-        return await platform.findArticle(signal, url);
+        return await attempt.runStep("lookup", () =>
+          platform.findArticle(signal, url, attempt.id)
+        );
       } catch (e) {
+        outcome =
+          isAbortError(e)
+            ? "cancelled"
+            : "failed";
+        if (parent) throw e;
         pushError(e);
       } finally {
+        if (!parent) await attempt.complete(outcome);
         setLoading(false);
       }
     },
@@ -253,27 +376,38 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       setError(null);
       setLoading(true);
 
+      const attempt = await ArticleLoadAttempt.create(platform, "extract", signal);
+      let outcome: "succeeded" | "failed" | "cancelled" = "succeeded";
       try {
-        const { title, markdown, favicon, imageData } = await processEntry(
-          url,
-          html,
-          loaderFavicon
+        const { title, markdown, favicon, imageData } = await attempt.runStep(
+          "extract",
+          () => processEntry(url, html, loaderFavicon, attempt.setStep)
         );
-        const article = await platform.createArticle(
-          signal,
-          {
-            title,
-            content: markdown,
-            url,
-            annotations: [],
-            favicon: favicon ?? undefined,
-          },
-          imageData
+        const article = await attempt.runStep("create", () =>
+          platform.createArticle(
+            signal,
+            {
+              title,
+              content: markdown,
+              url,
+              annotations: [],
+              favicon: favicon ?? undefined,
+            },
+            imageData,
+            attempt.id
+          )
         );
-        return await platform.readArticle(signal, article.id);
+        return await attempt.runStep("readback", () =>
+          platform.readArticle(signal, article.id, attempt.id)
+        );
       } catch (e) {
+        outcome =
+          isAbortError(e)
+            ? "cancelled"
+            : "failed";
         pushError(e);
       } finally {
+        await attempt.complete(outcome);
         setLoading(false);
       }
     },

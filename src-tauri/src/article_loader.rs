@@ -4,6 +4,8 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::oneshot;
 
+use crate::article_diagnostics::{ArticleDiagnosticOutcome, ArticleLoadAttempt};
+
 /// What one loader window captured. A struct rather than a tuple because the
 /// loader is the only context permitted to fetch remote content: anything the
 /// app must not fetch later has to travel back on this payload. The favicon
@@ -23,6 +25,8 @@ pub struct PendingRequest {
     /// Delivers the finished capture back to `load_via_webview`.
     pub tx: oneshot::Sender<LoaderCapture>,
     pub keep_open: bool,
+    pub attempt: ArticleLoadAttempt,
+    pub diagnostic_event_count: usize,
     /// Whether the inline-PDF reqwest probe errored — defers the close decision
     /// to `load_via_webview` so the window can be kept open and shown when the
     /// content turns out to be a PDF.
@@ -79,8 +83,21 @@ pub async fn load_via_webview(
     reqwest_error: bool,
     allowed_domains: &[String],
     named_stores_supported: bool,
-    ssrf_proxy_port: u16,
+    proxy: Arc<xaga_core::ssrf_proxy::ScopedProxy>,
+    attempt: ArticleLoadAttempt,
 ) -> Result<LoaderCapture, String> {
+    attempt.add_started_event("url_validation");
+    let parsed: tauri::Url = url.parse().map_err(|e| format!("invalid URL: {e}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        attempt.add_failed_event(
+            "url_validation",
+            "article:scheme",
+            "only HTTP and HTTPS are accepted",
+        );
+        return Err("refusing to load non-web URL scheme".into());
+    }
+    attempt.add_succeeded_event("url_validation");
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
     let id = REQUEST_COUNTER.fetch_add(1, Ordering::Relaxed).to_string();
     let label = format!("loader-{}", id);
 
@@ -91,6 +108,8 @@ pub async fn load_via_webview(
         PendingRequest {
             tx,
             keep_open,
+            attempt: attempt.clone(),
+            diagnostic_event_count: 0,
             reqwest_error,
             partial: None,
         },
@@ -110,22 +129,6 @@ pub async fn load_via_webview(
 
     let init_script = format!("{}\n{}", vars, include_str!("article_loader.js"));
 
-    let parsed: tauri::Url = url
-        .parse()
-        .map_err(|e: <tauri::Url as std::str::FromStr>::Err| e.to_string())?;
-
-    // Only ever drive the loader webview to real remote web content. See
-    // docs/architecture/security/fetching_remote_content.md, "Fetch-adjacent
-    // hardening in the loader," for what this guards against. Clean up the
-    // pending entry on rejection.
-    if !matches!(parsed.scheme(), "http" | "https") {
-        pending.lock().map_err(|e| e.to_string())?.remove(&id);
-        return Err(format!(
-            "refusing to load non-web URL scheme: {}",
-            parsed.scheme()
-        ));
-    }
-
     let host = parsed.host_str().unwrap_or("");
     let matched = find_matching_domain(host, allowed_domains);
     let identifier = matched
@@ -137,24 +140,67 @@ pub async fn load_via_webview(
     let build_app = app.clone();
     let build_label = label.clone();
     let (built_tx, built_rx) = oneshot::channel();
+    attempt.add_started_event("webview_create");
+    let build_attempt = attempt.clone();
+    let navigation_attempt = attempt.clone();
+    let page_attempt = attempt.clone();
+    let build_pending = pending.clone();
+    let build_id = id.clone();
+    let build_proxy = proxy.clone();
     let scheduled = app.run_on_main_thread(move || {
+        // A timed-out scheduling request must not create an orphan webview.
+        if !build_pending
+            .lock()
+            .map(|p| p.contains_key(&build_id))
+            .unwrap_or(false)
+        {
+            return;
+        }
         let result = (|| {
             let mut builder =
                 WebviewWindowBuilder::new(&build_app, &build_label, WebviewUrl::External(parsed))
                     .initialization_script(&init_script)
+                    .on_navigation(move |_| {
+                        navigation_attempt.add_event(
+                            "native",
+                            "navigation",
+                            ArticleDiagnosticOutcome::Started,
+                            "",
+                            "navigation requested; not a verified redirect hop",
+                        );
+                        true
+                    })
+                    .on_page_load(move |_, payload| {
+                        page_attempt.add_event(
+                            "native",
+                            "navigation",
+                            match payload.event() {
+                                tauri::webview::PageLoadEvent::Started => {
+                                    ArticleDiagnosticOutcome::Started
+                                }
+                                tauri::webview::PageLoadEvent::Finished => {
+                                    ArticleDiagnosticOutcome::Succeeded
+                                }
+                            },
+                            "",
+                            &format!("{:?}", payload.event()),
+                        );
+                    })
                     // Do not let remote content create unmanaged browser windows.
                     .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny);
 
-            let proxy = xaga_core::ssrf_proxy::proxy_url(ssrf_proxy_port)
+            let proxy = xaga_core::ssrf_proxy::proxy_url(build_proxy.port)
                 .parse::<tauri::Url>()
                 .map_err(|e| e.to_string())?;
             builder = builder.proxy_url(proxy);
 
             #[cfg(target_os = "macos")]
             {
+                build_attempt.add_started_event("webview_policy");
                 builder = builder.with_webview_configuration(
                     crate::webview_policy::loader_configuration(identifier)?,
                 );
+                build_attempt.add_succeeded_event("webview_policy");
             }
             #[cfg(not(target_os = "macos"))]
             {
@@ -172,21 +218,44 @@ pub async fn load_via_webview(
             } else {
                 builder.visible(false).position(-10000.0, -10000.0)
             };
-            builder.build().map_err(|e| e.to_string())
+            build_attempt.add_started_event("webview_create");
+            let window = builder.build().map_err(|e| e.to_string())?;
+            // Keep the dedicated proxy alive for a visible browser, including
+            // the PDF fallback. Release it when the native window is destroyed.
+            let lifetime = Arc::new(Mutex::new(Some(build_proxy)));
+            window.on_window_event(move |event| {
+                if matches!(event, tauri::WindowEvent::Destroyed) {
+                    lifetime.lock().unwrap_or_else(|e| e.into_inner()).take();
+                }
+            });
+            Ok(window)
         })();
-        let _ = built_tx.send(result);
+        if let Err(Ok(window)) = built_tx.send(result) {
+            // The deadline may expire while native construction is running.
+            let _ = window.destroy();
+        }
     });
     let built = match scheduled {
-        Ok(()) => built_rx.await.map_err(|e| e.to_string()).and_then(|r| r),
+        Ok(()) => match tokio::time::timeout_at(deadline, built_rx).await {
+            Ok(result) => result.map_err(|e| e.to_string()).and_then(|r| r),
+            Err(_) => Err("timed out creating loader webview".into()),
+        },
         Err(error) => Err(error.to_string()),
     };
     let loader = match built {
         Ok(loader) => loader,
         Err(error) => {
             pending.lock().map_err(|e| e.to_string())?.remove(&id);
+            if let Some(window) = app.get_webview_window(&label) {
+                let _ = window.destroy();
+            }
+            attempt.add_failed_event(&attempt.get_last_step(), "article:webview-create", &error);
             return Err(error);
         }
     };
+
+    attempt.add_succeeded_event("webview_create");
+    attempt.add_started_event("capture_wait");
 
     // Set when an inline-PDF reqwest error is followed by the loader detecting a
     // PDF: the hidden window is then shown to the user (only the webview can fetch
@@ -226,9 +295,14 @@ pub async fn load_via_webview(
         });
     }
 
-    let result = tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), rx).await;
+    let mut result = tokio::time::timeout_at(deadline, rx).await;
 
-    pending.lock().map_err(|e| e.to_string())?.remove(&id);
+    let request = pending.lock().map_err(|e| e.to_string())?.remove(&id);
+    if result.is_err() {
+        if let Some(capture) = recover_favicon_timeout(request, &attempt) {
+            result = Ok(Ok(capture));
+        }
+    }
 
     // If the reqwest probe errored and the loader resolved the content as a PDF,
     // show the existing (hidden) window to the user instead of closing it: the
@@ -252,8 +326,69 @@ pub async fn load_via_webview(
     }
 
     match result {
-        Ok(Ok(capture)) => Ok(capture),
-        Ok(Err(_)) => Err("channel closed before HTML was received".to_string()),
-        Err(_) => Err("timed out waiting for page to load".to_string()),
+        Ok(Ok(capture)) => {
+            attempt.add_succeeded_event("capture");
+            Ok(capture)
+        }
+        Ok(Err(_)) => {
+            attempt.add_failed_event(
+                "capture_delivery",
+                "article:channel-closed",
+                "channel closed before HTML was received",
+            );
+            Err("channel closed before HTML was received".into())
+        }
+        Err(_) => {
+            let step = attempt.get_last_step();
+            attempt.add_failed_event("capture_wait", "article:timeout", &format!("deadline expired waiting for HTML delivery; last observed milestone={step}; underlying browser cause unknown"));
+            Err(format!(
+                "timed out waiting for HTML delivery; last observed milestone={step}; underlying browser cause unknown"
+            ))
+        }
+    }
+}
+
+fn recover_favicon_timeout(
+    request: Option<PendingRequest>,
+    attempt: &ArticleLoadAttempt,
+) -> Option<LoaderCapture> {
+    let capture = request?.partial?;
+    attempt.add_event(
+        "native",
+        "favicon",
+        ArticleDiagnosticOutcome::Warning,
+        "article:timeout",
+        "article HTML received; favicon did not finish before deadline",
+    );
+    Some(capture)
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+    use crate::article_diagnostics::ArticleDiagnostics;
+    #[test]
+    fn favicon_timeout_preserves_captured_article() {
+        let attempt = ArticleDiagnostics::default().create_attempt("load");
+        let (tx, _rx) = oneshot::channel();
+        let request = PendingRequest {
+            tx,
+            keep_open: false,
+            attempt: attempt.clone(),
+            diagnostic_event_count: 0,
+            reqwest_error: false,
+            partial: Some(LoaderCapture {
+                html: "original article".into(),
+                mime_type: "text/html".into(),
+                ..Default::default()
+            }),
+        };
+        let recovered = recover_favicon_timeout(Some(request), &attempt).unwrap();
+        assert_eq!(recovered.html, "original article");
+        assert!(!attempt.is_failure_recorded());
+        let report = serde_json::to_value(attempt.get_diagnostic()).unwrap();
+        assert_eq!(report["events"][0]["outcome"], "warning");
+        assert_eq!(report["events"][0]["step"], "favicon");
+        assert!(recover_favicon_timeout(None, &attempt).is_none());
     }
 }

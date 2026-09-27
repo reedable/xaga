@@ -34,6 +34,12 @@ The proxy moves name resolution _out_ of the client. Every consumer (webview or 
 
 Because the client never resolves or connects directly, every redirect hop and every subresource re-enters the proxy and is re-validated.
 
+Article loads use a scoped listener built from the same proxy configuration, so
+network failures can be attributed to the load without adding outbound headers.
+Its lifetime follows the loader window; other consumers retain the shared
+startup listener. See [article loading diagnostics](../article_loading_diagnostics.md)
+for collection and observation limits.
+
 The proxy speaks two request forms (`parse_request_line`, `ssrf_proxy.rs:195-213`): `CONNECT host:port` (HTTPS tunneling) and absolute-form `GET http://…` (plain HTTP).
 
 ### Address policy

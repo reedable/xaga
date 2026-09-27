@@ -1,4 +1,4 @@
-import { Alert, Snackbar } from "@mui/material";
+import { Alert, Button, Snackbar } from "@mui/material";
 import {
   useCallback,
   useEffect,
@@ -6,7 +6,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import ArticleDiagnosticsDialog from "../components/dialogs/ArticleDiagnosticsDialog";
 import { errorMessage, isAppError } from "../platform/errors";
+import { isAbortError } from "../types";
+import ArticleLoadError from "../utils/ArticleLoadError";
 import ErrorSinkContext, {
   type ErrorSinkContextType,
 } from "./ErrorSinkContext";
@@ -24,12 +27,23 @@ export default function ErrorSinkProvider({
 }: {
   children: ReactNode;
 }) {
+  const [diagnosticId, setDiagnosticId] = useState<string | null>(null);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const pushError = useCallback((e: unknown) => {
     // Aborts (navigation/unmount cancelling an in-flight request) are not
     // failures — never surface them. Every catch can forward safely.
-    if (e instanceof DOMException && e.name === "AbortError") return;
+    if (isAbortError(e)) return;
+    setDiagnosticId(
+      e instanceof ArticleLoadError ? e.diagnosticId || null : null
+    );
+    if (e instanceof ArticleLoadError) {
+      setMessage(
+        `Article loading failed during ${e.step.replaceAll("_", " ")}. ${e.message}`
+      );
+      return;
+    }
     if (isAppError(e)) {
       // Full technical text to the console/log only — never to the user.
       console.error(`[${e.code}] ${e.detail}`);
@@ -59,7 +73,7 @@ export default function ErrorSinkProvider({
       {children}
       <Snackbar
         open={message !== null}
-        autoHideDuration={6000}
+        autoHideDuration={diagnosticId ? null : 6000}
         onClose={() => setMessage(null)}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
@@ -69,8 +83,25 @@ export default function ErrorSinkProvider({
           onClose={() => setMessage(null)}
         >
           {message}
+          {diagnosticId && (
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => setDetailsId(diagnosticId)}
+            >
+              Details
+            </Button>
+          )}
         </Alert>
       </Snackbar>
+      {detailsId && (
+        <ArticleDiagnosticsDialog
+          key={detailsId}
+          open
+          diagnosticId={detailsId}
+          onClose={() => setDetailsId(null)}
+        />
+      )}
     </ErrorSinkContext.Provider>
   );
 }

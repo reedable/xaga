@@ -1,3 +1,22 @@
+// Only fixed vocabulary crosses this boundary. Never report page text or URLs.
+function __xagaDiagnostic(event, count) {
+    try {
+        return window.__TAURI_INTERNALS__.invoke('add_loader_diagnostic_event', { event: event, count: count || 1 }).catch(function() {});
+    } catch (_) { return Promise.resolve(); }
+}
+__xagaDiagnostic('script_started');
+var __xagaImageCounts = {};
+function __xagaImageProblem(event) {
+    __xagaImageCounts[event] = Math.min(100000, (__xagaImageCounts[event] || 0) + 1);
+}
+function __xagaReportImageCounts() {
+    Object.keys(__xagaImageCounts).forEach(function(event) {
+        __xagaDiagnostic(event, __xagaImageCounts[event]);
+    });
+    __xagaImageCounts = {};
+}
+
+
 window.open = function() { return null; };
 window.focus = function() {};
 
@@ -26,10 +45,13 @@ var __XAGA_IMAGE_OVERALL_MS__ = Math.max(1500, Math.floor(__XAGA_LOADER_BUDGET_M
 var __XAGA_IMAGE_PER_IMAGE_MS__ = Math.max(750, Math.floor(__XAGA_IMAGE_OVERALL_MS__ / 3));
 
 function __xagaWithTimeout(promise, ms, onTimeout) {
+    var timer;
     return Promise.race([
         promise,
-        new Promise(function(resolve) { setTimeout(function() { resolve(onTimeout); }, ms); })
-    ]);
+        new Promise(function(resolve) { timer = setTimeout(function() {
+            __xagaImageProblem('image_timeout'); resolve(onTimeout);
+        }, ms); })
+    ]).finally(function() { clearTimeout(timer); });
 }
 
 // Fetches an image and returns a data: URL, or null if it cannot be read
@@ -40,27 +62,28 @@ function __xagaWithTimeout(promise, ms, onTimeout) {
 function __xagaFetchAsDataUrl(url, budget) {
     return fetch(url, { credentials: 'omit', cache: 'force-cache' })
         .then(function(res) {
-            if (res.type === 'opaque' || !res.ok) return null;
+            if (res.type === 'opaque' || !res.ok) { __xagaImageProblem('image_http'); return null; }
             var len = res.headers.get('content-length');
-            if (len && Number(len) > __XAGA_IMAGE_MAX_BYTES__) return null;
+            if (len && Number(len) > __XAGA_IMAGE_MAX_BYTES__) { __xagaImageProblem('image_size'); return null; }
             return res.blob();
         })
         .then(function(blob) {
             if (!blob) return null;
-            if (blob.size > __XAGA_IMAGE_MAX_BYTES__) return null;
-            if (blob.type && blob.type.indexOf('image/') !== 0) return null;
-            if (budget.bytes + blob.size > __XAGA_IMAGE_TOTAL_BYTES__) return null;
+            if (blob.size > __XAGA_IMAGE_MAX_BYTES__) { __xagaImageProblem('image_size'); return null; }
+            if (blob.type && blob.type.indexOf('image/') !== 0) { __xagaImageProblem('image_type'); return null; }
+            if (budget.bytes + blob.size > __XAGA_IMAGE_TOTAL_BYTES__) { __xagaImageProblem('image_size'); return null; }
             return new Promise(function(resolve) {
                 var reader = new FileReader();
                 reader.onload = function() { budget.bytes += blob.size; resolve(reader.result); };
-                reader.onerror = function() { resolve(null); };
+                reader.onerror = function() { __xagaImageProblem('image_unreadable'); resolve(null); };
                 reader.readAsDataURL(blob);
             });
         })
-        .catch(function() { return null; });
+        .catch(function() { __xagaImageProblem('image_unreadable'); return null; });
 }
 
 function __xagaFetchImages() {
+    __xagaDiagnostic('images_started');
     if (!__XAGA_FETCH_IMAGES__) return Promise.resolve();
 
     var budget = { bytes: 0 };
@@ -87,6 +110,7 @@ function __xagaFetchImages() {
             null
         ).then(function(dataUrl) {
             if (!dataUrl) return;
+            __xagaImageProblem('image_captured');
             // Stash the original remote URL so processEntry can pair it with the
             // data: bytes (read pre-Readability, then stripped there so it does
             // not trip Readability's lazy-load src rewrite).
@@ -103,7 +127,8 @@ function __xagaFetchImages() {
     for (var w = 0; w < Math.min(__XAGA_IMAGE_CONCURRENCY__, imgs.length); w++) pool.push(worker());
 
     return __xagaWithTimeout(Promise.all(pool), __XAGA_IMAGE_OVERALL_MS__, null)
-        .catch(function() {});
+        .catch(function() { __xagaImageProblem('image_unreadable'); })
+        .then(__xagaReportImageCounts);
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +226,7 @@ window.__captureAndClose = function() {
 // end that wait.
 // ---------------------------------------------------------------------------
 function __xagaCaptureFavicon() {
+    __xagaDiagnostic('favicon_started');
     var dataUri = null;
     // Why the read produced nothing, reported so a silent failure here is
     // diagnosable from the app log rather than only visible as a missing icon.
@@ -208,11 +234,11 @@ function __xagaCaptureFavicon() {
     try {
         var img = document.images && document.images[0];
         if (!img) {
-            reason = 'no image element in document';
+            reason = 'no-image';
         } else if (!img.complete) {
-            reason = 'image not complete at load';
+            reason = 'incomplete';
         } else if (!img.naturalWidth) {
-            reason = 'image decoded to zero width';
+            reason = 'decode-failed';
         } else {
             var size = Math.min(img.naturalWidth, img.naturalHeight, 64) || 16;
             var canvas = document.createElement('canvas');
@@ -221,21 +247,21 @@ function __xagaCaptureFavicon() {
             canvas.getContext('2d').drawImage(img, 0, 0, size, size);
             dataUri = canvas.toDataURL('image/png');
             if (!dataUri || dataUri.indexOf('data:image/png') !== 0) {
-                reason = 'canvas produced ' + String(dataUri).slice(0, 32);
+                reason = 'encode-failed';
                 dataUri = null;
             }
         }
     } catch (e) {
         dataUri = null;
-        reason = String((e && e.message) || e);
+        reason = 'canvas-unreadable';
     }
     try {
         window.__TAURI_INTERNALS__.invoke('receive_favicon', {
             id: window.__LOADER_ID__,
             dataUri: dataUri,
             reason: reason
-        });
-    } catch (e) {}
+        }).catch(function() { __xagaDiagnostic('ipc_failed'); });
+    } catch (e) { __xagaDiagnostic('ipc_failed'); }
 }
 
 if (__xagaIsImageDocument()) {
@@ -244,6 +270,7 @@ if (__xagaIsImageDocument()) {
 }
 
 window.addEventListener('load', function() {
+    __xagaDiagnostic('page_loaded');
     // Favicon documents are handled above; none of the article capture applies.
     if (__xagaIsImageDocument()) return;
 
@@ -266,24 +293,29 @@ window.addEventListener('load', function() {
     function send() {
         if (sent) return;
         sent = true;
+        __xagaDiagnostic('dom_settled');
         observer.disconnect();
         var mimeType = document.contentType || 'text/html';
         if (mimeType === 'application/pdf') {
             try {
+                __xagaDiagnostic('capture_sent');
                 window.__TAURI_INTERNALS__.invoke('receive_html', {
                     id: window.__LOADER_ID__,
                     html: '',
                     mimeType: mimeType
-                }).catch(function() {});
+                }).catch(function() { __xagaDiagnostic('ipc_failed'); });
             } catch(e) {}
             return;
         }
         // Fetch before serialising. The observer is already disconnected, so
         // rewriting src attributes cannot retrigger the debounce.
         __xagaFetchImages().then(function() {
+            __xagaDiagnostic('images_finished');
+            __xagaDiagnostic('capture_started');
             var html = document.documentElement.outerHTML;
             var favicon = __xagaFaviconUrl();
             try {
+                __xagaDiagnostic('capture_sent');
                 window.__TAURI_INTERNALS__.invoke('receive_html', {
                     id: window.__LOADER_ID__,
                     html: html,
@@ -300,9 +332,9 @@ window.addEventListener('load', function() {
                     if (window.__LOADER_KEEP_OPEN__ && !consumed) {
                         notifyPageLoaded(window.location.href, html, mimeType);
                     }
-                }).catch(function() {});
-            } catch(e) {}
-        });
+                }).catch(function() { __xagaDiagnostic('ipc_failed'); });
+            } catch(e) { __xagaDiagnostic('capture_failed'); }
+        }).catch(function() { __xagaDiagnostic('capture_failed'); });
     }
 
     var observer = new MutationObserver(function() {

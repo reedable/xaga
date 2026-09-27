@@ -17,6 +17,7 @@ pub(crate) const TRUSTED_WINDOW_LABELS: &[&str] = &["main", "settings"];
 /// loader's own init script uses to return captured HTML; no other window may
 /// call them, and a loader window may call *nothing else*.
 pub(crate) const LOADER_COMMANDS: &[&str] = &[
+    "add_loader_diagnostic_event",
     "receive_html",
     "receive_favicon",
     "loader_will_unload",
@@ -123,6 +124,16 @@ mod tests {
         assert!(!is_invoke_allowed("loader-7", "read_entry_images"));
         assert!(!is_invoke_allowed("loader-7", "set_library"));
         assert!(!is_invoke_allowed("loader-7", "get_library"));
+        for command in [
+            "create_article_diagnostic",
+            "get_article_diagnostic",
+            "add_article_diagnostic_event",
+        ] {
+            assert!(!is_invoke_allowed("loader-7", command));
+            assert!(is_invoke_allowed("main", command));
+        }
+        assert!(is_invoke_allowed("loader-7", "add_loader_diagnostic_event"));
+        assert!(!is_invoke_allowed("main", "add_loader_diagnostic_event"));
     }
 
     #[test]
