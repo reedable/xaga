@@ -295,7 +295,27 @@ pub async fn load_via_webview(
         });
     }
 
-    let mut result = tokio::time::timeout_at(deadline, rx).await;
+    // Keep the receiver alive after the deadline so a best-effort snapshot
+    // can still complete the normal extraction pipeline.
+    let mut rx = rx;
+    let mut result = tokio::time::timeout_at(deadline, &mut rx).await;
+    if result.is_err() {
+        let has_partial = pending
+            .lock()
+            .map_err(|e| e.to_string())?
+            .get(&id)
+            .is_some_and(|request| request.partial.is_some());
+        if !has_partial {
+            attempt.add_failed_event(
+                "capture_wait",
+                "article:timeout",
+                "capture deadline expired; attempting immediate snapshot of available content",
+            );
+            if loader.eval("window.__xagaCaptureOnTimeout()").is_ok() {
+                result = tokio::time::timeout(std::time::Duration::from_secs(1), &mut rx).await;
+            }
+        }
+    }
 
     let request = pending.lock().map_err(|e| e.to_string())?.remove(&id);
     if result.is_err() {

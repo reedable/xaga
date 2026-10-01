@@ -184,6 +184,24 @@ window.addEventListener('beforeunload', function() {
     } catch(e) {}
 });
 
+// Native code invokes this at the overall deadline, even if load has not
+// fired or the DOM never settles. Do not wait for images or favicon work.
+var __xagaTimedOut = false;
+window.__xagaCaptureOnTimeout = function() {
+    if (__xagaTimedOut) return;
+    __xagaTimedOut = true;
+    var mimeType = document.contentType || 'text/html';
+    try {
+        window.__TAURI_INTERNALS__.invoke('receive_html', {
+            id: window.__LOADER_ID__,
+            html: mimeType === 'application/pdf' ? '' : document.documentElement.outerHTML,
+            mimeType: mimeType,
+            favicon: null,
+            faviconData: null
+        }).catch(function() { __xagaDiagnostic('ipc_failed'); });
+    } catch (e) { __xagaDiagnostic('capture_failed'); }
+};
+
 window.__captureAndClose = function() {
     var mimeType = document.contentType || 'text/html';
     if (mimeType === 'application/pdf') {
@@ -291,7 +309,7 @@ window.addEventListener('load', function() {
     }
 
     function send() {
-        if (sent) return;
+        if (sent || __xagaTimedOut) return;
         sent = true;
         __xagaDiagnostic('dom_settled');
         observer.disconnect();
@@ -310,6 +328,7 @@ window.addEventListener('load', function() {
         // Fetch before serialising. The observer is already disconnected, so
         // rewriting src attributes cannot retrigger the debounce.
         __xagaFetchImages().then(function() {
+            if (__xagaTimedOut) return;
             __xagaDiagnostic('images_finished');
             __xagaDiagnostic('capture_started');
             var html = document.documentElement.outerHTML;

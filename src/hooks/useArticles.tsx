@@ -33,6 +33,29 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
+  const reportRecoveredTimeout = useCallback(
+    async (attempt: ArticleLoadAttempt) => {
+      if (!attempt.id) return;
+      const diagnostic = await platform
+        .getArticleDiagnostic(attempt.id)
+        .catch(() => null);
+      if (
+        diagnostic?.events.some((event) => event.code === "article:timeout")
+      ) {
+        pushError(
+          new ArticleLoadError(
+            attempt.id,
+            "fetch",
+            new Error(
+              "The page did not finish loading in time. Processing the available content; some content may be missing."
+            )
+          )
+        );
+      }
+    },
+    [platform, pushError]
+  );
+
   /**
    * Loads and saves a remote content identified by URL.
    *
@@ -64,6 +87,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           platform.loadArticle(signal, url, keepOpen, attempt.id)
         );
 
+        await reportRecoveredTimeout(attempt);
         if (mimeType === "application/pdf") {
           const pdfBytes = pdfBase64
             ? await attempt.runStep("pdf_decode", () => base64ToBytes(pdfBase64))
@@ -126,7 +150,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform, pushError]
+    [abortControllerRef, platform, pushError, reportRecoveredTimeout]
   );
 
   /**
@@ -155,6 +179,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         } = await attempt.runStep("fetch", () =>
           platform.loadArticle(signal, entry.url, keepOpen, attempt.id)
         );
+        await reportRecoveredTimeout(attempt);
         const { title, markdown, favicon, imageData } = await attempt.runStep(
           "extract",
           () =>
@@ -199,7 +224,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform, pushError]
+    [abortControllerRef, platform, pushError, reportRecoveredTimeout]
   );
 
   /**
