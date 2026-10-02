@@ -57,7 +57,8 @@ export function ItemView({ className }: ItemViewProps) {
         {blocked ? (
           <div className={css.Placeholder}>
             <Typography variant="body2" color="text.disabled">
-              Blocked: this link claimed to be a PDF but the content is not a PDF.
+              This download can’t be displayed in the reading pane because its
+              format isn’t supported.
             </Typography>
           </div>
         ) : isPdf ? (

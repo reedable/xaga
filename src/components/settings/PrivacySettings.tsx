@@ -126,8 +126,11 @@ export function PrivacySettings() {
           label="Allow inline PDF viewing"
         />
         <Typography variant="body2" color="text.secondary">
-          PDFs open in the system viewer by default. Enabling this shows them in
-          the reading pane but runs the PDF in the same process as the app.
+          PDFs open in the system viewer by default. Enable this to read them in
+          the reading pane. This sends an extra request to check whether each
+          article you load is a PDF, even when it isn’t. Websites can observe
+          these requests, which may help them recognize that you’re using this
+          app.
         </Typography>
       </div>
     </div>
