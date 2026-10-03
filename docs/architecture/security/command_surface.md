@@ -6,6 +6,10 @@ This matters because exploits are chains. A renderer compromise on its own may b
 
 ## The rule: segregate commands by the authority of their inputs
 
+Tauri 2.12 enforces capability checks for custom commands from remote origins before Xaga's invoke handler runs. `src-tauri/permissions/application.json` separates loader callbacks from first-party application commands. `capabilities/loader.json` grants only those callbacks to HTTP/HTTPS origins in `loader-*` windows; `capabilities/trusted-ui.json` grants application commands only to local `main` and `settings` windows. Neither grants remote pages access to the first-party command surface. The existing Rust window-label and library-write gates remain in force after Tauri's check.
+
+Keep the application permission lists in sync when adding or removing registered commands. `src-tauri/tests/loader_acl.rs` exercises Tauri's actual capability resolution for loader, trusted, and unknown windows. An empty loader capability is insufficient: it blocks capture and diagnostic IPC, producing a capture timeout even when navigation finishes successfully.
+
 - **Derived-path commands are fine on the invoke surface.** Commands whose filesystem access is computed in Rust from app state (`library_dir` + `{hash12}` filenames, settings paths) take no authority from the caller; the webview choosing _which_ feed to read is harmless because it cannot choose _where_ on disk that resolves to.
 - **User-supplied-path commands must not exist on the invoke surface.** Anything that takes a path (or any other ambient-authority handle) from its caller hands that authority to the webview. The file dialog and the operation it authorizes belong together on the Rust side (menu handler → Rust-side dialog → direct call); the chosen path must never round-trip through JS.
 
