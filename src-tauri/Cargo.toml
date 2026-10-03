@@ -10,6 +10,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.7.1", features = [] }
+serde_json = "1"
 
 [dependencies]
 xaga-core        = { path = "../crates/xaga-core" }

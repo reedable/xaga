@@ -178,9 +178,7 @@ function __xagaIsImageDocument() {
 
 window.addEventListener('beforeunload', function() {
     try {
-        window.__TAURI_INTERNALS__.invoke('loader_will_unload', {
-            url: window.location.href
-        });
+        window.__TAURI_INTERNALS__.invoke('loader_will_unload', {});
     } catch(e) {}
 });
 
@@ -206,20 +204,14 @@ window.__captureAndClose = function() {
     var mimeType = document.contentType || 'text/html';
     if (mimeType === 'application/pdf') {
         window.__TAURI_INTERNALS__.invoke('capture_and_close_loader', {
-            label: window.__LOADER_LABEL__,
             html: '',
-            loaderUrl: window.__LOADER_URL__,
-            pageUrl: window.location.href,
             mimeType: mimeType
         });
         return;
     }
     __xagaFetchImages().then(function() {
         window.__TAURI_INTERNALS__.invoke('capture_and_close_loader', {
-            label: window.__LOADER_LABEL__,
             html: document.documentElement.outerHTML,
-            loaderUrl: window.__LOADER_URL__,
-            pageUrl: window.location.href,
             mimeType: mimeType,
             // URL only: this window is visible and the user may be browsing it,
             // so it is never navigated away to read the favicon's bytes.
@@ -298,7 +290,6 @@ window.addEventListener('load', function() {
     function notifyPageLoaded(url, html, mimeType) {
         try {
             window.__TAURI_INTERNALS__.invoke('loader_page_loaded', {
-                url: url,
                 html: html,
                 mimeType: mimeType,
                 // URL only, for the same reason as capture_and_close_loader.

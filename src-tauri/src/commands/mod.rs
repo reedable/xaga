@@ -7,23 +7,9 @@ pub mod library;
 pub mod settings;
 pub mod topics;
 
-/// Labels of the trusted first-party UI windows. Any window not in this set —
-/// notably the `loader-*` webviews that navigate to untrusted remote content —
-/// is denied access to the main command surface.
-pub(crate) const TRUSTED_WINDOW_LABELS: &[&str] = &["main", "settings"];
-
-/// Commands that may *only* be invoked from a loader webview (the off-screen
-/// windows that render untrusted remote content). These are the callbacks the
-/// loader's own init script uses to return captured HTML; no other window may
-/// call them, and a loader window may call *nothing else*.
-pub(crate) const LOADER_COMMANDS: &[&str] = &[
-    "add_loader_diagnostic_event",
-    "receive_html",
-    "receive_favicon",
-    "loader_will_unload",
-    "loader_page_loaded",
-    "capture_and_close_loader",
-];
+pub(crate) use crate::command_policy::is_invoke_allowed;
+#[cfg(test)]
+use crate::command_policy::TRUSTED_WINDOW_LABELS;
 
 /// Commands that write to the open library (`.md` entity files and/or LanceDB). A
 /// read-only instance — one that did not win the library lock at startup — has these
@@ -69,26 +55,6 @@ pub(crate) fn require_writer(
     state: &crate::AppState,
 ) -> Result<xaga_core::library_writer::LibraryWriter, crate::error::AppError> {
     state.writer().ok_or(crate::error::AppError::ReadOnly)
-}
-
-/// Central IPC access policy, enforced once in the global invoke handler so that
-/// every command — present and future — is covered without a per-command guard:
-///
-/// * `loader-*` webviews (untrusted remote content) may call only
-///   [`LOADER_COMMANDS`].
-/// * Trusted UI windows ([`TRUSTED_WINDOW_LABELS`]) may call everything *except*
-///   [`LOADER_COMMANDS`].
-/// * Any other (unknown / future) window is denied outright — allowlist by
-///   default.
-pub(crate) fn is_invoke_allowed(label: &str, command: &str) -> bool {
-    let is_loader_command = LOADER_COMMANDS.contains(&command);
-    if label.starts_with("loader-") {
-        is_loader_command
-    } else if TRUSTED_WINDOW_LABELS.contains(&label) {
-        !is_loader_command
-    } else {
-        false
-    }
 }
 
 pub(crate) fn parse_item_filter(

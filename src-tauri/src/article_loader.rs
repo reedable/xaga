@@ -147,6 +147,11 @@ pub async fn load_via_webview(
     let build_pending = pending.clone();
     let build_id = id.clone();
     let build_proxy = proxy.clone();
+    let sessions = app
+        .state::<crate::loader_identity::LoaderSessions>()
+        .inner()
+        .clone();
+    let source_url = url.to_owned();
     let scheduled = app.run_on_main_thread(move || {
         // A timed-out scheduling request must not create an orphan webview.
         if !build_pending
@@ -220,12 +225,14 @@ pub async fn load_via_webview(
             };
             build_attempt.add_started_event("webview_create");
             let window = builder.build().map_err(|e| e.to_string())?;
+            sessions.register(build_label.clone(), source_url);
             // Keep the dedicated proxy alive for a visible browser, including
             // the PDF fallback. Release it when the native window is destroyed.
             let lifetime = Arc::new(Mutex::new(Some(build_proxy)));
             window.on_window_event(move |event| {
                 if matches!(event, tauri::WindowEvent::Destroyed) {
                     lifetime.lock().unwrap_or_else(|e| e.into_inner()).take();
+                    sessions.remove(&build_label);
                 }
             });
             Ok(window)

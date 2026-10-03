@@ -13,23 +13,44 @@ use crate::article_diagnostics::{
 use crate::error::AppError;
 use crate::{AppState, article_loader};
 
+// Identity and current location are native values, never IPC payload fields.
+fn loader_identity<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+    sessions: &crate::loader_identity::LoaderSessions,
+) -> Result<(String, String), AppError> {
+    let source = sessions
+        .source_url(window.label())
+        .ok_or(AppError::Unauthorized)?;
+    let current = window.url().map_err(|_| AppError::Unauthorized)?;
+    if !matches!(current.scheme(), "http" | "https") {
+        return Err(AppError::Unauthorized);
+    }
+    Ok((source, current.to_string()))
+}
+
 #[tauri::command]
-pub async fn loader_will_unload(app: AppHandle, url: String) -> Result<(), AppError> {
-    crate::events::emit_app(&app, crate::events::AppEvent::LoaderWillUnload(url));
+pub async fn loader_will_unload<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    sessions: State<'_, crate::loader_identity::LoaderSessions>,
+) -> Result<(), AppError> {
+    let (_, url) = loader_identity(&window, &sessions)?;
+    let app = window.app_handle();
+    crate::events::emit_app(app, crate::events::AppEvent::LoaderWillUnload(url));
     Ok(())
 }
 
 #[tauri::command]
-pub async fn loader_page_loaded(
-    app: AppHandle,
-    url: String,
+pub async fn loader_page_loaded<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    sessions: State<'_, crate::loader_identity::LoaderSessions>,
     html: String,
     mime_type: String,
     favicon: Option<String>,
     favicon_data: Option<String>,
 ) -> Result<(), AppError> {
+    let (_, url) = loader_identity(&window, &sessions)?;
     crate::events::emit_app(
-        &app,
+        window.app_handle(),
         crate::events::AppEvent::LoaderPageLoaded(crate::events::LoaderPageLoaded {
             url,
             html,
@@ -42,26 +63,18 @@ pub async fn loader_page_loaded(
 }
 
 #[tauri::command]
-pub async fn capture_and_close_loader(
-    app: AppHandle,
-    label: String,
+pub async fn capture_and_close_loader<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    sessions: State<'_, crate::loader_identity::LoaderSessions>,
     html: String,
-    loader_url: String,
-    page_url: String,
     mime_type: String,
     favicon: Option<String>,
     favicon_data: Option<String>,
 ) -> Result<(), AppError> {
-    let same_page = match (
-        xaga_core::util::normalize_url(&loader_url),
-        xaga_core::util::normalize_url(&page_url),
-    ) {
-        (Ok(a), Ok(b)) => a == b,
-        // Unparseable URL on either side: fall back to exact equality.
-        _ => loader_url == page_url,
-    };
+    let (loader_url, page_url) = loader_identity(&window, &sessions)?;
+    let same_page = crate::loader_identity::same_page(&loader_url, &page_url);
     crate::events::emit_app(
-        &app,
+        window.app_handle(),
         crate::events::AppEvent::LoaderClosed(crate::events::LoaderClosed {
             loader_url,
             page_url,
@@ -72,9 +85,9 @@ pub async fn capture_and_close_loader(
             favicon_data,
         }),
     );
-    if let Some(w) = app.get_webview_window(&label) {
-        let _ = w.close();
-    }
+    window
+        .close()
+        .map_err(|e| AppError::Message(e.to_string()))?;
     Ok(())
 }
 
@@ -1139,4 +1152,77 @@ pub async fn list_annotations(
         .await
         .map_err(AppError::from)?;
     db.list_annotations().await.map_err(AppError::from)
+}
+
+#[cfg(test)]
+mod loader_security_tests {
+    use super::*;
+    use std::sync::Mutex;
+    use tauri::{
+        Listener, WebviewUrl, WebviewWindowBuilder, ipc::CallbackFn, webview::InvokeRequest,
+    };
+
+    #[test]
+    fn loader_callbacks_ignore_forged_identity_and_require_live_session() {
+        let sessions = crate::loader_identity::LoaderSessions::default();
+        sessions.register("loader-7".into(), "https://source.example/article".into());
+        sessions.register("loader-8".into(), "https://other.example/article".into());
+        let app = tauri::test::mock_builder()
+            .manage(sessions.clone())
+            .invoke_handler(tauri::generate_handler![
+                loader_will_unload,
+                loader_page_loaded,
+                capture_and_close_loader
+            ])
+            .build(crate::app_context())
+            .unwrap();
+        let window = WebviewWindowBuilder::new(
+            &app,
+            "loader-7",
+            WebviewUrl::External("https://redirect.example/page".parse().unwrap()),
+        )
+        .build()
+        .unwrap();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        for name in ["loader:will-unload", "loader:page-loaded", "loader:closed"] {
+            let events = events.clone();
+            app.listen(name, move |event| {
+                events.lock().unwrap().push((
+                    name,
+                    serde_json::from_str::<serde_json::Value>(event.payload()).unwrap(),
+                ));
+            });
+        }
+        let invoke = |command: &str| {
+            tauri::test::get_ipc_response(&window, InvokeRequest {
+            cmd: command.into(), callback: CallbackFn(0), error: CallbackFn(1),
+            url: "https://redirect.example/page".parse().unwrap(),
+            body: serde_json::json!({
+                "label": "main", "url": "https://other.example/article",
+                "loaderUrl": "https://other.example/article", "pageUrl": "https://other.example/article",
+                "html": "<p>untrusted capture</p>", "mimeType": "text/html"
+            }).into(), headers: Default::default(), invoke_key: tauri::test::INVOKE_KEY.into(),
+        })
+        };
+        assert!(invoke("loader_will_unload").is_ok());
+        assert!(invoke("loader_page_loaded").is_ok());
+        assert!(invoke("capture_and_close_loader").is_ok());
+        let captured = events.lock().unwrap();
+        assert_eq!(captured.len(), 3);
+        assert_eq!(captured[0].1, "https://redirect.example/page");
+        assert_eq!(captured[1].1["url"], "https://redirect.example/page");
+        assert_eq!(captured[2].1["loaderUrl"], "https://source.example/article");
+        assert_eq!(captured[2].1["pageUrl"], "https://redirect.example/page");
+        assert_eq!(captured[2].1["samePage"], false);
+        drop(captured);
+        sessions.remove("loader-7");
+        assert!(invoke("loader_will_unload").is_err());
+        assert!(invoke("loader_page_loaded").is_err());
+        assert!(invoke("capture_and_close_loader").is_err());
+        assert_eq!(events.lock().unwrap().len(), 3);
+        assert_eq!(
+            sessions.source_url("loader-8").as_deref(),
+            Some("https://other.example/article")
+        );
+    }
 }

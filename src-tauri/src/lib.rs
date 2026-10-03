@@ -1,3 +1,5 @@
+mod command_policy;
+mod loader_identity;
 mod article_loader;
 mod article_diagnostics;
 mod commands;
@@ -651,6 +653,7 @@ pub fn run() {
             settings_baseline,
         })
         .manage(article_loader::PendingRequests::default())
+        .manage(loader_identity::LoaderSessions::default())
         .manage(article_diagnostics::ArticleDiagnostics::default())
         .manage(proxy_config)
         .plugin(
@@ -1221,76 +1224,7 @@ pub fn run() {
             // so loader (untrusted) webviews can reach only the loader callbacks
             // and every other command is protected without a per-command guard.
             let app_commands: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> =
-                Box::new(tauri::generate_handler![
-            set_find_enabled,
-            commands::articles::receive_html,
-            commands::articles::receive_favicon,
-            commands::articles::loader_will_unload,
-            commands::articles::loader_page_loaded,
-            commands::articles::capture_and_close_loader,
-            commands::articles::load_article,
-            commands::articles::create_article_diagnostic,
-            commands::articles::add_article_diagnostic_event,
-            commands::articles::get_article_diagnostic,
-            commands::articles::add_loader_diagnostic_event,
-            commands::articles::clear_webview_history,
-            commands::articles::save_article,
-            commands::articles::find_article,
-            commands::articles::read_article,
-            commands::articles::read_entry_images,
-            commands::articles::create_article,
-            commands::articles::add_annotation,
-            commands::articles::replace_annotation,
-            commands::articles::remove_annotation,
-            commands::articles::list_annotations,
-            commands::entries::is_cache_ready,
-            commands::entries::read_entry,
-            commands::entries::mark_entry_read,
-            commands::entries::mark_entry_unread,
-            commands::entries::list_all_items,
-            commands::library::get_library,
-            commands::library::set_library,
-            commands::library::is_library_read_only,
-            commands::settings::get_theme,
-            commands::settings::set_theme,
-            commands::settings::get_refresh_on_startup,
-            commands::settings::set_refresh_on_startup,
-            commands::settings::get_html_reader_prefs,
-            commands::settings::set_html_reader_font_family,
-            commands::settings::set_html_reader_font_size,
-            commands::settings::set_html_reader_line_height,
-            commands::settings::get_show_sidebar,
-            commands::settings::set_show_sidebar,
-            commands::settings::get_allowed_domains,
-            commands::settings::set_allowed_domains,
-            commands::settings::get_html_reader_view,
-            commands::settings::set_html_reader_view,
-            commands::feeds::set_feed_pinned,
-            commands::topics::set_topic_pinned,
-            commands::settings::get_inline_pdf_reader,
-            commands::settings::set_inline_pdf_reader,
-            commands::feeds::list_feeds,
-            commands::feeds::add_feed,
-            commands::feeds::refresh_all_feeds,
-            commands::feeds::rename_feed,
-            commands::feeds::remove_feed,
-            commands::feeds::list_entries,
-            commands::bookmarks::add_bookmark,
-            commands::bookmarks::remove_bookmark,
-            commands::topics::create_topic,
-            commands::topics::save_topic,
-            commands::topics::list_topics,
-            commands::topics::read_topic,
-            commands::topics::delete_topic,
-            commands::topics::add_topic_item,
-            commands::topics::remove_topic_item,
-            commands::topics::list_topic_items,
-            commands::topics::list_entry_topics,
-            commands::topics::rank_topics_by_item,
-            commands::embeddings::search_by_item,
-            commands::embeddings::search_by_text,
-            commands::embeddings::reset_embeddings,
-            ]);
+                Box::new(include!(concat!(env!("OUT_DIR"), "/command_handler.rs")));
             move |invoke: tauri::ipc::Invoke| {
                 let (allowed, write_refused) = {
                     let label = invoke.message.webview_ref().label();
@@ -1318,7 +1252,7 @@ pub fn run() {
                 app_commands(invoke)
             }
         })
-        .build(tauri::generate_context!())
+        .build(app_context())
         .expect("error while building tauri application");
 
     install_signal_handler(Arc::clone(&embedding_service), app.handle().clone());
@@ -1565,4 +1499,8 @@ mod settings_funnel_tests {
         // Last holder gone → flock released (operation-scoped), so another instance could take it.
         assert!(registry.lock().unwrap().handle.is_none());
     }
+}
+
+fn app_context<R: tauri::Runtime>() -> tauri::Context<R> {
+    tauri::generate_context!()
 }

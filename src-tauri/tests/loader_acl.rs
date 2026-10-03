@@ -1,45 +1,22 @@
-//! Exercise Tauri's actual ACL before the application invoke gate.
+//! Exercise the generated ACL both alone and with the production native gate.
+#[path = "../src/command_policy.rs"]
+mod command_policy;
+
 use tauri::{WebviewUrl, WebviewWindowBuilder, ipc::CallbackFn, webview::InvokeRequest};
 
-#[test]
-fn permissions_cover_registered_commands_without_overlap() {
-    use std::collections::BTreeSet;
-    let source = include_str!("../src/lib.rs");
-    let handler = source
-        .split("tauri::generate_handler![")
-        .nth(1)
-        .unwrap()
-        .split("]);")
-        .next()
-        .unwrap();
-    let registered: BTreeSet<_> = handler
-        .lines()
-        .map(str::trim)
-        .filter(|line| line.starts_with("commands::"))
-        .map(|line| line.trim_end_matches(',').rsplit("::").next().unwrap())
-        .collect();
-    let permissions: serde_json::Value =
-        serde_json::from_str(include_str!("../permissions/application.json")).unwrap();
-    let mut allowed = BTreeSet::new();
-    for permission in permissions["permission"].as_array().unwrap() {
-        for command in permission["commands"]["allow"].as_array().unwrap() {
-            assert!(
-                allowed.insert(command.as_str().unwrap()),
-                "command appears in both permission groups"
-            );
-        }
-    }
-    assert_eq!(
-        registered, allowed,
-        "update application permissions when registering commands"
-    );
-}
-
-#[test]
-fn loader_callbacks_are_allowed_only_in_remote_loader_windows() {
+fn check_matrix(with_native_gate: bool) {
     let app = tauri::test::mock_builder()
-        .invoke_handler(|invoke| {
-            invoke.resolver.resolve("reached application gate");
+        .invoke_handler(move |invoke| {
+            if with_native_gate
+                && !command_policy::is_invoke_allowed(
+                    invoke.message.webview_ref().label(),
+                    invoke.message.command(),
+                )
+            {
+                invoke.resolver.reject("native gate denied");
+            } else {
+                invoke.resolver.resolve("accepted");
+            }
             true
         })
         .build(tauri::generate_context!())
@@ -53,21 +30,18 @@ fn loader_callbacks_are_allowed_only_in_remote_loader_windows() {
             "https://example.org/article",
             "http://example.org/article",
             "tauri://localhost",
+            "file:///tmp/page.html",
+            "data:text/html,test",
         ] {
-            for command in [
-                "add_loader_diagnostic_event",
-                "receive_html",
-                "receive_favicon",
-                "loader_will_unload",
-                "loader_page_loaded",
-                "capture_and_close_loader",
-                "read_article",
-                "set_library",
-            ] {
+            for command in command_policy::LOADER_COMMANDS
+                .iter()
+                .chain(command_policy::TRUSTED_COMMANDS)
+                .chain([&"unregistered_command"])
+            {
                 let response = tauri::test::get_ipc_response(
                     &window,
                     InvokeRequest {
-                        cmd: command.into(),
+                        cmd: (*command).into(),
                         callback: CallbackFn(0),
                         error: CallbackFn(1),
                         url: origin.parse().unwrap(),
@@ -76,18 +50,56 @@ fn loader_callbacks_are_allowed_only_in_remote_loader_windows() {
                         invoke_key: tauri::test::INVOKE_KEY.into(),
                     },
                 );
-                let loader_command = !matches!(command, "read_article" | "set_library");
-                let expected = if origin.starts_with("tauri:") {
-                    matches!(label, "main" | "settings") && !loader_command
-                } else {
-                    label == "loader-7" && loader_command
+                let expected = match origin {
+                    "tauri://localhost" => {
+                        matches!(label, "main" | "settings")
+                            && command_policy::TRUSTED_COMMANDS.contains(command)
+                    }
+                    origin if origin.starts_with("http:") || origin.starts_with("https:") => {
+                        label == "loader-7" && command_policy::LOADER_COMMANDS.contains(command)
+                    }
+                    _ => false,
                 };
                 assert_eq!(
                     response.is_ok(),
                     expected,
-                    "{label} {origin} {command}: {response:?}"
+                    "gate={with_native_gate} {label} {origin} {command}: {response:?}"
                 );
             }
         }
+    }
+}
+
+#[test]
+fn tauri_acl_enforces_every_registered_command() {
+    check_matrix(false);
+}
+
+#[test]
+fn tauri_acl_and_production_gate_agree() {
+    check_matrix(true);
+}
+
+#[test]
+fn loader_authority_remains_the_reviewed_six_callbacks() {
+    // Intentional security contract, independent of the generated classification.
+    let mut actual = command_policy::LOADER_COMMANDS.to_vec();
+    let mut expected = vec![
+        "add_loader_diagnostic_event",
+        "receive_html",
+        "receive_favicon",
+        "loader_will_unload",
+        "loader_page_loaded",
+        "capture_and_close_loader",
+    ];
+    actual.sort();
+    expected.sort();
+    assert_eq!(actual, expected);
+    assert!(command_policy::TRUSTED_COMMANDS.contains(&"set_find_enabled"));
+    for label in ["main", "settings", "loader-7", "unknown"] {
+        assert!(!command_policy::is_invoke_allowed(
+            label,
+            "unregistered_command"
+        ));
     }
 }
