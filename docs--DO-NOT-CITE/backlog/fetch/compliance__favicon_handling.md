@@ -35,8 +35,8 @@ processing even when the same webview performs both.
   a local reference with no file, retaining the source URL in the URL map.
   Failure therefore does not necessarily mean a newly saved remote reference.
 - `src/components/content/Toolbar.tsx` reads local references through IPC but
-  renders other stored favicon values directly. Legacy or externally edited
-  remote references can therefore still cause main-window network requests.
+  ignores other stored favicon values, showing the existing globe icon instead.
+  The direct remote-URL rendering fallback was removed on 2026-10-03.
 
 ## Confirmed outstanding issues
 
@@ -76,15 +76,14 @@ The article's HTML is already available, yet completion waits for the overall
 load deadline. Known terminal favicon failures should settle favicon work
 immediately, preserving the article and resolving the load only once.
 
-### 3. Remote stored favicon references still render in the main window
+### 3. Legacy remote references: rendering bypass removed; recovery undecided
 
-The toolbar's non-local branch uses the stored value directly as an image
-source. New ingestion localization does not repair all previously saved or
-externally edited content. Define a rendering boundary that never silently
-falls back to a remote main-window request. Decide how to handle existing
-entries: local migration, controlled reacquisition, explicit refresh, or a
-placeholder. Revalidate main-window proxy/CSP behavior separately; do not rely
-on historical configuration claims as current enforcement evidence.
+The toolbar's direct rendering of non-local stored favicon values was removed
+on 2026-10-03. Only persisted local references resolved through IPC supply an
+image; other values use the existing globe icon without a favicon request.
+Stored metadata is not rewritten by this change. Recovery for older or edited
+entries remains undecided: controlled reacquisition, explicit refresh, or a
+placeholder. Any recovery must preserve the local-only rendering boundary.
 
 ### 4. Discovery paths differ and failed local captures need a recovery policy
 
@@ -103,7 +102,8 @@ remote image rendering, both outside the loader. Its promise also lacked an
 on July 27. The current toolbar no longer uses that probe: acquisition moved
 into the loader and persistence gained local image storage. Do not reopen the
 old unresolved-promise defect as though that implementation still exists.
-The remaining legacy remote-rendering branch is described above independently.
+The subsequent legacy remote-rendering fallback has now also been removed;
+recovery for entries lacking local bytes remains open.
 
 ## Design decisions and enhancement investigation
 

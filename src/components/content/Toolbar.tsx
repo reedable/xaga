@@ -71,14 +71,11 @@ export function Toolbar({ reload }: ToolbarProps) {
 
   const entry = latestEntry?.id === entryId ? latestEntry : null;
 
-  // A stored favicon is either a local `../images/…` ref, resolved to bytes
-  // over IPC below, or a remote URL. The latter only occurs for entries saved
-  // before ingestion began storing favicon bytes; it is rendered as-is, which
-  // is a remote request from this (privileged) window, and reloading the
-  // article rewrites it to a local ref.
+  // Only persisted local references may supply an icon. Never render a stored
+  // remote URL directly: that would fetch from the privileged main window.
   const storedFavicon = isArticle(entry) ? entry.favicon : undefined;
   const isLocalFaviconRef = !!storedFavicon?.startsWith("../images/");
-  const displayFavicon = isLocalFaviconRef ? favicon : (storedFavicon ?? null);
+  const displayFavicon = isLocalFaviconRef ? favicon : null;
 
   const qrButtonRef = useRef<HTMLButtonElement>(null);
   const [qrOpen, setQrOpen] = useState(false);
@@ -136,8 +133,7 @@ export function Toolbar({ reload }: ToolbarProps) {
 
   // The favicon is fetched inside the article loader at ingestion and stored
   // under the entry's image directory, so displaying it makes no network request
-  // from this (privileged) window. Only that case needs an effect — the bytes
-  // come back over IPC.
+  // from this (privileged) window. The bytes come back over IPC.
   useEffect(() => {
     if (!entry || !storedFavicon || !isLocalFaviconRef) return;
 
