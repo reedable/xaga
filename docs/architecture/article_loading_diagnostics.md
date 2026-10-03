@@ -81,8 +81,8 @@ request ID to that window before consuming pending state.
 
 Page-reported milestones are explicitly marked `source: loader`: the remote
 page can forge them, and they are not security evidence. Native/proxy observations
-remain separate. Reports exclude HTML, PDF bytes, image data, cookies, headers,
-and raw URLs. URL-bearing tokens in native exception text are removed; strings
+remain separate. General events exclude HTML, PDF bytes, image data, cookies, headers,
+and raw URLs. Native download evidence is the explicit exception described below. URL-bearing tokens in native exception text are removed; strings
 are length-limited and control characters stripped. Frontend diagnostics accept
 codes rather than raw exception text, and stored frontmatter parse errors are
 classified without including their source fragments.
@@ -119,3 +119,35 @@ URL, blocked local target, unavailable server, stalled page, favicon failure,
 PDF fallback, and a visible loader. Verify the notification's copied record and
 the release log agree. A development-server run does not establish bundled
 WebKit behavior.
+
+## Rejected download evidence
+
+Article loader webviews explicitly reject every download request through Tauri's
+`on_download` callback, overriding Wry's default accepting handler. This applies
+to hidden and visible loaders. No diagnostic request downloads the remote body,
+opens the file, or makes an extra network request.
+
+`download_requested` events include a structured `download` object: native loader
+label, original article URL, current webview URL (if available), download URL,
+and proposed local destination. `download_finished` records any runtime completion
+callback, including its success flag and optional path. A completion callback is
+not guaranteed after rejection; on macOS its path can be absent. The current
+webview URL is context, not proof of the initiating frame or redirect chain.
+Tauri does not expose response headers, MIME type, HTTP status, the initiator,
+or a cancellation error through this callback. These must not be inferred.
+
+These records appear in Copy diagnostics and the bounded native release log
+(`~/Library/Logs/xaga` on macOS), including when article loading succeeds and no
+error dialog appears. Search the log for `download_requested` or
+`article:download-rejected`. Each line carries the existing attempt ID.
+The event count and log size limits above still apply. Individual evidence fields
+are limited to 4096 characters and control characters removed. HTTP(S) URL
+credentials and fragments are removed; other schemes are omitted entirely.
+Paths and query parameters are retained to identify the resource, so reports
+and logs can contain sensitive tokens or filenames. Review before sharing.
+The diagnostics dialog displays a reminder when download evidence is present.
+
+Wry 0.57 checks the proposed destination for an existing file before invoking
+this callback. Rejection prevents accepting the download destination, but cannot
+guarantee no prior filesystem access or macOS permission prompt. This is an
+upstream ordering limitation, not evidence that Xaga accepted a download.

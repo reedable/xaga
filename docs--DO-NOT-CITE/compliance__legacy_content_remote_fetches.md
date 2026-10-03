@@ -1,10 +1,8 @@
-# Compliance: legacy stored content still fetches at read time
+# Compliance: legacy stored article bodies still fetch images at read time
 
-Entries saved before ingestion started storing bytes locally still carry remote
-URLs, and the main window fetches them when the entry is opened:
+Entries saved before ingestion started storing image bytes locally can still
+carry `https:` image URLs in their bodies. `inlineEntryImages` returns those
+URLs unchanged, allowing requests when the entry is opened.
 
-- bodies with `https:` image URLs — `inlineEntryImages` returns them unchanged
-- frontmatter `favicon:` holding an `https:` URL — `Toolbar.tsx` uses it as-is
-
-Reloading an article rewrites both. Decide whether that is enough, or whether a
-migration or a prompt is wanted.
+Reloading an article rewrites these body-image references. Decide whether that
+is sufficient or whether migration or a prompt is needed.

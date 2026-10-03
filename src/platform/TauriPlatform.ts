@@ -54,6 +54,14 @@ const ArticleDiagnosticSchema: z.ZodType<ArticleDiagnostic> = z.object({
       outcome: ArticleDiagnosticOutcomeSchema,
       code: z.string(),
       detail: z.string(),
+      download: z.object({
+        loaderLabel: z.string(),
+        sourceUrl: z.string(),
+        currentUrl: z.string().nullable(),
+        downloadUrl: z.string(),
+        destination: z.string().nullable(),
+        success: z.boolean().nullable(),
+      }).optional(),
     })
   ),
   droppedEvents: z.number(),

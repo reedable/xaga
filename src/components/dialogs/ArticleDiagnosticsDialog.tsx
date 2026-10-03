@@ -75,6 +75,10 @@ export default function ArticleDiagnosticsDialog({
             </Typography>
           ))}
         <Typography variant="body2" sx={{ mt: 2 }}>
+          {diagnostic?.events.some((event) => event.download) &&
+            "Download diagnostics include URLs, query parameters, and local paths. Review before sharing."}
+        </Typography>
+        <Typography variant="body2" sx={{ mt: 2 }}>
           {status}
         </Typography>
       </DialogContent>

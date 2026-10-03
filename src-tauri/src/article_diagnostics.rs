@@ -30,6 +30,36 @@ struct ArticleDiagnosticEvent {
     outcome: ArticleDiagnosticOutcome,
     code: String,
     detail: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    download: Option<DownloadDiagnostic>,
+}
+
+/// Native observations only. URL paths/queries and filenames can be sensitive.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DownloadDiagnostic {
+    pub loader_label: String,
+    pub source_url: String,
+    pub current_url: Option<String>,
+    pub download_url: String,
+    pub destination: Option<String>,
+    pub success: Option<bool>,
+}
+
+fn bounded_download_text(value: &str) -> String {
+    value.chars().filter(|c| !c.is_control()).take(4096).collect()
+}
+
+fn diagnostic_url(value: &str) -> String {
+    match tauri::Url::parse(value) {
+        Ok(mut url) if matches!(url.scheme(), "http" | "https") => {
+            let _ = url.set_username("");
+            let _ = url.set_password(None);
+            url.set_fragment(None);
+            bounded_download_text(url.as_str())
+        }
+        _ => "[non-HTTP URL omitted]".into(),
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -132,6 +162,35 @@ impl ArticleLoadAttempt {
         code: &str,
         detail: &str,
     ) {
+        self.record_event(source, step, outcome, code, detail, None);
+    }
+
+    pub(crate) fn record_download(&self, requested: bool, mut download: DownloadDiagnostic) {
+        download.loader_label = bounded_download_text(&download.loader_label);
+        download.source_url = diagnostic_url(&download.source_url);
+        download.current_url = download.current_url.map(|url| diagnostic_url(&url));
+        download.download_url = diagnostic_url(&download.download_url);
+        download.destination = download.destination.map(|path| bounded_download_text(&path));
+        self.record_event(
+            "native",
+            if requested { "download_requested" } else { "download_finished" },
+            ArticleDiagnosticOutcome::Warning,
+            if requested { "article:download-rejected" } else { "article:download-finished" },
+            if requested { "Download rejected before accepting a destination; response headers and initiating frame unavailable" }
+            else { "Completion reported by runtime; success is recorded independently of rejection policy" },
+            Some(download),
+        );
+    }
+
+    fn record_event(
+        &self,
+        source: &str,
+        step: &str,
+        outcome: ArticleDiagnosticOutcome,
+        code: &str,
+        detail: &str,
+        download: Option<DownloadDiagnostic>,
+    ) {
         let mut attempt = self.0.lock().unwrap_or_else(|e| e.into_inner());
         if source == "frontend"
             && step == "attempt"
@@ -152,6 +211,7 @@ impl ArticleLoadAttempt {
             outcome,
             code: sanitize_detail(code),
             detail: sanitize_detail(detail),
+            download,
         };
         if attempt.diagnostic.dropped_events == 0
             || matches!(
@@ -228,6 +288,32 @@ pub(crate) fn validate_event(step: &str, code: &str) -> Result<(), ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn download_evidence_is_bounded_and_preserves_request_identity() {
+        let diagnostics = ArticleDiagnostics::default();
+        let attempt = diagnostics.create_attempt("load");
+        for _ in 0..140 {
+            attempt.record_download(true, DownloadDiagnostic {
+                loader_label: "loader-7".into(),
+                source_url: "https://example.org/article".into(),
+                current_url: Some("data:text/html,private-content".into()),
+                download_url: "https://user:password@example.org/file?token=investigate#secret".into(),
+                destination: Some(format!("/Downloads/{}\n", "x".repeat(5000))),
+                success: None,
+            });
+        }
+        let record = attempt.get_diagnostic();
+        assert_eq!(record.events.len(), MAX_EVENTS);
+        assert_eq!(record.dropped_events, 12);
+        let event = record.events.back().unwrap();
+        assert_eq!(event.code, "article:download-rejected");
+        let evidence = event.download.as_ref().unwrap();
+        assert_eq!(evidence.download_url, "https://example.org/file?token=investigate");
+        assert_eq!(evidence.current_url.as_deref(), Some("[non-HTTP URL omitted]"));
+        assert_eq!(evidence.destination.as_ref().unwrap().len(), 4096);
+        assert!(evidence.success.is_none());
+        assert!(diagnostics.create_attempt("other").get_diagnostic().events.is_empty());
+    }
     #[test]
     fn bounds_and_isolates_attempts() {
         let diagnostics = ArticleDiagnostics::default();

@@ -152,6 +152,8 @@ pub async fn load_via_webview(
         .inner()
         .clone();
     let source_url = url.to_owned();
+    let download_source_url = source_url.clone();
+    let download_attempt = attempt.clone();
     let scheduled = app.run_on_main_thread(move || {
         // A timed-out scheduling request must not create an orphan webview.
         if !build_pending
@@ -165,6 +167,29 @@ pub async fn load_via_webview(
             let mut builder =
                 WebviewWindowBuilder::new(&build_app, &build_label, WebviewUrl::External(parsed))
                     .initialization_script(&init_script)
+                    .on_download(move |webview, event| {
+                        use tauri::webview::DownloadEvent;
+                        let (requested, url, destination, success) = match event {
+                            DownloadEvent::Requested { url, destination } =>
+                                (true, url, Some(destination.to_string_lossy().into_owned()), None),
+                            DownloadEvent::Finished { url, path, success } =>
+                                (false, url, path.map(|p| p.to_string_lossy().into_owned()), Some(success)),
+                            _ => return false,
+                        };
+                        download_attempt.record_download(requested,
+                            crate::article_diagnostics::DownloadDiagnostic {
+                                loader_label: webview.label().to_owned(),
+                                source_url: download_source_url.clone(),
+                                current_url: webview.url().ok().map(|u| u.to_string()),
+                                download_url: url.to_string(),
+                                destination,
+                                success,
+                            });
+                        // Wry defaults to accepting downloads. Never accept remote
+                        // files implicitly. Its destination existence check occurs
+                        // before this callback and may still touch Downloads.
+                        false
+                    })
                     .on_navigation(move |_| {
                         navigation_attempt.add_event(
                             "native",

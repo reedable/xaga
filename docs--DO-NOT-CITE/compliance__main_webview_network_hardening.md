@@ -16,6 +16,3 @@ Three levers, in increasing order of strictness:
 1. Tighten the app CSP so remote sources are not permitted.
 2. Route the main webview through `ssrf_proxy`.
 3. Ban outbound network from the main webview entirely.
-
-Blocked on the favicon path (`compliance__favicon_fetch_bypasses_proxy.md`),
-which is the one thing in the main window that currently fetches remote `https:`.

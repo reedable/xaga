@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // opener; file:/javascript:/data: and custom schemes must be refused before
 // the plugin is called.
 const { openUrlMock } = vi.hoisted(() => ({ openUrlMock: vi.fn() }));
+const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: openUrlMock }));
 // TauriPlatform registers a module-load event listener; no-op it under test.
 vi.mock("@tauri-apps/api/event", () => ({
@@ -11,6 +13,22 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import { TauriPlatform } from "./TauriPlatform";
+
+it("preserves native download evidence when reading diagnostics", async () => {
+  const download = {
+    loaderLabel: "loader-0", sourceUrl: "https://example.org/",
+    currentUrl: "https://example.org/", downloadUrl: "https://example.org/favicon.ico",
+    destination: "/Downloads/favicon.ico", success: null,
+  };
+  invokeMock.mockResolvedValueOnce({
+    id: "attempt", startedAtMs: 1, mode: "refresh", outcome: "succeeded",
+    events: [{ elapsedMs: 10, source: "native", step: "download_requested",
+      outcome: "warning", code: "article:download-rejected", detail: "", download }],
+    droppedEvents: 0,
+  });
+  const result = await new TauriPlatform().getArticleDiagnostic("attempt");
+  expect(result?.events[0].download).toEqual(download);
+});
 
 describe("TauriPlatform.openUrl scheme allowlist", () => {
   const platform = new TauriPlatform();

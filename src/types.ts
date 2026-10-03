@@ -171,6 +171,14 @@ export type ArticleDiagnostic = {
     outcome: ArticleDiagnosticOutcome;
     code: string;
     detail: string;
+    download?: {
+      loaderLabel: string;
+      sourceUrl: string;
+      currentUrl: string | null;
+      downloadUrl: string;
+      destination: string | null;
+      success: boolean | null;
+    };
   }[];
   droppedEvents: number;
 };

@@ -1,8 +1,54 @@
 # Proposal: PDF downloads through the article loader
 
-Status: **for review; not approved for implementation**. Written 2026-10-02.
+Status: **for review; not approved for implementation**. Written 2026-10-02. Updated 2026-10-03.
 
 This records the approach discussed with the project owner, the implementation scope, and unresolved decisions. It does not change the current architecture or authorize a fork, dependency change, or migration. Durable documentation should describe this behavior only after implementation and verification.
+
+## Findings that revise the patch scope (2026-10-03)
+
+**The proposal remains unapproved. No Wry PDF patch has been implemented.**
+The upstream baseline now uses Tauri/runtime-wry 2.12.1 and Wry 0.57.0.
+The following findings supersede the earlier assumption that omitting an
+application download handler disables downloads.
+
+### Wry behavior and required design changes
+
+Wry 0.57.0's default attributes install
+`download_started_handler: Some(Box::new(|_, _| true))`. Thus “a handler exists”
+is not evidence that Xaga explicitly enabled downloads and is not a sufficient
+way to scope a compile-time PDF policy to article loaders.
+
+On macOS, `wkwebview/download.rs` selects the system Downloads directory and
+checks the proposed destination's existence **before** calling the application
+handler. Returning false prevents accepting the download, but cannot prevent
+that preceding filesystem check.
+
+Revise the patch/integration design to:
+
+1. Let Xaga reject a request or choose an app-owned staging destination before
+   any existence check or filesystem access to a default Downloads path. The
+   exact API/compile-time mechanism remains to be designed; do not assume a
+   MIME-policy-only patch is sufficient or that no Tauri plumbing is needed.
+2. Track each loader's native purpose/phase explicitly. Only article downloads
+   may enter article PDF validation, persistence, display, or external opening.
+3. Scope forced PDF conversion to intended article navigations. Inventory main,
+   settings, hidden-loader, visible-loader, and subframe behavior; the default
+   handler means registration alone cannot select these cases.
+4. Preserve native ownership of the chosen staging path. On macOS Tauri's
+   completion callback can report no path, so retain the assigned destination
+   per download instead of relying on completion to return it or scanning a
+   directory. Correlation for concurrent downloads remains a design question.
+
+### Instrumentation now available
+
+Article loaders now explicitly reject downloads and record native URL,
+proposed destination, loader identity, source/current URL context, and completion
+status in bounded diagnostics/release logs. The frontend schema was corrected
+so Copy diagnostics preserves this evidence. See
+`docs/architecture/article_loading_diagnostics.md` for collection limits and
+sensitive URL/path handling. These callbacks do not provide response headers,
+MIME type, HTTP status, or initiating-frame attribution. A current webview URL
+is context, not proof of the download initiator.
 
 ## Problem and intended outcome
 
@@ -27,7 +73,7 @@ Current source locations:
 4. Navigate to the source URL once. Normal redirects, page subresources, and favicon handling still occur; “once” means no separate preliminary probe, not exactly one HTTP request for the entire operation.
 5. On an HTML response, continue navigation and the existing extraction/persistence flow.
 6. On a PDF response, convert the navigation response to a download. Choose a unique, app-controlled staging destination. Do not derive local paths from the server's suggested filename.
-7. On successful download completion, use the completion callback's known file path; do not scan a downloads directory. Read the bytes and retain the existing `%PDF-` check.
+7. On successful download completion, use the staging path retained by native download state (the macOS completion callback may omit it); do not scan a downloads directory. Read the bytes and retain the existing `%PDF-` check.
 8. If the check fails, reject the download through the existing unsupported-content presentation and remove the staging file. A ZIP or another ordinary download may reach the same callback; rejection does not imply deception by the server.
 9. If the check succeeds, atomically commit the PDF to its persistent location using the library's write ownership rules.
 10. Use the display preference to either create the existing local PDF Blob for the reading pane or open the stored file in the default app.
@@ -36,11 +82,11 @@ The `%PDF-` check remains a format-signature check. This proposal neither remove
 
 ## Wry patch and dependency strategy
 
-The inspected installed version is Wry 0.54.4. The upstream investigation through the 0.57.0 changelog and `dev` response handler did not find an exposed response-policy callback that solves this flow.
+The initial investigation inspected Wry 0.54.4; the upgraded upstream baseline is now Wry 0.57.0. The upstream investigation through the 0.57.0 changelog and `dev` response handler did not find an exposed response-policy callback that solves this flow.
 
 In Wry's WebKit backend, `navigation_policy_response` currently chooses download for a response WebKit cannot display when a download handler exists. Otherwise it allows display. The proposed small patch adds PDF MIME-type recognition to that download decision. It targets the **response** policy, where MIME type is available, rather than the request navigation policy.
 
-This is fixed behavior in the patched build. Xaga registers the existing Tauri download callback on the loader. No new runtime policy API needs to be threaded through Tauri and tauri-runtime-wry. A Cargo feature could make the patched behavior build-time opt-in, but is optional and would not itself select individual windows.
+This is fixed behavior in the patched build. Xaga registers the existing Tauri download callback on the loader. The original MIME-only design did not require a new runtime policy API through Tauri and tauri-runtime-wry; the destination-ordering and scoping requirements above must now be assessed before retaining that claim. A Cargo feature could make the patched behavior build-time opt-in, but is optional and would not itself select individual windows.
 
 Proposed development workflow:
 
@@ -49,7 +95,7 @@ Proposed development workflow:
 3. Pin the reviewed fork commit using workspace `[patch.crates-io]` so Tauri's transitive Wry dependency resolves to the patched source. Verify resolution in `Cargo.lock` and `cargo tree`.
 4. Keep the upstream base and patch rationale recorded so future upgrades can reapply or retire the patch.
 
-The condition “download handler registered” scopes the behavior but is not a PDF-only contract. Other downloads can use the same callback. We must inventory other windows with download handlers and define visible-loader behavior explicitly.
+The condition “download handler registered” does not adequately scope the behavior: Wry installs an accepting handler by default, and the callback is not a PDF-only contract. Other downloads can use the same callback. We must inventory other windows with download handlers and define visible-loader behavior explicitly.
 
 A WebKit-backend patch alone is not a cross-platform implementation. Equivalent behavior in Windows and Linux backends must be investigated before claiming platform-neutral support. The product-level flow can remain shared while Wry owns backend differences.
 
@@ -123,6 +169,9 @@ Use controlled endpoints and request logs, plus focused persistence tests. A nat
 | Timeout, cancellation, network failure, window close | One resolved outcome; no orphaned active download, lingering proxy, or accepted partial file. |
 | Repeated/concurrent requests | No staging collision, torn persistent file, or overwrite outside the writer rules. |
 | Content changes between HTML and PDF | Explicit active-type behavior; existing metadata and user-authored content preserved. |
+| Non-article download | Native phase routing excludes it from article PDF validation, persistence, display, and external opening. |
+| Downloads permission initially undecided or denied | No access to the user Downloads directory, including pre-callback existence checks; no permission prompt. |
+| macOS completion omits destination | Native state identifies the assigned staging file without directory scanning. |
 | Visible loader and other webviews | Their download and capture behavior remains intentional. |
 
 Reqwest-specific redirect limits do not automatically transfer to WebKit. Audit the effective limits and preserve or explicitly resolve differences before claiming no loss of existing controls. Likewise, proxy inheritance on native download conversion is expected from the architecture but must be demonstrated in the running integration.
