@@ -24,6 +24,8 @@ import { useArticles } from "../../hooks/useArticles";
 import { useBookmarks } from "../../hooks/useBookmarks";
 import useEntries from "../../hooks/useEntries";
 import { useEvents } from "../../hooks/useEvents";
+import { useErrorSink } from "../../hooks/useErrorSink";
+import FaviconLoadError from "../../utils/FaviconLoadError";
 import useRouter from "../../hooks/useRouter";
 import { usePlatform } from "../../platform/Platform";
 import { isArticle, type Entry } from "../../types";
@@ -37,6 +39,7 @@ interface ToolbarProps {
 
 export function Toolbar({ reload }: ToolbarProps) {
   const platform = usePlatform();
+  const { pushError } = useErrorSink();
   const {
     goBack: back,
     goForward: forward,
@@ -135,7 +138,13 @@ export function Toolbar({ reload }: ToolbarProps) {
   // under the entry's image directory, so displaying it makes no network request
   // from this (privileged) window. The bytes come back over IPC.
   useEffect(() => {
-    if (!entry || !storedFavicon || !isLocalFaviconRef) return;
+    setFavicon(null);
+    if (!entry || !storedFavicon) return;
+    const reportFailure = () => pushError(new FaviconLoadError(entry.url, true));
+    if (!isLocalFaviconRef) {
+      reportFailure();
+      return;
+    }
 
     const controller = new AbortController();
     platform
@@ -143,10 +152,13 @@ export function Toolbar({ reload }: ToolbarProps) {
       .then(([dataUri]) => {
         if (controller.signal.aborted) return;
         setFavicon(dataUri ?? null);
+        if (!dataUri) reportFailure();
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!controller.signal.aborted) reportFailure();
+      });
     return () => controller.abort();
-  }, [entry, storedFavicon, isLocalFaviconRef, platform]);
+  }, [entry, storedFavicon, isLocalFaviconRef, platform, pushError]);
 
   useEffect(
     () =>

@@ -165,7 +165,7 @@ impl ArticleLoadAttempt {
         self.record_event(source, step, outcome, code, detail, None);
     }
 
-    pub(crate) fn record_download(&self, requested: bool, mut download: DownloadDiagnostic) {
+    pub(crate) fn record_download(&self, requested: bool, accepted: bool, mut download: DownloadDiagnostic) {
         download.loader_label = bounded_download_text(&download.loader_label);
         download.source_url = diagnostic_url(&download.source_url);
         download.current_url = download.current_url.map(|url| diagnostic_url(&url));
@@ -174,10 +174,16 @@ impl ArticleLoadAttempt {
         self.record_event(
             "native",
             if requested { "download_requested" } else { "download_finished" },
-            ArticleDiagnosticOutcome::Warning,
-            if requested { "article:download-rejected" } else { "article:download-finished" },
-            if requested { "Download rejected before accepting a destination; response headers and initiating frame unavailable" }
-            else { "Completion reported by runtime; success is recorded independently of rejection policy" },
+            if requested && accepted {
+                ArticleDiagnosticOutcome::Started
+            } else if !requested && download.success == Some(true) {
+                ArticleDiagnosticOutcome::Succeeded
+            } else {
+                ArticleDiagnosticOutcome::Warning
+            },
+            if requested { if accepted { "article:download-accepted" } else { "article:download-rejected" } } else { "article:download-finished" },
+            if requested { if accepted { "Download accepted into private staging; byte validation required before persistence" } else { "Download rejected; no registered consumer accepted this resource" } }
+            else { "Completion reported by runtime; validation and persistence are separate steps" },
             Some(download),
         );
     }
@@ -293,7 +299,7 @@ mod tests {
         let diagnostics = ArticleDiagnostics::default();
         let attempt = diagnostics.create_attempt("load");
         for _ in 0..140 {
-            attempt.record_download(true, DownloadDiagnostic {
+            attempt.record_download(true, false, DownloadDiagnostic {
                 loader_label: "loader-7".into(),
                 source_url: "https://example.org/article".into(),
                 current_url: Some("data:text/html,private-content".into()),

@@ -1,5 +1,7 @@
 mod command_policy;
 mod loader_identity;
+mod resource_download;
+mod loader_download;
 mod article_loader;
 mod article_diagnostics;
 mod commands;

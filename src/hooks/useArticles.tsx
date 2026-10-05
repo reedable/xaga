@@ -5,6 +5,7 @@ import { processEntry, type LoaderFavicon } from "../text/entryWorker";
 import { isAbortError, type Entry } from "../types";
 import ArticleLoadAttempt from "../utils/ArticleLoadAttempt";
 import ArticleLoadError from "../utils/ArticleLoadError";
+import FaviconLoadError from "../utils/FaviconLoadError";
 import { useErrorSink } from "./useErrorSink";
 
 /**
@@ -34,13 +35,18 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
   const [error, setError] = useState<unknown>(null);
 
   const reportRecoveredTimeout = useCallback(
-    async (attempt: ArticleLoadAttempt) => {
+    async (attempt: ArticleLoadAttempt, articleUrl: string) => {
       if (!attempt.id) return;
       const diagnostic = await platform
         .getArticleDiagnostic(attempt.id)
         .catch(() => null);
+      if (diagnostic?.events.some((event) =>
+        event.step === "favicon" && ["warning", "failed"].includes(event.outcome)
+      )) {
+        pushError(new FaviconLoadError(articleUrl, false, attempt.id));
+      }
       if (
-        diagnostic?.events.some((event) => event.code === "article:timeout")
+        diagnostic?.events.some((event) => event.code === "article:timeout" && event.step !== "favicon")
       ) {
         pushError(
           new ArticleLoadError(
@@ -87,7 +93,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           platform.loadArticle(signal, url, keepOpen, attempt.id)
         );
 
-        await reportRecoveredTimeout(attempt);
+        await reportRecoveredTimeout(attempt, url);
         if (mimeType === "application/pdf") {
           const pdfBytes = pdfBase64
             ? await attempt.runStep("pdf_decode", () => base64ToBytes(pdfBase64))
@@ -179,7 +185,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         } = await attempt.runStep("fetch", () =>
           platform.loadArticle(signal, entry.url, keepOpen, attempt.id)
         );
-        await reportRecoveredTimeout(attempt);
+        await reportRecoveredTimeout(attempt, entry.url);
         const { title, markdown, favicon, imageData } = await attempt.runStep(
           "extract",
           () =>

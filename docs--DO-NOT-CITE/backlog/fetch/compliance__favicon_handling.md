@@ -1,7 +1,7 @@
 # Compliance: consolidate favicon acquisition, storage, and rendering
 
 Status: **open; investigation and implementation design required**.
-Consolidated 2026-10-03. This is a self-contained backlog item, not a claim
+Consolidated 2026-10-03. Download integration updated 2026-10-05. This is a self-contained backlog item, not a claim
 that the proposed behavior is implemented. Security concerns give this item
 the `compliance__` label; related correctness and enhancement work is included
 so the favicon lifecycle can be reviewed together.
@@ -60,21 +60,33 @@ creation. Instrumented reproduction `1a101eb5293-1` identified the resource:
 
 The download was triggered by Xaga's favicon acquisition navigation. It was
 not evidence of a user-requested download, a PDF, malware, or server deception.
-Response headers were not captured: why WebKit classified this response as a
-download (including MIME type or Content-Disposition) remains unverified.
+Response headers were not captured in that original trace.
 
-Wry 0.57.0 installs an accepting download handler by default. Omitting an Xaga
-handler does not disable downloads. Xaga now explicitly rejects loader
-downloads and records diagnostic evidence, but this is not a complete favicon
-solution. Wry checks the proposed Downloads destination for existence before
-calling the application handler. Rejection cannot prevent that earlier access.
+The endpoint was subsequently checked with HEAD and GET: it returned
+`application/octet-stream` with no Content-Disposition header. Wry's policy
+routes responses WebKit cannot display into downloads. Both inspected Wry
+versions (0.54.4 and 0.57.0) have the same relevant policy; an upgrade regression
+has not been established. The user reported that the Downloads prompt stopped
+after automatic rejection was added.
 
-### 2. Rejected favicon download leaves article capture waiting
+The download integration now selects an app-owned temporary destination through
+Tauri's existing callback for the resource owned by the pending favicon phase.
+An injected image validator decodes and normalizes the bytes before they rejoin
+existing ingestion and URL-hash persistence. Downloads outside the pending
+favicon phase are rejected. During that phase the first candidate must pass
+image validation; the callback URL does not establish its initiating frame.
+A controlled native test verifies binary-labelled ICO acquisition through a
+configured proxy, validation, and staging cleanup on macOS. A fresh built-app
+reproduction against the original site is still required for acceptance.
 
-The observed download rejection does not complete the pending favicon phase.
-The article's HTML is already available, yet completion waits for the overall
-load deadline. Known terminal favicon failures should settle favicon work
-immediately, preserving the article and resolving the load only once.
+### 2. Completion of downloaded favicon acquisition
+
+The original rejection-only callback left the capture waiting until the overall
+deadline, as the trace above records. Download success, failure, or validation
+rejection now resolves the owned pending favicon capture with the original HTML.
+Unit tests cover prompt completion on valid and invalid downloaded bytes, late
+results, and rejection outside the pending phase. The overall deadline still handles stalled
+operations. This is part of download integration, not a separate timeout policy.
 
 ### 3. Legacy remote references: rendering bypass removed; recovery undecided
 
@@ -131,9 +143,7 @@ These are questions to resolve, not verified defects or approved features:
 
 Track article and favicon phases in native state, rather than treating every
 download callback as an article PDF candidate. A favicon must never enter PDF
-persistence, inline rendering, or default-app opening. Download destination
-policy must run before default-directory filesystem checks; select app-owned
-staging if downloading becomes the chosen acquisition method. No implicit
+persistence, inline rendering, or default-app opening. Xaga selects app-owned staging through the existing download callback. No implicit
 access to the user's Downloads directory is acceptable.
 
 Handler presence alone cannot scope a compile-time PDF conversion patch,
@@ -141,7 +151,8 @@ because Wry supplies a default handler. Audit hidden/visible loaders, other
 windows, and subframes. Retain native ownership of assigned staging paths:
 macOS completion callbacks may omit the path. Any staged-file design must
 define correlation, cleanup, cancellation, and concurrent-request behavior.
-The exact Wry/Tauri API or patch scope remains undecided.
+The favicon download branch uses existing Tauri APIs. The PDF proposal still
+requires response-routing work; it is not implemented by this change.
 
 ## Diagnostics and verification
 

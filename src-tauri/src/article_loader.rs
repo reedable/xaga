@@ -154,6 +154,9 @@ pub async fn load_via_webview(
     let source_url = url.to_owned();
     let download_source_url = source_url.clone();
     let download_attempt = attempt.clone();
+    let downloads = crate::loader_download::LoaderDownloads::new(pending.clone(), id.clone(), attempt.clone());
+    let download_handler = downloads.clone();
+    let download_cleanup = downloads.clone();
     let scheduled = app.run_on_main_thread(move || {
         // A timed-out scheduling request must not create an orphan webview.
         if !build_pending
@@ -169,14 +172,25 @@ pub async fn load_via_webview(
                     .initialization_script(&init_script)
                     .on_download(move |webview, event| {
                         use tauri::webview::DownloadEvent;
-                        let (requested, url, destination, success) = match event {
-                            DownloadEvent::Requested { url, destination } =>
-                                (true, url, Some(destination.to_string_lossy().into_owned()), None),
-                            DownloadEvent::Finished { url, path, success } =>
-                                (false, url, path.map(|p| p.to_string_lossy().into_owned()), Some(success)),
+                        let (requested, url, destination, success, accepted) = match event {
+                            DownloadEvent::Requested { url, destination } => {
+                                let result = download_handler.request(url.as_str());
+                                let accepted = match result {
+                                    Ok(path) => { *destination = path; true }
+                                    Err(reason) => {
+                                        download_handler.rejected(reason);
+                                        false
+                                    }
+                                };
+                                (true, url, Some(destination.to_string_lossy().into_owned()), None, accepted)
+                            }
+                            DownloadEvent::Finished { url, path, success } => {
+                                download_handler.finish(url.as_str(), success);
+                                (false, url, path.map(|p| p.to_string_lossy().into_owned()), Some(success), false)
+                            }
                             _ => return false,
                         };
-                        download_attempt.record_download(requested,
+                        download_attempt.record_download(requested, accepted,
                             crate::article_diagnostics::DownloadDiagnostic {
                                 loader_label: webview.label().to_owned(),
                                 source_url: download_source_url.clone(),
@@ -185,10 +199,7 @@ pub async fn load_via_webview(
                                 destination,
                                 success,
                             });
-                        // Wry defaults to accepting downloads. Never accept remote
-                        // files implicitly. Its destination existence check occurs
-                        // before this callback and may still touch Downloads.
-                        false
+                        accepted
                     })
                     .on_navigation(move |_| {
                         navigation_attempt.add_event(
@@ -258,6 +269,7 @@ pub async fn load_via_webview(
                 if matches!(event, tauri::WindowEvent::Destroyed) {
                     lifetime.lock().unwrap_or_else(|e| e.into_inner()).take();
                     sessions.remove(&build_label);
+                    download_cleanup.cancel();
                 }
             });
             Ok(window)
@@ -377,6 +389,7 @@ pub async fn load_via_webview(
         }
     }
 
+    downloads.cancel();
     match result {
         Ok(Ok(capture)) => {
             attempt.add_succeeded_event("capture");

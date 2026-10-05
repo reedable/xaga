@@ -141,3 +141,48 @@ Places where the invariants are not fully upheld:
 - Proxy behavior is a property of the bundled app; `tauri dev` runtime checks are not representative for webview-level policies (see the CSP note in [handling_persisted_content.md](handling_persisted_content.md)).
 
 The macOS native policy has a GUI smoke test: `cargo test -p xaga --test webview_policy`. It checks that standard and prefixed peer-connection constructors are absent at document-start, in a subframe, and after another navigation, using only in-memory HTML and ephemeral storage. Proxy unit tests verify that local names never reach the resolver. These controls do not establish the cause of any previously observed permission prompt.
+
+## Native resource downloads
+
+`resource_download.rs` owns app-generated temporary staging paths and the
+explicit `ByteValidator` boundary. It performs no network requests and no
+library writes. A consumer supplies a validator and a byte limit. Successful
+transport alone cannot release content: the staged regular file is read with a
+cap and the validator must return accepted output. Server filenames and callback
+completion paths do not choose which file is read. Each request retains its own
+assigned path, including on macOS where completion reports no path.
+
+`loader_download.rs` is the article-loader adapter. It accepts at most one
+resource per loader and currently has one consumer: the pending favicon phase.
+The native request ID and pending capture phase choose the consumer. Downloads
+outside that phase are rejected. The callback may report a redirected URL, as
+verified on macOS. It is not proof of the initiating frame. During the favicon
+phase the first accepted candidate must pass the image validator regardless of
+its URL; it cannot become arbitrary persisted content. The original requested
+favicon URL remains storage identity. Completion is matched to the accepted
+callback URL, ignoring fragments. Other backends need native verification.
+
+Favicon responses displayed as image documents continue through canvas capture.
+Responses WebKit classifies as downloads use the same proxied webview and session
+configuration. Downloaded bytes are decoded by the Rust `image` crate, with PNG,
+JPEG, GIF, ICO, and WebP enabled. SVG and unrecognized content are rejected. The
+consumer enforces an 8 MiB completed-file/read limit, strict 2048-by-2048 source
+dimension limits, and a 32 MiB decoder allocation budget (the decoder's allocation
+budget is best-effort). Accepted output is resized to at most 64-by-64, preserving
+aspect ratio, and encoded as PNG. The resulting data URI rejoins `LoaderCapture`;
+existing ingestion saves it using the image URL hash and library writer rules.
+No new persistence scheme or privileged-window remote fetch is introduced.
+
+Disk growth is checked every 50 ms during transfer. Crossing 8 MiB completes the
+capture with failure and lets the normal loader lifetime close the hidden window.
+This sampled guard is not a hard disk quota: writes can overshoot between checks.
+The existing overall loader deadline remains in force. No per-download cancel or
+progress API is exposed by the current Tauri callback. Temporary directories are
+removed on normal completion, validation rejection, timeout, and window cleanup;
+process crashes may leave OS-temporary remnants. Automatic crash-recovery cleanup
+is not implemented. Decoding runs off the native UI thread; late results after a
+load has ended are discarded rather than persisted.
+
+PDF byte validation can be supplied through the same validator contract when
+PDF response routing and persistence are integrated. This change does not patch
+Wry, remove the current PDF probe, or accept arbitrary article downloads.

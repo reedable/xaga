@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -10,6 +11,7 @@ import ArticleDiagnosticsDialog from "../components/dialogs/ArticleDiagnosticsDi
 import { errorMessage, isAppError } from "../platform/errors";
 import { isAbortError } from "../types";
 import ArticleLoadError from "../utils/ArticleLoadError";
+import FaviconLoadError from "../utils/FaviconLoadError";
 import ErrorSinkContext, {
   type ErrorSinkContextType,
 } from "./ErrorSinkContext";
@@ -30,11 +32,22 @@ export default function ErrorSinkProvider({
   const [diagnosticId, setDiagnosticId] = useState<string | null>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [severity, setSeverity] = useState<"error" | "warning">("error");
+  const reportedIcons = useRef(new Set<string>());
 
   const pushError = useCallback((e: unknown) => {
     // Aborts (navigation/unmount cancelling an in-flight request) are not
     // failures — never surface them. Every catch can forward safely.
     if (isAbortError(e)) return;
+    if (e instanceof FaviconLoadError) {
+      if (reportedIcons.current.has(e.articleUrl)) return;
+      reportedIcons.current.add(e.articleUrl);
+      setDiagnosticId(e.diagnosticId);
+      setSeverity("warning");
+      setMessage(e.message);
+      return;
+    }
+    setSeverity("error");
     setDiagnosticId(
       e instanceof ArticleLoadError ? e.diagnosticId || null : null
     );
@@ -78,7 +91,7 @@ export default function ErrorSinkProvider({
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert
-          severity="error"
+          severity={severity}
           variant="filled"
           onClose={() => setMessage(null)}
         >

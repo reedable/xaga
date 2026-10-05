@@ -120,12 +120,18 @@ PDF fallback, and a visible loader. Verify the notification's copied record and
 the release log agree. A development-server run does not establish bundled
 WebKit behavior.
 
-## Rejected download evidence
+## Download evidence
 
-Article loader webviews explicitly reject every download request through Tauri's
-`on_download` callback, overriding Wry's default accepting handler. This applies
-to hidden and visible loaders. No diagnostic request downloads the remote body,
-opens the file, or makes an extra network request.
+Article loaders override Wry's default acceptance with native pending-phase
+checks. The first download during the pending favicon phase is accepted into private
+temporary storage and must pass image-byte validation before entering existing
+persistence. Downloads outside that phase and additional downloads are rejected.
+The callback URL may be redirected and does not establish the initiating frame.
+Diagnostic collection makes no extra
+network requests. `article:download-accepted` records transport acceptance, not
+validation or persistence success; `download_validation` and `favicon` record
+processing. Download failure or validation rejection completes the pending
+capture with the original article HTML and a favicon warning.
 
 `download_requested` events include a structured `download` object: native loader
 label, original article URL, current webview URL (if available), download URL,
@@ -147,7 +153,16 @@ Paths and query parameters are retained to identify the resource, so reports
 and logs can contain sensitive tokens or filenames. Review before sharing.
 The diagnostics dialog displays a reminder when download evidence is present.
 
-Wry 0.57 checks the proposed destination for an existing file before invoking
-this callback. Rejection prevents accepting the download destination, but cannot
-guarantee no prior filesystem access or macOS permission prompt. This is an
-upstream ordering limitation, not evidence that Xaga accepted a download.
+## Favicon notifications
+
+Observed acquisition failures in the native favicon phase show a warning:
+“The site icon couldn’t be loaded.” The warning retains the attempt's Details
+link. Favicon timeouts do not use the generic page-timeout notification.
+
+When a saved icon reference is remote or its local bytes cannot be read, the
+warning is: “The site icon couldn’t be loaded. Reloading the article will also
+retry loading its icon.” No reference alone is not treated as a load failure.
+Remote references remain excluded from toolbar image sources. Notifications
+are deduplicated by article URL for the lifetime of the error-sink provider
+(the app session); the first warning is retained for that URL. These warnings
+make no claim about article availability or the validity of its content.

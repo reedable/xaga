@@ -6,6 +6,7 @@ import { PlatformContext, type Platform } from "../platform/Platform";
 import type { ArticleDiagnostic } from "../types";
 import ArticleLoadError from "../utils/ArticleLoadError";
 import ErrorSinkProvider from "./ErrorSinkProvider";
+import FaviconLoadError from "../utils/FaviconLoadError";
 
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 const mounted: ReturnType<typeof createRoot>[] = [];
@@ -92,4 +93,26 @@ describe("article error details", () => {
     expect(JSON.parse(writeText.mock.calls[0][0])).toEqual(report);
     expect(document.body.textContent).toContain("Diagnostics copied.");
   });
+});
+
+it.each([false, true])("shows favicon warning without claiming article failure (remedy=%s)", async (retry) => {
+  let push: (error: unknown) => void = () => {};
+  function Capture() {
+    push = useErrorSink().pushError;
+    return null;
+  }
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  mounted.push(root);
+  await act(() => root.render(<ErrorSinkProvider><Capture /></ErrorSinkProvider>));
+  await act(() => push(new FaviconLoadError("https://example.org/article", retry)));
+  const alert = document.querySelector('[role="alert"]');
+  expect(alert?.textContent).toContain("The site icon couldn’t be loaded.");
+  expect(alert?.className).toContain("MuiAlert-filledWarning");
+  expect(alert?.textContent).not.toContain("Article loading failed");
+  expect(alert?.textContent?.includes("Reloading the article will also retry loading its icon.")).toBe(retry);
+  // A second notification for the same article must not replace the first.
+  await act(() => push(new FaviconLoadError("https://example.org/article", !retry)));
+  expect(alert?.textContent?.includes("Reloading the article will also retry loading its icon.")).toBe(retry);
 });
