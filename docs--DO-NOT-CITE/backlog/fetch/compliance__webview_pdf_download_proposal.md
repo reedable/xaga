@@ -1,55 +1,5 @@
 # Proposal: PDF downloads through the article loader
 
-Status: **for review; not approved for implementation**. Written 2026-10-02. Updated 2026-10-03.
-
-This records the approach discussed with the project owner, the implementation scope, and unresolved decisions. It does not change the current architecture or authorize a fork, dependency change, or migration. Durable documentation should describe this behavior only after implementation and verification.
-
-## Findings that revise the patch scope (2026-10-03)
-
-**The proposal remains unapproved. No Wry PDF patch has been implemented.**
-The upstream baseline now uses Tauri/runtime-wry 2.12.1 and Wry 0.57.0.
-The following findings supersede the earlier assumption that omitting an
-application download handler disables downloads.
-
-### Wry behavior and required design changes
-
-Wry 0.57.0's default attributes install
-`download_started_handler: Some(Box::new(|_, _| true))`. Thus “a handler exists”
-is not evidence that Xaga explicitly enabled downloads and is not a sufficient
-way to scope a compile-time PDF policy to article loaders.
-
-On macOS, `wkwebview/download.rs` selects the system Downloads directory and
-checks the proposed destination's existence **before** calling the application
-handler. Returning false prevents accepting the download, but cannot prevent
-that preceding filesystem check.
-
-Revise the patch/integration design to:
-
-1. Let Xaga reject a request or choose an app-owned staging destination before
-   any existence check or filesystem access to a default Downloads path. The
-   exact API/compile-time mechanism remains to be designed; do not assume a
-   MIME-policy-only patch is sufficient or that no Tauri plumbing is needed.
-2. Track each loader's native purpose/phase explicitly. Only article downloads
-   may enter article PDF validation, persistence, display, or external opening.
-3. Scope forced PDF conversion to intended article navigations. Inventory main,
-   settings, hidden-loader, visible-loader, and subframe behavior; the default
-   handler means registration alone cannot select these cases.
-4. Preserve native ownership of the chosen staging path. On macOS Tauri's
-   completion callback can report no path, so retain the assigned destination
-   per download instead of relying on completion to return it or scanning a
-   directory. Correlation for concurrent downloads remains a design question.
-
-### Instrumentation now available
-
-Article loaders now explicitly reject downloads and record native URL,
-proposed destination, loader identity, source/current URL context, and completion
-status in bounded diagnostics/release logs. The frontend schema was corrected
-so Copy diagnostics preserves this evidence. See
-`docs/architecture/article_loading_diagnostics.md` for collection limits and
-sensitive URL/path handling. These callbacks do not provide response headers,
-MIME type, HTTP status, or initiating-frame attribution. A current webview URL
-is context, not proof of the download initiator.
-
 ## Problem and intended outcome
 
 When inline PDF viewing is enabled, Xaga currently starts each ordinary, unsaved URL load with a reqwest GET. If the response is a PDF, its bytes are checked and displayed locally. If it is HTML, the response is discarded and the article loader navigates to the original URL again using WebKit. The first request has no User-Agent; the second has WebKit's User-Agent. A host can observe the matching URL, timing, and client differences. This is the probe-induced profiling signal we intend to remove; removing it does not make all Xaga traffic indistinguishable from other browsing.
@@ -86,7 +36,7 @@ The initial investigation inspected Wry 0.54.4; the upgraded upstream baseline i
 
 In Wry's WebKit backend, `navigation_policy_response` currently chooses download for a response WebKit cannot display when a download handler exists. Otherwise it allows display. The proposed small patch adds PDF MIME-type recognition to that download decision. It targets the **response** policy, where MIME type is available, rather than the request navigation policy.
 
-This is fixed behavior in the patched build. Xaga registers the existing Tauri download callback on the loader. The original MIME-only design did not require a new runtime policy API through Tauri and tauri-runtime-wry; the destination-ordering and scoping requirements above must now be assessed before retaining that claim. A Cargo feature could make the patched behavior build-time opt-in, but is optional and would not itself select individual windows.
+The patch would select PDF download routing at compile time. Xaga uses the existing Tauri download callbacks and shared staging/validation pipeline. Determine how to scope forced PDF routing to intended article navigations. A Cargo feature could enable the patched behavior at build time, but would not itself select individual windows.
 
 Proposed development workflow:
 
@@ -109,7 +59,7 @@ These are moving references; record the exact base commit when implementing.
 ## Xaga implementation scope
 
 - Remove the PDF reqwest probe and its HTML fallback request. This does not remove reqwest from unrelated feed or model-download paths.
-- Register loader download callbacks, choose staging paths, handle completion/failure/cancellation, and preserve proxy lifetime until download completion.
+- Connect the PDF consumer to the shared download pipeline with the existing PDF byte validator and PDF persistence. Preserve proxy lifetime until PDF download completion.
 - Reconcile download completion with existing capture callbacks and timeouts so only one outcome resolves a load. Do not capture an empty document or close the loader while its download is pending.
 - Move byte validation to downloaded-file processing and return validated local content through the existing rendering flow.
 - Remove obsolete `reqwest_error` PDF fallback behavior. Review the explicitly visible loader (`keep_open`) separately so downloads and closing that window have intentional behavior.
@@ -144,13 +94,7 @@ Proposed label: **Show PDFs in the reading pane**
 
 Proposed explanation: **When off, PDFs open in your default app.**
 
-The reading-pane rejection copy has already been changed independently to:
-
-> This download can’t be displayed in the reading pane because its format isn’t supported.
-
-This avoids falsely claiming that another content type was advertised as PDF or that the remote site attempted a bait-and-switch. It does not disclose the particular rejected content type.
-
-The earlier edit to Privacy settings still describes the current probe behavior; replace it as part of the implemented change, not as a claim that the probe has already been removed.
+Replace the current probe-specific Privacy settings explanation when removing the probe.
 
 ## Verification and acceptance criteria
 
@@ -170,7 +114,7 @@ Use controlled endpoints and request logs, plus focused persistence tests. A nat
 | Repeated/concurrent requests | No staging collision, torn persistent file, or overwrite outside the writer rules. |
 | Content changes between HTML and PDF | Explicit active-type behavior; existing metadata and user-authored content preserved. |
 | Non-article download | Native phase routing excludes it from article PDF validation, persistence, display, and external opening. |
-| Downloads permission initially undecided or denied | No access to the user Downloads directory, including pre-callback existence checks; no permission prompt. |
+| Downloads permission initially undecided or denied | Download to app-owned staging; no Downloads permission prompt. |
 | macOS completion omits destination | Native state identifies the assigned staging file without directory scanning. |
 | Visible loader and other webviews | Their download and capture behavior remains intentional. |
 
@@ -186,12 +130,17 @@ Reqwest-specific redirect limits do not automatically transfer to WebKit. Audit 
 - `docs/architecture/article_loading_diagnostics.md`: replace probe/fallback steps with download, validation, persistence, and local-open steps.
 - Update writer/crash-consistency documentation where the PDF storage design extends those contracts. Record the fork commit and maintenance procedure in appropriate durable build documentation.
 
-## Decisions for review
+## Design decisions
 
-1. Accept maintaining a small pinned Wry fork, or defer this architecture pending upstream support?
+1. Maintain a small pinned Wry fork, or wait for upstream support?
 2. Implement and verify macOS first with an explicit platform scope, or require equivalent Windows/Linux behavior before shipping?
-3. Approve persistent PDFs keyed by normalized URL hash; choose their storage location and relationship to library metadata.
-4. Approve retaining the display preference, moving it to General, and opening validated local PDFs in the default app when inline viewing is off.
+3. Choose the storage location and relationship to library metadata for PDFs keyed by normalized URL hash.
+4. Decide whether to move the retained PDF display preference to General settings.
 5. Resolve visible-loader downloads, read-only storage, content-type changes, and redirect-control differences during a focused implementation design pass.
 
-If approved, first demonstrate the smallest Wry patch with controlled HTML/PDF responses, proxy/redirect checks, and Tauri's existing callbacks. Then implement persistence and Xaga integration, followed by UI/settings migration and durable documentation. This validates the critical dependency before committing to the broader storage changes.
+## Implementation sequence
+
+Exercise the Wry PDF-routing patch with controlled HTML/PDF responses, proxy
+and redirect checks, and the shared download pipeline. Then implement PDF
+persistence and Xaga integration, followed by settings changes and durable
+documentation.

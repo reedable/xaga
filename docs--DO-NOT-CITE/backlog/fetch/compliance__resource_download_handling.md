@@ -1,7 +1,5 @@
 # Compliance: resource retrieval and download safety
 
-Status: **open**.
-
 Scope: shared security controls for remote resource retrieval and processing,
 including resources WebKit renders and those it routes into the download pipeline.
 
@@ -30,8 +28,8 @@ established by the download unit tests and native redirect smoke test:
   undecided or denied.
 - Local-only main-window rendering for new, legacy, and edited favicon entries.
 
-Record the results in durable documentation and address concrete failures
-before closing this review.
+Document verified controls and limitations in durable documentation. Address
+failures found by these tests.
 
 ## Verification when PDF routing is integrated
 

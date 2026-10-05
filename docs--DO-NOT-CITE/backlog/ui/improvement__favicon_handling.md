@@ -1,7 +1,5 @@
 # Improvement: favicon discovery and presentation
 
-Status: **open; deferred**.
-
 ## Discovery consistency
 
 The loader and `src/text/entryWorker.ts::extractFavicon` duplicate icon selection
@@ -20,9 +18,7 @@ preserves aspect ratio. Decide the intended normalization behavior and make
 both branches consistent, including nonsquare icons and the user-visible outcome
 for unsupported formats.
 
-## Optional enhancement investigation
-
-These are unapproved enhancements:
+## Enhancement investigation
 
 - Broader icon selection: multi-value `sizes`, `sizes="any"`, touch icons,
   manifest icons, and trying another declared candidate after failure.
