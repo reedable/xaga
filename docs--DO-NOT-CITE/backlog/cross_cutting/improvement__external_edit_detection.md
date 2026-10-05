@@ -1,9 +1,6 @@
-# External-edit last-wins window has no detection (pending)
+# External-edit last-wins window has no detection
 
-Raised 2026-07-16, moved out of `docs/architecture/single_writer_library_lock.md`
-"Known limits".
-
-## Current behavior (facts)
+## Current behavior
 
 - The library flock binds only xaga processes; external tools (e.g. Obsidian)
   editing `.md` files are not participants. External edits are reconciled from
@@ -17,12 +14,12 @@ Raised 2026-07-16, moved out of `docs/architecture/single_writer_library_lock.md
   the absence of a live cross-process update mechanism for the read-only
   instance's stale view.
 
-## The ask
+## Work
 
 Detect (or otherwise not silently overwrite) an external edit that lands
 inside the read-modify-write window of a running writer.
 
-## Open design questions
+## Design questions
 
 - Detection mechanism: mtime/checksum compare at write time inside the lane
   vs. a file watcher vs. accept-and-log.

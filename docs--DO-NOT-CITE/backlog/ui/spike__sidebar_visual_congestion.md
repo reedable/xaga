@@ -1,3 +1,3 @@
-# Sidebar visual congestion (pending)
+# Sidebar visual congestion
 
-As recorded: the sidebar is crowded/visually congested. No design exists.
+the sidebar is crowded/visually congested. No design exists.

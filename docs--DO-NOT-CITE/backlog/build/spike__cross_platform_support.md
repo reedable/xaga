@@ -1,4 +1,4 @@
-# Cross-platform support (pending)
+# Cross-platform support
 
 Make xaga run on platforms beyond macOS. Today the app is developed and verified on macOS only. This item inventories the known platform-specific code, dependencies, and assumptions (verified 2026-07-02 unless marked otherwise), so the porting work starts from facts.
 
@@ -13,7 +13,6 @@ Make xaga run on platforms beyond macOS. Today the app is developed and verified
 7. **The log directory has no non-macOS answer.** The macOS log dir is `~/Library/Logs/xaga`; the `cfg(not(macos))` arm writes to `data_root()/logs` (flagged in the code comment — `src-tauri/src/lib.rs`, log plugin setup). Whether non-macOS platforms should use a platform-native log convention instead is undecided.
 
 8. **Code signing is per-platform.** `macos_code_signing.md` covers macOS identity; Windows (Authenticode) and Linux (none/distro-specific) are separate work.
-9. **Already cross-platform by construction** (no action expected, listed to bound the work): the data root (models, settings.json, CLI default data dir) via `xaga_core::fs::data_root()` (`dirs::data_dir()`-based; as of 2026-07-10 Tauri's identifier-derived `app_config_dir`/`app_data_dir` are no longer used), TLS via rustls (no system OpenSSL dependency), and the SSRF proxy itself (a plain TCP listener on 127.0.0.1). One nuance: on XDG platforms `dirs::data_dir()` is the _data_ dir (`~/.local/share`), so settings.json lives there rather than in `~/.config`.
 
 ## Shape of the work
 

@@ -1,10 +1,10 @@
-# Query-time inheritance in semantic search (pending)
+# Query-time inheritance in semantic search
 
 ## The problem it addresses
 
 An annotation whose own embedding is meaningless (e.g. highlight "#$%^&\*" filed under a topic "Prompt Injection") never surfaces for a query like "prompt engineering" — its vector carries no signal, but its curation does.
 
-## Recorded mechanism (designed, unimplemented)
+## Proposed mechanism
 
 Late fusion / graph expansion in `search_by_text` (`src-tauri/src/commands/embeddings.rs`), which already retrieves topic rows:
 

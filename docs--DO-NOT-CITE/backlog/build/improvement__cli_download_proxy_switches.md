@@ -1,8 +1,6 @@
-# CLI download-model: switches for the proxy settings (pending)
+# CLI download-model: switches for the proxy settings
 
-Raised 2026-07-17, from the audit item on the CLI download proxy defaults.
-
-## Current behavior (facts)
+## Current behavior
 
 - The app's model download dials through the app's proxy, which reads
   `http_allowed` and `connect_nonstandard_ports_allowed` live from
@@ -12,14 +10,14 @@ Raised 2026-07-17, from the audit item on the CLI download proxy defaults.
   settings.json is not consulted. The code comment discloses the rationale:
   the download target is https on 443, so there is nothing to relax.
 
-## The ask
+## Work
 
 Add CLI switches to `download-model` so the user can control both behaviors
 per invocation (e.g. `--allow-http`,
 `--allow-nonstandard-connect-ports`). The secure defaults stay as implemented:
 both `false` when the switches are not passed.
 
-## Open questions
+## Questions
 
 - Switch naming/shape (boolean flags vs. values).
 - Whether future network-touching CLI commands share the same switches (only

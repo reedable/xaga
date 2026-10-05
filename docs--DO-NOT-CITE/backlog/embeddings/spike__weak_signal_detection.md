@@ -1,12 +1,12 @@
-# Weak-signal detection in search results and Topics (pending — idea needs rework)
+# Weak-signal detection in search results and Topics
 
-## The idea as recorded
+## Proposed approach
 
 Use the magnitude of embeddings to identify "weak signals" and consider suppressing them in search results, and likewise within Topics.
 
-## The recorded correction
+## Constraint
 
-As written, it won't work: `crates/xaga-core/src/embeddings/model.rs` returns L2-normalised vectors, so stored magnitude is always 1.0. Recorded options:
+As written, it won't work: `crates/xaga-core/src/embeddings/model.rs` returns L2-normalised vectors, so stored magnitude is always 1.0. Options:
 
 - Capture the pre-normalization magnitude at embed time (a stored-schema change).
 - Redefine "weak signal" via the similarity distribution instead of magnitude.

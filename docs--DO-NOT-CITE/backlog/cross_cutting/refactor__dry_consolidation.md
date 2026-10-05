@@ -1,4 +1,4 @@
-# Consolidate the recorded parallel implementations (pending — decisions per item)
+# Consolidate the recorded parallel implementations
 
 The seven duplication findings from the decoupling audit, to be judged against `docs/principles/dry.md` (which also lists them as the principle's recorded instances):
 

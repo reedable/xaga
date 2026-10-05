@@ -1,4 +1,4 @@
-# Stale code comments referencing removed names (pending)
+# Stale code comments referencing removed names
 
 Doc comments referencing names that no longer exist, recorded during the decoupling audit (line numbers as of the audit; re-locate before fixing):
 

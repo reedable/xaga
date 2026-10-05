@@ -1,9 +1,4 @@
-# Model trust chain: untaken hardening steps (pending)
-
-Raised 2026-07-16, moved out of `docs/architecture/security/embedding_model_trust.md`
-"Limits". Security-relevant, hence `compliance__`. The chain itself is
-described in that doc; these are the two known steps that would strengthen it
-and have not been taken.
+# Model trust chain: untaken hardening steps
 
 ## 1. Anchoring used no independent network path
 
@@ -22,7 +17,7 @@ reproduced. Reproducing the export from upstream weights and comparing hashes
 would replace the reputational trust in Qdrant with trust in upstream plus the
 conversion toolchain.
 
-## Open questions
+## Questions
 
 - Whether either step is worth the effort relative to the existing chain
   (three-source agreement, pinned revision, per-file SHA-256) is undecided.

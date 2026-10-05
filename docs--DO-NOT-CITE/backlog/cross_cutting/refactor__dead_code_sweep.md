@@ -1,4 +1,4 @@
-# Library-wide dead-code sweep (pending)
+# Library-wide dead-code sweep
 
 ## Why the compilers don't catch it
 

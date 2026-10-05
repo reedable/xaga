@@ -1,4 +1,4 @@
-# DB reload on every read (pending)
+# DB reload on every read
 
 ## Current state
 

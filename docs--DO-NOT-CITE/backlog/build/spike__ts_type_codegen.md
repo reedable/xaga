@@ -1,7 +1,5 @@
 # Rust → TypeScript type codegen (ts-rs / specta)
 
-Raised 2026-07-11 during the typed-event work.
-
 The event names and payload shapes are defined in rust (`DomainEvent`, `crates/xaga-core/src/events.rs`; `AppEvent`, `src-tauri/src/events.rs`) and mirrored by hand on the TS side (`src/platform/events.ts` — const arrays with derived literal-union types). The mirror is compiler-checked _within_ TS (use-site literals against the union) but nothing checks the union against the rust enums: a name changed or mistyped on either side is silent drift, guarded only by the rust name tests and review.
 
 Question: should the TS side be generated from the rust definitions?

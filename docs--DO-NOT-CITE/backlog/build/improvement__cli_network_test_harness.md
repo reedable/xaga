@@ -1,6 +1,6 @@
 # CLI network-test harness (top-level `test` command)
 
-Raised 2026-07-11 (re-labeled improvement, not compliance): unit tests make no network calls — network-involving tests belong in a CLI harness, runnable independently of CI.
+Unit tests make no network calls — network-involving tests belong in a CLI harness, runnable independently of CI.
 
 Decided so far:
 
