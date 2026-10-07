@@ -27,13 +27,13 @@ warnings, failures, skipped work, and cancellation. Frontend events are queued
 in order; elapsed times measure receipt by the native collector, not precise
 CPU time inside synchronous extraction.
 
-The load command records optional PDF-probe response status, PDF validation,
-transport cause chains and browser fallback. The loader records native window
-construction/policy failures, navigation milestones, page-reported capture
-progress, delivery, and image/favicon problems. A failed PDF probe stays in the
-record even if the browser succeeds. Image problems are aggregated by reason
-with counts. A favicon failure is a warning; already captured article HTML is
-preserved if favicon navigation stalls or returns an HTML error document.
+The load command records native download validation and PDF persistence. The
+loader records window construction/policy failures, navigation milestones,
+page-reported capture progress, delivery, and image/favicon problems. Image
+problems are aggregated by reason with counts. A favicon failure is a warning;
+already captured article HTML is preserved if favicon navigation stalls or
+returns an HTML error document. Cancellation ends the matching pending capture
+and destroys its loader. Download callbacks do not expose HTTP response headers.
 
 Native storage errors retain their typed code and available cause chain.
 Frontmatter parser fragments and arbitrary JavaScript exception messages are
@@ -55,7 +55,7 @@ failure/cancellation records.
 Each native article load gets a scoped loopback proxy listener built from the
 same `ProxyConfig` as the shared proxy. Policy handles are shared, so current
 HTTP/CONNECT settings and the existing resolve/validate/pin rules still apply.
-The PDF client and loader use this listener. No diagnostic ID or extra header is
+The loader and its native downloads use this listener. No diagnostic ID or extra header is
 sent to the publisher. Proxy events are attributed by listener ownership, never
 by comparing hostnames or timestamps from concurrent loads.
 
@@ -63,7 +63,7 @@ The proxy reports invalid requests, local hostname refusal, blocked addresses,
 DNS failure, disallowed CONNECT ports, disabled plaintext HTTP, connection
 failure, and I/O errors. Its observer contains no orchestration or storage;
 the command layer attaches the diagnostic collector. Dropping the scoped proxy
-closes its listener and active tunnels. A visible loader or PDF fallback retains
+closes its listener and active tunnels. A visible loader retains
 it until its window is destroyed.
 
 A proxy event belongs to the attempt, but can concern a subresource. It is not
@@ -116,7 +116,7 @@ local test listeners.
 Native browser behavior must be smoke-tested in a bundled build, following
 [fetching remote content](security/fetching_remote_content.md): test an invalid
 URL, blocked local target, unavailable server, stalled page, favicon failure,
-PDF fallback, and a visible loader. Verify the notification's copied record and
+PDF download, and a visible loader. Verify the notification's copied record and
 the release log agree. A development-server run does not establish bundled
 WebKit behavior.
 
@@ -166,3 +166,8 @@ Remote references remain excluded from toolbar image sources. Notifications
 are deduplicated by article URL for the lifetime of the error-sink provider
 (the app session); the first warning is retained for that URL. These warnings
 make no claim about article availability or the validity of its content.
+
+Download diagnostics leave `currentUrl` null. A navigation can become a download
+before WebKit commits a document URL, and Wry 0.57's `url()` getter unwraps that
+absent value. The callback records the native download URL and original source
+URL without querying the webview's current URL.

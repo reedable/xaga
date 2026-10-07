@@ -7,14 +7,44 @@ The local override requires that checkout; it is not a reproducible remote pin.
 ## Build features
 
 Wry's default-off `macos-download-pdf` feature changes the macOS navigation
-response policy. Xaga's default-off `wry-pdf-downloads` feature forwards to it
+response policy. Xaga's default-enabled `wry-pdf-downloads` feature forwards to it
 through a macOS-targeted direct dependency. Tauri uses the same resolved Wry
 package; no Tauri source modifications are involved.
 
-Ordinary Xaga builds retain upstream response routing. The application adapter
-currently accepts only favicon downloads. The PDF feature is for integration
-testing until a PDF consumer and persistence are connected and the probe is
-removed.
+Xaga connects article downloads to the shared staging pipeline with `PdfValidator`.
+There is no preliminary reqwest PDF request. Main and settings windows reject
+downloads; article loaders select the PDF consumer before HTML capture and the
+image consumer during favicon capture.
+
+## Persistence and presentation
+
+Validated PDF bytes are committed through the library writer to
+`pdfs/{url_hash12(normalize_url(source_url))}.pdf`. The source URL, rather than a
+redirect destination, defines identity. The PDF and Markdown operations share
+the entry's writer lane. PDF replacement preserves existing Markdown and its
+annotations; a successful HTML save removes the associated PDF. A failed PDF
+validation leaves the previous stored PDF intact.
+
+Local lookup precedes article ingestion. Stored PDFs are size-bounded and their
+signature is rechecked before use. Explicit refresh bypasses local lookup.
+New downloads require a writable library; cached files remain readable in a
+read-only library. PDF files are associated documents, not separately indexed
+library entries.
+
+The General setting **Show PDFs in the reading pane** controls presentation.
+When enabled, the frontend displays validated bytes through a local Blob URL.
+Otherwise, `open_stored_pdf` resolves and validates the library file from its
+source URL and asks the default application to open it. This trusted command
+does not accept a caller-supplied filesystem path. The setting does not change
+the remote retrieval path.
+
+PDF acceptance requires a `%PDF-` prefix and a maximum size of 64 MiB. This is a
+format check, not proof that a PDF parser can process the document safely.
+Download staging is removed on completion, cancellation, and window cleanup.
+The loader deadline bounds waiting; the disk-size monitor samples every 50 ms
+and can overshoot between checks. WebKit downloads retain the loader's proxy
+and session configuration. The reqwest redirect-count setting does not govern
+WebKit navigation; the proxy still enforces destination policy on each connection.
 
 ## Policy
 
@@ -48,7 +78,7 @@ XAGA_DOWNLOAD_SMOKE_CASE=pdf cargo test -p xaga --test resource_download_webview
 The download cases verify redirect delivery, one retrieval of the final resource,
 retained staging paths when the callback returns no path, injected validation,
 and cleanup. The PDF fixture is a one-page PDF; the invalid fixture is labelled
-PDF but fails the signature validator. The test validator uses the current
+PDF but fails the signature validator. The test uses the production validator with the current
 `%PDF-` signature contract; it does not establish parser safety.
 
 The rendering cases check HTML document and local PDF iframe load signals with

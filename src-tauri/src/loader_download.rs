@@ -4,16 +4,44 @@
 use crate::{
     article_diagnostics::{ArticleDiagnosticOutcome, ArticleLoadAttempt},
     article_loader::PendingRequests,
-    resource_download::{ICON_MAX_BYTES, IconValidator, StagedDownload},
+    resource_download::{ICON_MAX_BYTES, IconValidator, PdfValidator, StagedDownload},
 };
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
 
+enum DownloadJob {
+    Icon(StagedDownload<IconValidator>),
+    Pdf(StagedDownload<PdfValidator>),
+}
+enum Accepted {
+    Icon(String),
+    Pdf(Vec<u8>),
+}
+impl DownloadJob {
+    fn path(&self) -> &std::path::Path {
+        match self {
+            Self::Icon(s) => s.path(),
+            Self::Pdf(s) => s.path(),
+        }
+    }
+    fn limit(&self) -> u64 {
+        match self {
+            Self::Icon(_) => ICON_MAX_BYTES,
+            Self::Pdf(_) => xaga_core::persistence::pdfs::MAX_PDF_BYTES,
+        }
+    }
+    fn finish(self, success: bool) -> Result<Accepted, String> {
+        match self {
+            Self::Icon(s) => s.finish(success).map(Accepted::Icon),
+            Self::Pdf(s) => s.finish(success).map(Accepted::Pdf),
+        }
+    }
+}
 struct ActiveDownload {
     url: String,
-    staging: StagedDownload<IconValidator>,
+    staging: DownloadJob,
 }
 #[derive(Debug)]
 pub(crate) enum DownloadRejection {
@@ -44,23 +72,23 @@ impl LoaderDownloads {
         if active.is_some() {
             return Err(DownloadRejection::AlreadyClaimed);
         }
-        let pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-        // A native pending phase chooses the consumer, not the callback URL.
-        // WKDownload may report the final URL after redirects. Content remains
-        // untrusted: this phase can produce only a validated image, never an
-        // arbitrary file or a PDF. The requested URL remains storage identity.
-        if !pending
-            .get(&self.id)
-            .is_some_and(|request| request.partial.is_some())
-        {
+        let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(request) = pending.get_mut(&self.id) else {
             return Err(DownloadRejection::NoConsumer);
-        }
-        drop(pending);
+        };
         if self.claimed.swap(true, Ordering::SeqCst) {
             return Err(DownloadRejection::AlreadyClaimed);
         }
-        let staging = StagedDownload::new(IconValidator, ICON_MAX_BYTES)
-            .map_err(|_| DownloadRejection::StagingFailed)?;
+        // Native phase chooses the validator, never the callback URL or server filename.
+        let staging = if request.partial.is_some() {
+            StagedDownload::new(IconValidator, ICON_MAX_BYTES).map(DownloadJob::Icon)
+        } else {
+            StagedDownload::new(PdfValidator, xaga_core::persistence::pdfs::MAX_PDF_BYTES)
+                .map(DownloadJob::Pdf)
+        }
+        .map_err(|_| DownloadRejection::StagingFailed)?;
+        request.download_active = true;
+        drop(pending);
         let path = staging.path().to_owned();
         *active = Some(ActiveDownload {
             url: url.to_owned(),
@@ -76,10 +104,11 @@ impl LoaderDownloads {
                     let Some(job) = active.as_ref() else {
                         break;
                     };
-                    std::fs::metadata(job.staging.path()).is_ok_and(|m| m.len() > ICON_MAX_BYTES)
+                    std::fs::metadata(job.staging.path())
+                        .is_ok_and(|m| m.len() > job.staging.limit())
                 };
                 if oversized {
-                    monitor.complete(Err("download exceeds favicon byte limit".into()));
+                    monitor.complete(Err("download exceeds byte limit".into()));
                     monitor.cancel();
                     break;
                 }
@@ -125,21 +154,26 @@ impl LoaderDownloads {
             self.complete(Err("cannot create download staging directory".into()));
         }
     }
-    fn complete(&self, result: Result<String, String>) {
+    fn complete(&self, result: Result<Accepted, String>) {
         let mut pending = self.pending.lock().unwrap_or_else(|e| e.into_inner());
-        if !pending.get(&self.id).is_some_and(|r| r.partial.is_some()) {
+        let Some(mut request) = pending.remove(&self.id) else {
             return;
-        }
-        let mut request = pending.remove(&self.id).unwrap();
+        };
         drop(pending);
-        let mut capture = request.partial.take().unwrap();
+        let is_icon = request.partial.is_some();
+        let mut capture = request.partial.take().unwrap_or_default();
         match result {
-            Ok(data) => {
+            Ok(Accepted::Icon(data)) if is_icon => {
                 capture.favicon_data = Some(data);
                 self.attempt.add_succeeded_event("download_validation");
                 self.attempt.add_succeeded_event("favicon");
             }
-            Err(reason) => {
+            Ok(Accepted::Pdf(bytes)) if !is_icon => {
+                capture.mime_type = "application/pdf".into();
+                capture.pdf_bytes = Some(bytes);
+                self.attempt.add_succeeded_event("download_validation");
+            }
+            Err(reason) if is_icon => {
                 self.attempt.add_event(
                     "native",
                     "favicon",
@@ -147,6 +181,12 @@ impl LoaderDownloads {
                     "article:favicon-unavailable",
                     &reason,
                 );
+            }
+            Err(reason) => {
+                capture.download_error = Some(reason);
+            }
+            _ => {
+                capture.download_error = Some("resource consumer changed during download".into());
             }
         }
         // The normal load receiver closes the hidden loader and passes these
@@ -188,12 +228,13 @@ mod tests {
                 keep_open: false,
                 attempt: attempt.clone(),
                 diagnostic_event_count: 0,
-                reqwest_error: false,
+                download_active: false,
                 partial: Some(LoaderCapture {
                     html: "original article".into(),
                     mime_type: "text/html".into(),
                     favicon: Some("https://example.org/favicon.ico".into()),
                     favicon_data: None,
+                    ..Default::default()
                 }),
             },
         );
@@ -247,15 +288,43 @@ mod tests {
             Err(tokio::sync::oneshot::error::TryRecvError::Empty)
         ));
         let (downloads, _) = fixture();
-        downloads
-            .pending
-            .lock()
-            .unwrap()
-            .get_mut("1")
-            .unwrap()
-            .partial = None;
+        downloads.pending.lock().unwrap().clear();
         assert!(downloads.request("https://other.org/file").is_err());
     }
+    #[tokio::test]
+    async fn pdf_consumer_validates_bytes_and_finishes_without_html() {
+        for valid in [true, false] {
+            let (downloads, rx) = fixture();
+            downloads
+                .pending
+                .lock()
+                .unwrap()
+                .get_mut("1")
+                .unwrap()
+                .partial = None;
+            let url = "https://example.org/redirected-paper";
+            let path = downloads.request(url).unwrap();
+            std::fs::write(
+                &path,
+                if valid {
+                    b"%PDF-test".as_slice()
+                } else {
+                    b"PK-zip"
+                },
+            )
+            .unwrap();
+            downloads.finish(url, true);
+            let capture = tokio::time::timeout(std::time::Duration::from_secs(2), rx)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(capture.pdf_bytes.is_some(), valid);
+            assert_eq!(capture.download_error.is_some(), !valid);
+            assert!(capture.favicon_data.is_none());
+            assert!(!path.parent().unwrap().exists());
+        }
+    }
+
     #[test]
     fn terminal_failure_delivers_article_once_without_deadline() {
         let (downloads, mut rx) = fixture();
@@ -263,20 +332,20 @@ mod tests {
         let capture = rx.try_recv().unwrap();
         assert_eq!(capture.html, "original article");
         assert!(capture.favicon_data.is_none());
-        downloads.complete(Ok("late image".into()));
+        downloads.complete(Ok(Accepted::Icon("late image".into())));
         assert!(downloads.pending.lock().unwrap().is_empty());
     }
     #[test]
     fn accepted_output_joins_existing_capture_and_late_output_is_discarded() {
         let (downloads, mut rx) = fixture();
-        downloads.complete(Ok("data:image/png;base64,validated".into()));
+        downloads.complete(Ok(Accepted::Icon("data:image/png;base64,validated".into())));
         assert_eq!(
             rx.try_recv().unwrap().favicon_data.as_deref(),
             Some("data:image/png;base64,validated")
         );
         let (downloads, mut rx) = fixture();
         downloads.pending.lock().unwrap().remove("1");
-        downloads.complete(Ok("late".into()));
+        downloads.complete(Ok(Accepted::Icon("late".into())));
         assert!(rx.try_recv().is_err());
     }
 }

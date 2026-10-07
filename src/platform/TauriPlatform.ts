@@ -530,6 +530,19 @@ export class TauriPlatform implements Platform {
     return ArticleDiagnosticSchema.nullable().parse(result);
   }
 
+  async openStoredPdf(url: string): Promise<void> {
+    await invoke("open_stored_pdf", { url });
+  }
+
+  async readStoredPdf(
+    signal: AbortSignal,
+    url: string
+  ): Promise<{ pdfBase64?: string | null } | null> {
+    return decorate(invoke).with(abortable, { signal })<{
+      pdfBase64?: string | null;
+    } | null>("read_stored_pdf", { url });
+  }
+
   async loadArticle(
     signal: AbortSignal,
     url: string,
@@ -546,17 +559,27 @@ export class TauriPlatform implements Platform {
       .with(abortable, { signal })
       .with(logged, { logger, name: "load_article" });
 
-    return invoker<{
-      mimeType: string;
-      html: string;
-      pdfBase64?: string | null;
-      favicon?: string | null;
-      faviconData?: string | null;
-    }>("load_article", {
-      url,
-      keepOpen: keepOpen ?? false,
-      diagnosticId,
-    });
+    const cancel = () => {
+      if (diagnosticId)
+        void invoke("cancel_article_load", { diagnosticId }).catch(() => {});
+    };
+    signal.throwIfAborted();
+    signal.addEventListener("abort", cancel, { once: true });
+    try {
+      return await invoker<{
+        mimeType: string;
+        html: string;
+        pdfBase64?: string | null;
+        favicon?: string | null;
+        faviconData?: string | null;
+      }>("load_article", {
+        url,
+        keepOpen: keepOpen ?? false,
+        diagnosticId,
+      });
+    } finally {
+      signal.removeEventListener("abort", cancel);
+    }
   }
 
   async findArticle(

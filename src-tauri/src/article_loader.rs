@@ -12,6 +12,8 @@ use crate::article_diagnostics::{ArticleDiagnosticOutcome, ArticleLoadAttempt};
 /// bytes ride here alongside the page HTML for exactly that reason.
 #[derive(Debug, Clone, Default)]
 pub struct LoaderCapture {
+    pub pdf_bytes: Option<Vec<u8>>,
+    pub download_error: Option<String>,
     pub mime_type: String,
     pub html: String,
     /// The URL the loader resolved the favicon from, if it found one.
@@ -27,10 +29,7 @@ pub struct PendingRequest {
     pub keep_open: bool,
     pub attempt: ArticleLoadAttempt,
     pub diagnostic_event_count: usize,
-    /// Whether the inline-PDF reqwest probe errored — defers the close decision
-    /// to `load_via_webview` so the window can be kept open and shown when the
-    /// content turns out to be a PDF.
-    pub reqwest_error: bool,
+    pub download_active: bool,
     /// Set while the window is being navigated to the favicon to read its bytes:
     /// the article HTML is already captured and waiting here for the favicon to
     /// arrive (or fail) before the capture is completed. `None` at every other
@@ -80,12 +79,14 @@ pub async fn load_via_webview(
     url: &str,
     timeout_secs: u64,
     keep_open: bool,
-    reqwest_error: bool,
     allowed_domains: &[String],
     named_stores_supported: bool,
     proxy: Arc<xaga_core::ssrf_proxy::ScopedProxy>,
     attempt: ArticleLoadAttempt,
 ) -> Result<LoaderCapture, String> {
+    if attempt.is_cancelled() {
+        return Err("load cancelled".into());
+    }
     attempt.add_started_event("url_validation");
     let parsed: tauri::Url = url.parse().map_err(|e| format!("invalid URL: {e}"))?;
     if !matches!(parsed.scheme(), "http" | "https") {
@@ -110,7 +111,7 @@ pub async fn load_via_webview(
             keep_open,
             attempt: attempt.clone(),
             diagnostic_event_count: 0,
-            reqwest_error,
+            download_active: false,
             partial: None,
         },
     );
@@ -141,7 +142,6 @@ pub async fn load_via_webview(
     let build_label = label.clone();
     let (built_tx, built_rx) = oneshot::channel();
     attempt.add_started_event("webview_create");
-    let build_attempt = attempt.clone();
     let navigation_attempt = attempt.clone();
     let page_attempt = attempt.clone();
     let build_pending = pending.clone();
@@ -154,10 +154,19 @@ pub async fn load_via_webview(
     let source_url = url.to_owned();
     let download_source_url = source_url.clone();
     let download_attempt = attempt.clone();
-    let downloads = crate::loader_download::LoaderDownloads::new(pending.clone(), id.clone(), attempt.clone());
+    let downloads =
+        crate::loader_download::LoaderDownloads::new(pending.clone(), id.clone(), attempt.clone());
     let download_handler = downloads.clone();
     let download_cleanup = downloads.clone();
+    let build_attempt = attempt.clone();
     let scheduled = app.run_on_main_thread(move || {
+        if build_attempt.is_cancelled() {
+            build_pending
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&build_id);
+            return;
+        }
         // A timed-out scheduling request must not create an orphan webview.
         if !build_pending
             .lock()
@@ -176,29 +185,46 @@ pub async fn load_via_webview(
                             DownloadEvent::Requested { url, destination } => {
                                 let result = download_handler.request(url.as_str());
                                 let accepted = match result {
-                                    Ok(path) => { *destination = path; true }
+                                    Ok(path) => {
+                                        *destination = path;
+                                        true
+                                    }
                                     Err(reason) => {
                                         download_handler.rejected(reason);
                                         false
                                     }
                                 };
-                                (true, url, Some(destination.to_string_lossy().into_owned()), None, accepted)
+                                (
+                                    true,
+                                    url,
+                                    Some(destination.to_string_lossy().into_owned()),
+                                    None,
+                                    accepted,
+                                )
                             }
                             DownloadEvent::Finished { url, path, success } => {
                                 download_handler.finish(url.as_str(), success);
-                                (false, url, path.map(|p| p.to_string_lossy().into_owned()), Some(success), false)
+                                (
+                                    false,
+                                    url,
+                                    path.map(|p| p.to_string_lossy().into_owned()),
+                                    Some(success),
+                                    false,
+                                )
                             }
                             _ => return false,
                         };
-                        download_attempt.record_download(requested, accepted,
-                            crate::article_diagnostics::DownloadDiagnostic {
-                                loader_label: webview.label().to_owned(),
-                                source_url: download_source_url.clone(),
-                                current_url: webview.url().ok().map(|u| u.to_string()),
-                                download_url: url.to_string(),
+                        download_attempt.record_download(
+                            requested,
+                            accepted,
+                            crate::article_diagnostics::DownloadDiagnostic::from_download(
+                                &webview,
+                                &download_source_url,
+                                &url,
                                 destination,
                                 success,
-                            });
+                            ),
+                        );
                         accepted
                     })
                     .on_navigation(move |_| {
@@ -262,14 +288,17 @@ pub async fn load_via_webview(
             build_attempt.add_started_event("webview_create");
             let window = builder.build().map_err(|e| e.to_string())?;
             sessions.register(build_label.clone(), source_url);
-            // Keep the dedicated proxy alive for a visible browser, including
-            // the PDF fallback. Release it when the native window is destroyed.
+            // Keep the dedicated proxy alive until the native window is destroyed.
             let lifetime = Arc::new(Mutex::new(Some(build_proxy)));
             window.on_window_event(move |event| {
                 if matches!(event, tauri::WindowEvent::Destroyed) {
                     lifetime.lock().unwrap_or_else(|e| e.into_inner()).take();
                     sessions.remove(&build_label);
                     download_cleanup.cancel();
+                    build_pending
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(&build_id);
                 }
             });
             Ok(window)
@@ -301,11 +330,6 @@ pub async fn load_via_webview(
     attempt.add_succeeded_event("webview_create");
     attempt.add_started_event("capture_wait");
 
-    // Set when an inline-PDF reqwest error is followed by the loader detecting a
-    // PDF: the hidden window is then shown to the user (only the webview can fetch
-    // it), so it must not be hidden-on-focus or closed.
-    let keep_open_on_error = Arc::new(AtomicBool::new(false));
-
     if keep_open {
         let _ = loader.show();
         let _ = loader.set_focus();
@@ -313,10 +337,17 @@ pub async fn load_via_webview(
         // CloseRequested (from w.close() in capture_and_close_loader) passes through.
         let captured = Arc::new(AtomicBool::new(false));
         let close_handle = loader.clone();
+        let close_pending = pending.clone();
+        let close_id = id.clone();
 
         loader.on_window_event(move |event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if captured.swap(true, Ordering::SeqCst) {
+                let native_download = close_pending
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .get(&close_id)
+                    .is_none_or(|request| request.download_active);
+                if native_download || captured.swap(true, Ordering::SeqCst) {
                     return;
                 }
                 api.prevent_close();
@@ -324,16 +355,11 @@ pub async fn load_via_webview(
             }
         });
     } else {
-        // Prevent the native window from ever becoming visible regardless of what
-        // the remote page does (e.g. WKWebView-level focus/show callbacks) — unless
-        // we deliberately show it for the reqwest-error PDF case.
+        // Hidden resource loaders stay hidden even if remote content requests focus.
         let loader_handle = loader.clone();
-        let suppress_hide = Arc::clone(&keep_open_on_error);
 
         loader.on_window_event(move |event| {
-            if matches!(event, tauri::WindowEvent::Focused(true))
-                && !suppress_hide.load(Ordering::Acquire)
-            {
+            if matches!(event, tauri::WindowEvent::Focused(true)) {
                 let _ = loader_handle.hide();
             }
         });
@@ -348,7 +374,7 @@ pub async fn load_via_webview(
             .lock()
             .map_err(|e| e.to_string())?
             .get(&id)
-            .is_some_and(|request| request.partial.is_some());
+            .is_some_and(|request| request.partial.is_some() || request.download_active);
         if !has_partial {
             attempt.add_failed_event(
                 "capture_wait",
@@ -362,28 +388,19 @@ pub async fn load_via_webview(
     }
 
     let request = pending.lock().map_err(|e| e.to_string())?.remove(&id);
+    let had_download = request
+        .as_ref()
+        .is_some_and(|request| request.download_active);
     if result.is_err() {
         if let Some(capture) = recover_favicon_timeout(request, &attempt) {
             result = Ok(Ok(capture));
         }
     }
 
-    // If the reqwest probe errored and the loader resolved the content as a PDF,
-    // show the existing (hidden) window to the user instead of closing it: the
-    // real browser got past whatever refused reqwest, and a PDF can only be
-    // presented this way.
-    let show_pdf = reqwest_error
-        && matches!(&result, Ok(Ok(capture)) if capture.mime_type == "application/pdf");
-
-    if show_pdf {
-        keep_open_on_error.store(true, Ordering::Release);
-        if let Some(w) = app.get_webview_window(&label) {
-            let _ = w.set_size(tauri::LogicalSize::new(1200.0, 900.0));
-            let _ = w.set_position(tauri::LogicalPosition::new(100.0, 100.0));
-            let _ = w.show();
-            let _ = w.set_focus();
-        }
-    } else if !keep_open {
+    if !keep_open
+        || had_download
+        || matches!(&result, Ok(Ok(c)) if c.pdf_bytes.is_some() || c.download_error.is_some())
+    {
         if let Some(w) = app.get_webview_window(&label) {
             let _ = w.close();
         }
@@ -441,7 +458,7 @@ mod diagnostic_tests {
             keep_open: false,
             attempt: attempt.clone(),
             diagnostic_event_count: 0,
-            reqwest_error: false,
+            download_active: false,
             partial: Some(LoaderCapture {
                 html: "original article".into(),
                 mime_type: "text/html".into(),

@@ -130,7 +130,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     // Reads and renders the already-resolved article for the current route.
     // useContentLoader has classified the URL and persisted any new article
     // before navigating here, so this only reads + renders (and reloads the
-    // body from the network when it's missing or a reload was requested).
+    // body from the network only when an explicit reload was requested).
     const requestContent = useCallback(
       async (reload = false) => {
         if (!url) return;
@@ -163,7 +163,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
           setAnnotationsFromArticle(article);
 
-          if (!article.content || reload) {
+          if (reload) {
             const content = (await loadArticle(article, false, attempt))
               ?.content;
             if (content) article.content = content;

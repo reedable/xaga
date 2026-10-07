@@ -1,7 +1,7 @@
 //! Tauri command to webview error type
 //!
 //! Wraps `xaga_core::error::DomainError` and adds app-layer failures
-//! (read-only refusal, unauthorized command, spoofed PDF, stale settings view).
+//! (read-only refusal, unauthorized command, unsupported download, stale settings view).
 //!
 //! Serializes as `{ code, message, detail }`:
 //! - `code` — stable identifier the UI switches on. Mirrored in
@@ -35,10 +35,9 @@ pub(crate) enum AppError {
     /// A command was invoked from a window not permitted to call it.
     #[error("command not available from this window")]
     Unauthorized,
-    /// Content-Type claimed PDF but the body is not a PDF. Absorbs the former
-    /// `E_SPOOFED_PDF` prefix string; the payload is log-only detail.
-    #[error("Content-Type claimed PDF but the body is not a PDF: {0}")]
-    SpoofedPdf(String),
+    /// Downloaded bytes failed validation; the payload is log-only detail.
+    #[error("Download format is unsupported: {0}")]
+    UnsupportedDownload(String),
     /// A settings write raced another xaga process; the in-memory mirrors were
     /// refreshed and the caller should retry.
     #[error("settings changed by another xaga process; view refreshed — retry")]
@@ -57,7 +56,7 @@ impl AppError {
             AppError::Domain(e) => e.code(),
             AppError::ReadOnly => "library:read-only",
             AppError::Unauthorized => "command:unauthorized",
-            AppError::SpoofedPdf(_) => "article:spoofed-pdf",
+            AppError::UnsupportedDownload(_) => "article:unsupported-download",
             AppError::SettingsStaleView => "settings:stale-view",
             AppError::Message(_) => "app:error",
         }
@@ -71,7 +70,7 @@ impl AppError {
                 "This library is read-only because another xaga window has it open."
             }
             AppError::Unauthorized => "This action isn't available here.",
-            AppError::SpoofedPdf(_) => "This link couldn't be shown safely.",
+            AppError::UnsupportedDownload(_) => "This download’s format isn’t supported.",
             AppError::SettingsStaleView => {
                 "Settings changed in another xaga window — please try again."
             }
@@ -158,7 +157,7 @@ mod tests {
     const APP_CODES: &[&str] = &[
         "library:read-only",
         "command:unauthorized",
-        "article:spoofed-pdf",
+        "article:unsupported-download",
         "settings:stale-view",
         "app:error",
     ];
@@ -192,10 +191,10 @@ mod tests {
 
     #[test]
     fn serializes_code_message_detail() {
-        let e = AppError::SpoofedPdf("magic bytes were %PDF-ish".to_string());
+        let e = AppError::UnsupportedDownload("magic bytes were %PDF-ish".to_string());
         let v = serde_json::to_value(&e).unwrap();
-        assert_eq!(v["code"], "article:spoofed-pdf");
-        assert_eq!(v["message"], "This link couldn't be shown safely.");
+        assert_eq!(v["code"], "article:unsupported-download");
+        assert_eq!(v["message"], "This download’s format isn’t supported.");
         // detail carries the technical text; message never does.
         assert!(v["detail"].as_str().unwrap().contains("magic bytes"));
         assert!(!v["message"].as_str().unwrap().contains("magic bytes"));

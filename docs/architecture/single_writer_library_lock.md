@@ -40,3 +40,11 @@ The lock makes at most one process a writer; the `LibraryWriter` makes that proc
 ## Relation to the other rules
 
 The lock is the process-level face of the same discipline as the two-producer rule (`docs/principles/single_source_of_truth.md`): within the one writing process, LanceDB has exactly two producers; across processes, the lock ensures there is only one writing process for those producers to live in. Recovery's crash-healing (`crash_consistency.md`) assumes writes were serialized through a single writer — the mode gate is what makes that assumption hold for `.md` files. All library `.md` writes are temp+rename atomic (`write_atomic_async`, `crates/xaga-core/src/fs.rs`), so a reader in any process never observes a torn file and a crash mid-write leaves the old version intact.
+
+### URL-associated PDFs
+
+`LibraryWriter::save_pdf` serializes PDF writes in the normalized URL's entry
+lane, alongside Markdown operations. Validation precedes atomic replacement.
+Successful Markdown saves remove the associated PDF in that lane; PDF saves
+leave Markdown and annotations intact. A newly downloaded PDF requires the
+library writer, while validated local reads do not require write ownership.

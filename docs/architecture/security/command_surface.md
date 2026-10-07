@@ -19,6 +19,16 @@ Native loader creation registers the original source URL against its window labe
 - **Derived-path commands are fine on the invoke surface.** Commands whose filesystem access is computed in Rust from app state (`library_dir` + `{hash12}` filenames, settings paths) take no authority from the caller; the webview choosing _which_ feed to read is harmless because it cannot choose _where_ on disk that resolves to.
 - **User-supplied-path commands must not exist on the invoke surface.** Anything that takes a path (or any other ambient-authority handle) from its caller hands that authority to the webview. The file dialog and the operation it authorizes belong together on the Rust side (menu handler → Rust-side dialog → direct call); the chosen path must never round-trip through JS.
 
+## PDF lookup, opening, and cancellation
+
+`read_stored_pdf` and `open_stored_pdf` are trusted-UI commands. Both derive a
+library PDF path from a normalized HTTP(S) source URL and validate the stored
+bytes. The opener accepts no filesystem path from JavaScript. `cancel_article_load`
+is also trusted-only: it cancels the diagnostic attempt, removes matching pending
+captures, and destroys their loader windows. The six remote loader callbacks do
+not gain access to these operations. PDF writes occur inside `load_article` using
+the writer captured with the active library; no writer means a read-only error.
+
 ## Where native-orchestrated operations live
 
 User-supplied-path operations live in `src-tauri/src/native/` as plain `pub(crate)` functions, not `#[tauri::command]`s. The menu handler opens the file dialog in Rust (`native::*_dialog`) and calls them directly; none are on the invoke surface, so no path is ever taken from the webview. Completion is reported to the frontend by event (`feeds:imported`, `feeds:exported`, `bookmarks:imported`, `bookmarks:exported`) carrying `{ result?, error? }` — the result on success, the error on failure. Feed and bookmark OPML/HTML import/export are the operations that live here.

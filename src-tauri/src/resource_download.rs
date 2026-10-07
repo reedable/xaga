@@ -162,3 +162,13 @@ mod tests {
         assert_eq!((result.width(), result.height()), (64, 26));
     }
 }
+
+/// Existing PDF format check, injected into the same staging boundary as icons.
+pub(crate) struct PdfValidator;
+impl ByteValidator for PdfValidator {
+    type Accepted = Vec<u8>;
+    fn validate(self, bytes: &[u8]) -> Result<Vec<u8>, String> {
+        xaga_core::persistence::pdfs::validate(bytes)?;
+        Ok(bytes.to_vec())
+    }
+}

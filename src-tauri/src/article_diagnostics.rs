@@ -46,6 +46,28 @@ pub(crate) struct DownloadDiagnostic {
     pub success: Option<bool>,
 }
 
+impl DownloadDiagnostic {
+    /// Collect callback evidence without requiring a committed document URL.
+    pub(crate) fn from_download<R: tauri::Runtime>(
+        webview: &tauri::Webview<R>,
+        source_url: &str,
+        download_url: &tauri::Url,
+        destination: Option<String>,
+        success: Option<bool>,
+    ) -> Self {
+        Self {
+            loader_label: webview.label().to_owned(),
+            source_url: source_url.to_owned(),
+            // A download can precede the first document commit. Wry 0.57's
+            // url() unwraps WebKit's absent URL; `.ok()` cannot catch that panic.
+            current_url: None,
+            download_url: download_url.to_string(),
+            destination,
+            success,
+        }
+    }
+}
+
 fn bounded_download_text(value: &str) -> String {
     value.chars().filter(|c| !c.is_control()).take(4096).collect()
 }
@@ -74,6 +96,7 @@ pub(crate) struct ArticleDiagnostic {
 }
 
 struct ArticleLoadState {
+    cancelled: bool,
     started: Instant,
     diagnostic: ArticleDiagnostic,
 }
@@ -109,6 +132,7 @@ impl ArticleDiagnostics {
             .unwrap_or_default()
             .as_millis();
         let attempt = ArticleLoadAttempt(Arc::new(Mutex::new(ArticleLoadState {
+            cancelled: false,
             started: Instant::now(),
             diagnostic: ArticleDiagnostic {
                 id: format!(
@@ -139,6 +163,12 @@ impl ArticleDiagnostics {
     }
 }
 impl ArticleLoadAttempt {
+    pub(crate) fn cancel(&self) {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).cancelled = true;
+    }
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).cancelled
+    }
     pub(crate) fn get_id(&self) -> String {
         self.0
             .lock()

@@ -7,7 +7,7 @@ The underlying principle, shared with the absence of conditional GET (`ETag`/`If
 ## Fetch clients (reqwest): what teardown discards
 
 - **TLS session tickets / session cache.** A resumed TLS session tells the server "same client as before" across requests, surviving IP changes. Each factory-built client starts with an empty session cache, so no ticket survives from one refresh to the next; a server cannot link two refresh passes through TLS resumption.
-- **Connection pool.** A kept-alive connection reused across fetches is trivially the same client — no inference needed. Per-invocation clients bound connection lifetime to a single command (one refresh pass, one PDF probe).
+- **Connection pool.** A kept-alive connection reused across fetches is trivially the same client — no inference needed. Per-invocation clients bound connection lifetime to a single command (one feed refresh pass).
 - **No cookie jar is configured** on these clients at all, so cookies are refused even within a single invocation.
 
 If the clients were pooled or made long-lived "for performance": session tickets and warm connections would persist across refreshes, giving every feed host a reliable cross-refresh identifier — precisely what refusing `ETag`/`If-Modified-Since` validators avoids. (A long-lived client would also serve stale settings; the per-invocation build is what makes settings apply on the next fetch.)

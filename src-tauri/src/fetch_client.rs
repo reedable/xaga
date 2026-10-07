@@ -1,4 +1,4 @@
-//! Factory for the SSRF-proxied reqwest clients (feed XML, inline-PDF probe).
+//! Factory for the SSRF-proxied reqwest clients (feed XML).
 //!
 //! Clients are built per invocation — not held in `AppState` — so a
 //! settings.json change applies on the next fetch without a relaunch.
@@ -32,8 +32,7 @@ pub(crate) fn effective_max_redirects(setting: Option<u32>) -> u32 {
 /// `gzip_allowed` controls whether requests carry `Accept-Encoding: gzip`
 /// (with transparent decompression of compressed responses). `false` sends
 /// no `Accept-Encoding` at all — the pre-existing request shape. One flag
-/// covers both clients this factory builds (feed XML, PDF probe) so the two
-/// paths always present the same header shape to hosts; the reqwest `gzip`
+/// configures clients from this factory; the reqwest `gzip`
 /// cargo feature would otherwise default this to on, so it is always set
 /// explicitly here.
 ///

@@ -59,7 +59,7 @@ export const ERROR_CODE = [
   // AppError (src-tauri)
   "library:read-only",
   "command:unauthorized",
-  "article:spoofed-pdf",
+  "article:unsupported-download",
   "settings:stale-view",
   "app:error", // transitional catch-all for not-yet-typed string errors
 ] as const;

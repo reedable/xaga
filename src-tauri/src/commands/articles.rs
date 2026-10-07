@@ -7,9 +7,7 @@ use xaga_core::types::{Article, Kind, PartialAnnotation};
 
 use base64::Engine as _;
 
-use crate::article_diagnostics::{
-    ArticleDiagnostic, ArticleDiagnosticOutcome, ArticleDiagnostics, ArticleLoadAttempt,
-};
+use crate::article_diagnostics::{ArticleDiagnostic, ArticleDiagnosticOutcome, ArticleDiagnostics};
 use crate::error::AppError;
 use crate::{AppState, article_loader};
 
@@ -109,6 +107,11 @@ pub async fn receive_html(
         return Ok(false);
     };
 
+    if request.download_active {
+        map.insert(id, request);
+        return Ok(false);
+    }
+
     // A failed favicon navigation can load an HTML error document. Never
     // replace the already captured article with that document.
     if let Some(capture) = request.partial.take() {
@@ -129,6 +132,7 @@ pub async fn receive_html(
         html,
         favicon,
         favicon_data,
+        ..Default::default()
     };
 
     // The favicon's bytes cannot be read from the article's own document (a
@@ -136,18 +140,16 @@ pub async fn receive_html(
     // navigated to the favicon URL and the bytes come back through
     // `receive_favicon`, which then completes this capture and closes the
     // window. Only on the hidden single-shot path: a `keep_open` window is
-    // visible and may be in use, and the reqwest-error path may still need to
-    // show this window as a PDF.
-    let favicon_target =
-        if !request.keep_open && !request.reqwest_error && capture.mime_type != "application/pdf" {
-            capture
-                .favicon
-                .as_deref()
-                .and_then(|url| url.parse::<tauri::Url>().ok())
-                .filter(|url| matches!(url.scheme(), "http" | "https"))
-        } else {
-            None
-        };
+    // visible and may be in use.
+    let favicon_target = if !request.keep_open && capture.mime_type != "application/pdf" {
+        capture
+            .favicon
+            .as_deref()
+            .and_then(|url| url.parse::<tauri::Url>().ok())
+            .filter(|url| matches!(url.scheme(), "http" | "https"))
+    } else {
+        None
+    };
 
     if let Some(favicon_url) = favicon_target {
         request.attempt.add_started_event("favicon");
@@ -173,11 +175,8 @@ pub async fn receive_html(
     }
 
     let _ = request.tx.send(capture);
-    if !request.keep_open && !request.reqwest_error {
-        // Terminate the webview immediately so untrusted scripts cannot
-        // continue running or spamming IPC. When the inline-PDF reqwest
-        // probe errored, defer the close to load_via_webview, which keeps
-        // the window alive to show it if the content is a PDF.
+    if !request.keep_open {
+        // Terminate the captured document immediately to stop untrusted scripts.
         let _ = window.close();
     }
     Ok(true)
@@ -202,6 +201,11 @@ pub async fn receive_favicon(
     let Some(request) = map.remove(&id) else {
         return Ok(());
     };
+
+    if request.download_active {
+        map.insert(id, request);
+        return Ok(());
+    }
 
     match request.partial {
         Some(mut capture) => {
@@ -366,7 +370,7 @@ pub struct LoadArticleResult {
     #[serde(rename = "mimeType")]
     pub mime_type: String,
     pub html: String,
-    /// Base64-encoded PDF bytes, present only on the inline-PDF fast path.
+    /// Base64-encoded validated PDF bytes for inline viewing.
     #[serde(rename = "pdfBase64")]
     pub pdf_base64: Option<String>,
     /// The favicon URL the loader resolved for this page, and its bytes as a
@@ -374,160 +378,6 @@ pub struct LoadArticleResult {
     pub favicon: Option<String>,
     #[serde(rename = "faviconData")]
     pub favicon_data: Option<String>,
-}
-
-enum PdfProbe {
-    /// A valid PDF (`application/pdf` Content-Type + `%PDF-` signature); bytes read.
-    Pdf(Vec<u8>),
-    /// Not a PDF; the body was NOT read, so the caller lets the loader webview
-    /// perform the real load without a double download.
-    NotPdf,
-    /// `application/pdf` Content-Type but the body is not a PDF. This is a
-    /// spoofed response — dead-end it; do NOT render it in a webview.
-    Invalid(String),
-}
-
-/// Fetches `url` through the SSRF proxy to decide whether it is a PDF.
-/// `Err(_)` is a transport/timeout error only (the caller may fall back to the
-/// visible loader webview); content mismatches are reported via [`PdfProbe`].
-async fn try_fetch_pdf(
-    client: &reqwest::Client,
-    url: &str,
-    timeout_secs: u64,
-    attempt: &ArticleLoadAttempt,
-) -> Result<PdfProbe, AppError> {
-    // Only ever fetch real remote web content (mirror the loader's scheme guard).
-    let parsed = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-        return Err(AppError::Message(format!(
-            "refusing to fetch non-web URL scheme: {}",
-            parsed.scheme()
-        )));
-    }
-
-    let resp = client
-        .get(parsed)
-        .timeout(std::time::Duration::from_secs(timeout_secs))
-        .send()
-        .await
-        .map_err(|e| {
-            attempt.add_event(
-                "native",
-                "pdf_probe",
-                ArticleDiagnosticOutcome::Warning,
-                if e.is_timeout() {
-                    "article:timeout"
-                } else if e.is_redirect() {
-                    "article:redirect-limit"
-                } else if e.is_connect() {
-                    "article:connect"
-                } else {
-                    "article:transport"
-                },
-                &error_chain(&e),
-            );
-            AppError::Message(crate::article_diagnostics::sanitize_detail(&error_chain(
-                &e,
-            )))
-        })?;
-    attempt.add_event(
-        "native",
-        "pdf_response",
-        if resp.status().is_success() {
-            ArticleDiagnosticOutcome::Succeeded
-        } else {
-            ArticleDiagnosticOutcome::Warning
-        },
-        if resp.status().is_success() {
-            ""
-        } else {
-            "article:http"
-        },
-        &format!(
-            "status={}; content_type={}",
-            resp.status().as_u16(),
-            if resp
-                .headers()
-                .get(reqwest::header::CONTENT_TYPE)
-                .and_then(|v| v.to_str().ok())
-                .map(|v| v
-                    .split(';')
-                    .next()
-                    .unwrap_or("")
-                    .trim()
-                    .eq_ignore_ascii_case("application/pdf"))
-                .unwrap_or(false)
-            {
-                "application/pdf"
-            } else {
-                "other or missing"
-            }
-        ),
-    );
-
-    // The SSRF proxy's "plaintext HTTP is disabled" refusal. Mapped before the
-    // content-type check so it doesn't read as a server error; the caller falls
-    // back to the loader webview, which surfaces the proxy's explanation body.
-    if resp.status().as_u16() == xaga_core::persistence::feeds::HTTP_BLOCKED_STATUS {
-        return Err(AppError::Message(
-            "plaintext HTTP fetch blocked by the \"HTTP allowed\" setting".to_string(),
-        ));
-    }
-
-    // MIME type only — ignore parameters like charset.
-    let content_type = resp
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .split(';')
-        .next()
-        .unwrap_or("")
-        .trim()
-        .to_ascii_lowercase();
-
-    if content_type != "application/pdf" {
-        // Not a PDF — drop the response without reading the body; the webview
-        // (any status) performs the real load as today.
-        return Ok(PdfProbe::NotPdf);
-    }
-
-    if !resp.status().is_success() {
-        return Err(AppError::Message(format!(
-            "PDF request returned HTTP {}",
-            resp.status()
-        )));
-    }
-
-    attempt.add_started_event("pdf_body");
-    let bytes = resp.bytes().await.map_err(|e| {
-        attempt.add_event(
-            "native",
-            "pdf_body",
-            ArticleDiagnosticOutcome::Warning,
-            "article:pdf-body",
-            &error_chain(&e),
-        );
-        AppError::Message(crate::article_diagnostics::sanitize_detail(&error_chain(
-            &e,
-        )))
-    })?;
-    attempt.add_succeeded_event("pdf_body");
-    attempt.add_started_event("pdf_signature");
-
-    if !bytes.starts_with(b"%PDF-") {
-        attempt.add_failed_event(
-            "pdf_signature",
-            "article:spoofed-pdf",
-            "PDF signature missing",
-        );
-        return Ok(PdfProbe::Invalid(
-            "Content-Type was application/pdf but body is not a PDF".to_string(),
-        ));
-    }
-
-    attempt.add_succeeded_event("pdf_signature");
-    Ok(PdfProbe::Pdf(bytes.to_vec()))
 }
 
 fn storage_error_detail(error: &AppError) -> String {
@@ -552,6 +402,83 @@ fn error_chain(error: &(dyn std::error::Error + 'static)) -> String {
     parts.join("; caused by: ")
 }
 
+fn stored_pdf_result(
+    library: &std::path::Path,
+    url: &str,
+) -> Result<Option<LoadArticleResult>, AppError> {
+    let Some((_, bytes)) = xaga_core::persistence::pdfs::read(library, url)? else {
+        return Ok(None);
+    };
+    Ok(Some(LoadArticleResult {
+        mime_type: "application/pdf".into(),
+        html: String::new(),
+        pdf_base64: Some(base64::engine::general_purpose::STANDARD.encode(bytes)),
+        favicon: None,
+        favicon_data: None,
+    }))
+}
+
+#[tauri::command]
+pub async fn read_stored_pdf(
+    url: String,
+    state: State<'_, AppState>,
+) -> Result<Option<LoadArticleResult>, AppError> {
+    let library = state.library_path();
+    tauri::async_runtime::spawn_blocking(move || stored_pdf_result(&library, &url))
+        .await
+        .map_err(|e| AppError::Message(e.to_string()))?
+}
+
+/// The renderer supplies a source URL, never a local path. Revalidate at opening.
+#[tauri::command]
+pub async fn open_stored_pdf(
+    url: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let library = state.library_path();
+    let path = tauri::async_runtime::spawn_blocking(move || {
+        xaga_core::persistence::pdfs::read(&library, &url).map(|value| value.map(|(path, _)| path))
+    })
+    .await
+    .map_err(|e| AppError::Message(e.to_string()))??
+    .ok_or_else(|| AppError::Message("stored PDF is missing".into()))?;
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_path(path.to_string_lossy().into_owned(), None::<&str>)
+        .map_err(|e| AppError::Message(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn cancel_article_load(
+    diagnostic_id: String,
+    app: AppHandle,
+    diagnostics: State<'_, ArticleDiagnostics>,
+    pending: State<'_, article_loader::PendingRequests>,
+) -> Result<(), AppError> {
+    if let Some(attempt) = diagnostics.get_attempt(&diagnostic_id) {
+        attempt.cancel();
+    }
+    let ids = {
+        let mut map = pending.lock().unwrap_or_else(|e| e.into_inner());
+        let ids: Vec<_> = map
+            .iter()
+            .filter(|(_, r)| r.attempt.get_id() == diagnostic_id)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in &ids {
+            map.remove(id);
+        }
+        ids
+    };
+    for id in ids {
+        if let Some(window) = app.get_webview_window(&format!("loader-{id}")) {
+            let _ = window.destroy();
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn load_article(
     url: String,
@@ -567,6 +494,10 @@ pub async fn load_article(
         .as_deref()
         .and_then(|id| diagnostics.get_attempt(id))
         .unwrap_or_else(|| diagnostics.create_attempt(if keep_open { "visible" } else { "load" }));
+    let (library, writer) = {
+        let library = state.library.read().unwrap();
+        (library.path.clone(), library.writer.clone())
+    };
     let result = async {
         attempt.add_started_event("proxy_start");
         let proxy_attempt = attempt.clone();
@@ -589,95 +520,46 @@ pub async fn load_article(
         let timeout_secs = *state.loader_timeout_secs.read().unwrap();
         let allowed_domains = state.allowed_domains.read().unwrap().clone();
         let named_stores_supported = state.named_stores_supported;
-        let ssrf_proxy_port = proxy.port;
-        let inline_pdf_reader = *state.inline_pdf_reader.read().unwrap();
-
-        let mut reqwest_error = false;
-
-        // Inline-PDF fast path: only when the setting is on and the caller isn't
-        // explicitly asking for the visible webview. Fetch the URL through the SSRF
-        // proxy; a PDF is returned as bytes for inline rendering and skips the
-        // webview entirely. Not making this request when the setting is off avoids
-        // letting servers profile us.
-        if inline_pdf_reader && !keep_open {
-            attempt.add_started_event("pdf_client");
-            let client = crate::fetch_client::try_build(
-                ssrf_proxy_port,
-                *state.max_redirects.read().unwrap(),
-                *state.referer_allowed.read().unwrap(),
-                *state.gzip_allowed.read().unwrap(),
-            )
-            .map_err(|e| AppError::Message(error_chain(&e)))?;
-            attempt.add_succeeded_event("pdf_client");
-            attempt.add_started_event("pdf_probe");
-            match try_fetch_pdf(&client, &url, timeout_secs, &attempt).await {
-                Ok(PdfProbe::Pdf(bytes)) => {
-                    return Ok(LoadArticleResult {
-                        mime_type: "application/pdf".to_string(),
-                        html: String::new(),
-                        pdf_base64: Some(base64::engine::general_purpose::STANDARD.encode(&bytes)),
-                        favicon: None,
-                        favicon_data: None,
-                    });
-                }
-                // Not a PDF — fall through to the webview unchanged.
-                Ok(PdfProbe::NotPdf) => {
-                    attempt.add_event(
-                        "native",
-                        "pdf_probe",
-                        ArticleDiagnosticOutcome::Skipped,
-                        "",
-                        "response is not PDF; continue with browser",
-                    );
-                }
-                // Spoofed: Content-Type claimed PDF but the body isn't one. Dead-end;
-                // do NOT render it in a webview. The `E_SPOOFED_PDF` code lets the
-                // frontend show a "blocked" message instead of a generic failure.
-                Ok(PdfProbe::Invalid(msg)) => return Err(AppError::SpoofedPdf(msg)),
-                // Transport error (e.g. the site refused the non-browser client). We
-                // can't confirm it's a PDF; hand it to the loader with reqwest_error so
-                // the close decision is deferred until the webview reports the type.
-                Err(e) => {
-                    attempt.add_event(
-                        "native",
-                        "pdf_probe",
-                        ArticleDiagnosticOutcome::Warning,
-                        e.code(),
-                        &e.to_string(),
-                    );
-                    attempt.add_event(
-                        "native",
-                        "browser_fallback",
-                        ArticleDiagnosticOutcome::Started,
-                        "",
-                        "PDF probe failed; browser may still succeed",
-                    );
-                    reqwest_error = true;
-                }
-            }
-        } else {
-            attempt.add_event(
-                "native",
-                "pdf_probe",
-                ArticleDiagnosticOutcome::Skipped,
-                "",
-                "inline probe disabled or visible browser requested",
-            );
-        }
-
         let capture = article_loader::load_via_webview(
             &app,
             &pending,
             &url,
             timeout_secs,
             keep_open,
-            reqwest_error,
             &allowed_domains,
             named_stores_supported,
             proxy,
             attempt.clone(),
         )
         .await?;
+        if attempt.is_cancelled() {
+            return Err(AppError::Message("load cancelled".into()));
+        }
+        if let Some(error) = capture.download_error {
+            return Err(if error == "unsupported download format" {
+                AppError::UnsupportedDownload(error)
+            } else {
+                AppError::Message(error)
+            });
+        }
+        if let Some(bytes) = capture.pdf_bytes {
+            attempt.add_started_event("pdf_persist");
+            writer
+                .as_ref()
+                .ok_or(AppError::ReadOnly)?
+                .save_pdf(url.clone(), Some(bytes))
+                .await?;
+            attempt.add_succeeded_event("pdf_persist");
+            return tauri::async_runtime::spawn_blocking(move || stored_pdf_result(&library, &url))
+                .await
+                .map_err(|e| AppError::Message(e.to_string()))??
+                .ok_or_else(|| AppError::Message("saved PDF is missing".into()));
+        }
+        if capture.mime_type == "application/pdf" {
+            return Err(AppError::Message(
+                "PDF bytes were not delivered by native download".into(),
+            ));
+        }
         Ok(LoadArticleResult {
             mime_type: capture.mime_type,
             html: capture.html,

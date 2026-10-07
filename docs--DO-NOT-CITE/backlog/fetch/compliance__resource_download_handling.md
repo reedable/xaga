@@ -31,10 +31,10 @@ established by the download unit tests and native redirect smoke test:
 Document verified controls and limitations in durable documentation. Address
 failures found by these tests.
 
-## Verification when PDF routing is integrated
+## Consumer routing verification
 
 Verify that resource candidates enter only their assigned validator and consumer.
 In particular, favicon candidates must not enter PDF persistence, inline rendering,
 or default-app opening. Review hidden and visible loaders, other windows, and
-subframes when introducing forced PDF download routing. Handler presence alone
+subframes with forced PDF download routing. Handler presence alone
 cannot scope that routing because Wry supplies a default download handler.

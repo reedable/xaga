@@ -1,6 +1,10 @@
 //! Native download smoke: fake external host served only by an explicit proxy.
 //! No public network requests. Run in a macOS GUI session.
 #[cfg(target_os = "macos")]
+#[path = "../src/article_diagnostics.rs"]
+#[allow(dead_code, unused_imports)]
+mod article_diagnostics;
+#[cfg(target_os = "macos")]
 #[path = "../src/resource_download.rs"]
 #[allow(dead_code)]
 mod resource_download;
@@ -11,7 +15,7 @@ mod webview_policy;
 fn main() {}
 #[cfg(target_os = "macos")]
 fn main() {
-    use resource_download::{ByteValidator, ICON_MAX_BYTES, IconValidator, StagedDownload};
+    use resource_download::{ByteValidator, ICON_MAX_BYTES, IconValidator, PdfValidator, StagedDownload};
     use std::{
         io::{Cursor, Read, Write},
         net::TcpListener,
@@ -42,9 +46,7 @@ fn main() {
         fn validate(self, bytes: &[u8]) -> Result<String, String> {
             match self {
                 Self::Icon => IconValidator.validate(bytes),
-                // Same format-signature contract as the existing PDF probe.
-                Self::Pdf if bytes.starts_with(b"%PDF-") => Ok("pdf".into()),
-                Self::Pdf => Err("invalid PDF signature".into()),
+                Self::Pdf => PdfValidator.validate(bytes).map(|_| "pdf".into()),
             }
         }
     }
@@ -154,9 +156,17 @@ fn main() {
                     render_handle.exit(0);
                 }
             })
-            .on_download(move |_, event| {
+            .on_download(move |webview, event| {
                 match event {
                     DownloadEvent::Requested { url, destination } => {
+                        // A first navigation can become a download before any page
+                        // URL exists. Exercise the production diagnostic collector.
+                        let evidence = article_diagnostics::DownloadDiagnostic::from_download(
+                            &webview, "http://download.example.invalid/start", &url,
+                            Some(destination.to_string_lossy().into_owned()), None,
+                        );
+                        assert!(evidence.current_url.is_none());
+                        assert_eq!(evidence.download_url, url.as_str());
                         assert!(!rendering, "renderable scenario incorrectly converted to download");
                         assert_eq!(url.as_str(), "http://download.example.invalid/icon-bytes", "callback reports redirected resource");
                         let job = StagedDownload::new(if pdf { Validator::Pdf } else { Validator::Icon }, ICON_MAX_BYTES).unwrap();
@@ -170,7 +180,7 @@ fn main() {
                         assert!(success, "transport must succeed before testing byte validation");
                         let result = job.finish(success);
                         if !valid {
-                            assert_eq!(result.unwrap_err(), "invalid PDF signature");
+                            assert_eq!(result.unwrap_err(), "unsupported download format");
                         } else if pdf {
                             assert_eq!(result.unwrap(), "pdf");
                         } else {

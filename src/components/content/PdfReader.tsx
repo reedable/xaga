@@ -4,7 +4,7 @@ import css from "./PdfReader.module.css";
 
 export interface PdfReaderProps {
   /**
-   * Blob URL of PDF bytes fetched and validated in Rust (through the SSRF
+   * Blob URL of PDF bytes retrieved and validated in Rust (through the SSRF
    * proxy, `%PDF-` checked). useContentLoader owns the blob's lifecycle.
    * Null while the content loader is still resolving the URL.
    */

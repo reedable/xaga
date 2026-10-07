@@ -11,3 +11,5 @@ pub mod images;
 pub mod opml;
 pub mod topics;
 pub(crate) mod walk;
+
+pub mod pdfs;

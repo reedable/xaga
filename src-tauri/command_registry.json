@@ -10,6 +10,9 @@
   "trusted": [
     "set_find_enabled",
     "commands::articles::load_article",
+    "commands::articles::cancel_article_load",
+    "commands::articles::read_stored_pdf",
+    "commands::articles::open_stored_pdf",
     "commands::articles::create_article_diagnostic",
     "commands::articles::add_article_diagnostic_event",
     "commands::articles::get_article_diagnostic",

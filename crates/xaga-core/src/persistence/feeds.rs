@@ -24,8 +24,7 @@ use super::walk::for_each_atom;
 /// plaintext `http://` request because the HTTP-allowed setting is off.
 /// Non-standard on purpose — see
 /// docs/architecture/security/fetching_remote_content.md, "Plaintext HTTP
-/// enforcement." Produced in `src-tauri/src/ssrf_proxy.rs`; consumed here
-/// ([`fetch_xml`]) and by the PDF probe (`src-tauri/src/commands/articles.rs`).
+/// enforcement." Produced in `ssrf_proxy.rs`; consumed here by [`fetch_xml`].
 pub const HTTP_BLOCKED_STATUS: u16 = 470;
 
 #[derive(Debug, Error)]

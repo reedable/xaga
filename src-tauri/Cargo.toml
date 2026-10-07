@@ -5,8 +5,7 @@ description = "Privacy-Focused Personal Knowledge Management"
 edition = "2024"
 
 [features]
-# Enable only when exercising the PDF-routing integration; the application
-# consumer still needs PDF persistence before replacing the probe.
+default = ["wry-pdf-downloads"]
 wry-pdf-downloads = ["wry/macos-download-pdf"]
 
 [lib]

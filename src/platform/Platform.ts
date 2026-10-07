@@ -70,6 +70,8 @@ export interface Platform {
   ): Promise<void>;
   getArticleDiagnostic(id: string): Promise<ArticleDiagnostic | null>;
   readEntry(signal: AbortSignal, id: string): Promise<Entry>;
+  openStoredPdf(url: string): Promise<void>;
+  readStoredPdf(signal: AbortSignal, url: string): Promise<{ pdfBase64?: string | null } | null>;
   loadArticle(
     signal: AbortSignal,
     url: string,

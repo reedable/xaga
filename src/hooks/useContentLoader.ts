@@ -2,37 +2,18 @@ import { useCallback, useEffect, useState, type RefObject } from "react";
 import { usePlatform } from "../platform/Platform";
 import { isAbortError } from "../types";
 import ArticleLoadAttempt from "../utils/ArticleLoadAttempt";
-import { useArticles } from "./useArticles";
+import { base64ToBytes, useArticles } from "./useArticles";
 import { useErrorSink } from "./useErrorSink";
 import useRouter from "./useRouter";
 import { useSettings } from "./useSettings";
 
-/**
- * Resolves a bare URL — one a link click or the URL bar pushed with no
- * entryId/mimeType yet — into a concrete presentation, then writes the result
- * back onto the current route entry:
- *
- *  - PDF (inline enabled, bytes)   → offloads the bytes to a Blob and exposes
- *    its URL for inline rendering.
- *  - PDF (reqwest blocked)         → the loader webview shows it in its own
- *    window; nothing renders inline.
- *  - PDF (inline disabled)         → open it externally.
- *  - HTML                          → the article is persisted; set entryId so
- *    the reader renders it.
- *  - spoof (Content-Type claimed PDF, body isn't) → record the blocked URL so
- *    ItemView can show a block message.
- *
- * Entries and annotations selected from lists already carry an entryId and are
- * rendered by ArticleReader directly, so the owner only invokes `resolve` for
- * bare URLs. The owner (ItemView) holds the AbortController and drives
- * cancellation: `abort(); resolve(url); return abort;`.
- */
+/** Resolve a URL from local storage or ingestion, then present validated content. */
 export function useContentLoader(
   abortControllerRef: RefObject<AbortController>
 ) {
   const platform = usePlatform();
-  const { pushError } = useErrorSink();
   const { inlinePdfReader } = useSettings();
+  const { pushError } = useErrorSink();
   const { replaceEntry, replaceMimeType } = useRouter();
   const { findArticleByUrl, loadArticleByUrl } =
     useArticles(abortControllerRef);
@@ -50,34 +31,61 @@ export function useContentLoader(
     if (!pdfBlobUrl) return;
     return () => URL.revokeObjectURL(pdfBlobUrl);
   }, [pdfBlobUrl]);
-  // The URL whose inline-PDF probe was blocked as a spoof, so ItemView can show
-  // a block message for exactly that URL.
+  // The URL whose downloaded content was rejected.
   const [blockedUrl, setBlockedUrl] = useState<string | null>(null);
 
   const resolve = useCallback(
-    async (url: string) => {
+    async (url: string, refresh = false) => {
       const { signal } = abortControllerRef.current;
       setPdfBlobUrl(null);
       setBlockedUrl(null);
 
-      const attempt = await ArticleLoadAttempt.create(platform, "load", signal);
+      const attempt = await ArticleLoadAttempt.create(
+        platform,
+        refresh ? "refresh" : "load",
+        signal
+      );
       let outcome: "succeeded" | "failed" | "cancelled" = "succeeded";
       try {
-        // Already saved? Point the route at the entry without re-fetching.
-        const existing = await findArticleByUrl(url, attempt);
-        signal.throwIfAborted();
-
-        if (existing) {
-          replaceEntry(existing);
-          return;
+        if (!refresh) {
+          const stored = await attempt.runStep("lookup", () =>
+            platform.readStoredPdf(signal, url)
+          );
+          signal.throwIfAborted();
+          if (stored) {
+            if (!inlinePdfReader) {
+              await platform.openStoredPdf(url);
+              signal.throwIfAborted();
+            } else if (stored.pdfBase64) {
+              setPdfBlobUrl(
+                URL.createObjectURL(
+                  new Blob([base64ToBytes(stored.pdfBase64)], {
+                    type: "application/pdf",
+                  })
+                )
+              );
+            }
+            replaceMimeType(
+              inlinePdfReader && stored.pdfBase64
+                ? "application/pdf"
+                : "text/html"
+            );
+            return;
+          }
+          const existing = await findArticleByUrl(url, attempt);
+          signal.throwIfAborted();
+          if (existing?.content) {
+            replaceEntry(existing);
+            return;
+          }
         }
 
         const result = await loadArticleByUrl(url, false, attempt);
         signal.throwIfAborted();
         if (!result) return;
 
-        // Blocked as a spoof — show a message for this URL.
-        if ("blockedSpoof" in result) {
+        // Show a neutral rejection message for this URL.
+        if ("blockedDownload" in result) {
           outcome = "failed";
           setBlockedUrl(url);
           replaceMimeType("text/html"); // clear the loading placeholder
@@ -86,7 +94,7 @@ export function useContentLoader(
 
         if (result.mimeType === "application/pdf") {
           const bytes = "pdfBytes" in result ? result.pdfBytes : null;
-          if (bytes) {
+          if (inlinePdfReader && bytes) {
             setPdfBlobUrl(
               await attempt.runStep("render", () =>
                 URL.createObjectURL(
@@ -95,13 +103,10 @@ export function useContentLoader(
               )
             );
             replaceMimeType("application/pdf");
-          } else if (inlinePdfReader) {
-            // reqwest was blocked but the loader webview found a PDF and is now
-            // showing it in its own window — nothing to render inline.
-            replaceMimeType("text/html");
           } else {
-            // Inline PDF disabled — open externally and mark resolved.
-            await attempt.runStep("render", () => platform.openUrl(url));
+            // Open only the native URL-derived, validated local PDF.
+            await platform.openStoredPdf(url);
+            signal.throwIfAborted();
             replaceMimeType("text/html");
           }
           return;
@@ -111,10 +116,7 @@ export function useContentLoader(
           replaceEntry(result.article);
         }
       } catch (error) {
-        outcome =
-          isAbortError(error)
-            ? "cancelled"
-            : "failed";
+        outcome = isAbortError(error) ? "cancelled" : "failed";
         pushError(error);
       } finally {
         await attempt.complete(outcome);
@@ -122,9 +124,9 @@ export function useContentLoader(
     },
     [
       abortControllerRef,
+      inlinePdfReader,
       findArticleByUrl,
       loadArticleByUrl,
-      inlinePdfReader,
       platform,
       pushError,
       replaceEntry,

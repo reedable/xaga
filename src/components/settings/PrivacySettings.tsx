@@ -1,16 +1,13 @@
 import { Close } from "@mui/icons-material";
 import {
   Button,
-  Checkbox,
   Chip,
-  FormControlLabel,
   IconButton,
   TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
 import { useEffect, useState } from "react";
-import { useSettings } from "../../hooks/useSettings";
 import { usePlatform } from "../../platform/Platform";
 import css from "./PrivacySettings.module.css";
 
@@ -19,7 +16,6 @@ const DOMAIN_RE =
 
 export function PrivacySettings() {
   const platform = usePlatform();
-  const { inlinePdfReader, setInlinePdfReader } = useSettings();
   const [domains, setDomains] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [inputError, setInputError] = useState(false);
@@ -115,24 +111,7 @@ export function PrivacySettings() {
         )}
       </div>
 
-      <div className={css.Section}>
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={inlinePdfReader}
-              onChange={(e) => setInlinePdfReader(e.target.checked)}
-            />
-          }
-          label="Allow inline PDF viewing"
-        />
-        <Typography variant="body2" color="text.secondary">
-          PDFs open in the system viewer by default. Enable this to read them in
-          the reading pane. This sends an extra request to check whether each
-          article you load is a PDF, even when it isn’t. Websites can observe
-          these requests, which may help them recognize that you’re using this
-          app.
-        </Typography>
-      </div>
+
     </div>
   );
 }

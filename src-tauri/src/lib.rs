@@ -83,7 +83,7 @@ pub(crate) struct AppState {
     /// Port of the local SSRF-filtering proxy that loader webviews and the
     /// per-invocation fetch clients (see [`fetch_client`]) are routed through.
     pub(crate) ssrf_proxy_port: u16,
-    /// Redirect cap for the reqwest fetch paths (feed XML, PDF probe), already
+    /// Redirect cap for the reqwest fetch paths (feed XML), already
     /// clamped to [`fetch_client::MAX_REDIRECTS_CEILING`]. The article loader
     /// webview is not covered (docs/architecture/security/fetching_untrusted_content.md,
     /// "Limits").
@@ -187,10 +187,10 @@ pub(crate) struct UserSettings {
     pub(crate) allowed_domains: Option<Vec<String>>,
     pub(crate) inline_pdf_reader: Option<bool>,
     pub(crate) html_reader_view: Option<String>,
-    /// Allow plaintext `http://` fetches (feeds, PDF probe, article loader).
+    /// Allow plaintext `http://` fetches (feeds, article loader and downloads).
     /// Enforced by the SSRF proxy. Defaults to false if absent.
     pub(crate) http_allowed: Option<bool>,
-    /// Maximum redirects per fetch on the reqwest paths (feed XML, PDF probe).
+    /// Maximum redirects per fetch on the reqwest paths (feed XML).
     /// 0 means the initial request only. Defaults to 3 if absent; clamped to
     /// 10. The default of 3 is a UX exception to secure-by-default — see
     /// docs/architecture/security/fetching_untrusted_content.md.
@@ -199,7 +199,7 @@ pub(crate) struct UserSettings {
     /// (reqwest fetch paths); it names the previous URL to the redirect
     /// target. Defaults to false if absent.
     pub(crate) referer_allowed: Option<bool>,
-    /// Whether the reqwest fetch paths (feed XML, PDF probe) send
+    /// Whether the reqwest fetch paths (feed XML) send
     /// `Accept-Encoding: gzip` and decompress compressed responses. When
     /// enabled, hosts learn the client negotiates gzip — one more property
     /// of the build than the default request shape reveals. Defaults to
@@ -868,6 +868,7 @@ pub fn run() {
                         "settings",
                         WebviewUrl::App("index.html".into()),
                     )
+                    .on_download(|_, _| false)
                     .title("Settings")
                     .inner_size(680.0, 520.0)
                     .visible(false);
@@ -937,7 +938,8 @@ pub fn run() {
         .setup(move |app| {
             // Build explicitly so the native WebRTC policy precedes even the
             // first document. The config's `create: false` prevents auto-build.
-            let builder = WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?;
+            let builder = WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
+                .on_download(|_, _| false);
             #[cfg(target_os = "macos")]
             let builder = builder.with_webview_configuration(
                 webview_policy::configuration().map_err(std::io::Error::other)?,
