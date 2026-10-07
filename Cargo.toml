@@ -10,3 +10,6 @@ resolver = "2"
 # Keep build-time libraries loadable until rust-lang/rust#157750 is resolved.
 [profile.release.build-override]
 strip = "none"
+
+[patch.crates-io]
+wry = { path = "../wry" }

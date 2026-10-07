@@ -4,6 +4,11 @@ version = "0.5.4"
 description = "Privacy-Focused Personal Knowledge Management"
 edition = "2024"
 
+[features]
+# Enable only when exercising the PDF-routing integration; the application
+# consumer still needs PDF persistence before replacing the probe.
+wry-pdf-downloads = ["wry/macos-download-pdf"]
+
 [lib]
 name = "xaga_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -40,6 +45,7 @@ tempfile            = "3"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "ico", "webp"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+wry = { version = "=0.57.0", default-features = false }
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSObject", "NSUUID"] }
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "WKPreferences", "WKWebViewConfiguration", "WKWebsiteDataStore"] }

@@ -184,5 +184,7 @@ is not implemented. Decoding runs off the native UI thread; late results after a
 load has ended are discarded rather than persisted.
 
 PDF byte validation can be supplied through the same validator contract when
-PDF response routing and persistence are integrated. This change does not patch
-Wry, remove the current PDF probe, or accept arbitrary article downloads.
+the PDF consumer and persistence are integrated. The local Wry dependency has
+a default-off PDF response-routing feature; ordinary application builds still
+use the current PDF probe and do not accept arbitrary article downloads.
+`docs/architecture/wry_pdf_routing.md` describes the feature and native tests.

@@ -30,31 +30,17 @@ Current source locations:
 
 The `%PDF-` check remains a format-signature check. This proposal neither removes it nor adds a new PDF inspection mechanism.
 
-## Wry patch and dependency strategy
+## Dependency and routing integration
 
-The initial investigation inspected Wry 0.54.4; the upgraded upstream baseline is now Wry 0.57.0. The upstream investigation through the 0.57.0 changelog and `dev` response handler did not find an exposed response-policy callback that solves this flow.
+Replace the local Wry workspace override with the reviewed fork's exact Git
+revision for reproducible builds. Keep the 0.57.0 patch base.
 
-In Wry's WebKit backend, `navigation_policy_response` currently chooses download for a response WebKit cannot display when a download handler exists. Otherwise it allows display. The proposed small patch adds PDF MIME-type recognition to that download decision. It targets the **response** policy, where MIME type is available, rather than the request navigation policy.
-
-The patch would select PDF download routing at compile time. Xaga uses the existing Tauri download callbacks and shared staging/validation pipeline. Determine how to scope forced PDF routing to intended article navigations. A Cargo feature could enable the patched behavior at build time, but would not itself select individual windows.
-
-Proposed development workflow:
-
-1. Fork Wry and maintain a small, documented patch against a compatible upstream version.
-2. Clone locally for development and exercise Xaga with a local Cargo override.
-3. Pin the reviewed fork commit using workspace `[patch.crates-io]` so Tauri's transitive Wry dependency resolves to the patched source. Verify resolution in `Cargo.lock` and `cargo tree`.
-4. Keep the upstream base and patch rationale recorded so future upgrades can reapply or retire the patch.
-
-The condition “download handler registered” does not adequately scope the behavior: Wry installs an accepting handler by default, and the callback is not a PDF-only contract. Other downloads can use the same callback. We must inventory other windows with download handlers and define visible-loader behavior explicitly.
-
-A WebKit-backend patch alone is not a cross-platform implementation. Equivalent behavior in Windows and Linux backends must be investigated before claiming platform-neutral support. The product-level flow can remain shared while Wry owns backend differences.
-
-Upstream references inspected during discussion:
-
-- https://github.com/tauri-apps/wry/blob/dev/src/wkwebview/navigation.rs
-- https://github.com/tauri-apps/wry/blob/dev/CHANGELOG.md
-
-These are moving references; record the exact base commit when implementing.
+Enable `wry-pdf-downloads` by default only after connecting the application PDF
+consumer. Verify rejection in main/settings windows and intended visible-loader
+behavior before enabling the build-wide rule. Extend native verification to
+remote PDF subframes, bundled application viewing, forbidden redirects, and
+session behavior. Evaluate Windows/Linux implementations separately before
+claiming cross-platform PDF conversion.
 
 ## Xaga implementation scope
 
@@ -132,15 +118,13 @@ Reqwest-specific redirect limits do not automatically transfer to WebKit. Audit 
 
 ## Design decisions
 
-1. Maintain a small pinned Wry fork, or wait for upstream support?
-2. Implement and verify macOS first with an explicit platform scope, or require equivalent Windows/Linux behavior before shipping?
-3. Choose the storage location and relationship to library metadata for PDFs keyed by normalized URL hash.
-4. Decide whether to move the retained PDF display preference to General settings.
-5. Resolve visible-loader downloads, read-only storage, content-type changes, and redirect-control differences during a focused implementation design pass.
+1. Confirm the build-wide main-frame PDF rule for visible loaders; per-window exceptions would require additional configuration.
+2. Choose the storage location and relationship to library metadata for PDFs keyed by normalized URL hash.
+3. Decide whether to move the retained PDF display preference to General settings.
+4. Resolve visible-loader downloads, read-only storage, content-type changes, and redirect-control differences during a focused implementation design pass.
 
 ## Implementation sequence
 
-Exercise the Wry PDF-routing patch with controlled HTML/PDF responses, proxy
-and redirect checks, and the shared download pipeline. Then implement PDF
-persistence and Xaga integration, followed by settings changes and durable
-documentation.
+Connect PDF validation and persistence to the application download consumer.
+Verify the full loader flow before enabling PDF routing and removing the probe.
+Then apply settings changes and update durable documentation.
