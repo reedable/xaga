@@ -63,3 +63,15 @@ pub fn loader_configuration(
     };
     Ok(config)
 }
+
+/// Proxy configuration belongs to the data store. Give each trusted UI webview
+/// its own store so configuring one cannot change a loader's network policy.
+pub fn ui_configuration() -> Result<Retained<WKWebViewConfiguration>, String> {
+    let config = configuration()?;
+    let mtm = MainThreadMarker::new().ok_or("UI policy requires main thread")?;
+    // SAFETY: the main-thread configuration retains its own ephemeral store.
+    unsafe {
+        config.setWebsiteDataStore(&WKWebsiteDataStore::nonPersistentDataStore(mtm));
+    }
+    Ok(config)
+}

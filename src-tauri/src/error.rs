@@ -22,7 +22,7 @@ use xaga_core::persistence::entries::EntryError;
 use xaga_core::persistence::feeds::FeedError;
 use xaga_core::persistence::topics::TopicsError;
 use xaga_core::query::items::ItemError;
-use xaga_core::ssrf_proxy::ProxyError;
+use xaga_core::network_proxy::ProxyError;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AppError {
@@ -124,6 +124,8 @@ app_from_domain!(
 /// channels. `message` is the only user-facing field; `detail` is log-only.
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct SerializedError {
+    #[serde(rename = "diagnosticId", skip_serializing_if = "Option::is_none")]
+    pub(crate) diagnostic_id: Option<String>,
     pub(crate) code: &'static str,
     pub(crate) message: &'static str,
     pub(crate) detail: String,
@@ -133,6 +135,7 @@ impl AppError {
     /// The owned wire shape, for event payloads that need `Clone`.
     pub(crate) fn serialized(&self) -> SerializedError {
         SerializedError {
+            diagnostic_id: None,
             code: self.code(),
             message: self.user_message(),
             detail: self.to_string(),

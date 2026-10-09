@@ -10,7 +10,7 @@ use xaga_core::embeddings::{
 use xaga_core::fs::FileLock;
 use xaga_core::library;
 use xaga_core::recovery;
-use xaga_core::ssrf_proxy;
+use xaga_core::network_proxy;
 
 use crate::die;
 
@@ -286,13 +286,13 @@ async fn download_model() {
         model_dir.display()
     );
 
-    // Dial through the SSRF proxy so redirect hops are address-validated and
+    // Dial through the network proxy so redirect hops are address-validated and
     // plaintext HTTP is refused. Both settings stay at their secure defaults
     // (no plaintext, CONNECT to 443 only): the download is https on 443, and
     // the CLI has no reason to relax either for it.
     let http_allowed = Arc::new(std::sync::RwLock::new(false));
     let connect_nonstandard_ports_allowed = Arc::new(std::sync::RwLock::new(false));
-    let proxy_port = match ssrf_proxy::start(ssrf_proxy::ProxyConfig::new(
+    let proxy_port = match network_proxy::start(network_proxy::ProxyConfig::new(
         http_allowed,
         connect_nonstandard_ports_allowed,
     ))
@@ -301,7 +301,7 @@ async fn download_model() {
         Ok(port) => port,
         Err(e) => die(e),
     };
-    let client = ssrf_proxy::proxied_client(proxy_port).unwrap_or_else(|e| die(e));
+    let client = network_proxy::proxied_client(proxy_port).unwrap_or_else(|e| die(e));
 
     if xaga_core::embeddings::model_present() {
         println!("Done. You can now run:  {DOWNLOAD_CMD_DONE}");

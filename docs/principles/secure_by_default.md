@@ -14,7 +14,7 @@ Each of these is verifiable in the source today:
 
 - **Loader webviews are incognito by default** — no cookies or site data written to disk. The user-controlled `allowed_domains` setting relaxes this per domain: an allow-listed domain gets a persistent, per-domain `WKWebsiteDataStore` (`article_loader.rs`). Default secure; relaxation explicit, user-owned, and scoped to the named domain.
 - **The inline PDF reader is off by default** (`inline_pdf_reader`, default `false`). PDFs use the same validated local download path for either presentation choice; when off, the stored PDF opens in the default app.
-- **All fetching of untrusted remote content routes through the SSRF proxy** — loader webviews, feed XML, and native resource downloads (see `docs/architecture/security/fetching_remote_content.md`). Private, loopback, and link-local destinations are unreachable by default.
+- **All fetching of untrusted remote content routes through the network proxy** — loader webviews, feed XML, and native resource downloads (see `docs/architecture/security/fetching_remote_content.md`). Private, loopback, and link-local destinations are unreachable by default.
 - **Timeouts are on by default and user controllable** — `loader_timeout_secs` and `feed_timeout_secs` (both default 10 s, settings.json).
 - **Unsupported downloads are reported neutrally**: an article download lacking the PDF signature is rejected with `article:unsupported-download`, without claiming that the server misrepresented its content.
 

@@ -38,3 +38,10 @@ The `native/` module is the home for this pattern: anything the app shell trigge
 ## The trap this guards against
 
 The pull to resist is routing every operation through the JS/webview layer _for consistency_. File import/export is where that pull is strongest — the natural instinct is to hand it to JS because every other operation goes through JS — and the uniformity hides that a trust boundary runs through the middle of it. Consistency across operations is not a virtue at a security boundary. Before registering a new command, ask: does any argument carry authority (a path, a URL to be written to disk as-is, a raw identifier the backend will trust)? If yes, the orchestration belongs in Rust (`src-tauri/src/native/`), not in the webview — however inconsistent that looks next to the other commands.
+
+## UI error delivery
+
+`take_ui_errors` is a trusted-UI command. It takes no window label from
+JavaScript: the invoking native window determines which notification queue is
+drained. Remote loader capabilities do not include it. Live `app:error` events
+are likewise targeted to the originating trusted webview window.

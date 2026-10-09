@@ -116,3 +116,22 @@ it.each([false, true])("shows favicon warning without claiming article failure (
   await act(() => push(new FaviconLoadError("https://example.org/article", !retry)));
   expect(alert?.textContent?.includes("Reloading the article will also retry loading its icon.")).toBe(retry);
 });
+
+
+it("shows native network errors through the existing sink and diagnostic action", async () => {
+  let deliver: (error: unknown) => void = () => {};
+  const stop = vi.fn();
+  const subscribe = vi.fn(async (callback: (error: unknown) => void) => {
+    deliver = callback;
+    return stop;
+  });
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(() => root.render(<ErrorSinkProvider subscribeErrors={subscribe}>{null}</ErrorSinkProvider>));
+  await act(() => deliver({code: "proxy:blocked", message: "Remote content was blocked.", detail: "main; private evidence", diagnosticId: "network-1"}));
+  expect(document.querySelector('[role="alert"]')?.textContent).toBe("Remote content was blocked.Details");
+  expect(document.body.textContent).not.toContain("private evidence");
+  await act(() => root.unmount());
+  expect(stop).toHaveBeenCalledOnce();
+});

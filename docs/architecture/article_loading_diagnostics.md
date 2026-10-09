@@ -171,3 +171,21 @@ Download diagnostics leave `currentUrl` null. A navigation can become a download
 before WebKit commits a document URL, and Wry 0.57's `url()` getter unwraps that
 absent value. The callback records the native download URL and original source
 URL without querying the webview's current URL.
+
+## Trusted UI network refusals
+
+Main and settings proxy observers use the same bounded diagnostic store and
+serialized error shape as other application errors. `app:error` is targeted to
+the corresponding webview window; `ErrorSinkProvider` is mounted in both UI
+entry points. An optional `diagnosticId` gives the existing error toast its
+Details action. No proxy-specific UI event payload is used.
+
+`take_ui_errors` drains up to eight retained notifications for the invoking
+trusted window, covering errors before its listener is installed. The frontend
+subscribes before draining and deduplicates by diagnostic ID. A new native
+window clears retained notifications from its previous instance. A burst of
+refusals shares a diagnostic record and produces one notification, with a new
+record after a one-second idle interval. Records use `main-network` or
+`settings-network` as their mode; this grouping does not establish which
+article, frame, or element initiated a request. Details contain destination
+host and port, without URL paths, query strings, or response bodies.

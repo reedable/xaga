@@ -9,6 +9,7 @@ mod error;
 mod events;
 mod fetch_client;
 mod native;
+mod ui_network;
 #[cfg(target_os = "macos")]
 mod webview_policy;
 
@@ -23,7 +24,7 @@ use tauri_plugin_window_state::StateFlags;
 use xaga_core::embeddings::{
     EmbeddingService, EmbeddingsDb, Job, ShutdownReason, Tier,
 };
-use xaga_core::ssrf_proxy;
+use xaga_core::network_proxy;
 
 /// The app's settings.json path, under xaga-core's data root — the single
 /// shared derivation, deliberately not Tauri's identifier-derived
@@ -82,7 +83,7 @@ pub(crate) struct AppState {
     pub(crate) html_reader_view: Arc<RwLock<String>>,
     /// Port of the local SSRF-filtering proxy that loader webviews and the
     /// per-invocation fetch clients (see [`fetch_client`]) are routed through.
-    pub(crate) ssrf_proxy_port: u16,
+    pub(crate) network_proxy_port: u16,
     /// Redirect cap for the reqwest fetch paths (feed XML), already
     /// clamped to [`fetch_client::MAX_REDIRECTS_CEILING`]. The article loader
     /// webview is not covered (docs/architecture/security/fetching_untrusted_content.md,
@@ -188,7 +189,7 @@ pub(crate) struct UserSettings {
     pub(crate) inline_pdf_reader: Option<bool>,
     pub(crate) html_reader_view: Option<String>,
     /// Allow plaintext `http://` fetches (feeds, article loader and downloads).
-    /// Enforced by the SSRF proxy. Defaults to false if absent.
+    /// Enforced by the network proxy. Defaults to false if absent.
     pub(crate) http_allowed: Option<bool>,
     /// Maximum redirects per fetch on the reqwest paths (feed XML).
     /// 0 means the initial request only. Defaults to 3 if absent; clamped to
@@ -562,15 +563,15 @@ pub fn run() {
     // fetch client is routed through. Fail fast: binding 127.0.0.1:0
     // essentially never fails, and running the loader without this proxy would
     // silently reopen the SSRF hole.
-    let proxy_config = ssrf_proxy::ProxyConfig::new(
+    let proxy_config = network_proxy::ProxyConfig::new(
         Arc::clone(&http_allowed), Arc::clone(&connect_nonstandard_ports_allowed));
-    let ssrf_proxy_port = tauri::async_runtime::block_on(ssrf_proxy::start(proxy_config.clone()))
+    let network_proxy_port = tauri::async_runtime::block_on(network_proxy::start(proxy_config.clone()))
         .expect("failed to start SSRF filtering proxy for the article loader");
 
     // The model download dials through the proxy like every other outbound
     // request (docs/architecture/security/fetching_remote_content.md,
     // "Who dials through it").
-    let model_download_client = ssrf_proxy::proxied_client(ssrf_proxy_port)
+    let model_download_client = network_proxy::proxied_client(network_proxy_port)
         .expect("failed to build the proxied model-download client");
 
     // Pre-created Arcs shared between .manage() and the .setup() closure.
@@ -648,7 +649,7 @@ pub fn run() {
             named_stores_supported,
             inline_pdf_reader,
             html_reader_view,
-            ssrf_proxy_port,
+            network_proxy_port,
             max_redirects,
             referer_allowed,
             gzip_allowed,
@@ -658,6 +659,7 @@ pub fn run() {
         .manage(loader_identity::LoaderSessions::default())
         .manage(article_diagnostics::ArticleDiagnostics::default())
         .manage(proxy_config)
+        .manage(ui_network::UiErrors::default())
         .plugin(
             // Transient article-loader webviews (label "loader-{id}", see
             // article_loader.rs) are created and closed constantly; persisting
@@ -863,17 +865,28 @@ pub fn run() {
                     win.show().ok();
                     win.set_focus().ok();
                 } else {
+                    let proxy = match ui_network::start(app, "settings") {
+                        Ok(proxy) => proxy,
+                        Err(error) => {
+                            log::error!("settings network policy: {error}");
+                            return;
+                        }
+                    };
                     let builder = WebviewWindowBuilder::new(
                         app,
                         "settings",
                         WebviewUrl::App("index.html".into()),
                     )
                     .on_download(|_, _| false)
+                    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+                    .proxy_url(
+                        network_proxy::proxy_url(proxy.port).parse().expect("local proxy URL"),
+                    )
                     .title("Settings")
                     .inner_size(680.0, 520.0)
                     .visible(false);
                     #[cfg(target_os = "macos")]
-                    let builder = match webview_policy::configuration() {
+                    let builder = match webview_policy::ui_configuration() {
                         Ok(config) => builder.with_webview_configuration(config),
                         Err(error) => {
                             log::error!("settings WebView policy: {error}");
@@ -881,6 +894,7 @@ pub fn run() {
                         }
                     };
                     if let Ok(win) = builder.build() {
+                        ui_network::retain_for_window(&win, proxy);
                         // Build hidden, paint the theme color, then reveal — same
                         // anti-flash treatment as the main window (A3).
                         let theme = app.state::<AppState>().theme.read().unwrap().clone();
@@ -938,13 +952,17 @@ pub fn run() {
         .setup(move |app| {
             // Build explicitly so the native WebRTC policy precedes even the
             // first document. The config's `create: false` prevents auto-build.
+            let proxy = ui_network::start(app.handle(), "main")?;
             let builder = WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
-                .on_download(|_, _| false);
+                .on_download(|_, _| false)
+                .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+                .proxy_url(network_proxy::proxy_url(proxy.port).parse()?);
             #[cfg(target_os = "macos")]
             let builder = builder.with_webview_configuration(
-                webview_policy::configuration().map_err(std::io::Error::other)?,
+                webview_policy::ui_configuration().map_err(std::io::Error::other)?,
             );
-            builder.build()?;
+            let window = builder.build()?;
+            ui_network::retain_for_window(&window, proxy);
             // Resolve settings: persisted settings.json or defaults.
             let settings_path = settings_path()?;
             let default_library =

@@ -1,3 +1,4 @@
+import { isAppError, type AppError as SerializedAppError } from "./errors";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -330,6 +331,34 @@ listen<string>("loader:will-unload" satisfies AppEvent, (e) => {
 });
 
 export class TauriPlatform implements Platform {
+  async onError(callback: (error: SerializedAppError) => void): Promise<UnlistenFn> {
+    const seen = new Set<string>();
+    const deliver = (error: unknown) => {
+      if (!isAppError(error) || typeof error.message !== "string" || typeof error.detail !== "string") return;
+      if (error.diagnosticId !== undefined && typeof error.diagnosticId !== "string") return;
+      if (error.diagnosticId) {
+        if (seen.has(error.diagnosticId)) return;
+        seen.add(error.diagnosticId);
+        if (seen.size > 64) seen.delete(seen.values().next().value!);
+      }
+      callback(error);
+    };
+    const name: AppEvent = "app:error";
+    const unlisten = await listen<SerializedAppError>(
+      name,
+      (event) => deliver(event.payload),
+      { target: { kind: "WebviewWindow", label: getCurrentWindow().label } },
+    );
+    try {
+      const pending = await invoke<SerializedAppError[]>("take_ui_errors");
+      pending.forEach(deliver);
+    } catch (error) {
+      unlisten();
+      throw error;
+    }
+    return unlisten;
+  }
+
   // Window --------------------------------------------------------------------
 
   async setWindowTitle(title: string): Promise<void> {

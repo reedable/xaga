@@ -57,7 +57,7 @@ export default function ArticleDiagnosticsDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Article loading diagnostics</DialogTitle>
+      <DialogTitle>Loading diagnostics</DialogTitle>
       <DialogContent>
         <Typography variant="body2">
           {diagnostic

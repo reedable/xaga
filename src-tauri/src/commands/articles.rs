@@ -485,7 +485,7 @@ pub async fn load_article(
     keep_open: bool,
     diagnostic_id: Option<String>,
     diagnostics: State<'_, ArticleDiagnostics>,
-    proxy_config: State<'_, xaga_core::ssrf_proxy::ProxyConfig>,
+    proxy_config: State<'_, xaga_core::network_proxy::ProxyConfig>,
     app: AppHandle,
     pending: State<'_, article_loader::PendingRequests>,
     state: State<'_, AppState>,
@@ -502,7 +502,7 @@ pub async fn load_article(
         attempt.add_started_event("proxy_start");
         let proxy_attempt = attempt.clone();
         let proxy = Arc::new(
-            xaga_core::ssrf_proxy::start_scoped(proxy_config.inner().clone().with_observer(
+            xaga_core::network_proxy::start_scoped(proxy_config.inner().clone().with_observer(
                 Arc::new(move |code, detail| {
                     proxy_attempt.add_event(
                         "proxy",

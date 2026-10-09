@@ -37,7 +37,7 @@ export default function App({ entryPoint }: { entryPoint: string }) {
   }, [platform]);
 
   return (
-    <>
+    <ErrorSinkProvider subscribeErrors={platform.onError}>
       {shuttingDown && (
         <div className={css.ShutdownOverlay}>Saving data, please wait…</div>
       )}
@@ -48,23 +48,21 @@ export default function App({ entryPoint }: { entryPoint: string }) {
         </MemoryRouter>
       ) : (
         <BrowserRouter>
-          <ErrorSinkProvider>
-            <ExpandedListProvider>
-              <TopicsProvider>
-                <FeedsProvider>
-                  <Routes>
-                    <Route
-                      path="/"
-                      element={cacheReady ? <AppLayout /> : null}
-                    />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
-                </FeedsProvider>
-              </TopicsProvider>
-            </ExpandedListProvider>
-          </ErrorSinkProvider>
+          <ExpandedListProvider>
+            <TopicsProvider>
+              <FeedsProvider>
+                <Routes>
+                  <Route
+                    path="/"
+                    element={cacheReady ? <AppLayout /> : null}
+                  />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </FeedsProvider>
+            </TopicsProvider>
+          </ExpandedListProvider>
         </BrowserRouter>
       )}
-    </>
+    </ErrorSinkProvider>
   );
 }

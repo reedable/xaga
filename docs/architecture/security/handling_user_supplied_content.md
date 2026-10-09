@@ -27,5 +27,5 @@ Extracted entries are persisted through `write_read_entry` / `set_entry_tags` (`
 ## What a hostile import file cannot do
 
 - **Choose its own path or bypass the dialog.** Both `import_feeds` and `import_bookmarks` are `pub(crate)` functions, not `#[tauri::command]`s — the file dialog runs in Rust and the chosen path never round-trips through the webview (`native/feeds.rs:1-8`, `native/bookmarks.rs:1-4`). A compromised renderer has no invoke door to redirect an import at an arbitrary file.
-- **Aim a fetch at an attacker-controlled address via a huge URL list**, per the OPML section above — the SSRF proxy (`fetching_remote_content.md`) still validates every URL's resolved address regardless of how many the import produces.
+- **Aim a fetch at an attacker-controlled address via a huge URL list**, per the OPML section above — the network proxy (`fetching_remote_content.md`) still validates every URL's resolved address regardless of how many the import produces.
 

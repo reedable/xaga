@@ -8,6 +8,7 @@
     "commands::articles::add_loader_diagnostic_event"
   ],
   "trusted": [
+    "ui_network::take_ui_errors",
     "set_find_enabled",
     "commands::articles::load_article",
     "commands::articles::cancel_article_load",

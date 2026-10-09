@@ -13,4 +13,4 @@ Open:
 - **Gating**: always compiled (user-runnable diagnostic; ships an arbitrary-URL fetch surface), cargo feature (CI-only; build-matrix split), or `debug_assertions` (no release presence, no feature plumbing).
 - Which network activities it covers beyond the download cap (feed fetches, proxy behavior, …).
 
-Facts that constrain the design: the SSRF proxy refuses loopback by policy, so a proxied test cannot reach a 127.0.0.1 server without the permissive constructor; the production download path's URL and cap are compile-time constants — the harness needs a core seam (`pub` diagnostic fn) that takes base + cap as parameters.
+Facts that constrain the design: the network proxy refuses loopback by policy, so a proxied test cannot reach a 127.0.0.1 server without the permissive constructor; the production download path's URL and cap are compile-time constants — the harness needs a core seam (`pub` diagnostic fn) that takes base + cap as parameters.

@@ -81,7 +81,7 @@ pub async fn load_via_webview(
     keep_open: bool,
     allowed_domains: &[String],
     named_stores_supported: bool,
-    proxy: Arc<xaga_core::ssrf_proxy::ScopedProxy>,
+    proxy: Arc<xaga_core::network_proxy::ScopedProxy>,
     attempt: ArticleLoadAttempt,
 ) -> Result<LoaderCapture, String> {
     if attempt.is_cancelled() {
@@ -256,7 +256,7 @@ pub async fn load_via_webview(
                     // Do not let remote content create unmanaged browser windows.
                     .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny);
 
-            let proxy = xaga_core::ssrf_proxy::proxy_url(build_proxy.port)
+            let proxy = xaga_core::network_proxy::proxy_url(build_proxy.port)
                 .parse::<tauri::Url>()
                 .map_err(|e| e.to_string())?;
             builder = builder.proxy_url(proxy);

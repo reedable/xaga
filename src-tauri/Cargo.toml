@@ -20,7 +20,7 @@ serde_json = "1"
 xaga-core        = { path = "../crates/xaga-core" }
 # `macos-proxy` makes `WebviewWindowBuilder::proxy_url` take effect on macOS
 # (needs macOS 14+, enforced via bundle.macOS.minimumSystemVersion). Without it,
-# the loader's SSRF proxy wiring is a silent no-op on macOS.
+# the loader's network proxy wiring is a silent no-op on macOS.
 # Wry 0.57 no longer gates its background/transparency support on a feature.
 # Keep Tauri's macos-private-api flag for its own macOS window support.
 tauri            = { version = "2.12.1", features = ["macos-proxy", "macos-private-api"] }
@@ -64,4 +64,8 @@ harness = false
 
 [[test]]
 name = "resource_download_webview"
+harness = false
+
+[[test]]
+name = "ui_network_webview"
 harness = false

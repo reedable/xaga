@@ -20,7 +20,7 @@ Standing architecture rules for this project. Each has its own doc; keep this in
 
 Architecture of the security-critical paths, in [security/](security/). These describe how a subsystem works and why — design and limits, not findings or status.
 
-1. [Fetching untrusted content](security/fetching_remote_content.md) — the network side. Three invariants on every outbound request: containment (the SSRF proxy — resolve, validate, pin), minimal truthful disclosure (withhold, never misrepresent), bounded resources.
+1. [Fetching untrusted content](security/fetching_remote_content.md) — the network side. Three invariants on every outbound request: containment (the network proxy — resolve, validate, pin), minimal truthful disclosure (withhold, never misrepresent), bounded resources.
 
 2. [Handling remote content](security/handling_remote_content.md) — the byte side of fetched content: feed XML and article HTML through parsing, transformation, and the write into storage.
 

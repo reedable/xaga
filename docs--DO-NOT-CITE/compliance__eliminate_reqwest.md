@@ -13,7 +13,7 @@ Recorded from `docs/architecture/security/fetching_remote_content.md` and from r
 - **Feed XML** — `fetch_xml` (`crates/xaga-core/src/persistence/feeds.rs`), reached from `add_feed`, `refresh_all_feeds`, and `import_feeds` (`src-tauri/src/commands/feeds.rs`).
 - **Inline-PDF probe** — `try_fetch_pdf` (`src-tauri/src/commands/articles.rs`).
 - **Embedding model download** — `download_model` (`crates/xaga-core/src/embeddings/model.rs`), plus the CLI's `download-model`, which starts its own proxy instance.
-- **Client factory** — `src-tauri/src/fetch_client.rs`, and `ssrf_proxy::proxied_client`.
+- **Client factory** — `src-tauri/src/fetch_client.rs`, and `network_proxy::proxied_client`.
 
 ## What the reqwest paths carry today
 
@@ -29,7 +29,7 @@ Each of these is a property of the reqwest clients specifically. The loader webv
 - **`HTTP_BLOCKED_STATUS` (470) mapping** — `fetch_xml` maps the proxy's plaintext refusal to `FeedError::HttpBlocked`.
 - **Per-request timeout** from `feed_timeout_secs`, separate from `loader_timeout_secs`.
 
-Containment is unaffected: both reqwest and the loader dial through the SSRF proxy, so DNS resolution, address validation, IP pinning, `http_allowed`, and `connect_nonstandard_ports_allowed` apply identically either way.
+Containment is unaffected: both reqwest and the loader dial through the network proxy, so DNS resolution, address validation, IP pinning, `http_allowed`, and `connect_nonstandard_ports_allowed` apply identically either way.
 
 ## Open items
 
@@ -43,5 +43,3 @@ Containment is unaffected: both reqwest and the loader dial through the SSRF pro
 ## Related
 
 - `docs--DO-NOT-CITE/backlog/fetch/spike__article_loader_redirect_cap.md` — blocks the redirect-cap item.
-- `docs--DO-NOT-CITE/compliance__main_webview_network_hardening.md` — unread at time of writing; may constrain this.
-- `docs--DO-NOT-CITE/compliance__summary_image_remote_fetches.md` — independent. Feed-summary images fetch from the main webview at render time regardless of which client fetched the XML; changing the transport does not close it.

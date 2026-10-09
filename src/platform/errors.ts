@@ -67,6 +67,7 @@ export type ErrorCode = (typeof ERROR_CODE)[number];
 
 /** The serialized shape a rejected command rejects with. */
 export interface AppError {
+  diagnosticId?: string;
   code: ErrorCode;
   /** User-safe; the only field to show a user. */
   message: string;

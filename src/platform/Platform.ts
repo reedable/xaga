@@ -22,6 +22,7 @@ import type {
 } from "../types";
 
 export interface Platform {
+  onError(callback: (error: import("./errors").AppError) => void): Promise<UnlistenFn>;
   // Window
   setWindowTitle(title: string): Promise<void>;
 
