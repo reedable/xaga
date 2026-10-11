@@ -10,9 +10,7 @@
   read and its write is overwritten (last-wins) within the ms-scale
   read-modify-write window. No external-editor detection (file watcher, mtime
   check at write time, or similar) exists.
-- Related: `docs-transient/backlog/ui/improvement__read_only_mode_ux.md` notes
-  the absence of a live cross-process update mechanism for the read-only
-  instance's stale view.
+- Read-only instances lack live cross-process updates and can retain stale views.
 
 ## Work
 

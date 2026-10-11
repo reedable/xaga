@@ -8,7 +8,7 @@ There is no single answer to "what does a Job carry" (`crates/xaga-core/src/embe
 - Some carry `EntityRef{id, kind}`: `SyncState`, `Delete`.
 - Some carry raw strings: `AddMember{topic_id, member_id}`.
 
-The per-kind split (`UpsertEntry`/`UpsertTopic`, `EmbedEntry`/`EmbedTopic`) was chosen over a single kind-carrying variant during the decoupling work without approval, and is the direct cause of several of the duplications in `docs-transient/backlog/cross_cutting/refactor__dry_consolidation.md`. The content variants were converted to carry objects; the rest were left as-is.
+The per-kind split (`UpsertEntry`/`UpsertTopic`, `EmbedEntry`/`EmbedTopic`) duplicates handling across entry and topic jobs. Decide whether a single kind-carrying variant would make the payload model consistent.
 
 ## Decisions
 

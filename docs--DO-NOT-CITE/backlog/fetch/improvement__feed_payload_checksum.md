@@ -2,7 +2,7 @@
 
 Track a checksum of each feed's fetched `.atom` payload. On refresh, if the checksum of the newly fetched body matches the last known checksum for that feed, skip the reconciliation of feed entries entirely — no parse, no `merge_entries`, no `.atom` rewrite, no `.md` scan, no Interactive-tier jobs.
 
-Scope of the win: this reduces the **local** parsing/reconciliation work (and the refresh burst it feeds into the Interactive tier — see `docs-transient/backlog/embeddings/improvement__interactive_batch_command.md`). It deliberately does **not** optimize away the network cost: the full body still downloads on every refresh. That network cost is a fair price for privacy — the alternative (conditional GET with `ETag`/`If-Modified-Since`) hands feed hosts a server-writable, read-back tracking channel and was rejected for that reason. See `docs/architecture/security/performance_tradeoff.md`.
+Scope of the win: this reduces the **local** parsing/reconciliation work (and the refresh burst it feeds into the Interactive tier — see interactive batch command). It deliberately does **not** optimize away the network cost: the full body still downloads on every refresh. That network cost is a fair price for privacy — the alternative (conditional GET with `ETag`/`If-Modified-Since`) hands feed hosts a server-writable, read-back tracking channel and was rejected for that reason. See `docs/architecture/security/performance_tradeoff.md`.
 
 ## Ordering constraint (crash consistency)
 

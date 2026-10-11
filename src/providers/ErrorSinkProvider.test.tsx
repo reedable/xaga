@@ -135,3 +135,31 @@ it("shows native network errors through the existing sink and diagnostic action"
   await act(() => root.unmount());
   expect(stop).toHaveBeenCalledOnce();
 });
+
+it("shows the image-load message and diagnostics through the existing AppError contract", async () => {
+  let push: (error: unknown) => void = () => {};
+  function CaptureImageError() {
+    push = useErrorSink().pushError;
+    return null;
+  }
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  mounted.push(root);
+  await act(() => root.render(<ErrorSinkProvider><CaptureImageError /></ErrorSinkProvider>));
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await act(() => push({
+      code: "app:error",
+      message: "An image couldn’t be loaded. Reloading the article will retry loading its images.",
+      detail: "One or more local article images could not be resolved.",
+      diagnosticId: "image-attempt",
+    }));
+    expect(document.body.textContent).toContain("An image couldn’t be loaded.");
+    expect(document.body.textContent).toContain("Details");
+    expect(document.body.textContent).not.toContain("Something went wrong.");
+    expect(document.body.textContent).not.toContain("One or more local");
+  } finally {
+    log.mockRestore();
+  }
+});

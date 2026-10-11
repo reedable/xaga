@@ -178,7 +178,7 @@ enum Op {
         favicon: Option<String>,
         markdown: String,
         /// `url → data:` for the images the loader fetched, so the persistence
-        /// layer can write files and build the frontmatter map.
+        /// layer can write local image files.
         url_data: std::collections::HashMap<String, String>,
         resp: oneshot::Sender<Result<Article, WriterError>>,
     },

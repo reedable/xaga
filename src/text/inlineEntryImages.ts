@@ -32,7 +32,8 @@ const LOCAL_PREFIX = "../images/";
 export async function inlineEntryImages(
   html: string,
   entryId: string,
-  resolve: ResolveEntryImages
+  resolve: ResolveEntryImages,
+  onMissing?: () => void
 ): Promise<string> {
   // Fast path and the compat guarantee: no local reference means nothing to do,
   // and the input is returned unchanged without parsing or calling resolve.
@@ -62,6 +63,7 @@ export async function inlineEntryImages(
     resolved = await resolve(entryId, refs);
   } catch {
     // Resolution unavailable: leave every reference untouched.
+    onMissing?.();
     return html;
   }
 
@@ -70,6 +72,7 @@ export async function inlineEntryImages(
     const dataUri = resolved[i];
     if (typeof dataUri === "string") byRef.set(ref, dataUri);
   });
+  if (byRef.size < refs.length) onMissing?.();
   if (byRef.size === 0) return html;
 
   for (const img of imgs) {

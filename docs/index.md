@@ -14,7 +14,6 @@ What governs, describes, and names the system. Long-lived; code and durable docs
 
 ## Transient
 
-Work in motion. Items move between these directories and are deleted when resolved; nothing durable — no code comment, no doc under the three directories above — may cite them.
-
-- `docs-transient/sprint/` — items pulled into active work.
-- `docs-transient/backlog/` — recorded items waiting: one fact-stated defect, debt, or improvement per file, with cited code locations.
+Transient tasks contain only remaining work and are deleted when resolved.
+Active tasks live at the transient-document root; deferred tasks live in its
+backlog. Code and durable documentation must not cite transient tasks.

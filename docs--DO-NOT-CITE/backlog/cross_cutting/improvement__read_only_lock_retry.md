@@ -33,5 +33,5 @@ the writer without a manual relaunch.
   library-switch restart path) is undecided.
 - Stale-view interaction: a read-only instance shows data as of its startup;
   on becoming the writer it must not write over state it has not read back.
-  Related: `docs-transient/backlog/ui/improvement__read_only_mode_ux.md`
+  Related: read only mode ux
   (stale-view surfacing) — separate item, likely the same reload mechanism.

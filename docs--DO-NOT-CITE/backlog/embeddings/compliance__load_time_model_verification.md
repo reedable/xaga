@@ -18,7 +18,7 @@ Facts for the implementation:
 Choose the behavior after a failed load-time check:
 
 1. **Fail the load.** Error like the current missing-file path; session runs in the existing degraded mode; bad files remain on disk for inspection; recovery requires deleting the model dir and re-downloading (manual today; the stall-handling / OOBE work may later surface it).
-2. **Self-heal.** Delete the failed files and invoke the existing verified download path (`download_model`, with the account right held by the caller). Session recovers without user action; costs: the on-disk evidence is destroyed, and an unprompted network fetch occurs — the same consent class as `docs-transient/backlog/ui/compliance__oobe_model_download_consent.md`.
+2. **Self-heal.** Delete the failed files and invoke the existing verified download path (`download_model`, with the account right held by the caller). Session recovers without user action; costs: the on-disk evidence is destroyed, and an unprompted network fetch occurs — the same consent class as oobe model download consent.
 
 ## On completion
 

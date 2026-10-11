@@ -64,12 +64,8 @@ pub(crate) async fn save_article(
         (chrono::Utc::now().to_rfc3339(), vec![], vec![])
     };
 
-    // Rewrite every remote image reference to its ext-less local ref
-    // `../images/<id>/<hash>`, writing files for the URLs whose bytes `url_data`
-    // supplied. Images are written BEFORE the `.md` below, so a committed
-    // reference with a file behind it always has durable bytes (see
-    // docs/architecture/crash_consistency.md). The `hash → url` map is stored in
-    // frontmatter — the only place the remote URL survives.
+    // Prepare candidate local URLs, write image files before Markdown, and
+    // commit only URLs whose files were successfully persisted.
     let mut extraction = crate::persistence::images::extract_images(id, markdown, url_data);
 
     // The favicon is localised exactly like a body image: its bytes join the same
@@ -89,9 +85,6 @@ pub(crate) async fn save_article(
                         extraction.images.push(image);
                     }
                 }
-                if !extraction.url_map.iter().any(|(h, _)| h == &hash) {
-                    extraction.url_map.push((hash.clone(), url.to_string()));
-                }
                 Some(crate::library::entry_image_ref(id, &hash))
             }
             None => Some(url.to_string()),
@@ -99,13 +92,7 @@ pub(crate) async fn save_article(
         None => None,
     };
 
-    crate::persistence::images::write_entry_images(library_dir, id, &extraction.images, token).await;
-
-    let images: Vec<crate::types::ImageRef> = extraction
-        .url_map
-        .into_iter()
-        .map(|(hash, url)| crate::types::ImageRef { hash, url })
-        .collect();
+    let landed = crate::persistence::images::write_entry_images(library_dir, id, &extraction.images, token).await;
 
     let article = Article {
         meta: Entry {
@@ -120,10 +107,9 @@ pub(crate) async fn save_article(
             is_bookmarked: crate::tags::is_bookmarked(&existing_tags),
             color: None,
         },
-        content: extraction.body,
+        content: extraction.persisted_body(&landed),
         annotations: with_reference(existing_annotations, id),
         favicon,
-        images,
     };
     crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
 
@@ -132,11 +118,16 @@ pub(crate) async fn save_article(
     // ref is ext-less and the file is `<hash>.<ext>`), so a previously-fetched
     // image that is still referenced but not re-fetched this save is preserved.
     // Best-effort; never fails the save.
-    let keep: std::collections::HashSet<String> = article
-        .images
-        .iter()
-        .map(|img| img.hash.clone())
-        .collect();
+    let mut keep = crate::persistence::images::referenced_image_hashes(id, &article.content);
+    if let Some((ref_id, hash)) = article
+        .favicon
+        .as_deref()
+        .and_then(crate::library::parse_entry_image_ref)
+    {
+        if ref_id == id {
+            keep.insert(hash.to_owned());
+        }
+    }
     crate::persistence::images::gc_entry_images(library_dir, id, &keep, token).await;
 
     Ok(article)
@@ -336,11 +327,51 @@ mod tests {
             .contains(&format!("../images/abcdef123456/{hash}")));
         assert!(!article.content.contains("http"));
         assert!(!article.content.contains("base64"));
-        // Frontmatter map retained the URL, and the file was written.
-        assert_eq!(article.images.len(), 1);
-        assert_eq!(article.images[0].url, url);
+        // The file was written.
         let images_dir = crate::library::entry_images_dir(lib, "abcdef123456");
         assert_eq!(std::fs::read_dir(&images_dir).unwrap().count(), 1);
+    }
+
+    #[tokio::test]
+    async fn legacy_image_map_is_ignored_and_not_serialized() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = "abcdef123456";
+        let path = crate::library::entry_path(dir.path(), id);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // Even an obsolete map with an unexpected shape is unused metadata.
+        let raw = "---\nsource: https://example.com/article\ntitle: Legacy\ncreated_at: 2026-01-01T00:00:00Z\nimages: obsolete-metadata\n---\n![alt](../images/abcdef123456/123456abcdef)\n";
+        std::fs::write(&path, raw).unwrap();
+        let article = read_article(dir.path(), id).await.unwrap();
+        assert!(article.content.contains("../images/abcdef123456/123456abcdef"));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
+        let serialized = render_entry(&article);
+        assert!(!serialized.contains("images:"));
+        assert!(!serialized.contains("obsolete-metadata"));
+        assert!(serialized.contains("![alt](../images/abcdef123456/123456abcdef)"));
+    }
+
+    #[tokio::test]
+    async fn resave_local_body_and_favicon_keeps_files_without_frontmatter_map() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        let id = "abcdef123456";
+        let image_url = "https://example.com/image.png";
+        let icon_url = "https://example.com/icon.png";
+        let mut bytes = data(image_url, PNG_DATA);
+        bytes.extend(data(icon_url, PNG_DATA));
+        let article = save_article(lib, id, "https://example.com/a", "T", None, None, None,
+            Some(icon_url), &format!("![alt]({image_url})"), &bytes, WriteToken::for_test()).await.unwrap();
+        let image_dir = crate::library::entry_images_dir(lib, id);
+        let orphan = image_dir.join("000000000000.png");
+        std::fs::write(&orphan, b"orphan").unwrap();
+        save_article(lib, id, "https://example.com/a", "T", None, None, None,
+            article.favicon.as_deref(), &article.content, &no_data(), WriteToken::for_test()).await.unwrap();
+        for url in [image_url, icon_url] {
+            assert!(image_dir.join(format!("{}.png", crate::persistence::images::image_url_hash(url))).exists());
+        }
+        assert!(!orphan.exists());
+        let stored = std::fs::read_to_string(crate::library::entry_path(lib, id)).unwrap();
+        assert!(!stored.contains("images:"));
     }
 
     #[tokio::test]
@@ -377,9 +408,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn save_article_broken_ref_when_bytes_absent_but_url_mapped() {
-        // A failed fetch: no bytes → no file, body has a broken local ref, and the
-        // URL is retained in the frontmatter map for recovery.
+    async fn save_article_keeps_remote_url_when_bytes_absent() {
+        // No captured bytes: retain the remote URL without creating a local path.
         let dir = tempfile::tempdir().unwrap();
         let lib = dir.path();
         let url = "https://example.com/missing.png";
@@ -390,15 +420,31 @@ mod tests {
         .await
         .unwrap();
         let article = read_article(lib, "abcdef123456").await.unwrap();
-        let hash = crate::persistence::images::image_url_hash(url);
-        assert!(article
-            .content
-            .contains(&format!("../images/abcdef123456/{hash}")));
-        assert_eq!(article.images.len(), 1);
-        assert_eq!(article.images[0].url, url);
+        assert_eq!(article.content, format!("![x]({url})"));
         // No file was written.
         let images_dir = crate::library::entry_images_dir(lib, "abcdef123456");
         assert!(std::fs::read_dir(&images_dir).map(|d| d.count()).unwrap_or(0) == 0);
+    }
+
+    #[tokio::test]
+    async fn partial_image_write_failure_preserves_remote_url_and_successful_local_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        let id = "abcdef123456";
+        let good = "https://example.com/good.png";
+        let bad = "https://example.com/bad.png";
+        let good_hash = crate::persistence::images::image_url_hash(good);
+        let bad_hash = crate::persistence::images::image_url_hash(bad);
+        // A directory at the destination makes atomic file replacement fail.
+        std::fs::create_dir_all(crate::library::entry_image_path(lib, id, &format!("{bad_hash}.png"))).unwrap();
+        let mut bytes = data(good, PNG_DATA);
+        bytes.extend(data(bad, PNG_DATA));
+        let body = format!("![bad]({bad}) ![good]({good}) ![again]({bad})");
+        save_article(lib, id, "https://example.com/a", "T", None, None, None, None,
+            &body, &bytes, WriteToken::for_test()).await.unwrap();
+        let saved = read_article(lib, id).await.unwrap();
+        assert_eq!(saved.content, format!("![bad]({bad}) ![good](../images/{id}/{good_hash}) ![again]({bad})"));
+        assert!(crate::library::entry_image_path(lib, id, &format!("{good_hash}.png")).is_file());
     }
 
     #[tokio::test]
@@ -414,7 +460,6 @@ mod tests {
         .unwrap();
         let article = read_article(lib, "abcdef123456").await.unwrap();
         assert_eq!(article.content, body.trim_end());
-        assert!(article.images.is_empty());
         assert!(!crate::library::entry_images_dir(lib, "abcdef123456").exists());
     }
 
@@ -440,8 +485,6 @@ mod tests {
             article.favicon.as_deref(),
             Some(crate::library::entry_image_ref(id, &hash).as_str())
         );
-        // The URL survives only in the frontmatter map, so a lost file is recoverable.
-        assert!(article.images.iter().any(|i| i.url == favicon_url));
         assert!(crate::library::entry_image_path(lib, id, &format!("{hash}.png")).exists());
     }
 
@@ -463,7 +506,6 @@ mod tests {
         let article = read_article(lib, id).await.unwrap();
         assert!(article.favicon.as_deref().unwrap().starts_with("../images/"));
         assert!(!article.favicon.as_deref().unwrap().contains("http"));
-        assert!(article.images.iter().any(|i| i.url == favicon_url));
     }
 
     #[tokio::test]
@@ -665,7 +707,6 @@ fn article_from_fm(
     favicon: Option<String>,
     body: String,
 ) -> Article {
-    let images = fm.images.clone();
     Article {
         meta: md_to_entry(Markdown {
             id: article_id.to_string(),
@@ -675,6 +716,5 @@ fn article_from_fm(
         content: body,
         annotations: with_reference(annotations, article_id),
         favicon,
-        images,
     }
 }

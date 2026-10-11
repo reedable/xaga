@@ -66,7 +66,7 @@ export async function processEntry(
   favicon: string | null;
   /** `url → data:` for the images the loader fetched that survived extraction.
    * The body carries the remote URLs; Rust hashes them, writes files from these
-   * bytes, and records the `hash → url` map. */
+   * bytes, and uses local URLs only for successfully persisted body images. */
   imageData: Record<string, string>;
 }> {
   phase?.("parse");

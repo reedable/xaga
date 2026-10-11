@@ -93,8 +93,8 @@ export interface Platform {
     diagnosticId?: string
   ): Promise<Article | null>;
   // `imageData` maps each fetched image's remote URL to its `data:` bytes (from
-  // processEntry); the backend writes the files and the frontmatter `hash → url`
-  // map. Omit/empty when saving without freshly-fetched images.
+  // processEntry); the backend writes files and uses local body URLs only for
+  // successful writes. Omit/empty when saving without freshly-fetched images.
   saveArticle(
     signal: AbortSignal,
     article: Article,
