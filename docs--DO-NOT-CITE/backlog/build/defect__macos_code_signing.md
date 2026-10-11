@@ -1,4 +1,4 @@
-# macOS code signing: stable identity to stop the WebCrypto keychain prompt (pending)
+# macOS code signing: stable identity to stop the WebCrypto keychain prompt
 
 ## Symptom
 

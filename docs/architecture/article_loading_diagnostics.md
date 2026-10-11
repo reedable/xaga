@@ -27,13 +27,13 @@ warnings, failures, skipped work, and cancellation. Frontend events are queued
 in order; elapsed times measure receipt by the native collector, not precise
 CPU time inside synchronous extraction.
 
-The load command records optional PDF-probe response status, PDF validation,
-transport cause chains and browser fallback. The loader records native window
-construction/policy failures, navigation milestones, page-reported capture
-progress, delivery, and image/favicon problems. A failed PDF probe stays in the
-record even if the browser succeeds. Image problems are aggregated by reason
-with counts. A favicon failure is a warning; already captured article HTML is
-preserved if favicon navigation stalls or returns an HTML error document.
+The load command records native download validation and PDF persistence. The
+loader records window construction/policy failures, navigation milestones,
+page-reported capture progress, delivery, and image/favicon problems. Image
+problems are aggregated by reason with counts. A favicon failure is a warning;
+already captured article HTML is preserved if favicon navigation stalls or
+returns an HTML error document. Cancellation ends the matching pending capture
+and destroys its loader. Download callbacks do not expose HTTP response headers.
 
 Native storage errors retain their typed code and available cause chain.
 Frontmatter parser fragments and arbitrary JavaScript exception messages are
@@ -55,7 +55,7 @@ failure/cancellation records.
 Each native article load gets a scoped loopback proxy listener built from the
 same `ProxyConfig` as the shared proxy. Policy handles are shared, so current
 HTTP/CONNECT settings and the existing resolve/validate/pin rules still apply.
-The PDF client and loader use this listener. No diagnostic ID or extra header is
+The loader and its native downloads use this listener. No diagnostic ID or extra header is
 sent to the publisher. Proxy events are attributed by listener ownership, never
 by comparing hostnames or timestamps from concurrent loads.
 
@@ -63,7 +63,7 @@ The proxy reports invalid requests, local hostname refusal, blocked addresses,
 DNS failure, disallowed CONNECT ports, disabled plaintext HTTP, connection
 failure, and I/O errors. Its observer contains no orchestration or storage;
 the command layer attaches the diagnostic collector. Dropping the scoped proxy
-closes its listener and active tunnels. A visible loader or PDF fallback retains
+closes its listener and active tunnels. A visible loader retains
 it until its window is destroyed.
 
 A proxy event belongs to the attempt, but can concern a subresource. It is not
@@ -81,8 +81,8 @@ request ID to that window before consuming pending state.
 
 Page-reported milestones are explicitly marked `source: loader`: the remote
 page can forge them, and they are not security evidence. Native/proxy observations
-remain separate. Reports exclude HTML, PDF bytes, image data, cookies, headers,
-and raw URLs. URL-bearing tokens in native exception text are removed; strings
+remain separate. General events exclude HTML, PDF bytes, image data, cookies, headers,
+and raw URLs. Native download evidence is the explicit exception described below. URL-bearing tokens in native exception text are removed; strings
 are length-limited and control characters stripped. Frontend diagnostics accept
 codes rather than raw exception text, and stored frontmatter parse errors are
 classified without including their source fragments.
@@ -116,6 +116,76 @@ local test listeners.
 Native browser behavior must be smoke-tested in a bundled build, following
 [fetching remote content](security/fetching_remote_content.md): test an invalid
 URL, blocked local target, unavailable server, stalled page, favicon failure,
-PDF fallback, and a visible loader. Verify the notification's copied record and
+PDF download, and a visible loader. Verify the notification's copied record and
 the release log agree. A development-server run does not establish bundled
 WebKit behavior.
+
+## Download evidence
+
+Article loaders override Wry's default acceptance with native pending-phase
+checks. The first download during the pending favicon phase is accepted into private
+temporary storage and must pass image-byte validation before entering existing
+persistence. Downloads outside that phase and additional downloads are rejected.
+The callback URL may be redirected and does not establish the initiating frame.
+Diagnostic collection makes no extra
+network requests. `article:download-accepted` records transport acceptance, not
+validation or persistence success; `download_validation` and `favicon` record
+processing. Download failure or validation rejection completes the pending
+capture with the original article HTML and a favicon warning.
+
+`download_requested` events include a structured `download` object: native loader
+label, original article URL, current webview URL (if available), download URL,
+and proposed local destination. `download_finished` records any runtime completion
+callback, including its success flag and optional path. A completion callback is
+not guaranteed after rejection; on macOS its path can be absent. The current
+webview URL is context, not proof of the initiating frame or redirect chain.
+Tauri does not expose response headers, MIME type, HTTP status, the initiator,
+or a cancellation error through this callback. These must not be inferred.
+
+These records appear in Copy diagnostics and the bounded native release log
+(`~/Library/Logs/xaga` on macOS), including when article loading succeeds and no
+error dialog appears. Search the log for `download_requested` or
+`article:download-rejected`. Each line carries the existing attempt ID.
+The event count and log size limits above still apply. Individual evidence fields
+are limited to 4096 characters and control characters removed. HTTP(S) URL
+credentials and fragments are removed; other schemes are omitted entirely.
+Paths and query parameters are retained to identify the resource, so reports
+and logs can contain sensitive tokens or filenames. Review before sharing.
+The diagnostics dialog displays a reminder when download evidence is present.
+
+## Favicon notifications
+
+Observed acquisition failures in the native favicon phase show a warning:
+“The site icon couldn’t be loaded.” The warning retains the attempt's Details
+link. Favicon timeouts do not use the generic page-timeout notification.
+
+When a saved icon reference is remote or its local bytes cannot be read, the
+warning is: “The site icon couldn’t be loaded. Reloading the article will also
+retry loading its icon.” No reference alone is not treated as a load failure.
+Remote references remain excluded from toolbar image sources. Notifications
+are deduplicated by article URL for the lifetime of the error-sink provider
+(the app session); the first warning is retained for that URL. These warnings
+make no claim about article availability or the validity of its content.
+
+Download diagnostics leave `currentUrl` null. A navigation can become a download
+before WebKit commits a document URL, and Wry 0.57's `url()` getter unwraps that
+absent value. The callback records the native download URL and original source
+URL without querying the webview's current URL.
+
+## Trusted UI network refusals
+
+Main and settings proxy observers use the same bounded diagnostic store and
+serialized error shape as other application errors. `app:error` is targeted to
+the corresponding webview window; `ErrorSinkProvider` is mounted in both UI
+entry points. An optional `diagnosticId` gives the existing error toast its
+Details action. No proxy-specific UI event payload is used.
+
+`take_ui_errors` drains up to eight retained notifications for the invoking
+trusted window, covering errors before its listener is installed. The frontend
+subscribes before draining and deduplicates by diagnostic ID. A new native
+window clears retained notifications from its previous instance. A burst of
+refusals shares a diagnostic record and produces one notification, with a new
+record after a one-second idle interval. Records use `main-network` or
+`settings-network` as their mode; this grouping does not establish which
+article, frame, or element initiated a request. Details contain destination
+host and port, without URL paths, query strings, or response bodies.

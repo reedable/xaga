@@ -44,3 +44,17 @@ The loader webview returns the page's raw DOM HTML. `processEntry` (`entryWorker
 ### Persistence
 
 Article markdown is stored in the same `{hash12}.md` files as feed entries, with the same serde_yaml frontmatter boundary for title/summary/annotations (see above). What is on disk has already crossed the DOMPurify boundary. Reading it back and rendering it is a separate boundary — see [handling_persisted_content.md](handling_persisted_content.md).
+
+## Native PDF downloads
+
+The article consumer stages downloads outside the library, applies the injected
+PDF validator, and only then submits accepted bytes to the library writer.
+The validator requires a `%PDF-` prefix and at most 64 MiB. MIME drives WebKit's
+routing but does not authorize persistence. Invalid format produces a neutral
+unsupported-download error; transport and staging errors retain failure details.
+No PDF bytes supplied by renderer capture callbacks are accepted.
+
+PDF writes share the normalized source URL's entry lane with Markdown writes.
+Replacement is atomic; failed validation preserves the previous file. Saving a
+PDF preserves Markdown and annotations. A successful HTML save removes its
+associated PDF so subsequent URL lookup selects the HTML representation.

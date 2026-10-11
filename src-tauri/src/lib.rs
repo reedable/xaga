@@ -1,3 +1,7 @@
+mod command_policy;
+mod loader_identity;
+mod resource_download;
+mod loader_download;
 mod article_loader;
 mod article_diagnostics;
 mod commands;
@@ -5,6 +9,7 @@ mod error;
 mod events;
 mod fetch_client;
 mod native;
+mod ui_network;
 #[cfg(target_os = "macos")]
 mod webview_policy;
 
@@ -19,7 +24,7 @@ use tauri_plugin_window_state::StateFlags;
 use xaga_core::embeddings::{
     EmbeddingService, EmbeddingsDb, Job, ShutdownReason, Tier,
 };
-use xaga_core::ssrf_proxy;
+use xaga_core::network_proxy;
 
 /// The app's settings.json path, under xaga-core's data root — the single
 /// shared derivation, deliberately not Tauri's identifier-derived
@@ -78,8 +83,8 @@ pub(crate) struct AppState {
     pub(crate) html_reader_view: Arc<RwLock<String>>,
     /// Port of the local SSRF-filtering proxy that loader webviews and the
     /// per-invocation fetch clients (see [`fetch_client`]) are routed through.
-    pub(crate) ssrf_proxy_port: u16,
-    /// Redirect cap for the reqwest fetch paths (feed XML, PDF probe), already
+    pub(crate) network_proxy_port: u16,
+    /// Redirect cap for the reqwest fetch paths (feed XML), already
     /// clamped to [`fetch_client::MAX_REDIRECTS_CEILING`]. The article loader
     /// webview is not covered (docs/architecture/security/fetching_untrusted_content.md,
     /// "Limits").
@@ -183,10 +188,10 @@ pub(crate) struct UserSettings {
     pub(crate) allowed_domains: Option<Vec<String>>,
     pub(crate) inline_pdf_reader: Option<bool>,
     pub(crate) html_reader_view: Option<String>,
-    /// Allow plaintext `http://` fetches (feeds, PDF probe, article loader).
-    /// Enforced by the SSRF proxy. Defaults to false if absent.
+    /// Allow plaintext `http://` fetches (feeds, article loader and downloads).
+    /// Enforced by the network proxy. Defaults to false if absent.
     pub(crate) http_allowed: Option<bool>,
-    /// Maximum redirects per fetch on the reqwest paths (feed XML, PDF probe).
+    /// Maximum redirects per fetch on the reqwest paths (feed XML).
     /// 0 means the initial request only. Defaults to 3 if absent; clamped to
     /// 10. The default of 3 is a UX exception to secure-by-default — see
     /// docs/architecture/security/fetching_untrusted_content.md.
@@ -195,7 +200,7 @@ pub(crate) struct UserSettings {
     /// (reqwest fetch paths); it names the previous URL to the redirect
     /// target. Defaults to false if absent.
     pub(crate) referer_allowed: Option<bool>,
-    /// Whether the reqwest fetch paths (feed XML, PDF probe) send
+    /// Whether the reqwest fetch paths (feed XML) send
     /// `Accept-Encoding: gzip` and decompress compressed responses. When
     /// enabled, hosts learn the client negotiates gzip — one more property
     /// of the build than the default request shape reveals. Defaults to
@@ -558,15 +563,15 @@ pub fn run() {
     // fetch client is routed through. Fail fast: binding 127.0.0.1:0
     // essentially never fails, and running the loader without this proxy would
     // silently reopen the SSRF hole.
-    let proxy_config = ssrf_proxy::ProxyConfig::new(
+    let proxy_config = network_proxy::ProxyConfig::new(
         Arc::clone(&http_allowed), Arc::clone(&connect_nonstandard_ports_allowed));
-    let ssrf_proxy_port = tauri::async_runtime::block_on(ssrf_proxy::start(proxy_config.clone()))
+    let network_proxy_port = tauri::async_runtime::block_on(network_proxy::start(proxy_config.clone()))
         .expect("failed to start SSRF filtering proxy for the article loader");
 
     // The model download dials through the proxy like every other outbound
     // request (docs/architecture/security/fetching_remote_content.md,
     // "Who dials through it").
-    let model_download_client = ssrf_proxy::proxied_client(ssrf_proxy_port)
+    let model_download_client = network_proxy::proxied_client(network_proxy_port)
         .expect("failed to build the proxied model-download client");
 
     // Pre-created Arcs shared between .manage() and the .setup() closure.
@@ -644,15 +649,17 @@ pub fn run() {
             named_stores_supported,
             inline_pdf_reader,
             html_reader_view,
-            ssrf_proxy_port,
+            network_proxy_port,
             max_redirects,
             referer_allowed,
             gzip_allowed,
             settings_baseline,
         })
         .manage(article_loader::PendingRequests::default())
+        .manage(loader_identity::LoaderSessions::default())
         .manage(article_diagnostics::ArticleDiagnostics::default())
         .manage(proxy_config)
+        .manage(ui_network::UiErrors::default())
         .plugin(
             // Transient article-loader webviews (label "loader-{id}", see
             // article_loader.rs) are created and closed constantly; persisting
@@ -858,16 +865,28 @@ pub fn run() {
                     win.show().ok();
                     win.set_focus().ok();
                 } else {
+                    let proxy = match ui_network::start(app, "settings") {
+                        Ok(proxy) => proxy,
+                        Err(error) => {
+                            log::error!("settings network policy: {error}");
+                            return;
+                        }
+                    };
                     let builder = WebviewWindowBuilder::new(
                         app,
                         "settings",
                         WebviewUrl::App("index.html".into()),
                     )
+                    .on_download(|_, _| false)
+                    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+                    .proxy_url(
+                        network_proxy::proxy_url(proxy.port).parse().expect("local proxy URL"),
+                    )
                     .title("Settings")
                     .inner_size(680.0, 520.0)
                     .visible(false);
                     #[cfg(target_os = "macos")]
-                    let builder = match webview_policy::configuration() {
+                    let builder = match webview_policy::ui_configuration() {
                         Ok(config) => builder.with_webview_configuration(config),
                         Err(error) => {
                             log::error!("settings WebView policy: {error}");
@@ -875,6 +894,7 @@ pub fn run() {
                         }
                     };
                     if let Ok(win) = builder.build() {
+                        ui_network::retain_for_window(&win, proxy);
                         // Build hidden, paint the theme color, then reveal — same
                         // anti-flash treatment as the main window (A3).
                         let theme = app.state::<AppState>().theme.read().unwrap().clone();
@@ -932,12 +952,17 @@ pub fn run() {
         .setup(move |app| {
             // Build explicitly so the native WebRTC policy precedes even the
             // first document. The config's `create: false` prevents auto-build.
-            let builder = WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?;
+            let proxy = ui_network::start(app.handle(), "main")?;
+            let builder = WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
+                .on_download(|_, _| false)
+                .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+                .proxy_url(network_proxy::proxy_url(proxy.port).parse()?);
             #[cfg(target_os = "macos")]
             let builder = builder.with_webview_configuration(
-                webview_policy::configuration().map_err(std::io::Error::other)?,
+                webview_policy::ui_configuration().map_err(std::io::Error::other)?,
             );
-            builder.build()?;
+            let window = builder.build()?;
+            ui_network::retain_for_window(&window, proxy);
             // Resolve settings: persisted settings.json or defaults.
             let settings_path = settings_path()?;
             let default_library =
@@ -1221,76 +1246,7 @@ pub fn run() {
             // so loader (untrusted) webviews can reach only the loader callbacks
             // and every other command is protected without a per-command guard.
             let app_commands: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> =
-                Box::new(tauri::generate_handler![
-            set_find_enabled,
-            commands::articles::receive_html,
-            commands::articles::receive_favicon,
-            commands::articles::loader_will_unload,
-            commands::articles::loader_page_loaded,
-            commands::articles::capture_and_close_loader,
-            commands::articles::load_article,
-            commands::articles::create_article_diagnostic,
-            commands::articles::add_article_diagnostic_event,
-            commands::articles::get_article_diagnostic,
-            commands::articles::add_loader_diagnostic_event,
-            commands::articles::clear_webview_history,
-            commands::articles::save_article,
-            commands::articles::find_article,
-            commands::articles::read_article,
-            commands::articles::read_entry_images,
-            commands::articles::create_article,
-            commands::articles::add_annotation,
-            commands::articles::replace_annotation,
-            commands::articles::remove_annotation,
-            commands::articles::list_annotations,
-            commands::entries::is_cache_ready,
-            commands::entries::read_entry,
-            commands::entries::mark_entry_read,
-            commands::entries::mark_entry_unread,
-            commands::entries::list_all_items,
-            commands::library::get_library,
-            commands::library::set_library,
-            commands::library::is_library_read_only,
-            commands::settings::get_theme,
-            commands::settings::set_theme,
-            commands::settings::get_refresh_on_startup,
-            commands::settings::set_refresh_on_startup,
-            commands::settings::get_html_reader_prefs,
-            commands::settings::set_html_reader_font_family,
-            commands::settings::set_html_reader_font_size,
-            commands::settings::set_html_reader_line_height,
-            commands::settings::get_show_sidebar,
-            commands::settings::set_show_sidebar,
-            commands::settings::get_allowed_domains,
-            commands::settings::set_allowed_domains,
-            commands::settings::get_html_reader_view,
-            commands::settings::set_html_reader_view,
-            commands::feeds::set_feed_pinned,
-            commands::topics::set_topic_pinned,
-            commands::settings::get_inline_pdf_reader,
-            commands::settings::set_inline_pdf_reader,
-            commands::feeds::list_feeds,
-            commands::feeds::add_feed,
-            commands::feeds::refresh_all_feeds,
-            commands::feeds::rename_feed,
-            commands::feeds::remove_feed,
-            commands::feeds::list_entries,
-            commands::bookmarks::add_bookmark,
-            commands::bookmarks::remove_bookmark,
-            commands::topics::create_topic,
-            commands::topics::save_topic,
-            commands::topics::list_topics,
-            commands::topics::read_topic,
-            commands::topics::delete_topic,
-            commands::topics::add_topic_item,
-            commands::topics::remove_topic_item,
-            commands::topics::list_topic_items,
-            commands::topics::list_entry_topics,
-            commands::topics::rank_topics_by_item,
-            commands::embeddings::search_by_item,
-            commands::embeddings::search_by_text,
-            commands::embeddings::reset_embeddings,
-            ]);
+                Box::new(include!(concat!(env!("OUT_DIR"), "/command_handler.rs")));
             move |invoke: tauri::ipc::Invoke| {
                 let (allowed, write_refused) = {
                     let label = invoke.message.webview_ref().label();
@@ -1318,7 +1274,7 @@ pub fn run() {
                 app_commands(invoke)
             }
         })
-        .build(tauri::generate_context!())
+        .build(app_context())
         .expect("error while building tauri application");
 
     install_signal_handler(Arc::clone(&embedding_service), app.handle().clone());
@@ -1565,4 +1521,8 @@ mod settings_funnel_tests {
         // Last holder gone → flock released (operation-scoped), so another instance could take it.
         assert!(registry.lock().unwrap().handle.is_none());
     }
+}
+
+fn app_context<R: tauri::Runtime>() -> tauri::Context<R> {
+    tauri::generate_context!()
 }

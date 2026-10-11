@@ -1,6 +1,6 @@
 # Backlog Item Labels
 
-Every file under `docs-transient/` is named `<label>__<slug>.md`. The label is a closed set of five words. Unlike [Semantic Vocabulary](semantic_vocabulary.md) and [Conventional Vocabulary](conventional_vocabulary.md), which name what a code symbol _does_, a backlog label names **why the item exists** — its originator — not the shape of the work that will eventually close it. Two items can require the same kind of code change and still carry different labels, because they were raised for different reasons.
+Every transient task file is named `<label>__<slug>.md`. The label is a closed set of five words. Unlike [Semantic Vocabulary](semantic_vocabulary.md) and [Conventional Vocabulary](conventional_vocabulary.md), which name what a code symbol _does_, a backlog label names **why the item exists** — its originator — not the shape of the work that will eventually close it. Two items can require the same kind of code change and still carry different labels, because they were raised for different reasons.
 
 ## Labels
 

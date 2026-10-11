@@ -22,6 +22,7 @@ import type {
 } from "../types";
 
 export interface Platform {
+  onError(callback: (error: import("./errors").AppError) => void): Promise<UnlistenFn>;
   // Window
   setWindowTitle(title: string): Promise<void>;
 
@@ -70,6 +71,8 @@ export interface Platform {
   ): Promise<void>;
   getArticleDiagnostic(id: string): Promise<ArticleDiagnostic | null>;
   readEntry(signal: AbortSignal, id: string): Promise<Entry>;
+  openStoredPdf(url: string): Promise<void>;
+  readStoredPdf(signal: AbortSignal, url: string): Promise<{ pdfBase64?: string | null } | null>;
   loadArticle(
     signal: AbortSignal,
     url: string,
@@ -90,8 +93,8 @@ export interface Platform {
     diagnosticId?: string
   ): Promise<Article | null>;
   // `imageData` maps each fetched image's remote URL to its `data:` bytes (from
-  // processEntry); the backend writes the files and the frontmatter `hash → url`
-  // map. Omit/empty when saving without freshly-fetched images.
+  // processEntry); the backend writes files and uses local body URLs only for
+  // successful writes. Omit/empty when saving without freshly-fetched images.
   saveArticle(
     signal: AbortSignal,
     article: Article,

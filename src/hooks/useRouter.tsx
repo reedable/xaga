@@ -162,7 +162,7 @@ export default function useRouter() {
     (entry: Entry) =>
       logged_navigate(`/?${searchParams.toString()}`, {
         replace: true,
-        state: { ...state, entryId: entry.id },
+        state: { ...state, entryId: entry.id, mimeType: undefined },
       }),
     [logged_navigate, searchParams, state]
   );
@@ -182,10 +182,10 @@ export default function useRouter() {
 
   const replaceMimeType = useCallback(
     (mimeType: string) => {
-      if (mimeType === state.mimeType) return;
+      if (mimeType === state.mimeType && !state.entryId) return;
       logged_navigate(`/?${searchParams.toString()}`, {
         replace: true,
-        state: { ...state, mimeType },
+        state: { ...state, mimeType, entryId: undefined },
       });
     },
     [logged_navigate, searchParams, state]

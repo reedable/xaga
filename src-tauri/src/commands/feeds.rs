@@ -27,7 +27,7 @@ pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, A
     let timeout_secs = *state.feed_timeout_secs.read().unwrap();
     let max_body_bytes = *state.feed_max_body_bytes.read().unwrap();
     let client = crate::fetch_client::build(
-        state.ssrf_proxy_port,
+        state.network_proxy_port,
         *state.max_redirects.read().unwrap(),
         *state.referer_allowed.read().unwrap(),
         *state.gzip_allowed.read().unwrap(),
@@ -67,7 +67,7 @@ pub async fn refresh_all_feeds(
     let timeout_secs = *state.feed_timeout_secs.read().unwrap();
     let max_body_bytes = *state.feed_max_body_bytes.read().unwrap();
     let client = crate::fetch_client::build(
-        state.ssrf_proxy_port,
+        state.network_proxy_port,
         *state.max_redirects.read().unwrap(),
         *state.referer_allowed.read().unwrap(),
         *state.gzip_allowed.read().unwrap(),

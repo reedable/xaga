@@ -1,10 +1,10 @@
-# Fresh-reindex memory ceiling: content-carrying jobs on an unbounded queue (pending — deferred with fix direction)
+# Fresh-reindex memory ceiling: content-carrying jobs on an unbounded queue
 
 ## Current state
 
 Recovery emits domain objects onto the unbounded embed queue: a fresh reindex enqueues the whole corpus as content-carrying embed jobs. The queue's memory footprint scales with corpus size — estimated at roughly 10–20 GB at one million entries, which is inside the design target (`docs/architecture/design_scale.md`). This was explicitly deferred (not a hidden judgment) during the decoupling work.
 
-## Recorded fix direction
+## Proposed fix
 
 Enqueue the id and re-read the file at embed time, instead of carrying the content on the job. A batch-carrying job variant would not fix it — the content is the weight, not the job count.
 

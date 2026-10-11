@@ -20,12 +20,11 @@ use super::walk::for_each_atom;
 
 // ── Shared error + result ────────────────────────────────────────────────────
 
-/// Status code the app shell's SSRF proxy answers with when it refuses a
+/// Status code the app shell's network proxy answers with when it refuses a
 /// plaintext `http://` request because the HTTP-allowed setting is off.
 /// Non-standard on purpose — see
 /// docs/architecture/security/fetching_remote_content.md, "Plaintext HTTP
-/// enforcement." Produced in `src-tauri/src/ssrf_proxy.rs`; consumed here
-/// ([`fetch_xml`]) and by the PDF probe (`src-tauri/src/commands/articles.rs`).
+/// enforcement." Produced in `network_proxy.rs`; consumed here by [`fetch_xml`].
 pub const HTTP_BLOCKED_STATUS: u16 = 470;
 
 #[derive(Debug, Error)]
@@ -470,7 +469,7 @@ async fn fetch_xml(
             source: e,
         })?;
 
-    // The SSRF proxy's "plaintext HTTP is disabled" refusal. Mapped before
+    // The network proxy's "plaintext HTTP is disabled" refusal. Mapped before
     // error_for_status so it doesn't surface as a generic server 4xx.
     if response.status().as_u16() == HTTP_BLOCKED_STATUS {
         return Err(FeedError::HttpBlocked {
@@ -519,7 +518,7 @@ mod tests {
     use std::net::TcpListener;
 
     /// Serves one canned HTTP response on a random loopback port and hands
-    /// back the request head it received. Plain client, no SSRF proxy — the
+    /// back the request head it received. Plain client, no network proxy — the
     /// proxied client can't be exercised here because the proxy blocks
     /// loopback targets (same constraint as the fetch_client tests).
     fn serve_once(response: Vec<u8>) -> (u16, std::sync::mpsc::Receiver<String>) {

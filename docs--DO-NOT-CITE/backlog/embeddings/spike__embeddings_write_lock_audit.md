@@ -1,4 +1,4 @@
-# Embeddings write-lock participation audit (pending)
+# Embeddings write-lock participation audit
 
 ## Current state
 

@@ -5,6 +5,7 @@ import { processEntry, type LoaderFavicon } from "../text/entryWorker";
 import { isAbortError, type Entry } from "../types";
 import ArticleLoadAttempt from "../utils/ArticleLoadAttempt";
 import ArticleLoadError from "../utils/ArticleLoadError";
+import FaviconLoadError from "../utils/FaviconLoadError";
 import { useErrorSink } from "./useErrorSink";
 
 /**
@@ -20,7 +21,7 @@ export function toLoaderFavicon(
 }
 
 /** Decode base64 (PDF bytes from the Rust inline-PDF path) into a byte array. */
-function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
+export function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -33,11 +34,39 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
+  const reportRecoveredTimeout = useCallback(
+    async (attempt: ArticleLoadAttempt, articleUrl: string) => {
+      if (!attempt.id) return;
+      const diagnostic = await platform
+        .getArticleDiagnostic(attempt.id)
+        .catch(() => null);
+      if (diagnostic?.events.some((event) =>
+        event.step === "favicon" && ["warning", "failed"].includes(event.outcome)
+      )) {
+        pushError(new FaviconLoadError(articleUrl, false, attempt.id));
+      }
+      if (
+        diagnostic?.events.some((event) => event.code === "article:timeout" && event.step !== "favicon")
+      ) {
+        pushError(
+          new ArticleLoadError(
+            attempt.id,
+            "fetch",
+            new Error(
+              "The page did not finish loading in time. Processing the available content; some content may be missing."
+            )
+          )
+        );
+      }
+    },
+    [platform, pushError]
+  );
+
   /**
    * Loads and saves a remote content identified by URL.
    *
-   * WARNING: Do not use this method if you already have an Entry or Article
-   * object. To refresh an existing article, call `loadArticle` instead.
+   * URL ingestion also supports refresh; native persistence preserves existing
+   * annotations when the URL already has a Markdown entry.
    */
   const loadArticleByUrl = useCallback(
     async (url: string, keepOpen = false, parent?: ArticleLoadAttempt) => {
@@ -64,6 +93,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           platform.loadArticle(signal, url, keepOpen, attempt.id)
         );
 
+        await reportRecoveredTimeout(attempt, url);
         if (mimeType === "application/pdf") {
           const pdfBytes = pdfBase64
             ? await attempt.runStep("pdf_decode", () => base64ToBytes(pdfBase64))
@@ -108,16 +138,14 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           isAbortError(e)
             ? "cancelled"
             : "failed";
-        // The inline-PDF probe rejected the URL as a spoof (Content-Type claimed
-        // PDF, body isn't). Surface it so the reader pane can show a block
-        // message rather than swallowing it as a generic failure.
+        // Unsupported downloaded bytes use the reader's neutral rejection message.
         if (
           errorCode(e instanceof ArticleLoadError ? e.cause : e) ===
-          "article:spoofed-pdf"
+          "article:unsupported-download"
         ) {
           pushError(e);
-          attempt.addEvent("attempt", "failed", "article:spoofed-pdf");
-          return { article: null, blockedSpoof: true };
+          attempt.addEvent("attempt", "failed", "article:unsupported-download");
+          return { article: null, blockedDownload: true };
         }
         if (parent) throw e;
         pushError(e);
@@ -126,7 +154,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform, pushError]
+    [abortControllerRef, platform, pushError, reportRecoveredTimeout]
   );
 
   /**
@@ -150,11 +178,17 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       try {
         const {
           html,
+          mimeType,
           favicon: faviconUrl,
           faviconData,
         } = await attempt.runStep("fetch", () =>
           platform.loadArticle(signal, entry.url, keepOpen, attempt.id)
         );
+        signal.throwIfAborted();
+        // PDF bytes are already persisted by native ingestion. Never save the
+        // empty HTML field over an existing article or remove its stored PDF.
+        if (mimeType === "application/pdf") return;
+        await reportRecoveredTimeout(attempt, entry.url);
         const { title, markdown, favicon, imageData } = await attempt.runStep(
           "extract",
           () =>
@@ -199,7 +233,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform, pushError]
+    [abortControllerRef, platform, pushError, reportRecoveredTimeout]
   );
 
   /**

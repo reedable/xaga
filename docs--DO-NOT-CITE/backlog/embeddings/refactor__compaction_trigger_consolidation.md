@@ -1,3 +1,6 @@
-# Consolidate the compaction triggers (pending)
+# Consolidate the compaction triggers
 
-Compaction fires from multiple paths — recorded during the queue-taxonomy work as a three-way queue/interval/drain split, deferred as implementation; the Interactive arm has since gained a periodic compaction trigger as well (`crates/xaga-core/src/embeddings/service.rs`; `BACKGROUND_COMPACT_INTERVAL` and the per-arm triggers). The work: enumerate the current trigger paths and consolidate them under one policy. The interval's cost during backfill is recorded separately (`embed_backfill_per_row_costs.md`); the visible pause on the interactive path was recorded when periodic compaction was added there (`docs-transient/backlog/embeddings/improvement__interactive_batch_command.md`, known gap).
+Enumerate compaction triggers in `crates/xaga-core/src/embeddings/service.rs`
+and consolidate them under one policy. Review queue, interval, drain, and
+per-tier triggers, including `BACKGROUND_COMPACT_INTERVAL` and the Interactive
+interval. Measure backfill cost and user-visible pauses when selecting cadence.

@@ -1,12 +1,12 @@
-# Read-only instance never becomes the writer without a relaunch (pending)
+# Read-only instance never becomes the writer without a relaunch
 
-Raised 2026-07-16. A read-only instance (one that lost the library flock at
+A read-only instance (one that lost the library flock at
 startup) stays read-only for its whole process lifetime: no lock-retry loop
 watches for the writer's exit. When the writing instance quits, the read-only
 instance does not pick up the lock — the user must relaunch it or switch
 libraries to regain write access.
 
-## Current behavior (facts)
+## Current behavior
 
 - Mode is decided once, at startup, by winning or losing the flock
   (`acquire_lock`, `crates/xaga-core/src/library.rs`; setup in
@@ -18,12 +18,12 @@ libraries to regain write access.
   `library:mode-changed` event; the event plumbing already exists
   (`src-tauri/src/events.rs`).
 
-## The ask
+## Work
 
 When the writer process exits, a read-only instance should be able to become
 the writer without a manual relaunch.
 
-## Open design questions
+## Design questions
 
 - Acquisition mechanism: retry loop / OS-level lock wait / triggered attempt
   (e.g. on window focus) — each polls or blocks differently.
@@ -33,5 +33,5 @@ the writer without a manual relaunch.
   library-switch restart path) is undecided.
 - Stale-view interaction: a read-only instance shows data as of its startup;
   on becoming the writer it must not write over state it has not read back.
-  Related: `docs-transient/backlog/ui/improvement__read_only_mode_ux.md`
+  Related: read only mode ux
   (stale-view surfacing) — separate item, likely the same reload mechanism.

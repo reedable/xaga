@@ -163,6 +163,11 @@ impl TagPatch {
 /// recovery's concern). Each variant mirrors a persistence write function and carries its
 /// typed responder.
 enum Op {
+    SavePdf {
+        url: String,
+        bytes: Option<Vec<u8>>,
+        resp: oneshot::Sender<Result<(), WriterError>>,
+    },
     SaveArticle {
         id: String,
         url: String,
@@ -173,7 +178,7 @@ enum Op {
         favicon: Option<String>,
         markdown: String,
         /// `url → data:` for the images the loader fetched, so the persistence
-        /// layer can write files and build the frontmatter map.
+        /// layer can write local image files.
         url_data: std::collections::HashMap<String, String>,
         resp: oneshot::Sender<Result<Article, WriterError>>,
     },
@@ -308,7 +313,9 @@ impl Op {
             | Op::ReplaceAnnotation { article_id: id, .. }
             | Op::RemoveAnnotation { article_id: id, .. }
             | Op::PatchEntryTags { id, .. } => format!("entry/{id}"),
-            Op::BookmarkEntry { url, .. } | Op::WriteFeedEntry { url, .. } => {
+            Op::SavePdf { url, .. }
+            | Op::BookmarkEntry { url, .. }
+            | Op::WriteFeedEntry { url, .. } => {
                 // Same id the persistence layer derives, so this shares the entry's lane.
                 let id = crate::util::normalize_url(url)
                     .map(|u| crate::util::url_hash12(&u))
@@ -332,6 +339,7 @@ impl Op {
     /// Short name for shutdown-drop logging.
     fn label(&self) -> &'static str {
         match self {
+            Op::SavePdf { .. } => "save_pdf",
             Op::SaveArticle { .. } => "save_article",
             Op::AddAnnotation { .. } => "add_annotation",
             Op::ReplaceAnnotation { .. } => "replace_annotation",
@@ -356,6 +364,7 @@ impl Op {
     /// Refuse without executing (Regular backlog at shutdown).
     fn refuse(self) {
         match self {
+            Op::SavePdf { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SaveArticle { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::AddAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::ReplaceAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -381,6 +390,12 @@ impl Op {
     /// Runs inside the op's lane: nothing else touches this file concurrently.
     async fn execute(self, library_dir: &std::path::Path, token: WriteToken) {
         match self {
+            Op::SavePdf { url, bytes, resp } => {
+                let result = crate::persistence::pdfs::save(library_dir, &url, bytes, token)
+                    .await
+                    .map_err(WriterError::from);
+                let _ = resp.send(result);
+            }
             Op::SaveArticle {
                 id,
                 url,
@@ -408,6 +423,13 @@ impl Op {
                 )
                 .await
                 .map_err(WriterError::from);
+                let r = match r {
+                    Ok(article) => crate::persistence::pdfs::save(library_dir, &url, None, token)
+                        .await
+                        .map(|_| article)
+                        .map_err(WriterError::from),
+                    Err(error) => Err(error),
+                };
                 let _ = resp.send(r);
             }
             Op::AddAnnotation {
@@ -690,6 +712,11 @@ pub struct LibraryWriter {
 }
 
 impl LibraryWriter {
+    pub async fn save_pdf(&self, url: String, bytes: Option<Vec<u8>>) -> Result<(), WriterError> {
+        let (resp, rx) = oneshot::channel();
+        self.submit(Tier::Interactive, Op::SavePdf { url, bytes, resp }, rx)
+            .await
+    }
     /// Starts the writer for `library_dir`, taking ownership of the library lock — the
     /// writer existing IS the read-write mode; without the lock it cannot be constructed.
     /// Runs its dispatcher on a dedicated thread with its own runtime (the same pattern
@@ -1344,6 +1371,78 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn pdf_replacement_preserves_markdown_and_html_save_removes_pdf() {
+        let dir = tempfile::tempdir().unwrap();
+        let w = start_writer(dir.path());
+        let url = "https://example.com/document";
+        let id = crate::util::url_hash12(&crate::util::normalize_url(url).unwrap());
+        w.save_article(
+            Tier::Interactive,
+            id.clone(),
+            url.into(),
+            "Title".into(),
+            None,
+            None,
+            None,
+            None,
+            "original body".into(),
+            Default::default(),
+        )
+        .await
+        .unwrap();
+        w.add_annotation(Tier::Interactive, id.clone(), annotation("kept"))
+            .await
+            .unwrap();
+        let before = articles::read_article(dir.path(), &id).await.unwrap();
+        w.save_pdf(url.into(), Some(b"%PDF-valid".to_vec()))
+            .await
+            .unwrap();
+        let after = articles::read_article(dir.path(), &id).await.unwrap();
+        assert_eq!(before.content, after.content);
+        assert_eq!(after.annotations.len(), 1);
+        assert!(
+            w.save_pdf(url.into(), Some(b"invalid".to_vec()))
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            crate::persistence::pdfs::read(dir.path(), url)
+                .unwrap()
+                .unwrap()
+                .1,
+            b"%PDF-valid"
+        );
+        w.save_article(
+            Tier::Interactive,
+            id.clone(),
+            url.into(),
+            "Title".into(),
+            None,
+            None,
+            None,
+            None,
+            "new HTML body".into(),
+            Default::default(),
+        )
+        .await
+        .unwrap();
+        assert!(
+            crate::persistence::pdfs::read(dir.path(), url)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            articles::read_article(dir.path(), &id)
+                .await
+                .unwrap()
+                .annotations
+                .len(),
+            1
+        );
+        w.shutdown().await;
     }
 
     /// The spike scenario: N concurrent annotation adds on ONE article lose nothing.

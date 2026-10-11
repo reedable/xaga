@@ -10,4 +10,4 @@ Naming rules for symbols, in [vocabulary/](vocabulary/):
 
 2. [Conventional Vocabulary](vocabulary/conventional_vocabulary.md) — words whose meaning is layer-relative rather than semantic (`load`, `map`, …), documented so usage stays consistent. The test: a word is semantic when it pins the boundary it crosses regardless of layer count; conventional when it leans on an implicit single-layer assumption.
 
-3. [Backlog Item Labels](vocabulary/backlog_item_labels.md) — the closed label set (`compliance__`/`defect__`/`improvement__`/`refactor__`/`spike__`) prefixing every `docs-transient/` filename. Unlike the symbol vocabularies above, a label names an item's originator, not the shape of the work.
+3. [Backlog Item Labels](vocabulary/backlog_item_labels.md) — the closed label set (`compliance__`/`defect__`/`improvement__`/`refactor__`/`spike__`) prefixing every transient task filename. Unlike the symbol vocabularies above, a label names an item's originator, not the shape of the work.

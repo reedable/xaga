@@ -101,6 +101,8 @@ Avoid `stop`: ambiguous between graceful (`shutdown`) and abrupt (`abort`).
 - `element` An HTML/DOM node. Not a synonym for `item`; legitimate only where HTML is the subject (e.g. parsing).
 - `id` A value that uniquely identifies a record.
 - `payload` Data carried across a boundary (IPC, network).
+- `proxy` An intermediary that receives requests and forwards or rejects them.
+- `policy` Rules that determine which operations are permitted.
 - `request` A message asking for an operation to be performed. Preferred over `query`; use `query` only when searching, or for a specification carried within a request (e.g. a query string).
 - `response` The reply to a `request`.
 - `query` A specification of records to retrieve. May stand as a `request` when searching, or be a component of one (e.g. a query string).

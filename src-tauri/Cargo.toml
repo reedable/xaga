@@ -1,27 +1,29 @@
 [package]
 name = "xaga"
-version = "0.5.4"
+version = "0.6.0"
 description = "Privacy-Focused Personal Knowledge Management"
 edition = "2024"
+
+[features]
+default = ["wry-pdf-downloads"]
+wry-pdf-downloads = ["wry/macos-download-pdf"]
 
 [lib]
 name = "xaga_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.7.1", features = [] }
+serde_json = "1"
 
 [dependencies]
 xaga-core        = { path = "../crates/xaga-core" }
 # `macos-proxy` makes `WebviewWindowBuilder::proxy_url` take effect on macOS
 # (needs macOS 14+, enforced via bundle.macOS.minimumSystemVersion). Without it,
-# the loader's SSRF proxy wiring is a silent no-op on macOS.
-# `macos-private-api` enables wry's `transparent` feature, which lets
-# `set_background_color` disable WKWebView's white `drawsBackground` so the
-# window's theme color shows until the frontend paints (avoids the startup
-# white flash). Uses a private API; macos-proxy already does, so this changes
-# nothing about distribution (already not Mac App Store eligible).
-tauri            = { version = "2", features = ["macos-proxy", "macos-private-api"] }
+# the loader's network proxy wiring is a silent no-op on macOS.
+# Wry 0.57 no longer gates its background/transparency support on a feature.
+# Keep Tauri's macos-private-api flag for its own macOS window support.
+tauri            = { version = "2.12.1", features = ["macos-proxy", "macos-private-api"] }
 tauri-plugin-log = "2"
 serde            = { version = "1", features = ["derive"] }
 serde_json       = "1"
@@ -38,14 +40,17 @@ reqwest             = { version = "0.12", default-features = false, features = [
 ctrlc               = { version = "3", features = ["termination"] }
 sha2                = "0.10"
 base64              = "0.22"
+tempfile            = "3"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "ico", "webp"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+wry = { version = "=0.57.0", default-features = false }
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSObject", "NSUUID"] }
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "WKPreferences", "WKWebViewConfiguration", "WKWebsiteDataStore"] }
 
 [dev-dependencies]
-tempfile = "3"
+tauri = { version = "2.12.1", features = ["test"] }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 block2 = "0.6"
@@ -55,4 +60,12 @@ objc2-web-kit = { version = "0.3", default-features = false, features = ["WKWebV
 
 [[test]]
 name = "webview_policy"
+harness = false
+
+[[test]]
+name = "resource_download_webview"
+harness = false
+
+[[test]]
+name = "ui_network_webview"
 harness = false

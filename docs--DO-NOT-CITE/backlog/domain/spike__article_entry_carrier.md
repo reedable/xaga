@@ -1,3 +1,9 @@
-# Article used as the uniform entry carrier (pending — unapproved change awaiting decision)
+# Article used as the uniform entry carrier
 
-`entries::write_entry` returns `Article { content: "", annotations: [] }` and `UpsertEntry` carries it — but the domain defines `Article` as "a loaded, content-bearing Entry" (`crates/xaga-core/src/domain.rs`); a body-less feed entry is an `Entry`. The richer type is used where the base type is accurate. Made during the decoupling work; the domain mismatch was recorded, not approved. Decision: ratify `Article` as the uniform carrier (and update the domain doc) or switch the body-less paths to `Entry`.
+`entries::write_entry` returns `Article { content: "", annotations: [] }` and
+`UpsertEntry` carries it. The domain defines `Article` as a loaded,
+content-bearing entry (`crates/xaga-core/src/domain.rs`); a body-less feed entry
+is an `Entry`.
+
+Decide whether to use `Article` as the uniform carrier and update the domain
+model, or switch body-less paths to `Entry`.

@@ -29,7 +29,7 @@ use crate::persistence::entries::EntryError;
 use crate::persistence::feeds::FeedError;
 use crate::persistence::topics::TopicsError;
 use crate::query::items::ItemError;
-use crate::ssrf_proxy::ProxyError;
+use crate::network_proxy::ProxyError;
 
 #[derive(Debug, Error)]
 pub enum DomainError {

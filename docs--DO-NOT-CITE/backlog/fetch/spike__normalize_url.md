@@ -20,7 +20,7 @@ Downstream guards blunt the impact (the SSRF fetch client can't fetch `file://`;
 
 ## 2. The `http`→`https` rewrite vs. the "Allow HTTP" setting
 
-`normalize_url` unconditionally rewrites `http`→`https`. The normalized URL is not only hashed for the ID — it is also stored and fetched (`import_feeds` fetches it; entries store it as `source`), so **today an http-only site is fetched over https and simply fails.** This predates the `http_allowed` setting (default false; enforced in the SSRF proxy — see `docs/architecture/security/fetching_remote_content.md`). When `http_allowed` is exposed in the UI, a user who deliberately enables plaintext may expect an `http://` feed they add to stay `http://` — but the add-time rewrite silently upgrades it (and, per the above, an http-only feed would fail regardless). The two mechanisms currently express opposite intents about the same URL.
+`normalize_url` unconditionally rewrites `http`→`https`. The normalized URL is not only hashed for the ID — it is also stored and fetched (`import_feeds` fetches it; entries store it as `source`), so **today an http-only site is fetched over https and simply fails.** This predates the `http_allowed` setting (default false; enforced in the network proxy — see `docs/architecture/security/fetching_remote_content.md`). When `http_allowed` is exposed in the UI, a user who deliberately enables plaintext may expect an `http://` feed they add to stay `http://` — but the add-time rewrite silently upgrades it (and, per the above, an http-only feed would fail regardless). The two mechanisms currently express opposite intents about the same URL.
 
 Design tension to resolve (not a decided fix):
 

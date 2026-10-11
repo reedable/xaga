@@ -1,4 +1,4 @@
-//! Factory for the SSRF-proxied reqwest clients (feed XML, inline-PDF probe).
+//! Factory for the SSRF-proxied reqwest clients (feed XML).
 //!
 //! Clients are built per invocation — not held in `AppState` — so a
 //! settings.json change applies on the next fetch without a relaunch.
@@ -32,13 +32,12 @@ pub(crate) fn effective_max_redirects(setting: Option<u32>) -> u32 {
 /// `gzip_allowed` controls whether requests carry `Accept-Encoding: gzip`
 /// (with transparent decompression of compressed responses). `false` sends
 /// no `Accept-Encoding` at all — the pre-existing request shape. One flag
-/// covers both clients this factory builds (feed XML, PDF probe) so the two
-/// paths always present the same header shape to hosts; the reqwest `gzip`
+/// configures clients from this factory; the reqwest `gzip`
 /// cargo feature would otherwise default this to on, so it is always set
 /// explicitly here.
 ///
 /// Deliberately no `.https_only()`: the "HTTP allowed" setting is enforced in
-/// [`xaga_core::ssrf_proxy`] instead. See
+/// [`xaga_core::network_proxy`] instead. See
 /// docs/architecture/security/fetching_remote_content.md, "CONNECT port
 /// policy," for why enforcement lives there and not here.
 pub(crate) fn build(
@@ -59,7 +58,7 @@ pub(crate) fn try_build(
     gzip_allowed: bool,
 ) -> reqwest::Result<reqwest::Client> {
     reqwest::Client::builder()
-        .proxy(reqwest::Proxy::all(xaga_core::ssrf_proxy::proxy_url(
+        .proxy(reqwest::Proxy::all(xaga_core::network_proxy::proxy_url(
             proxy_port,
         ))?)
         .redirect(reqwest::redirect::Policy::limited(max_redirects as usize))
@@ -68,7 +67,7 @@ pub(crate) fn try_build(
         .build()
 }
 
-/// The `http_allowed` handle shared between the SSRF proxy (enforcement) and
+/// The `http_allowed` handle shared between the network proxy (enforcement) and
 /// setup (seeding from settings.json). Starts `false`: the proxy is up before
 /// settings are read, and the pre-settings window must be the secure state.
 pub(crate) fn http_allowed_handle() -> Arc<std::sync::RwLock<bool>> {
@@ -93,7 +92,7 @@ mod tests {
     /// Pins the `Policy::limited(0)` semantics the factory relies on: the
     /// first redirect is refused with a redirect error — "hit the server
     /// once, honor no redirects". Uses a plain client with the same policy;
-    /// the factory's client can't be exercised here because the SSRF proxy
+    /// the factory's client can't be exercised here because the network proxy
     /// blocks loopback targets.
     #[tokio::test]
     async fn limited_zero_refuses_first_redirect() {

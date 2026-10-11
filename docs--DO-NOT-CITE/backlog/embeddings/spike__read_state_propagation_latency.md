@@ -1,4 +1,4 @@
-# Read-state propagation latency and the consistency model (pending)
+# Read-state propagation latency and the consistency model
 
 ## Symptom
 
@@ -8,7 +8,7 @@ Selecting an entry in `src/components/list/ItemList.tsx` marks it read, but the 
 
 Marking read goes: `.md` write → typed job on the service queue → LanceDB commit (async) → count re-query (`reload` + full unread-set materialization). The old in-memory `EntryStateCache` was updated synchronously (instant); it was retired when reads moved to LanceDB. Which step dominates the latency has not been measured.
 
-## Recorded options
+## Options
 
 - Optimistic UI update on mark-read.
 - Write-through to LanceDB for user actions (not just the `.md`).

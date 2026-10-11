@@ -19,6 +19,7 @@ export const DOMAIN_EVENT = [
 export type DomainEvent = (typeof DOMAIN_EVENT)[number];
 
 export const APP_EVENT = [
+  "app:error", // payload: AppError (optional diagnosticId)
   "settings:theme", // payload: string
   "settings:refresh-on-startup", // payload: boolean
   "settings:html-reader-font-family", // payload: string

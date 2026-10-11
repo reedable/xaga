@@ -57,7 +57,7 @@ export default function ArticleDiagnosticsDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Article loading diagnostics</DialogTitle>
+      <DialogTitle>Loading diagnostics</DialogTitle>
       <DialogContent>
         <Typography variant="body2">
           {diagnostic
@@ -74,6 +74,10 @@ export default function ArticleDiagnosticsDialog({
               {event.elapsedMs} ms)
             </Typography>
           ))}
+        <Typography variant="body2" sx={{ mt: 2 }}>
+          {diagnostic?.events.some((event) => event.download) &&
+            "Download diagnostics include URLs, query parameters, and local paths. Review before sharing."}
+        </Typography>
         <Typography variant="body2" sx={{ mt: 2 }}>
           {status}
         </Typography>

@@ -22,3 +22,18 @@ The rendering path applies its own controls and does not depend on ingest-time s
 The CSP is enforced only in the bundled Tauri app, not under the Vite dev server. Any verification of CSP/iframe/sandbox behavior must use `tauri build`, not `tauri dev`.
 
 Verified against the running `tauri dev` server (Vite at `http://localhost:1420`): the served document has no CSP `<meta>` tag (`document.querySelector('meta[http-equiv="Content-Security-Policy"]')` returns `undefined`) and no `Content-Security-Policy` response header. Tauri's v2 config reference states the `csp` value is also injected on dev when `devCsp` is unset; Xaga's dev setup does not appear to match that.
+
+## Stored PDFs
+
+PDF lookup derives `pdfs/{hash12}.pdf` from a normalized HTTP(S) source URL inside
+the active library. Reads reject nonregular files and symlink directories, bound
+the bytes to 64 MiB, and recheck the `%PDF-` signature. A missing file proceeds to
+normal article lookup/ingestion; an invalid stored file reports an error. Refresh
+can replace it after validation. These are format and path checks, not a guarantee
+of PDF parser safety.
+
+The trusted `read_stored_pdf` command returns validated bytes for local Blob
+presentation. The trusted `open_stored_pdf` command derives and validates the same
+file before opening it in the default app; it accepts a source URL, never a local
+path. Loader pages cannot invoke either command. Cached reads work in read-only
+libraries, while new PDF persistence requires the active library writer.

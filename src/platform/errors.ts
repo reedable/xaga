@@ -59,7 +59,7 @@ export const ERROR_CODE = [
   // AppError (src-tauri)
   "library:read-only",
   "command:unauthorized",
-  "article:spoofed-pdf",
+  "article:unsupported-download",
   "settings:stale-view",
   "app:error", // transitional catch-all for not-yet-typed string errors
 ] as const;
@@ -67,6 +67,7 @@ export type ErrorCode = (typeof ERROR_CODE)[number];
 
 /** The serialized shape a rejected command rejects with. */
 export interface AppError {
+  diagnosticId?: string;
   code: ErrorCode;
   /** User-safe; the only field to show a user. */
   message: string;

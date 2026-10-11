@@ -1,11 +1,11 @@
-# Cross-platform support (pending)
+# Cross-platform support
 
 Make xaga run on platforms beyond macOS. Today the app is developed and verified on macOS only. This item inventories the known platform-specific code, dependencies, and assumptions (verified 2026-07-02 unless marked otherwise), so the porting work starts from facts.
 
 ## Known platform-specific points
 
 1. **Named webview data stores are compile-time macOS-only.** `supports_named_data_stores()` is `cfg!(target_os = "macos")` (`src-tauri/src/article_loader.rs`); per-domain persistent `WKWebsiteDataStore` identifiers require macOS 14+ — the app's `bundle.macOS.minimumSystemVersion` (`src-tauri/tauri.conf.json`). On any other platform, every loader webview is incognito: the `allowed_domains` persistent-store feature is silently inoperative.
-2. **The SSRF proxy routing depends on a macOS feature flag.** `WebviewWindowBuilder::proxy_url` takes effect on macOS only with the `macos-proxy` feature (`src-tauri/Cargo.toml`). This is a load-bearing security control (`docs/architecture/security/fetching_remote_content.md`); whether `proxy_url` is honored on Windows (WebView2) and Linux (WebKitGTK) has not been verified — if it is not, the loader on those platforms has no SSRF protection and must not ship without an equivalent.
+2. **The network proxy routing depends on a macOS feature flag.** `WebviewWindowBuilder::proxy_url` takes effect on macOS only with the `macos-proxy` feature (`src-tauri/Cargo.toml`). This is a load-bearing security control (`docs/architecture/security/fetching_remote_content.md`); whether `proxy_url` is honored on Windows (WebView2) and Linux (WebKitGTK) has not been verified — if it is not, the loader on those platforms has no SSRF protection and must not ship without an equivalent.
 3. **Private-API transparency is macOS-only.** The `macos-private-api` feature + `"macOSPrivateApi": true` enable the transparent webview used for the launch white-flash fix (`src-tauri/Cargo.toml` comments, `tauri.conf.json`). Other platforms need their own answer or accept the flash.
 4. **`clear_webview_history` hardcodes a macOS path.** It removes `~/Library/WebKit/<product>` (`src-tauri/src/commands/articles.rs`). On other platforms the webview state lives elsewhere (WebView2/WebKitGTK have their own layouts); as written the command is a no-op there — a privacy feature that silently does nothing.
 5. **Webview engine differences are unverified.** Every webview-dependent behavior was verified on WKWebView only: CSP enforcement in the bundle (including the reader-script hash), the sandboxed reader iframe, the hidden-loader focus suppression (written against WKWebView-level show/focus callbacks), incognito semantics, and PDF handling. Windows (WebView2/Chromium) and Linux (WebKitGTK) each need this matrix re-verified.
@@ -13,7 +13,6 @@ Make xaga run on platforms beyond macOS. Today the app is developed and verified
 7. **The log directory has no non-macOS answer.** The macOS log dir is `~/Library/Logs/xaga`; the `cfg(not(macos))` arm writes to `data_root()/logs` (flagged in the code comment — `src-tauri/src/lib.rs`, log plugin setup). Whether non-macOS platforms should use a platform-native log convention instead is undecided.
 
 8. **Code signing is per-platform.** `macos_code_signing.md` covers macOS identity; Windows (Authenticode) and Linux (none/distro-specific) are separate work.
-9. **Already cross-platform by construction** (no action expected, listed to bound the work): the data root (models, settings.json, CLI default data dir) via `xaga_core::fs::data_root()` (`dirs::data_dir()`-based; as of 2026-07-10 Tauri's identifier-derived `app_config_dir`/`app_data_dir` are no longer used), TLS via rustls (no system OpenSSL dependency), and the SSRF proxy itself (a plain TCP listener on 127.0.0.1). One nuance: on XDG platforms `dirs::data_dir()` is the _data_ dir (`~/.local/share`), so settings.json lives there rather than in `~/.config`.
 
 ## Shape of the work
 

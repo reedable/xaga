@@ -69,6 +69,7 @@ pub(crate) struct LoaderClosed {
 }
 
 pub(crate) enum AppEvent {
+    Error(crate::error::SerializedError),
     SettingsTheme(String),
     SettingsRefreshOnStartup(bool),
     SettingsHtmlReaderFontFamily(String),
@@ -97,6 +98,7 @@ impl AppEvent {
     /// `src/platform/events.ts` (`APP_EVENT`).
     pub(crate) fn name(&self) -> &'static str {
         match self {
+            AppEvent::Error(_) => "app:error",
             AppEvent::SettingsTheme(_) => "settings:theme",
             AppEvent::SettingsRefreshOnStartup(_) => "settings:refresh-on-startup",
             AppEvent::SettingsHtmlReaderFontFamily(_) => "settings:html-reader-font-family",
@@ -150,6 +152,7 @@ pub(crate) fn emit_domain<R: Runtime>(target: &impl Emitter<R>, event: DomainEve
 pub(crate) fn emit_app<R: Runtime>(target: &impl Emitter<R>, event: AppEvent) {
     let name = event.name();
     let result = match &event {
+        AppEvent::Error(v) => target.emit(name, v),
         AppEvent::SettingsTheme(v)
         | AppEvent::SettingsHtmlReaderFontFamily(v)
         | AppEvent::SettingsHtmlReaderView(v)
@@ -187,6 +190,7 @@ mod tests {
 
     fn all_variants() -> Vec<AppEvent> {
         vec![
+            AppEvent::Error(crate::error::AppError::Message("test".into()).serialized()),
             AppEvent::SettingsTheme(String::new()),
             AppEvent::SettingsRefreshOnStartup(false),
             AppEvent::SettingsHtmlReaderFontFamily(String::new()),
@@ -247,6 +251,7 @@ mod tests {
         assert_eq!(
             names,
             [
+                "app:error",
                 "settings:theme",
                 "settings:refresh-on-startup",
                 "settings:html-reader-font-family",
@@ -273,5 +278,15 @@ mod tests {
         let all: Vec<&str> = names.iter().copied().chain(DOMAIN_NAMES).collect();
         let unique: std::collections::HashSet<&str> = all.iter().copied().collect();
         assert_eq!(unique.len(), all.len());
+    }
+}
+
+/// Deliver an unsolicited error only to the webview that owns the operation.
+pub(crate) fn emit_error<R: Runtime>(app: &tauri::AppHandle<R>, label: &str, error: crate::error::SerializedError) {
+    let event = AppEvent::Error(error);
+    if let AppEvent::Error(payload) = &event {
+        if let Err(error) = app.emit_to(tauri::EventTarget::webview_window(label), event.name(), payload) {
+            log::warn!("error notification failed: {error}");
+        }
     }
 }

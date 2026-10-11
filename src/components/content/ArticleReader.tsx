@@ -104,6 +104,20 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       [platform, abortControllerRef]
     );
 
+    const reportMissingImage = useCallback(async (attempt?: ArticleLoadAttempt) => {
+      if (abortControllerRef.current.signal.aborted) return;
+      const diagnostic = attempt ?? await ArticleLoadAttempt.create(platform, "render");
+      diagnostic.addEvent("images", "failed", "image:local-unavailable");
+      if (!attempt) await diagnostic.complete("failed");
+      if (abortControllerRef.current.signal.aborted) return;
+      pushError({
+        code: "app:error",
+        message: "An image couldn’t be loaded. Reloading the article will retry loading its images.",
+        detail: "One or more local article images could not be resolved.",
+        diagnosticId: diagnostic.id || undefined,
+      });
+    }, [abortControllerRef, platform, pushError]);
+
     const {
       setFindEnabled,
       onUnreadChanged,
@@ -130,7 +144,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     // Reads and renders the already-resolved article for the current route.
     // useContentLoader has classified the URL and persisted any new article
     // before navigating here, so this only reads + renders (and reloads the
-    // body from the network when it's missing or a reload was requested).
+    // body from the network only when an explicit reload was requested).
     const requestContent = useCallback(
       async (reload = false) => {
         if (!url) return;
@@ -163,7 +177,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
 
           setAnnotationsFromArticle(article);
 
-          if (!article.content || reload) {
+          if (reload) {
             const content = (await loadArticle(article, false, attempt))
               ?.content;
             if (content) article.content = content;
@@ -173,7 +187,9 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
             markdownToHtml(article.content)
           );
           const inlined = await attempt.runStep("render", () =>
-            inlineEntryImages(html, article.id, resolveEntryImages)
+            inlineEntryImages(html, article.id, resolveEntryImages, () => {
+              void reportMissingImage(attempt);
+            })
           );
           setContentHtml(
             await attempt.runStep("render", () =>
@@ -198,6 +214,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
         htmlReaderStyle,
         loadArticle,
         resolveEntryImages,
+        reportMissingImage,
         setAnnotationsFromArticle,
         url,
       ]
@@ -222,7 +239,8 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
           const inlined = await inlineEntryImages(
             html,
             article.id,
-            resolveEntryImages
+            resolveEntryImages,
+            () => { void reportMissingImage(); }
           );
           setContentHtml(buildEntryHtml(inlined, htmlReaderStyle));
         }
@@ -233,6 +251,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       pendingUpdate,
       readEntry,
       resolveEntryImages,
+      reportMissingImage,
       saveExtractedArticle,
       setAnnotationsFromArticle,
     ]);

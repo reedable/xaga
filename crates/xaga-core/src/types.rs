@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 pub use crate::domain::{
-    Annotation, Article, Bookmarkable, Colorable, Countable, Document, Entry, Feed, ImageRef, Item,
+    Annotation, Article, Bookmarkable, Colorable, Countable, Document, Entry, Feed, Item,
     Kind, Note, Pinnable, Reference, Topic, WebResource,
 };
 

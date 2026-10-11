@@ -1,9 +1,12 @@
-//! Local SSRF-filtering HTTP proxy for the article loader webviews and the
-//! per-invocation fetch clients. The loader webview is pointed at this proxy via
-//! `WebviewWindowBuilder::proxy_url`, so it never resolves DNS or connects
-//! directly. See docs/architecture/security/fetching_remote_content.md,
-//! "Threat model" and "Containment: the SSRF proxy," for why this exists and how
-//! it defeats DNS rebinding.
+//! Local HTTP network proxy with configurable request policies.
+//!
+//! The SSRF policy validates destinations before forwarding requests for article
+//! loaders and native fetch clients. The deny-all policy rejects UI requests
+//! before DNS resolution or an upstream connection, with an exact loopback
+//! development-server exception when configured.
+//!
+//! Policies apply to requests received by the proxy. WebKit's known loopback
+//! bypass is documented in docs/architecture/security/fetching_remote_content.md.
 //!
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
@@ -138,8 +141,8 @@ impl HostResolver for SystemResolver {
 
 /// Resolves `host:port` and returns a single validated address to dial, or an
 /// error if resolution failed or *any* resolved address is disallowed. See
-/// docs/architecture/security/fetching_remote_content.md, "Containment: the
-/// SSRF proxy," point 2, for why rejecting on *any* blocked address matters.
+/// docs/architecture/security/fetching_remote_content.md, "Containment: the network proxy’s
+/// SSRF policy," point 2, for why rejecting on *any* blocked address matters.
 fn validate_target(
     host: &str,
     port: u16,
@@ -266,6 +269,9 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 
 #[derive(Clone)]
 pub struct ProxyConfig {
+    deny_all: bool,
+    // Development-only exception: exact configured host/port, pinned to loopback.
+    local_endpoint: Option<(String, std::net::SocketAddr)>,
     observer: Option<Arc<dyn Fn(&str, &str) + Send + Sync>>,
     resolver: Arc<dyn HostResolver>,
     is_blocked_fn: fn(IpAddr) -> bool,
@@ -283,6 +289,37 @@ pub struct ProxyConfig {
 }
 
 impl ProxyConfig {
+    /// Reject requests before DNS resolution or opening an upstream connection.
+    pub fn deny_all() -> Self {
+        let mut config = Self::new(
+            Arc::new(std::sync::RwLock::new(false)),
+            Arc::new(std::sync::RwLock::new(false)),
+        );
+        config.deny_all = true;
+        config
+    }
+    /// Permit only the application's local development server, never a remote host.
+    pub fn with_local_endpoint(
+        mut self,
+        host: String,
+        address: std::net::SocketAddr,
+    ) -> std::io::Result<Self> {
+        if !address.ip().is_loopback()
+            || !(host == "localhost"
+                || host
+                    .trim_matches(['[', ']'])
+                    .parse::<IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback()))
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "development endpoint must be loopback",
+            ));
+        }
+        self.local_endpoint = Some((host, address));
+        Ok(self)
+    }
+
     /// Receives bounded, content-free failure codes. The app associates this
     /// observer with a dedicated listener, never by hostname/time heuristics.
     pub fn with_observer(mut self, observer: Arc<dyn Fn(&str, &str) + Send + Sync>) -> Self {
@@ -300,6 +337,8 @@ impl ProxyConfig {
         connect_nonstandard_ports_allowed: Arc<std::sync::RwLock<bool>>,
     ) -> Self {
         Self {
+            deny_all: false,
+            local_endpoint: None,
             observer: None,
             resolver: Arc::new(SystemResolver),
             is_blocked_fn: is_blocked,
@@ -421,33 +460,56 @@ async fn handle_conn(mut client: TcpStream, cfg: ProxyConfig) -> std::io::Result
         }
     };
 
+    let local_address = match (&cfg.local_endpoint, &target) {
+        (Some((allowed, address)), Target::Http { host, port })
+        | (Some((allowed, address)), Target::Connect { host, port })
+            if host == allowed && *port == address.port() =>
+        {
+            Some(*address)
+        }
+        _ => None,
+    };
+    if cfg.deny_all && local_address.is_none() {
+        let (host, port) = match &target {
+            Target::Http { host, port } | Target::Connect { host, port } => (host, port),
+        };
+        cfg.report("proxy:blocked", &format!("UI remote access disabled; destination={host}:{port}; refused before DNS or connection"));
+        return write_status(&mut client, "403 Forbidden").await;
+    }
     match target {
         Target::Connect { host, port } => {
-            if port != 443 && !*cfg.connect_nonstandard_ports_allowed.read().unwrap() {
+            if local_address.is_none()
+                && port != 443
+                && !*cfg.connect_nonstandard_ports_allowed.read().unwrap()
+            {
                 cfg.report("proxy:port-blocked", "nonstandard CONNECT port disabled");
                 return write_status(&mut client, "403 Forbidden").await;
             }
-            let addr = match validate_target_async(
-                host.clone(),
-                port,
-                cfg.resolver.clone(),
-                cfg.is_blocked_fn,
-            )
-            .await
-            {
-                Ok(addr) => addr,
-                Err(ProxyError::Blocked) => {
-                    let code = if local_name(&host) {
-                        "proxy:hostname-blocked"
-                    } else {
-                        "proxy:address-blocked"
-                    };
-                    cfg.report(code, "target refused before connection");
-                    return write_status(&mut client, "403 Forbidden").await;
-                }
-                Err(_) => {
-                    cfg.report("proxy:dns", "resolution failed or returned no addresses");
-                    return write_status(&mut client, "502 Bad Gateway").await;
+            let addr = if let Some(address) = local_address {
+                address
+            } else {
+                match validate_target_async(
+                    host.clone(),
+                    port,
+                    cfg.resolver.clone(),
+                    cfg.is_blocked_fn,
+                )
+                .await
+                {
+                    Ok(addr) => addr,
+                    Err(ProxyError::Blocked) => {
+                        let code = if local_name(&host) {
+                            "proxy:hostname-blocked"
+                        } else {
+                            "proxy:address-blocked"
+                        };
+                        cfg.report(code, "target refused before connection");
+                        return write_status(&mut client, "403 Forbidden").await;
+                    }
+                    Err(_) => {
+                        cfg.report("proxy:dns", "resolution failed or returned no addresses");
+                        return write_status(&mut client, "502 Bad Gateway").await;
+                    }
                 }
             };
             let mut upstream = match TcpStream::connect(addr).await {
@@ -471,31 +533,35 @@ async fn handle_conn(mut client: TcpStream, cfg: ProxyConfig) -> std::io::Result
             Ok(())
         }
         Target::Http { host, port } => {
-            if !*cfg.http_allowed.read().unwrap() {
+            if local_address.is_none() && !*cfg.http_allowed.read().unwrap() {
                 cfg.report("proxy:http-blocked", "plaintext HTTP disabled");
                 return write_http_blocked(&mut client).await;
             }
-            let addr = match validate_target_async(
-                host.clone(),
-                port,
-                cfg.resolver.clone(),
-                cfg.is_blocked_fn,
-            )
-            .await
-            {
-                Ok(addr) => addr,
-                Err(ProxyError::Blocked) => {
-                    let code = if local_name(&host) {
-                        "proxy:hostname-blocked"
-                    } else {
-                        "proxy:address-blocked"
-                    };
-                    cfg.report(code, "target refused before connection");
-                    return write_status(&mut client, "403 Forbidden").await;
-                }
-                Err(_) => {
-                    cfg.report("proxy:dns", "resolution failed or returned no addresses");
-                    return write_status(&mut client, "502 Bad Gateway").await;
+            let addr = if let Some(address) = local_address {
+                address
+            } else {
+                match validate_target_async(
+                    host.clone(),
+                    port,
+                    cfg.resolver.clone(),
+                    cfg.is_blocked_fn,
+                )
+                .await
+                {
+                    Ok(addr) => addr,
+                    Err(ProxyError::Blocked) => {
+                        let code = if local_name(&host) {
+                            "proxy:hostname-blocked"
+                        } else {
+                            "proxy:address-blocked"
+                        };
+                        cfg.report(code, "target refused before connection");
+                        return write_status(&mut client, "403 Forbidden").await;
+                    }
+                    Err(_) => {
+                        cfg.report("proxy:dns", "resolution failed or returned no addresses");
+                        return write_status(&mut client, "502 Bad Gateway").await;
+                    }
                 }
             };
             let mut upstream = match TcpStream::connect(addr).await {
@@ -848,11 +914,94 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(n, 0);
+        assert!(TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn deny_all_refuses_http_and_connect_without_dns_or_upstream() {
+        struct MustNotResolve;
+        impl HostResolver for MustNotResolve {
+            fn resolve(&self, host: &str, _: u16) -> std::io::Result<Vec<SocketAddr>> {
+                panic!("deny-all attempted DNS for {host}");
+            }
+        }
+        let upstream = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let address = upstream.local_addr().unwrap();
+        let reports = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let observed = reports.clone();
+        let mut config = ProxyConfig::deny_all().with_observer(Arc::new(move |code, _| {
+            observed.lock().unwrap().push(code.to_owned())
+        }));
+        config.resolver = Arc::new(MustNotResolve);
+        let proxy = start_scoped(config).await.unwrap();
+        for target in ["blocked.example:443".to_owned(), address.to_string()] {
+            for request in [
+                format!("CONNECT {target} HTTP/1.1\r\n\r\n"),
+                format!("GET http://{target}/image HTTP/1.1\r\nHost: {target}\r\n\r\n"),
+            ] {
+                let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, proxy.port))
+                    .await
+                    .unwrap();
+                client.write_all(request.as_bytes()).await.unwrap();
+                assert!(read_http_head(&mut client).await.contains("403"));
+            }
+        }
+        assert_eq!(*reports.lock().unwrap(), vec!["proxy:blocked"; 4]);
         assert!(
-            TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+            tokio::time::timeout(std::time::Duration::from_millis(100), upstream.accept())
                 .await
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn deny_all_local_exception_is_exact_and_loopback_only() {
+        assert!(ProxyConfig::deny_all()
+            .with_local_endpoint("example.org".into(), "127.0.0.1:1420".parse().unwrap())
+            .is_err());
+        assert!(ProxyConfig::deny_all()
+            .with_local_endpoint("localhost".into(), "192.0.2.1:1420".parse().unwrap())
+            .is_err());
+        let server = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let address = server.local_addr().unwrap();
+        let proxy = start_scoped(
+            ProxyConfig::deny_all()
+                .with_local_endpoint("localhost".into(), address)
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        let served = tokio::spawn(async move {
+            let (mut stream, _) = server.accept().await.unwrap();
+            assert!(read_http_head(&mut stream).await.starts_with("GET /local "));
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .await
+                .unwrap();
+        });
+        for (host, port, status) in [
+            ("localhost", address.port(), "200"),
+            ("127.0.0.1", address.port(), "403"),
+            ("localhost", 1, "403"),
+            ("example.org", address.port(), "403"),
+        ] {
+            let mut client = TcpStream::connect((Ipv4Addr::LOCALHOST, proxy.port))
+                .await
+                .unwrap();
+            client
+                .write_all(
+                    format!(
+                        "GET http://{host}:{port}/local HTTP/1.1\r\nHost: {host}:{port}\r\n\r\n"
+                    )
+                    .as_bytes(),
+                )
+                .await
+                .unwrap();
+            assert!(read_http_head(&mut client).await.contains(status));
+        }
+        served.await.unwrap();
     }
 
     // ── end-to-end tunnel ───────────────────────────────────────────────────────
@@ -861,6 +1010,8 @@ mod tests {
         // Real resolver, but nothing blocked — lets us tunnel to a loopback test
         // server (which the real policy would correctly refuse).
         ProxyConfig {
+            deny_all: false,
+            local_endpoint: None,
             observer: None,
             resolver: Arc::new(SystemResolver),
             is_blocked_fn: |_| false,
@@ -961,6 +1112,8 @@ mod tests {
         // http_allowed=false: absolute-form HTTP is answered with the
         // HTTP_BLOCKED_STATUS signature before any DNS/dial happens.
         let cfg = ProxyConfig {
+            deny_all: false,
+            local_endpoint: None,
             observer: None,
             resolver: Arc::new(SystemResolver),
             is_blocked_fn: |_| false,

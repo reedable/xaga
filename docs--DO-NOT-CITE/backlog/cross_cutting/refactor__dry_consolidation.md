@@ -1,4 +1,4 @@
-# Consolidate the recorded parallel implementations (pending — decisions per item)
+# Consolidate the recorded parallel implementations
 
 The seven duplication findings from the decoupling audit, to be judged against `docs/principles/dry.md` (which also lists them as the principle's recorded instances):
 
@@ -10,4 +10,4 @@ The seven duplication findings from the decoupling audit, to be judged against `
 6. Article construction in three-plus places, inconsistently: `entry_article` (`persistence/entries.rs`), `article_from_fm` / `article_from_document` (`persistence/articles.rs`), and `save_article` building `Article`/`Entry` inline instead of using the helper.
 7. `is_unread`/`is_bookmarked` derivation and the `"unread"`/`"bookmark"`/`"pinned"` string literals scattered across `entries.rs`, `articles.rs`, `row.rs`, `pipeline.rs`, `db.rs` — no shared constant or helper. Partly pre-existing.
 
-Per `dry.md`: whether each is consolidated, parameterized, or kept-and-documented is a decision. Items 1–5 interact with `docs-transient/backlog/embeddings/spike__job_payload_modeling.md` (the per-kind split is their direct cause); item 7 interacts with `docs-transient/backlog/domain/spike__domain_tags_model.md`.
+Per `dry.md`: whether each is consolidated, parameterized, or kept-and-documented is a decision. Items 1–5 interact with job payload modeling (the per-kind split is their direct cause); item 7 interacts with domain tags model.

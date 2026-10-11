@@ -2,7 +2,7 @@
 
 How Xaga secures the _network_ side of loading remote content — feeds, article pages, and PDFs. What happens to the bytes after they arrive (parsing, processing, the write into storage) is covered in the companion document, [handling_remote_content.md](handling_remote_content.md). Reading that content back and rendering it is a further boundary, covered in [handling_persisted_content.md](handling_persisted_content.md). Content the user supplies directly rather than fetches (OPML/bookmarks import) is covered in [handling_user_supplied_content.md](handling_user_supplied_content.md).
 
-Code: `crates/xaga-core/src/ssrf_proxy.rs` (the proxy), `src-tauri/src/article_loader.rs` (loader webview), `src-tauri/src/commands/articles.rs` (PDF probe), `src-tauri/src/commands/feeds.rs` (feed fetch), `src-tauri/src/fetch_client.rs` (client factory), `src-tauri/src/lib.rs` (wiring).
+Code: `crates/xaga-core/src/network_proxy.rs` (the proxy), `src-tauri/src/article_loader.rs` (loader webview), `src-tauri/src/commands/articles.rs` (PDF persistence and presentation), `src-tauri/src/commands/feeds.rs` (feed fetch), `src-tauri/src/fetch_client.rs` (client factory), `src-tauri/src/lib.rs` (wiring).
 
 ## Intent
 
@@ -18,21 +18,51 @@ Where an invariant is at odds with UX, the resolution is a user-controllable tra
 
 The app fetches URLs it does not control: feed URLs entered by the user (or imported from OPML), article links found inside feeds, and every redirect and subresource those trigger. A hostile publisher can use any of these to aim requests at targets the app must never reach: `127.0.0.1`, LAN hosts (routers, printers, dev servers), link-local/cloud-metadata addresses.
 
-A URL-string denylist cannot stop this (see the module docs at `ssrf_proxy.rs:1-18`):
+A URL-string denylist cannot stop this:
 
 - **DNS rebinding** — a hostname that looks public can resolve to a private address, or resolve publicly once for the check and privately again for the connection. The WKWebView does its own DNS resolution, so a check in the app never sees what the webview actually connects to.
 - **Redirects** — the webview follows redirects inside its own network stack; the app never sees the intermediate URLs.
 - **Subresources** — a public page can embed `<img src="http://192.168.1.1/…">` and the webview will fetch it.
 
-## Containment: the SSRF proxy
+## Main and settings network policy
 
-The proxy moves name resolution _out_ of the client. Every consumer (webview or reqwest) is pointed at a local HTTP proxy on `127.0.0.1:<random port>` (bound at startup, `lib.rs`), and for each request the proxy:
+`ui_network.rs` starts a separate scoped listener for each trusted UI window,
+using the same proxy server and observer interface as the article loader. Its
+policy rejects parsed HTTP and CONNECT requests before DNS or an upstream
+connection. Each macOS UI window has its own nonpersistent WebKit data store,
+so its proxy configuration does not replace a loader's configuration. Local
+application protocols, data images and Blob presentation do not use this proxy.
+Application settings and library persistence remain native operations.
 
-1. **Rejects local names before DNS**, including `.local` (case-insensitive, with or without a trailing dot) and unqualified names. Otherwise **resolves** the target host itself (`validate_target`, `ssrf_proxy.rs`) — on the blocking pool, so DNS never stalls a runtime worker. DNS names are made absolute to prevent search-domain expansion into `.local`; IP literals skip DNS. This prevents direct local-name requests from triggering mDNS and macOS's Local Network permission prompt before the address filter runs.
+Development permits only the configured loopback development server host and
+port, pinned to a loopback address. Bundled builds have no proxy exception.
+Unrequested new windows and native downloads are rejected. The existing native
+WebRTC and speculative-DNS restrictions remain applied before construction.
+
+**Enforcement gap:** the native `ui_network_webview` test demonstrates that
+WebKit bypasses this proxy for HTTP loopback image requests: both trusted
+windows reach the test server directly. Consequently, the proxy must not yet be
+regarded as a complete network boundary. Image-reference persistence must not
+assume complete isolation. Reproduce the failing check with:
+
+```sh
+XAGA_VERIFY_LOOPBACK_ISOLATION=1 cargo test -p xaga --test ui_network_webview
+```
+
+Refusals that reach the proxy use the existing error sink with “Remote content
+was blocked.” and a Details action. Diagnostics identify the window and target
+host/port, not the originating article or DOM element. Requests already blocked
+by CSP do not reach the proxy and do not produce a proxy notification.
+
+## Containment: the network proxy’s SSRF policy
+
+The network proxy supports SSRF and deny-all policies. Its SSRF policy moves name resolution _out_ of the client. Every consumer (webview or reqwest) is pointed at a local HTTP proxy on `127.0.0.1:<random port>` (bound at startup, `lib.rs`), and for each request the proxy:
+
+1. **Rejects local names before DNS**, including `.local` (case-insensitive, with or without a trailing dot) and unqualified names. Otherwise **resolves** the target host itself (`validate_target`, `network_proxy.rs`) — on the blocking pool, so DNS never stalls a runtime worker. DNS names are made absolute to prevent search-domain expansion into `.local`; IP literals skip DNS. This prevents direct local-name requests from triggering mDNS and macOS's Local Network permission prompt before the address filter runs.
 2. **Rejects** the request if _any_ resolved address is disallowed — not filtered to the allowed ones. A host publishing both a public and a private record is unreachable entirely, closing the "one good record smuggles the request past the check" hole.
 3. **Dials the exact validated IP** (pinning). There is no second lookup for a rebind to exploit.
 
-Because the client never resolves or connects directly, every redirect hop and every subresource re-enters the proxy and is re-validated.
+Requests routed through the proxy are re-validated on every new connection, including redirects and subresources. This does not cover WebKit’s demonstrated loopback bypass described above.
 
 Article loads use a scoped listener built from the same proxy configuration, so
 network failures can be attributed to the load without adding outbound headers.
@@ -40,11 +70,11 @@ Its lifetime follows the loader window; other consumers retain the shared
 startup listener. See [article loading diagnostics](../article_loading_diagnostics.md)
 for collection and observation limits.
 
-The proxy speaks two request forms (`parse_request_line`, `ssrf_proxy.rs:195-213`): `CONNECT host:port` (HTTPS tunneling) and absolute-form `GET http://…` (plain HTTP).
+The proxy speaks two request forms (`parse_request_line`, `network_proxy.rs`): `CONNECT host:port` (HTTPS tunneling) and absolute-form `GET http://…` (plain HTTP).
 
 ### Address policy
 
-`is_blocked` (`ssrf_proxy.rs:57-105`) is the security-critical core: only globally-routable addresses pass.
+`is_blocked` (`network_proxy.rs`) is the security-critical core: only globally-routable addresses pass.
 
 IPv4 (`is_blocked_v4`): loopback `127/8`; private `10/8`, `172.16/12`, `192.168/16`; link-local `169.254/16` (includes `169.254.169.254` cloud metadata); unspecified `0.0.0.0`; broadcast; documentation ranges; CGNAT `100.64/10`; IETF protocol assignments `192.0.0/24`.
 
@@ -59,7 +89,7 @@ The resolver is injectable (`HostResolver` trait) so tests can simulate DNS — 
 
 ### Plaintext HTTP enforcement
 
-The `http_allowed` setting (default `false`) is enforced in the proxy, not in the clients: when off, absolute-form `http://` requests are refused with status `HTTP_BLOCKED_STATUS` (470, defined in `persistence/feeds.rs`) and a plain-text explanation body. Because every consumer dials through the proxy, this one refusal point covers the feed client, the PDF client, the loader webview, its subresources, and every redirect hop — a `https → http` downgrade redirect from any client arrives as absolute-form http and is refused. The non-standard status lets fetch paths distinguish "blocked by the user's own setting" from a real server 4xx: `fetch_xml` maps it to `FeedError::HttpBlocked`, the PDF probe to its own error string, and the webview surfaces the explanation body. The proxy holds the setting handle and reads it per request; it starts before settings load, and the value is `false` (blocked) until seeded.
+The `http_allowed` setting (default `false`) is enforced in the proxy, not in the clients: when off, absolute-form `http://` requests are refused with status `HTTP_BLOCKED_STATUS` (470, defined in `persistence/feeds.rs`) and a plain-text explanation body. Because every consumer dials through the proxy, this one refusal point covers the feed client, the loader webview, its subresources, and every redirect hop — a `https → http` downgrade redirect from any client arrives as absolute-form http and is refused. The non-standard status lets fetch paths distinguish "blocked by the user's own setting" from a real server 4xx: `fetch_xml` maps it to `FeedError::HttpBlocked`, and the webview surfaces the explanation body. The proxy holds the setting handle and reads it per request; it starts before settings load, and the value is `false` (blocked) until seeded.
 
 ### CONNECT port policy
 
@@ -73,11 +103,10 @@ The fetch clients do not set `.https_only()`: enforcing in the proxy covers ever
 
 Every outbound consumer:
 
-1. **The article loader webview** (`article_loader.rs:104-110`). Each loader window is built with `WebviewWindowBuilder::proxy_url` pointing at the proxy, so the webview never resolves DNS or connects directly. Requires the `macos-proxy` feature to take effect on macOS.
-2. **Per-invocation fetch clients** (`fetch_client.rs`), reqwest clients whose `Proxy::all` points at the proxy. A client is built by the factory at each command invocation — feed commands build one per call; the PDF probe builds one per probe — so settings changes apply on the next fetch without a relaunch. The feed and PDF paths use separate client instances. TLS is rustls. Used for:
+1. **The article loader webview** (`article_loader.rs:104-110`). Each loader window is built with `WebviewWindowBuilder::proxy_url` pointing at the proxy. The proxy validates requests it receives; the WebKit loopback bypass described above remains outside that enforcement. Requires the `macos-proxy` feature to take effect on macOS.
+2. **Per-invocation fetch clients** (`fetch_client.rs`), reqwest clients whose `Proxy::all` points at the proxy. A client is built by the factory at each command invocation — feed commands build one per call — so settings changes apply on the next fetch without a relaunch. TLS is rustls. Used for:
    - **Feed XML** — all feed commands (`add_feed`, `refresh_all_feeds`, `import_feeds`) fetch through it (`commands/feeds.rs`). Feed URLs are normalized to https, so they use the CONNECT path.
-   - **The inline-PDF probe** (`try_fetch_pdf`, `commands/articles.rs`), which fetches candidate PDFs directly instead of via a webview.
-3. **The embedding model download** (`download_model`, `crates/xaga-core/src/embeddings/model.rs`). Its URL is a compile-time constant, but its redirect chain is server-controlled (`resolve/main` redirects to HF's CDN), so it dials through the proxy like everything else: the app passes a client built by `ssrf_proxy::proxied_client` (`lib.rs`); the CLI's `download-model` command starts its own proxy instance with both settings at their secure defaults.
+3. **The embedding model download** (`download_model`, `crates/xaga-core/src/embeddings/model.rs`). Its URL is a compile-time constant, but its redirect chain is server-controlled (`resolve/main` redirects to HF's CDN), so it dials through the proxy like everything else: the app passes a client built by `network_proxy::proxied_client` (`lib.rs`); the CLI's `download-model` command starts its own proxy instance with both settings at their secure defaults.
 
 ## What a fetch discloses
 
@@ -89,11 +118,11 @@ On the reqwest fetch paths, a request carries nothing about the app or the user 
 - **No cookies** — the clients have no cookie jar, so there is no cross-fetch state a host could use to correlate requests.
 - **No conditional-GET validators.** `ETag`/`If-Modified-Since` are not sent: validators are a server-writable tracking channel — see [performance_tradeoff.md](performance_tradeoff.md).
 
-Scope: this covers the reqwest paths (feed XML, PDF probe). The article loader webview sends WebKit's platform-default UA — the genuine identity of the engine making that fetch, consistent with the "everything carried is true" intent.
+Scope: this covers the reqwest paths (feed XML). The article loader webview sends WebKit's platform-default UA — the genuine identity of the engine making that fetch, consistent with the "everything carried is true" intent.
 
 ### Encoding negotiation
 
-Compression is a user-controllable trade-off on top of the negotiate-nothing default: the `gzip_allowed` setting (boolean, default `false`) makes the factory build both clients — feed XML and PDF probe — with gzip negotiation, in lockstep, so the two paths always present the same header shape to hosts; negotiating on only one path would itself be a distinguishing signal. The consequence of enabling it: every fetched host learns that this client negotiates gzip — a truthful statement of capability, but one more property narrowing which software the client could be. In exchange, feed transfers shrink to a fraction of their uncompressed size (typically well over half saved; feed XML compresses heavily).
+Compression is a user-controllable trade-off on top of the negotiate-nothing default: the `gzip_allowed` setting (boolean, default `false`) makes the factory build feed clients with gzip negotiation. The consequence of enabling it: every fetched host learns that this client negotiates gzip — a truthful statement of capability, but one more property narrowing which software the client could be. In exchange, feed transfers shrink to a fraction of their uncompressed size (typically well over half saved; feed XML compresses heavily).
 
 The body cap keeps its meaning under compression: reqwest inflates before `chunk()` yields bytes, so `feed_max_body_bytes` counts _decompressed_ bytes and a small compressed response cannot smuggle an oversized body past the cap. This decompression-bomb bound is pinned by test (`persistence::feeds::tests::gzip_cap_counts_decompressed_bytes`), and peak per-fetch memory stays bounded by the cap exactly as in the uncompressed case.
 
@@ -126,13 +155,13 @@ The proxy controls _where_ requests can go; the loader adds controls on _what_ g
 - **WebRTC disabled on macOS** (`webview_policy.rs`): every Xaga-created WebView receives a native `WKWebViewConfiguration` with peer connections disabled before construction and the first navigation. This applies to subframes and later navigations, including persistent allow-listed loader sessions. JavaScript cannot undo the engine preference. The WebKit `_setPeerConnectionEnabled:` SPI is availability-checked and read back; if enforcement fails, the WebView is not created. The main window is built explicitly in setup for the same reason. This SPI is private API, as is the existing macOS proxy integration. Other platforms do not yet have an equivalent native WebRTC policy.
 - **Remote popups denied**: loader content cannot create unmanaged WebViews through `window.open` or new-window links.
 - **Speculative DNS disabled on macOS**: the same native configuration disables and verifies `_dnsPrefetchingEnabled` before construction. WebKit's speculative lookups can otherwise bypass the HTTP proxy. Normal proxied requests still use the proxy's pre-resolution hostname policy.
-- **Scheme guard** (`article_loader.rs:87-96`): only `http`/`https` URLs are ever loaded. Without this, a crafted feed link (`file://`, `data:`, custom schemes) would be loaded and its DOM shipped back by the init script — local-file and intranet disclosure. The PDF probe mirrors the same guard (`commands/articles.rs:151-158`).
+- **Scheme guard** (`article_loader.rs:87-96`): only `http`/`https` URLs are ever loaded. Without this, a crafted feed link (`file://`, `data:`, custom schemes) would be loaded and its DOM shipped back by the init script — local-file and intranet disclosure.
 - **Ephemeral state by default**: loader windows are incognito — no cookies written to disk. Only user-allow-listed domains (the `allowed_domains` setting) get a persistent, per-domain `WKWebsiteDataStore` whose identifier is derived by hashing the domain (`domain_store_id`), so sites cannot correlate visits through shared storage.
 - **Injection-safe bootstrap**: the values prepended to the init script are emitted via `serde_json::to_string`, so special characters in the URL cannot break out of the script context (`article_loader.rs:69-78`).
 - **Hidden means hidden**: a hidden loader window re-hides itself on any focus event the remote page manages to trigger (`article_loader.rs:154-168`).
 - **Kill after capture**: once the page's HTML is delivered, the webview is closed immediately so untrusted scripts cannot keep running or spam IPC (`receive_html`, `commands/articles.rs:98-120`).
 - **Per-request timeout**: the whole load is bounded by the configurable `loader_timeout_secs`.
-- **PDF spoofing dead-end**: a response claiming `application/pdf` whose body lacks the `%PDF-` signature is rejected outright (`E_SPOOFED_PDF`) and never rendered in a webview (`PdfProbe::Invalid`).
+- **PDF format validation**: the article download consumer requires a `%PDF-` prefix before persistence or presentation. Other formats produce `article:unsupported-download`; rejection does not imply a deceptive server.
 
 ## Limits
 
@@ -141,3 +170,53 @@ Places where the invariants are not fully upheld:
 - Proxy behavior is a property of the bundled app; `tauri dev` runtime checks are not representative for webview-level policies (see the CSP note in [handling_persisted_content.md](handling_persisted_content.md)).
 
 The macOS native policy has a GUI smoke test: `cargo test -p xaga --test webview_policy`. It checks that standard and prefixed peer-connection constructors are absent at document-start, in a subframe, and after another navigation, using only in-memory HTML and ephemeral storage. Proxy unit tests verify that local names never reach the resolver. These controls do not establish the cause of any previously observed permission prompt.
+
+## Native resource downloads
+
+`resource_download.rs` owns app-generated temporary staging paths and the
+explicit `ByteValidator` boundary. It performs no network requests and no
+library writes. A consumer supplies a validator and a byte limit. Successful
+transport alone cannot release content: the staged regular file is read with a
+cap and the validator must return accepted output. Server filenames and callback
+completion paths do not choose which file is read. Each request retains its own
+assigned path, including on macOS where completion reports no path.
+
+`loader_download.rs` is the article-loader adapter. It accepts at most one
+resource per loader. The native request ID and pending capture phase choose
+the consumer: PDF before HTML capture, image during favicon capture. Downloads
+without a pending consumer are rejected. Renderer callbacks cannot replace a
+capture while its native download is active. The callback may report a redirected URL, as
+verified on macOS. It is not proof of the initiating frame. During the favicon
+phase the first accepted candidate must pass the image validator regardless of
+its URL; it cannot become arbitrary persisted content. The original requested
+favicon URL remains storage identity. Completion is matched to the accepted
+callback URL, ignoring fragments. Other backends need native verification.
+
+Favicon responses displayed as image documents continue through canvas capture.
+Responses WebKit classifies as downloads use the same proxied webview and session
+configuration. Downloaded bytes are decoded by the Rust `image` crate, with PNG,
+JPEG, GIF, ICO, and WebP enabled. SVG and unrecognized content are rejected. The
+consumer enforces an 8 MiB completed-file/read limit, strict 2048-by-2048 source
+dimension limits, and a 32 MiB decoder allocation budget (the decoder's allocation
+budget is best-effort). Accepted output is resized to at most 64-by-64, preserving
+aspect ratio, and encoded as PNG. The resulting data URI rejoins `LoaderCapture`;
+existing ingestion saves it using the image URL hash and library writer rules.
+No new persistence scheme or privileged-window remote fetch is introduced.
+
+Disk growth is checked every 50 ms during transfer. Crossing the consumer limit (8 MiB for icons, 64 MiB for PDFs) completes the
+capture with failure and lets the normal loader lifetime close the hidden window.
+This sampled guard is not a hard disk quota: writes can overshoot between checks.
+The existing overall loader deadline remains in force. No per-download cancel or
+progress API is exposed by the current Tauri callback. Temporary directories are
+removed on normal completion, validation rejection, timeout, and window cleanup;
+process crashes may leave OS-temporary remnants. Automatic crash-recovery cleanup
+is not implemented. Decoding runs off the native UI thread; late results after a
+load has ended are discarded rather than persisted.
+
+The PDF consumer uses the shared validator contract to enforce a `%PDF-` prefix
+and a 64 MiB limit, then commits accepted bytes through the library writer.
+Xaga enables the local Wry PDF response-routing feature by default on macOS.
+Local reuse, presentation, and the patch policy are described in
+`docs/architecture/wry_pdf_routing.md`. The PDF reqwest probe is removed.
+WebKit navigation does not use the reqwest redirect-count setting; destination
+checks remain enforced by the proxy, and the loader deadline bounds waiting.
