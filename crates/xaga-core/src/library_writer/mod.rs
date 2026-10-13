@@ -163,6 +163,11 @@ impl TagPatch {
 /// recovery's concern). Each variant mirrors a persistence write function and carries its
 /// typed responder.
 enum Op {
+    RepairSummary {
+        id: String,
+        summary: String,
+        resp: oneshot::Sender<Result<bool, WriterError>>,
+    },
     SavePdf {
         url: String,
         bytes: Option<Vec<u8>>,
@@ -308,7 +313,8 @@ impl Op {
     /// topic sharing an id string can never collide onto one lane.
     fn lane_key(&self) -> String {
         match self {
-            Op::SaveArticle { id, .. }
+            Op::RepairSummary { id, .. }
+            | Op::SaveArticle { id, .. }
             | Op::AddAnnotation { article_id: id, .. }
             | Op::ReplaceAnnotation { article_id: id, .. }
             | Op::RemoveAnnotation { article_id: id, .. }
@@ -339,6 +345,7 @@ impl Op {
     /// Short name for shutdown-drop logging.
     fn label(&self) -> &'static str {
         match self {
+            Op::RepairSummary { .. } => "repair_summary",
             Op::SavePdf { .. } => "save_pdf",
             Op::SaveArticle { .. } => "save_article",
             Op::AddAnnotation { .. } => "add_annotation",
@@ -364,6 +371,7 @@ impl Op {
     /// Refuse without executing (Regular backlog at shutdown).
     fn refuse(self) {
         match self {
+            Op::RepairSummary { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SavePdf { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SaveArticle { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::AddAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -390,6 +398,14 @@ impl Op {
     /// Runs inside the op's lane: nothing else touches this file concurrently.
     async fn execute(self, library_dir: &std::path::Path, token: WriteToken) {
         match self {
+            Op::RepairSummary { id, summary, resp } => {
+                let result = crate::persistence::summary_repair::repair_summary(
+                    library_dir, &id, &summary, token,
+                )
+                .await
+                .map_err(WriterError::from);
+                let _ = resp.send(result);
+            }
             Op::SavePdf { url, bytes, resp } => {
                 let result = crate::persistence::pdfs::save(library_dir, &url, bytes, token)
                     .await
@@ -788,6 +804,12 @@ impl LibraryWriter {
     }
 
     // ── Write API (mirrors the persistence write API, minus library_dir) ─────────────
+
+    pub(crate) async fn repair_summary(&self, id: String, summary: String) -> Result<bool, WriterError> {
+        let (resp, rx) = oneshot::channel();
+        self.submit(Tier::Interactive, Op::RepairSummary { id, summary, resp }, rx)
+            .await
+    }
 
     #[allow(clippy::too_many_arguments)]
     pub async fn save_article(

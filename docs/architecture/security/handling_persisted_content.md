@@ -31,7 +31,9 @@ with fresh defaults. Article saves validate before storing images as well.
 
 Writes parse frontmatter into a mapping, apply supplied field values, and use
 noyalib to serialize the complete mapping. YAML formatting and comments are not
-retained by serialization. Article body saves preserve the values of tags, aliases,
+retained by serialization. Block scalars are disabled in noyalib serialization
+so embedded carriage returns are escaped in quoted strings and survive a
+round trip; noyalib 0.0.15 block scalar output fails on these summaries. Article body saves preserve the values of tags, aliases,
 annotations, and other omitted fields. The retired `images` frontmatter field is
 removed on every save, as required by `crash_consistency.md`. Omitted summary, publication dates, and favicon
 values preserve their existing values. Annotation changes edit the annotations
@@ -49,6 +51,32 @@ Edits remain inside the existing library-writer lanes and use atomic file
 replacement. The same strict parser policy validates both input and output.
 Article image cleanup considers references throughout the saved document,
 including frontmatter, so a body refresh does not delete summary-only images.
+
+## Repairing summaries from local Atom
+
+Run `xaga-cli --data-dir /path/to/library articles repair-summaries` to restore
+article summaries lost from frontmatter. The command reads the library's local
+`feeds/*.atom` and `entries/*.md`; it does not fetch remote content.
+
+Only an absent `summary` key is eligible. Existing values, including an empty
+string or null, are left untouched. Entries are matched by normalized source URL.
+A nonempty local Atom summary is applied through the shared Markdown upsert under
+the library lock and entry writer lane, preserving the body and other fields
+(subject to the existing retired `images` removal rule above). The command does
+not create missing articles. If no local summary is available, it leaves the
+article unchanged.
+
+Use `xaga-cli --dry-run --data-dir /path/to/library articles repair-summaries`
+to run the same scan and report would-repair, skipped, unavailable, and error
+counts without submitting any article writes. Before counting a repair, dry-run
+uses the same frontmatter patch serializer and output parser as the write path;
+serialization failures are reported as errors. The flag also works after the
+subcommand. Dry-run uses the same library lock as repair.
+
+The command prints repaired, skipped, unavailable, and error counts. Malformed
+files are reported and left untouched; other articles continue. Errors produce
+a nonzero exit status. Close the app before running if it holds the library lock.
+Regression coverage lives in `persistence/summary_repair.rs`.
 
 ## Testing caveat
 

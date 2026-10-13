@@ -15,3 +15,5 @@ pub(crate) mod walk;
 pub mod pdfs;
 
 pub(crate) mod documents;
+
+pub mod summary_repair;

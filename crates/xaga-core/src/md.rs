@@ -36,6 +36,20 @@ pub(crate) fn parse_document(raw: &str) -> Result<(Frontmatter, String), MdError
     split_document(raw)
 }
 
+/// Presence differs from an explicitly stored null or empty string.
+pub(crate) fn has_summary_field(raw: &str) -> Result<bool, MdError> {
+    parse_document(raw)?;
+    let rest = raw
+        .trim_start()
+        .strip_prefix("---\n")
+        .ok_or(MdError::Delimiter)?;
+    let end = rest.find("\n---\n").ok_or(MdError::Delimiter)?;
+    let fields: std::collections::BTreeMap<String, noyalib::Value> =
+        noyalib::from_str_with_config(&rest[..end], &FM_PARSER)
+            .map_err(|e| MdError::Frontmatter(e.to_string()))?;
+    Ok(fields.contains_key("summary"))
+}
+
 /// Merge supplied fields into parsed frontmatter and serialize the mapping.
 /// YAML quoting, indentation and collection layout belong to the serializer.
 /// Omitted fields retain their values; an omitted body retains its exact bytes.
@@ -58,7 +72,10 @@ pub(crate) fn patch_document(
     }
     // Retired image-map storage is omitted on every save (crash_consistency.md).
     fields.remove("images");
-    let yaml = noyalib::to_string(&fields)
+    // Block scalars in noyalib 0.0.15 do not preserve embedded carriage returns.
+    // Let the library escape them in quoted strings instead.
+    let config = noyalib::SerializerConfig::new().block_scalars(false);
+    let yaml = noyalib::to_string_with_config(&fields, &config)
         .map_err(|e| MdError::Frontmatter(e.to_string()))?;
     let suffix = match body {
         Some(body) => format!("\n{body}\n"),
@@ -276,6 +293,23 @@ mod tests {
         assert_eq!(fm.tags, vec!["research"]);
         assert_eq!(test_frontmatter_values(&patched)["custom"], test_frontmatter_values(raw)["custom"]);
         assert!(patched.ends_with("---\n\nBody\n\n"));
+    }
+
+    #[test]
+    fn summary_carriage_returns_roundtrip_without_changing_other_fields() {
+        let raw = "---\nsource: https://example.org/a\ntitle: Saved\ntags: [research]\n---\n\nBody\n\n";
+        for summary in [
+            "First\r<br/>\nSecond",
+            "First\r\nSecond\r\n",
+            "First\rSecond",
+            "Quote: \"text\"\r<br/>\n\r<br/>\nLast\n\n",
+        ] {
+            let saved = patch_document(raw, &[("summary", serde_json::json!(summary))], None).unwrap();
+            let mut expected = test_frontmatter_values(raw);
+            expected.insert("summary".into(), noyalib::Value::String(summary.into()));
+            assert_eq!(test_frontmatter_values(&saved), expected);
+            assert!(saved.ends_with("---\n\nBody\n\n"));
+        }
     }
 
     #[test]
