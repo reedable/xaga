@@ -3,9 +3,9 @@ use std::path::Path;
 use crate::{
     library_writer::WriteToken,
     md::Frontmatter,
-    md::{Markdown, md_to_entry, parse_document},
-    persistence::entries::{EntryError, find_entry_path, render_entry},
-    types::{Annotation, Article, Entry},
+    md::{FrontmatterAnnotation, Markdown, md_to_entry, parse_document},
+    persistence::entries::{EntryError, find_entry_path},
+    types::{Annotation, Article},
     util::{normalize_url, url_hash12},
 };
 
@@ -54,15 +54,15 @@ pub(crate) async fn save_article(
         }
     };
 
-    let (created_at, existing_annotations, existing_tags) = if file_exists {
+    // Fail closed before writing images or replacing any existing document.
+    let existing = if file_exists {
         let raw = crate::fs::read_md_capped(&path).await?;
-        match parse_document(&raw) {
-            Ok((fm, _)) => (fm.created_at, fm.annotations, fm.tags),
-            Err(_) => (chrono::Utc::now().to_rfc3339(), vec![], vec![]),
-        }
+        let (fm, _) = parse_document(&raw)?;
+        Some((raw, fm))
     } else {
-        (chrono::Utc::now().to_rfc3339(), vec![], vec![])
+        None
     };
+    let favicon = favicon.or_else(|| existing.as_ref().and_then(|(_, fm)| fm.favicon.as_deref()));
 
     // Prepare candidate local URLs, write image files before Markdown, and
     // commit only URLs whose files were successfully persisted.
@@ -92,42 +92,41 @@ pub(crate) async fn save_article(
         None => None,
     };
 
-    let landed = crate::persistence::images::write_entry_images(library_dir, id, &extraction.images, token).await;
+    let landed =
+        crate::persistence::images::write_entry_images(library_dir, id, &extraction.images, token)
+            .await;
 
-    let article = Article {
-        meta: Entry {
-            id: id.to_string(),
-            url: normalized,
-            title: title.to_string(),
-            created_at,
-            published_at: published_at.map(str::to_string),
-            updated_at: updated_at.map(str::to_string),
-            description: summary.map(str::to_string),
-            is_unread: crate::tags::is_unread(&existing_tags),
-            is_bookmarked: crate::tags::is_bookmarked(&existing_tags),
-            color: None,
-        },
-        content: extraction.persisted_body(&landed),
-        annotations: with_reference(existing_annotations, id),
-        favicon,
-    };
-    crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
+    let body = extraction.persisted_body(&landed);
+    let mut updates = vec![
+        ("source", serde_json::json!(normalized)),
+        ("title", serde_json::json!(title)),
+    ];
+    // Initial metadata is supplied only for a newly discovered article.
+    if existing.is_none() {
+        updates.push(("created", serde_json::json!(chrono::Utc::now().to_rfc3339())));
+        updates.push(("aliases", serde_json::json!([title])));
+    }
+    for (key, value) in [
+        ("published", published_at),
+        ("updated", updated_at),
+        ("summary", summary),
+        ("favicon", favicon.as_deref()),
+    ] {
+        if let Some(value) = value {
+            updates.push((key, serde_json::json!(value)));
+        }
+    }
+    let rendered = super::documents::upsert(&path, &updates, Some(&body), token).await?;
+    let (fm, body) = parse_document(&rendered)?;
+    let article = article_from_document(id, fm, body);
 
-    // Sweep image files this entry's body no longer references. Keeps files whose
-    // hash the committed body still points at (matched by file stem, since the
+    // Sweep image files no longer referenced by the committed document, including
+    // frontmatter (summaries, annotations, custom fields). Keeps files whose
+    // hash the document still points at (matched by file stem, since the
     // ref is ext-less and the file is `<hash>.<ext>`), so a previously-fetched
     // image that is still referenced but not re-fetched this save is preserved.
     // Best-effort; never fails the save.
-    let mut keep = crate::persistence::images::referenced_image_hashes(id, &article.content);
-    if let Some((ref_id, hash)) = article
-        .favicon
-        .as_deref()
-        .and_then(crate::library::parse_entry_image_ref)
-    {
-        if ref_id == id {
-            keep.insert(hash.to_owned());
-        }
-    }
+    let keep = crate::persistence::images::referenced_image_hashes(id, &rendered);
     crate::persistence::images::gc_entry_images(library_dir, id, &keep, token).await;
 
     Ok(article)
@@ -200,7 +199,21 @@ pub(crate) async fn add_annotation(
 
     let favicon = fm.favicon.clone();
     let article = article_from_fm(article_id, fm, annotations, favicon, body);
-    crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
+    super::documents::upsert(
+            &path,
+            &[(
+                "annotations",
+                serde_json::json!(
+                    article
+                        .annotations
+                        .iter()
+                        .map(FrontmatterAnnotation::from)
+                        .collect::<Vec<_>>()
+                ),
+            )],
+            None, _token,
+    )
+    .await?;
     Ok(article)
 }
 
@@ -240,7 +253,21 @@ pub(crate) async fn replace_annotation(
 
     let favicon = fm.favicon.clone();
     let article = article_from_fm(article_id, fm, annotations, favicon, body);
-    crate::fs::write_atomic_async(path, render_entry(&article).into_bytes()).await?;
+    super::documents::upsert(
+            &path,
+            &[(
+                "annotations",
+                serde_json::json!(
+                    article
+                        .annotations
+                        .iter()
+                        .map(FrontmatterAnnotation::from)
+                        .collect::<Vec<_>>()
+                ),
+            )],
+            None, _token,
+    )
+    .await?;
     Ok(article)
 }
 
@@ -266,7 +293,21 @@ pub(crate) async fn remove_annotation(
 
     let favicon = fm.favicon.clone();
     let article = article_from_fm(article_id, fm, annotations, favicon, body);
-    crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
+    super::documents::upsert(
+            &path,
+            &[(
+                "annotations",
+                serde_json::json!(
+                    article
+                        .annotations
+                        .iter()
+                        .map(FrontmatterAnnotation::from)
+                        .collect::<Vec<_>>()
+                ),
+            )],
+            None, _token,
+    )
+    .await?;
     Ok(article)
 }
 
@@ -285,6 +326,200 @@ mod tests {
             content: note.to_string(),
             created_at: String::new(),
         }
+    }
+
+    const USER_DOCUMENT: &str = r#"---
+source: https://example.com/a
+title: Original
+created: '2026-01-01T00:00:00Z'
+published: '2026-01-02T00:00:00Z'
+updated: '2026-01-03T00:00:00Z'
+summary: |
+  First line
+  Second line
+# User-maintained metadata
+aliases: [Original, My alias]
+tags: [unread, bookmark, research, 'project/custom']
+custom:
+  nested: [one, two]
+annotations:
+  - id: existing
+    text: [highlighted text]
+    occurrence: [0]
+    color: yellow
+    note: My irreplaceable note
+    created_at: '2026-01-04T00:00:00Z'
+favicon: ../images/abcdef123456/112233445566
+---
+
+Original body
+
+
+"#;
+
+    fn user_document(lib: &Path) -> std::path::PathBuf {
+        let path = crate::library::entry_path(lib, "abcdef123456");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, USER_DOCUMENT).unwrap();
+        path
+    }
+
+    #[tokio::test]
+    async fn refresh_preserves_user_frontmatter_and_absent_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = user_document(dir.path());
+        let article = save_article(
+            dir.path(),
+            "abcdef123456",
+            "https://example.com/a",
+            "Refreshed",
+            None,
+            None,
+            None,
+            None,
+            "New body",
+            &no_data(),
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        let stored = std::fs::read_to_string(path).unwrap();
+        let stored_fields = crate::md::test_frontmatter_values(&stored);
+        let original_fields = crate::md::test_frontmatter_values(USER_DOCUMENT);
+        for key in ["aliases", "tags", "custom", "annotations"] {
+            assert_eq!(stored_fields[key], original_fields[key], "changed {key}");
+        }
+        assert_eq!(
+            article.meta.description.as_deref(),
+            Some("First line\nSecond line\n")
+        );
+        assert_eq!(
+            article.meta.published_at.as_deref(),
+            Some("2026-01-02T00:00:00Z")
+        );
+        assert_eq!(
+            article.meta.updated_at.as_deref(),
+            Some("2026-01-03T00:00:00Z")
+        );
+        assert!(article.meta.is_unread);
+        assert!(article.meta.is_bookmarked);
+        assert_eq!(article.annotations[0].content, "My irreplaceable note");
+        assert_eq!(
+            article.favicon.as_deref(),
+            Some("../images/abcdef123456/112233445566")
+        );
+        assert_eq!(article.content, "New body");
+    }
+
+    #[tokio::test]
+    async fn malformed_frontmatter_refuses_refresh_without_changing_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = user_document(dir.path());
+        let malformed = USER_DOCUMENT.replace("occurrence: [0]", "occurrence: not-a-list");
+        std::fs::write(&path, &malformed).unwrap();
+        let result = save_article(
+            dir.path(),
+            "abcdef123456",
+            "https://example.com/a",
+            "Refreshed",
+            None,
+            None,
+            None,
+            None,
+            "Replacement",
+            &no_data(),
+            WriteToken::for_test(),
+        )
+        .await;
+        assert!(matches!(result, Err(EntryError::Malformed(_))));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), malformed);
+        assert!(!crate::library::entry_images_dir(dir.path(), "abcdef123456").exists());
+    }
+
+    #[tokio::test]
+    async fn annotation_and_tag_edits_preserve_unrelated_frontmatter_and_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        let id = "abcdef123456";
+        let path = user_document(lib);
+        add_annotation(
+            lib,
+            id,
+            annotation("new", "yellow", "New note"),
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        replace_annotation(
+            lib,
+            id,
+            "new",
+            annotation("replacement", "blue", "Recolored"),
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        remove_annotation(lib, id, "replacement", WriteToken::for_test())
+            .await
+            .unwrap();
+        let tags = vec![
+            "bookmark".into(),
+            "research".into(),
+            "project/custom".into(),
+        ];
+        crate::persistence::entries::set_entry_tags(lib, id, tags.clone(), WriteToken::for_test())
+            .await
+            .unwrap();
+        let stored = std::fs::read_to_string(path).unwrap();
+        for key in ["aliases", "custom"] {
+            assert_eq!(crate::md::test_frontmatter_values(&stored)[key], crate::md::test_frontmatter_values(USER_DOCUMENT)[key]);
+        }
+        assert!(stored.ends_with("---\n\nOriginal body\n\n\n"));
+        let (fm, _) = parse_document(&stored).unwrap();
+        assert_eq!(fm.tags, tags);
+        assert_eq!(fm.annotations.len(), 1);
+        assert_eq!(fm.annotations[0].content, "My irreplaceable note");
+        assert_eq!(fm.summary.as_deref(), Some("First line\nSecond line\n"));
+    }
+
+    #[tokio::test]
+    async fn refresh_keeps_images_referenced_only_from_frontmatter() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        let id = "abcdef123456";
+        let image_url = "https://example.com/comic.png";
+        let first = save_article(
+            lib,
+            id,
+            "https://example.com/a",
+            "Title",
+            None,
+            None,
+            None,
+            None,
+            &format!("![comic]({image_url})"),
+            &data(image_url, PNG_DATA),
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        let hash = crate::persistence::images::image_url_hash(image_url);
+        save_article(
+            lib,
+            id,
+            "https://example.com/a",
+            "Title",
+            None,
+            None,
+            Some(&first.content),
+            None,
+            "Text-only replacement body",
+            &no_data(),
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        assert!(crate::library::entry_image_path(lib, id, &format!("{hash}.png")).exists());
     }
 
     const PNG_DATA: &str =
@@ -333,7 +568,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn legacy_image_map_is_ignored_and_not_serialized() {
+    async fn legacy_image_map_is_ignored_on_read_and_removed_on_save() {
         let dir = tempfile::tempdir().unwrap();
         let id = "abcdef123456";
         let path = crate::library::entry_path(dir.path(), id);
@@ -344,10 +579,18 @@ mod tests {
         let article = read_article(dir.path(), id).await.unwrap();
         assert!(article.content.contains("../images/abcdef123456/123456abcdef"));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
-        let serialized = render_entry(&article);
-        assert!(!serialized.contains("images:"));
-        assert!(!serialized.contains("obsolete-metadata"));
-        assert!(serialized.contains("![alt](../images/abcdef123456/123456abcdef)"));
+        save_article(dir.path(), id, &article.meta.url, "Updated", None, None, None, None,
+            &article.content, &no_data(), WriteToken::for_test()).await.unwrap();
+        let stored = std::fs::read_to_string(&path).unwrap();
+        assert!(!crate::md::test_frontmatter_values(&stored).contains_key("images"));
+        assert!(!stored.contains("obsolete-metadata"));
+        assert!(stored.contains("![alt](../images/abcdef123456/123456abcdef)"));
+        // Metadata-only saves must also omit the retired field.
+        std::fs::write(&path, raw).unwrap();
+        crate::persistence::entries::set_entry_tags(dir.path(), id, vec!["bookmark".into()], WriteToken::for_test()).await.unwrap();
+        let stored = std::fs::read_to_string(&path).unwrap();
+        assert!(!crate::md::test_frontmatter_values(&stored).contains_key("images"));
+        assert!(read_article(dir.path(), id).await.unwrap().meta.is_bookmarked);
     }
 
     #[tokio::test]

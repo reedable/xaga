@@ -36,6 +36,45 @@ pub(crate) fn parse_document(raw: &str) -> Result<(Frontmatter, String), MdError
     split_document(raw)
 }
 
+/// Merge supplied fields into parsed frontmatter and serialize the mapping.
+/// YAML quoting, indentation and collection layout belong to the serializer.
+/// Omitted fields retain their values; an omitted body retains its exact bytes.
+pub(crate) fn patch_document(
+    raw: &str,
+    updates: &[(&str, serde_json::Value)],
+    body: Option<&str>,
+) -> Result<String, MdError> {
+    parse_document(raw)?;
+    let trimmed = raw.trim_start();
+    let prefix = &raw[..raw.len() - trimmed.len()];
+    let rest = trimmed.strip_prefix("---\n").ok_or(MdError::Delimiter)?;
+    let end = rest.find("\n---\n").ok_or(MdError::Delimiter)?;
+    let mut fields: std::collections::BTreeMap<String, noyalib::Value> =
+        noyalib::from_str_with_config(&rest[..end], &FM_PARSER)
+            .map_err(|e| MdError::Frontmatter(e.to_string()))?;
+    for (key, value) in updates {
+        fields.insert((*key).to_owned(), noyalib::to_value(value)
+            .map_err(|e| MdError::Frontmatter(e.to_string()))?);
+    }
+    // Retired image-map storage is omitted on every save (crash_consistency.md).
+    fields.remove("images");
+    let yaml = noyalib::to_string(&fields)
+        .map_err(|e| MdError::Frontmatter(e.to_string()))?;
+    let suffix = match body {
+        Some(body) => format!("\n{body}\n"),
+        None => rest[end + 5..].to_string(),
+    };
+    let rendered = format!("{prefix}---\n{}\n---\n{suffix}", yaml.trim_end_matches('\n'));
+    parse_document(&rendered)?;
+    Ok(rendered)
+}
+
+#[cfg(test)]
+pub(crate) fn test_frontmatter_values(raw: &str) -> std::collections::BTreeMap<String, noyalib::Value> {
+    let yaml = raw.trim_start().strip_prefix("---\n").unwrap().split_once("\n---\n").unwrap().0;
+    noyalib::from_str_with_config(yaml, &FM_PARSER).unwrap()
+}
+
 /// Converts .md storage format to Topic domain object
 pub(crate) fn md_to_topic(md: Markdown) -> Topic {
     let is_pinned = crate::tags::is_pinned(&md.fm.tags);
@@ -226,6 +265,24 @@ pub(crate) fn split_document(raw: &str) -> Result<(Frontmatter, String), MdError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frontmatter_edits_preserve_siblings_and_escape_multiline_values() {
+        let raw = "---\nsource: https://example.com/a\nsummary: |\n  Old summary\n# Keep this comment\ntags: [research]\ncustom: {nested: [one, two]}\n---\n\nBody\n\n";
+        let summary = "New summary\n---\ntags: [injected]\n";
+        let patched = patch_document(raw, &[("summary", serde_json::json!(summary))], None).unwrap();
+        let (fm, _) = parse_document(&patched).unwrap();
+        assert_eq!(fm.summary.as_deref(), Some(summary));
+        assert_eq!(fm.tags, vec!["research"]);
+        assert_eq!(test_frontmatter_values(&patched)["custom"], test_frontmatter_values(raw)["custom"]);
+        assert!(patched.ends_with("---\n\nBody\n\n"));
+    }
+
+    #[test]
+    fn frontmatter_edits_keep_the_strict_anchor_policy() {
+        let raw = "---\nsource: https://example.com/a\ncustom: &secret [one, two]\nother: *secret\n---\nBody\n";
+        assert!(patch_document(raw, &[("title", serde_json::json!("New"))], None).is_err());
+    }
 
     fn doc(fm: &str) -> String {
         format!("---\n{fm}\n---\n\nbody\n")

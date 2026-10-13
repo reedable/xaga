@@ -13,3 +13,5 @@ pub mod topics;
 pub(crate) mod walk;
 
 pub mod pdfs;
+
+pub(crate) mod documents;

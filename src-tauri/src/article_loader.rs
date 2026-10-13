@@ -39,6 +39,16 @@ pub struct PendingRequest {
 
 pub type PendingRequests = Arc<Mutex<HashMap<String, PendingRequest>>>;
 
+// A completed HTML capture removes its pending request while a visible loader
+// stays open. That absence must still allow a fresh capture when the user closes it.
+fn capture_on_close(request: Option<&PendingRequest>, closing: &AtomicBool) -> bool {
+    !request.is_some_and(|request| request.download_active) && !closing.swap(true, Ordering::SeqCst)
+}
+
+#[cfg(test)]
+#[path = "article_loader_close_tests.rs"]
+mod close_tests;
+
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Returns true when WKWebsiteDataStore named identifiers are available.
@@ -330,24 +340,27 @@ pub async fn load_via_webview(
     attempt.add_succeeded_event("webview_create");
     attempt.add_started_event("capture_wait");
 
+    let closing = Arc::new(AtomicBool::new(false));
     if keep_open {
         let _ = loader.show();
         let _ = loader.set_focus();
-        // `captured` flips to true after the first close attempt so the second
+        // `closing` flips to true after the first close attempt so the second
         // CloseRequested (from w.close() in capture_and_close_loader) passes through.
-        let captured = Arc::new(AtomicBool::new(false));
+        let closing = closing.clone();
         let close_handle = loader.clone();
         let close_pending = pending.clone();
         let close_id = id.clone();
 
         loader.on_window_event(move |event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let native_download = close_pending
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .get(&close_id)
-                    .is_none_or(|request| request.download_active);
-                if native_download || captured.swap(true, Ordering::SeqCst) {
+                let capture = capture_on_close(
+                    close_pending
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .get(&close_id),
+                    &closing,
+                );
+                if !capture {
                     return;
                 }
                 api.prevent_close();
@@ -402,6 +415,8 @@ pub async fn load_via_webview(
         || matches!(&result, Ok(Ok(c)) if c.pdf_bytes.is_some() || c.download_error.is_some())
     {
         if let Some(w) = app.get_webview_window(&label) {
+            // Download cleanup must close directly, even after removing the request.
+            closing.store(true, Ordering::SeqCst);
             let _ = w.close();
         }
     }

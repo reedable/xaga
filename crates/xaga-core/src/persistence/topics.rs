@@ -54,49 +54,6 @@ impl TopicsError {
     }
 }
 
-/// Encodes a [`Topic`] (plus its membership `items`) to its `.md` representation — the single topic
-/// encoder. `items` is passed alongside the domain object because `Topic.members` (`Vec<Reference>`)
-/// is a lossy view of the stored `Vec<CollectionItem>` (it drops the annotation parent `reference`);
-/// the renderer uses `items`, not `topic.members`. `tags` is reconstructed from `topic.is_pinned`.
-pub(crate) fn render_topic(topic: &Topic, items: &[CollectionItem]) -> String {
-    #[derive(serde::Serialize)]
-    struct Fm<'a> {
-        id: &'a str,
-        title: &'a str,
-        created: &'a str,
-        updated: &'a str,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        threshold: Option<f32>,
-        // A Topic's blurb is its `description`, stored as the `summary` frontmatter key (the same
-        // key entries use). A Topic has no body content, so nothing is written after the `---`.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        summary: Option<&'a str>,
-        #[serde(skip_serializing_if = "<[_]>::is_empty")]
-        items: &'a [CollectionItem],
-        #[serde(skip_serializing_if = "<[_]>::is_empty")]
-        tags: &'a [String],
-    }
-
-    let mut tags: Vec<String> = Vec::new();
-    if topic.is_pinned {
-        tags.push(crate::tags::PINNED.to_string());
-    }
-
-    let fm = Fm {
-        id: &topic.id,
-        title: &topic.title,
-        created: &topic.created_at,
-        updated: topic.updated_at.as_deref().unwrap_or(&topic.created_at),
-        threshold: topic.threshold,
-        summary: topic.description.as_deref().filter(|s| !s.is_empty()),
-        items,
-        tags: &tags,
-    };
-
-    let yaml = noyalib::to_string(&fm).expect("frontmatter serialization is infallible");
-    format!("---\n{}\n---\n", yaml.trim_end())
-}
-
 /// Creates or updates a topic at `topics/{id}.md`.
 /// Preserves the original `created_at` if the file already exists.
 /// Always sets `updated_at` to the current UTC time.
@@ -113,16 +70,20 @@ pub(crate) async fn save_topic(
     tokio::fs::create_dir_all(&dir).await?;
     let path = crate::library::topic_path(library_dir, id);
 
-    // Preserve created_at and any existing tags (e.g. "pinned") across the rewrite.
-    let (created_at, tags) = if tokio::fs::try_exists(&path).await? {
+    let existing = if tokio::fs::try_exists(&path).await? {
         let raw = crate::fs::read_md_capped(&path).await?;
-        match parse_frontmatter(&raw) {
-            Ok(fm) => (fm.created_at, fm.tags),
-            Err(_) => (Utc::now().to_rfc3339(), vec![]),
-        }
+        let fm = parse_frontmatter(&raw)?;
+        Some((raw, fm))
     } else {
-        (Utc::now().to_rfc3339(), vec![])
+        None
     };
+    let created_at = existing
+        .as_ref()
+        .map(|(_, fm)| fm.created_at.clone())
+        .unwrap_or_else(|| Utc::now().to_rfc3339());
+    let is_pinned = existing
+        .as_ref()
+        .is_some_and(|(_, fm)| crate::tags::is_pinned(&fm.tags));
 
     let updated_at = Utc::now().to_rfc3339();
 
@@ -131,14 +92,25 @@ pub(crate) async fn save_topic(
         title: title.to_string(),
         created_at,
         updated_at: Some(updated_at),
-        description: (!description.is_empty()).then(|| description.to_string()),
+        description: Some(description.to_string()),
         threshold,
-        is_pinned: crate::tags::is_pinned(&tags),
+        is_pinned,
         entry_count: 0,
         unread_count: 0,
         members: items.iter().map(crate::types::Reference::from).collect(),
     };
-    crate::fs::write_atomic_async(path.clone(), render_topic(&topic, &items).into_bytes()).await?;
+    let mut updates = vec![
+        ("title", serde_json::json!(title)),
+        ("updated", serde_json::json!(topic.updated_at)),
+        ("summary", serde_json::json!(description)),
+        ("threshold", serde_json::json!(threshold)),
+        ("items", serde_json::json!(items)),
+    ];
+    if existing.is_none() {
+        updates.push(("id", serde_json::json!(id)));
+        updates.push(("created", serde_json::json!(topic.created_at)));
+    }
+    super::documents::upsert(&path, &updates, None, _token).await.map_err(document_error)?;
     Ok(topic)
 }
 
@@ -157,27 +129,19 @@ pub(crate) async fn set_topic_pinned(
         return Err(TopicsError::NotFound);
     }
     let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, body) = parse_document(&raw)?;
+    let (fm, _) = parse_document(&raw)?;
 
     if crate::tags::is_pinned(&fm.tags) == pinned {
         return Ok(false);
     }
 
-    let updated_at = fm
-        .updated_at
-        .clone()
-        .unwrap_or_else(|| fm.created_at.clone());
-    let items = fm.items.clone();
-    // Decode to the domain Topic (which handles the legacy summary/body description fallback), then
-    // flip the pinned flag and preserve the timestamp — a pin toggle is not a content edit.
-    let mut topic = md_to_topic(Markdown {
-        id: id.to_string(),
-        fm,
-        body,
-    });
-    topic.is_pinned = pinned;
-    topic.updated_at = Some(updated_at);
-    crate::fs::write_atomic_async(path.clone(), render_topic(&topic, &items).into_bytes()).await?;
+    let mut tags = fm.tags;
+    if pinned {
+        tags.push(crate::tags::PINNED.to_string());
+    } else {
+        tags.retain(|tag| tag != crate::tags::PINNED);
+    }
+    super::documents::upsert(&path, &[("tags", serde_json::json!(tags))], None, _token).await.map_err(document_error)?;
     Ok(true)
 }
 
@@ -334,4 +298,94 @@ pub(crate) async fn remove_topic_item(
         token,
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ORIGINAL: &str = "---\ntitle: Original\ncreated: '2026-01-01T00:00:00Z'\ntags: [pinned, research]\n# User metadata\ncustom: {keep: true}\n---\n\nUser-authored body\n\n";
+
+    #[tokio::test]
+    async fn editing_topic_with_block_items_preserves_members() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::library::topic_path(dir.path(), "topic");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let raw = "---\nid: topic\ntitle: Original\ncreated: '2026-01-01'\nupdated: '2026-01-02'\nthreshold: 0.8\nitems:\n  - type: entry\n    id: article\n  - type: annotation\n    id: highlight\n    reference: article\n---\n";
+        for raw in [raw.to_string(), raw.replace("  - type:", "- type:").replace("    id:", "  id:").replace("    reference:", "  reference:")] {
+        std::fs::write(&path, &raw).unwrap();
+        let fm = parse_frontmatter(&raw).unwrap();
+        let expected_items = serde_json::to_value(&fm.items).unwrap();
+        save_topic(dir.path(), "topic", "Updated", "", fm.threshold, fm.items,
+            WriteToken::for_test()).await.unwrap();
+        let saved = read_topic(dir.path(), "topic").await.unwrap();
+        assert_eq!(saved.title, "Updated");
+        assert_eq!(saved.members.len(), 2);
+        let stored = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(serde_json::to_value(parse_frontmatter(&stored).unwrap().items).unwrap(), expected_items);
+        }
+    }
+
+    #[tokio::test]
+    async fn topic_updates_and_pin_changes_preserve_user_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::library::topic_path(dir.path(), "topic");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, ORIGINAL).unwrap();
+        save_topic(
+            dir.path(),
+            "topic",
+            "Changed",
+            "Description",
+            None,
+            vec![],
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(parse_frontmatter(&saved).unwrap().tags, vec!["pinned", "research"]);
+        set_topic_pinned(dir.path(), "topic", false, WriteToken::for_test())
+            .await
+            .unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(crate::md::test_frontmatter_values(&saved)["custom"], crate::md::test_frontmatter_values(ORIGINAL)["custom"]);
+        assert!(saved.ends_with("---\n\nUser-authored body\n\n"));
+        let fm = parse_frontmatter(&saved).unwrap();
+        assert_eq!(fm.tags, vec!["research"]);
+        assert_eq!(fm.created_at, "2026-01-01T00:00:00Z");
+        assert_eq!(fm.summary.as_deref(), Some("Description"));
+    }
+
+    #[tokio::test]
+    async fn malformed_topic_refuses_update() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::library::topic_path(dir.path(), "topic");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let malformed = ORIGINAL.replace("tags: [pinned, research]", "tags: {invalid: true}");
+        std::fs::write(&path, &malformed).unwrap();
+        let result = save_topic(
+            dir.path(),
+            "topic",
+            "Changed",
+            "",
+            None,
+            vec![],
+            WriteToken::for_test(),
+        )
+        .await;
+        assert!(matches!(result, Err(TopicsError::Malformed(_))));
+        assert_eq!(std::fs::read_to_string(path).unwrap(), malformed);
+    }
+}
+
+fn document_error(error: super::entries::EntryError) -> TopicsError {
+    use super::entries::EntryError;
+    match error {
+        EntryError::Io(e) => TopicsError::Io(e),
+        EntryError::Malformed(e) => TopicsError::Malformed(e),
+        EntryError::TooLarge { max_bytes } => TopicsError::TooLarge { max_bytes },
+        EntryError::NotFound => TopicsError::NotFound,
+        other => TopicsError::Io(std::io::Error::other(other)),
+    }
 }

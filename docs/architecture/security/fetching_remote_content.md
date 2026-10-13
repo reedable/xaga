@@ -159,9 +159,30 @@ The proxy controls _where_ requests can go; the loader adds controls on _what_ g
 - **Ephemeral state by default**: loader windows are incognito — no cookies written to disk. Only user-allow-listed domains (the `allowed_domains` setting) get a persistent, per-domain `WKWebsiteDataStore` whose identifier is derived by hashing the domain (`domain_store_id`), so sites cannot correlate visits through shared storage.
 - **Injection-safe bootstrap**: the values prepended to the init script are emitted via `serde_json::to_string`, so special characters in the URL cannot break out of the script context (`article_loader.rs:69-78`).
 - **Hidden means hidden**: a hidden loader window re-hides itself on any focus event the remote page manages to trigger (`article_loader.rs:154-168`).
-- **Kill after capture**: once the page's HTML is delivered, the webview is closed immediately so untrusted scripts cannot keep running or spam IPC (`receive_html`, `commands/articles.rs:98-120`).
+- **Kill after capture (hidden loaders)**: once the page's HTML is delivered, the hidden webview is closed immediately so untrusted scripts cannot keep running or spam IPC (`receive_html`, `commands/articles.rs:98-120`).
 - **Per-request timeout**: the whole load is bounded by the configurable `loader_timeout_secs`.
 - **PDF format validation**: the article download consumer requires a `%PDF-` prefix before persistence or presentation. Other formats produce `article:unsupported-download`; rejection does not imply a deceptive server.
+
+## Visible loader: offer to update on close
+
+A user-opened article loader remains open after its initial capture. When the
+user closes it, capture the current page again and deliver `loader:closed` before
+closing the window. Completing the initial capture removes the pending request;
+that absence must not suppress the close capture or the update prompt.
+
+For the current article, when native attribution confirms the same page and HTML
+extraction produces Markdown, the reader must offer **Update article?** with
+**Keep old** and **Update**. Closing the loader does not authorize a save: only
+**Update** saves the extracted content to the locally stored `.md`. **Keep old**
+or dismissing the dialog leaves the saved article unchanged. A different page
+or a PDF does not trigger this HTML article update prompt.
+
+Active native downloads and programmatic download cleanup close without an HTML
+capture. The second close, after the close capture has been delivered, must pass
+through without starting another capture.
+
+Run `sh scripts/test-article-update-on-close.sh` for the regression checks of the
+native close decision, JavaScript recapture, and reader confirmation/save flow.
 
 ## Limits
 

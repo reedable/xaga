@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use crate::{
     library_writer::WriteToken,
-    md::{FrontmatterAnnotation, parse_frontmatter},
+    md::parse_frontmatter,
     md::{Markdown, md_to_entry, parse_document},
     types::{Article, Entry},
     util::{normalize_url, url_hash12},
@@ -80,65 +80,6 @@ pub(crate) fn is_safe_id(id: &str) -> bool {
         && !id.contains('\0')
 }
 
-// ── Frontmatter rendering ─────────────────────────────────────────────────────
-
-/// Encodes an [`Article`] to its `.md` representation (frontmatter + body) — the single
-/// entry/article encoder. `tags` and `aliases` are reconstructed from the domain object (state
-/// booleans / title); both are storage-only keys the domain doesn't carry directly.
-pub(crate) fn render_entry(article: &Article) -> String {
-    #[derive(serde::Serialize)]
-    struct Fm<'a> {
-        source: &'a str,
-        title: &'a str,
-        aliases: Vec<&'a str>,
-        created: &'a str,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        published: Option<&'a str>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        updated: Option<&'a str>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        summary: Option<String>,
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        annotations: Vec<FrontmatterAnnotation>,
-        #[serde(skip_serializing_if = "<[_]>::is_empty")]
-        tags: &'a [String],
-        #[serde(skip_serializing_if = "Option::is_none")]
-        favicon: Option<&'a str>,
-    }
-
-    let meta = &article.meta;
-    let mut tags: Vec<String> = Vec::new();
-    if meta.is_unread {
-        tags.push(crate::tags::UNREAD.to_string());
-    }
-    if meta.is_bookmarked {
-        tags.push(crate::tags::BOOKMARK.to_string());
-    }
-
-    let clean_summary = meta
-        .description
-        .as_deref()
-        .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "));
-
-    let fm = Fm {
-        source: &meta.url,
-        title: &meta.title,
-        aliases: vec![meta.title.as_str()],
-        created: &meta.created_at,
-        published: meta.published_at.as_deref(),
-        updated: meta.updated_at.as_deref(),
-        summary: clean_summary,
-        annotations: article.annotations.iter().map(Into::into).collect(),
-        tags: &tags,
-        favicon: article.favicon.as_deref(),
-    };
-
-    let yaml = noyalib::to_string(&fm).expect("frontmatter serialization is infallible");
-    format!("---\n{}\n---\n\n{}\n", yaml.trim_end(), article.content)
-}
-
-// ── Public API ────────────────────────────────────────────────────────────────
-
 /// Finds the current path of an entry by id, or `None` if the file does not exist.
 pub(crate) async fn find_entry_path(library_dir: &Path, id: &str) -> Option<PathBuf> {
     if !is_safe_id(id) {
@@ -153,43 +94,9 @@ pub(crate) async fn find_entry_path(library_dir: &Path, id: &str) -> Option<Path
         .then_some(path)
 }
 
-/// Builds the [`Article`] for a freshly-written entry (empty body, no annotations) from its parts,
-/// so the producer hands the domain object to the queue and the consumer never re-reads the file.
-#[allow(clippy::too_many_arguments)]
-fn entry_article(
-    id: String,
-    normalized_url: String,
-    title: &str,
-    created_at: String,
-    published_at: Option<&str>,
-    updated_at: Option<&str>,
-    summary: Option<&str>,
-    tags: &[String],
-) -> Article {
-    Article {
-        meta: Entry {
-            id,
-            url: normalized_url,
-            title: title.to_string(),
-            created_at,
-            published_at: published_at.map(str::to_string),
-            updated_at: updated_at.map(str::to_string),
-            description: summary.map(str::to_string),
-            is_unread: crate::tags::is_unread(tags),
-            is_bookmarked: crate::tags::is_bookmarked(tags),
-            color: None,
-        },
-        content: String::new(),
-        annotations: vec![],
-        favicon: None,
-    }
-}
-
 /// Writes an Entry to `entries/{hash12}.md` with the `unread` tag, returning its [`Article`].
 ///
-/// WARNING:
-///     If the caller wishes to preserve preexisting file, it is the caller's responsibility to
-///     check its existence before calling this function.
+/// Existing entries are left untouched; new entries use the shared field-patch upsert.
 pub(crate) async fn write_entry(
     library_dir: &Path,
     url: &str,
@@ -199,32 +106,15 @@ pub(crate) async fn write_entry(
     summary: Option<&str>,
     _token: WriteToken,
 ) -> Result<Article, EntryError> {
-    let normalized = normalize_url(url)?;
-    let hash12 = url_hash12(&normalized);
-    let path = crate::library::entry_path(library_dir, &hash12);
-    let created_at = Utc::now().to_rfc3339();
-    let tags = vec![crate::tags::UNREAD.to_string()];
-
-    let article = entry_article(
-        hash12,
-        normalized,
-        title,
-        created_at,
-        published_at,
-        updated_at,
-        summary,
-        &tags,
-    );
-
-    tokio::fs::create_dir_all(path.parent().unwrap()).await?;
-    crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
-
-    Ok(article)
+    write_read_entry(
+        library_dir, url, title, &Utc::now().to_rfc3339(), published_at,
+        updated_at, summary, &[crate::tags::UNREAD.to_string()], _token,
+    ).await
 }
 
-/// Writes a new Entry to `entries/{hash12}.md` without the `unread` tag (already read).
+/// Writes a new Entry to `entries/{hash12}.md` with the supplied initial tags.
 /// If an Entry already exists at that path it is left untouched. Returns the [`Article`] for the
-/// entry so the caller can queue an embed without re-reading the file.
+/// saved entry so the caller can queue an embed.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn write_read_entry(
     library_dir: &Path,
@@ -241,23 +131,23 @@ pub(crate) async fn write_read_entry(
     let hash12 = url_hash12(&normalized);
     let path = crate::library::entry_path(library_dir, &hash12);
 
-    let article = entry_article(
-        hash12,
-        normalized,
-        title,
-        created_at.to_string(),
-        published_at,
-        updated_at,
-        summary,
-        tags,
-    );
-
+    // Feed discovery and bookmark import leave already-saved entries untouched.
     if !tokio::fs::try_exists(&path).await? {
-        tokio::fs::create_dir_all(path.parent().unwrap()).await?;
-        crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
+        let mut updates = vec![
+            ("source", serde_json::json!(normalized)),
+            ("title", serde_json::json!(title)),
+            ("aliases", serde_json::json!([title])),
+            ("created", serde_json::json!(created_at)),
+            ("tags", serde_json::json!(tags)),
+        ];
+        for (key, value) in [("published", published_at), ("updated", updated_at), ("summary", summary)] {
+            if let Some(value) = value {
+                updates.push((key, serde_json::json!(value)));
+            }
+        }
+        super::documents::upsert(&path, &updates, None, _token).await?;
     }
-
-    Ok(article)
+    super::articles::read_article(library_dir, &hash12).await
 }
 
 /// Reads an entry by id and returns its metadata. Does not modify the file.
@@ -297,8 +187,8 @@ pub(crate) async fn set_entry_tags(
         .ok_or(EntryError::NotFound)?;
     let raw = crate::fs::read_md_capped(&path).await?;
     let (fm, body) = parse_document(&raw)?;
-    // Build the updated Article (the message) once, encode it, and return its meta. State comes from
-    // the new `tags`; annotations/body/favicon are preserved from the parsed file.
+    // Derive the return value from the new tags, but patch only the tags field
+    // on disk so all other frontmatter and the exact body survive.
     let article = Article {
         meta: Entry {
             id: id.to_string(),
@@ -316,7 +206,10 @@ pub(crate) async fn set_entry_tags(
         annotations: fm.annotations,
         favicon: fm.favicon,
     };
-    crate::fs::write_atomic_async(path.clone(), render_entry(&article).into_bytes()).await?;
+    super::documents::upsert(
+        &path, &[("tags", serde_json::json!(tags))], None, _token,
+    )
+    .await?;
     Ok(article.meta)
 }
 
@@ -324,38 +217,40 @@ pub(crate) async fn set_entry_tags(
 mod tests {
     use super::*;
 
-    #[test]
-    fn render_entry_escapes_frontmatter_injection_in_title() {
-        // A title crafted to break out of the YAML string and inject a `bookmark`
-        // tag into the frontmatter. The serializer must escape it so it survives
-        // as data, not structure — otherwise a hostile title could flip state.
+    #[tokio::test]
+    async fn creation_workflows_preserve_existing_document_and_return_saved_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let url = "https://example.com/a";
+        let id = url_hash12(url);
+        let path = crate::library::entry_path(dir.path(), &id);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let original = "---\nsource: https://example.com/a\ntitle: Saved\nsummary: Saved summary\ntags: [research, bookmark]\ncustom: retained\n---\n\nSaved body\n";
+        std::fs::write(&path, original).unwrap();
+        let result = write_entry(dir.path(), url, "Replacement", None, None, None, WriteToken::for_test()).await.unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        assert_eq!(result.meta.description.as_deref(), Some("Saved summary"));
+        assert_eq!(result.content, "Saved body");
+        let result = write_read_entry(dir.path(), url, "Replacement", "now", None, None, None, &[], WriteToken::for_test()).await.unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        assert_eq!(result.meta.description.as_deref(), Some("Saved summary"));
+        assert!(result.meta.is_bookmarked);
+    }
+
+    #[tokio::test]
+    async fn bookmark_tag_preserves_existing_feed_tags() {
+        let dir = tempfile::tempdir().unwrap();
+        let article = write_entry(dir.path(), "https://example.com/a", "Title", None, None, None, crate::library_writer::WriteToken::for_test()).await.unwrap();
+        set_entry_tags(dir.path(), &article.meta.id, vec!["unread".into(), "bookmark".into()], crate::library_writer::WriteToken::for_test()).await.unwrap();
+        assert_eq!(read_entry_tags(dir.path(), &article.meta.id).await.unwrap(), vec!["unread", "bookmark"]);
+    }
+
+    #[tokio::test]
+    async fn entry_write_escapes_frontmatter_injection_in_title() {
+        let dir = tempfile::tempdir().unwrap();
         let hostile = "safe\n---\ntags:\n- bookmark";
-        let article = Article {
-            meta: Entry {
-                id: "abc123".into(),
-                url: "https://example.com/x".into(),
-                title: hostile.into(),
-                created_at: "2026-01-01".into(),
-                published_at: None,
-                updated_at: None,
-                description: None,
-                is_unread: false,
-                is_bookmarked: false,
-                color: None,
-            },
-            content: "body".into(),
-            annotations: vec![],
-            favicon: None,
-        };
-
-        let rendered = render_entry(&article);
-        let (fm, _body) = crate::md::parse_document(&rendered).expect("re-parses");
-
-        assert_eq!(fm.title, hostile, "title must round-trip as data, not inject");
-        assert!(
-            !fm.tags.iter().any(|t| t == "bookmark"),
-            "injected `bookmark` tag must not appear: {:?}",
-            fm.tags
-        );
+        let article = write_entry(dir.path(), "https://example.com/x", hostile, None, None, None, WriteToken::for_test()).await.unwrap();
+        let saved = read_entry(dir.path(), &article.meta.id).await.unwrap();
+        assert_eq!(saved.title, hostile);
+        assert!(!saved.is_bookmarked);
     }
 }

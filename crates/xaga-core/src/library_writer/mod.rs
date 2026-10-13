@@ -652,8 +652,8 @@ impl Op {
             } => {
                 // Existence check AND write inside the entry lane, so a concurrent create
                 // (another feed carrying the same entry) or a user write to the same file
-                // cannot interleave. `write_entry` itself is an unconditional write; the
-                // create-if-absent decision must live here, in the lane.
+                // cannot interleave. The shared Markdown upsert also preserves existing
+                // data if a creation caller encounters an existing file.
                 let r = async {
                     let id = crate::util::url_hash12(&crate::util::normalize_url(&url)?);
                     if entries::find_entry_path(library_dir, &id).await.is_some() {
@@ -1371,6 +1371,46 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn download_and_user_edits_preserve_persisted_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let w = start_writer(dir.path());
+        let url = "https://example.com/preservation";
+        let id = crate::util::url_hash12(url);
+        w.write_feed_entry(Tier::Interactive, url.into(), "Feed title".into(), None, None,
+            Some("Feed summary".into())).await.unwrap();
+        let path = crate::library::entry_path(dir.path(), &id);
+        let original = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(&path, original.replacen("---\n", "---\ncustom: {nested: [one, two]}\n", 1)).unwrap();
+        let mut note = annotation("keep");
+        note.content = "Irreplaceable note".into();
+        w.add_annotation(Tier::Interactive, id.clone(), note).await.unwrap();
+        w.patch_entry_tags(Tier::Interactive, id.clone(), TagPatch::AddBookmark).await.unwrap();
+        // Exactly the regressed download input: new body, omitted feed metadata.
+        w.save_article(Tier::Interactive, id.clone(), url.into(), "Downloaded title".into(),
+            None, None, None, None, "Downloaded body".into(), Default::default()).await.unwrap();
+        let saved = articles::read_article(dir.path(), &id).await.unwrap();
+        assert_eq!(saved.meta.description.as_deref(), Some("Feed summary"));
+        assert_eq!(saved.content, "Downloaded body");
+        assert!(saved.meta.is_bookmarked);
+        assert!(saved.meta.is_unread);
+        assert_eq!(saved.annotations.len(), 1);
+        assert_eq!(saved.annotations[0].content, "Irreplaceable note");
+        let before_feed = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(crate::md::test_frontmatter_values(&before_feed)["custom"], noyalib::from_str::<noyalib::Value>("{nested: [one, two]}").unwrap());
+        // A repeated feed discovery must not replace the downloaded/user data.
+        w.write_feed_entry(Tier::Interactive, url.into(), "Stale title".into(), None, None, None).await.unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before_feed);
+        w.add_annotation(Tier::Interactive, id.clone(), annotation("temporary")).await.unwrap();
+        w.remove_annotation(Tier::Interactive, id.clone(), "temporary".into()).await.unwrap();
+        let saved = articles::read_article(dir.path(), &id).await.unwrap();
+        assert_eq!(saved.meta.description.as_deref(), Some("Feed summary"));
+        assert_eq!(saved.annotations.len(), 1);
+        assert_eq!(saved.annotations[0].content, "Irreplaceable note");
+        assert_eq!(crate::md::test_frontmatter_values(&std::fs::read_to_string(&path).unwrap())["custom"], crate::md::test_frontmatter_values(&before_feed)["custom"]);
+        w.shutdown().await;
     }
 
     #[tokio::test]

@@ -17,6 +17,39 @@ The rendering path applies its own controls and does not depend on ingest-time s
 - **No raw-HTML sinks in the app UI.** The React tree contains no `dangerouslySetInnerHTML` and no `srcdoc`; feed titles/summaries render as React text nodes, which are escaped by construction.
 - The app shell CSP also sets `object-src 'none'`, `base-uri 'self'`, `form-action 'none'`, and restricts `connect-src` to the IPC endpoints.
 
+## Preserving frontmatter during writes
+
+Markdown file framing is intentionally assembled by the application: an opening
+`---` delimiter, frontmatter serialized by noyalib, a closing `---` delimiter,
+and the Markdown body. This framing is accepted; YAML field syntax, quoting,
+indentation, and collections are delegated to the serializer. The framing code
+is `crates/xaga-core/src/md.rs::patch_document`.
+
+Existing entry and topic documents are validated before modification. Malformed
+frontmatter aborts the operation; a parse failure must not trigger replacement
+with fresh defaults. Article saves validate before storing images as well.
+
+Writes parse frontmatter into a mapping, apply supplied field values, and use
+noyalib to serialize the complete mapping. YAML formatting and comments are not
+retained by serialization. Article body saves preserve the values of tags, aliases,
+annotations, and other omitted fields. The retired `images` frontmatter field is
+removed on every save, as required by `crash_consistency.md`. Omitted summary, publication dates, and favicon
+values preserve their existing values. Annotation changes edit the annotations
+field; tag and pin changes edit tags. Metadata-only operations preserve the
+exact Markdown body. Topic edits preserve unrelated frontmatter and body.
+All Markdown persistence operations go through `persistence::documents::upsert`.
+It reads the existing file, or starts with empty frontmatter if the file is absent,
+and applies the supplied fields through the same patch operation. Omitted fields
+remain untouched; supplied values (including empty values) are stored as supplied.
+Read and validation failures abort the operation.
+The generic atomic writer rejects `.md` paths. Its Markdown counterpart accepts
+only a validated document constructed inside the upsert module.
+
+Edits remain inside the existing library-writer lanes and use atomic file
+replacement. The same strict parser policy validates both input and output.
+Article image cleanup considers references throughout the saved document,
+including frontmatter, so a body refresh does not delete summary-only images.
+
 ## Testing caveat
 
 The CSP is enforced only in the bundled Tauri app, not under the Vite dev server. Any verification of CSP/iframe/sandbox behavior must use `tauri build`, not `tauri dev`.

@@ -134,3 +134,21 @@ describe("deadline snapshot", () => {
     ).toHaveLength(1);
   });
 });
+
+
+describe("visible loader close", () => {
+  it("captures the current page again after initial capture completes", async () => {
+    vi.useFakeTimers();
+    const { context, invoke, listeners } = loader();
+    runInContext("__xagaFaviconUrl = function() { return null; }", context);
+    listeners.load();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(invoke.mock.calls.filter(([name]) => name === "receive_html")).toHaveLength(1);
+    runInContext('document.documentElement.outerHTML = "<html>Updated article</html>"; window.__captureAndClose()', context);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(invoke).toHaveBeenCalledWith("capture_and_close_loader", {
+      html: "<html>Updated article</html>", mimeType: "text/html", favicon: null, faviconData: null,
+    });
+    expect(invoke.mock.calls.filter(([name]) => name === "capture_and_close_loader")).toHaveLength(1);
+  });
+});
