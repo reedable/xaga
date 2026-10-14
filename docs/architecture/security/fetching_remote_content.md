@@ -204,7 +204,9 @@ assigned path, including on macOS where completion reports no path.
 
 `loader_download.rs` is the article-loader adapter. It accepts at most one
 resource per loader. The native request ID and pending capture phase choose
-the consumer: PDF before HTML capture, image during favicon capture. Downloads
+the consumer: PDF before article HTML capture, favicon during favicon capture,
+or content image for an explicitly image-purpose request. Content images can
+start directly from an image URL without a preceding article capture. Downloads
 without a pending consumer are rejected. Renderer callbacks cannot replace a
 capture while its native download is active. The callback may report a redirected URL, as
 verified on macOS. It is not proof of the initiating frame. During the favicon
@@ -241,3 +243,37 @@ Local reuse, presentation, and the patch policy are described in
 `docs/architecture/wry_pdf_routing.md`. The PDF reqwest probe is removed.
 WebKit navigation does not use the reqwest redirect-count setting; destination
 checks remain enforced by the proxy, and the loader deadline bounds waiting.
+
+
+## Direct content-image recovery
+
+The shared loader accepts an explicit native image purpose in addition to the
+article purpose. Image recovery retains the loader's HTTP(S) scheme check,
+proxy/session configuration, WebRTC/DNS policy, timeout and teardown. It does
+not navigate a visible article window away from the user's page.
+
+For a displayed image document, the loader reads original bytes with a bounded
+same-origin fetch of the final document URL (`credentials: omit`, `force-cache`).
+This can issue an additional request when the response is not reusable from
+cache. It avoids cross-origin article-page readback and does not use favicon
+canvas resizing. Native downloads use the same temporary staging boundary with
+an image consumer. Both paths pass through `ImageValidator`; renderer-supplied
+MIME is not trusted as proof of format. The `receive_image` callback requires the
+invoking loader's matching request ID and image purpose, and rechecks ownership
+after validation so cancellation or a native download can win safely.
+
+Content-image validation currently decodes PNG, JPEG, GIF, WebP and ICO using the
+existing Rust codecs, with a 32 MiB decoder allocation budget, and returns the
+original bytes rather than a re-encoded thumbnail. Dimensions and animation are
+therefore retained. This is not a claim that every animation frame was decoded
+by validation. SVG and AVIF recovery support is not yet implemented. Existing
+stored files of those types still follow the local reader path.
+
+Acquisition and readback are capped at 8 MiB per resource; a recovery invocation
+uses the existing 24 MiB decoded/32 MiB base64 transport budget and a shared
+loader-timeout budget. Duplicate URLs are requested once per invocation, and
+already-persisted resources for the same URL are reused locally. Native download
+size monitoring remains sampled, not a hard disk quota. Favicon-specific
+thumbnailing and PDF validation remain separate consumers. Image recovery
+updates only image references through the entry writer; it does not save an
+article response or replace a PDF.

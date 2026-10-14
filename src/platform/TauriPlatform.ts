@@ -1,3 +1,4 @@
+import type { ImageRecovery } from "../text/imageReferences";
 import { isAppError, type AppError as SerializedAppError } from "./errors";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -676,6 +677,19 @@ export class TauriPlatform implements Platform {
     return ArticleSchema.transform(toArticle).parse(result);
   }
 
+  async recoverEntryImages(signal: AbortSignal, id: string, recovery: ImageRecovery, diagnosticId?: string): Promise<Article> {
+    const invoker = decorate(invoke).with(abortable, { signal });
+    const cancel = () => {
+      if (diagnosticId) void invoke("cancel_article_load", { diagnosticId }).catch(() => {});
+    };
+    signal.throwIfAborted();
+    signal.addEventListener("abort", cancel, { once: true });
+    try {
+      const result = await invoker<unknown>("recover_entry_images", { id, recovery, diagnosticId });
+      return ArticleSchema.transform(toArticle).parse(result);
+    } finally { signal.removeEventListener("abort", cancel); }
+  }
+
   async readEntryImages(
     signal: AbortSignal,
     id: string,
@@ -1338,6 +1352,10 @@ export class TauriPlatform implements Platform {
       logger,
       name: "set_topic_pinned",
     })<void>("set_topic_pinned", { id, pinned });
+  }
+
+  getLoadRemoteImage(): Promise<boolean> {
+    return invoke<boolean>("get_load_remote_image");
   }
 
   getInlinePdfReader(): Promise<boolean> {

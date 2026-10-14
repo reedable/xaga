@@ -81,13 +81,14 @@ fn tauri_acl_and_production_gate_agree() {
 }
 
 #[test]
-fn loader_authority_remains_the_reviewed_six_callbacks() {
+fn loader_authority_remains_the_reviewed_callbacks() {
     // Intentional security contract, independent of the generated classification.
     let mut actual = command_policy::LOADER_COMMANDS.to_vec();
     let mut expected = vec![
         "add_loader_diagnostic_event",
         "receive_html",
         "receive_favicon",
+        "receive_image",
         "loader_will_unload",
         "loader_page_loaded",
         "capture_and_close_loader",

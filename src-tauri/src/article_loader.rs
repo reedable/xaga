@@ -13,6 +13,7 @@ use crate::article_diagnostics::{ArticleDiagnosticOutcome, ArticleLoadAttempt};
 #[derive(Debug, Clone, Default)]
 pub struct LoaderCapture {
     pub pdf_bytes: Option<Vec<u8>>,
+    pub image_data: Option<String>,
     pub download_error: Option<String>,
     pub mime_type: String,
     pub html: String,
@@ -22,11 +23,19 @@ pub struct LoaderCapture {
     pub favicon_data: Option<String>,
 }
 
+/// Native purpose chooses the consumer, independently of page-reported MIME.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoaderPurpose {
+    Article,
+    Image,
+}
+
 /// One in-flight loader request.
 pub struct PendingRequest {
     /// Delivers the finished capture back to `load_via_webview`.
     pub tx: oneshot::Sender<LoaderCapture>,
     pub keep_open: bool,
+    pub purpose: LoaderPurpose,
     pub attempt: ArticleLoadAttempt,
     pub diagnostic_event_count: usize,
     pub download_active: bool,
@@ -89,6 +98,8 @@ pub async fn load_via_webview(
     url: &str,
     timeout_secs: u64,
     keep_open: bool,
+    purpose: LoaderPurpose,
+    load_remote_image: bool,
     allowed_domains: &[String],
     named_stores_supported: bool,
     proxy: Arc<xaga_core::network_proxy::ScopedProxy>,
@@ -119,6 +130,7 @@ pub async fn load_via_webview(
         PendingRequest {
             tx,
             keep_open,
+            purpose,
             attempt: attempt.clone(),
             diagnostic_event_count: 0,
             download_active: false,
@@ -130,11 +142,13 @@ pub async fn load_via_webview(
     // serde_json::to_string produces valid JSON string literals, preventing
     // any injection via special characters in id, label, or url.
     let vars = format!(
-        "window.__LOADER_ID__={id};window.__LOADER_LABEL__={label};window.__LOADER_URL__={url};window.__LOADER_KEEP_OPEN__={keep_open};window.__LOADER_TIMEOUT_MS__={timeout_ms};",
+        "window.__LOADER_ID__={id};window.__LOADER_LABEL__={label};window.__LOADER_URL__={url};window.__LOADER_KEEP_OPEN__={keep_open};window.__LOADER_TIMEOUT_MS__={timeout_ms};window.__LOADER_IMAGE_ONLY__={image_only};window.__LOAD_REMOTE_IMAGE__={load_remote_image};",
         id = serde_json::to_string(&id).unwrap_or_default(),
         label = serde_json::to_string(&label).unwrap_or_default(),
         url = serde_json::to_string(url).unwrap_or_default(),
         keep_open = keep_open,
+        image_only = purpose == LoaderPurpose::Image,
+        load_remote_image = load_remote_image,
         timeout_ms = timeout_secs.saturating_mul(1000),
     );
 
@@ -471,6 +485,7 @@ mod diagnostic_tests {
         let request = PendingRequest {
             tx,
             keep_open: false,
+            purpose: LoaderPurpose::Article,
             attempt: attempt.clone(),
             diagnostic_event_count: 0,
             download_active: false,

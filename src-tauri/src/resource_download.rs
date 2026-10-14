@@ -88,9 +88,79 @@ impl ByteValidator for IconValidator {
     }
 }
 
+/// Content images retain their original encoding, dimensions and animation.
+/// The persistence read cap also bounds acquisition, so every accepted resource
+/// can subsequently be read by the reader.
+pub(crate) const IMAGE_MAX_BYTES: u64 = 8 * 1024 * 1024;
+pub(crate) struct ImageValidator;
+impl ByteValidator for ImageValidator {
+    type Accepted = String;
+    fn validate(self, bytes: &[u8]) -> Result<String, String> {
+        use base64::Engine;
+        if bytes.len() as u64 > IMAGE_MAX_BYTES {
+            return Err("image exceeds byte limit".into());
+        }
+        let mut reader = image::ImageReader::new(Cursor::new(bytes))
+            .with_guessed_format()
+            .map_err(|_| "unrecognized image bytes")?;
+        let media = match reader.format() {
+            Some(image::ImageFormat::Png) => "image/png",
+            Some(image::ImageFormat::Jpeg) => "image/jpeg",
+            Some(image::ImageFormat::Gif) => "image/gif",
+            Some(image::ImageFormat::WebP) => "image/webp",
+            Some(image::ImageFormat::Ico) => "image/x-icon",
+            _ => return Err("unsupported image format".into()),
+        };
+        let mut limits = image::Limits::default();
+        limits.max_alloc = Some(32 * 1024 * 1024);
+        reader.limits(limits);
+        reader
+            .decode()
+            .map_err(|_| "invalid, unsupported, or oversized image")?;
+        Ok(format!(
+            "data:{media};base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        ))
+    }
+}
+
+/// Renderer bytes cross the same validator as a native download. MIME supplied
+/// by the page is not evidence of format.
+pub(crate) fn validate_image_data(data: &str) -> Result<String, String> {
+    use base64::Engine;
+    if data.len() > (IMAGE_MAX_BYTES as usize * 4 / 3) + 128 {
+        return Err("image exceeds byte limit".into());
+    }
+    let (header, payload) = data.split_once(',').ok_or("invalid image payload")?;
+    if !header.starts_with("data:") || !header.ends_with(";base64") {
+        return Err("invalid image payload".into());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(payload)
+        .map_err(|_| "invalid image payload")?;
+    ImageValidator.validate(&bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn content_images_preserve_original_bytes_dimensions_and_encoding() {
+        use base64::Engine;
+        let mut bytes = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(1200, 300)
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        let original = bytes.into_inner();
+        let accepted = ImageValidator.validate(&original).unwrap();
+        let restored = base64::engine::general_purpose::STANDARD
+            .decode(accepted.split_once(',').unwrap().1)
+            .unwrap();
+        assert_eq!(restored, original);
+        assert!(ImageValidator.validate(b"<html>error</html>").is_err());
+        assert!(validate_image_data("data:image/png;base64,PGh0bWw+").is_err());
+    }
+
     struct Signature;
     impl ByteValidator for Signature {
         type Accepted = Vec<u8>;

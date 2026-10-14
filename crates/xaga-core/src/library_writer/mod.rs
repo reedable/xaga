@@ -163,6 +163,12 @@ impl TagPatch {
 /// recovery's concern). Each variant mirrors a persistence write function and carries its
 /// typed responder.
 enum Op {
+    RecoverImages {
+        id: String,
+        recovery: crate::persistence::image_recovery::ImageRecovery,
+        data: std::collections::HashMap<String, String>,
+        resp: oneshot::Sender<Result<Article, WriterError>>,
+    },
     RepairSummary {
         id: String,
         summary: String,
@@ -313,7 +319,8 @@ impl Op {
     /// topic sharing an id string can never collide onto one lane.
     fn lane_key(&self) -> String {
         match self {
-            Op::RepairSummary { id, .. }
+            Op::RecoverImages { id, .. }
+            | Op::RepairSummary { id, .. }
             | Op::SaveArticle { id, .. }
             | Op::AddAnnotation { article_id: id, .. }
             | Op::ReplaceAnnotation { article_id: id, .. }
@@ -345,6 +352,7 @@ impl Op {
     /// Short name for shutdown-drop logging.
     fn label(&self) -> &'static str {
         match self {
+            Op::RecoverImages { .. } => "recover_images",
             Op::RepairSummary { .. } => "repair_summary",
             Op::SavePdf { .. } => "save_pdf",
             Op::SaveArticle { .. } => "save_article",
@@ -373,7 +381,8 @@ impl Op {
         match self {
             Op::RepairSummary { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SavePdf { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
-            Op::SaveArticle { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::RecoverImages { resp, .. }
+            | Op::SaveArticle { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::AddAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::ReplaceAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RemoveAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -410,6 +419,11 @@ impl Op {
                 let result = crate::persistence::pdfs::save(library_dir, &url, bytes, token)
                     .await
                     .map_err(WriterError::from);
+                let _ = resp.send(result);
+            }
+            Op::RecoverImages { id, recovery, data, resp } => {
+                let result = crate::persistence::image_recovery::apply(library_dir, &id, recovery, data, token)
+                    .await.map_err(WriterError::from);
                 let _ = resp.send(result);
             }
             Op::SaveArticle {
@@ -809,6 +823,14 @@ impl LibraryWriter {
         let (resp, rx) = oneshot::channel();
         self.submit(Tier::Interactive, Op::RepairSummary { id, summary, resp }, rx)
             .await
+    }
+
+    pub async fn recover_images(
+        &self, id: String, recovery: crate::persistence::image_recovery::ImageRecovery,
+        data: std::collections::HashMap<String, String>,
+    ) -> Result<Article, WriterError> {
+        let (resp, rx) = oneshot::channel();
+        self.submit(Tier::Interactive, Op::RecoverImages { id, recovery, data, resp }, rx).await
     }
 
     #[allow(clippy::too_many_arguments)]

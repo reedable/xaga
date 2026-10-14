@@ -15,7 +15,7 @@ mod webview_policy;
 fn main() {}
 #[cfg(target_os = "macos")]
 fn main() {
-    use resource_download::{ByteValidator, ICON_MAX_BYTES, IconValidator, PdfValidator, StagedDownload};
+    use resource_download::{ByteValidator, ICON_MAX_BYTES, IconValidator, ImageValidator, PdfValidator, StagedDownload};
     use std::{
         io::{Cursor, Read, Write},
         net::TcpListener,
@@ -25,9 +25,11 @@ fn main() {
         },
         time::Duration,
     };
-    use tauri::{WebviewUrl, WebviewWindowBuilder, webview::DownloadEvent};
+    use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, webview::DownloadEvent};
     let scenario = std::env::var("XAGA_DOWNLOAD_SMOKE_CASE").unwrap_or_else(|_| "icon".into());
-    assert!(["icon", "pdf", "invalid-pdf", "html", "blob-pdf"].contains(&scenario.as_str()));
+    assert!(["icon", "image", "image-document", "pdf", "invalid-pdf", "html", "blob-pdf"].contains(&scenario.as_str()));
+    let content_image = matches!(scenario.as_str(), "image" | "image-document");
+    let image_document = scenario == "image-document";
     let pdf = matches!(scenario.as_str(), "pdf" | "invalid-pdf");
     let rendering = matches!(scenario.as_str(), "html" | "blob-pdf");
     let valid = scenario != "invalid-pdf";
@@ -39,6 +41,7 @@ fn main() {
     }
     enum Validator {
         Icon,
+        Image,
         Pdf,
     }
     impl ByteValidator for Validator {
@@ -46,6 +49,7 @@ fn main() {
         fn validate(self, bytes: &[u8]) -> Result<String, String> {
             match self {
                 Self::Icon => IconValidator.validate(bytes),
+                Self::Image => ImageValidator.validate(bytes),
                 Self::Pdf => PdfValidator.validate(bytes).map(|_| "pdf".into()),
             }
         }
@@ -62,6 +66,10 @@ fn main() {
         } else {
             b"not a PDF".to_vec()
         }
+    } else if content_image {
+        let mut data = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(1200, 300).write_to(&mut data, image::ImageFormat::Png).unwrap();
+        data.into_inner()
     } else {
         let mut data = Cursor::new(Vec::new());
         image::DynamicImage::new_rgba8(16, 16)
@@ -69,7 +77,8 @@ fn main() {
             .unwrap();
         data.into_inner()
     };
-    let mime = if rendering {
+    let original_image = body.clone();
+    let mime = if image_document { "image/png" } else if rendering {
         "text/html"
     } else if pdf {
         "application/pdf"
@@ -135,7 +144,25 @@ fn main() {
     let staging = Arc::new(Mutex::new(None::<StagedDownload<Validator>>));
     let mut context = tauri::generate_context!();
     context.config_mut().app.windows.clear();
-    let app = tauri::Builder::default().setup(move |app| {
+    let capture_passed = completed.clone();
+    let app = tauri::Builder::default().invoke_handler(move |invoke| {
+        if invoke.message.command() == "receive_image" {
+            use base64::Engine;
+            let tauri::ipc::InvokeBody::Json(body) = invoke.message.payload() else { panic!("JSON required"); };
+            let data = body["dataUri"].as_str().expect("image bytes must arrive");
+            let validated = resource_download::validate_image_data(data).expect("image document bytes");
+            let bytes = base64::engine::general_purpose::STANDARD.decode(validated.split_once(',').unwrap().1).unwrap();
+            assert_eq!(bytes, original_image);
+            println!("PASS: image document capture preserved original bytes through isolated navigation and validation");
+            capture_passed.store(true, Ordering::SeqCst);
+            let handle = invoke.message.webview().app_handle().clone();
+            invoke.resolver.resolve(());
+            handle.exit(0);
+        } else {
+            invoke.resolver.resolve(());
+        }
+        true
+    }).setup(move |app| {
         let handle = app.handle().clone();
         let watchdog = handle.clone();
         let render_handle = handle.clone();
@@ -144,7 +171,11 @@ fn main() {
             eprintln!("native download timed out");
                 watchdog.exit(1);
         });
-        WebviewWindowBuilder::new(app, "download-smoke", WebviewUrl::External("http://download.example.invalid/favicon.ico".parse().unwrap()))
+        WebviewWindowBuilder::new(app, "loader-smoke", WebviewUrl::External("http://download.example.invalid/favicon.ico".parse().unwrap()))
+            .initialization_script(if image_document { format!(
+                "window.__LOADER_IMAGE_ONLY__=true;window.__LOADER_ID__='smoke';\n{}",
+                include_str!("../src/article_loader.js")
+            ) } else { String::new() })
             .visible(false)
             .with_webview_configuration(webview_policy::loader_configuration(None).unwrap())
             .proxy_url(format!("http://{address}").parse().unwrap())
@@ -169,7 +200,7 @@ fn main() {
                         assert_eq!(evidence.download_url, url.as_str());
                         assert!(!rendering, "renderable scenario incorrectly converted to download");
                         assert_eq!(url.as_str(), "http://download.example.invalid/icon-bytes", "callback reports redirected resource");
-                        let job = StagedDownload::new(if pdf { Validator::Pdf } else { Validator::Icon }, ICON_MAX_BYTES).unwrap();
+                        let job = StagedDownload::new(if pdf { Validator::Pdf } else if content_image { Validator::Image } else { Validator::Icon }, ICON_MAX_BYTES).unwrap();
                         *destination = job.path().to_owned();
                         *staging.lock().unwrap() = Some(job);
                         true

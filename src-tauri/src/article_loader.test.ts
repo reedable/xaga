@@ -12,6 +12,7 @@ function loader() {
   const context = createContext({
     window: {
       __TAURI_INTERNALS__: { invoke },
+      __LOAD_REMOTE_IMAGE__: true,
       addEventListener: (name: string, fn: () => void) => {
         listeners[name] = fn;
       },
@@ -150,5 +151,16 @@ describe("visible loader close", () => {
       html: "<html>Updated article</html>", mimeType: "text/html", favicon: null, faviconData: null,
     });
     expect(invoke.mock.calls.filter(([name]) => name === "capture_and_close_loader")).toHaveLength(1);
+  });
+});
+
+describe("remote image preference", () => {
+  it("does not make additional capture fetches when disabled", async () => {
+    const { context } = loader();
+    const fetch = vi.fn();
+    context.fetch = fetch;
+    runInContext("__XAGA_FETCH_IMAGES__ = false; document.images = [{ src: 'https://example.org/image.png' }]", context);
+    await runInContext("__xagaFetchImages()", context);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

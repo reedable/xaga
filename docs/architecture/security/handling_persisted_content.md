@@ -17,6 +17,53 @@ The rendering path applies its own controls and does not depend on ingest-time s
 - **No raw-HTML sinks in the app UI.** The React tree contains no `dangerouslySetInnerHTML` and no `srcdoc`; feed titles/summaries render as React text nodes, which are escaped by construction.
 - The app shell CSP also sets `object-src 'none'`, `base-uri 'self'`, `form-action 'none'`, and restricts `connect-src` to the IPC endpoints.
 
+## Images in summaries and bodies
+
+Feed ingestion continues to store the supplied summary in entry frontmatter,
+including remote image references. It does not acquire or localize those images.
+Summary images, uncaptured body images, and manually inserted remote references
+use the same recovery and presentation path when their content is viewed.
+
+`prepareEntryImages` resolves local image references in HTML, inline CSS and embedded stylesheets to
+local data URIs. Remote image sources and responsive candidates cannot reach the
+reader as fetchable image sources. CSS declarations with unavailable URL or
+image-set resources and external stylesheet imports are removed. The bundled `img-src` permits only self and data
+images. This policy does not rely on the UI proxy being a complete boundary.
+An unavailable image displays its nonempty alternative text, then its title when
+that adds content; without either, it displays “Image unavailable.” Decode failures
+use the same presentation. Stored content is not changed to this fallback text.
+
+The account setting `load_remote_image` gates recovery and the article loader's
+additional body-image capture fetches. The absent-value default is defined once
+as `DEFAULT_LOAD_REMOTE_IMAGE`, currently `true` for this implementation stage;
+explicit values take precedence. There is no settings UI or eager default write.
+Changing the default later does not override a stored preference. Disabling it
+leaves already-stored local images usable and does not control a publisher page's
+normal resource loading in an opened loader window.
+
+The reader displays local content before waiting for recovery. Only the currently
+viewed field is recovered. Acquisition uses an isolated image-purpose loader;
+neither the main webview nor the reader fetches the remote resource. Reference
+spans are discovered with Markdown, HTML and CSS parsers, preserving the source
+text outside the replaced destinations. The original remote URL determines image
+storage identity, including when acquisition redirects.
+
+`recover_entry_images` captures the library/writer at invocation. After loading,
+`LibraryWriter::recover_images` rereads the entry inside its writer lane and
+compares the targeted field with the snapshot that initiated recovery. A changed
+field is returned without replacement. A successful write saves image files
+before replacing their references with local paths. Failed acquisition or image
+writes leave those references untouched. Summary-only recovery preserves the
+body, and body-only recovery preserves the summary. Unrelated metadata,
+annotations, read state and the stored PDF representation are preserved. Recovery
+never creates a missing entry. Cleanup considers references throughout the saved
+document. Reading in a read-only library does not initiate recovery downloads.
+
+Validation covers exact source preservation, stale-field refusal, failed writes,
+HTML/CSS local resolution, unavailable-image presentation and the preference gate.
+Network and sandbox behavior require native/bundled checks; Node tests alone do
+not establish those properties.
+
 ## Preserving frontmatter during writes
 
 Markdown file framing is intentionally assembled by the application: an opening

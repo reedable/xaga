@@ -215,3 +215,9 @@ pub async fn set_show_sidebar(
         }
     }
 }
+
+/// Resolved preference; no UI setter is exposed yet.
+#[tauri::command]
+pub async fn get_load_remote_image(state: State<'_, AppState>) -> Result<bool, AppError> {
+    Ok(*state.load_remote_image.read().unwrap())
+}

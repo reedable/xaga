@@ -105,6 +105,8 @@ export function buildEntryHtml(
     body{margin:0 0 4.5rem 0;padding:0.5rem 2rem 2rem}
     article{max-width:680px;margin:0 auto}
     img{max-width:100%;height:auto}
+    .xaga-unavailable-image{display:block;padding:.5em 0;white-space:pre-wrap}
+    .xaga-image-title{display:block;font-size:.9em;margin-top:.25em}
     audio,video{display:none}
     a{cursor:pointer}
     table{border-collapse:collapse;width:100%}
@@ -119,6 +121,22 @@ export function buildEntryHtml(
     mark.xf{background:${prefersDark ? "#7b6200" : "#fff176"};border-radius:2px;color:inherit}
     mark.xf.xfa{background:${prefersDark ? "#e65100" : "#ff9800"};border-radius:2px;color:${prefersDark ? "#fff" : "#000"};outline:2px solid ${prefersDark ? "#ff6d00" : "#e65100"}}
   </style></head><body><article>${bodyHtml}</article><script type="application/json" id="__xaga_annotations__">${annotationsJson}</script><script>
+    document.addEventListener('error', function(event) {
+      const img = event.target;
+      if (!(img instanceof HTMLImageElement)) return;
+      const alternative = img.getAttribute('alt')?.trim();
+      const title = img.getAttribute('title')?.trim();
+      const fallback = document.createElement('span');
+      fallback.className = 'xaga-unavailable-image';
+      fallback.textContent = alternative || title || 'Image unavailable';
+      if (alternative && title && title !== alternative) {
+        const detail = document.createElement('span');
+        detail.className = 'xaga-image-title';
+        detail.textContent = title;
+        fallback.append(detail);
+      }
+      img.replaceWith(fallback);
+    }, true);
     var __ANNOTATIONS__ = JSON.parse(document.getElementById('__xaga_annotations__').textContent || '[]');
 
     // ── Helpers ────────────────────────────────────────────────────────────────

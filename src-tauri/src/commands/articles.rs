@@ -112,6 +112,15 @@ pub async fn receive_html(
         return Ok(false);
     }
 
+    if request.purpose == article_loader::LoaderPurpose::Image {
+        let _ = request.tx.send(article_loader::LoaderCapture {
+            download_error: Some("image URL returned a non-image document".into()),
+            ..Default::default()
+        });
+        let _ = window.close();
+        return Ok(true);
+    }
+
     // A failed favicon navigation can load an HTML error document. Never
     // replace the already captured article with that document.
     if let Some(capture) = request.partial.take() {
@@ -252,6 +261,40 @@ pub async fn receive_favicon(
             map.insert(id, request);
         }
     }
+    Ok(())
+}
+
+/// Only an image-purpose pending request may accept image-document bytes.
+#[tauri::command]
+pub async fn receive_image(
+    window: tauri::WebviewWindow,
+    pending: State<'_, article_loader::PendingRequests>,
+    id: String,
+    data_uri: Option<String>,
+) -> Result<(), AppError> {
+    if window.label() != format!("loader-{id}") { return Err(AppError::Unauthorized); }
+    {
+        let map = pending.lock().map_err(|e| e.to_string())?;
+        if !map.get(&id).is_some_and(|r| r.purpose == article_loader::LoaderPurpose::Image && !r.download_active) {
+            return Ok(());
+        }
+    }
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        data_uri.ok_or_else(|| "image bytes unavailable".to_string())
+            .and_then(|data| crate::resource_download::validate_image_data(&data))
+    }).await.map_err(|e| e.to_string())?;
+    let mut map = pending.lock().map_err(|e| e.to_string())?;
+    // A timeout, cancellation or native download may have won while decoding.
+    if !map.get(&id).is_some_and(|r| r.purpose == article_loader::LoaderPurpose::Image && !r.download_active) {
+        return Ok(());
+    }
+    let request = map.remove(&id).unwrap();
+    let capture = match result {
+        Ok(data) => article_loader::LoaderCapture { image_data: Some(data), ..Default::default() },
+        Err(error) => article_loader::LoaderCapture { download_error: Some(error), ..Default::default() },
+    };
+    let _ = request.tx.send(capture);
+    let _ = window.close();
     Ok(())
 }
 
@@ -519,6 +562,7 @@ pub async fn load_article(
         attempt.add_succeeded_event("proxy_start");
         let timeout_secs = *state.loader_timeout_secs.read().unwrap();
         let allowed_domains = state.allowed_domains.read().unwrap().clone();
+        let load_remote_image = *state.load_remote_image.read().unwrap();
         let named_stores_supported = state.named_stores_supported;
         let capture = article_loader::load_via_webview(
             &app,
@@ -526,6 +570,8 @@ pub async fn load_article(
             &url,
             timeout_secs,
             keep_open,
+            article_loader::LoaderPurpose::Article,
+            load_remote_image,
             &allowed_domains,
             named_stores_supported,
             proxy,
@@ -1107,4 +1153,71 @@ mod loader_security_tests {
             Some("https://other.example/article")
         );
     }
+}
+
+/// Trusted orchestration: resource loading is isolated, and only the entry
+/// writer may commit recovered references. No renderer-provided bytes are saved.
+#[tauri::command]
+pub async fn recover_entry_images(
+    id: String,
+    recovery: xaga_core::persistence::image_recovery::ImageRecovery,
+    diagnostic_id: Option<String>,
+    state: State<'_, AppState>,
+    app: AppHandle,
+    pending: State<'_, article_loader::PendingRequests>,
+    diagnostics: State<'_, ArticleDiagnostics>,
+    proxy_config: State<'_, xaga_core::network_proxy::ProxyConfig>,
+) -> Result<Article, AppError> {
+    let (library, writer) = {
+        let library = state.library.read().unwrap();
+        (library.path.clone(), library.writer.clone())
+    };
+    let current = articles::read_article(&library, &id).await?;
+    let expected = if recovery.summary { current.meta.description.as_deref().unwrap_or("") } else { &current.content };
+    if expected != recovery.expected || !*state.load_remote_image.read().unwrap() || writer.is_none() {
+        return Ok(current);
+    }
+    let writer = writer.unwrap();
+    let attempt = diagnostic_id.as_deref().and_then(|id| diagnostics.get_attempt(id))
+        .unwrap_or_else(|| diagnostics.create_attempt("render"));
+    let timeout_secs = *state.loader_timeout_secs.read().unwrap();
+    let allowed_domains = state.allowed_domains.read().unwrap().clone();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+    let mut data = std::collections::HashMap::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut bytes = 0;
+    for patch in &recovery.patches {
+        if !seen.insert(patch.url.clone()) { continue; }
+        if attempt.is_cancelled() { return Err(AppError::Message("load cancelled".into())); }
+        if let Some(image) = xaga_core::persistence::images::read_entry_image_url(&library, &id, &patch.url).await {
+            bytes += image.len();
+            if bytes > 32 * 1024 * 1024 { break; }
+            data.insert(patch.url.clone(), image);
+            continue;
+        }
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now()).as_secs();
+        if remaining == 0 { break; }
+        let proxy = Arc::new(xaga_core::network_proxy::start_scoped(proxy_config.inner().clone())
+            .await.map_err(|e| AppError::Message(e.to_string()))?);
+        let capture = article_loader::load_via_webview(
+            &app, &pending, &patch.url, remaining, false,
+            article_loader::LoaderPurpose::Image, true, &allowed_domains,
+            state.named_stores_supported, proxy, attempt.clone(),
+        ).await;
+        match capture {
+            Ok(capture) if capture.image_data.is_some() => {
+                let image = capture.image_data.unwrap();
+                bytes += image.len();
+                // Base64 transport budget corresponds to the existing 24 MiB resource budget.
+                if bytes > 32 * 1024 * 1024 { break; }
+                data.insert(patch.url.clone(), image);
+            }
+            _ => attempt.add_event("native", "images", ArticleDiagnosticOutcome::Warning,
+                "image:recovery-unavailable", "image recovery did not return usable bytes"),
+        }
+    }
+    if attempt.is_cancelled() { return Err(AppError::Message("load cancelled".into())); }
+    let article = writer.recover_images(id, recovery, data).await.map_err(AppError::from)?;
+    state.enqueue(Tier::Interactive, Job::UpsertEntry { article: article.clone() });
+    Ok(article)
 }

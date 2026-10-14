@@ -2,6 +2,7 @@
   "loader": [
     "commands::articles::receive_html",
     "commands::articles::receive_favicon",
+    "commands::articles::receive_image",
     "commands::articles::loader_will_unload",
     "commands::articles::loader_page_loaded",
     "commands::articles::capture_and_close_loader",
@@ -10,6 +11,7 @@
   "trusted": [
     "ui_network::take_ui_errors",
     "set_find_enabled",
+    "commands::settings::get_load_remote_image",
     "commands::articles::load_article",
     "commands::articles::cancel_article_load",
     "commands::articles::read_stored_pdf",
@@ -22,6 +24,7 @@
     "commands::articles::find_article",
     "commands::articles::read_article",
     "commands::articles::read_entry_images",
+    "commands::articles::recover_entry_images",
     "commands::articles::create_article",
     "commands::articles::add_annotation",
     "commands::articles::replace_annotation",

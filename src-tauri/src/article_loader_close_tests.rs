@@ -6,6 +6,7 @@ fn request(download_active: bool) -> PendingRequest {
     PendingRequest {
         tx,
         keep_open: true,
+        purpose: LoaderPurpose::Article,
         attempt: ArticleDiagnostics::default().create_attempt("load"),
         diagnostic_event_count: 0,
         download_active,

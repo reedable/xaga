@@ -76,6 +76,7 @@ impl Extraction {
 pub(crate) fn ext_for_media_type(media_type: &str) -> Option<&'static str> {
     match media_type {
         "image/jpeg" => Some("jpg"),
+        "image/x-icon" | "image/vnd.microsoft.icon" => Some("ico"),
         "image/png" => Some("png"),
         "image/gif" => Some("gif"),
         "image/webp" => Some("webp"),
@@ -90,6 +91,7 @@ pub(crate) fn ext_for_media_type(media_type: &str) -> Option<&'static str> {
 pub(crate) fn media_type_for_ext(ext: &str) -> Option<&'static str> {
     match ext {
         "jpg" => Some("image/jpeg"),
+        "ico" => Some("image/x-icon"),
         "png" => Some("image/png"),
         "gif" => Some("image/gif"),
         "webp" => Some("image/webp"),
@@ -237,11 +239,10 @@ fn next_image(markdown: &str, from: usize) -> Option<ImageMatch<'_>> {
                 i = bang + 2;
                 continue;
             };
-            if bytes.get(gt + 1) != Some(&b')') {
-                i = bang + 2;
-                continue;
-            }
-            (&markdown[url_open + 1..gt], gt + 2)
+            let tail = &markdown[gt + 1..];
+            let Some(close) = tail.find(')') else { i = bang + 2; continue; };
+            if tail[..close].contains('\n') { i = bang + 2; continue; }
+            (&markdown[url_open + 1..gt], gt + 1 + close + 1)
         } else {
             // Bare url: read to whitespace (optional title follows) or `)`.
             let mut k = url_open;
@@ -316,11 +317,13 @@ pub(crate) fn extract_images(
                 .and_then(|data_uri| decode_data_uri(&hash, data_uri, &engine));
             if let Some(image) = image {
                 let start = out.len();
-                out.push_str("![");
-                out.push_str(m.alt_raw);
-                out.push_str("](");
+                // Replace only the destination: preserve the title, alt text,
+                // delimiters and whitespace exactly as supplied.
+                let url_start = m.url_raw.as_ptr() as usize - markdown.as_ptr() as usize;
+                let url_end = url_start + m.url_raw.len();
+                out.push_str(&markdown[m.span.start..url_start]);
                 out.push_str(&crate::library::entry_image_ref(id, &hash));
-                out.push(')');
+                out.push_str(&markdown[url_end..m.span.end]);
                 rewrites.push((start..out.len(), markdown[m.span.clone()].to_string(), image.file_name.clone()));
                 if !images.iter().any(|img| img.file_name == image.file_name) {
                     images.push(image);
@@ -523,6 +526,14 @@ pub async fn read_entry_images(library_dir: &Path, id: &str, refs: &[String]) ->
     out
 }
 
+/// Reuse already-persisted bytes for another reference to the same remote URL.
+/// This performs only local reads; the URL chooses a hash, never a filesystem path.
+pub async fn read_entry_image_url(library_dir: &Path, id: &str, url: &str) -> Option<String> {
+    if !super::entries::is_safe_id(id) || !is_remote(url) { return None; }
+    let reference = crate::library::entry_image_ref(id, &image_url_hash(url));
+    read_entry_images(library_dir, id, &[reference]).await.pop().flatten()
+}
+
 async fn resolve_ref(
     id: &str,
     reference: &str,
@@ -618,6 +629,17 @@ mod tests {
         let out = extract_images("entry1", md, &map(&[(url, PNG_DATA)]));
         assert_eq!(out.images.len(), 1);
         assert_eq!(out.persisted_body(&[]), md);
+    }
+
+    #[test]
+    fn successful_localization_preserves_title_and_alt() {
+        let url = "https://x.test/p.png";
+        let md = r#"![description](<https://x.test/p.png> "Additional content")"#;
+        let out = extract_images("entry1", md, &map(&[(url, PNG_DATA)]));
+        let file = out.images[0].file_name.clone();
+        assert_eq!(out.persisted_body(&[file]), format!(
+            r#"![description](<../images/entry1/{}> "Additional content")"#, image_url_hash(url)
+        ));
     }
 
     #[test]

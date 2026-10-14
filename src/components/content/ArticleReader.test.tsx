@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   article: { id: "entry", title: "Comic", description: '<img src="https://example.org/comic.png" alt="Comic">', content: "Full body" } as { id: string; title: string; description?: string; content: string },
   html: "",
   sink: { pushError: vi.fn() },
-  platform: {},
+  platform: { getLoadRemoteImage: vi.fn().mockResolvedValue(false), readEntryImages: vi.fn(), recoverEntryImages: vi.fn() },
   noop: () => {},
   events: { setFindEnabled: vi.fn(), onUnreadChanged: () => () => {}, onBookmarkChanged: () => () => {}, onLoaderClosed: vi.fn((_callback: (event: typeof closedArticle) => Promise<void>) => () => {}) },
   router: { state: { url: "https://example.org/comic", entryId: "entry" }, selectUrl: () => {}, replaceUrl: () => {} },
@@ -50,15 +50,17 @@ beforeEach(() => {
   root = createRoot(document.createElement("div"));
 });
 afterEach(async () => { await act(() => root.unmount()); });
-it("passes the existing image summary through to the iframe and preserves it across view switches", async () => {
+it("presents unavailable summary image text consistently across view switches", async () => {
   await act(() => root.render(<ArticleReader />));
-  expect(mocks.html).toContain('<article><img src="https://example.org/comic.png" alt="Comic"></article>');
+  expect(mocks.html).toContain('class="xaga-unavailable-image">Comic</span>');
+  expect(mocks.html).not.toContain('src="https://');
   mocks.appearance.htmlReaderView = "reader";
   await act(() => root.render(<ArticleReader />));
   expect(mocks.html).toContain("<article><p>Full body</p></article>");
   mocks.appearance.htmlReaderView = "summary";
   await act(() => root.render(<ArticleReader />));
-  expect(mocks.html).toContain('<article><img src="https://example.org/comic.png" alt="Comic"></article>');
+  expect(mocks.html).toContain('class="xaga-unavailable-image">Comic</span>');
+  expect(mocks.html).not.toContain('src="https://');
   expect(mocks.sink.pushError).not.toHaveBeenCalled();
 });
 it("reproduces the empty iframe document when URL ingestion has removed the saved summary", async () => {
@@ -102,4 +104,28 @@ it("keeps the saved article when Keep old is selected", async () => {
   await closeLoader();
   await act(() => clickDialogButton("Keep old"));
   expect(mocks.save).not.toHaveBeenCalled();
+});
+
+it("recovers a viewed summary then displays the saved local image", async () => {
+  const data = 'data:image/png;base64,AAAA';
+  mocks.platform.getLoadRemoteImage.mockResolvedValue(true);
+  mocks.platform.readEntryImages.mockResolvedValue([data]);
+  mocks.platform.recoverEntryImages.mockResolvedValue({ ...mocks.article,
+    description: '<img src="../images/entry/123456789abc" alt="Comic">',
+  });
+  await act(() => root.render(<ArticleReader />));
+  expect(mocks.platform.recoverEntryImages).toHaveBeenCalledOnce();
+  expect(mocks.platform.recoverEntryImages.mock.calls[0][2]).toMatchObject({
+    summary: true, expected: mocks.article.description,
+    patches: [{ url: 'https://example.org/comic.png' }],
+  });
+  expect(mocks.html).toContain(`src="${data}"`);
+  expect(mocks.html).not.toContain('src="https://');
+});
+
+it("does not request recovery when the setting is disabled", async () => {
+  mocks.platform.getLoadRemoteImage.mockResolvedValue(false);
+  await act(() => root.render(<ArticleReader />));
+  expect(mocks.platform.recoverEntryImages).not.toHaveBeenCalled();
+  expect(mocks.html).toContain('Comic');
 });

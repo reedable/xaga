@@ -35,6 +35,10 @@ pub(crate) fn settings_path() -> Result<PathBuf, String> {
         .join("settings.json"))
 }
 
+// Temporary default for the future Load remote image control. All consumers
+// use the resolved setting; change this one value when the product default changes.
+pub(crate) const DEFAULT_LOAD_REMOTE_IMAGE: bool = true;
+
 pub(crate) const DEFAULT_LOADER_TIMEOUT_SECS: u64 = 10;
 pub(crate) const DEFAULT_FEED_TIMEOUT_SECS: u64 = 10;
 pub(crate) const DEFAULT_FEED_MAX_BODY_BYTES: u64 = 10 * 1024 * 1024;
@@ -80,6 +84,7 @@ pub(crate) struct AppState {
     pub(crate) allowed_domains: Arc<RwLock<Vec<String>>>,
     pub(crate) named_stores_supported: bool,
     pub(crate) inline_pdf_reader: Arc<RwLock<bool>>,
+    pub(crate) load_remote_image: Arc<RwLock<bool>>,
     pub(crate) html_reader_view: Arc<RwLock<String>>,
     /// Port of the local SSRF-filtering proxy that loader webviews and the
     /// per-invocation fetch clients (see [`fetch_client`]) are routed through.
@@ -187,6 +192,7 @@ pub(crate) struct UserSettings {
     pub(crate) show_sidebar: Option<bool>,
     pub(crate) allowed_domains: Option<Vec<String>>,
     pub(crate) inline_pdf_reader: Option<bool>,
+    pub(crate) load_remote_image: Option<bool>,
     pub(crate) html_reader_view: Option<String>,
     /// Allow plaintext `http://` fetches (feeds, article loader and downloads).
     /// Enforced by the network proxy. Defaults to false if absent.
@@ -212,6 +218,12 @@ pub(crate) struct UserSettings {
     /// docs/architecture/security/fetching_remote_content.md, "CONNECT port
     /// policy," for the plaintext-tunnel hole this closes.
     pub(crate) connect_nonstandard_ports_allowed: Option<bool>,
+}
+
+impl UserSettings {
+    fn load_remote_image(&self) -> bool {
+        self.load_remote_image.unwrap_or(DEFAULT_LOAD_REMOTE_IMAGE)
+    }
 }
 
 pub(crate) fn load_settings(path: &Path) -> UserSettings {
@@ -412,6 +424,7 @@ pub(crate) fn update_settings(
 /// deliberately not touched: switching the open library is `set_library`'s
 /// job, not a side effect of a refused preference write.
 pub(crate) fn refresh_state_from_settings(state: &AppState, s: &UserSettings) {
+    *state.load_remote_image.write().unwrap() = s.load_remote_image();
     let s = s.clone();
     *state.theme.write().unwrap() = s.theme.unwrap_or_else(|| "auto".to_string());
     *state.refresh_on_startup.write().unwrap() = s.refresh_on_startup.unwrap_or(false);
@@ -597,6 +610,7 @@ pub fn run() {
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
     let embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>> = Arc::new(Mutex::new(None));
     let allowed_domains: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
+    let load_remote_image = Arc::new(RwLock::new(DEFAULT_LOAD_REMOTE_IMAGE));
     let inline_pdf_reader: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let html_reader_view: Arc<RwLock<String>> = Arc::new(RwLock::new("reader".to_string()));
     let settings_baseline: Arc<RwLock<Option<std::time::SystemTime>>> =
@@ -608,6 +622,7 @@ pub fn run() {
     let setup_account_lock = Arc::clone(&account_lock);
     let setup_embeddings_read = Arc::clone(&embeddings_read);
     let setup_allowed_domains = Arc::clone(&allowed_domains);
+    let setup_load_remote_image = Arc::clone(&load_remote_image);
     let setup_inline_pdf_reader = Arc::clone(&inline_pdf_reader);
     let setup_html_reader_view = Arc::clone(&html_reader_view);
     let setup_show_sidebar = Arc::clone(&show_sidebar);
@@ -648,6 +663,7 @@ pub fn run() {
             allowed_domains,
             named_stores_supported,
             inline_pdf_reader,
+            load_remote_image,
             html_reader_view,
             network_proxy_port,
             max_redirects,
@@ -968,6 +984,7 @@ pub fn run() {
             let default_library =
                 xaga_core::fs::data_root().ok_or("cannot determine platform data directory")?;
             let settings = load_settings(&settings_path);
+            *setup_load_remote_image.write().unwrap() = settings.load_remote_image();
             // The read that forms this process's view of the settings — its
             // mtime is the baseline for the stale-view check in
             // `update_settings`.
@@ -1525,4 +1542,25 @@ mod settings_funnel_tests {
 
 fn app_context<R: tauri::Runtime>() -> tauri::Context<R> {
     tauri::generate_context!()
+}
+
+#[cfg(test)]
+mod remote_image_setting_tests {
+    use super::*;
+
+    #[test]
+    fn missing_value_uses_central_default_and_explicit_values_win() {
+        let missing: UserSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(missing.load_remote_image(), DEFAULT_LOAD_REMOTE_IMAGE);
+        for value in [false, true] {
+            let settings: UserSettings = serde_json::from_value(
+                serde_json::json!({"load_remote_image": value})
+            ).unwrap();
+            assert_eq!(settings.load_remote_image(), value);
+            let roundtrip: UserSettings = serde_json::from_str(
+                &serde_json::to_string(&settings).unwrap()
+            ).unwrap();
+            assert_eq!(roundtrip.load_remote_image(), value);
+        }
+    }
 }

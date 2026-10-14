@@ -1,3 +1,4 @@
+import type { ImageRecovery } from "../text/imageReferences";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { createContext, useContext } from "react";
 import type {
@@ -110,6 +111,7 @@ export interface Platform {
   // rendering, index-aligned with `refs`. A `null` at index i means that
   // reference did not resolve (missing/oversize/foreign) and its `src` should be
   // left as-is.
+  recoverEntryImages(signal: AbortSignal, id: string, recovery: ImageRecovery, diagnosticId?: string): Promise<Article>;
   readEntryImages(
     signal: AbortSignal,
     id: string,
@@ -290,6 +292,7 @@ export interface Platform {
   setTopicPinned(id: string, pinned: boolean): Promise<void>;
 
   // Persisted preferences
+  getLoadRemoteImage(): Promise<boolean>;
   getInlinePdfReader(): Promise<boolean>;
   setInlinePdfReader(value: boolean): Promise<void>;
   onInlinePdfReaderChanged(

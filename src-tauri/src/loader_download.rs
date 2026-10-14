@@ -4,7 +4,10 @@
 use crate::{
     article_diagnostics::{ArticleDiagnosticOutcome, ArticleLoadAttempt},
     article_loader::PendingRequests,
-    resource_download::{ICON_MAX_BYTES, IconValidator, PdfValidator, StagedDownload},
+    resource_download::{
+        ICON_MAX_BYTES, IMAGE_MAX_BYTES, IconValidator, ImageValidator, PdfValidator,
+        StagedDownload,
+    },
 };
 use std::sync::{
     Arc, Mutex,
@@ -13,28 +16,33 @@ use std::sync::{
 
 enum DownloadJob {
     Icon(StagedDownload<IconValidator>),
+    Image(StagedDownload<ImageValidator>),
     Pdf(StagedDownload<PdfValidator>),
 }
 enum Accepted {
     Icon(String),
+    Image(String),
     Pdf(Vec<u8>),
 }
 impl DownloadJob {
     fn path(&self) -> &std::path::Path {
         match self {
             Self::Icon(s) => s.path(),
+            Self::Image(s) => s.path(),
             Self::Pdf(s) => s.path(),
         }
     }
     fn limit(&self) -> u64 {
         match self {
             Self::Icon(_) => ICON_MAX_BYTES,
+            Self::Image(_) => IMAGE_MAX_BYTES,
             Self::Pdf(_) => xaga_core::persistence::pdfs::MAX_PDF_BYTES,
         }
     }
     fn finish(self, success: bool) -> Result<Accepted, String> {
         match self {
             Self::Icon(s) => s.finish(success).map(Accepted::Icon),
+            Self::Image(s) => s.finish(success).map(Accepted::Image),
             Self::Pdf(s) => s.finish(success).map(Accepted::Pdf),
         }
     }
@@ -80,7 +88,9 @@ impl LoaderDownloads {
             return Err(DownloadRejection::AlreadyClaimed);
         }
         // Native phase chooses the validator, never the callback URL or server filename.
-        let staging = if request.partial.is_some() {
+        let staging = if request.purpose == crate::article_loader::LoaderPurpose::Image {
+            StagedDownload::new(ImageValidator, IMAGE_MAX_BYTES).map(DownloadJob::Image)
+        } else if request.partial.is_some() {
             StagedDownload::new(IconValidator, ICON_MAX_BYTES).map(DownloadJob::Icon)
         } else {
             StagedDownload::new(PdfValidator, xaga_core::persistence::pdfs::MAX_PDF_BYTES)
@@ -160,15 +170,20 @@ impl LoaderDownloads {
             return;
         };
         drop(pending);
-        let is_icon = request.partial.is_some();
+        let is_image = request.purpose == crate::article_loader::LoaderPurpose::Image;
+        let is_icon = !is_image && request.partial.is_some();
         let mut capture = request.partial.take().unwrap_or_default();
         match result {
+            Ok(Accepted::Image(data)) if is_image => {
+                capture.image_data = Some(data);
+                self.attempt.add_succeeded_event("download_validation");
+            }
             Ok(Accepted::Icon(data)) if is_icon => {
                 capture.favicon_data = Some(data);
                 self.attempt.add_succeeded_event("download_validation");
                 self.attempt.add_succeeded_event("favicon");
             }
-            Ok(Accepted::Pdf(bytes)) if !is_icon => {
+            Ok(Accepted::Pdf(bytes)) if !is_icon && !is_image => {
                 capture.mime_type = "application/pdf".into();
                 capture.pdf_bytes = Some(bytes);
                 self.attempt.add_succeeded_event("download_validation");
@@ -226,6 +241,7 @@ mod tests {
             PendingRequest {
                 tx,
                 keep_open: false,
+                purpose: crate::article_loader::LoaderPurpose::Article,
                 attempt: attempt.clone(),
                 diagnostic_event_count: 0,
                 download_active: false,
@@ -323,6 +339,33 @@ mod tests {
             assert!(capture.favicon_data.is_none());
             assert!(!path.parent().unwrap().exists());
         }
+    }
+
+    #[tokio::test]
+    async fn direct_image_consumer_does_not_require_article_capture() {
+        let (downloads, rx) = fixture();
+        {
+            let mut pending = downloads.pending.lock().unwrap();
+            let request = pending.get_mut("1").unwrap();
+            request.purpose = crate::article_loader::LoaderPurpose::Image;
+            request.partial = None;
+        }
+        let url = "https://example.org/comic.png";
+        let path = downloads.request(url).unwrap();
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(900, 300)
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        std::fs::write(&path, bytes.into_inner()).unwrap();
+        downloads.finish(url, true);
+        let capture = tokio::time::timeout(std::time::Duration::from_secs(2), rx)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(capture.image_data.is_some());
+        assert!(capture.pdf_bytes.is_none());
+        assert!(capture.favicon_data.is_none());
+        assert!(!path.exists());
     }
 
     #[test]

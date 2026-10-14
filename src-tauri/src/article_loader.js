@@ -28,7 +28,7 @@ window.focus = function() {};
 // neutralised downstream (extract_images -> data-xaga-src). Set
 // __XAGA_FETCH_IMAGES__ to false to disable.
 // ---------------------------------------------------------------------------
-var __XAGA_FETCH_IMAGES__ = true;
+var __XAGA_FETCH_IMAGES__ = window.__LOAD_REMOTE_IMAGE__ === true;
 var __XAGA_IMAGE_MAX_BYTES__ = 2 * 1024 * 1024;
 var __XAGA_IMAGE_TOTAL_BYTES__ = 24 * 1024 * 1024;
 var __XAGA_IMAGE_CONCURRENCY__ = 6;
@@ -274,7 +274,7 @@ function __xagaCaptureFavicon() {
     } catch (e) { __xagaDiagnostic('ipc_failed'); }
 }
 
-if (__xagaIsImageDocument()) {
+if (__xagaIsImageDocument() && !window.__LOADER_IMAGE_ONLY__) {
     if (document.readyState === 'complete') __xagaCaptureFavicon();
     else window.addEventListener('load', __xagaCaptureFavicon);
 }
@@ -282,6 +282,7 @@ if (__xagaIsImageDocument()) {
 window.addEventListener('load', function() {
     __xagaDiagnostic('page_loaded');
     // Favicon documents are handled above; none of the article capture applies.
+    if (window.__LOADER_IMAGE_ONLY__) { __xagaCaptureImage(); return; }
     if (__xagaIsImageDocument()) return;
 
     var debounceTimer = null;
@@ -385,3 +386,39 @@ window.addEventListener('load', function() {
         window.addEventListener('hashchange', notifySpaNavigation);
     }
 });
+
+// Direct resource mode reads original bytes from the image's own origin.
+// No canvas conversion: content dimensions, encoding and animation survive.
+// Both this path and native downloads cross the Rust image validator.
+var __xagaImageSent = false;
+async function __xagaCaptureImage() {
+    if (__xagaImageSent) return;
+    __xagaImageSent = true;
+    var dataUri = null;
+    try {
+        if (!__xagaIsImageDocument()) throw new Error('not an image document');
+        var response = await fetch(window.location.href, { credentials: 'omit', cache: 'force-cache' });
+        if (!response.ok || !response.body) throw new Error('image response unavailable');
+        var reader = response.body.getReader();
+        var chunks = [];
+        var size = 0;
+        while (true) {
+            var next = await reader.read();
+            if (next.done) break;
+            size += next.value.byteLength;
+            if (size > 8 * 1024 * 1024) { await reader.cancel(); throw new Error('image too large'); }
+            chunks.push(next.value);
+        }
+        var blob = new Blob(chunks, { type: response.headers.get('content-type') || 'application/octet-stream' });
+        dataUri = await new Promise(function(resolve, reject) {
+            var fileReader = new FileReader();
+            fileReader.onload = function() { resolve(fileReader.result); };
+            fileReader.onerror = reject;
+            fileReader.readAsDataURL(blob);
+        });
+    } catch (_) { /* A failed resource remains unavailable, never a canvas substitute. */ }
+    try {
+        await window.__TAURI_INTERNALS__.invoke('receive_image', { id: window.__LOADER_ID__, dataUri: dataUri });
+    } catch (_) { __xagaDiagnostic('ipc_failed'); }
+}
+if (window.__LOADER_IMAGE_ONLY__ && document.readyState === 'complete') __xagaCaptureImage();

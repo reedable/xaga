@@ -17,3 +17,5 @@ pub mod pdfs;
 pub(crate) mod documents;
 
 pub mod summary_repair;
+
+pub mod image_recovery;
