@@ -15,7 +15,7 @@ mod webview_policy;
 fn main() {}
 #[cfg(target_os = "macos")]
 fn main() {
-    use resource_download::{ByteValidator, ICON_MAX_BYTES, IconValidator, ImageValidator, PdfValidator, StagedDownload};
+    use resource_download::{ByteValidator, IMAGE_MAX_BYTES, prepare_favicon, ImageValidator, PdfValidator, StagedDownload};
     use std::{
         io::{Cursor, Read, Write},
         net::TcpListener,
@@ -27,9 +27,11 @@ fn main() {
     };
     use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, webview::DownloadEvent};
     let scenario = std::env::var("XAGA_DOWNLOAD_SMOKE_CASE").unwrap_or_else(|_| "icon".into());
-    assert!(["icon", "image", "image-document", "pdf", "invalid-pdf", "html", "blob-pdf"].contains(&scenario.as_str()));
-    let content_image = matches!(scenario.as_str(), "image" | "image-document");
-    let image_document = scenario == "image-document";
+    assert!(["icon", "image", "image-document", "svg", "svg-document", "svg-icon-document", "avif", "avif-document", "avif-icon-document", "pdf", "invalid-pdf", "html", "blob-pdf"].contains(&scenario.as_str()));
+    let content_image = matches!(scenario.as_str(), "image" | "image-document" | "svg" | "svg-document" | "avif" | "avif-document");
+    let svg = scenario.starts_with("svg");
+    let avif = scenario.starts_with("avif");
+    let image_document = scenario.ends_with("-document");
     let pdf = matches!(scenario.as_str(), "pdf" | "invalid-pdf");
     let rendering = matches!(scenario.as_str(), "html" | "blob-pdf");
     let valid = scenario != "invalid-pdf";
@@ -48,7 +50,7 @@ fn main() {
         type Accepted = String;
         fn validate(self, bytes: &[u8]) -> Result<String, String> {
             match self {
-                Self::Icon => IconValidator.validate(bytes),
+                Self::Icon => ImageValidator.validate(bytes).and_then(prepare_favicon),
                 Self::Image => ImageValidator.validate(bytes),
                 Self::Pdf => PdfValidator.validate(bytes).map(|_| "pdf".into()),
             }
@@ -66,6 +68,10 @@ fn main() {
         } else {
             b"not a PDF".to_vec()
         }
+    } else if svg {
+        br#"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="red"/></svg>"#.to_vec()
+    } else if avif {
+        include_bytes!("fixtures/color-profile.avif").to_vec()
     } else if content_image {
         let mut data = Cursor::new(Vec::new());
         image::DynamicImage::new_rgba8(1200, 300).write_to(&mut data, image::ImageFormat::Png).unwrap();
@@ -78,7 +84,8 @@ fn main() {
         data.into_inner()
     };
     let original_image = body.clone();
-    let mime = if image_document { "image/png" } else if rendering {
+    let image_mime = if svg { "image/svg+xml" } else if avif { "image/avif" } else { "image/png" };
+    let mime = if image_document { image_mime } else if rendering {
         "text/html"
     } else if pdf {
         "application/pdf"
@@ -146,11 +153,13 @@ fn main() {
     context.config_mut().app.windows.clear();
     let capture_passed = completed.clone();
     let app = tauri::Builder::default().invoke_handler(move |invoke| {
-        if invoke.message.command() == "receive_image" {
+        if matches!(invoke.message.command(), "receive_image" | "receive_favicon") {
+            assert_eq!(invoke.message.command(), if content_image { "receive_image" } else { "receive_favicon" });
             use base64::Engine;
             let tauri::ipc::InvokeBody::Json(body) = invoke.message.payload() else { panic!("JSON required"); };
             let data = body["dataUri"].as_str().expect("image bytes must arrive");
             let validated = resource_download::validate_image_data(data).expect("image document bytes");
+            let validated = if content_image { validated } else { prepare_favicon(validated).unwrap() };
             let bytes = base64::engine::general_purpose::STANDARD.decode(validated.split_once(',').unwrap().1).unwrap();
             assert_eq!(bytes, original_image);
             println!("PASS: image document capture preserved original bytes through isolated navigation and validation");
@@ -173,7 +182,7 @@ fn main() {
         });
         WebviewWindowBuilder::new(app, "loader-smoke", WebviewUrl::External("http://download.example.invalid/favicon.ico".parse().unwrap()))
             .initialization_script(if image_document { format!(
-                "window.__LOADER_IMAGE_ONLY__=true;window.__LOADER_ID__='smoke';\n{}",
+                "window.__LOADER_IMAGE_ONLY__={content_image};window.__LOADER_ID__='smoke';\n{}",
                 include_str!("../src/article_loader.js")
             ) } else { String::new() })
             .visible(false)
@@ -200,7 +209,7 @@ fn main() {
                         assert_eq!(evidence.download_url, url.as_str());
                         assert!(!rendering, "renderable scenario incorrectly converted to download");
                         assert_eq!(url.as_str(), "http://download.example.invalid/icon-bytes", "callback reports redirected resource");
-                        let job = StagedDownload::new(if pdf { Validator::Pdf } else if content_image { Validator::Image } else { Validator::Icon }, ICON_MAX_BYTES).unwrap();
+                        let job = StagedDownload::new(if pdf { Validator::Pdf } else if content_image { Validator::Image } else { Validator::Icon }, IMAGE_MAX_BYTES).unwrap();
                         *destination = job.path().to_owned();
                         *staging.lock().unwrap() = Some(job);
                         true
@@ -215,7 +224,7 @@ fn main() {
                         } else if pdf {
                             assert_eq!(result.unwrap(), "pdf");
                         } else {
-                            assert!(result.unwrap().starts_with("data:image/png;base64,"));
+                            assert!(result.unwrap().starts_with(&format!("data:{image_mime};base64,")));
                         }
                         assert!(!assigned.parent().unwrap().exists());
                         assert_eq!(seen.load(Ordering::SeqCst), 1, "exactly one final resource retrieval through proxy");

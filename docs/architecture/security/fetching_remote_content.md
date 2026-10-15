@@ -215,16 +215,16 @@ its URL; it cannot become arbitrary persisted content. The original requested
 favicon URL remains storage identity. Completion is matched to the accepted
 callback URL, ignoring fragments. Other backends need native verification.
 
-Favicon responses displayed as image documents continue through canvas capture.
-Responses WebKit classifies as downloads use the same proxied webview and session
-configuration. Downloaded bytes are decoded by the Rust `image` crate, with PNG,
-JPEG, GIF, ICO, and WebP enabled. SVG and unrecognized content are rejected. The
-consumer enforces an 8 MiB completed-file/read limit, strict 2048-by-2048 source
-dimension limits, and a 32 MiB decoder allocation budget (the decoder's allocation
-budget is best-effort). Accepted output is resized to at most 64-by-64, preserving
-aspect ratio, and encoded as PNG. The resulting data URI rejoins `LoaderCapture`;
-existing ingestion saves it using the image URL hash and library writer rules.
-No new persistence scheme or privileged-window remote fetch is introduced.
+Favicon and recovery responses use the same `ImageValidator`, for both native
+downloads and image-document callbacks. Image documents supply original bytes
+through the bounded same-origin fetch; they no longer use a favicon-only canvas
+capture. Renderer MIME claims do not determine acceptance. Both consumers have
+the same 8 MiB input limit and format checks. After validation, favicon processing
+thumbnails PNG/JPEG/GIF/ICO/WebP to at most 64-by-64 with preserved aspect ratio
+and PNG encoding. SVG and AVIF retain their validated original bytes because the
+Rust thumbnail decoder does not support them. Recovery always retains original
+bytes. The resulting data URI rejoins `LoaderCapture` and existing URL-hash
+storage under the library writer. PDF validation remains separate.
 
 Disk growth is checked every 50 ms during transfer. Crossing the consumer limit (8 MiB for icons, 64 MiB for PDFs) completes the
 capture with failure and lets the normal loader lifetime close the hidden window.
@@ -255,8 +255,7 @@ not navigate a visible article window away from the user's page.
 For a displayed image document, the loader reads original bytes with a bounded
 same-origin fetch of the final document URL (`credentials: omit`, `force-cache`).
 This can issue an additional request when the response is not reusable from
-cache. It avoids cross-origin article-page readback and does not use favicon
-canvas resizing. Native downloads use the same temporary staging boundary with
+cache. It avoids cross-origin article-page readback. Native downloads use the same temporary staging boundary with
 an image consumer. Both paths pass through `ImageValidator`; renderer-supplied
 MIME is not trusted as proof of format. The `receive_image` callback requires the
 invoking loader's matching request ID and image purpose, and rechecks ownership
@@ -266,8 +265,15 @@ Content-image validation currently decodes PNG, JPEG, GIF, WebP and ICO using th
 existing Rust codecs, with a 32 MiB decoder allocation budget, and returns the
 original bytes rather than a re-encoded thumbnail. Dimensions and animation are
 therefore retained. This is not a claim that every animation frame was decoded
-by validation. SVG and AVIF recovery support is not yet implemented. Existing
-stored files of those types still follow the local reader path.
+by validation. SVG is checked with a non-rendering XML parser for a complete
+SVG root in the SVG namespace; validation does not execute scripts, resolve
+external entities, or fetch resources. It does not sanitize the original SVG.
+AVIF is checked using `avif-parse` for container structure and AV1 primary/alpha
+metadata, with a primary-image limit of 8 megapixels; this is not pixel decoding.
+The parser accepts still AVIF, not animated `avis` containers. Existing stored
+files still follow the local reader path. Acquisition continues to navigate in
+the isolated loader; these byte checks do not disable publisher scripts during
+that preceding navigation.
 
 Acquisition and readback are capped at 8 MiB per resource; a recovery invocation
 uses the existing 24 MiB decoded/32 MiB base64 transport budget and a shared

@@ -26,7 +26,7 @@ We defend against path traversal by never using remote data as a filename. Feeds
 ### Persistence
 
 - **`.atom` re-serialization is escape-aware.** Text nodes are escaped by the quick-xml writer; link hrefs — which `atom_syndication` writes verbatim — are pre-encoded by `xml_attr_encode` (`atom.rs`) so a crafted href cannot inject markup into the stored XML that would parse differently on the next read.
-- **`.md` frontmatter is serializer-built, not templated.** `render_entry` (`persistence/entries.rs`) serializes attacker-controlled title and summary through `serde_yaml`; a title containing `---\ntags: [bookmark]` is escaped, not interpreted. Frontmatter injection cannot flip tags or add keys.
+- **`.md` frontmatter is serializer-built, not templated.** Entry persistence uses the shared document upsert and `md::patch_document`, which serialize attacker-controlled title and summary through `noyalib`; a title containing `---\ntags: [bookmark]` is escaped, not interpreted. Frontmatter injection cannot flip tags or add keys.
 - **Writes are atomic and crash-ordered.** `.atom` files are written via `write_atomic_async`; on refresh, entry `.md` files are persisted _before_ the `.atom` membership (`commit_via_writer`, `persistence/feeds.rs`, which awaits the entry writes before the `.atom` write). After a crash between the two, the next refresh re-adds the missing membership from the live feed and skips the already-written `.md` files; no content is lost. The reverse order could lose content.
 
 ## Article HTML
@@ -43,7 +43,15 @@ The loader webview returns the page's raw DOM HTML. `processEntry` (`entryWorker
 
 ### Persistence
 
-Article markdown is stored in the same `{hash12}.md` files as feed entries, with the same serde_yaml frontmatter boundary for title/summary/annotations (see above). What is on disk has already crossed the DOMPurify boundary. Reading it back and rendering it is a separate boundary — see [handling_persisted_content.md](handling_persisted_content.md).
+Article markdown is stored in the same `{hash12}.md` files as feed entries, with the same `noyalib` frontmatter boundary for title/summary/annotations (see above). Captured article bodies have crossed the DOMPurify boundary; feed-supplied summaries are persisted as supplied. Reading stored content back and rendering it is a separate boundary — see [handling_persisted_content.md](handling_persisted_content.md).
+
+Readability preserves `srcset` and `<picture>` sources. The subsequent
+HTML-to-Markdown conversion uses only `img src` and ignores `<source>` candidates.
+Successful loader image capture supplies a `src` from the browser-selected
+`currentSrc` before conversion. With failed or disabled capture, an image that
+has only `srcset` can lose its URLs during conversion; a `<picture>` retains only
+its fallback `img src`. Feed summaries bypass this conversion and can retain
+responsive-image HTML.
 
 ## Native PDF downloads
 

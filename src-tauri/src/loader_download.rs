@@ -5,8 +5,7 @@ use crate::{
     article_diagnostics::{ArticleDiagnosticOutcome, ArticleLoadAttempt},
     article_loader::PendingRequests,
     resource_download::{
-        ICON_MAX_BYTES, IMAGE_MAX_BYTES, IconValidator, ImageValidator, PdfValidator,
-        StagedDownload,
+        IMAGE_MAX_BYTES, ImageValidator, PdfValidator, StagedDownload, prepare_favicon,
     },
 };
 use std::sync::{
@@ -15,7 +14,7 @@ use std::sync::{
 };
 
 enum DownloadJob {
-    Icon(StagedDownload<IconValidator>),
+    Icon(StagedDownload<ImageValidator>),
     Image(StagedDownload<ImageValidator>),
     Pdf(StagedDownload<PdfValidator>),
 }
@@ -34,14 +33,14 @@ impl DownloadJob {
     }
     fn limit(&self) -> u64 {
         match self {
-            Self::Icon(_) => ICON_MAX_BYTES,
+            Self::Icon(_) => IMAGE_MAX_BYTES,
             Self::Image(_) => IMAGE_MAX_BYTES,
             Self::Pdf(_) => xaga_core::persistence::pdfs::MAX_PDF_BYTES,
         }
     }
     fn finish(self, success: bool) -> Result<Accepted, String> {
         match self {
-            Self::Icon(s) => s.finish(success).map(Accepted::Icon),
+            Self::Icon(s) => s.finish(success).and_then(prepare_favicon).map(Accepted::Icon),
             Self::Image(s) => s.finish(success).map(Accepted::Image),
             Self::Pdf(s) => s.finish(success).map(Accepted::Pdf),
         }
@@ -91,7 +90,7 @@ impl LoaderDownloads {
         let staging = if request.purpose == crate::article_loader::LoaderPurpose::Image {
             StagedDownload::new(ImageValidator, IMAGE_MAX_BYTES).map(DownloadJob::Image)
         } else if request.partial.is_some() {
-            StagedDownload::new(IconValidator, ICON_MAX_BYTES).map(DownloadJob::Icon)
+            StagedDownload::new(ImageValidator, IMAGE_MAX_BYTES).map(DownloadJob::Icon)
         } else {
             StagedDownload::new(PdfValidator, xaga_core::persistence::pdfs::MAX_PDF_BYTES)
                 .map(DownloadJob::Pdf)

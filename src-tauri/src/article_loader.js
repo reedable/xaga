@@ -222,56 +222,12 @@ window.__captureAndClose = function() {
 };
 
 // ---------------------------------------------------------------------------
-// Favicon capture mode. Rust navigates this window here after the article HTML
-// is captured, so the document IS the favicon: same-origin with the image, and
-// therefore readable off a canvas without the CORS grant an in-page fetch of a
-// cross-origin favicon would have needed.
-//
-// The re-encode to PNG is deliberate — it means the stored bytes are always an
-// allowlisted media type, so `.ico` favicons need no special handling in
-// ext_for_media_type on the Rust side.
-//
-// This must always invoke, including on failure: Rust is holding the loader
-// window open waiting for it, and only the overall load timeout would otherwise
-// end that wait.
-// ---------------------------------------------------------------------------
+// Favicons and recovery acquire original bytes and share native validation.
+// Favicon thumbnailing happens only after that boundary.
+var __xagaImageSent = false;
 function __xagaCaptureFavicon() {
     __xagaDiagnostic('favicon_started');
-    var dataUri = null;
-    // Why the read produced nothing, reported so a silent failure here is
-    // diagnosable from the app log rather than only visible as a missing icon.
-    var reason = null;
-    try {
-        var img = document.images && document.images[0];
-        if (!img) {
-            reason = 'no-image';
-        } else if (!img.complete) {
-            reason = 'incomplete';
-        } else if (!img.naturalWidth) {
-            reason = 'decode-failed';
-        } else {
-            var size = Math.min(img.naturalWidth, img.naturalHeight, 64) || 16;
-            var canvas = document.createElement('canvas');
-            canvas.width = size;
-            canvas.height = size;
-            canvas.getContext('2d').drawImage(img, 0, 0, size, size);
-            dataUri = canvas.toDataURL('image/png');
-            if (!dataUri || dataUri.indexOf('data:image/png') !== 0) {
-                reason = 'encode-failed';
-                dataUri = null;
-            }
-        }
-    } catch (e) {
-        dataUri = null;
-        reason = 'canvas-unreadable';
-    }
-    try {
-        window.__TAURI_INTERNALS__.invoke('receive_favicon', {
-            id: window.__LOADER_ID__,
-            dataUri: dataUri,
-            reason: reason
-        }).catch(function() { __xagaDiagnostic('ipc_failed'); });
-    } catch (e) { __xagaDiagnostic('ipc_failed'); }
+    return __xagaCaptureImage();
 }
 
 if (__xagaIsImageDocument() && !window.__LOADER_IMAGE_ONLY__) {
@@ -390,7 +346,6 @@ window.addEventListener('load', function() {
 // Direct resource mode reads original bytes from the image's own origin.
 // No canvas conversion: content dimensions, encoding and animation survive.
 // Both this path and native downloads cross the Rust image validator.
-var __xagaImageSent = false;
 async function __xagaCaptureImage() {
     if (__xagaImageSent) return;
     __xagaImageSent = true;
@@ -418,7 +373,7 @@ async function __xagaCaptureImage() {
         });
     } catch (_) { /* A failed resource remains unavailable, never a canvas substitute. */ }
     try {
-        await window.__TAURI_INTERNALS__.invoke('receive_image', { id: window.__LOADER_ID__, dataUri: dataUri });
+        await window.__TAURI_INTERNALS__.invoke(window.__LOADER_IMAGE_ONLY__ ? 'receive_image' : 'receive_favicon', { id: window.__LOADER_ID__, dataUri: dataUri, reason: dataUri ? null : 'image-unreadable' });
     } catch (_) { __xagaDiagnostic('ipc_failed'); }
 }
 if (window.__LOADER_IMAGE_ONLY__ && document.readyState === 'complete') __xagaCaptureImage();

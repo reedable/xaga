@@ -164,3 +164,30 @@ describe("remote image preference", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 });
+
+describe("shared image acquisition", () => {
+  it.each([false, true])("sends original SVG bytes for image purpose %s", async (imageOnly) => {
+    const { context, invoke } = loader();
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="16" height="16"/></svg>';
+    context.Blob = Blob;
+    context.FileReader = class {
+      result = "";
+      onload = () => {};
+      async readAsDataURL(blob: Blob) {
+        this.result = `data:${blob.type};base64,${Buffer.from(await blob.arrayBuffer()).toString("base64")}`;
+        this.onload();
+      }
+    };
+    const fetch = vi.fn().mockResolvedValue(new Response(svg, { headers: { "content-type": "image/svg+xml" } }));
+    context.fetch = fetch;
+    context.imageOnly = imageOnly;
+    runInContext("document.contentType='image/svg+xml'; window.location={href:'https://example.org/image.svg'}; window.__LOADER_ID__='test'; window.__LOADER_IMAGE_ONLY__=imageOnly", context);
+    await runInContext(imageOnly ? "__xagaCaptureImage()" : "__xagaCaptureFavicon()", context);
+    expect(fetch).toHaveBeenCalledWith("https://example.org/image.svg", { credentials: "omit", cache: "force-cache" });
+    expect(invoke).toHaveBeenCalledWith(imageOnly ? "receive_image" : "receive_favicon", {
+      id: "test", dataUri: `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`, reason: null,
+    });
+    await runInContext("__xagaCaptureImage()", context);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});

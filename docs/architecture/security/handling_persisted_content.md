@@ -35,7 +35,7 @@ use the same presentation. Stored content is not changed to this fallback text.
 
 The account setting `load_remote_image` gates recovery and the article loader's
 additional body-image capture fetches. The absent-value default is defined once
-as `DEFAULT_LOAD_REMOTE_IMAGE`, currently `true` for this implementation stage;
+as `DEFAULT_LOAD_REMOTE_IMAGE`, currently `true`;
 explicit values take precedence. There is no settings UI or eager default write.
 Changing the default later does not override a stored preference. Disabling it
 leaves already-stored local images usable and does not control a publisher page's
@@ -47,6 +47,12 @@ neither the main webview nor the reader fetches the remote resource. Reference
 spans are discovered with Markdown, HTML and CSS parsers, preserving the source
 text outside the replaced destinations. The original remote URL determines image
 storage identity, including when acquisition redirects.
+
+Recovery discovers inline Markdown image destinations, HTML `img src`, and CSS
+image references. It does not resolve reference-style Markdown image definitions
+or candidates supplied only through `srcset` or `<picture><source>`. Rendering
+removes responsive candidates and uses an available `img src`; without a usable
+source, the image receives the common unavailable presentation.
 
 `recover_entry_images` captures the library/writer at invocation. After loading,
 `LibraryWriter::recover_images` rereads the entry inside its writer lane and

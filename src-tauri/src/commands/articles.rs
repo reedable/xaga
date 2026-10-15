@@ -206,6 +206,26 @@ pub async fn receive_favicon(
     if window.label() != format!("loader-{id}") {
         return Err(AppError::Unauthorized);
     }
+    {
+        let map = pending.lock().map_err(|e| e.to_string())?;
+        if !map
+            .get(&id)
+            .is_some_and(|r| r.partial.is_some() && !r.download_active)
+        {
+            return Ok(());
+        }
+    }
+    let data_uri = if let Some(data) = data_uri {
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::resource_download::validate_image_data(&data)
+                .and_then(crate::resource_download::prepare_favicon)
+        })
+        .await
+        .map_err(|e| AppError::Message(e.to_string()))?
+        .ok()
+    } else {
+        None
+    };
     let mut map = pending.lock().map_err(|e| e.to_string())?;
     let Some(request) = map.remove(&id) else {
         return Ok(());
@@ -240,6 +260,7 @@ pub async fn receive_favicon(
                     "decode-failed",
                     "encode-failed",
                     "canvas-unreadable",
+                    "image-unreadable",
                 ]
                 .contains(r)
             }) {
