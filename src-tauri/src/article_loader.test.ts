@@ -5,14 +5,14 @@ import { createContext, runInContext } from "node:vm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const script = readFileSync("src-tauri/src/article_loader.js", "utf8");
-function loader() {
+function loader(enabled = true) {
   const invoke = vi.fn().mockResolvedValue(undefined);
   const listeners: Record<string, () => void> = {};
   let mutate = () => {};
   const context = createContext({
     window: {
       __TAURI_INTERNALS__: { invoke },
-      __LOAD_REMOTE_IMAGE__: true,
+      __LOAD_REMOTE_IMAGE__: enabled,
       addEventListener: (name: string, fn: () => void) => {
         listeners[name] = fn;
       },
@@ -155,11 +155,38 @@ describe("visible loader close", () => {
 });
 
 describe("remote image preference", () => {
-  it("does not make additional capture fetches when disabled", async () => {
-    const { context } = loader();
+  it.each([false, true])("preserves local images with capture %s", async (enabled) => {
+    const { context } = loader(enabled);
     const fetch = vi.fn();
     context.fetch = fetch;
-    runInContext("__XAGA_FETCH_IMAGES__ = false; document.images = [{ src: 'https://example.org/image.png' }]", context);
+    runInContext("document.images = [{ src: 'data:image/png;base64,YQ==' }]", context);
+    await runInContext("__xagaFetchImages()", context);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(runInContext("document.images[0].src", context)).toBe("data:image/png;base64,YQ==");
+  });
+  it("keeps remote references when opted-in capture fails", async () => {
+    const { context } = loader(true);
+    const fetch = vi.fn().mockRejectedValue(new Error("unavailable"));
+    context.fetch = fetch;
+    runInContext("document.images = [{ src: 'https://example.org/image.png' }]", context);
+    await runInContext("__xagaFetchImages()", context);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(runInContext("document.images[0].src", context)).toBe("https://example.org/image.png");
+  });
+  it("does not fetch article images when closing a visible loader with capture off", async () => {
+    const { context, invoke } = loader(false);
+    const fetch = vi.fn();
+    context.fetch = fetch;
+    runInContext("document.images = [{ src: 'https://example.org/image.png' }]; __xagaFaviconUrl = function() { return null; }; window.__captureAndClose()", context);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetch).not.toHaveBeenCalled();
+    expect(invoke.mock.calls.some(([name]) => name === "capture_and_close_loader")).toBe(true);
+  });
+  it("does not make additional capture fetches when disabled", async () => {
+    const { context } = loader(false);
+    const fetch = vi.fn();
+    context.fetch = fetch;
+    runInContext(" document.images = [{ src: 'https://example.org/image.png' }]", context);
     await runInContext("__xagaFetchImages()", context);
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -189,5 +216,40 @@ describe("shared image acquisition", () => {
     });
     await runInContext("__xagaCaptureImage()", context);
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe("image capture decisions", () => {
+  it.each([
+    [false, [], "images_skipped_disabled"],
+    [true, [], "images_skipped_no_candidates"],
+    [true, [{ src: "data:image/png;base64,YQ==" }], "images_skipped_no_candidates"],
+    [true, [{ src: "https://example.org/image.png" }], "images_attempted"],
+  ] as const)("reports enabled=%s candidates=%j as %s", async (enabled, images, event) => {
+    const { context, invoke } = loader(enabled);
+    context.document.images = images;
+    context.fetch = vi.fn().mockRejectedValue(new Error("fetch failed"));
+    await runInContext("__xagaFetchImages()", context);
+    expect(invoke).toHaveBeenCalledWith("add_loader_diagnostic_event", { event, count: 1 });
+    expect(context.fetch).toHaveBeenCalledTimes(event === "images_attempted" ? 1 : 0);
+    if (event === "images_attempted") {
+      expect(invoke).toHaveBeenCalledWith("add_loader_diagnostic_event", { event: "image_unreadable", count: 1 });
+    }
+  });
+  it.each([false, true])("reports capture skipped at deadline with enabled=%s", (enabled) => {
+    const { context, invoke } = loader(enabled);
+    runInContext("window.__xagaCaptureOnTimeout()", context);
+    expect(invoke).toHaveBeenCalledWith("add_loader_diagnostic_event", {
+      event: enabled ? "images_skipped_deadline" : "images_skipped_disabled", count: 1,
+    });
+  });
+  it("distinguishes a deadline after fetches began", async () => {
+    const { context, invoke } = loader();
+    context.document.images = [{ src: "https://example.org/image.png" }];
+    context.fetch = vi.fn().mockRejectedValue(new Error("fetch failed"));
+    await runInContext("__xagaFetchImages()", context);
+    runInContext("window.__xagaCaptureOnTimeout()", context);
+    expect(invoke).toHaveBeenCalledWith("add_loader_diagnostic_event", { event: "images_interrupted_deadline", count: 1 });
   });
 });

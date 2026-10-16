@@ -293,6 +293,7 @@ export interface Platform {
 
   // Persisted preferences
   getLoadRemoteImage(): Promise<boolean>;
+  setLoadRemoteImage(value: boolean): Promise<void>;
   getInlinePdfReader(): Promise<boolean>;
   setInlinePdfReader(value: boolean): Promise<void>;
   onInlinePdfReaderChanged(

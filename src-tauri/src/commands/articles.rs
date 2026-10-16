@@ -370,6 +370,12 @@ pub(crate) fn add_loader_diagnostic_event(
         "script_started" => ("script", ArticleDiagnosticOutcome::Started, ""),
         "page_loaded" => ("page_load", ArticleDiagnosticOutcome::Succeeded, ""),
         "dom_settled" => ("dom_settle", ArticleDiagnosticOutcome::Succeeded, ""),
+        "images_skipped_pdf" => ("image_capture", ArticleDiagnosticOutcome::Skipped, "image:pdf"),
+        "images_attempted" => ("image_capture", ArticleDiagnosticOutcome::Started, "image:attempted"),
+        "images_skipped_disabled" => ("image_capture", ArticleDiagnosticOutcome::Skipped, "image:disabled"),
+        "images_skipped_no_candidates" => ("image_capture", ArticleDiagnosticOutcome::Skipped, "image:no-candidates"),
+        "images_skipped_deadline" => ("image_capture", ArticleDiagnosticOutcome::Skipped, "image:deadline-before-fetch"),
+        "images_interrupted_deadline" => ("image_capture", ArticleDiagnosticOutcome::Warning, "image:deadline-after-fetch"),
         "images_started" => ("images", ArticleDiagnosticOutcome::Started, ""),
         "images_finished" => ("images", ArticleDiagnosticOutcome::Succeeded, ""),
         "image_captured" => (

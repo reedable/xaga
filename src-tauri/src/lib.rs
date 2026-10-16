@@ -37,7 +37,7 @@ pub(crate) fn settings_path() -> Result<PathBuf, String> {
 
 // Temporary default for the future Load remote image control. All consumers
 // use the resolved setting; change this one value when the product default changes.
-pub(crate) const DEFAULT_LOAD_REMOTE_IMAGE: bool = true;
+pub(crate) const DEFAULT_LOAD_REMOTE_IMAGE: bool = false;
 
 pub(crate) const DEFAULT_LOADER_TIMEOUT_SECS: u64 = 10;
 pub(crate) const DEFAULT_FEED_TIMEOUT_SECS: u64 = 10;

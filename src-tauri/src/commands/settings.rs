@@ -216,8 +216,22 @@ pub async fn set_show_sidebar(
     }
 }
 
-/// Resolved preference; no UI setter is exposed yet.
+/// Resolved opt-in preference for additional article image requests.
 #[tauri::command]
 pub async fn get_load_remote_image(state: State<'_, AppState>) -> Result<bool, AppError> {
     Ok(*state.load_remote_image.read().unwrap())
+}
+
+#[tauri::command]
+pub async fn set_load_remote_image(
+    value: bool,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    match update_settings(&state, |s| s.load_remote_image = Some(value))? {
+        SettingsOutcome::StaleView(fresh) => Err(stale_view_error(&state, &fresh)),
+        SettingsOutcome::Written(_) => {
+            *state.load_remote_image.write().unwrap() = value;
+            Ok(())
+        }
+    }
 }

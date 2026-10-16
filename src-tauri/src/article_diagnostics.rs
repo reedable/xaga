@@ -237,7 +237,12 @@ impl ArticleLoadAttempt {
         // Preserve the beginning and newest events; bound both memory and log
         // output from noisy pages. Terminal events are still retained.
         if attempt.diagnostic.events.len() >= MAX_EVENTS {
-            attempt.diagnostic.events.remove(1);
+            // Preserve image decisions and results when navigation noise fills
+            // the buffer. Loader reports already have a separate 64-event cap.
+            let index = attempt.diagnostic.events.iter().enumerate().skip(1)
+                .find(|(_, event)| event.step != "image_capture" && !event.code.starts_with("image:"))
+                .map(|(index, _)| index).unwrap_or(1);
+            attempt.diagnostic.events.remove(index);
             attempt.diagnostic.dropped_events += 1;
         }
         let event = ArticleDiagnosticEvent {
@@ -367,6 +372,21 @@ mod tests {
             diagnostics.create_attempt("load");
         }
         assert!(diagnostics.get_attempt(&a.get_id()).is_none());
+    }
+    #[test]
+    fn navigation_noise_preserves_image_decisions_and_results() {
+        let diagnostics = ArticleDiagnostics::default();
+        let attempt = diagnostics.create_attempt("load");
+        attempt.add_started_event("fetch");
+        attempt.add_event("native", "image_capture", ArticleDiagnosticOutcome::Started, "image:enabled", "");
+        attempt.add_event("loader", "image_capture", ArticleDiagnosticOutcome::Started, "image:attempted", "");
+        attempt.add_event("loader", "images", ArticleDiagnosticOutcome::Succeeded, "image:captured", "");
+        for _ in 0..500 { attempt.add_started_event("navigation"); }
+        let record = attempt.get_diagnostic();
+        assert_eq!(record.events.len(), MAX_EVENTS);
+        for code in ["image:enabled", "image:attempted", "image:captured"] {
+            assert!(record.events.iter().any(|event| event.code == code));
+        }
     }
     #[test]
     fn removes_urls_controls_and_bounds_detail() {

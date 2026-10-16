@@ -29,6 +29,7 @@ window.focus = function() {};
 // __XAGA_FETCH_IMAGES__ to false to disable.
 // ---------------------------------------------------------------------------
 var __XAGA_FETCH_IMAGES__ = window.__LOAD_REMOTE_IMAGE__ === true;
+var __xagaImageFetchAttempted = false;
 var __XAGA_IMAGE_MAX_BYTES__ = 2 * 1024 * 1024;
 var __XAGA_IMAGE_TOTAL_BYTES__ = 24 * 1024 * 1024;
 var __XAGA_IMAGE_CONCURRENCY__ = 6;
@@ -83,8 +84,7 @@ function __xagaFetchAsDataUrl(url, budget) {
 }
 
 function __xagaFetchImages() {
-    __xagaDiagnostic('images_started');
-    if (!__XAGA_FETCH_IMAGES__) return Promise.resolve();
+    if (!__XAGA_FETCH_IMAGES__) return __xagaDiagnostic('images_skipped_disabled');
 
     var budget = { bytes: 0 };
     var imgs = [];
@@ -99,11 +99,14 @@ function __xagaFetchImages() {
         imgs.push(img);
     }
 
+    if (!imgs.length) return __xagaDiagnostic('images_skipped_no_candidates');
+
     var cursor = 0;
     function worker() {
         if (cursor >= imgs.length) return Promise.resolve();
         var img = imgs[cursor++];
         var src = img.currentSrc || img.src;
+        __xagaImageFetchAttempted = true;
         return __xagaWithTimeout(
             __xagaFetchAsDataUrl(src, budget),
             __XAGA_IMAGE_PER_IMAGE_MS__,
@@ -123,12 +126,14 @@ function __xagaFetchImages() {
         }).catch(function() {}).then(worker);
     }
 
+    return __xagaDiagnostic('images_attempted', imgs.length).then(function() {
     var pool = [];
     for (var w = 0; w < Math.min(__XAGA_IMAGE_CONCURRENCY__, imgs.length); w++) pool.push(worker());
 
     return __xagaWithTimeout(Promise.all(pool), __XAGA_IMAGE_OVERALL_MS__, null)
         .catch(function() { __xagaImageProblem('image_unreadable'); })
         .then(__xagaReportImageCounts);
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +194,9 @@ window.__xagaCaptureOnTimeout = function() {
     if (__xagaTimedOut) return;
     __xagaTimedOut = true;
     var mimeType = document.contentType || 'text/html';
+    var imageStatus = !__XAGA_FETCH_IMAGES__ ? 'images_skipped_disabled'
+        : (__xagaImageFetchAttempted ? 'images_interrupted_deadline' : 'images_skipped_deadline');
+    __xagaDiagnostic(imageStatus);
     try {
         window.__TAURI_INTERNALS__.invoke('receive_html', {
             id: window.__LOADER_ID__,
@@ -203,6 +211,7 @@ window.__xagaCaptureOnTimeout = function() {
 window.__captureAndClose = function() {
     var mimeType = document.contentType || 'text/html';
     if (mimeType === 'application/pdf') {
+        __xagaDiagnostic('images_skipped_pdf');
         window.__TAURI_INTERNALS__.invoke('capture_and_close_loader', {
             html: '',
             mimeType: mimeType
@@ -263,6 +272,7 @@ window.addEventListener('load', function() {
         observer.disconnect();
         var mimeType = document.contentType || 'text/html';
         if (mimeType === 'application/pdf') {
+        __xagaDiagnostic('images_skipped_pdf');
             try {
                 __xagaDiagnostic('capture_sent');
                 window.__TAURI_INTERNALS__.invoke('receive_html', {

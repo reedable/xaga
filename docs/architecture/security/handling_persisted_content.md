@@ -58,8 +58,13 @@ and back before displaying the updated icon.
 
 The account setting `load_remote_image` gates recovery and the article loader's
 additional body-image capture fetches. The absent-value default is defined once
-as `DEFAULT_LOAD_REMOTE_IMAGE`, currently `true`;
-explicit values take precedence. There is no settings UI or eager default write.
+as `DEFAULT_LOAD_REMOTE_IMAGE`, currently `false`, for both new and existing
+installations without a stored value; explicit values take precedence.
+Settings → Privacy exposes “Save article images for offline viewing.” Changes
+are persisted before the switch updates; failed writes display an error.
+There is no eager default write. The preference applies to subsequent ingestion,
+article reloads and reader recovery attempts. Loader windows snapshot the value
+when created, including visible loaders; reopen existing windows after changing it.
 Changing the default later does not override a stored preference. Disabling it
 leaves already-stored local images usable and does not control a publisher page's
 normal resource loading in an opened loader window.
@@ -174,3 +179,17 @@ presentation. The trusted `open_stored_pdf` command derives and validates the sa
 file before opening it in the default app; it accepts a source URL, never a local
 path. Loader pages cannot invoke either command. Cached reads work in read-only
 libraries, while new PDF persistence requires the active library writer.
+
+
+Article diagnostics report additional body-image capture separately from frontend
+image processing. Native `image_capture` events record `image:enabled` or
+`image:disabled` for the loader's preference snapshot. Loader reports distinguish
+`image:attempted` (eligible image count), `image:no-candidates`, `image:disabled`,
+`image:pdf`, `image:deadline-before-fetch`, and `image:deadline-after-fetch`.
+Enabled alone does not mean a fetch was attempted. Existing `image:captured` and
+failure codes report acquisition results. A deadline after fetching began does
+not establish that any image completed before the snapshot. These image events
+are preferentially retained in the bounded diagnostic buffer under navigation
+noise. Reports remain page-reported evidence, with fixed vocabulary and counts;
+they do not track the publisher page's ordinary image requests. Frontend `images`
+success still describes extraction/processing, not a network download.

@@ -1354,6 +1354,10 @@ export class TauriPlatform implements Platform {
     })<void>("set_topic_pinned", { id, pinned });
   }
 
+  setLoadRemoteImage(value: boolean): Promise<void> {
+    return invoke<void>("set_load_remote_image", { value });
+  }
+
   getLoadRemoteImage(): Promise<boolean> {
     return invoke<boolean>("get_load_remote_image");
   }
