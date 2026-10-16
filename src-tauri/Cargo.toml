@@ -71,3 +71,15 @@ harness = false
 [[test]]
 name = "ui_network_webview"
 harness = false
+
+[[test]]
+name = "svg_webview"
+harness = false
+
+[[test]]
+name = "loader_loopback_webview"
+harness = false
+
+[[test]]
+name = "fingerprint_webview"
+harness = false

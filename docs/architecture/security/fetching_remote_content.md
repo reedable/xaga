@@ -49,6 +49,57 @@ assume complete isolation. Reproduce the failing check with:
 XAGA_VERIFY_LOOPBACK_ISOLATION=1 cargo test -p xaga --test ui_network_webview
 ```
 
+That proxy-bypass fixture does not apply the bundled application's CSP. The
+bundled policy separately restricts `img-src` to `'self' data:`: network image
+URLs outside the app origin are refused by WebKit before a request reaches the
+proxy. SVG scripts, stylesheets, and fonts are governed by their corresponding
+CSP directives, not by `img-src` alone.
+
+`node scripts/verify-svg-webview.mjs` exercises native macOS WebKit fixtures
+with the exact CSP read from `tauri.conf.json`, separate main/settings UI data
+stores, and deny-all proxies. It compares them with a no-CSP control and records
+requests at a controlled loopback server as well as at each proxy. Tested SVG
+cases include inline scripts and event handlers, external scripts/styles/fonts,
+`image` and `xlink:href`, `use`, `feImage`, foreign-object HTML images, and CSS
+images. HTTP and HTTPS image targets include loopback and `.invalid` hosts.
+The protected fixtures produce CSP violations and no destination or proxy
+requests; the control executes scripts and reaches loopback directly. Data-URI
+SVGs used as HTML/CSS images load without requesting their external resources,
+including in the no-CSP control.
+
+The same probe runs the production Markdown sanitizer, image preparation, and
+reader HTML builder in an opaque-origin `allow-scripts` Blob iframe. A response
+from the reader's hash-pinned script confirms the frame is running. These checks
+establish the tested rendering boundaries, not complete proxy routing, all SVG
+features, or end-to-end behavior of the packaged application. They do not cover
+top-level SVG acquisition in the article loader or other operating systems.
+
+`cargo test -p xaga --test loader_loopback_webview --offline` probes HTTP
+publisher HTML and top-level SVG with the production loader native configuration
+and `article_loader.js` (image-only mode for SVG). A fixture proxy serves the
+controlled publisher origin and forwards other requests to the production SSRF
+proxy. The publisher responses supply no CSP, as a remote publisher is permitted
+to do; the trusted UI CSP is not injected. The fixture retains the windows and
+acknowledges capture IPC so requests can be observed independently of capture
+completion; it is not an end-to-end persistence test.
+
+On macOS WebKit, both fixtures reached `127.0.0.1` and `localhost` directly via
+HTTP fetch, no-CORS fetch, XHR, images, scripts, stylesheet imports, child frames,
+beacons, and WebSocket handshake requests. The top-level SVG also requested its
+declarative image. These requests bypassed the configured proxy. A direct control
+request through the production proxy was refused before reaching the destination.
+Fetch and XHR read the local fixture response because that fixture explicitly
+allowed CORS; this does not establish arbitrary cross-origin response readability.
+HTTPS fetch attempts also opened direct TLS connections to the controlled local
+listener; the listener does not serve TLS, so successful HTTPS requests were not
+established. WebSocket handshake arrival does not establish a successful upgrade.
+
+This diagnostic exits successfully when its controls and observations complete,
+not when containment is proven. It covers an HTTP publisher origin, IPv4 loopback
+and the localhost name, not HTTPS publisher origins, IPv6, address aliases,
+redirects, all request classes, or other platforms. Loader loopback containment
+therefore remains an enforcement gap.
+
 Refusals that reach the proxy use the existing error sink with “Remote content
 was blocked.” and a Details action. Diagnostics identify the window and target
 host/port, not the originating article or DOM element. Requests already blocked
@@ -163,6 +214,36 @@ The proxy controls _where_ requests can go; the loader adds controls on _what_ g
 - **Per-request timeout**: the whole load is bounded by the configurable `loader_timeout_secs`.
 - **PDF format validation**: the article download consumer requires a `%PDF-` prefix before persistence or presentation. Other formats produce `article:unsupported-download`; rejection does not imply a deceptive server.
 
+## Loader fingerprint exposure
+
+Ephemeral storage does not make the loader indistinguishable from Safari or
+remove stable device/browser characteristics. The native `fingerprint_webview`
+probe compares the same local page in ordinary Safari and two fresh loader data
+stores, using the production native policy and loader initialization script.
+Run `cargo test -p xaga --test fingerprint_webview --offline` in a macOS GUI
+session. It opens a Safari tab and saves measurements locally to
+`/tmp/xaga-fingerprint-comparison.json`; it contacts no public endpoint.
+
+The measured loader user agent omits Safari's `Version/... Safari/...` suffix
+in both JavaScript and request headers. WebRTC is unavailable in the loader but
+constructible in Safari. The hidden loader reports a different viewport and zero
+outer-window dimensions. Page scripts can see the loader's named globals,
+including `__xagaCaptureImage` and `__LOADER_ID__`, which provide a direct Xaga
+implementation signature beyond generic embedded-WebKit detection.
+
+On the tested machine, canvas and offline-audio hashes, sampled font widths,
+WebGL details, screen information, language, timezone, and hardware concurrency
+matched Safari. All recorded fields were identical across the two fresh loader
+stores. These results show stable observable signals, not a measured probability
+of identifying a person or matching them across devices.
+
+Scope: one machine, ordinary Safari with its existing preferences, and a
+loopback HTTP origin (a secure context). The fixture retains loader windows by
+acknowledging capture IPC and does not configure the network proxy. It measures
+page-visible characteristics and the received user agent, not remote-origin
+privacy behavior, TLS fingerprints, private Safari browsing, or population
+uniqueness. Raw measurements contain machine characteristics and remain in /tmp.
+
 ## Visible loader: offer to update on close
 
 A user-opened article loader remains open after its initial capture. When the
@@ -226,6 +307,14 @@ Rust thumbnail decoder does not support them. Recovery always retains original
 bytes. The resulting data URI rejoins `LoaderCapture` and existing URL-hash
 storage under the library writer. PDF validation remains separate.
 
+Standalone SVG image documents are recognized by their image content type;
+capture does not require an HTML `img` element or canvas readback. This supports
+SVG favicons as well as summary/body image recovery through the shared path.
+Navigation can execute SVG scripts and load subresources in the isolated loader,
+just as publisher HTML can. Script execution there is intentional; byte validation
+is not an execution barrier. The confirmed loopback proxy-bypass limitation
+described above applies to this acquisition context too.
+
 Disk growth is checked every 50 ms during transfer. Crossing the consumer limit (8 MiB for icons, 64 MiB for PDFs) completes the
 capture with failure and lets the normal loader lifetime close the hidden window.
 This sampled guard is not a hard disk quota: writes can overshoot between checks.
@@ -242,7 +331,8 @@ Xaga enables the local Wry PDF response-routing feature by default on macOS.
 Local reuse, presentation, and the patch policy are described in
 `docs/architecture/wry_pdf_routing.md`. The PDF reqwest probe is removed.
 WebKit navigation does not use the reqwest redirect-count setting; destination
-checks remain enforced by the proxy, and the loader deadline bounds waiting.
+checks apply to requests that reach the proxy, subject to the loopback bypass
+described above, and the loader deadline bounds waiting.
 
 
 ## Direct content-image recovery

@@ -25,13 +25,36 @@ Summary images, uncaptured body images, and manually inserted remote references
 use the same recovery and presentation path when their content is viewed.
 
 `prepareEntryImages` resolves local image references in HTML, inline CSS and embedded stylesheets to
-local data URIs. Remote image sources and responsive candidates cannot reach the
-reader as fetchable image sources. CSS declarations with unavailable URL or
+local data URIs. Remote HTML `img` sources and responsive candidates are removed
+before reaching the reader. CSS declarations with unavailable URL or
 image-set resources and external stylesheet imports are removed. The bundled `img-src` permits only self and data
 images. This policy does not rely on the UI proxy being a complete boundary.
 An unavailable image displays its nonempty alternative text, then its title when
 that adds content; without either, it displays “Image unavailable.” Decode failures
 use the same presentation. Stored content is not changed to this fallback text.
+
+Inline SVG is different from an SVG resource displayed through `img` or a CSS
+image property. DOMPurify removes inline SVG scripts and event handlers, but
+SVG resource references such as `image href`, `xlink:href`, and `feImage href`
+can survive sanitization and image preparation. Their network loading is
+restricted by the reader's CSP. Sanitization alone is not a no-network boundary:
+the native no-CSP control requests external SVG images even after the production
+sanitizer and preparation functions have run.
+
+The native SVG probe described in
+[fetching_remote_content.md](fetching_remote_content.md) verifies that the tested
+references make no network requests under the exact app CSP. It also verifies
+that SVG data resources used as HTML/CSS images load without executing scripts
+or fetching their nested resources in the tested WebKit image contexts. This
+does not imply that stored SVG bytes have been sanitized or that opening those
+bytes as a top-level document has the same protections.
+
+SVG favicons also use locally stored resources rendered as images in the toolbar,
+not inline SVG markup in the main webview. Their original validated SVG bytes
+are retained. Opening a cached article does not itself retry a failed favicon
+acquisition; reloading the article retries its icon. A successful save and the
+toolbar's refresh timing are separate: the current UI can require navigating away
+and back before displaying the updated icon.
 
 The account setting `load_remote_image` gates recovery and the article loader's
 additional body-image capture fetches. The absent-value default is defined once
