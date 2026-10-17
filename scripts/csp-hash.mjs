@@ -1,49 +1,93 @@
 // Computes the CSP sha256 source value for the reader iframe's executable
-// <script> emitted by buildEntryHtml. The bundled CSP enforces
-// `script-src 'self'` (no 'unsafe-inline'), so that inline script only runs if
-// its exact hash is allow-listed.
-//
-// Run this whenever the executable <script> in src/text/buildEntryHtml.ts
-// changes, and paste the printed value into app.security.csp (script-src) in
-// src-tauri/tauri.conf.json.
-//
-//   node scripts/csp-hash.mjs
-//
-// Uses Vite's module loader so the project's extensionless TS imports resolve
-// the same way they do in the app build.
+// <script> emitted by buildEntryHtml. With --check, verifies that the bundled
+// CSP allows that hash in its script-src directive.
 
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { createServer } from "vite";
 
-const server = await createServer({
-  appType: "custom",
-  logLevel: "silent",
-  server: { middlewareMode: true },
-});
+export function configuredCsp(config) {
+  const csp = config?.app?.security?.csp;
+  if (typeof csp !== "string") {
+    throw new Error(
+      "src-tauri/tauri.conf.json has no string app.security.csp value"
+    );
+  }
+  return csp;
+}
 
-try {
-  const { buildEntryHtml } = await server.ssrLoadModule(
-    "/src/text/buildEntryHtml.ts"
-  );
+export function scriptSrcContainsHash(csp, hash) {
+  const scriptSrc = csp
+    .split(";")
+    .map((directive) => directive.trim().split(/\s+/))
+    .find(([name]) => name.toLowerCase() === "script-src");
+  return scriptSrc?.slice(1).includes(hash) ?? false;
+}
 
-  // The script body is independent of style and annotations; any valid style and
-  // empty annotations produce the same executable <script> text.
-  const html = buildEntryHtml(
-    "",
-    { themeMode: "light", fontFamily: "system", fontSize: 16, lineHeight: 1.5 },
-    []
-  );
+async function readerScriptHash() {
+  const server = await createServer({
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+  });
 
-  // The executable script is the only <script> with no attributes; the
-  // annotations data island is <script type="application/json" ...>.
-  const match = html.match(/<script>([\s\S]*?)<\/script>/);
-  if (!match) {
-    console.error("Could not locate the executable <script> in buildEntryHtml output.");
-    process.exit(1);
+  try {
+    const { buildEntryHtml } = await server.ssrLoadModule(
+      "/src/text/buildEntryHtml.ts"
+    );
+    const html = buildEntryHtml(
+      "",
+      {
+        themeMode: "light",
+        fontFamily: "system",
+        fontSize: 16,
+        lineHeight: 1.5,
+      },
+      []
+    );
+    const match = html.match(/<script>([\s\S]*?)<\/script>/);
+    if (!match) {
+      throw new Error(
+        "Could not locate the executable <script> in buildEntryHtml output"
+      );
+    }
+    const digest = createHash("sha256")
+      .update(match[1], "utf8")
+      .digest("base64");
+    return `'sha256-${digest}'`;
+  } finally {
+    await server.close();
+  }
+}
+
+async function main() {
+  const hash = await readerScriptHash();
+  if (!process.argv.slice(2).includes("--check")) {
+    console.log(hash);
+    return;
   }
 
-  const hash = createHash("sha256").update(match[1], "utf8").digest("base64");
-  console.log(`'sha256-${hash}'`);
-} finally {
-  await server.close();
+  const config = JSON.parse(
+    await readFile(
+      new URL("../src-tauri/tauri.conf.json", import.meta.url),
+      "utf8"
+    )
+  );
+  if (!scriptSrcContainsHash(configuredCsp(config), hash)) {
+    throw new Error(
+      `Reader CSP hash mismatch. Add ${hash} to app.security.csp script-src in src-tauri/tauri.conf.json.`
+    );
+  }
+  console.log(`Reader CSP hash is current: ${hash}`);
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
 }
