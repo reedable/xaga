@@ -1,40 +1,42 @@
 # Compliance: resource retrieval and download safety
 
-Scope: shared security controls for remote resource retrieval and processing,
-including resources WebKit renders and those it routes into the download pipeline.
+## Summary
 
-## Resource limits before and during decoding
+Verify remaining security and lifecycle cases for rendered resources and native
+downloads in the article loader.
 
-The image-document branch in `src-tauri/src/article_loader.js` re-encodes an image
-through a canvas capped at 64 pixels. That output limit does not bound the
-network response size or the source image's decode allocation. Review and
-address resource limits for this branch, including byte and source-dimension
-limits. Determine what can be enforced before WebKit decodes the image.
+## Requirements
 
-## Remaining verification
+Resources must reach their assigned validator and consumer under the existing
+network policy. Failures must preserve captured article content and clean up
+loaders, scoped proxies, and staged files. Persisted-resource handling must respect
+read-only storage and local-only main-window rendering.
 
-Extend controlled-endpoint and native-webview coverage for cases not yet
-established by the download unit tests and native redirect smoke test:
+## Remaining work
 
-- Relative resource references, unusual schemes, and author-controlled URLs
-  must pass the common security controls regardless of resource type.
-- Cross-origin retrieval without CORS and redirects to forbidden proxy destinations.
-- Native handling of attachment responses, HTML error responses, malformed or
-  oversized images, missing resources, and stalled transfers.
-- Cancellation and concurrent loads: no orphaned loader, lingering proxy, or
-  partial file; preserve already captured article content.
-- Local reuse, missing files, refresh, and read-only storage.
-- Native verification of Downloads permission behavior with permission either
-  undecided or denied.
-- Local-only main-window rendering for new, legacy, and edited favicon entries.
+- Test oversized image-document navigation to determine whether WebKit resource
+  management and the loader deadline suffice before Rust validation; document
+  the decision and implement any required limit.
+- Extend native coverage to relative references, unusual schemes, cross-origin
+  resources without CORS, forbidden redirect destinations, attachment responses,
+  HTML returned as an image, malformed images, missing resources, and stalls.
+- Test cancellation and concurrent loads, including favicon failure after article
+  capture.
+- Verify routing in hidden and visible loaders, other windows, and subframes.
+  Favicon responses labeled as PDF must not reach PDF persistence, inline PDF
+  rendering, or default-app opening.
+- Check private staging with macOS Downloads permission undecided and denied.
+- Verify resource reuse, missing-file recovery, refresh, and read-only operation,
+  including new, legacy, and edited favicon entries.
+- Fix failures from these cases and update durable security documentation.
 
-Document verified controls and limitations in durable documentation. Address
-failures found by these tests.
+## References
 
-## Consumer routing verification
-
-Verify that resource candidates enter only their assigned validator and consumer.
-In particular, favicon candidates must not enter PDF persistence, inline rendering,
-or default-app opening. Review hidden and visible loaders, other windows, and
-subframes with forced PDF download routing. Handler presence alone
-cannot scope that routing because Wry supplies a default download handler.
+- [Loader lifecycle](../../../src-tauri/src/article_loader.rs)
+- [Resource acquisition](../../../src-tauri/src/article_loader.js)
+- [Download consumers](../../../src-tauri/src/loader_download.rs)
+- [Validators](../../../src-tauri/src/resource_download.rs)
+- [Native tests](../../../src-tauri/tests/resource_download_webview.rs)
+- [Wry response policy](../../../../wry/src/wkwebview/response_policy.rs)
+- [Remote content policy](../../../docs/architecture/security/fetching_remote_content.md)
+- [Persisted-content policy](../../../docs/architecture/security/handling_persisted_content.md)
