@@ -12,4 +12,4 @@ resolver = "2"
 strip = "none"
 
 [patch.crates-io]
-wry = { path = "../wry" }
+wry = { git = "https://github.com/reedable/wry.git", rev = "566f7b984147d58e05e69c8dcf8cf6336cc465bb" }

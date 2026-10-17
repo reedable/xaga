@@ -30,7 +30,7 @@ not establish redirect count, especially for HTTPS tunnels and reused connection
 ## References
 
 - [Article loader](../../../src-tauri/src/article_loader.rs)
-- [Wry navigation policy](../../../../wry/src/wkwebview/navigation.rs)
+- [Wry navigation policy](https://github.com/reedable/wry/blob/566f7b984147d58e05e69c8dcf8cf6336cc465bb/src/wkwebview/navigation.rs)
 - [Network proxy](../../../crates/xaga-core/src/network_proxy.rs)
 - [Remote-content policy](../../../docs/architecture/security/fetching_remote_content.md)
 - [Fetch-policy settings UI](improvement__user_settings.md)

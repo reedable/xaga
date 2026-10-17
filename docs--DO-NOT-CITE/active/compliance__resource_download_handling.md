@@ -37,6 +37,6 @@ read-only storage and local-only main-window rendering.
 - [Download consumers](../../src-tauri/src/loader_download.rs)
 - [Validators](../../src-tauri/src/resource_download.rs)
 - [Native tests](../../src-tauri/tests/resource_download_webview.rs)
-- [Wry response policy](../../../wry/src/wkwebview/response_policy.rs)
+- [Wry response policy](https://github.com/reedable/wry/blob/566f7b984147d58e05e69c8dcf8cf6336cc465bb/src/wkwebview/response_policy.rs)
 - [Remote content policy](../../docs/architecture/security/fetching_remote_content.md)
 - [Persisted-content policy](../../docs/architecture/security/handling_persisted_content.md)
