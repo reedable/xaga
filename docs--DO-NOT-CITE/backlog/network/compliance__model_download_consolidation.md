@@ -50,7 +50,8 @@ remain after migration.
 - Decide how `xaga-cli embeddings download-model` invokes the shared downloader,
   which currently lives in the Tauri app. Implement delegation or a shared host,
   or explicitly retire the CLI download command; remove its independent reqwest
-  acquisition path and update CLI guidance and the related proxy-switch task.
+  acquisition path and update CLI guidance. If the command remains, preserve its
+  explicit `--no-proxy` escape hatch.
 - Verify successful multi-file installation, checksum rejection, interrupted and
   timed-out downloads, size-limit rejection, lock contention, retry, and service
   startup failure. Check progress and error visibility, staging cleanup, and
@@ -72,4 +73,3 @@ remain after migration.
 - [Model trust](../../../docs/architecture/security/embedding_model_trust.md)
 - [Remote content policy](../../../docs/architecture/security/fetching_remote_content.md)
 - [First-run model consent](../ui/compliance__oobe_model_download_consent.md)
-- [CLI download proxy switches](../../active/improvement__cli_download_proxy_switches.md)
