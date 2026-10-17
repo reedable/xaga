@@ -83,7 +83,7 @@ pub async fn list_embedded_items(
             min_similarity,
             max_similarity,
         } => {
-            let db = EmbeddingsDb::open(library_dir).await?;
+            let db = EmbeddingsDb::open_readonly(library_dir).await?;
             let entries = db
                 .search_related(&id, limit, min_similarity, max_similarity, None)
                 .await?;
@@ -97,7 +97,7 @@ pub async fn list_embedded_items(
             min_similarity,
             max_similarity,
         } => {
-            let db = EmbeddingsDb::open(library_dir).await?;
+            let db = EmbeddingsDb::open_readonly(library_dir).await?;
             let entries = db
                 .search_by_vector(vector, limit, min_similarity, max_similarity)
                 .await?;
@@ -110,7 +110,7 @@ pub async fn list_embedded_items(
             limit,
             min_similarity,
         } => {
-            let db = EmbeddingsDb::open(library_dir).await?;
+            let db = EmbeddingsDb::open_readonly(library_dir).await?;
             db.search_related(&id, limit, min_similarity, None, Some(Kind::Topic))
                 .await
                 .map_err(ItemError::Embeddings)
@@ -122,7 +122,7 @@ pub async fn list_embedded_items(
 /// LanceDB, filtered by `item_filter` and sorted by `created_at` descending. Returns the flat
 /// `ListItem` the items list renders (annotations carry `reference`/`color`).
 pub async fn list_all_items(library_dir: &Path, item_filter: ItemFilter) -> Result<Vec<ListItem>> {
-    let db = EmbeddingsDb::open(library_dir).await?;
+    let db = EmbeddingsDb::open_readonly(library_dir).await?;
 
     let (entries_result, annotations_result) =
         tokio::join!(db.list_entries(), db.list_annotations());

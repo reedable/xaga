@@ -1103,7 +1103,7 @@ pub async fn list_annotations(
     state: State<'_, AppState>,
 ) -> Result<Vec<PartialAnnotation>, AppError> {
     let data_dir = state.library_path();
-    let db = EmbeddingsDb::open(&data_dir)
+    let db = EmbeddingsDb::open_readonly(&data_dir)
         .await
         .map_err(AppError::from)?;
     db.list_annotations().await.map_err(AppError::from)

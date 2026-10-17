@@ -159,6 +159,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn concurrent_app_and_cli_writers_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let app_lock = acquire_lock(dir.path()).expect("first writer acquires lock");
+
+        assert!(acquire_lock(dir.path()).is_none());
+
+        drop(app_lock);
+        assert!(acquire_lock(dir.path()).is_some());
+    }
+
+    #[test]
     fn image_ref_round_trips_through_parse() {
         // The ref is extension-agnostic: it carries the url-hash, not a filename.
         let reference = entry_image_ref("a3f2c1d0e9b8", "4f2a91c3e0b7");

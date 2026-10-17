@@ -1126,7 +1126,7 @@ pub fn run() {
                     // this instance sees the library as of ITS startup; the writer's
                     // later commits appear after relaunch — same visibility rule as the
                     // `.md` side (no live watcher; recovery-at-startup is the answer).
-                    match EmbeddingsDb::open(&lib_path).await {
+                    match EmbeddingsDb::open_readonly(&lib_path).await {
                         Ok(db) => *setup_embeddings_read.lock().unwrap() = Some(db),
                         Err(e) => {
                             log::error!("startup: read-only embeddings open failed: {e}")

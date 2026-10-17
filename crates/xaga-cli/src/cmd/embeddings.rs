@@ -81,7 +81,7 @@ fn require_write_lock(data_dir: &Path) -> FileLock {
 
 pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
     match cmd {
-        EmbeddingsCommand::Status => match EmbeddingsDb::open(data_dir).await {
+        EmbeddingsCommand::Status => match EmbeddingsDb::open_readonly(data_dir).await {
             Ok(db) => match db.get_embedding_status().await {
                 Ok(rows) => {
                     let total: usize = rows.iter().map(|r| r.total).sum();
@@ -105,7 +105,7 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
             Err(e) => die(e),
         },
 
-        EmbeddingsCommand::List => match EmbeddingsDb::open(data_dir).await {
+        EmbeddingsCommand::List => match EmbeddingsDb::open_readonly(data_dir).await {
             Ok(db) => match db.list().await {
                 Ok(docs) if docs.is_empty() => println!("No documents embedded yet."),
                 Ok(docs) => {
@@ -149,7 +149,7 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
         EmbeddingsCommand::Recover => {
             let _lock = require_write_lock(data_dir);
 
-            let db = match EmbeddingsDb::open(data_dir).await {
+            let db = match EmbeddingsDb::open_writer(data_dir, &_lock).await {
                 Ok(db) => db,
                 Err(e) => die(e),
             };
@@ -169,9 +169,9 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
 
         EmbeddingsCommand::Reset => {
             let _lock = require_write_lock(data_dir);
-            EmbeddingsDb::destroy(data_dir).unwrap_or_else(|e| die(e));
+            EmbeddingsDb::destroy(data_dir, &_lock).unwrap_or_else(|e| die(e));
 
-            match EmbeddingsDb::open(data_dir).await {
+            match EmbeddingsDb::open_writer(data_dir, &_lock).await {
                 Ok(_) => println!("Embeddings index cleared."),
                 Err(e) => die(e),
             }
@@ -180,9 +180,9 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
         EmbeddingsCommand::Reindex => {
             let _lock = require_write_lock(data_dir);
 
-            EmbeddingsDb::destroy(data_dir).unwrap_or_else(|e| die(e));
+            EmbeddingsDb::destroy(data_dir, &_lock).unwrap_or_else(|e| die(e));
 
-            let db = match EmbeddingsDb::open(data_dir).await {
+            let db = match EmbeddingsDb::open_writer(data_dir, &_lock).await {
                 Ok(db) => db,
                 Err(e) => die(e),
             };
@@ -205,7 +205,7 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
         }
 
         EmbeddingsCommand::Calibrate { sample, min } => {
-            let db = match EmbeddingsDb::open(data_dir).await {
+            let db = match EmbeddingsDb::open_readonly(data_dir).await {
                 Ok(db) => db,
                 Err(e) => die(e),
             };

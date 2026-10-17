@@ -46,7 +46,7 @@ pub async fn handle(cmd: ArticlesCommand, data_dir: &Path, dry_run: bool) {
         }
 
         ArticlesCommand::List => {
-            let db = match EmbeddingsDb::open(data_dir).await {
+            let db = match EmbeddingsDb::open_readonly(data_dir).await {
                 Ok(db) => db,
                 Err(e) => die(e),
             };
