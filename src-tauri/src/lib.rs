@@ -480,6 +480,18 @@ fn theme_background_color<R: Runtime>(theme_setting: &str, window: &WebviewWindo
     if dark { DARK } else { LIGHT }
 }
 
+/// Applies the persisted setting before the frontend stylesheet or React can paint.
+fn theme_bootstrap_script(theme_setting: &str) -> String {
+    let setting = match theme_setting {
+        "light" | "dark" => theme_setting,
+        _ => "auto",
+    };
+    let setting = serde_json::to_string(setting).expect("theme setting serializes");
+    format!(
+        "(() => {{ const setting = {setting}; const resolved = setting === 'auto' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : setting; window.__XAGA_THEME_SETTING__ = setting; document.documentElement.dataset.theme = resolved; document.documentElement.style.colorScheme = resolved; document.documentElement.style.backgroundColor = resolved === 'dark' ? '#121212' : '#ffffff'; }})();"
+    )
+}
+
 // ── Menu helpers ───────────────────────────────────────────────────────────────
 
 /// Move the checkmark to `selected` ("summary" | "reader").
@@ -966,10 +978,21 @@ pub fn run() {
             _ => {}
         })
         .setup(move |app| {
+            // Resolve settings before creating the webview so its document-start script can apply
+            // the persisted theme before the first page paint.
+            let settings_path = settings_path()?;
+            let settings = load_settings(&settings_path);
+            let theme = settings
+                .theme
+                .clone()
+                .unwrap_or_else(|| "auto".to_string());
+            *setup_settings_baseline.write().unwrap() = settings_mtime(&settings_path);
+
             // Build explicitly so the native WebRTC policy precedes even the
             // first document. The config's `create: false` prevents auto-build.
             let proxy = ui_network::start(app.handle(), "main")?;
             let builder = WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
+                .initialization_script(theme_bootstrap_script(&theme))
                 .on_download(|_, _| false)
                 .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
                 .proxy_url(network_proxy::proxy_url(proxy.port).parse()?);
@@ -979,21 +1002,13 @@ pub fn run() {
             );
             let window = builder.build()?;
             ui_network::retain_for_window(&window, proxy);
-            // Resolve settings: persisted settings.json or defaults.
-            let settings_path = settings_path()?;
             let default_library =
                 xaga_core::fs::data_root().ok_or("cannot determine platform data directory")?;
-            let settings = load_settings(&settings_path);
             *setup_load_remote_image.write().unwrap() = settings.load_remote_image();
-            // The read that forms this process's view of the settings — its
-            // mtime is the baseline for the stale-view check in
-            // `update_settings`.
-            *setup_settings_baseline.write().unwrap() = settings_mtime(&settings_path);
             let lib_path = settings
                 .library
                 .map(PathBuf::from)
                 .unwrap_or(default_library);
-            let theme = settings.theme.unwrap_or_else(|| "auto".to_string());
             let refresh = settings.refresh_on_startup.unwrap_or(false);
             let timeout = settings
                 .loader_timeout_secs

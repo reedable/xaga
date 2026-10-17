@@ -22,12 +22,21 @@ function systemPrefersDark(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
+export function initialThemeSetting(): ThemeSetting {
+  const value = (window as Window & { __XAGA_THEME_SETTING__?: unknown })
+    .__XAGA_THEME_SETTING__;
+  return value === "light" || value === "dark" || value === "auto"
+    ? value
+    : "auto";
+}
+
 export function AppearanceProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
   const { saveSettings, refreshVersion } = useSettings();
   const { pushError } = useErrorSink();
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
-  const [themeSetting, setThemeSetting] = useState<ThemeSetting>("auto");
+  const [themeSetting, setThemeSetting] =
+    useState<ThemeSetting>(initialThemeSetting);
 
   const [htmlReaderView, setHtmlReaderView] =
     useState<HtmlReaderView>("reader");
@@ -142,6 +151,9 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   // Keep data-theme attribute in sync for CSS consumers.
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", themeMode);
+    document.documentElement.style.colorScheme = themeMode;
+    document.documentElement.style.backgroundColor =
+      themeMode === "dark" ? "#121212" : "#ffffff";
   }, [themeMode]);
 
   // Track system color-scheme changes so Auto mode reacts in real time.
