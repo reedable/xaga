@@ -35,6 +35,12 @@ pub struct KindStatus {
     pub embedded: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct AllItemsCounts {
+    pub entry_count: usize,
+    pub unread_count: usize,
+}
+
 /// Cosine distance threshold used when the caller does not specify one.
 /// Cosine distance = 1 − cosine_similarity; range [0, 1] for unit vectors.
 /// 0.5 corresponds to cosine similarity ≥ 0.5.
@@ -798,6 +804,22 @@ impl EmbeddingsDb {
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
         Ok(n)
+    }
+
+    /// Counts the rows shown by All Items and the unread entry subset without
+    /// materializing rows or vectors.
+    pub async fn all_items_counts(&self) -> Result<AllItemsCounts, EmbeddingsError> {
+        let (entry_count, unread_count) = tokio::try_join!(
+            self.table
+                .count_rows(Some("kind = 'entry' OR kind = 'annotation'".to_string())),
+            self.table.count_rows(Some("is_unread = true".to_string())),
+        )
+        .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
+        Ok(AllItemsCounts {
+            entry_count,
+            unread_count,
+        })
     }
 
     /// Returns a map of `id → (checksum, reference, has_vector, kind)` for every row.
@@ -1678,6 +1700,32 @@ mod tests {
         );
 
         assert!(pending.is_pinned);
+    }
+
+    #[tokio::test]
+    async fn all_items_counts_entries_annotations_and_unread_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        let unread_entry = sample("unread-entry", "entry", None);
+        let mut read_entry = sample("read-entry", "entry", None);
+        read_entry.is_unread = false;
+        let mut annotation = sample("annotation", "annotation", None);
+        annotation.is_unread = false;
+        let mut topic = sample("topic", "topic", None);
+        topic.is_unread = false;
+
+        for row in [unread_entry, read_entry, annotation, topic] {
+            db.upsert(row).await.unwrap();
+        }
+
+        assert_eq!(
+            db.all_items_counts().await.unwrap(),
+            AllItemsCounts {
+                entry_count: 3,
+                unread_count: 1,
+            }
+        );
     }
 
     /// The `items` column (the topic-membership reverse-index base) round-trips, and an

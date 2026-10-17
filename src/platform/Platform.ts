@@ -19,6 +19,7 @@ import type {
   ExportOutcome,
   Item,
   ListItem,
+  AllItemsCounts,
   Topic,
   TopicSort,
 } from "../types";
@@ -62,6 +63,7 @@ export interface Platform {
     filter: Filter
   ): Promise<Entry[]>;
   listAllItems(signal: AbortSignal, filter: Filter): Promise<ListItem[]>;
+  getAllItemsCounts(): Promise<AllItemsCounts | null>;
   markEntryRead(signal: AbortSignal, id: string): Promise<Entry>;
   markEntryUnread(signal: AbortSignal, id: string): Promise<Entry>;
 

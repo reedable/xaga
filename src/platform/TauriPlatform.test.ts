@@ -16,6 +16,20 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import { TauriPlatform } from "./TauriPlatform";
 
+it("maps All Items counts from the native boundary", async () => {
+  invokeMock.mockResolvedValueOnce({ entry_count: 12, unread_count: 4 });
+  await expect(new TauriPlatform().getAllItemsCounts()).resolves.toEqual({
+    entryCount: 12,
+    unreadCount: 4,
+  });
+  expect(invokeMock).toHaveBeenLastCalledWith("get_all_items_counts");
+});
+
+it("keeps All Items counts unavailable when the cache is unavailable", async () => {
+  invokeMock.mockResolvedValueOnce(null);
+  await expect(new TauriPlatform().getAllItemsCounts()).resolves.toBeNull();
+});
+
 it("preserves native download evidence when reading diagnostics", async () => {
   const download = {
     loaderLabel: "loader-0", sourceUrl: "https://example.org/",

@@ -26,6 +26,7 @@ import type {
   ExportOutcome,
   Item,
   ListItem,
+  AllItemsCounts,
   Topic,
   TopicSort,
 } from "../types";
@@ -115,6 +116,11 @@ const EntrySchema = ItemSchema.extend({
 // read_entry_images returns a positional array aligned with the requested refs:
 // a resolved `data:` URI, or null where the reference did not resolve.
 const ReadEntryImagesSchema = z.array(z.string().nullable());
+
+const AllItemsCountsSchema = z.object({
+  entry_count: z.number(),
+  unread_count: z.number(),
+});
 
 const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
   return {
@@ -517,6 +523,18 @@ export class TauriPlatform implements Platform {
       .map((e) => ListItemSchema.transform(toListItem).safeParse(e))
       .filter((e) => !e.error) // FIXME silently dropping invalid items
       .map((e) => e.data);
+  }
+
+  async getAllItemsCounts(): Promise<AllItemsCounts | null> {
+    const name = "get_all_items_counts";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    const result = await invoker<unknown>(name);
+    if (result === null) return null;
+    const counts = AllItemsCountsSchema.parse(result);
+    return {
+      entryCount: counts.entry_count,
+      unreadCount: counts.unread_count,
+    };
   }
 
   async markEntryRead(signal: AbortSignal, id: string): Promise<Entry> {
