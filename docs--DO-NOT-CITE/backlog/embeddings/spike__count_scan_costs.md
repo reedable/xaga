@@ -1,9 +1,27 @@
-# Count costs: scans and full-set materialization
+# Measure embedding count costs
 
-Read costs to investigate:
+## Summary
 
-- **`embedding_status` runs 2 `count_rows` per kind** (up to 8 filtered counts); filtered `count_rows` without supporting indexes scans (`crates/xaga-core/src/embeddings/db.rs`, `crates/xaga-cli/src/cmd/embeddings.rs`).
-- **Per-feed / per-topic counts** derive unread/bookmark counts from LanceDB on each `list_feeds`/`list_topics` call — count throughput scaled by feed/topic count.
-- **Residual after the Bitmap indexes:** the per-refresh counts materialize the full unread id-set; the Bitmap makes _finding_ unread rows index-fast, but the set size is inherent. Recorded revisit options if the sidebar lags at the design scale: denormalized counts, or per-collection `count_rows`.
+Embedding status performs filtered counts per kind. Feed and Topic summaries materialize global unread and bookmark ID sets and intersect them with collection membership. Their costs at the design target are unknown.
 
-Severity and ordering unassigned; no measurement at the design target exists.
+## Requirements
+
+- Measure before changing storage or count semantics.
+- Preserve authoritative membership and state results.
+- Include result cardinality, not only index lookup time, when evaluating materialized ID sets.
+- Avoid denormalized counters without a defined repair and consistency model.
+
+## Remaining work
+
+- Benchmark embedding status and feed and Topic list counts at target row and membership sizes.
+- Attribute time and allocation to filtered counts, ID-set materialization, and membership intersection.
+- Compare current queries, per-collection database counts, and repairable denormalized counters if measurements require change.
+- Present the measured bottleneck and options for decision.
+
+## References
+
+- `crates/xaga-core/src/embeddings/db.rs`
+- `crates/xaga-cli/src/cmd/embeddings.rs`
+- `src-tauri/src/commands/feeds.rs`
+- `src-tauri/src/commands/topics.rs`
+- `docs/architecture/design_scale.md`

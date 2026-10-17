@@ -80,7 +80,7 @@ export async function processEntry(
   // Prefer the loader's pair: that URL is the one whose bytes we actually hold,
   // so it is the one the backend must hash. Without it we fall back to reading
   // the declared `<link rel~=icon>`, which yields a URL and no bytes — the entry
-  // then stores a remote favicon URL, as it did before this path existed.
+  // then stores the remote favicon URL.
   const favicon = loaderFavicon?.url ?? extractFavicon(doc, url);
 
   // Pre-Readability: the loader inlined each fetched image as a `data:` src and

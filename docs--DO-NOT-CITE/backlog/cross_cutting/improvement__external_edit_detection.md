@@ -1,25 +1,26 @@
 # External-edit last-wins window has no detection
 
-## Current behavior
+## Summary
 
-- The library flock binds only xaga processes; external tools (e.g. Obsidian)
-  editing `.md` files are not participants. External edits are reconciled from
-  files by recovery at the next startup
-  (`docs/architecture/single_writer_library_lock.md`).
-- Inside a running writer instance, an external edit landing between a lane's
-  read and its write is overwritten (last-wins) within the ms-scale
-  read-modify-write window. No external-editor detection (file watcher, mtime
-  check at write time, or similar) exists.
-- Read-only instances lack live cross-process updates and can retain stale views.
+The library lock coordinates xaga processes but not external editors. An external edit that lands between a writer lane's read and atomic replacement can be silently overwritten. External changes are otherwise observed only by later reads or startup recovery; read-only instances also retain startup-pinned LanceDB state.
 
-## Work
+## Requirements
 
-Detect (or otherwise not silently overwrite) an external edit that lands
-inside the read-modify-write window of a running writer.
+- Detect or visibly handle an external edit that occurs during a read-modify-write operation.
+- Preserve per-file writer serialization and atomic file replacement.
+- Define how externally changed files update the derived LanceDB mirror and read-only views.
+- Do not treat advisory locking as protection from non-participating editors.
 
-## Design questions
+## Remaining work
 
-- Detection mechanism: mtime/checksum compare at write time inside the lane
-  vs. a file watcher vs. accept-and-log.
-- What the writer should do on detection: refuse and surface, merge, or
-  last-wins with a visible warning.
+- Compare write-time validation, filesystem observation, and explicit reload approaches, including their race windows and platform behavior.
+- Present refuse, merge, and visible-last-wins conflict policies with their data-loss and UX consequences for decision.
+- Define reload and recovery behavior for the selected policy before implementation.
+- Implement and verify an external edit both outside and inside a writer lane's read-modify-write window.
+
+## References
+
+- `docs/architecture/single_writer_library_lock.md`
+- `docs/principles/single_source_of_truth.md`
+- `crates/xaga-core/src/library_writer/`
+- `crates/xaga-core/src/fs.rs`

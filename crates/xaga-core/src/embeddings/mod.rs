@@ -70,7 +70,7 @@ impl From<arrow_schema::ArrowError> for EmbeddingsError {
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
-pub use db::{EmbeddingEntry, EmbeddingsDb, KindStatus};
+pub use db::{AllItemsCounts, EmbeddingEntry, EmbeddingsDb, KindStatus};
 pub use model::{default_model_dir, download_model, model_present, load_default_embedder, model_files_present, DownloadOutcome, Embedder, DEFAULT_MODEL_REPO};
 pub use pipeline::{embed_entry_vector, embed_topic_vector, sync_entry_row, sync_topic_row};
 pub use service::{EmbeddingService, EntityRef, Job, ShutdownReason, StatePatch, Tier};

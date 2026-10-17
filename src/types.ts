@@ -38,6 +38,11 @@ export function isRanked<T extends Item>(o: T | null | undefined): o is Ranked<T
 /** An item in the list returned by listAllItems: an entry (any state) or an annotation. */
 export type ListItem = Entry | PartialAnnotation;
 
+export type AllItemsCounts = {
+  entryCount: number;
+  unreadCount: number;
+};
+
 // ── Cache projection (derived) ──────────────────────────────────────────────────
 
 /** An annotation record as stored in the embeddings DB — no text[]/occurrence[]/content. */

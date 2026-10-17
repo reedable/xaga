@@ -13,6 +13,7 @@ import { useCacheReady } from "./hooks/useCacheReady";
 import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
 import { ExpandedListProvider } from "./providers/ExpandedListProvider";
+import { AllItemsCountsProvider } from "./providers/AllItemsCountsProvider";
 import FeedsProvider from "./providers/FeedsProvider";
 import { TopicsProvider } from "./providers/TopicsProvider";
 
@@ -53,7 +54,13 @@ export default function App({ entryPoint }: { entryPoint: string }) {
                 <Routes>
                   <Route
                     path="/"
-                    element={cacheReady ? <AppLayout /> : null}
+                    element={
+                      cacheReady ? (
+                        <AllItemsCountsProvider>
+                          <AppLayout />
+                        </AllItemsCountsProvider>
+                      ) : null
+                    }
                   />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

@@ -13,7 +13,7 @@ pub trait Item {
     fn title(&self) -> &str;
     fn created_at(&self) -> &str;
     fn updated_at(&self) -> Option<&str>;
-    /// Optional blurb (was misnamed `summary`). `None` for items without one.
+    /// Optional blurb. `None` for items without one.
     fn description(&self) -> Option<&str> {
         None
     }

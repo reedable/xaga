@@ -4,13 +4,12 @@ use std::time::Instant;
 
 use clap::{Args, Subcommand};
 use xaga_core::embeddings::{
-    DEFAULT_MODEL_REPO, EmbeddingsDb, default_model_dir, load_default_embedder,
-    model_files_present,
+    DEFAULT_MODEL_REPO, EmbeddingsDb, default_model_dir, load_default_embedder, model_files_present,
 };
 use xaga_core::fs::FileLock;
 use xaga_core::library;
-use xaga_core::recovery;
 use xaga_core::network_proxy;
+use xaga_core::recovery;
 
 use crate::die;
 
@@ -52,7 +51,11 @@ pub enum EmbeddingsCommand {
         path: PathBuf,
     },
     /// Download the embedding model from HuggingFace
-    DownloadModel,
+    DownloadModel {
+        /// Connect directly, bypassing Xaga's network proxy and address validation
+        #[arg(long)]
+        no_proxy: bool,
+    },
     /// Sample pairwise similarities and print a histogram to help choose thresholds
     Calibrate {
         /// Number of items to sample (compared against the full corpus)
@@ -197,8 +200,8 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
             }
         }
 
-        EmbeddingsCommand::DownloadModel => {
-            download_model().await;
+        EmbeddingsCommand::DownloadModel { no_proxy } => {
+            download_model(no_proxy).await;
         }
 
         EmbeddingsCommand::Calibrate { sample, min } => {
@@ -273,7 +276,7 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
     }
 }
 
-async fn download_model() {
+async fn download_model(no_proxy: bool) {
     let model_dir = default_model_dir();
 
     if model_files_present(&model_dir) {
@@ -286,22 +289,29 @@ async fn download_model() {
         model_dir.display()
     );
 
-    // Dial through the network proxy so redirect hops are address-validated and
-    // plaintext HTTP is refused. Both settings stay at their secure defaults
-    // (no plaintext, CONNECT to 443 only): the download is https on 443, and
-    // the CLI has no reason to relax either for it.
-    let http_allowed = Arc::new(std::sync::RwLock::new(false));
-    let connect_nonstandard_ports_allowed = Arc::new(std::sync::RwLock::new(false));
-    let proxy_port = match network_proxy::start(network_proxy::ProxyConfig::new(
-        http_allowed,
-        connect_nonstandard_ports_allowed,
-    ))
-    .await
-    {
-        Ok(port) => port,
-        Err(e) => die(e),
+    let client = if no_proxy {
+        // This explicit escape hatch also ignores system proxy environment
+        // variables. HTTPS remains mandatory, and downloaded files are still
+        // verified against the pinned manifest checksums before installation.
+        reqwest::Client::builder()
+            .no_proxy()
+            .https_only(true)
+            .build()
+            .unwrap_or_else(|e| die(e))
+    } else {
+        // Dial through the network proxy so redirect hops are address-validated
+        // and plaintext HTTP is refused. Both settings stay at their secure
+        // defaults (no plaintext, CONNECT to 443 only).
+        let http_allowed = Arc::new(std::sync::RwLock::new(false));
+        let connect_nonstandard_ports_allowed = Arc::new(std::sync::RwLock::new(false));
+        let proxy_port = network_proxy::start(network_proxy::ProxyConfig::new(
+            http_allowed,
+            connect_nonstandard_ports_allowed,
+        ))
+        .await
+        .unwrap_or_else(|e| die(e));
+        network_proxy::proxied_client(proxy_port).unwrap_or_else(|e| die(e))
     };
-    let client = network_proxy::proxied_client(proxy_port).unwrap_or_else(|e| die(e));
 
     if xaga_core::embeddings::model_present() {
         println!("Done. You can now run:  {DOWNLOAD_CMD_DONE}");
@@ -325,3 +335,34 @@ async fn download_model() {
 }
 
 const DOWNLOAD_CMD_DONE: &str = "xaga-cli embeddings reindex";
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::EmbeddingsCommand;
+
+    #[derive(Parser)]
+    struct TestCli {
+        #[command(subcommand)]
+        command: EmbeddingsCommand,
+    }
+
+    #[test]
+    fn download_model_uses_proxy_by_default() {
+        let cli = TestCli::try_parse_from(["test", "download-model"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            EmbeddingsCommand::DownloadModel { no_proxy: false }
+        ));
+    }
+
+    #[test]
+    fn download_model_accepts_explicit_proxy_bypass() {
+        let cli = TestCli::try_parse_from(["test", "download-model", "--no-proxy"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            EmbeddingsCommand::DownloadModel { no_proxy: true }
+        ));
+    }
+}

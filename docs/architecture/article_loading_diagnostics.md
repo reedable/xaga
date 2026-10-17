@@ -176,7 +176,7 @@ The diagnostics dialog displays a reminder when download evidence is present.
 
 ## Favicon notifications
 
-Observed acquisition failures in the native favicon phase show a warning:
+Acquisition failures in the native favicon phase show a warning:
 “The site icon couldn’t be loaded.” The warning retains the attempt's Details
 link. Favicon timeouts do not use the generic page-timeout notification.
 

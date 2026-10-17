@@ -1,17 +1,27 @@
-# Improvement: article reload progress and failure visibility
+# Show article reload progress and failures
 
-Make article reload progress visible while retrieval is in flight. Preserve the
-saved article when refresh fails, but keep the refresh result available to the
-user: rendering the old article can report a missing image and replace the
-refresh-error toast and its diagnostic link.
+## Summary
 
-- Provide an in-progress indication for the article reload action.
-- Keep the refresh failure and its diagnostics accessible when subsequent
-  rendering reports a separate image error. Use the existing reporting contract.
-- Verify successful reload, failed retrieval with retained content, and failed
-  retrieval followed by a missing-image error. Do not discard the saved article
-  or automatically retry network requests.
+Article reload has no visible in-progress state, and a later rendering warning can replace the refresh failure and its diagnostic link even though the saved article remains displayed.
 
-Relevant code: `src/components/content/ItemView.tsx`,
-`src/hooks/useContentLoader.ts`, `src/components/content/ArticleReader.tsx`, and
-`src/providers/ErrorSinkProvider.tsx`.
+## Requirements
+
+- Indicate reload progress without hiding the saved article.
+- Preserve the saved article when retrieval fails.
+- Keep the refresh failure and its diagnostics accessible when rendering reports a separate image problem.
+- Do not automatically retry network requests.
+- Clear or replace feedback only according to an explicit lifecycle.
+
+## Remaining work
+
+- Define reload progress and failure placement in the item view.
+- Separate concurrent refresh and rendering diagnostics in the error sink.
+- Implement the feedback lifecycle.
+- Test successful reload, failed retrieval with retained content, and failed retrieval followed by a missing-image warning.
+
+## References
+
+- `src/components/content/ItemView.tsx`
+- `src/hooks/useContentLoader.ts`
+- `src/components/content/ArticleReader.tsx`
+- `src/providers/ErrorSinkProvider.tsx`

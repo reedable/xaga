@@ -78,7 +78,7 @@ pub(crate) struct AppState {
     pub(crate) html_reader_line_height: Arc<RwLock<f64>>,
     pub(crate) show_sidebar: Arc<RwLock<bool>>,
     pub(crate) embedding_service: Arc<Mutex<Option<EmbeddingService>>>,
-    /// Read-only LanceDB handle for command reads (Phase C). Distinct connection from
+    /// Read-only LanceDB handle for command reads. Distinct connection from
     /// the embedding service's writer; reads must `reload()` to see the service's writes.
     pub(crate) embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>>,
     pub(crate) allowed_domains: Arc<RwLock<Vec<String>>>,
@@ -1085,7 +1085,7 @@ pub fn run() {
                 let _ = main.show();
             }
 
-            // Start the EmbeddingService; file watcher + recovery fire inside it.
+            // Start the EmbeddingService; startup recovery runs inside it.
             // If another instance already holds the library lock, we skip the
             // service entirely — embeddings are available for reading but this
             // instance will not write to LanceDB.
@@ -1204,11 +1204,9 @@ pub fn run() {
                 }
             });
 
-            // Logging is installed in every build (not only dev) so release recovery/startup
-            // diagnostics are captured — previously the plugin was gated behind
-            // `cfg!(debug_assertions)`, so release builds wrote nothing and issues like a wiped
-            // embeddings mirror left no trace. Targets are set explicitly (`.targets` replaces the
-            // plugin defaults) so the destination is deterministic: every build persists to
+            // Logging is installed in every build so recovery and startup diagnostics are captured.
+            // Targets are set explicitly (`.targets` replaces the plugin defaults) so the destination
+            // is deterministic: every build persists to
             // the xaga log dir (macOS: ~/Library/Logs/xaga/Xaga.log — the plain `xaga` name,
             // not Tauri's identifier-derived `app.xaga`, matching the data-root rule); dev
             // additionally mirrors to stdout and the webview console. Release logs at Info

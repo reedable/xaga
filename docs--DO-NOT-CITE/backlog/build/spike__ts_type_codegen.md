@@ -1,10 +1,29 @@
-# Rust → TypeScript type codegen (ts-rs / specta)
+# Decide Rust-to-TypeScript type generation
 
-The event names and payload shapes are defined in rust (`DomainEvent`, `crates/xaga-core/src/events.rs`; `AppEvent`, `src-tauri/src/events.rs`) and mirrored by hand on the TS side (`src/platform/events.ts` — const arrays with derived literal-union types). The mirror is compiler-checked _within_ TS (use-site literals against the union) but nothing checks the union against the rust enums: a name changed or mistyped on either side is silent drift, guarded only by the rust name tests and review.
+## Summary
 
-Question: should the TS side be generated from the rust definitions?
+Rust defines domain and application event names and payloads while `src/platform/events.ts` mirrors the names manually. Rust and TypeScript each validate their own side, but no build check proves the two boundaries agree.
 
-- Candidates: `ts-rs` (derive-based, per-type `.ts` emission), `specta`/`tauri-specta` (Tauri-aware; can also type commands and events end-to-end).
-- What it would replace: `src/platform/events.ts`, and potentially the hand-written payload types/schemas for event payloads (interaction with the zod schemas + minting at the boundary — see `docs/architecture/type_identity.md` — needs thought: generated types are compile-time only, while the schemas validate at runtime; they complement rather than replace).
-- Dependency hygiene: both are build-time dependencies; same scrutiny as `defect__zod_direct_dependency.md`.
-- Scope question: events only, or also command signatures (tauri-specta's main draw)?
+## Requirements
+
+- Establish one authoritative definition for every generated boundary shape.
+- Preserve runtime validation and type-brand minting at the untrusted IPC boundary; generated compile-time types do not replace Zod schemas.
+- Fail the build when generated output is stale.
+- Keep generated files deterministic and reviewable.
+- Avoid generating internal domain types that do not cross IPC.
+
+## Remaining work
+
+- Decide whether generation covers event names only, event payloads, or all Tauri command signatures.
+- Compare `ts-rs`, `specta`, and `tauri-specta` for Tauri v2 support, runtime-schema interaction, dependency cost, and maintenance.
+- Prototype the smallest scope and identify which handwritten constants and types it replaces.
+- Present generation and explicit cross-language verification alternatives for decision.
+- Implement the chosen boundary and wire stale-output detection into the build.
+
+## References
+
+- `crates/xaga-core/src/events.rs`
+- `src-tauri/src/events.rs`
+- `src/platform/events.ts`
+- `src/platform/TauriPlatform.ts`
+- `docs/architecture/type_identity.md`

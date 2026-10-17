@@ -22,6 +22,6 @@ If loader webviews were reused across article loads: cookies, cache validators, 
 
 ## The price, stated plainly
 
-The costs of teardown are: client construction per command, cold connections per refresh pass, full body re-downloads on every refresh (no conditional GET), and webview construction per article. The network cost buys the no-server-writable-state property; optimizations that spend only local work (e.g. skipping reconciliation when the fetched payload is byte-identical to the last fetch) do not spend privacy to buy speed and are compatible with this trade-off.
+The costs of teardown are: client construction per command, cold connections per refresh pass, full body re-downloads on every refresh (no conditional GET), and webview construction per article. The network cost buys the no-server-writable-state property.
 
 Any future change that pools, caches, or extends the lifetime of these resources should be treated as reopening the channels above and reviewed as a privacy change, not a performance change.

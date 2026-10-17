@@ -1,13 +1,27 @@
 # Read-model abstraction over the LanceDB cache
 
-## Current state
+## Summary
 
-The command layer calls `EmbeddingsDb` directly (`unread_ids` / `bookmarked_entries` / `get_entry` / …), binding consumers to LanceDB specifically. Per `docs/principles/single_source_of_truth.md`, LanceDB is a cache — every column reconstructible from the files — not a second source of truth. The `is_cache_ready` / `useCacheReady` naming already reflects the cache abstraction; the rest of the read API does not.
+Commands and queries call `EmbeddingsDb` directly even though durable files are authoritative and LanceDB is a derived read model. Decide whether a cache-oriented interface would clarify ownership or only add indirection.
 
-## Proposed approach
+## Requirements
 
-A thin read-model / cache abstraction: a trait the commands depend on, with `EmbeddingsDb` (and historically `EntryStateCache`) as implementations, so the consumer layer depends on "a cache," not on LanceDB.
+- Preserve the distinction between authoritative persistence and derived reads.
+- Define an interface around consumer needs rather than mirroring every LanceDB method.
+- Do not introduce an unused alternate implementation solely to justify a trait.
+- Account for freshness, unavailable-cache, and rebuilding states.
 
-## Decision
+## Remaining work
 
-Whether to introduce the trait, its surface, and its timing relative to the windowed-reads reshaping (`windowed_list_reads.md`, which would change the same API's shape).
+- Inventory direct database consumers and group their required read shapes.
+- Compare concrete application services, a trait boundary, and retaining direct access with clearer naming.
+- Identify how projected and paginated reads would affect the proposed surface.
+- Present the options and migration cost for decision.
+
+## References
+
+- `crates/xaga-core/src/embeddings/db.rs`
+- `crates/xaga-core/src/query/items.rs`
+- `src-tauri/src/lib.rs`
+- `src-tauri/src/commands`
+- `docs/principles/single_source_of_truth.md`

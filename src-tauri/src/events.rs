@@ -125,8 +125,7 @@ impl AppEvent {
 }
 
 /// Emits a domain event to `target` (an `AppHandle`, `Window`, or
-/// `WebviewWindow` — whichever the call site used before the funnel, so
-/// delivery scope is unchanged).
+/// `WebviewWindow`), preserving the caller-selected delivery scope.
 pub(crate) fn emit_domain<R: Runtime>(target: &impl Emitter<R>, event: DomainEvent) {
     let name = event.name();
     let result = match &event {

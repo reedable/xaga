@@ -1,19 +1,33 @@
-# Cross-platform support
+# Define cross-platform support
 
-Make xaga run on platforms beyond macOS. Today the app is developed and verified on macOS only. This item inventories the known platform-specific code, dependencies, and assumptions (verified 2026-07-02 unless marked otherwise), so the porting work starts from facts.
+## Summary
 
-## Known platform-specific points
+Xaga supports and verifies macOS only. Windows and Linux behavior is undefined for security-critical proxy routing, persistent webview stores, webview history deletion, file locking, and the webview behavior matrix; packaging and platform integration also require separate decisions.
 
-1. **Named webview data stores are compile-time macOS-only.** `supports_named_data_stores()` is `cfg!(target_os = "macos")` (`src-tauri/src/article_loader.rs`); per-domain persistent `WKWebsiteDataStore` identifiers require macOS 14+ — the app's `bundle.macOS.minimumSystemVersion` (`src-tauri/tauri.conf.json`). On any other platform, every loader webview is incognito: the `allowed_domains` persistent-store feature is silently inoperative.
-2. **The network proxy routing depends on a macOS feature flag.** `WebviewWindowBuilder::proxy_url` takes effect on macOS only with the `macos-proxy` feature (`src-tauri/Cargo.toml`). This is a load-bearing security control (`docs/architecture/security/fetching_remote_content.md`); whether `proxy_url` is honored on Windows (WebView2) and Linux (WebKitGTK) has not been verified — if it is not, the loader on those platforms has no SSRF protection and must not ship without an equivalent.
-3. **Private-API transparency is macOS-only.** The `macos-private-api` feature + `"macOSPrivateApi": true` enable the transparent webview used for the launch white-flash fix (`src-tauri/Cargo.toml` comments, `tauri.conf.json`). Other platforms need their own answer or accept the flash.
-4. **`clear_webview_history` hardcodes a macOS path.** It removes `~/Library/WebKit/<product>` (`src-tauri/src/commands/articles.rs`). On other platforms the webview state lives elsewhere (WebView2/WebKitGTK have their own layouts); as written the command is a no-op there — a privacy feature that silently does nothing.
-5. **Webview engine differences are unverified.** Every webview-dependent behavior was verified on WKWebView only: CSP enforcement in the bundle (including the reader-script hash), the sandboxed reader iframe, the hidden-loader focus suppression (written against WKWebView-level show/focus callbacks), incognito semantics, and PDF handling. Windows (WebView2/Chromium) and Linux (WebKitGTK) each need this matrix re-verified.
-6. **The library lock's advisory `flock` semantics.** `FileLock` (`crates/xaga-core/src/fs.rs`) relies on handle-tied advisory locking; the equivalent behavior on Windows (`LockFileEx` semantics via whatever the implementation uses) has not been verified — the single-writer guarantee (`docs/architecture/single_writer_library_lock.md`) must hold on every shipped platform. Additionally (2026-07-10), the account-wide lock protocol on settings.json is POSIX-verified only: `fs::write_locked` renames a new locked inode over the locked path (rename-over-a-locked-file — Windows `LockFileEx`/sharing semantics unverified), and the stale-inode recheck in `FileLock::try_acquire` compares `dev`+`ino` via Unix `MetadataExt` — there is no stable inode-identity API used on Windows, so the recheck is cfg-gated to a no-op there.
-7. **The log directory has no non-macOS answer.** The macOS log dir is `~/Library/Logs/xaga`; the `cfg(not(macos))` arm writes to `data_root()/logs` (flagged in the code comment — `src-tauri/src/lib.rs`, log plugin setup). Whether non-macOS platforms should use a platform-native log convention instead is undecided.
+## Requirements
 
-8. **Code signing is per-platform.** `macos_code_signing.md` covers macOS identity; Windows (Authenticode) and Linux (none/distro-specific) are separate work.
+- Select target platforms and minimum versions before implementation.
+- Do not ship a loader unless all remote traffic is forced through equivalent SSRF controls.
+- Preserve single-writer and stale-view guarantees using each platform's file and rename semantics.
+- Make unsupported privacy or persistence features explicit rather than silently ignoring them.
+- Verify CSP, sandboxing, focus isolation, storage isolation, PDF handling, logging, packaging, and signing on every supported webview engine.
 
-## Shape of the work
+## Remaining work
 
-Per-platform verification of points 2, 5, and 6 decides feasibility; points 1, 3, 4, 7, and 8 are feature-parity decisions (equivalent, degrade-with-notice, or platform-exclusive — `docs/principles/secure_by_default.md` applies where the degraded form is less secure, e.g. points 2 and 4). Which platforms to target, and in what order, is undecided.
+- Verify `proxy_url` enforcement on WebView2 and WebKitGTK.
+- Define persistent or intentionally ephemeral loader storage for non-macOS platforms.
+- Replace the macOS-specific `clear_webview_history` path with platform implementations or explicit unsupported behavior.
+- Verify `FileLock`, rename-over-lock, and path-identity behavior on Windows and Linux; design a non-Unix path-identity check where required.
+- Define platform-native logging, transparency, packaging, update, and signing behavior.
+- Present the supported-platform and feature-parity options with their security and maintenance costs for decision.
+
+## References
+
+- `docs/principles/secure_by_default.md`
+- `docs/architecture/security/fetching_remote_content.md`
+- `docs/architecture/single_writer_library_lock.md`
+- `src-tauri/Cargo.toml`
+- `src-tauri/tauri.conf.json`
+- `src-tauri/src/article_loader.rs`
+- `src-tauri/src/commands/articles.rs`
+- `crates/xaga-core/src/fs.rs`

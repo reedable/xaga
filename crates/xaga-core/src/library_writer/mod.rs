@@ -119,9 +119,8 @@ pub enum BookmarkOutcome {
     Updated(String),
 }
 
-/// A typed tag mutation, applied to the entry's current tags INSIDE its lane — the
-/// read-modify-write that commands previously did across two calls (read_entry_tags →
-/// set_entry_tags) happens as one serialized unit here. The variant carries the user's
+/// A typed tag mutation, applied to the entry's current tags INSIDE its lane as one
+/// serialized read-modify-write. The variant carries the user's
 /// intent end-to-end (docs/principles/carry_intent_end_to_end.md).
 #[derive(Debug, Clone, Copy)]
 pub enum TagPatch {
@@ -501,8 +500,7 @@ impl Op {
                 let _ = resp.send(r);
             }
             Op::PatchEntryTags { id, patch, resp } => {
-                // The whole tag RMW inside the lane — the two-call read/set pattern the
-                // command layer used to do, now uninterleavable.
+                // The whole tag read-modify-write runs inside the lane and cannot interleave.
                 let r = async {
                     let tags = entries::read_entry_tags(library_dir, &id).await?;
                     entries::set_entry_tags(library_dir, &id, patch.apply(tags), token).await
@@ -1529,9 +1527,7 @@ mod tests {
         w.shutdown().await;
     }
 
-    /// The spike scenario: N concurrent annotation adds on ONE article lose nothing.
-    /// Before the writer, each add was an unserialized whole-file RMW and concurrent
-    /// adds clobbered each other; the lane serializes them.
+    /// N concurrent annotation adds on one article lose nothing because the lane serializes them.
     #[tokio::test]
     async fn concurrent_same_file_annotations_all_survive() {
         let dir = tempfile::tempdir().unwrap();
@@ -1726,8 +1722,7 @@ mod tests {
         );
     }
 
-    /// The racy case that originally deadlocked: many writes submitted CONCURRENTLY with
-    /// shutdown. The contract is that every one resolves — Ok (drained) or ShuttingDown
+    /// Many writes submitted concurrently with shutdown must each resolve — Ok (drained) or ShuttingDown
     /// (refused) — with no hang and no clobber; the on-disk annotation count equals the
     /// number that reported Ok (accepted writes are consistent, none lost or torn).
     /// Runs on a multi-thread runtime so the submits and the shutdown genuinely race.

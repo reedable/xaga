@@ -116,8 +116,8 @@ pub(crate) async fn save_topic(
 
 /// Adds or removes the `pinned` frontmatter tag on a topic's `.md`. Returns true if it changed.
 /// Preserves the topic's timestamps (a pin toggle is not a content edit). The `is_pinned` LanceDB
-/// column is updated by the watcher → `sync_row` re-read; membership is unchanged so the reconcile
-/// sees no member delta. Mirrors `feeds::set_feed_pinned`.
+/// column is updated by the command's `SyncState` job; membership is unchanged.
+/// Mirrors `feeds::set_feed_pinned`.
 pub(crate) async fn set_topic_pinned(
     library_dir: &Path,
     id: &str,
@@ -217,7 +217,7 @@ pub(crate) async fn add_topic_item(
     if fm.items.iter().any(|i| i.id() == item.id()) {
         return read_topic(library_dir, topic_id).await;
     }
-    // Legacy fallback: pre-migration topics keep their blurb in the body.
+    // When `summary` is absent, the body supplies the description.
     let description = fm.summary.unwrap_or(body);
     let mut items = fm.items;
     items.push(item);
@@ -252,7 +252,7 @@ pub(crate) async fn replace_topic_item(
     let Some(pos) = fm.items.iter().position(|i| i.id() == old_id) else {
         return read_topic(library_dir, topic_id).await;
     };
-    // Legacy fallback: pre-migration topics keep their blurb in the body.
+    // When `summary` is absent, the body supplies the description.
     let description = fm.summary.unwrap_or(body);
     let mut items = fm.items;
     items[pos] = new_item;
@@ -284,7 +284,7 @@ pub(crate) async fn remove_topic_item(
     if !fm.items.iter().any(|i| i.id() == item_id) {
         return read_topic(library_dir, topic_id).await;
     }
-    // Legacy fallback: pre-migration topics keep their blurb in the body.
+    // When `summary` is absent, the body supplies the description.
     let description = fm.summary.unwrap_or(body);
     let mut items = fm.items;
     items.retain(|i| i.id() != item_id);

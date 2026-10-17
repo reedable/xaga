@@ -35,6 +35,12 @@ pub struct KindStatus {
     pub embedded: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct AllItemsCounts {
+    pub entry_count: usize,
+    pub unread_count: usize,
+}
+
 /// Cosine distance threshold used when the caller does not specify one.
 /// Cosine distance = 1 − cosine_similarity; range [0, 1] for unit vectors.
 /// 0.5 corresponds to cosine similarity ≥ 0.5.
@@ -798,6 +804,22 @@ impl EmbeddingsDb {
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
         Ok(n)
+    }
+
+    /// Counts the rows shown by All Items and the unread entry subset without
+    /// materializing rows or vectors.
+    pub async fn all_items_counts(&self) -> Result<AllItemsCounts, EmbeddingsError> {
+        let (entry_count, unread_count) = tokio::try_join!(
+            self.table
+                .count_rows(Some("kind = 'entry' OR kind = 'annotation'".to_string())),
+            self.table.count_rows(Some("is_unread = true".to_string())),
+        )
+        .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
+        Ok(AllItemsCounts {
+            entry_count,
+            unread_count,
+        })
     }
 
     /// Returns a map of `id → (checksum, reference, has_vector, kind)` for every row.
@@ -1680,6 +1702,32 @@ mod tests {
         assert!(pending.is_pinned);
     }
 
+    #[tokio::test]
+    async fn all_items_counts_entries_annotations_and_unread_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+
+        let unread_entry = sample("unread-entry", "entry", None);
+        let mut read_entry = sample("read-entry", "entry", None);
+        read_entry.is_unread = false;
+        let mut annotation = sample("annotation", "annotation", None);
+        annotation.is_unread = false;
+        let mut topic = sample("topic", "topic", None);
+        topic.is_unread = false;
+
+        for row in [unread_entry, read_entry, annotation, topic] {
+            db.upsert(row).await.unwrap();
+        }
+
+        assert_eq!(
+            db.all_items_counts().await.unwrap(),
+            AllItemsCounts {
+                entry_count: 3,
+                unread_count: 1,
+            }
+        );
+    }
+
     /// The `items` column (the topic-membership reverse-index base) round-trips, and an
     /// empty `items` reads back empty — guards the new column's Arrow building and ordering.
     #[tokio::test]
@@ -2292,9 +2340,7 @@ mod tests {
         assert!(!related.iter().any(|e| e.entry.id == "b"));
     }
 
-    /// Ground-truth for the read-side cutover: does a second handle (e.g. AppState's
-    /// read handle) see writes made by the service's handle? Establishes whether a
-    /// handle is version-pinned (needs `reload`) or auto-tracks latest.
+    /// A second handle is version-pinned and sees another handle's commits after `reload`.
     #[tokio::test]
     async fn read_handle_visibility_across_connections() {
         let dir = tempfile::tempdir().unwrap();
@@ -2310,10 +2356,9 @@ mod tests {
         reader.reload().await.unwrap();
         let after = reader.count().await.unwrap();
 
-        // The guarantee the cutover relies on: after reload, the reader sees the commit.
+        // After reload, the reader sees the writer's commit.
         assert_eq!(after, 1, "reader must see writer's commit after reload");
-        // Baseline hypothesis: a handle is pinned until reloaded. If this assert fails,
-        // handles auto-track latest and `reload` is unnecessary — adjust accordingly.
+        // Before reload, the reader remains pinned to its open version.
         assert_eq!(
             before, 0,
             "handle is pinned to its open-version until reloaded"

@@ -1,6 +1,6 @@
-# Improvement: reference-style Markdown image recovery
+# Recover reference-style Markdown images
 
-## Problem
+## Summary
 
 Reference-style Markdown separates image placement from its URL:
 
@@ -15,11 +15,9 @@ Capture failure preserves that inline remote reference; it does not create
 reference-style images. This task addresses manually edited or externally
 authored Markdown.
 
-The current recovery discovery does not resolve image references through their
-definitions. A remote image in this form therefore receives unavailable-image
-presentation without recovery, even when **Load remote image** is enabled.
+Image recovery does not resolve these references through their definitions. Manually edited or externally authored entries therefore cannot recover their remote images through the existing setting-gated pipeline.
 
-## Work
+## Requirements
 
 - Resolve full, collapsed, and shortcut Markdown image references through their
   definitions using Markdown parsing rules.
@@ -32,13 +30,17 @@ presentation without recovery, even when **Load remote image** is enabled.
   Preserve ordinary hyperlink destinations; determine the rewrite strategy
   before implementation rather than blindly replacing shared definitions.
 
-## Completion criteria
+## Remaining work
 
-Cover full, collapsed, and shortcut references; shared image/link definitions;
-missing definitions; already-local resources; capture and persistence failures;
-and recovery enabled and disabled. Verify preservation of alt text, titles,
-ordinary links, and unrelated document content.
+- Extend discovery to return reference uses and their definitions.
+- Define rewriting when one definition is shared by images and ordinary links.
+- Integrate resolved targets with the existing recovery operation.
+- Test full, collapsed, shortcut, shared, missing, and already-local references with recovery enabled and disabled.
 
-Relevant code: `src/text/imageReferences.ts`, `src/text/prepareEntryImages.ts`,
-`src/text/entryWorker.ts`, and
-`crates/xaga-core/src/persistence/image_recovery.rs`.
+## References
+
+- `src/text/imageReferences.ts`
+- `src/text/prepareEntryImages.ts`
+- `src/text/entryWorker.ts`
+- `crates/xaga-core/src/persistence/image_recovery.rs`
+- `docs/architecture/security/handling_persisted_content.md`

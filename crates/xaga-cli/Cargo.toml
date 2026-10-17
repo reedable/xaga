@@ -1,12 +1,13 @@
 [package]
 name = "xaga-cli"
-version = "0.7.2"
+version = "0.7.3"
 edition = "2024"
 
 [dependencies]
 xaga-core  = { path = "../xaga-core" }
 tokio      = { version = "1", features = ["rt-multi-thread", "macros"] }
 clap       = { version = "4", features = ["derive", "env"] }
+reqwest    = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 chrono     = "0.4"
 dirs       = "5"
 serde      = { version = "1", features = ["derive"] }

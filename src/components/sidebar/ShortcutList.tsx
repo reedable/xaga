@@ -4,11 +4,12 @@ import {
   Newspaper,
   RssFeed,
 } from "@mui/icons-material";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRouter from "../../hooks/useRouter";
 import { ALL_ITEMS } from "../../Shortcuts";
+import { useAllItemsCounts } from "../../providers/AllItemsCountsProvider";
 import { isFeed, isTopic, type Countable } from "../../types";
 import ExpandableList from "./ExpandableList";
 import css from "./ShortcutList.module.css";
@@ -30,6 +31,11 @@ export default function ShortcutList({
   const { feedId, topicId, shortcutId } = state;
   const [, abortControllerRef] = useAbortController();
   const { loadingFeedIds } = useFeeds(abortControllerRef);
+  const counts = useAllItemsCounts();
+  const allItems = useMemo(
+    () => (counts ? { ...ALL_ITEMS, ...counts } : ALL_ITEMS),
+    [counts]
+  );
 
   const handleSelectShortcut = useCallback(
     (collection: Countable) => selectCollection(collection),
@@ -45,10 +51,13 @@ export default function ShortcutList({
     >
       <SidebarItem
         icon={Newspaper}
-        collection={ALL_ITEMS}
+        collection={allItems}
         loading={loadingFeedIds.size > 0}
         selected={shortcutId === ALL_ITEMS.id}
         onSelectCollection={handleSelectShortcut}
+        renderSecondaryAction={
+          counts ? () => <UnreadCount count={counts.unreadCount} /> : undefined
+        }
       />
 
       {shortcuts.map((shortcut) => (

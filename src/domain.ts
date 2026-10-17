@@ -7,7 +7,7 @@ export type Item = {
   title: string;
   createdAt: string;
   updatedAt?: string;
-  description?: string; // any item may have one (was misnamed `summary`)
+  description?: string; // any item may have one
   publishedAt?: string; // any item may be published
 };
 

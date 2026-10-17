@@ -1,17 +1,28 @@
-# Read-state propagation latency and the consistency model
+# Define read-state propagation latency and consistency
 
-## Symptom
+## Summary
 
-Selecting an entry in `src/components/list/ItemList.tsx` marks it read, but the read state is slow to propagate to the UI, and the sidebar unread count is slower still.
+Marking an entry read persists the file before an Interactive `SyncState` updates LanceDB and emits state events. Item state and aggregate unread counts can therefore become visible at different times. The dominant latency and intended read-after-write contract are undefined.
 
-## Current state
+## Requirements
 
-Marking read goes: `.md` write → typed job on the service queue → LanceDB commit (async) → count re-query (`reload` + full unread-set materialization). The old in-memory `EntryStateCache` was updated synchronously (instant); it was retired when reads moved to LanceDB. Which step dominates the latency has not been measured.
+- Preserve durable-file authority and backend-authoritative UI state.
+- Define separate visibility guarantees for the changed item and derived aggregate counts.
+- Avoid presenting a completed state that the backend has not accepted.
+- Measure file write, queue wait, database update, event delivery, and count recomputation separately.
 
-## Options
+## Remaining work
 
-- Optimistic UI update on mark-read.
-- Write-through to LanceDB for user actions (not just the `.md`).
-- Event-driven count refresh instead of re-query.
+- Instrument the mark-read path through item and sidebar updates.
+- Define the required consistency and latency bounds for user-initiated state changes.
+- Compare the current asynchronous cache update, awaiting cache write-through, and event-carried aggregate deltas.
+- Evaluate failure and restart behavior for each option.
+- Implement the selected contract and verify rapid repeated changes and large-library counts.
 
-The reload facet is itemized separately in `db_reload_on_every_read.md`. The underlying open question — the app's read-after-write consistency model for user actions — is a design decision that has not been made.
+## References
+
+- `src-tauri/src/commands/entries.rs`
+- `crates/xaga-core/src/embeddings/service.rs`
+- `crates/xaga-core/src/embeddings/pipeline.rs`
+- `src/platform/TauriPlatform.ts`
+- `src/components/list/ItemList.tsx`

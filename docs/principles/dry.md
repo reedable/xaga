@@ -9,17 +9,16 @@ This is standard engineering practice (Don't Repeat Yourself: every piece of kno
 - Parallel implementations drift independently. A fix or a hardening measure applied to one copy does not constrain the others.
 - Duplication multiplies the audit surface: every security or correctness review must find and cover every copy.
 
-## The recorded instances
+## Current instances
 
-An audit during the persistence↔embeddings decoupling recorded seven parallel-implementation findings, kept for decisions rather than silently fixed. Among them:
+Current parallel implementations awaiting decisions include:
 
 - `sync_entry_row` / `sync_topic_row` — near-identical get → checksum compare → carry-forward → upsert (`crates/xaga-core/src/embeddings/pipeline.rs`);
-- the same checksum/vector gate three times in `embed_entry_vector` / `embed_topic_vector` / `embed_feed` (same file);
+- parallel checksum/vector work in `embed_entry_vector` / `embed_topic_vector` / `embed_feed`, with feed gating performed by its caller (same file);
 - identical batch loops in `bulk_insert_articles` / `bulk_insert_topics` (`crates/xaga-core/src/recovery/dispatch.rs`);
 - parallel row builders `from_article` / `from_topic` / `from_feed` with the same field set (`crates/xaga-core/src/embeddings/row.rs`);
 - three near-identical `*_embed_text` helpers;
-- Article construction in three-plus places, inconsistently (`crates/xaga-core/src/persistence/entries.rs`, `articles.rs`);
-- state-tag string literals (`"unread"`/`"bookmark"`/`"pinned"`) scattered without a shared helper.
+- Article construction in three-plus places, inconsistently (`crates/xaga-core/src/md.rs`, `persistence/entries.rs`, `persistence/articles.rs`).
 
 ## Boundary
 

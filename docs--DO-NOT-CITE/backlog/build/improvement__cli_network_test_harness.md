@@ -1,16 +1,26 @@
-# CLI network-test harness (top-level `test` command)
+# Add a CLI network test harness
 
-Unit tests make no network calls — network-involving tests belong in a CLI harness, runnable independently of CI.
+## Summary
 
-Decided so far:
+Core tests exercise proxy behavior over loopback and model-download limits with synthetic streams, but there is no independently runnable end-to-end network diagnostic. A top-level `xaga-cli test` command is intended to host network-dependent checks without making ordinary unit tests depend on external services.
 
-- Top-level `test` command in xaga-cli (not under `embeddings`).
-- Unit tests stay network-free (the cap/checksum logic is pinned by synthetic-chunk tests in `crates/xaga-core/src/embeddings/model.rs`).
+## Requirements
 
-Open:
+- Keep the normal unit-test suite independent of external network availability.
+- Exercise the production client and proxy path without weakening production address policy.
+- Do not expose an arbitrary-URL fetch capability in release builds unless that surface is explicitly accepted.
+- Report each check and failure without mutating library or account state.
 
-- **Scope**: plain unproxied client, or the full proxied chain (`ProxyConfig.is_blocked_fn` is injectable; a loopback-permitting constructor in core would exercise the production path minus the address filter).
-- **Gating**: always compiled (user-runnable diagnostic; ships an arbitrary-URL fetch surface), cargo feature (CI-only; build-matrix split), or `debug_assertions` (no release presence, no feature plumbing).
-- Which network activities it covers beyond the download cap (feed fetches, proxy behavior, …).
+## Remaining work
 
-Facts that constrain the design: the network proxy refuses loopback by policy, so a proxied test cannot reach a 127.0.0.1 server without the permissive constructor; the production download path's URL and cap are compile-time constants — the harness needs a core seam (`pub` diagnostic fn) that takes base + cap as parameters.
+- Define the first diagnostic's target, expected response, timeout, and success criteria.
+- Decide whether the harness is release-visible, feature-gated, or debug-only.
+- Define a test seam that can use loopback without making the production proxy permissive.
+- Decide whether the harness covers model download only or also feed and proxy behavior.
+- Implement the top-level command and verify offline, timeout, policy-refusal, and success outcomes.
+
+## References
+
+- `crates/xaga-cli/src/main.rs`
+- `crates/xaga-core/src/network_proxy.rs`
+- `crates/xaga-core/src/embeddings/model.rs`

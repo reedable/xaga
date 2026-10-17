@@ -1,6 +1,6 @@
-# Improvement: responsive image capture and recovery
+# Preserve and recover responsive images
 
-## Problem
+## Summary
 
 Images can supply their URLs through `srcset` or `<picture><source>` rather
 than a single `<img src>`. Readability preserves these elements and attributes,
@@ -19,7 +19,7 @@ and ignores `<source>` elements.
   preparation removes responsive candidates so they cannot trigger remote
   acquisition from the reader.
 
-## Work
+## Requirements
 
 - Establish candidate selection and persistence behavior for `srcset`, `sizes`,
   and `<picture>` media/type alternatives, including when no `src` exists.
@@ -33,13 +33,17 @@ and ignores `<source>` elements.
 - Preserve unrelated content and concurrent edits. When acquisition fails,
   retain recoverable references and use the common unavailable-image display.
 
-## Completion criteria
+## Remaining work
 
-Cover `srcset`-only images, density and width descriptors, `<picture>` with and
-without a fallback `src`, relative URLs, and media/type alternatives. Exercise
-successful, failed, and disabled capture through Readability and Markdown
-conversion, plus recovery of feed-summary HTML and manually edited content.
-Verify local rendering, preserved alt/title text, and no remote reader fetches.
+- Choose the candidate-selection policy for density, width, media, and type alternatives.
+- Implement conversion fallback and recovery discovery for the selected candidates.
+- Test `srcset`-only images, relative URLs, `<picture>` with and without fallback `src`, and successful, failed, and disabled capture.
 
-Relevant code: `src-tauri/src/article_loader.js`, `src/text/entryWorker.ts`,
-`src/text/imageReferences.ts`, and `src/text/prepareEntryImages.ts`.
+## References
+
+- `src-tauri/src/article_loader.js`
+- `src/text/entryWorker.ts`
+- `src/text/imageReferences.ts`
+- `src/text/prepareEntryImages.ts`
+- `docs/architecture/security/handling_remote_content.md`
+- `docs/architecture/security/handling_persisted_content.md`

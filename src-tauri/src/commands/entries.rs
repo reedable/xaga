@@ -63,6 +63,21 @@ pub fn is_cache_ready(state: State<'_, AppState>) -> bool {
 }
 
 #[tauri::command]
+pub async fn get_all_items_counts(
+    state: State<'_, AppState>,
+) -> Result<Option<xaga_core::embeddings::AllItemsCounts>, AppError> {
+    let db = state.embeddings_read.lock().unwrap().clone();
+    let Some(db) = db else {
+        return Ok(None);
+    };
+    db.reload().await.map_err(AppError::from)?;
+    db.all_items_counts()
+        .await
+        .map(Some)
+        .map_err(AppError::from)
+}
+
+#[tauri::command]
 pub async fn list_all_items(
     item_filter: Option<String>,
     state: State<'_, AppState>,
