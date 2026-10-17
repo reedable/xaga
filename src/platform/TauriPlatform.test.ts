@@ -6,7 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { openUrlMock } = vi.hoisted(() => ({ openUrlMock: vi.fn() }));
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
-vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ label: "main" }) }));
+const { closeRequested } = vi.hoisted(() => ({ closeRequested: vi.fn().mockResolvedValue(() => {}) }));
+vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ label: "main", onCloseRequested: closeRequested }) }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: openUrlMock }));
 // TauriPlatform registers a module-load event listener; no-op it under test.
 vi.mock("@tauri-apps/api/event", () => ({
@@ -71,4 +72,28 @@ it("deduplicates native errors delivered during startup backlog drain", async ()
   expect(deliver).toHaveBeenCalledExactlyOnceWith(error);
   unlisten();
   expect(stop).toHaveBeenCalledOnce();
+});
+
+
+it("awaits pending edits before deciding whether the window may close", async () => {
+  closeRequested.mockClear();
+  let finish!: (saved: boolean) => void;
+  const saved = new Promise<boolean>((resolve) => { finish = resolve; });
+  await new TauriPlatform().onWindowCloseRequested(() => saved);
+  const event = { preventDefault: vi.fn() };
+  let completed = false;
+  const closing = closeRequested.mock.calls[0][0](event).then(() => { completed = true; });
+  await Promise.resolve();
+  expect(completed).toBe(false);
+  finish(false);
+  await closing;
+  expect(event.preventDefault).toHaveBeenCalledOnce();
+});
+
+it("allows closing after edits have been saved", async () => {
+  closeRequested.mockClear();
+  await new TauriPlatform().onWindowCloseRequested(async () => true);
+  const event = { preventDefault: vi.fn() };
+  await closeRequested.mock.calls[0][0](event);
+  expect(event.preventDefault).not.toHaveBeenCalled();
 });

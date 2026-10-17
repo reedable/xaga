@@ -36,8 +36,8 @@ export const APP_EVENT = [
   "menu:find", // payload: none
   "feeds:imported", // payload: ImportOutcome<Feed>
   "feeds:exported", // payload: ExportOutcome
-  "bookmarks:imported", // payload: ImportOutcome (no frontend consumer yet)
-  "bookmarks:exported", // payload: ExportOutcome (no frontend consumer yet)
+  "bookmarks:imported", // payload: BookmarkImportOutcome
+  "bookmarks:exported", // payload: ExportOutcome
   "loader:will-unload", // payload: string (url)
   "loader:page-loaded", // payload: { url, html, mimeType }
   "loader:closed", // payload: { loaderUrl, pageUrl, samePage, html, mimeType }

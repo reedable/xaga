@@ -42,13 +42,34 @@ frontend errors retain their phase and a generic code rather than copying
 potential article content out of an exception.
 
 The history holds the latest 32 attempts, with at most 128 events per attempt.
-On overflow, the first event and newest events are retained and `droppedEvents`
-counts omissions. Records are in memory and disappear on restart. Structured
+On overflow, the first event is retained and older non-image events are evicted
+preferentially so navigation noise does not displace image decisions and results.
+The buffer remains bounded; `droppedEvents` counts omissions. Records are in memory and disappear on restart. Structured
 `article_diagnostic` lines also go through the existing native release logger,
 whose files are capped at 5 MB. On macOS the log directory is
 `~/Library/Logs/xaga`; other platforms use the application data root's `logs`
 directory. Event logging is capped per attempt after overflow, except terminal
 failure/cancellation records.
+
+## Article image capture
+
+Article diagnostics report additional body-image capture separately from frontend
+image processing. Native `image_capture` events record `image:enabled` or
+`image:disabled` for the loader's preference snapshot. Loader reports distinguish
+`image:attempted` (eligible image count), `image:no-candidates`, `image:disabled`,
+`image:pdf`, `image:deadline-before-fetch`, and `image:deadline-after-fetch`.
+Enabled alone does not mean a fetch was attempted. Existing `image:captured` and
+failure codes report acquisition results. A deadline after fetching began does
+not establish that any image completed before the snapshot. These image events
+are preferentially retained in the bounded diagnostic buffer under navigation
+noise. Reports remain page-reported evidence, with fixed vocabulary and counts;
+they do not track the publisher page's ordinary image requests. Frontend `images`
+success still describes extraction/processing, not a network download.
+
+The preference and its persistence semantics are documented in
+[Handling persisted content](security/handling_persisted_content.md). Favicon
+acquisition is separate; these body-image decision codes do not establish
+whether favicon acquisition was attempted.
 
 ## Network attribution
 

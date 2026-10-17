@@ -17,7 +17,7 @@ use crate::error::AppError;
 pub(crate) struct BookmarkImportResult {
     pub added: Vec<String>,
     pub updated: Vec<String>,
-    pub failed: Vec<String>,
+    pub failed: usize,
 }
 
 pub(crate) async fn import_bookmarks(
@@ -31,12 +31,12 @@ pub(crate) async fn import_bookmarks(
         .await
         .map_err(|e| e.to_string())?;
     if metadata.len() > max_bytes {
-        // TODO(phase 3): typed, user-actionable variant directing to Settings.
-        return Err(AppError::Message(format!(
+        log::warn!(
             "import file is {} bytes, exceeding the {} byte limit",
             metadata.len(),
             max_bytes
-        )));
+        );
+        return Err(AppError::ImportTooLarge);
     }
 
     let html = tokio::fs::read_to_string(file_path)
@@ -71,7 +71,7 @@ pub(crate) async fn import_bookmarks(
     Ok(BookmarkImportResult {
         added: added_ids,
         updated: result.updated,
-        failed: result.failed,
+        failed: result.failed.len(),
     })
 }
 

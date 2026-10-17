@@ -148,6 +148,17 @@ mod tests {
     }
 
     #[test]
+    fn import_limit_commands_are_trusted_account_settings() {
+        for command in ["get_import_max_bytes", "set_import_max_bytes"] {
+            assert!(is_invoke_allowed("settings", command));
+            assert!(is_invoke_allowed("main", command));
+            assert!(!is_invoke_allowed("loader-7", command));
+            assert!(!is_invoke_allowed("unknown", command));
+            assert!(!is_write_refused(command, true));
+        }
+    }
+
+    #[test]
     fn read_article_is_not_a_gated_write_command() {
         // Its incidental mark-read write no-ops in-command on a read-only instance
         // (reading stays seamless), so gating it here would break reads.

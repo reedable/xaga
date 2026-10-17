@@ -22,6 +22,7 @@ import type {
   Filter,
   HtmlReaderView,
   ImportOutcome,
+  BookmarkImportOutcome,
   ExportOutcome,
   Item,
   ListItem,
@@ -361,6 +362,12 @@ export class TauriPlatform implements Platform {
   }
 
   // Window --------------------------------------------------------------------
+
+  async onWindowCloseRequested(callback: () => Promise<boolean>): Promise<UnlistenFn> {
+    return getCurrentWindow().onCloseRequested(async (event) => {
+      if (!(await callback())) event.preventDefault();
+    });
+  }
 
   async setWindowTitle(title: string): Promise<void> {
     try {
@@ -1065,6 +1072,14 @@ export class TauriPlatform implements Platform {
     return listen<ExportOutcome>(name, listener);
   }
 
+  onBookmarksImported(callback: (outcome: BookmarkImportOutcome) => void): Promise<UnlistenFn> {
+    return listen<BookmarkImportOutcome>("bookmarks:imported", (e) => callback(e.payload));
+  }
+
+  onBookmarksExported(callback: (outcome: ExportOutcome) => void): Promise<UnlistenFn> {
+    return listen<ExportOutcome>("bookmarks:exported", (e) => callback(e.payload));
+  }
+
   onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn> {
     const name: DomainEvent = "feed:refreshed";
     const listener = decorate((e) => {
@@ -1150,6 +1165,18 @@ export class TauriPlatform implements Platform {
     const name = "set_theme";
     const invoker = decorate(invoke).with(logged, { logger, name });
     return invoker<void>(name, { theme });
+  }
+
+  async getImportMaxBytes(): Promise<number> {
+    const name = "get_import_max_bytes";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<number>(name);
+  }
+
+  async setImportMaxBytes(value: number): Promise<void> {
+    const name = "set_import_max_bytes";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<void>(name, { value });
   }
 
   async getRefreshOnStartup(): Promise<boolean> {

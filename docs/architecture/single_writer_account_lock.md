@@ -58,3 +58,7 @@ A write can be refused for a reason other than contention: the baseline. Each pr
 ## Relation to the other rules
 
 The funnel is the enumerated-producer discipline of `docs/principles/single_source_of_truth.md` applied to settings.json: one write path, whose payload provenance is stated at the write site. The rotation protocol is the directory-file sibling of `fs::write_atomic`'s crash story (`crash_consistency.md`): ordering decides what survives, and every crash point leaves either the old complete file or the new one.
+
+## Frontend refusals
+
+Settings writes return `settings:busy` for lock contention and `settings:stale-view` when the backend refreshes its mirrors after a stale write. Preference setters use `SettingsProvider.saveSettings` to report refusals through the shared error display and trigger reloads in general, appearance, and privacy settings. Local values change after a successful write; refused writes reload the backend values before the user retries.

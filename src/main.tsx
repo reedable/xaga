@@ -1,5 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createRoot } from "react-dom/client";
+import ErrorSinkProvider from "./providers/ErrorSinkProvider";
 import App from "./App";
 import "./index.css";
 import { PlatformContext } from "./platform/Platform";
@@ -33,11 +34,13 @@ window.addEventListener("popstate", () =>
 createRoot(root!).render(
   // <StrictMode>
   <PlatformContext.Provider value={platform}>
-    <SettingsProvider>
-      <AppearanceProvider>
-        <App entryPoint={getCurrentWindow().label} />
-      </AppearanceProvider>
-    </SettingsProvider>
+    <ErrorSinkProvider subscribeErrors={platform.onError}>
+      <SettingsProvider>
+        <AppearanceProvider>
+          <App entryPoint={getCurrentWindow().label} />
+        </AppearanceProvider>
+      </SettingsProvider>
+    </ErrorSinkProvider>
   </PlatformContext.Provider>
   // </StrictMode>
 );

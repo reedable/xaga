@@ -5,6 +5,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useBookmarkImportEvents } from "../hooks/useBookmarkImportEvents";
+import { importFailure } from "../utils/importFailure";
 import { useErrorSink } from "../hooks/useErrorSink";
 import { subscribe } from "../hooks/useEvents";
 import { usePlatform } from "../platform/Platform";
@@ -15,6 +17,7 @@ import FeedsContext, { type FeedsContextType } from "./FeedsContext";
 
 export default function FeedsProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
+  useBookmarkImportEvents();
   const { pushError } = useErrorSink();
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
@@ -75,6 +78,11 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
         setError(outcome.error);
         pushError(outcome.error);
         return;
+      }
+      const failure = importFailure("feeds", outcome);
+      if (failure) {
+        setError(failure);
+        pushError(failure);
       }
       const signal = new AbortController().signal;
       try {

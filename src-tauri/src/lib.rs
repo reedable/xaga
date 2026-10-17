@@ -303,11 +303,11 @@ pub(crate) struct AccountLock {
 
 impl AccountLock {
     /// Acquire the flock if not already held. `Err` means another *process* holds it.
-    fn ensure_handle(&mut self, path: &Path) -> Result<(), String> {
+    fn ensure_handle(&mut self, path: &Path) -> Result<(), crate::error::AppError> {
         if self.handle.is_none() {
             self.handle = Some(
                 xaga_core::fs::FileLock::try_acquire(path.to_path_buf())
-                    .ok_or("another xaga process holds the account lock")?,
+                    .ok_or(crate::error::AppError::SettingsBusy)?,
             );
         }
         Ok(())
@@ -327,7 +327,7 @@ impl AccountLock {
         path: &Path,
         baseline: Option<std::time::SystemTime>,
         delta: impl FnOnce(&mut UserSettings),
-    ) -> Result<(SettingsOutcome, Option<std::time::SystemTime>), String> {
+    ) -> Result<(SettingsOutcome, Option<std::time::SystemTime>), crate::error::AppError> {
         self.ensure_handle(path)?;
 
         // Stale-view check (owner's ts-at-read design), read inside the turn: a mismatch means
@@ -351,7 +351,7 @@ impl AccountLock {
                 // only if idle.
                 self.handle = Some(held);
                 self.release_if_idle();
-                return Err(e.to_string());
+                return Err(e.to_string().into());
             }
         }
         // Still holding the lock on the new inode, so this mtime is authoritative.
@@ -398,7 +398,7 @@ fn update_settings_file(
     path: &Path,
     baseline: Option<std::time::SystemTime>,
     delta: impl FnOnce(&mut UserSettings),
-) -> Result<(SettingsOutcome, Option<std::time::SystemTime>), String> {
+) -> Result<(SettingsOutcome, Option<std::time::SystemTime>), crate::error::AppError> {
     registry
         .lock()
         .unwrap()
@@ -410,7 +410,7 @@ fn update_settings_file(
 pub(crate) fn update_settings(
     state: &AppState,
     delta: impl FnOnce(&mut UserSettings),
-) -> Result<SettingsOutcome, String> {
+) -> Result<SettingsOutcome, crate::error::AppError> {
     let path = settings_path()?;
     let baseline = *state.settings_baseline.read().unwrap();
     let (outcome, new_baseline) = update_settings_file(&state.account_lock, &path, baseline, delta)?;
@@ -1466,6 +1466,37 @@ mod library_mode_tests {
 #[cfg(test)]
 mod settings_funnel_tests {
     use super::*;
+
+    #[test]
+    fn import_limit_is_persisted_without_replacing_other_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let registry = Mutex::new(AccountLock::default());
+        let (_, baseline) = update_settings_file(&registry, &path, None, |s| {
+            s.theme = Some("dark".into());
+        }).unwrap();
+        assert_eq!(load_settings(&path).import_max_bytes.unwrap_or(DEFAULT_IMPORT_MAX_BYTES), 64 * 1024 * 1024);
+        update_settings_file(&registry, &path, baseline, |s| {
+            s.import_max_bytes = Some(128 * 1024 * 1024);
+        }).unwrap();
+        let reloaded = load_settings(&path);
+        assert_eq!(reloaded.import_max_bytes, Some(128 * 1024 * 1024));
+        assert_eq!(reloaded.theme.as_deref(), Some("dark"));
+    }
+
+
+    #[test]
+    fn contended_settings_write_is_typed_and_can_be_retried() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let other = xaga_core::fs::FileLock::try_acquire(path.clone()).unwrap();
+        let registry = Mutex::new(AccountLock::default());
+        let refused = update_settings_file(&registry, &path, None, |_| panic!("must not write"));
+        assert!(matches!(refused, Err(crate::error::AppError::SettingsBusy)));
+        drop(other);
+        assert!(update_settings_file(&registry, &path, settings_mtime(&path), |_| {}).is_ok());
+    }
+
 
     /// Plan test 5: the stale-view outcome. A write attempted with a baseline
     /// older than the file's mtime is refused with the fresh content; a retry

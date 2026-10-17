@@ -6,13 +6,26 @@ import {
   type ReactNode,
 } from "react";
 import { usePlatform } from "../platform/Platform";
-import Logger from "../utils/Logger";
+import { useErrorSink } from "../hooks/useErrorSink";
 import SettingsContext from "./SettingsContext";
-
-const logger = Logger.getLogger("SettingsProvider");
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
+  const { pushError } = useErrorSink();
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const saveSettings = useCallback(
+    async (write: () => Promise<void>) => {
+      try {
+        await write();
+        return true;
+      } catch (error) {
+        pushError(error);
+        setRefreshVersion((version) => version + 1);
+        return false;
+      }
+    },
+    [pushError]
+  );
   const [library, setLibrary] = useState<string>("");
   const [refreshOnStartup, setRefreshOnStartupState] = useState<boolean>(false);
   const [inlinePdfReader, setInlinePdfReaderState] = useState<boolean>(false);
@@ -21,25 +34,33 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const switchLibrary = useCallback(async () => {
     const selected = await platform.openFileDialog(true, false);
     if (typeof selected === "string") {
-      const canonical = await platform.setLibrary(selected);
-      setLibrary(canonical);
+      await saveSettings(async () => {
+        const canonical = await platform.setLibrary(selected);
+        setLibrary(canonical);
+      });
     }
-  }, [platform]);
+  }, [platform, saveSettings]);
 
   const setRefreshOnStartup = useCallback(
     (value: boolean) => {
-      platform.setRefreshOnStartup(value).catch(logger.error);
-      setRefreshOnStartupState(value);
+      void saveSettings(() => platform.setRefreshOnStartup(value)).then(
+        (saved) => {
+          if (saved) setRefreshOnStartupState(value);
+        }
+      );
     },
-    [platform]
+    [platform, saveSettings]
   );
 
   const setInlinePdfReader = useCallback(
     (value: boolean) => {
-      platform.setInlinePdfReader(value).catch(logger.error);
-      setInlinePdfReaderState(value);
+      void saveSettings(() => platform.setInlinePdfReader(value)).then(
+        (saved) => {
+          if (saved) setInlinePdfReaderState(value);
+        }
+      );
     },
-    [platform]
+    [platform, saveSettings]
   );
 
   useEffect(() => {
@@ -48,9 +69,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       platform.getRefreshOnStartup().then(setRefreshOnStartupState),
       platform.getInlinePdfReader().then(setInlinePdfReaderState),
     ])
-      .catch(logger.error)
+      .catch(pushError)
       .finally(() => setSettingsLoaded(true));
-  }, [platform]);
+  }, [platform, pushError, refreshVersion]);
 
   useEffect(() => {
     const unlisten = platform.onInlinePdfReaderChanged(setInlinePdfReaderState);
@@ -77,6 +98,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
+      refreshVersion,
+      saveSettings,
       library,
       switchLibrary,
       refreshOnStartup,
@@ -86,6 +109,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       settingsLoaded,
     }),
     [
+      refreshVersion,
+      saveSettings,
       library,
       switchLibrary,
       refreshOnStartup,

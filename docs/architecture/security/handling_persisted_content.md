@@ -67,7 +67,15 @@ article reloads and reader recovery attempts. Loader windows snapshot the value
 when created, including visible loaders; reopen existing windows after changing it.
 Changing the default later does not override a stored preference. Disabling it
 leaves already-stored local images usable and does not control a publisher page's
-normal resource loading in an opened loader window.
+normal resource loading in an opened loader window. Opening the original page
+in a loader window remains available without opting in. Enabling this setting
+allows additional network requests; it does not grant network access to the main
+or settings UI. Favicon acquisition is a separate phase and is not gated by this
+body-image preference.
+
+Capture diagnostics distinguish the preference from actual fetch attempts and
+explain skipped capture, including when the page exhausts the loader deadline
+before fetching begins. See [Article loading diagnostics](../article_loading_diagnostics.md#article-image-capture).
 
 The reader displays local content before waiting for recovery. Only the currently
 viewed field is recovered. Acquisition uses an isolated image-purpose loader;
@@ -179,17 +187,3 @@ presentation. The trusted `open_stored_pdf` command derives and validates the sa
 file before opening it in the default app; it accepts a source URL, never a local
 path. Loader pages cannot invoke either command. Cached reads work in read-only
 libraries, while new PDF persistence requires the active library writer.
-
-
-Article diagnostics report additional body-image capture separately from frontend
-image processing. Native `image_capture` events record `image:enabled` or
-`image:disabled` for the loader's preference snapshot. Loader reports distinguish
-`image:attempted` (eligible image count), `image:no-candidates`, `image:disabled`,
-`image:pdf`, `image:deadline-before-fetch`, and `image:deadline-after-fetch`.
-Enabled alone does not mean a fetch was attempted. Existing `image:captured` and
-failure codes report acquisition results. A deadline after fetching began does
-not establish that any image completed before the snapshot. These image events
-are preferentially retained in the bounded diagnostic buffer under navigation
-noise. Reports remain page-reported evidence, with fixed vocabulary and counts;
-they do not track the publisher page's ordinary image requests. Frontend `images`
-success still describes extraction/processing, not a network download.

@@ -235,3 +235,47 @@ pub async fn set_load_remote_image(
         }
     }
 }
+
+#[tauri::command]
+pub async fn get_import_max_bytes(state: State<'_, AppState>) -> Result<u64, AppError> {
+    Ok(*state.import_max_bytes.read().unwrap())
+}
+
+fn validate_import_max_bytes(value: u64) -> Result<(), AppError> {
+    // The UI transports bytes as a JavaScript number; reject values it cannot
+    // represent exactly rather than persisting a rounded limit.
+    if value == 0 || value % (1024 * 1024) != 0 || value > 9_007_199_254_740_991 {
+        return Err(AppError::InvalidImportLimit);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_import_max_bytes(
+    value: u64,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    validate_import_max_bytes(value)?;
+    match update_settings(&state, |s| s.import_max_bytes = Some(value))? {
+        SettingsOutcome::StaleView(fresh) => Err(stale_view_error(&state, &fresh)),
+        SettingsOutcome::Written(_) => {
+            *state.import_max_bytes.write().unwrap() = value;
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+mod import_limit_tests {
+    use super::*;
+
+    #[test]
+    fn import_limit_must_be_positive_whole_mib_and_exact_in_the_ui() {
+        for value in [1024 * 1024, crate::DEFAULT_IMPORT_MAX_BYTES, 128 * 1024 * 1024, 8_589_934_591 * 1024 * 1024] {
+            assert!(validate_import_max_bytes(value).is_ok());
+        }
+        for value in [0, 1, 512 * 1024, 9_007_199_254_740_992, u64::MAX] {
+            assert!(matches!(validate_import_max_bytes(value), Err(AppError::InvalidImportLimit)));
+        }
+    }
+}

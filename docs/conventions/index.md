@@ -1,6 +1,10 @@
 # Conventions
 
-Coding conventions for this project — how the code speaks, as distinct from what the system is (architecture) and what governs decisions (principles). Each has its own doc; keep this index terse — detail lives in the linked file, not here.
+Conventions for code and documentation, as distinct from what the system is (architecture) and what governs decisions (principles).
+
+## Documentation
+
+[Documentation](documentation.md) — durable and transient documents, task organization, and task structure.
 
 ## Vocabulary
 

@@ -54,7 +54,7 @@ pub(crate) fn import_feeds_dialog(app: &AppHandle) {
                         log::warn!("import_feeds: {e}");
                         crate::events::Outcome {
                             result: None,
-                            error: Some(e.serialized()),
+                            error: Some(e.import_export_error()),
                         }
                     }
                 };
@@ -83,7 +83,7 @@ pub(crate) fn export_feeds_dialog(app: &AppHandle) {
                     &app,
                     crate::events::AppEvent::FeedsExported(crate::events::Outcome {
                         result: None,
-                        error: error.as_ref().map(crate::error::AppError::serialized),
+                        error: error.as_ref().map(crate::error::AppError::import_export_error),
                     }),
                 );
             });
@@ -110,7 +110,7 @@ pub(crate) fn import_bookmarks_dialog(app: &AppHandle) {
                         log::warn!("import_bookmarks: {e}");
                         crate::events::Outcome {
                             result: None,
-                            error: Some(e.serialized()),
+                            error: Some(e.import_export_error()),
                         }
                     }
                 };
@@ -139,7 +139,7 @@ pub(crate) fn export_bookmarks_dialog(app: &AppHandle) {
                     &app,
                     crate::events::AppEvent::BookmarksExported(crate::events::Outcome {
                         result: None,
-                        error: error.as_ref().map(crate::error::AppError::serialized),
+                        error: error.as_ref().map(crate::error::AppError::import_export_error),
                     }),
                 );
             });

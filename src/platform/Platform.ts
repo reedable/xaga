@@ -15,6 +15,7 @@ import type {
   Filter,
   HtmlReaderView,
   ImportOutcome,
+  BookmarkImportOutcome,
   ExportOutcome,
   Item,
   ListItem,
@@ -26,6 +27,8 @@ export interface Platform {
   onError(callback: (error: import("./errors").AppError) => void): Promise<UnlistenFn>;
   // Window
   setWindowTitle(title: string): Promise<void>;
+  /** Wait for pending edits before closing; false keeps the window open. */
+  onWindowCloseRequested(callback: () => Promise<boolean>): Promise<UnlistenFn>;
 
   openFileDialog(
     directory: boolean,
@@ -208,6 +211,8 @@ export interface Platform {
   setTheme(theme: string): Promise<void>;
 
   // Settings
+  getImportMaxBytes(): Promise<number>;
+  setImportMaxBytes(value: number): Promise<void>;
   getRefreshOnStartup(): Promise<boolean>;
   setRefreshOnStartup(value: boolean): Promise<void>;
   getHtmlReaderPrefs(): Promise<{
@@ -230,6 +235,8 @@ export interface Platform {
   onFeedsExported(
     callback: (outcome: ExportOutcome) => void
   ): Promise<UnlistenFn>;
+  onBookmarksImported(callback: (outcome: BookmarkImportOutcome) => void): Promise<UnlistenFn>;
+  onBookmarksExported(callback: (outcome: ExportOutcome) => void): Promise<UnlistenFn>;
   onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn>;
   /** Fires once after `refresh_all_feeds` completes (not per feed). */
   onFeedsRefreshed(callback: () => void): Promise<UnlistenFn>;

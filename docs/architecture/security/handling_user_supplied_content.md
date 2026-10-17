@@ -8,7 +8,7 @@ Code: `src-tauri/src/native/feeds.rs`, `src-tauri/src/native/bookmarks.rs`, `cra
 
 ## Resource bound
 
-`native::feeds::import_feeds` and `native::bookmarks::import_bookmarks` check the file's size via `tokio::fs::metadata` against the `import_max_bytes` setting (default 64 MiB, `DEFAULT_IMPORT_MAX_BYTES`, `src-tauri/src/lib.rs`) and refuse the import before ever reading the file if it's exceeded — the oversized file is never loaded into memory. This is a single cap shared by both formats rather than one per format: a format-specific split would tighten the ceiling for the smaller of the two (OPML), but adds a second number the user must reason about, for a cap whose purpose is protecting the user from an oversized file by accident, not from an adversary shaping one format differently from the other. No setter command or UI exists for this setting yet; it is settings.json-only.
+`native::feeds::import_feeds` and `native::bookmarks::import_bookmarks` check the file's size via `tokio::fs::metadata` against the `import_max_bytes` setting (default 64 MiB, `DEFAULT_IMPORT_MAX_BYTES`, `src-tauri/src/lib.rs`) and refuse the import before ever reading the file if it's exceeded — the oversized file is never loaded into memory. This is a single cap shared by both formats rather than one per format: a format-specific split would tighten the ceiling for the smaller of the two (OPML), but adds a second number the user must reason about, for a cap whose purpose is protecting the user from an oversized file by accident, not from an adversary shaping one format differently from the other. Settings → General → Maximum import file size edits this cap in MiB. Saving persists the byte count under the account lock and updates the running process; the next feed or bookmark import uses it. The control accepts positive whole MiB and saves valid changes on blur, Enter, or a Settings-window close request. Closing waits for persistence; invalid edits or a refused write keep the window open. The setter requires whole MiB expressed in bytes, within JavaScript’s maximum safe integer.
 
 ## OPML (feed list)
 
@@ -29,3 +29,9 @@ Extracted entries are persisted through `write_read_entry` / `set_entry_tags` (`
 - **Choose its own path or bypass the dialog.** Both `import_feeds` and `import_bookmarks` are `pub(crate)` functions, not `#[tauri::command]`s — the file dialog runs in Rust and the chosen path never round-trips through the webview (`native/feeds.rs:1-8`, `native/bookmarks.rs:1-4`). A compromised renderer has no invoke door to redirect an import at an arbitrary file.
 - **Aim a fetch at an attacker-controlled address via a huge URL list**, per the OPML section above — the network proxy (`fetching_remote_content.md`) still validates every URL's resolved address regardless of how many the import produces.
 
+
+## Import outcomes
+
+Native import/export events carry structured errors with a user-safe `message` and an empty `detail`; technical errors are logged before emission. Import results carry a numeric `failed` count rather than failed-entry strings. The frontend reports complete and partial failures through the shared error display and retains successful imports.
+
+Files above the shared byte cap return `import:too-large`, directing users to increase Maximum import file size in Settings → General or use a smaller file.

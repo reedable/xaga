@@ -12,7 +12,6 @@ import { Settings } from "./components/settings/Settings";
 import { useCacheReady } from "./hooks/useCacheReady";
 import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
-import ErrorSinkProvider from "./providers/ErrorSinkProvider";
 import { ExpandedListProvider } from "./providers/ExpandedListProvider";
 import FeedsProvider from "./providers/FeedsProvider";
 import { TopicsProvider } from "./providers/TopicsProvider";
@@ -37,7 +36,7 @@ export default function App({ entryPoint }: { entryPoint: string }) {
   }, [platform]);
 
   return (
-    <ErrorSinkProvider subscribeErrors={platform.onError}>
+    <>
       {shuttingDown && (
         <div className={css.ShutdownOverlay}>Saving data, please wait…</div>
       )}
@@ -63,6 +62,6 @@ export default function App({ entryPoint }: { entryPoint: string }) {
           </ExpandedListProvider>
         </BrowserRouter>
       )}
-    </ErrorSinkProvider>
+    </>
   );
 }

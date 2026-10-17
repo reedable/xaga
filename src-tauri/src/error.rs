@@ -42,6 +42,12 @@ pub(crate) enum AppError {
     /// refreshed and the caller should retry.
     #[error("settings changed by another xaga process; view refreshed — retry")]
     SettingsStaleView,
+    #[error("another xaga process holds the account lock")]
+    SettingsBusy,
+    #[error("import file exceeds the configured size limit")]
+    ImportTooLarge,
+    #[error("import size limit must be positive whole MiB and exactly representable in bytes")]
+    InvalidImportLimit,
     /// Transitional catch-all for ad-hoc string errors not yet promoted to a
     /// typed variant. The string is log-only detail.
     #[error("{0}")]
@@ -58,6 +64,9 @@ impl AppError {
             AppError::Unauthorized => "command:unauthorized",
             AppError::UnsupportedDownload(_) => "article:unsupported-download",
             AppError::SettingsStaleView => "settings:stale-view",
+            AppError::SettingsBusy => "settings:busy",
+            AppError::ImportTooLarge => "import:too-large",
+            AppError::InvalidImportLimit => "settings:invalid-import-limit",
             AppError::Message(_) => "app:error",
         }
     }
@@ -74,6 +83,13 @@ impl AppError {
             AppError::SettingsStaleView => {
                 "Settings changed in another xaga window — please try again."
             }
+            AppError::SettingsBusy => {
+                "Another xaga instance is busy. Please try saving settings again later."
+            }
+            AppError::ImportTooLarge => {
+                "This file exceeds the import size limit. Increase Maximum import file size in Settings → General, or import a smaller file."
+            }
+            AppError::InvalidImportLimit => "Enter a positive whole number of MiB.",
             AppError::Message(_) => "Something went wrong.",
         }
     }
@@ -132,6 +148,14 @@ pub(crate) struct SerializedError {
 }
 
 impl AppError {
+    /// Import/export diagnostics have already been logged natively.
+    pub(crate) fn import_export_error(&self) -> SerializedError {
+        SerializedError {
+            detail: String::new(),
+            ..self.serialized()
+        }
+    }
+
     /// The owned wire shape, for event payloads that need `Clone`.
     pub(crate) fn serialized(&self) -> SerializedError {
         SerializedError {
@@ -162,6 +186,9 @@ mod tests {
         "command:unauthorized",
         "article:unsupported-download",
         "settings:stale-view",
+        "settings:busy",
+        "import:too-large",
+        "settings:invalid-import-limit",
         "app:error",
     ];
 
@@ -201,6 +228,25 @@ mod tests {
         // detail carries the technical text; message never does.
         assert!(v["detail"].as_str().unwrap().contains("magic bytes"));
         assert!(!v["message"].as_str().unwrap().contains("magic bytes"));
+    }
+
+    #[test]
+    fn import_errors_do_not_serialize_private_details() {
+        let error = AppError::Message("OPML fragment: private-file-content".into());
+        assert!(error.serialized().detail.contains("private-file-content"));
+        let wire = serde_json::to_value(error.import_export_error()).unwrap();
+        assert_eq!(wire["detail"], "");
+        assert!(!wire.to_string().contains("private-file-content"));
+        assert_eq!(wire["message"], "Something went wrong.");
+    }
+
+    #[test]
+    fn import_limit_directs_users_to_the_general_settings_control() {
+        let wire = AppError::ImportTooLarge.import_export_error();
+        assert_eq!(wire.code, "import:too-large");
+        assert!(wire.message.contains("smaller file"));
+        assert!(wire.message.contains("Settings → General"));
+        assert!(wire.message.contains("Maximum import file size"));
     }
 
     #[test]

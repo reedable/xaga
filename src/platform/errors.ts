@@ -61,6 +61,9 @@ export const ERROR_CODE = [
   "command:unauthorized",
   "article:unsupported-download",
   "settings:stale-view",
+  "settings:busy",
+  "import:too-large",
+  "settings:invalid-import-limit",
   "app:error", // transitional catch-all for not-yet-typed string errors
 ] as const;
 export type ErrorCode = (typeof ERROR_CODE)[number];

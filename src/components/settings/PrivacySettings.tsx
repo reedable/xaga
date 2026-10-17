@@ -11,6 +11,8 @@ import {
   Typography,
 } from "@mui/material";
 import { useEffect, useState } from "react";
+import { useSettings } from "../../hooks/useSettings";
+import { useErrorSink } from "../../hooks/useErrorSink";
 import { usePlatform } from "../../platform/Platform";
 import css from "./PrivacySettings.module.css";
 
@@ -19,6 +21,8 @@ const DOMAIN_RE =
 
 export function PrivacySettings() {
   const platform = usePlatform();
+  const { saveSettings, refreshVersion } = useSettings();
+  const { pushError } = useErrorSink();
   const [captureImages, setCaptureImages] = useState(false);
   const [captureLoaded, setCaptureLoaded] = useState(false);
   const [captureSaving, setCaptureSaving] = useState(false);
@@ -28,25 +32,25 @@ export function PrivacySettings() {
   const [inputError, setInputError] = useState(false);
 
   useEffect(() => {
-    platform.getAllowedDomains().then(setDomains);
-  }, [platform]);
+    platform.getAllowedDomains().then(setDomains).catch(pushError);
+  }, [platform, pushError, refreshVersion]);
 
   useEffect(() => {
     let active = true;
     platform.getLoadRemoteImage().then((value) => {
-      if (active) { setCaptureImages(value); setCaptureLoaded(true); }
+      if (active) { setCaptureImages(value); setCaptureLoaded(true); setCaptureError(null); }
     }).catch(() => {
       if (active) setCaptureError("Could not load the image capture preference. Reopen Settings to retry.");
     });
     return () => { active = false; };
-  }, [platform]);
+  }, [platform, pushError, refreshVersion]);
 
   async function handleCaptureChange(value: boolean) {
     setCaptureSaving(true);
     setCaptureError(null);
     try {
-      await platform.setLoadRemoteImage(value);
-      setCaptureImages(value);
+      const saved = await saveSettings(() => platform.setLoadRemoteImage(value));
+      if (saved) setCaptureImages(value);
     } catch {
       setCaptureError("Could not save the image capture preference. Please try again.");
     } finally {
@@ -61,16 +65,16 @@ export function PrivacySettings() {
       return;
     }
     const next = [...domains, trimmed];
-    setDomains(next);
-    setInput("");
-    setInputError(false);
-    await platform.setAllowedDomains(next);
+    if (await saveSettings(() => platform.setAllowedDomains(next))) {
+      setDomains(next);
+      setInput("");
+      setInputError(false);
+    }
   }
 
   async function handleRemove(domain: string) {
     const next = domains.filter((d) => d !== domain);
-    setDomains(next);
-    await platform.setAllowedDomains(next);
+    if (await saveSettings(() => platform.setAllowedDomains(next))) setDomains(next);
   }
 
   return (

@@ -22,7 +22,7 @@ use crate::{AppState, get_bookmarked_ids, get_unread_ids};
 pub(crate) struct ImportResult {
     pub added: Vec<Feed>,
     pub skipped: Vec<String>,
-    pub failed: Vec<String>,
+    pub failed: usize,
 }
 
 pub(crate) async fn import_feeds(
@@ -37,13 +37,12 @@ pub(crate) async fn import_feeds(
         .await
         .map_err(|e| e.to_string())?;
     if metadata.len() > max_bytes {
-        // TODO(phase 3): a typed, user-actionable variant directing to Settings
-        // to raise the cap — blocked on the import-cap setting UI landing.
-        return Err(AppError::Message(format!(
+        log::warn!(
             "import file is {} bytes, exceeding the {} byte limit",
             metadata.len(),
             max_bytes
-        )));
+        );
+        return Err(AppError::ImportTooLarge);
     }
 
     let xml = tokio::fs::read_to_string(file_path)
@@ -64,14 +63,14 @@ pub(crate) async fn import_feeds(
     let mut seen: HashSet<String> = HashSet::new();
     let mut added: Vec<Feed> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
-    let mut failed: Vec<String> = Vec::new();
+    let mut failed = 0;
 
     for raw in raw_urls {
         let normalized = match xaga_core::util::normalize_url(&raw) {
             Ok(u) => u,
             Err(e) => {
                 log::warn!("import_feeds: invalid URL {raw:?}: {e}");
-                failed.push(raw);
+                failed += 1;
                 continue;
             }
         };
@@ -104,7 +103,7 @@ pub(crate) async fn import_feeds(
             }
             Err(e) => {
                 log::warn!("import_feeds: failed to add {normalized:?}: {e}");
-                failed.push(normalized);
+                failed += 1;
             }
         }
     }

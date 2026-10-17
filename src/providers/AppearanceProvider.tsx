@@ -6,6 +6,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useSettings } from "../hooks/useSettings";
+import { useErrorSink } from "../hooks/useErrorSink";
 import { usePlatform } from "../platform/Platform";
 import type { HtmlReaderView } from "../types";
 import type { FontFamily } from "../utils/FontFamily";
@@ -22,6 +24,8 @@ function systemPrefersDark(): boolean {
 
 export function AppearanceProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
+  const { saveSettings, refreshVersion } = useSettings();
+  const { pushError } = useErrorSink();
   const [systemDark, setSystemDark] = useState(systemPrefersDark);
   const [themeSetting, setThemeSetting] = useState<ThemeSetting>("auto");
 
@@ -50,50 +54,56 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
 
   const changeThemeSetting = useCallback(
     (t: ThemeSetting) => {
-      platform.setTheme(t).catch(console.error);
-      setThemeSetting(t);
+      void saveSettings(() => platform.setTheme(t)).then((saved) => {
+        if (saved) setThemeSetting(t);
+      });
     },
-    [platform]
+    [platform, saveSettings]
   );
 
   const changeHtmlReaderView = useCallback(
     (v: HtmlReaderView) => {
-      platform.setHtmlReaderView(v).catch(console.error);
-      setHtmlReaderView(v);
+      void saveSettings(() => platform.setHtmlReaderView(v)).then((saved) => {
+        if (saved) setHtmlReaderView(v);
+      });
     },
-    [platform]
+    [platform, saveSettings]
   );
 
   const setHtmlReaderFontFamily = useCallback(
     (value: FontFamily) => {
-      platform.setHtmlReaderFontFamily(value).catch(console.error);
-      setHtmlReaderFontFamilyState(value);
+      void saveSettings(() => platform.setHtmlReaderFontFamily(value)).then((saved) => {
+        if (saved) setHtmlReaderFontFamilyState(value);
+      });
     },
-    [platform]
+    [platform, saveSettings]
   );
 
   const setHtmlReaderFontSize = useCallback(
     (value: number) => {
-      platform.setHtmlReaderFontSize(value).catch(console.error);
-      setHtmlReaderFontSizeState(value);
+      void saveSettings(() => platform.setHtmlReaderFontSize(value)).then((saved) => {
+        if (saved) setHtmlReaderFontSizeState(value);
+      });
     },
-    [platform]
+    [platform, saveSettings]
   );
 
   const setHtmlReaderLineHeight = useCallback(
     (value: number) => {
-      platform.setHtmlReaderLineHeight(value).catch(console.error);
-      setHtmlReaderLineHeightState(value);
+      void saveSettings(() => platform.setHtmlReaderLineHeight(value)).then((saved) => {
+        if (saved) setHtmlReaderLineHeightState(value);
+      });
     },
-    [platform]
+    [platform, saveSettings]
   );
 
   const setShowSidebar = useCallback(
     (value: boolean) => {
-      platform.setShowSidebar(value).catch(console.error);
-      setShowSidebarState(value);
+      void saveSettings(() => platform.setShowSidebar(value)).then((saved) => {
+        if (saved) setShowSidebarState(value);
+      });
     },
-    [platform]
+    [platform, saveSettings]
   );
 
   // Load persisted theme on startup.
@@ -101,21 +111,21 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     platform
       .getTheme()
       .then((t) => setThemeSetting(t as ThemeSetting))
-      .catch(console.error);
-  }, [platform]);
+      .catch(pushError);
+  }, [platform, pushError, refreshVersion]);
 
   // Load persisted show_sidebar on startup.
   useEffect(() => {
-    platform.getShowSidebar().then(setShowSidebarState).catch(console.error);
-  }, [platform]);
+    platform.getShowSidebar().then(setShowSidebarState).catch(pushError);
+  }, [platform, pushError, refreshVersion]);
 
   // Load persisted html reader view on startup.
   useEffect(() => {
     platform
       .getHtmlReaderView()
       .then((v) => setHtmlReaderView(v as HtmlReaderView))
-      .catch(console.error);
-  }, [platform]);
+      .catch(pushError);
+  }, [platform, pushError, refreshVersion]);
 
   // Load persisted html reader prefs on startup.
   useEffect(() => {
@@ -126,8 +136,8 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
         setHtmlReaderFontSizeState(fontSize);
         setHtmlReaderLineHeightState(lineHeight);
       })
-      .catch(console.error);
-  }, [platform]);
+      .catch(pushError);
+  }, [platform, pushError, refreshVersion]);
 
   // Keep data-theme attribute in sync for CSS consumers.
   useEffect(() => {

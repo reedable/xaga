@@ -229,7 +229,10 @@ pub async fn import_bookmarks(
         {
             Ok(BookmarkOutcome::Added(article)) => added.push(*article),
             Ok(BookmarkOutcome::Updated(id)) => updated.push(id),
-            Err(_) => failed.push(entry.url),
+            Err(error) => {
+                log::warn!("import_bookmarks: failed entry {:?}: {error}", entry.url);
+                failed.push(entry.url);
+            }
         }
     }
 

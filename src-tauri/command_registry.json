@@ -41,6 +41,8 @@
     "commands::library::is_library_read_only",
     "commands::settings::get_theme",
     "commands::settings::set_theme",
+    "commands::settings::get_import_max_bytes",
+    "commands::settings::set_import_max_bytes",
     "commands::settings::get_refresh_on_startup",
     "commands::settings::set_refresh_on_startup",
     "commands::settings::get_html_reader_prefs",

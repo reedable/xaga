@@ -97,11 +97,11 @@ export function isShortcut(item?: Item | null): item is Shortcut {
 
 // ── Import ───────────────────────────────────────────────────────────────────
 
-/** Result returned by the backend after any bulk import operation. */
+/** Feed import result. Failed entries are counted; raw details stay in native logs. */
 export type ImportResult<T> = {
   added: T[];
   skipped: string[];
-  failed: string[];
+  failed: number;
 };
 
 /**
@@ -112,6 +112,11 @@ export type ImportResult<T> = {
  */
 export type ImportOutcome<T> = {
   result: ImportResult<T> | null;
+  error: AppError | null;
+};
+
+export type BookmarkImportOutcome = {
+  result: { added: string[]; updated: string[]; failed: number } | null;
   error: AppError | null;
 };
 
