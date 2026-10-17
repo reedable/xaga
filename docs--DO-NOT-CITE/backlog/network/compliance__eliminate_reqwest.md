@@ -35,13 +35,13 @@ and its independent enforcement path.
 
 ## References
 
-- [Wry response policy](../../wry/src/wkwebview/navigation.rs)
-- [Article loader](../src-tauri/src/article_loader.rs)
-- [Loader downloads](../src-tauri/src/loader_download.rs)
-- [Feed persistence](../crates/xaga-core/src/persistence/feeds.rs)
-- [Feed format repair and parsing](../crates/xaga-core/src/atom.rs)
-- [Feed commands](../src-tauri/src/commands/feeds.rs)
-- [Feed client factory](../src-tauri/src/fetch_client.rs)
-- [Feed navigation probe](../src-tauri/tests/feed_navigation_webview.rs)
-- [Remote content policy](../docs/architecture/security/fetching_remote_content.md)
-- [Conditional-request policy](../docs/architecture/security/performance_tradeoff.md)
+- [Wry response policy](../../../../wry/src/wkwebview/navigation.rs)
+- [Article loader](../../../src-tauri/src/article_loader.rs)
+- [Loader downloads](../../../src-tauri/src/loader_download.rs)
+- [Feed persistence](../../../crates/xaga-core/src/persistence/feeds.rs)
+- [Feed format repair and parsing](../../../crates/xaga-core/src/atom.rs)
+- [Feed commands](../../../src-tauri/src/commands/feeds.rs)
+- [Feed client factory](../../../src-tauri/src/fetch_client.rs)
+- [Feed navigation probe](../../../src-tauri/tests/feed_navigation_webview.rs)
+- [Remote content policy](../../../docs/architecture/security/fetching_remote_content.md)
+- [Conditional-request policy](../../../docs/architecture/security/performance_tradeoff.md)
