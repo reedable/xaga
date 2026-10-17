@@ -23,8 +23,8 @@ Determine how much of that blocking time comes from feed discovery and feed embe
 
 ## References
 
-- [Feed recovery diff](../../../crates/xaga-core/src/recovery/embeddings.rs)
-- [Inline recovery dispatch](../../../crates/xaga-core/src/recovery/dispatch.rs)
-- [Feed embedding pipeline](../../../crates/xaga-core/src/embeddings/pipeline.rs)
-- [Embedding service control loop](../../../crates/xaga-core/src/embeddings/service.rs)
-- [Feed persistence](../../../crates/xaga-core/src/persistence/feeds.rs)
+- [Feed recovery diff](../../crates/xaga-core/src/recovery/embeddings.rs)
+- [Inline recovery dispatch](../../crates/xaga-core/src/recovery/dispatch.rs)
+- [Feed embedding pipeline](../../crates/xaga-core/src/embeddings/pipeline.rs)
+- [Embedding service control loop](../../crates/xaga-core/src/embeddings/service.rs)
+- [Feed persistence](../../crates/xaga-core/src/persistence/feeds.rs)

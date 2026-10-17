@@ -32,11 +32,11 @@ read-only storage and local-only main-window rendering.
 
 ## References
 
-- [Loader lifecycle](../../../src-tauri/src/article_loader.rs)
-- [Resource acquisition](../../../src-tauri/src/article_loader.js)
-- [Download consumers](../../../src-tauri/src/loader_download.rs)
-- [Validators](../../../src-tauri/src/resource_download.rs)
-- [Native tests](../../../src-tauri/tests/resource_download_webview.rs)
-- [Wry response policy](../../../../wry/src/wkwebview/response_policy.rs)
-- [Remote content policy](../../../docs/architecture/security/fetching_remote_content.md)
-- [Persisted-content policy](../../../docs/architecture/security/handling_persisted_content.md)
+- [Loader lifecycle](../../src-tauri/src/article_loader.rs)
+- [Resource acquisition](../../src-tauri/src/article_loader.js)
+- [Download consumers](../../src-tauri/src/loader_download.rs)
+- [Validators](../../src-tauri/src/resource_download.rs)
+- [Native tests](../../src-tauri/tests/resource_download_webview.rs)
+- [Wry response policy](../../../wry/src/wkwebview/response_policy.rs)
+- [Remote content policy](../../docs/architecture/security/fetching_remote_content.md)
+- [Persisted-content policy](../../docs/architecture/security/handling_persisted_content.md)

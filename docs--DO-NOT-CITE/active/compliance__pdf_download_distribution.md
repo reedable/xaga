@@ -18,8 +18,8 @@ PDF download support on platforms where response-to-download routing is verified
 
 ## References
 
-- [Workspace dependency override](../../../Cargo.toml)
-- [Wry response policy](../../../../wry/src/wkwebview/response_policy.rs)
-- [Native download tests](../../../src-tauri/tests/resource_download_webview.rs)
-- [Loader redirect-cap task](spike__article_loader_redirect_cap.md)
+- [Workspace dependency override](../../Cargo.toml)
+- [Wry response policy](../../../wry/src/wkwebview/response_policy.rs)
+- [Native download tests](../../src-tauri/tests/resource_download_webview.rs)
+- [Loader redirect-cap task](../backlog/network/spike__article_loader_redirect_cap.md)
 - [Resource download safety](compliance__resource_download_handling.md)

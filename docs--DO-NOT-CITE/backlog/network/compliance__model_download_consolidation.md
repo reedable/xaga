@@ -72,4 +72,4 @@ remain after migration.
 - [Model trust](../../../docs/architecture/security/embedding_model_trust.md)
 - [Remote content policy](../../../docs/architecture/security/fetching_remote_content.md)
 - [First-run model consent](../ui/compliance__oobe_model_download_consent.md)
-- [CLI download proxy switches](../build/improvement__cli_download_proxy_switches.md)
+- [CLI download proxy switches](../../active/improvement__cli_download_proxy_switches.md)
