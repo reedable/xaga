@@ -1,16 +1,24 @@
 # Replace manual OPML XML construction
 
-`crates/xaga-core/src/persistence/opml.rs::build_opml` constructs XML tags and
-attributes with string concatenation and formatting. It uses `quick_xml` for
-escaping, but not for writing the document structure.
+## Summary
 
-Replace manual XML construction with a library XML writer or serializer.
-Preserve the existing OPML 2.0 export content: document title, feed order, and
-outline `text`, `title`, `type`, and `xmlUrl` attributes. The specific API choice
-remains to be reviewed before implementation.
+`build_opml` constructs document structure with string concatenation and uses `quick_xml` only to escape attribute values. Replace the manual construction with an XML writer or serializer.
 
-Verify exported documents by parsing them and checking feed titles and URLs,
-including ampersands, quotes, angle brackets, Unicode, and an empty feed list.
-The serializer must handle escaping without pre-escaping or double-escaping.
+## Requirements
 
-This item records requested follow-up work; it does not change OPML export code.
+- Preserve OPML 2.0 output containing the `Xaga Feeds` document title and one outline per feed in input order.
+- Preserve each outline's `text`, `title`, `type="rss"`, and `xmlUrl` attributes.
+- Delegate element and attribute encoding to the selected XML API without pre-escaping or double-escaping values.
+- Produce well-formed output for empty input and for titles and URLs containing XML metacharacters or Unicode.
+
+## Remaining work
+
+- Compare the `quick_xml` writer API with serializer alternatives and select the dependency approach.
+- Replace `build_opml`'s string-built XML structure.
+- Parse generated documents in tests and verify document metadata, feed order, and attribute values.
+- Cover empty input, ampersands, quotes, angle brackets, and Unicode.
+
+## References
+
+- `crates/xaga-core/src/persistence/opml.rs`
+- `src-tauri/src/native/feeds.rs`

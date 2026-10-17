@@ -1,27 +1,27 @@
-# Improvement: lliwio-css typography in the article reader
+# Validate and package reader typography
 
-## Remaining evaluation
+## Summary
 
-- Review the reader with lliwio typography in the actual Tauri application:
-  prose, headings, quotations, code, tables, figures, and multilingual text in
-  both article bodies and feed summaries.
-- Check light, dark, and automatic themes, including an explicit Xaga theme
-  that differs from the OS. The iframe's `color-scheme` follows Xaga's resolved
-  theme; lliwio supplies its existing color and semantic-color rules.
-- Review font and spacing controls, narrow panes, and the CSS mathematical
-  functions in the supported webviews.
-- Check selection, annotations, find highlights, links, and scrolling visually.
-- Assess title typography after reviewing the body. The title remains outside
-  the iframe.
+The reader imports `lliwio-css` from a sibling checkout at build time. Typography needs application-level visual verification and a reproducible distribution arrangement.
 
-List indentation and spacing remain non-blocking as lliwio-css evolves.
+## Requirements
 
-The integration imports the sibling lliwio-css checkout at build time through
-`src/text/buildEntryHtml.ts`. Vite embeds the CSS in the reader document, so no
-runtime stylesheet fetch is needed. Decide how to distribute that dependency
-when moving beyond the local integration exercise.
+- Keep reader CSS bundled without runtime stylesheet requests.
+- Preserve selection, annotation, find-highlight, link, and scrolling behavior.
+- Support light, dark, and automatic themes, including an explicit theme that differs from the OS.
+- Use a reproducible dependency source for development and release builds.
+- Verify supported webviews and narrow reader panes.
 
-Relevant code: `src/text/buildEntryHtml.ts`,
-`src/components/content/HtmlReader.tsx`, and the sibling library's
-`src/index.css`. The reader uses the existing library entry point directly,
-without maintaining a separate selection of styles.
+## Remaining work
+
+- Review prose, headings, quotations, code, tables, figures, multilingual text, and feed summaries in the bundled application.
+- Review font and spacing controls and title typography.
+- Verify interaction styling and supported CSS functions in each supported webview.
+- Decide whether to vendor, package, or otherwise pin `lliwio-css` for reproducible builds.
+- Add the selected dependency arrangement and targeted visual regression coverage.
+
+## References
+
+- `src/text/buildEntryHtml.ts`
+- `src/components/content/HtmlReader.tsx`
+- `src/components/content/ItemView.tsx`

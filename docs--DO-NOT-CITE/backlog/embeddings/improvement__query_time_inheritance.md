@@ -1,15 +1,28 @@
-# Query-time inheritance in semantic search
+# Define weak-signal behavior in semantic search
 
-## The problem it addresses
+## Summary
 
-An annotation whose own embedding is meaningless (e.g. highlight "#$%^&\*" filed under a topic "Prompt Injection") never surfaces for a query like "prompt engineering" — its vector carries no signal, but its curation does.
+Some saved items have text that carries little semantic signal while their Topic membership carries user-authored meaning. Stored vectors are L2-normalized, so vector magnitude cannot identify these items. Decide whether search should use score-distribution rules, Topic membership inheritance, or leave direct similarity unchanged.
 
-## Proposed mechanism
+## Requirements
 
-Late fusion / graph expansion in `search_by_text` (`src-tauri/src/commands/embeddings.rs`), which already retrieves topic rows:
+- Do not use stored vector magnitude as a signal-strength measure.
+- Preserve direct-result ranking semantics unless the selected design explicitly changes them.
+- Prevent membership expansion from recursively amplifying Topics or duplicating results.
+- Make thresholds and edge weights explainable and testable across entries and annotations.
+- Measure relevance and latency before adopting additional query-time work.
 
-- For topics above the similarity floor, expand `topic.items` into candidates with `inherited = topic_sim × λ`, where λ is per-edge-class damping (annotation-member vs entry-member vs annotation→source-article).
-- Merge with direct hits by max, dedupe.
-- No re-embedding, no stored-vector changes, no `rank_topics_by_item` circularity.
+## Remaining work
 
-As recorded, this answers the weak-signal magnitude question by sourcing weight from curation edges rather than vector magnitude (see `weak_signal_detection.md`). The λ values and the similarity floor are undecided.
+- Define representative weak-signal and strong-signal evaluation cases.
+- Compare direct similarity, similarity-distribution filtering, and query-time Topic expansion.
+- If inheritance is selected, decide eligible edges, similarity floor, damping, deduplication, and result-limit ordering.
+- Prototype the selected option and measure relevance and query latency.
+- Record the chosen search semantics in durable documentation before implementation is considered complete.
+
+## References
+
+- `crates/xaga-core/src/embeddings/model.rs`
+- `crates/xaga-core/src/query/items.rs`
+- `src-tauri/src/commands/embeddings.rs`
+- `docs--DO-NOT-CITE/backlog/domain/spike__saved_vs_relevant_concept.md`

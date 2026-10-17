@@ -4,10 +4,8 @@
 // sanitized HTML) and BEFORE buildEntryHtml (so the reader's inline script — and
 // therefore the CSP script hash — is untouched).
 //
-// Backwards compatibility is the whole point of the short-circuit below: an
-// entry saved before this feature has only `https:`/`http:` srcs and no
-// `../images/` reference, so it returns the input string unchanged and never
-// calls `resolve`. Nothing about how existing entries render changes.
+// Entries containing only `https:`/`http:` image sources have no local references,
+// so the short-circuit returns the input unchanged without calling `resolve`.
 
 /**
  * Resolves the given entry's image references to `data:` URIs (or `null` where a

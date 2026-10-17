@@ -190,7 +190,7 @@ pub struct BookmarkImportResult {
 /// Parses `html` as a Netscape bookmark file and creates or updates Entries.
 ///
 /// For each URL:
-/// - If an Entry already exists (fetched or previously imported): adds the
+/// - If an Entry already exists: adds the
 ///   "bookmark" tag via `set_entry_tags`.
 /// - Otherwise: creates a new Entry in `read/` with `tags: ["bookmark"]`.
 ///

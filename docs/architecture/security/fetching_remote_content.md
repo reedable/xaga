@@ -271,7 +271,7 @@ Places where the invariants are not fully upheld:
 
 - Proxy behavior is a property of the bundled app; `tauri dev` runtime checks are not representative for webview-level policies (see the CSP note in [handling_persisted_content.md](handling_persisted_content.md)).
 
-The macOS native policy has a GUI smoke test: `cargo test -p xaga --test webview_policy`. It checks that standard and prefixed peer-connection constructors are absent at document-start, in a subframe, and after another navigation, using only in-memory HTML and ephemeral storage. Proxy unit tests verify that local names never reach the resolver. These controls do not establish the cause of any previously observed permission prompt.
+The macOS native policy has a GUI smoke test: `cargo test -p xaga --test webview_policy`. It checks that standard and prefixed peer-connection constructors are absent at document-start, in a subframe, and after another navigation, using only in-memory HTML and ephemeral storage. Proxy unit tests verify that local names never reach the resolver. These controls do not establish the cause of an operating-system permission prompt.
 
 ## Native resource downloads
 
@@ -298,7 +298,7 @@ callback URL, ignoring fragments. Other backends need native verification.
 
 Favicon and recovery responses use the same `ImageValidator`, for both native
 downloads and image-document callbacks. Image documents supply original bytes
-through the bounded same-origin fetch; they no longer use a favicon-only canvas
+through the bounded same-origin fetch; favicon acquisition does not use a canvas
 capture. Renderer MIME claims do not determine acceptance. Both consumers have
 the same 8 MiB input limit and format checks. After validation, favicon processing
 thumbnails PNG/JPEG/GIF/ICO/WebP to at most 64-by-64 with preserved aspect ratio

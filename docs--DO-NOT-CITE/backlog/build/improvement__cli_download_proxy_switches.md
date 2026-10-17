@@ -1,24 +1,25 @@
-# CLI download-model: switches for the proxy settings
+# Decide CLI model-download proxy overrides
 
-## Current behavior
+## Summary
 
-- The app's model download dials through the app's proxy, which reads
-  `http_allowed` and `connect_nonstandard_ports_allowed` live from
-  settings.json per request.
-- `xaga-cli embeddings download-model` starts its own proxy instance with both
-  values hardcoded `false` (`crates/xaga-cli/src/cmd/embeddings.rs:293-298`);
-  settings.json is not consulted. The code comment discloses the rationale:
-  the download target is https on 443, so there is nothing to relax.
+`xaga-cli embeddings download-model` uses the network proxy with plaintext HTTP and nonstandard CONNECT ports disabled. Its fixed model URL uses HTTPS on port 443, so overrides matter only if a redirect or future endpoint requires a weaker policy. The app's settings do not currently govern the CLI invocation.
 
-## Work
+## Requirements
 
-Add CLI switches to `download-model` so the user can control both behaviors
-per invocation (e.g. `--allow-http`,
-`--allow-nonstandard-connect-ports`). The secure defaults stay as implemented:
-both `false` when the switches are not passed.
+- Keep plaintext HTTP and nonstandard CONNECT ports disabled by default.
+- Do not weaken the CLI download policy without an explicit invocation and a defined use case.
+- Make any override visible in CLI help and diagnostics.
+- Preserve address validation and redirect validation regardless of overrides.
 
-## Questions
+## Remaining work
 
-- Switch naming/shape (boolean flags vs. values).
-- Whether future network-touching CLI commands share the same switches (only
-  `download-model` fetches today).
+- Decide whether model download needs proxy-policy overrides at all.
+- If required, define flag scope and names and whether they apply only to `download-model` or a shared CLI network policy.
+- Implement the chosen flags without reading mutable GUI settings implicitly.
+- Verify default refusal and each explicit override through proxy integration tests.
+
+## References
+
+- `crates/xaga-cli/src/cmd/embeddings.rs`
+- `crates/xaga-core/src/network_proxy.rs`
+- `docs/architecture/security/fetching_remote_content.md`

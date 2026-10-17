@@ -1,17 +1,32 @@
-# OOBE: user chooses whether to download the embedding model
+# Require consent before downloading the embedding model
 
-## The concern
+## Summary
 
 A fresh install (or wiped model dir) contacts Hugging Face at app startup, unprompted — revealing install/launch timing and IP to a third party the user never chose. The download mechanism itself is not the problem (the CLI invocation of the same path is user-initiated); the problem is the app deciding to make network contact without the user. It is currently the app's only unconditional unprompted outbound contact: the other automatic fetch, startup feed refresh, is opt-in (`refresh_on_startup`, default false) and goes to user-chosen hosts.
 
-## Work
+## Requirements
 
-An out-of-box experience: on first run (model files missing), the app asks before downloading — e.g. "Xaga uses a local embedding model (~91 MB, downloaded once from huggingface.co) for related-item search. Download now?" — with decline leaving the app in its existing degraded mode (embeddings reads return empty; everything else works) and a way to trigger the download later.
+- Make no model-host network request until the user explicitly consents.
+- Explain the source, approximate download size, local execution, and unavailable features before consent.
+- Keep non-embedding features usable when the user declines or download fails.
+- Provide visible download progress, failure state, retry, and a later user-triggered download action.
+- Hold the account-wide resource right across download and installation.
+- Persist only the consent state necessary to honor the user's choice, with a way to change it.
 
-## Facts available to the implementation
+## Remaining work
 
-- The download is consent-shaped already: `model_present` gates it (no-op when files are present) and `download_model` (`crates/xaga-core/src/embeddings/model.rs`) does the fetch, returning a typed `DownloadOutcome`. The **caller** holds the account-wide lock across it (the app via an in-process account lease, the CLI via a direct flock). It is callable at any time — deferring it from startup to a user-triggered moment is a call-site change, not a mechanism change.
-- Download-status/consent events have a home: `DomainEvent` (`crates/xaga-core/src/events.rs`) → emit funnel (`src-tauri/src/events.rs`) → `src/platform/events.ts`.
-- The app already degrades gracefully without the model (UI usable, embeddings reads empty; `is_cache_ready` polling exists) — decline needs no new degraded mode, only an honest status surface.
-- Provide visible download state and an on-demand trigger alongside the consent choice.
-- `menu:open-settings` currently has a TS listener and no rust emitter (found 2026-07-11); if OOBE/consent lands near settings UI, that orphan is adjacent material.
+- Decide whether consent is presented in first-run UI, settings, or both, and define dismissal behavior.
+- Move startup download behind the persisted consent decision.
+- Add an on-demand command and status events around the existing verified download path.
+- Surface unavailable, downloading, ready, and failed states without blocking application startup.
+- Test fresh install, decline, later consent, concurrent processes, failure, retry, and already-installed model paths.
+
+## References
+
+- `crates/xaga-core/src/embeddings/model.rs`
+- `src-tauri/src/lib.rs`
+- `crates/xaga-core/src/events.rs`
+- `src-tauri/src/events.rs`
+- `src/platform/events.ts`
+- `docs/architecture/security/embedding_model_trust.md`
+- `docs/architecture/security/fetching_remote_content.md`

@@ -70,7 +70,7 @@ pub(crate) fn patch_document(
         fields.insert((*key).to_owned(), noyalib::to_value(value)
             .map_err(|e| MdError::Frontmatter(e.to_string()))?);
     }
-    // Retired image-map storage is omitted on every save (crash_consistency.md).
+    // Unsupported image-map storage is omitted on every save (crash_consistency.md).
     fields.remove("images");
     // Block scalars in noyalib 0.0.15 do not preserve embedded carriage returns.
     // Let the library escape them in quoted strings instead.

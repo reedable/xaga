@@ -123,7 +123,7 @@ noyalib to serialize the complete mapping. YAML formatting and comments are not
 retained by serialization. Block scalars are disabled in noyalib serialization
 so embedded carriage returns are escaped in quoted strings and survive a
 round trip; noyalib 0.0.15 block scalar output fails on these summaries. Article body saves preserve the values of tags, aliases,
-annotations, and other omitted fields. The retired `images` frontmatter field is
+annotations, and other omitted fields. The unsupported `images` frontmatter field is
 removed on every save, as required by `crash_consistency.md`. Omitted summary, publication dates, and favicon
 values preserve their existing values. Annotation changes edit the annotations
 field; tag and pin changes edit tags. Metadata-only operations preserve the
@@ -151,7 +151,7 @@ Only an absent `summary` key is eligible. Existing values, including an empty
 string or null, are left untouched. Entries are matched by normalized source URL.
 A nonempty local Atom summary is applied through the shared Markdown upsert under
 the library lock and entry writer lane, preserving the body and other fields
-(subject to the existing retired `images` removal rule above). The command does
+(subject to the unsupported `images` removal rule above). The command does
 not create missing articles. If no local summary is available, it leaves the
 article unchanged.
 

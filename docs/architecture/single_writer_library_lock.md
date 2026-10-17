@@ -1,6 +1,6 @@
 # Single-Writer Library Lock — the Two Runtime Modes
 
-**A library has at most one writing process at a time, enforced by an exclusive advisory file lock whose scope is the WHOLE library: entity `.md` files and LanceDB alike. Every xaga process runs in one of two modes, set by that lock: read-write (holds the lock) or read-only (does not). Non-holders read but do not write — now true at library scope, not just LanceDB scope.**
+**A library has at most one writing process at a time, enforced by an exclusive advisory file lock whose scope is the WHOLE library: entity `.md` files and LanceDB alike. Every xaga process runs in one of two modes, set by that lock: read-write (holds the lock) or read-only (does not). Non-holders read but do not write.**
 
 ## The mechanism
 
@@ -12,7 +12,7 @@
 
 - **The app:** at setup, immediately after resolving the library path and before any command can run. Winning = read-write; losing = read-only. A library switch (`set_library`) persists the new path and restarts the process, and the restart path drains and releases the writer before spawning the successor (`drain_and_release_writer`, `src-tauri/src/lib.rs`) so the new process can win the lock.
 - **The `LibraryWriter`:** owns the flock (`LibraryWriter::start(dir, lock)`, `crates/xaga-core/src/library_writer/mod.rs`) and is the single component through which every `.md` write flows. Dropping it releases the lock; the restart/shutdown paths drain it first (`drain_and_release_writer`, `src-tauri/src/lib.rs`).
-- **The `EmbeddingService`:** no longer acquires the lock; it receives a shared `Arc` of the writer's lock (`EmbeddingService::start(dir, lock)`, from `writer.lock()`) and holds it for its lifetime, preserving its invariant of never running unlocked. The service (LanceDB writes, recovery, embedding queue) exists only in a read-write instance. The flock releases only once BOTH the writer and the service have dropped their `Arc`.
+- **The `EmbeddingService`:** receives a shared `Arc` of the writer's lock (`EmbeddingService::start(dir, lock)`, from `writer.lock()`) and holds it for its lifetime, preserving its invariant of never running unlocked. The service (LanceDB writes, recovery, embedding queue) exists only in a read-write instance. The flock releases only once BOTH the writer and the service have dropped their `Arc`.
 - **The CLI:** write commands acquire it via `require_write_lock` (`crates/xaga-cli/src/cmd/embeddings.rs`), failing fast when another process holds it. The writer is whoever wins the flock — app or CLI, first-come.
 
 ## What read-only means
@@ -34,7 +34,7 @@ The lock makes at most one process a writer; the `LibraryWriter` makes that proc
 
 ## Known limits
 
-- Check-to-use window (now closed): the read-only gate answers "at this instant," but a write command that passed it cannot execute against a released lock — it gets the writer handle via `require_writer`, and if shutdown has begun the writer's `shutting_down` flag fast-fails the submit rather than writing.
+- **Check-to-use:** the read-only gate answers "at this instant," but a write command that passed it cannot execute against a released lock. It gets the writer handle via `require_writer`; if shutdown has begun, the writer's `shutting_down` flag fast-fails the submit rather than writing.
 - The lock binds only xaga processes. External tools (e.g. Obsidian) are not participants: external edits are architecturally equivalent to a crash — reconciled from files by recovery at startup, not coordinated live.
 
 ## Relation to the other rules

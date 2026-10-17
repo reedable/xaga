@@ -51,7 +51,7 @@ pub struct StatePatch {
 /// The unit of work for the embedding service: a semantic action plus (where
 /// relevant) the entity it acts on. The tier a `Job` is enqueued on — not the
 /// variant — sets its priority, so the same action may ride different tiers
-/// (e.g. `EmbedVector` on Regular from a live save, Maintenance from recovery).
+/// (e.g. `EmbedEntry` on Regular from a live save, Maintenance from recovery).
 pub enum Job {
     // ── Non-embedding CRUD & state sync (no ONNX) ──
     /// Write-through state update from a user action. Carries the new value(s);
@@ -303,8 +303,7 @@ impl EmbeddingService {
 
     /// Enqueues a job onto the given priority tier. The tier *is* the priority;
     /// the same job may be enqueued on different tiers. This is the single
-    /// producer surface used by the command layer (and, until it is retired in a
-    /// later task, the file watcher).
+    /// producer surface used by the command layer.
     pub fn enqueue(&self, tier: Tier, job: Job) {
         self.senders.enqueue(tier, job);
     }
@@ -546,7 +545,7 @@ async fn run_loop(
 
 /// Executes a single work `Job`. The control-flow variants (Shutdown / Reset /
 /// StartRecovery) are handled by the loop's control arm, not here. `arrival` is the tier
-/// the job was dequeued from; it only affects where a deferred `EmbedVector` follow-up is
+/// the job was dequeued from; it only affects where a deferred `EmbedEntry` follow-up is
 /// enqueued.
 #[allow(clippy::too_many_arguments)]
 async fn handle_job(

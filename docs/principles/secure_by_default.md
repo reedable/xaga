@@ -10,7 +10,7 @@ Three parts, in order of precedence:
 
 ## Existing instances in the code
 
-Each of these is verifiable in the source today:
+Each of these is verifiable in the source:
 
 - **Loader webviews are incognito by default** — no cookies or site data written to disk. The user-controlled `allowed_domains` setting relaxes this per domain: an allow-listed domain gets a persistent, per-domain `WKWebsiteDataStore` (`article_loader.rs`). Default secure; relaxation explicit, user-owned, and scoped to the named domain.
 - **The inline PDF reader is off by default** (`inline_pdf_reader`, default `false`). PDFs use the same validated local download path for either presentation choice; when off, the stored PDF opens in the default app.

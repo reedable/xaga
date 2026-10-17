@@ -6,8 +6,7 @@ use sha2::{Digest, Sha256};
 /// and strips any trailing slash.
 ///
 /// The output feeds `url_hash12`, which names entry/feed/bookmark files on
-/// disk — changing these rules re-keys persisted items (see the migration
-/// item in TODO.md).
+/// disk. Changing these rules re-keys persisted items and requires a data migration.
 pub fn normalize_url(raw: &str) -> Result<String, url::ParseError> {
     let mut parsed = url::Url::parse(raw)?;
     parsed.set_fragment(None);

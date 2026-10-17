@@ -9,9 +9,8 @@
 //! - `message` — user-safe sentence. The only field the UI may show.
 //! - `detail` — full technical text. Console/log only, never shown to a user.
 //!
-//! `Message` is transitional: `From<String>` funnels ad-hoc string errors so
-//! existing `.map_err(|e| e.to_string())?` sites keep working; later phases of
-//! the error work promote user-actionable ones to typed variants.
+//! `Message` receives ad-hoc string errors through `From<String>`; user-actionable
+//! failures use typed variants.
 
 use serde::{Serialize, Serializer};
 use xaga_core::embeddings::EmbeddingsError;

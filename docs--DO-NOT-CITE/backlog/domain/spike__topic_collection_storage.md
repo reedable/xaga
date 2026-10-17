@@ -1,18 +1,33 @@
-# Topic/Collection storage and identity
+# Define Topic storage and identity
 
-## The question
+## Summary
 
-Whether Topic should be stored as `.atom` (like feeds) and distinguished from Feed by a branded `__kind` rather than by a structurally distinct type.
+Topic identity and storage are coupled to `topics/<id>.md`. Topic saves write an `id` field, but Markdown parsing discards it and reads derive the domain ID from the filename. Feed reads likewise use the `.atom` filename rather than the stored Atom ID. Topic and Feed are both modeled as Collections, but it is undecided whether that common domain shape warrants a common storage representation.
 
-## Design considerations
+## Requirements
 
-- Feed and Topic are both `Collection`s; the proposed differences mostly reduce to extrinsic/role or implementation: provenance (extrinsic); "body content" vs feed `subtitle` (both are the collection's description); typed heterogeneous membership (a shadow of the curation role). So Topic may be `Collection & __kind:"topic"`.
-- The one possibly-intrinsic divider is `url` / web-resource-ness: a Feed _is_ a fetchable web document (url = identity, relocation-invariant); a Topic has no external existence — unless published, at which point it genuinely becomes feed-like and `.atom` fits.
-- Do not mint synthetic URIs for topics (`file://` = storage location, fails relocation-invariance as identity; `xaga-topic://id` = the id in costume).
+- Define Topic identity independently of its storage location and file extension.
+- Derive storage location from identity rather than identity from storage location.
+- Do not use a file URI or a synthetic topic URI as identity.
+- Preserve Topic membership order and member type, description, threshold, state, and timestamps.
+- Apply the intrinsic-shape and extrinsic-brand rules in `docs/architecture/type_identity.md`.
+- Use the settled Collection definition.
 
-## Modeling problems
+## Remaining work
 
-1. Topic identity is derived from the filename (`item_id(path)`) instead of the declared id — identity should be declared, location derived.
-2. `topic_path` bakes in `.md` (`format!("{id}.md")`) — format is assumed, not declared/discovered; the first break point if topic formats go mixed.
+- Trace Topic and Feed identity through creation, serialization, reads, directory walks, references, and cache rows.
+- Determine how declared IDs are read and validated against storage locations, including existing files whose filename and stored ID disagree.
+- Present storage options for Topic, including continued Markdown storage and a shared Atom-based Collection representation, with migration and compatibility costs.
+- If multiple Topic formats remain possible, define how reads and path construction discover the format.
+- Record the chosen identity and storage model in durable documentation and identify the required migration and implementation changes.
 
-Related standing rule: `docs/architecture/type_identity.md` (brand for extrinsic roles only). This item is exploration — no decision has been made.
+## References
+
+- `docs/architecture/type_identity.md`
+- `src/domain.ts`
+- `crates/xaga-core/src/domain.rs`
+- `crates/xaga-core/src/library.rs`
+- `crates/xaga-core/src/md.rs`
+- `crates/xaga-core/src/atom.rs`
+- `crates/xaga-core/src/persistence/topics.rs`
+- `crates/xaga-core/src/persistence/feeds.rs`

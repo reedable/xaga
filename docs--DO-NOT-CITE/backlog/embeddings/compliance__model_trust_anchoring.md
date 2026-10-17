@@ -1,25 +1,24 @@
-# Model trust chain: untaken hardening steps
+# Strengthen embedding-model trust anchoring
 
-## 1. Anchoring used no independent network path
+## Summary
 
-Both anchoring fetches (and the API call) rode TLS from one machine/network. A
-persistent MitM on that machine's network or CA trust store at anchoring time
-could have supplied self-consistent lies. Re-deriving the manifest values from
-a genuinely independent network path (different machine/network) and comparing
-against the recorded values would raise the bar from "tamper persistently on
-one network" to "tamper across independent networks."
+The pinned model manifest was derived through one machine and network, and the claimed derivation from the upstream sentence-transformers model has not been reproduced. Decide whether either trust-chain gap warrants additional anchoring work.
 
-## 2. The Qdrant→upstream link is unreproduced
+## Requirements
 
-The artifact is presented as an ONNX conversion of
-`sentence-transformers/all-MiniLM-L6-v2`; the derivation has not been
-reproduced. Reproducing the export from upstream weights and comparing hashes
-would replace the reputational trust in Qdrant with trust in upstream plus the
-conversion toolchain.
+- Treat independent-network verification and reproducible upstream export as separate hardening options.
+- Record the evidence each option adds and the trust it cannot remove.
+- Pin any reproduction toolchain and inputs sufficiently to repeat the comparison.
+- Do not change the manifest without reconciling the result with the durable trust-chain documentation.
 
-## Questions
+## Remaining work
 
-- Whether either step is worth the effort relative to the existing chain
-  (three-source agreement, pinned revision, per-file SHA-256) is undecided.
-- Re-anchoring procedure and toolchain pinning for a reproducible export are
-  unscoped.
+- Estimate and compare independent-network re-anchoring and reproducible-export work.
+- If independent verification is selected, obtain and compare the pinned files through a genuinely independent machine and network path.
+- If reproduction is selected, define and run the pinned export procedure and compare its outputs or behavior with the shipped artifact.
+- Update the anchoring procedure and trust limits with the selected evidence.
+
+## References
+
+- `crates/xaga-core/src/embeddings/model.rs`
+- `docs/architecture/security/embedding_model_trust.md`

@@ -1,6 +1,6 @@
 # Handling user-supplied content: OPML and bookmarks.html import
 
-How Xaga secures content the user supplies directly rather than fetches — today, that means importing an OPML feed list or a `bookmarks.html` file. Both arrive as a local file the user selects via a Rust-owned file dialog, never as a path or content taken from the webview — see [command_surface.md](command_surface.md) for why that authority segregation exists; this document covers what happens to the file's _content_ once selected, not who is allowed to trigger the read.
+How Xaga secures content the user supplies directly rather than fetches: an imported OPML feed list or `bookmarks.html` file. Both arrive as a local file the user selects via a Rust-owned file dialog, never as a path or content taken from the webview — see [command_surface.md](command_surface.md) for why that authority segregation exists; this document covers what happens to the file's _content_ once selected, not who is allowed to trigger the read.
 
 Content typed directly by the user through IPC (an annotation, a manually entered feed URL) is not covered here: it has no format-specific parser of its own. A manually entered feed URL becomes Remote content once fetched (see [handling_remote_content.md](handling_remote_content.md)); typed text like annotations goes straight to storage and is covered by [handling_persisted_content.md](handling_persisted_content.md), which treats all stored content identically regardless of provenance.
 

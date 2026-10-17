@@ -1,13 +1,25 @@
 # Theme-mismatch flash at launch
 
-## Symptom
+## Summary
 
-With an explicit theme that differs from the OS (e.g. Dark set while the OS is Light), launch briefly shows dark → white → dark (or the reverse for explicit Light on a dark OS).
+The native window starts with the persisted theme, but `AppearanceProvider` initializes to `auto` and loads the saved choice asynchronously. When the explicit theme differs from the OS, the first frontend paint temporarily uses the wrong theme.
 
-## Diagnosed cause
+## Requirements
 
-Not the transparent-webview approach: the native window paints the correct color first (Rust resolves the persisted theme in `setup()` and calls `set_background_color`). The middle frame is the frontend rendering with the wrong `themeMode`: the persisted theme loads asynchronously (`getTheme()`) _after_ first paint, so the initial render falls back to `"auto"` + the OS preference, which disagrees with the explicit setting (`src/providers/AppearanceProvider.tsx` — `themeSetting` init, `themeMode` derivation, the async `getTheme()` effect).
+- Make the first frontend paint use the same resolved theme as the native window.
+- Keep the persisted account setting authoritative across processes.
+- Avoid rendering application content until the initial theme is known if no synchronous handoff is selected.
+- Preserve live system-theme changes while the setting is `auto`.
 
-## Proposed fix
+## Remaining work
 
-Make the resolved theme available synchronously to the first render (e.g. a Rust-injected value or a `localStorage` mirror) — not anything about `drawsBackground`.
+- Compare a native-injected bootstrap value, a validated local mirror, and gating the first render on `getTheme()`.
+- Define reconciliation when a local bootstrap value differs from account settings.
+- Implement the selected startup handoff.
+- Test explicit light and dark themes against both OS themes and test automatic-theme changes.
+
+## References
+
+- `src/providers/AppearanceProvider.tsx`
+- `src-tauri/src/lib.rs`
+- `src-tauri/src/commands/settings.rs`

@@ -1,15 +1,27 @@
-# Job payload modeling is inconsistent
+# Define embedding job payload rules
 
-## Current state
+## Summary
 
-There is no single answer to "what does a Job carry" (`crates/xaga-core/src/embeddings/`, the `Job` enum):
+Embedding jobs carry different forms according to their work: authoritative domain objects, typed entity references and state patches, or relationship IDs. The rule governing those choices is implicit, and content-carrying jobs contribute to fresh-recovery memory growth.
 
-- Some variants carry full domain objects: `UpsertEntry{article}`, `EmbedFeed{feed}`.
-- Some carry `EntityRef{id, kind}`: `SyncState`, `Delete`.
-- Some carry raw strings: `AddMember{topic_id, member_id}`.
+## Requirements
 
-The per-kind split (`UpsertEntry`/`UpsertTopic`, `EmbedEntry`/`EmbedTopic`) duplicates handling across entry and topic jobs. Decide whether a single kind-carrying variant would make the payload model consistent.
+- Carry authoritative objects when work depends on the producer's committed view and rereading could observe different state.
+- Carry intent or typed identity when the consumer must apply a narrow mutation to its current row.
+- Keep payloads type-safe across entity kinds; consistency does not require collapsing semantically different jobs.
+- Account for queue memory, ownership, retries, and stale-data behavior.
 
-## Decisions
+## Remaining work
 
-One modeling answer: what a Job carries (object vs `EntityRef` vs raw ids — or a defined rule for when each applies), and whether the per-kind variant split stays or a kind-carrying variant replaces it. Interacts with the memory-ceiling item (`fresh_reindex_memory_ceiling.md`: content-carrying jobs are what make the queue unbounded in size).
+- Classify each job by authoritative input, mutation intent, and required consumer state.
+- Identify raw identifiers that should become typed relationship payloads.
+- Compare per-kind variants with generic variants without erasing kind-specific invariants.
+- Coordinate the payload rule with bounded fresh-recovery dispatch.
+- Present the model and migration cost for decision.
+
+## References
+
+- `crates/xaga-core/src/embeddings/service.rs`
+- `crates/xaga-core/src/embeddings/pipeline.rs`
+- `docs/principles/carry_intent_end_to_end.md`
+- [Bound fresh-reindex memory](defect__fresh_reindex_memory_ceiling.md)

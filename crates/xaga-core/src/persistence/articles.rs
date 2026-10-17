@@ -585,7 +585,7 @@ Original body
         assert!(!crate::md::test_frontmatter_values(&stored).contains_key("images"));
         assert!(!stored.contains("obsolete-metadata"));
         assert!(stored.contains("![alt](../images/abcdef123456/123456abcdef)"));
-        // Metadata-only saves must also omit the retired field.
+        // Metadata-only saves also omit the unsupported field.
         std::fs::write(&path, raw).unwrap();
         crate::persistence::entries::set_entry_tags(dir.path(), id, vec!["bookmark".into()], WriteToken::for_test()).await.unwrap();
         let stored = std::fs::read_to_string(&path).unwrap();

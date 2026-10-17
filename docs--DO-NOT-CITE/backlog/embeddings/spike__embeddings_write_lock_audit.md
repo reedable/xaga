@@ -1,11 +1,28 @@
-# Embeddings write-lock participation audit
+# Verify embeddings writers hold the library lock
 
-## Current state
+## Summary
 
-The single-writer library lock (`docs/architecture/single_writer_library_lock.md`) is advisory — it protects only write paths that acquire it. Known participants: `EmbeddingService::start` (`crates/xaga-core/src/embeddings/service.rs`) and the CLI's `require_write_lock` (`crates/xaga-cli/src/cmd/embeddings.rs`).
+The library lock is advisory and protects only participating writers. Verify that every application and CLI path that mutates or resets LanceDB holds the library's write authority for the operation's lifetime.
 
-## The work
+## Requirements
 
-Audit every `EmbeddingsDb` write path across the workspace (app + CLI) and gate any non-participant behind the lock. The original record of this item cited a CLI `topics migrate` bypass and a `lock.rs` module; both citations predate the current code layout (the migrate commands were deleted; the lock lives in `fs.rs`/`library.rs`), so the first step is re-establishing which write paths exist now and which take the lock.
+- Cover production application and CLI paths; test-only database instances are out of scope.
+- Include create, reset, destroy, row mutation, compaction, index creation, and recovery.
+- Hold the lock across asynchronous work, not only during admission.
+- Refuse mutation in read-only processes.
 
-Scope: xaga's own UI + CLI only — not third-party tools modifying LanceDB.
+## Remaining work
+
+- Trace every production caller of mutating `EmbeddingsDb` methods to its lock acquisition.
+- Identify paths that obtain a database handle before write authority is established or retain it after authority ends.
+- Gate any bypass through the established application lease or CLI lock helper.
+- Add tests for refused concurrent application and CLI writers.
+
+## References
+
+- `crates/xaga-core/src/embeddings/db.rs`
+- `crates/xaga-core/src/embeddings/service.rs`
+- `crates/xaga-cli/src/cmd/embeddings.rs`
+- `crates/xaga-core/src/fs.rs`
+- `crates/xaga-core/src/library.rs`
+- `docs/architecture/single_writer_library_lock.md`

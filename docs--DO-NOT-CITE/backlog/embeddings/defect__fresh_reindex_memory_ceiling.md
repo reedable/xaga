@@ -1,13 +1,27 @@
-# Fresh-reindex memory ceiling: content-carrying jobs on an unbounded queue
+# Bound fresh-reindex memory
 
-## Current state
+## Summary
 
-Recovery emits domain objects onto the unbounded embed queue: a fresh reindex enqueues the whole corpus as content-carrying embed jobs. The queue's memory footprint scales with corpus size — estimated at roughly 10–20 GB at one million entries, which is inside the design target (`docs/architecture/design_scale.md`). This was explicitly deferred (not a hidden judgment) during the decoupling work.
+Fresh recovery collects domain objects and enqueues content-carrying embedding jobs for the corpus. Its peak memory therefore grows with corpus size and is unbounded at the design target.
 
-## Proposed fix
+## Requirements
 
-Enqueue the id and re-read the file at embed time, instead of carrying the content on the job. A batch-carrying job variant would not fix it — the content is the weight, not the job count.
+- Bound peak recovery and queued-payload memory independently of corpus size.
+- Preserve the rule that embedding consumes the authoritative object produced by the recovery read unless a different consistency model is explicitly selected.
+- Keep bulk database insertion and embedding backpressure compatible with priority-tier fairness and shutdown behavior.
+- Do not replace memory pressure with unbounded file rereads or queued identifiers.
 
-## Interactions
+## Remaining work
 
-`job_payload_modeling.md` (what a Job carries is the same decision surface); `embed_backfill_per_row_costs.md` (the same backfill path's commit costs).
+- Measure peak memory and queue depth during fresh recovery at representative corpus sizes.
+- Compare bounded channels, producer-consumer chunking, and staged recovery batches, including their consistency and throughput costs.
+- Select a backpressure and ownership model.
+- Implement bounded dispatch and verify memory, cancellation, restart, and Interactive-tier responsiveness.
+
+## References
+
+- `crates/xaga-core/src/recovery/dispatch.rs`
+- `crates/xaga-core/src/embeddings/service.rs`
+- `docs/architecture/design_scale.md`
+- [Job payload modeling](spike__job_payload_modeling.md)
+- [Embedding backfill costs](spike__embed_backfill_per_row_costs.md)

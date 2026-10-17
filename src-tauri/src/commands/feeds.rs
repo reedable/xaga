@@ -186,7 +186,7 @@ pub async fn list_entries(
     let library = state.library_path();
     let item_filter = parse_item_filter(item_filter)?;
 
-    // Phase C: the .atom is the source of truth for feed membership (the id-set); LanceDB
+    // The .atom is the source of truth for feed membership (the id-set); LanceDB
     // returns those entries with their state. Reload the read handle so state reflects the
     // service's latest writes, then filter/sort as before.
     let ids = feeds::list_entry_ids(&library, url.as_deref())

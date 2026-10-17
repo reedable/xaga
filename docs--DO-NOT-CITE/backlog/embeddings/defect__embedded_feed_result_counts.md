@@ -1,11 +1,26 @@
 # Embedded feed search results return zero counts
 
-## Current state
+## Summary
 
-Semantic feed hits carry `entry_count`/`unread_count`/`bookmarked_count` = 0: `enrich_embedded` builds `EmbeddedItem::Feed` without real stats; the server-side lookup was deferred when hybrid feed search was built.
+Semantic feed hits are enriched with zero entry and unread counts and an unpinned state instead of the feed's current values.
 
-## Design
+## Requirements
 
-When picked up: read the feed's `.atom` membership and intersect with the unread/bookmarked id-sets (as `feed_summary` does) — either by threading `feeds_dir` + the id-sets from the `search_by_text` command (same source as `list_feeds`), or by opening the db inside `enrich_embedded` only when a feed hit is present. Counts are O(U)+O(M).
+- Return the same feed metadata and counts as the authoritative feed-list path.
+- Preserve semantic result order and similarity scores.
+- Avoid opening the embeddings database or materializing global state once per hit.
+- Define behavior when a feed disappears between search and enrichment.
 
-Location cited at recording time: `enrich_embedded` (was `item.rs`; re-locate in the current tree before starting).
+## Remaining work
+
+- Reuse or extract the feed-summary logic for batched result enrichment.
+- Load unread and bookmarked state once per search and intersect it with each matched feed's membership.
+- Populate pinned state and dates consistently with `list_feeds`.
+- Test mixed feed and non-feed results, missing feeds, and nonzero counts.
+
+## References
+
+- `crates/xaga-core/src/query/items.rs`
+- `crates/xaga-core/src/persistence/feeds.rs`
+- `src-tauri/src/commands/embeddings.rs`
+- `src-tauri/src/commands/feeds.rs`

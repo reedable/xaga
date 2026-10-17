@@ -207,7 +207,7 @@ pub async fn list_entry_topics(
     entry_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
-    // Phase C: read the entry's topics from the LanceDB reverse index (the `topics` column,
+    // Read the entry's topics from the LanceDB reverse index (the `topics` column,
     // maintained by the topic-membership reconcile) instead of scanning every topic file.
     let db = state.embeddings_read.lock().unwrap().clone();
     let Some(db) = db else {

@@ -1,13 +1,30 @@
 # Read API scale gaps
 
-Read paths to improve in `crates/xaga-core/src/embeddings/db.rs`:
+## Summary
 
-- **`all_entries` has no limit/pagination** — "list all" materializes every entry row.
-- **`entries_by_ids` builds one `id IN (…)` over all ids, no chunking** — large feed id-sets produce a large IN list.
-- **Index coverage doesn't match the sort order.** `ensure_indexes` indexes `id` and `published_at`, but the list sort order is `updated_at → published_at → created_at` (`filter::sort_items`); `created_at`/`updated_at` are unindexed, so ordered pagination by the actual sort key isn't fully covered.
+List-all and collection reads materialize complete result sets. Feed reads build one `id IN (...)` predicate for the entire membership, and database index coverage does not match the application sort order. `Virtuoso` limits rendered DOM rows but not backend reads or frontend retention.
 
-## Proposed pagination and chunking
+## Requirements
 
-List commands load whole result sets; `src/components/list/ItemList.tsx` renders them. The collection counts (total / entry / unread) are already carried on Feed/Topic.
+- Bound query size, transferred rows, and retained list state at the design target.
+- Preserve deterministic ordering across pages when sort keys tie or rows change.
+- Preserve filtering, collection membership, selection, keyboard navigation, and live-event updates.
+- Avoid constructing unbounded SQL predicates for large ID sets.
+- Align indexes with the selected server-side filter and sort plan.
 
-Use the counts together with Virtuoso to render only the visible window and fetch the matching row range from LanceDB on demand. The read API would be shaped to serve a window (row range + total count), not full result sets. This does not cover the third item above (index/sort-order coverage); see also `db_as_cache_read_abstraction.md`.
+## Remaining work
+
+- Measure all-items, large-feed, and large-Topic reads at target sizes.
+- Compare offset windows, stable cursors, and chunked membership queries.
+- Define page invalidation and reconciliation for live state and annotation events.
+- Select the sort key, tie-breaker, and supporting indexes.
+- Implement the read API and incremental `ItemList` loading with scale and navigation tests.
+
+## References
+
+- `crates/xaga-core/src/embeddings/db.rs`
+- `crates/xaga-core/src/query/items.rs`
+- `crates/xaga-core/src/query/topics.rs`
+- `src/components/list/ItemList.tsx`
+- `docs/architecture/design_scale.md`
+- [Read-model abstraction](../embeddings/refactor__db_as_cache_read_abstraction.md)

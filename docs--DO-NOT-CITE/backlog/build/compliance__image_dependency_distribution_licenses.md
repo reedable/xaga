@@ -1,52 +1,32 @@
-# Compliance: image dependency distribution licenses
+# Distribute image dependency licenses
 
-Provide dependency notices and MPL source-availability information in app
-distributions before shipping shared favicon and image-recovery validation.
+## Summary
 
-## Dependencies and fixture to cover
+Release artifacts do not provide notices or source-availability instructions for the image-validation dependency chain. The shipped graph includes MPL-2.0 `avif-parse` 2.1.0, its MIT OR Apache-2.0 dependencies `bitreader` 0.3.11, `fallible_collections` 0.5.2, and `leb128` 0.2.7, and MIT `quick-xml` 0.37.5. The AVIF test fixture is available under BSD-2-Clause but should not be assumed absent from an artifact without inspecting the package.
 
-- `avif-parse` 2.1.0: MPL-2.0.
-- `bitreader` 0.3.11, `fallible_collections` 0.5.2, and `leb128` 0.2.7:
-  MIT OR Apache-2.0.
-- `quick-xml` 0.37.5: MIT.
-- `src-tauri/tests/fixtures/color-profile.avif`: third-party fixture offered
-  under LGPL 2.1 or BSD-2-Clause. Use the BSD-2-Clause option and verify the
-  attribution and license text in the fixture README against the source.
+## Requirements
 
-## Work
+- Generate notices from the exact dependency graph and license texts used by each release.
+- Tell recipients how to obtain the matching MPL-covered source and preserve MPL notices and rights.
+- Include modifications to MPL-covered files in the offered source.
+- Preserve the selected MIT, Apache-2.0, and BSD-2-Clause notices where their terms require them.
+- Include the fixture's BSD-2-Clause attribution if any distributed artifact contains it.
+- Verify compliance against the packaged artifact, not only repository files.
 
-- Verify licenses and original notices against the exact versions in
-  `Cargo.lock`, including transitive dependencies.
-- Add required third-party copyright/license notices to the distributed app
-  or accompanying distribution materials. Record which license option is used
-  for dual-licensed dependencies and preserve the corresponding notices.
-- Make the exact MPL-covered source used in the release available to recipients
-  and include clear instructions for obtaining it. Retain its MPL notices and
-  license information; include any future changes to covered files under MPL.
-- Ensure Xaga's proprietary distribution terms preserve recipients' rights to
-  the MPL-covered source. MPL permits a proprietary larger work; this does not
-  require publishing Xaga's separately authored source files.
-- Verify the test fixture's provenance and original attribution. Preserve the
-  BSD notices wherever the fixture is redistributed, and confirm whether release
-  packaging includes it rather than assuming test-only code guarantees exclusion.
-- Verify the packaged release, not just the repository: recipients must receive
-  the notices and be able to obtain the matching MPL source using the provided
-  instructions. Record the packaging location and verification result.
+## Remaining work
 
-## Completion criteria
+- Choose and configure a reproducible notice-generation and packaging mechanism for Rust and frontend dependencies.
+- Define where release recipients access notices and the matching `avif-parse` source.
+- Inspect each packaged target for included dependencies, notices, source instructions, and test fixtures.
+- Add a release check that fails when the dependency graph changes without regenerated compliance material.
+- Obtain legal review before external distribution if the intended notice or source-offer mechanism remains uncertain.
 
-- A built distribution contains accessible notices covering the dependencies
-  above and usable source-availability instructions for `avif-parse`.
-- The source made available matches the shipped dependency version and includes
-  any modifications to MPL-covered files.
-- Fixture attribution is preserved in distributions that include the fixture.
-- Distribution compliance is verified before shipping the shared image-validator
-  change.
+## References
 
-References: [MPL 2.0 sections 3.1–3.4](https://www.mozilla.org/en-US/MPL/2.0/),
-[Mozilla's distribution FAQ](https://www.mozilla.org/en-US/MPL/2.0/FAQ/),
-[MIT license](https://opensource.org/license/mit), and
-[BSD-2-Clause license](https://opensource.org/license/bsd-2-clause).
-
-Relevant files: `src-tauri/Cargo.toml`, `Cargo.lock`, `LICENSE`,
-`src-tauri/tauri.conf.json`, and `src-tauri/tests/fixtures/README.md`.
+- `src-tauri/Cargo.toml`
+- `Cargo.lock`
+- `src-tauri/tauri.conf.json`
+- `src-tauri/tests/fixtures/README.md`
+- [Mozilla Public License 2.0](https://www.mozilla.org/en-US/MPL/2.0/)
+- [Mozilla MPL FAQ](https://www.mozilla.org/en-US/MPL/2.0/FAQ/)
+- [AVIF fixture source](https://github.com/link-u/avif-sample-images/blob/master/README.md)
