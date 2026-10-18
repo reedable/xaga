@@ -163,12 +163,45 @@ fn verify_checksum(
     expected_sha256: &str,
     digest_hex: &str,
 ) -> Result<(), EmbeddingsError> {
-    if digest_hex != expected_sha256 {
-        return Err(EmbeddingsError::ModelDownload(format!(
-            "{filename}: checksum mismatch (expected {expected_sha256}, got {digest_hex}) — refusing to install"
-        )));
+    verify_checksum_value(filename, expected_sha256, digest_hex).map_err(|message| {
+        EmbeddingsError::ModelDownload(format!("{message} — refusing to install"))
+    })
+}
+
+/// Shared checksum comparison for download-time and load-time verification. The
+/// caller owns the operation-specific error variant and refusal wording.
+fn verify_checksum_value(
+    filename: &str,
+    expected_sha256: &str,
+    digest_hex: &str,
+) -> Result<(), String> {
+    if digest_hex == expected_sha256 {
+        return Ok(());
     }
-    Ok(())
+    Err(format!(
+        "{filename}: checksum mismatch (expected {expected_sha256}, got {digest_hex})"
+    ))
+}
+
+/// Reads each manifest file once, verifies those exact bytes, and returns them
+/// for the model constructor. Verification failure leaves every installed file
+/// untouched; recovery is deliberately outside the load path.
+fn read_verified_model_files(
+    model_dir: &Path,
+    manifest: &[(&str, &str)],
+) -> Result<std::collections::HashMap<String, Vec<u8>>, EmbeddingsError> {
+    use sha2::Digest;
+
+    let mut files = std::collections::HashMap::with_capacity(manifest.len());
+    for &(name, expected_sha256) in manifest {
+        let bytes = std::fs::read(model_dir.join(name))
+            .map_err(|e| EmbeddingsError::Model(format!("{name}: {e}")))?;
+        let digest = hex::encode(sha2::Sha256::digest(&bytes));
+        verify_checksum_value(name, expected_sha256, &digest)
+            .map_err(|message| EmbeddingsError::Model(format!("{message} — refusing to load")))?;
+        files.insert(name.to_owned(), bytes);
+    }
+    Ok(files)
 }
 
 /// A pull-source of response body chunks. Abstracts `reqwest::Response` so
@@ -296,6 +329,91 @@ mod tests {
         assert!(msg.contains("checksum mismatch"), "names the refusal: {msg}");
     }
 
+    #[test]
+    fn load_verification_accepts_valid_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("first"), b"abc").unwrap();
+        std::fs::write(dir.path().join("second"), b"").unwrap();
+        let manifest = [
+            (
+                "first",
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            ),
+            (
+                "second",
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            ),
+        ];
+
+        let files = read_verified_model_files(dir.path(), &manifest).unwrap();
+        assert_eq!(files.get("first").unwrap(), b"abc");
+        assert_eq!(files.get("second").unwrap(), b"");
+    }
+
+    #[test]
+    fn load_verification_reports_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = [(
+            "missing.json",
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        )];
+
+        let err = read_verified_model_files(dir.path(), &manifest)
+            .expect_err("missing model file must refuse loading");
+        assert!(err.to_string().contains("missing.json"));
+    }
+
+    #[test]
+    fn load_verification_refuses_mismatch_without_changing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("model.onnx");
+        std::fs::write(&path, b"substituted model").unwrap();
+        let manifest = [(
+            "model.onnx",
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        )];
+
+        let err = read_verified_model_files(dir.path(), &manifest)
+            .expect_err("mismatched model file must refuse loading");
+        let message = err.to_string();
+        assert!(message.contains("model.onnx"));
+        assert!(message.contains("checksum mismatch"));
+        assert!(message.contains("refusing to load"));
+        assert_eq!(std::fs::read(path).unwrap(), b"substituted model");
+    }
+
+    /// Manual release-mode measurement of the incremental hashing work. Reads
+    /// happen before timing because `Embedder::load` already had to materialize
+    /// these bytes; this isolates the verification added by this change.
+    #[test]
+    #[ignore = "manual benchmark; requires the installed default model"]
+    fn measure_installed_model_hashing() {
+        use sha2::Digest;
+        use std::hint::black_box;
+
+        let dir = default_model_dir();
+        let files: Vec<Vec<u8>> = read_verified_model_files(&dir, MODEL_FILES)
+            .unwrap()
+            .into_values()
+            .collect();
+        let total_bytes: usize = files.iter().map(Vec::len).sum();
+        let mut samples = Vec::with_capacity(21);
+        for _ in 0..21 {
+            let started = std::time::Instant::now();
+            for bytes in &files {
+                black_box(sha2::Sha256::digest(bytes));
+            }
+            samples.push(started.elapsed());
+        }
+        samples.sort_unstable();
+        eprintln!(
+            "hashed {total_bytes} bytes; median={:?}; min={:?}; max={:?}",
+            samples[samples.len() / 2],
+            samples[0],
+            samples[samples.len() - 1]
+        );
+    }
+
     #[tokio::test]
     async fn over_cap_refuses_before_the_offending_write() {
         let dir = tempfile::tempdir().unwrap();
@@ -356,20 +474,23 @@ pub struct Embedder {
 
 impl Embedder {
     /// Loads the embedding model from `model_dir`.
-    /// All five required files must already be present — see `model_files_present()`.
+    /// All five required files must match the pinned manifest before any bytes
+    /// are passed to fastembed or ONNX Runtime.
     pub(crate) fn load(model_dir: &Path) -> Result<Self, EmbeddingsError> {
-        let read = |name: &str| -> Result<Vec<u8>, EmbeddingsError> {
-            std::fs::read(model_dir.join(name))
-                .map_err(|e| EmbeddingsError::Model(format!("{name}: {e}")))
+        let mut files = read_verified_model_files(model_dir, MODEL_FILES)?;
+        let mut take = |name: &str| -> Result<Vec<u8>, EmbeddingsError> {
+            files.remove(name).ok_or_else(|| {
+                EmbeddingsError::Model(format!("{name}: missing from verified model manifest"))
+            })
         };
         let model = fastembed::TextEmbedding::try_new_from_user_defined(
             fastembed::UserDefinedEmbeddingModel {
-                onnx_file: read("model.onnx")?,
+                onnx_file: take("model.onnx")?,
                 tokenizer_files: fastembed::TokenizerFiles {
-                    tokenizer_file: read("tokenizer.json")?,
-                    config_file: read("config.json")?,
-                    special_tokens_map_file: read("special_tokens_map.json")?,
-                    tokenizer_config_file: read("tokenizer_config.json")?,
+                    tokenizer_file: take("tokenizer.json")?,
+                    config_file: take("config.json")?,
+                    special_tokens_map_file: take("special_tokens_map.json")?,
+                    tokenizer_config_file: take("tokenizer_config.json")?,
                 },
             },
             fastembed::InitOptionsUserDefined::default(),
