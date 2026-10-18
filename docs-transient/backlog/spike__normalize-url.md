@@ -63,4 +63,4 @@ produce different IDs as the setting changes.
 - [Feed import boundary](../../../src-tauri/src/native/feeds.rs)
 - [Bookmark import boundary](../../../crates/xaga-core/src/persistence/bookmarks.rs)
 - [Remote-content policy](../../../docs/architecture/security/fetching_remote_content.md)
-- [Fetch-policy settings task](improvement__user_settings.md)
+- [Fetch-policy settings task](enhancement__user-settings.md)

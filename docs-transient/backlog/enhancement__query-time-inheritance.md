@@ -25,4 +25,4 @@ Some saved items have text that carries little semantic signal while their Topic
 - `crates/xaga-core/src/embeddings/model.rs`
 - `crates/xaga-core/src/query/items.rs`
 - `src-tauri/src/commands/embeddings.rs`
-- `docs--DO-NOT-CITE/backlog/domain/spike__saved_vs_relevant_concept.md`
+- `docs-transient/backlog/spike__saved-vs-relevant-concept.md`

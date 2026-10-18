@@ -23,5 +23,5 @@ Topic similarity currently uses the Topic's own title and description embedding.
 
 - `crates/xaga-core/src/embeddings/pipeline.rs`
 - `crates/xaga-core/src/embeddings/row.rs`
-- `docs--DO-NOT-CITE/backlog/domain/spike__saved_vs_relevant_concept.md`
+- `docs-transient/backlog/spike__saved-vs-relevant-concept.md`
 - `docs/architecture/design_scale.md`

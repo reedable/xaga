@@ -72,4 +72,4 @@ remain after migration.
 - [Platform events](../../../src/platform/events.ts)
 - [Model trust](../../../docs/architecture/security/embedding_model_trust.md)
 - [Remote content policy](../../../docs/architecture/security/fetching_remote_content.md)
-- [First-run model consent](../ui/compliance__oobe_model_download_consent.md)
+- [First-run model consent](compliance__embedding-model--oobe-download-consent.md)

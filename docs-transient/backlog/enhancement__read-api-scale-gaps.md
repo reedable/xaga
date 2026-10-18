@@ -27,4 +27,4 @@ List-all and collection reads materialize complete result sets. Feed reads build
 - `crates/xaga-core/src/query/topics.rs`
 - `src/components/list/ItemList.tsx`
 - `docs/architecture/design_scale.md`
-- [Read-model abstraction](../embeddings/refactor__db_as_cache_read_abstraction.md)
+- [Read-model abstraction](refactor__db-as-cache-read-abstraction.md)

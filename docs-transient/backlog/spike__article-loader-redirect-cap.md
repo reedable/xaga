@@ -33,5 +33,5 @@ not establish redirect count, especially for HTTPS tunnels and reused connection
 - [Wry navigation policy](https://github.com/reedable/wry/blob/566f7b984147d58e05e69c8dcf8cf6336cc465bb/src/wkwebview/navigation.rs)
 - [Network proxy](../../../crates/xaga-core/src/network_proxy.rs)
 - [Remote-content policy](../../../docs/architecture/security/fetching_remote_content.md)
-- [Fetch-policy settings UI](improvement__user_settings.md)
-- [Feed retrieval migration](compliance__eliminate_reqwest.md)
+- [Fetch-policy settings UI](enhancement__user-settings.md)
+- [Feed retrieval migration](compliance__eliminate-reqwest.md)
