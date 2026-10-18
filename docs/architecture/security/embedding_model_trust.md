@@ -41,6 +41,22 @@ by load-time verification and excludes disk reads and ONNX initialization. Re-ru
 `measure_installed_model_hashing` in release mode when the model set or hashing
 implementation changes.
 
+## Runtime failure behavior
+
+Embedding startup has three states shared with the frontend: `loading`,
+`available`, and `unavailable`. The main application waits only while startup is
+`loading`. A model-verification or embeddings-database failure moves startup to
+`unavailable`: the diagnostic cause is logged, the application shell opens, and
+ordinary library workflows remain usable. Semantic search, related-item lookup,
+and relevance ranking are withheld and the UI explains that embedding features
+are unavailable without exposing technical details.
+
+The model and database must both initialize before startup becomes `available`.
+Read-write instances obtain the query model from `EmbeddingService`; read-only
+instances load a query-only model alongside their read-only database handle, so
+their existing embedding reads and semantic search remain available without
+starting a writer service.
+
 ## The anchoring record
 
 Values anchored 2026-07-11:
@@ -57,4 +73,5 @@ A model upgrade re-derives every value the same way and replaces the manifest bl
 - **The parser is trusted with the frozen artifact.** onnxruntime parses the model natively; the checksum pins _which_ bytes it parses, not that parsing them is safe.
 - **Verification is refusal, not recovery.** A missing or mismatched installed file
   makes embedding-model loading fail. The failed files remain unchanged for
-  diagnosis; this path neither deletes them nor obtains a replacement.
+  diagnosis; this path neither deletes them nor obtains a replacement. The app
+  continues in embedding-unavailable mode.

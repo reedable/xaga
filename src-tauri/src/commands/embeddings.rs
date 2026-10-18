@@ -49,11 +49,11 @@ pub async fn search_by_text(
     let item_filter = parse_item_filter(item_filter)?;
 
     let embedder = {
-        let guard = state.embedding_service.lock().unwrap();
+        let guard = state.embedding_query_model.lock().unwrap();
         guard
             .as_ref()
-            .ok_or_else(|| "embedding service not running".to_string())?
-            .embedder()
+            .ok_or_else(|| "embedding model unavailable".to_string())?
+            .clone()
     };
 
     let text_clone = text.clone();

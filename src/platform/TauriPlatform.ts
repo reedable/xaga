@@ -432,10 +432,12 @@ export class TauriPlatform implements Platform {
 
   // Library -------------------------------------------------------------------
 
-  async isCacheReady(): Promise<boolean> {
-    const name = "is_cache_ready";
+  async embeddingStartupState(): Promise<
+    import("./Platform").EmbeddingStartupState
+  > {
+    const name = "embedding_startup_state";
     const invoker = decorate(invoke).with(logged, { logger, name });
-    return invoker<boolean>(name);
+    return invoker<import("./Platform").EmbeddingStartupState>(name);
   }
 
   async getLibrary(): Promise<string> {

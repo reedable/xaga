@@ -29,6 +29,7 @@ import FaviconLoadError from "../../utils/FaviconLoadError";
 import { isLocalFaviconReference } from "../../utils/isLocalFaviconReference";
 import useRouter from "../../hooks/useRouter";
 import { usePlatform } from "../../platform/Platform";
+import { useEmbeddingStartupState } from "../../hooks/useEmbeddingStartupState";
 import { isArticle, type Entry } from "../../types";
 import { AddressBar } from "../AddressBar";
 import css from "./Toolbar.module.css";
@@ -40,6 +41,7 @@ interface ToolbarProps {
 
 export function Toolbar({ reload }: ToolbarProps) {
   const platform = usePlatform();
+  const embeddingStartupState = useEmbeddingStartupState();
   const { pushError } = useErrorSink();
   const {
     goBack: back,
@@ -141,7 +143,8 @@ export function Toolbar({ reload }: ToolbarProps) {
   useEffect(() => {
     setFavicon(null);
     if (!entry || !storedFavicon) return;
-    const reportFailure = () => pushError(new FaviconLoadError(entry.url, true));
+    const reportFailure = () =>
+      pushError(new FaviconLoadError(entry.url, true));
     if (!isLocalFaviconRef) {
       reportFailure();
       return;
@@ -332,14 +335,23 @@ export function Toolbar({ reload }: ToolbarProps) {
       </div>
 
       <Collapse in={!isSearchOpen} orientation="horizontal">
-        <Tooltip title="Show Search">
-          <IconButton
-            size="small"
-            onClick={handleSearchToggle}
-            aria-label="Show Search"
-          >
-            <Search fontSize="small" />
-          </IconButton>
+        <Tooltip
+          title={
+            embeddingStartupState === "available"
+              ? "Show Search"
+              : "Search unavailable"
+          }
+        >
+          <span>
+            <IconButton
+              size="small"
+              onClick={handleSearchToggle}
+              aria-label="Show Search"
+              disabled={embeddingStartupState !== "available"}
+            >
+              <Search fontSize="small" />
+            </IconButton>
+          </span>
         </Tooltip>
       </Collapse>
     </div>

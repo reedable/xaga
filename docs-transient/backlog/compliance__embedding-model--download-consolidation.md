@@ -19,7 +19,7 @@ remain after migration.
 - Surface download, timeout, validation, installation, and embedding-service startup
   failures to the user. Distinguish downloading, validating, installing, ready,
   failed, and unavailable due to lock contention or read-only operation; do not
-  use `is_cache_ready` alone to represent these states.
+  use the embedding startup state alone to represent these states.
 - Provide an in-session retry entry point that rechecks model presence and acquires
   the account right before starting. Coordinate user initiation with the separate
   first-run consent task.

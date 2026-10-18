@@ -29,6 +29,7 @@ import {
 import useAbortController from "../../hooks/useAbortController";
 import { useEvents } from "../../hooks/useEvents";
 import { useTopics } from "../../hooks/useTopics";
+import { useEmbeddingStartupState } from "../../hooks/useEmbeddingStartupState";
 import type { Annotation, Entry } from "../../types";
 import css from "./TopicMenuButton.module.css";
 
@@ -48,6 +49,7 @@ export const TopicMenuButton = forwardRef<
   TopicMenuButtonProps
 >(function TopicMenuButton({ item, disabled }, ref) {
   const [, abortControllerRef] = useAbortController();
+  const embeddingStartupState = useEmbeddingStartupState();
   const { onAnnotationRemoved } = useEvents();
   const {
     topics,
@@ -63,7 +65,9 @@ export const TopicMenuButton = forwardRef<
     new Set()
   );
   const [filterText, setFilterText] = useState("");
-  const [sortBy, setSortBy] = useState<"name" | "relevance">("relevance");
+  const [sortBy, setSortBy] = useState<"name" | "relevance">(
+    embeddingStartupState === "available" ? "relevance" : "name"
+  );
   const [similarityMap, setSimilarityMap] = useState<Map<string, number>>(
     new Map()
   );
@@ -119,7 +123,7 @@ export const TopicMenuButton = forwardRef<
     if (item) {
       const ids = await listEntryTopics(item.id);
       setMemberIds(new Set(ids ?? []));
-      if (sortBy === "relevance") {
+      if (sortBy === "relevance" && embeddingStartupState === "available") {
         setRelevanceLoading(true);
         const results = await rankTopicsRelatedToItem(item.id);
         setSimilarityMap(
@@ -128,7 +132,13 @@ export const TopicMenuButton = forwardRef<
         setRelevanceLoading(false);
       }
     }
-  }, [item, listEntryTopics, sortBy, rankTopicsRelatedToItem]);
+  }, [
+    item,
+    listEntryTopics,
+    sortBy,
+    rankTopicsRelatedToItem,
+    embeddingStartupState,
+  ]);
 
   const handleClose = useCallback(() => {
     setOpen(false);
@@ -250,7 +260,10 @@ export const TopicMenuButton = forwardRef<
                 variant="standard"
                 onChange={handleSortByChange}
               >
-                <MenuItem value="relevance" disabled={!item}>
+                <MenuItem
+                  value="relevance"
+                  disabled={!item || embeddingStartupState !== "available"}
+                >
                   <Typography component="span" variant="body2">
                     Relevance
                   </Typography>

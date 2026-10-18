@@ -9,7 +9,7 @@ import {
 import css from "./App.module.css";
 import { AppLayout } from "./AppLayout";
 import { Settings } from "./components/settings/Settings";
-import { useCacheReady } from "./hooks/useCacheReady";
+import { useEmbeddingStartupState } from "./hooks/useEmbeddingStartupState";
 import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
 import { ExpandedListProvider } from "./providers/ExpandedListProvider";
@@ -20,7 +20,7 @@ import { TopicsProvider } from "./providers/TopicsProvider";
 export default function App({ entryPoint }: { entryPoint: string }) {
   const platform = usePlatform();
   const { library } = useSettings();
-  const cacheReady = useCacheReady();
+  const embeddingStartupState = useEmbeddingStartupState();
   const [shuttingDown, setShuttingDown] = useState(false);
 
   useEffect(() => {
@@ -55,7 +55,7 @@ export default function App({ entryPoint }: { entryPoint: string }) {
                   <Route
                     path="/"
                     element={
-                      cacheReady ? (
+                      embeddingStartupState !== "loading" ? (
                         <AllItemsCountsProvider>
                           <AppLayout />
                         </AllItemsCountsProvider>

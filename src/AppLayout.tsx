@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   Collapse,
   Dialog,
@@ -6,6 +7,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  Snackbar,
 } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
 import css from "./AppLayout.module.css";
@@ -22,6 +24,7 @@ import { useFeeds } from "./hooks/useFeeds";
 import useRouter from "./hooks/useRouter";
 import { useTopics } from "./hooks/useTopics";
 import { usePlatform } from "./platform/Platform";
+import { useEmbeddingStartupState } from "./hooks/useEmbeddingStartupState";
 import { type Feed, type Topic } from "./types";
 
 export function AppLayout() {
@@ -29,6 +32,7 @@ export function AppLayout() {
   const appRef = useRef<HTMLDivElement>(null);
   const [autoHideSidebar, setAutoHideSidebar] = useState(false);
   const { showSidebar } = useAppearance();
+  const embeddingStartupState = useEmbeddingStartupState();
 
   const platform = usePlatform();
   const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
@@ -40,13 +44,8 @@ export function AppLayout() {
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
   const [isAddingFeed, setIsAddingFeed] = useState(false);
 
-  const {
-    requestTopics,
-    createTopic,
-    saveTopic,
-    deleteTopic,
-    setTopicPinned,
-  } = useTopics(abortControllerRef);
+  const { requestTopics, createTopic, saveTopic, deleteTopic, setTopicPinned } =
+    useTopics(abortControllerRef);
 
   const { requestFeeds, addFeed, renameFeed, deleteFeed, setFeedPinned } =
     useFeeds(abortControllerRef);
@@ -72,7 +71,12 @@ export function AppLayout() {
       let topic: Topic | undefined;
 
       if (editingTopic) {
-        topic = await saveTopic({ ...editingTopic, title, description, threshold });
+        topic = await saveTopic({
+          ...editingTopic,
+          title,
+          description,
+          threshold,
+        });
       } else {
         topic = await createTopic({ title, description, threshold });
       }
@@ -176,6 +180,16 @@ export function AppLayout() {
     <div className={css.Root}>
       <TitleBar className={css.TitleBar} />
 
+      <Snackbar
+        open={embeddingStartupState === "unavailable"}
+        anchorOrigin={{ vertical: "top", horizontal: "center" }}
+      >
+        <Alert severity="warning" variant="filled">
+          Embedding features are unavailable. Search and related items are
+          disabled; other features remain available. Restart Xaga to retry.
+        </Alert>
+      </Snackbar>
+
       <div ref={appRef} className={css.App}>
         <Collapse
           in={showSidebar && !autoHideSidebar}
@@ -198,7 +212,11 @@ export function AppLayout() {
 
         <ItemView className={css.ItemView} />
 
-        <Collapse in={search !== undefined} unmountOnExit orientation="horizontal">
+        <Collapse
+          in={search !== undefined}
+          unmountOnExit
+          orientation="horizontal"
+        >
           <SearchResultList
             className={css.SearchResultList}
             searchQuery={search ?? ""}

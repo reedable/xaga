@@ -22,7 +22,7 @@ use tauri::window::Color;
 use tauri::{Manager, Runtime, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_window_state::StateFlags;
 use xaga_core::embeddings::{
-    EmbeddingService, EmbeddingsDb, Job, ShutdownReason, Tier,
+    Embedder, EmbeddingService, EmbeddingsDb, Job, ShutdownReason, Tier,
 };
 use xaga_core::network_proxy;
 
@@ -45,6 +45,14 @@ pub(crate) const DEFAULT_FEED_MAX_BODY_BYTES: u64 = 10 * 1024 * 1024;
 /// Maximum bytes read from a local import file (OPML or bookmarks.html), shared
 /// by both formats rather than one per format.
 pub(crate) const DEFAULT_IMPORT_MAX_BYTES: u64 = 64 * 1024 * 1024;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum EmbeddingStartupState {
+    Loading,
+    Available,
+    Unavailable,
+}
 
 /// The open library and the write right to it, guarded as ONE unit: the path and the writer
 /// change together (both settled at startup; `set_library` restarts the process), so a
@@ -78,6 +86,10 @@ pub(crate) struct AppState {
     pub(crate) html_reader_line_height: Arc<RwLock<f64>>,
     pub(crate) show_sidebar: Arc<RwLock<bool>>,
     pub(crate) embedding_service: Arc<Mutex<Option<EmbeddingService>>>,
+    /// Model used by interactive text queries. Kept separately from the
+    /// writer service so read-only instances can still search.
+    pub(crate) embedding_query_model: Arc<Mutex<Option<Arc<Embedder>>>>,
+    pub(crate) embedding_startup_state: Arc<RwLock<EmbeddingStartupState>>,
     /// Read-only LanceDB handle for command reads. Distinct connection from
     /// the embedding service's writer; reads must `reload()` to see the service's writes.
     pub(crate) embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>>,
@@ -620,6 +632,10 @@ pub fn run() {
     let html_reader_line_height: Arc<RwLock<f64>> = Arc::new(RwLock::new(1.75));
     let show_sidebar: Arc<RwLock<bool>> = Arc::new(RwLock::new(true));
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
+    let embedding_query_model: Arc<Mutex<Option<Arc<Embedder>>>> =
+        Arc::new(Mutex::new(None));
+    let embedding_startup_state =
+        Arc::new(RwLock::new(EmbeddingStartupState::Loading));
     let embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>> = Arc::new(Mutex::new(None));
     let allowed_domains: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
     let load_remote_image = Arc::new(RwLock::new(DEFAULT_LOAD_REMOTE_IMAGE));
@@ -654,6 +670,8 @@ pub fn run() {
     let setup_reader_font_size = Arc::clone(&html_reader_font_size);
     let setup_reader_line_height = Arc::clone(&html_reader_line_height);
     let setup_svc = Arc::clone(&embedding_service);
+    let setup_embedding_query_model = Arc::clone(&embedding_query_model);
+    let setup_embedding_startup_state = Arc::clone(&embedding_startup_state);
     let setup_settings_baseline = Arc::clone(&settings_baseline);
 
     let app = tauri::Builder::default()
@@ -671,6 +689,8 @@ pub fn run() {
             html_reader_line_height,
             show_sidebar,
             embedding_service: embedding_service.clone(),
+            embedding_query_model,
+            embedding_startup_state,
             embeddings_read,
             allowed_domains,
             named_stores_supported,
@@ -1135,16 +1155,30 @@ pub fn run() {
                     log::warn!("startup: read-only instance — embedding service not started");
                     // Non-holders READ ("the library lock was only ever supposed to
                     // protect concurrent write to the database" — owner): open a
-                    // standalone read-only handle so is_cache_ready turns true and
-                    // embeddings-backed reads work. The
+                    // standalone read-only handle and query model so embedding
+                    // reads and semantic text queries remain available. The
                     // handle is version-pinned at open (reads do not reload per-call):
                     // this instance sees the library as of ITS startup; the writer's
                     // later commits appear after relaunch — same visibility rule as the
                     // `.md` side (no live watcher; recovery-at-startup is the answer).
-                    match EmbeddingsDb::open_readonly(&lib_path).await {
-                        Ok(db) => *setup_embeddings_read.lock().unwrap() = Some(db),
-                        Err(e) => {
-                            log::error!("startup: read-only embeddings open failed: {e}")
+                    let db = EmbeddingsDb::open_readonly(&lib_path).await;
+                    let model = xaga_core::embeddings::load_default_embedder().await;
+                    match (db, model) {
+                        (Ok(db), Ok(model)) => {
+                            *setup_embeddings_read.lock().unwrap() = Some(db);
+                            *setup_embedding_query_model.lock().unwrap() = Some(model);
+                            *setup_embedding_startup_state.write().unwrap() =
+                                EmbeddingStartupState::Available;
+                        }
+                        (db, model) => {
+                            if let Err(e) = db {
+                                log::error!("startup: read-only embeddings open failed: {e}");
+                            }
+                            if let Err(e) = model {
+                                log::error!("startup: read-only embedding model failed: {e}");
+                            }
+                            *setup_embedding_startup_state.write().unwrap() =
+                                EmbeddingStartupState::Unavailable;
                         }
                     }
                     return;
@@ -1156,6 +1190,7 @@ pub fn run() {
                         // state), so command reads see the service's writes — and the synchronous
                         // post-compaction reload — without any per-read reload.
                         *setup_embeddings_read.lock().unwrap() = Some(svc.read_handle());
+                        *setup_embedding_query_model.lock().unwrap() = Some(svc.embedder());
 
                         let embeddings_app_handle = app_handle.clone();
                         let priority_drained_rx = svc.subscribe_to_priority_drained();
@@ -1214,8 +1249,14 @@ pub fn run() {
 
                         svc.trigger_recovery(lib_path.clone());
                         *setup_svc.lock().unwrap() = Some(svc);
+                        *setup_embedding_startup_state.write().unwrap() =
+                            EmbeddingStartupState::Available;
                     }
-                    Err(e) => log::error!("startup: embedding service failed: {e}"),
+                    Err(e) => {
+                        log::error!("startup: embedding service failed: {e}");
+                        *setup_embedding_startup_state.write().unwrap() =
+                            EmbeddingStartupState::Unavailable;
+                    }
                 }
             });
 
@@ -1605,6 +1646,22 @@ mod remote_image_setting_tests {
                 &serde_json::to_string(&settings).unwrap()
             ).unwrap();
             assert_eq!(roundtrip.load_remote_image(), value);
+        }
+    }
+}
+
+#[cfg(test)]
+mod embedding_startup_state_tests {
+    use super::EmbeddingStartupState;
+
+    #[test]
+    fn states_serialize_for_the_frontend_contract() {
+        for (state, expected) in [
+            (EmbeddingStartupState::Loading, "\"loading\""),
+            (EmbeddingStartupState::Available, "\"available\""),
+            (EmbeddingStartupState::Unavailable, "\"unavailable\""),
+        ] {
+            assert_eq!(serde_json::to_string(&state).unwrap(), expected);
         }
     }
 }
