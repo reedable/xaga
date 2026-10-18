@@ -58,14 +58,16 @@ const ArticleDiagnosticSchema: z.ZodType<ArticleDiagnostic> = z.object({
       outcome: ArticleDiagnosticOutcomeSchema,
       code: z.string(),
       detail: z.string(),
-      download: z.object({
-        loaderLabel: z.string(),
-        sourceUrl: z.string(),
-        currentUrl: z.string().nullable(),
-        downloadUrl: z.string(),
-        destination: z.string().nullable(),
-        success: z.boolean().nullable(),
-      }).optional(),
+      download: z
+        .object({
+          loaderLabel: z.string(),
+          sourceUrl: z.string(),
+          currentUrl: z.string().nullable(),
+          downloadUrl: z.string(),
+          destination: z.string().nullable(),
+          success: z.boolean().nullable(),
+        })
+        .optional(),
     })
   ),
   droppedEvents: z.number(),
@@ -276,7 +278,9 @@ const EmbeddedSchema = z.object({
   similarity: z.number(),
 });
 
-function toEmbedded(data: z.infer<typeof EmbeddedSchema>): { similarity: number } {
+function toEmbedded(data: z.infer<typeof EmbeddedSchema>): {
+  similarity: number;
+} {
   return { similarity: data.similarity };
 }
 
@@ -299,7 +303,9 @@ const EmbeddedItemSchema = ItemSchema.extend(EmbeddedSchema.shape);
 // 3. Topic: `kind === "topic"` (a Topic has no url/is_unread/content — only the brand is reliable)
 // 4. Entry: has `is_unread` (topics don't — they have no url/is_unread fields)
 // 5. Generic Item: fallback
-const AnyEmbeddedItemSchema = EmbeddedAnnotationResultSchema.or(EmbeddedFeedSchema)
+const AnyEmbeddedItemSchema = EmbeddedAnnotationResultSchema.or(
+  EmbeddedFeedSchema
+)
   .or(EmbeddedEntrySchema)
   .or(EmbeddedTopicSchema)
   .or(EmbeddedItemSchema);
@@ -339,11 +345,22 @@ listen<string>("loader:will-unload" satisfies AppEvent, (e) => {
 });
 
 export class TauriPlatform implements Platform {
-  async onError(callback: (error: SerializedAppError) => void): Promise<UnlistenFn> {
+  async onError(
+    callback: (error: SerializedAppError) => void
+  ): Promise<UnlistenFn> {
     const seen = new Set<string>();
     const deliver = (error: unknown) => {
-      if (!isAppError(error) || typeof error.message !== "string" || typeof error.detail !== "string") return;
-      if (error.diagnosticId !== undefined && typeof error.diagnosticId !== "string") return;
+      if (
+        !isAppError(error) ||
+        typeof error.message !== "string" ||
+        typeof error.detail !== "string"
+      )
+        return;
+      if (
+        error.diagnosticId !== undefined &&
+        typeof error.diagnosticId !== "string"
+      )
+        return;
       if (error.diagnosticId) {
         if (seen.has(error.diagnosticId)) return;
         seen.add(error.diagnosticId);
@@ -355,7 +372,7 @@ export class TauriPlatform implements Platform {
     const unlisten = await listen<SerializedAppError>(
       name,
       (event) => deliver(event.payload),
-      { target: { kind: "WebviewWindow", label: getCurrentWindow().label } },
+      { target: { kind: "WebviewWindow", label: getCurrentWindow().label } }
     );
     try {
       const pending = await invoke<SerializedAppError[]>("take_ui_errors");
@@ -369,7 +386,9 @@ export class TauriPlatform implements Platform {
 
   // Window --------------------------------------------------------------------
 
-  async onWindowCloseRequested(callback: () => Promise<boolean>): Promise<UnlistenFn> {
+  async onWindowCloseRequested(
+    callback: () => Promise<boolean>
+  ): Promise<UnlistenFn> {
     return getCurrentWindow().onCloseRequested(async (event) => {
       if (!(await callback())) event.preventDefault();
     });
@@ -702,17 +721,29 @@ export class TauriPlatform implements Platform {
     return ArticleSchema.transform(toArticle).parse(result);
   }
 
-  async recoverEntryImages(signal: AbortSignal, id: string, recovery: ImageRecovery, diagnosticId?: string): Promise<Article> {
+  async recoverEntryImages(
+    signal: AbortSignal,
+    id: string,
+    recovery: ImageRecovery,
+    diagnosticId?: string
+  ): Promise<Article> {
     const invoker = decorate(invoke).with(abortable, { signal });
     const cancel = () => {
-      if (diagnosticId) void invoke("cancel_article_load", { diagnosticId }).catch(() => {});
+      if (diagnosticId)
+        void invoke("cancel_article_load", { diagnosticId }).catch(() => {});
     };
     signal.throwIfAborted();
     signal.addEventListener("abort", cancel, { once: true });
     try {
-      const result = await invoker<unknown>("recover_entry_images", { id, recovery, diagnosticId });
+      const result = await invoker<unknown>("recover_entry_images", {
+        id,
+        recovery,
+        diagnosticId,
+      });
       return ArticleSchema.transform(toArticle).parse(result);
-    } finally { signal.removeEventListener("abort", cancel); }
+    } finally {
+      signal.removeEventListener("abort", cancel);
+    }
   }
 
   async readEntryImages(
@@ -839,7 +870,13 @@ export class TauriPlatform implements Platform {
     signal: AbortSignal,
     topic: Omit<
       Topic,
-      "id" | "createdAt" | "unreadCount" | "entryCount" | "isPinned" | "__kind" | "members"
+      | "id"
+      | "createdAt"
+      | "unreadCount"
+      | "entryCount"
+      | "isPinned"
+      | "__kind"
+      | "members"
     >
   ): Promise<Topic> {
     const invoker = decorate(invoke)
@@ -1090,12 +1127,20 @@ export class TauriPlatform implements Platform {
     return listen<ExportOutcome>(name, listener);
   }
 
-  onBookmarksImported(callback: (outcome: BookmarkImportOutcome) => void): Promise<UnlistenFn> {
-    return listen<BookmarkImportOutcome>("bookmarks:imported", (e) => callback(e.payload));
+  onBookmarksImported(
+    callback: (outcome: BookmarkImportOutcome) => void
+  ): Promise<UnlistenFn> {
+    return listen<BookmarkImportOutcome>("bookmarks:imported", (e) =>
+      callback(e.payload)
+    );
   }
 
-  onBookmarksExported(callback: (outcome: ExportOutcome) => void): Promise<UnlistenFn> {
-    return listen<ExportOutcome>("bookmarks:exported", (e) => callback(e.payload));
+  onBookmarksExported(
+    callback: (outcome: ExportOutcome) => void
+  ): Promise<UnlistenFn> {
+    return listen<ExportOutcome>("bookmarks:exported", (e) =>
+      callback(e.payload)
+    );
   }
 
   onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn> {
@@ -1144,17 +1189,29 @@ export class TauriPlatform implements Platform {
     return listen<unknown>(name, listener);
   }
 
-  onAnnotationChanged(
-    callback: (item: ListItem) => void
-  ): Promise<UnlistenFn> {
+  onAnnotationChanged(callback: (item: ListItem) => void): Promise<UnlistenFn> {
     const name: DomainEvent = "annotation:changed";
     const listener = decorate((e) => {
-      const result = ListItemSchema.transform(toListItem).safeParse(
-        e.payload
-      );
+      const result = ListItemSchema.transform(toListItem).safeParse(e.payload);
       if (result.success) callback(result.data);
     }).with(logged, { logger, name });
 
+    return listen<unknown>(name, listener);
+  }
+
+  onAnnotationReplaced(
+    callback: (replacement: { oldId: string; item: ListItem }) => void
+  ): Promise<UnlistenFn> {
+    const name: DomainEvent = "annotation:replaced";
+    const listener = decorate((e) => {
+      const payload = z
+        .object({
+          oldId: z.string(),
+          item: ListItemSchema.transform(toListItem),
+        })
+        .safeParse(e.payload);
+      if (payload.success) callback(payload.data);
+    }).with(logged, { logger, name });
     return listen<unknown>(name, listener);
   }
 
@@ -1166,12 +1223,20 @@ export class TauriPlatform implements Platform {
     return listen<string>(name, listener);
   }
 
+  onFaviconChanged(callback: (article: Article) => void): Promise<UnlistenFn> {
+    const name: DomainEvent = "favicon:changed";
+    const listener = decorate((e) => {
+      const result = ArticleSchema.transform(toArticle).safeParse(e.payload);
+      if (result.success) callback(result.data);
+    }).with(logged, { logger, name });
+    return listen<unknown>(name, listener);
+  }
+
   onEmbeddingsChanged(callback: () => void): Promise<UnlistenFn> {
     const name: DomainEvent = "embedding:changed";
     const listener = decorate(callback).with(logged, { logger, name });
     return listen(name, listener);
   }
-
 
   async getTheme(): Promise<string> {
     const name = "get_theme";
@@ -1346,14 +1411,15 @@ export class TauriPlatform implements Platform {
   ): Promise<UnlistenFn> {
     const name: AppEvent = "loader:page-loaded";
     const listener = decorate(
-      (e: { payload: {
-      url: string;
-      html: string;
-      mimeType: string;
-      favicon?: string | null;
-      faviconData?: string | null;
-    } }) =>
-        callback(e.payload)
+      (e: {
+        payload: {
+          url: string;
+          html: string;
+          mimeType: string;
+          favicon?: string | null;
+          faviconData?: string | null;
+        };
+      }) => callback(e.payload)
     ).with(logged, { logger, name });
     return listen<{
       url: string;
@@ -1361,10 +1427,7 @@ export class TauriPlatform implements Platform {
       mimeType: string;
       favicon?: string | null;
       faviconData?: string | null;
-    }>(
-      name,
-      listener
-    );
+    }>(name, listener);
   }
 
   onFind(callback: () => void): Promise<UnlistenFn> {

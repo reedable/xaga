@@ -11,7 +11,7 @@ The rendering path applies its own controls and does not depend on ingest-time s
 - **Rendered output is sanitized with DOMPurify at render.** `markdownToHtml` (`markdownPipeline.ts`) parses embedded HTML (`remark-rehype` with `allowDangerousHtml` + `rehype-raw`) so HTML-bearing fields (e.g. feed summaries, which are stored as feed-supplied HTML) render, and passes the serialized output through `DOMPurify.sanitize` before it reaches `buildEntryHtml`. DOMPurify is the explicit, render-side sanitization control; it does not rely on ingest-time sanitization.
 - **The pipeline is inert up to the sanitizer.** Every stage before DOMPurify (remark/rehype, including `rehype-raw`'s parse5) transforms strings and plain JS syntax trees — no DOM node construction, no `Image`, no capability to execute content or emit a network request at any stage (the configured pipeline runs in plain Node, where any DOM API access throws). DOMPurify's own parse uses a document with no browsing context, which loads no subresources and executes no scripts. Sanitization is placed **last**, closest to the sink: sanitizing before the markdown transforms would re-parse sanitized output through different parsers (the mXSS pattern). Same assumption and fallback as ingest (`entryWorker.ts`): if any pre-sanitizer stage is ever replaced with one that renders or executes content, sanitization must move before it.
 - **The reader is a sandboxed, opaque-origin iframe.** `sandbox="allow-scripts"` only (`HtmlReader.tsx:340`) — no `allow-same-origin` — so the reader document has an opaque origin: no access to the app's DOM, IPC, or storage. Content is delivered as a `Blob` URL via `location.replace` and the object URL is revoked after load.
-- **The reader's own script is CSP-hash-pinned.** The bundled CSP (`tauri.conf.json`) has `script-src 'self' 'sha256-…'` with no `unsafe-inline`; the single inline reader script is byte-stable and its hash is allow-listed (regenerate with `node scripts/csp-hash.mjs` when it changes). No other inline script can execute in the app's pages.
+- **The reader's own script is CSP-hash-pinned.** The bundled CSP (`tauri.conf.json`) has `script-src 'self' 'sha256-…'` with no `unsafe-inline`; the single inline reader script is byte-stable and its hash is allow-listed. `node scripts/csp-hash.mjs --check` verifies the configured hash and runs before every production frontend build; run the command without `--check` to print a replacement value. No other inline script can execute in the app's pages.
 - **Annotations enter the reader through a JSON data island**, a non-executed `<script type="application/json">` block (`buildEntryHtml.ts:89-102`). Every `<` in the JSON is escaped to `\u003c`, so annotation text containing `</script>` or `<!--` cannot break out of the island element.
 - **`postMessage` traffic is source-checked.** The parent only accepts messages whose `source` is the reader iframe's own `contentWindow` (`HtmlReader.tsx:273-276`), so a sibling frame (e.g. the PDF viewer) or any window holding a reference cannot spoof reader events such as link opens.
 - **No raw-HTML sinks in the app UI.** The React tree contains no `dangerouslySetInnerHTML` and no `srcdoc`; feed titles/summaries render as React text nodes, which are escaped by construction.
@@ -49,12 +49,12 @@ or fetching their nested resources in the tested WebKit image contexts. This
 does not imply that stored SVG bytes have been sanitized or that opening those
 bytes as a top-level document has the same protections.
 
-SVG favicons also use locally stored resources rendered as images in the toolbar,
-not inline SVG markup in the main webview. Their original validated SVG bytes
-are retained. Opening a cached article does not itself retry a failed favicon
-acquisition; reloading the article retries its icon. A successful save and the
-toolbar's refresh timing are separate: the current UI can require navigating away
-and back before displaying the updated icon.
+Favicons are shared, extensionless resources keyed by normalized source URL under
+`favicons/`. The toolbar renders them as local image data, never as inline markup
+or a remote URL. Opening a cached article performs no favicon request. A remote
+load of a new or refreshed article reacquires its current icon; successful
+validation atomically replaces the shared resource, while failure preserves the
+cached bytes. Read-only instances can display but not replace shared resources.
 
 The account setting `load_remote_image` gates recovery and the article loader's
 additional body-image capture fetches. The absent-value default is defined once

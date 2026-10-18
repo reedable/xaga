@@ -3,6 +3,7 @@ import { usePlatform } from "../platform/Platform";
 import TopicsContext from "../providers/TopicsContext";
 import type { Annotation, Entry, Filter, Topic, TopicSort } from "../types";
 import sortByUnreadCount from "../utils/sortByUnreadCount";
+import { emitTopicItemAdded } from "../events/topicMembership";
 import { useErrorSink } from "./useErrorSink";
 import { useSidebar } from "./useSidebar";
 
@@ -20,7 +21,13 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     async (
       topic: Omit<
         Topic,
-        "id" | "createdAt" | "unreadCount" | "entryCount" | "isPinned" | "__kind" | "members"
+        | "id"
+        | "createdAt"
+        | "unreadCount"
+        | "entryCount"
+        | "isPinned"
+        | "__kind"
+        | "members"
       >
     ) => {
       const signal = abortControllerRef.current.signal;
@@ -73,24 +80,38 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     async (topicId: string, item: Entry | Annotation) => {
       const signal = abortControllerRef.current.signal;
       try {
-        return await platform.addTopicItem(signal, topicId, item);
+        const topic = await platform.addTopicItem(signal, topicId, item);
+        setTopics((prev) =>
+          prev
+            .map((value) => (value.id === topic.id ? topic : value))
+            .sort(sortByUnreadCount)
+        );
+        emitTopicItemAdded({ topicId, itemId: item.id });
+        return topic;
       } catch (e) {
         pushError(e);
       }
     },
-    [abortControllerRef, platform, pushError]
+    [abortControllerRef, platform, pushError, setTopics]
   );
 
   const removeTopicItem = useCallback(
     async (topicId: string, itemId: string) => {
       const signal = abortControllerRef.current.signal;
       try {
-        return await platform.removeTopicItem(signal, topicId, itemId);
+        const topic = await platform.removeTopicItem(signal, topicId, itemId);
+        setTopics((prev) =>
+          prev
+            .map((value) => (value.id === topic.id ? topic : value))
+            .sort(sortByUnreadCount)
+        );
+        // Keep an open Topic list stable; removal is reflected on its next natural reload.
+        return topic;
       } catch (e) {
         pushError(e);
       }
     },
-    [abortControllerRef, platform, pushError]
+    [abortControllerRef, platform, pushError, setTopics]
   );
 
   const listEntryTopics = useCallback(

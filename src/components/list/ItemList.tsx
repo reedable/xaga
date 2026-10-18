@@ -32,6 +32,7 @@ import { useEvents } from "../../hooks/useEvents";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRouter from "../../hooks/useRouter";
 import { useTopics } from "../../hooks/useTopics";
+import { onTopicItemAdded } from "../../events/topicMembership";
 import { ALL_ITEMS, SHORTCUTS } from "../../Shortcuts";
 import {
   isPartialAnnotation,
@@ -45,6 +46,7 @@ import {
   type TopicSort,
 } from "../../types";
 import cx from "../../utils/cx";
+import { mergeTopicAddition } from "../../utils/mergeTopicAddition";
 import ItemStatus from "../ItemStatus";
 import Quotes from "../Quotes";
 import css from "./ItemList.module.css";
@@ -98,6 +100,7 @@ export function ItemList({
     onUnreadChanged,
     onBookmarkChanged,
     onAnnotationChanged,
+    onAnnotationReplaced,
     onAnnotationRemoved,
   } = useEvents();
 
@@ -225,6 +228,25 @@ export function ItemList({
   const selectedCollectionRef = useRef(selectedCollection);
   selectedCollectionRef.current = selectedCollection;
 
+  const mergeAddedTopicItem = useCallback(
+    async (changedTopicId: string, itemId: string) => {
+      if (changedTopicId !== topicId) return;
+      const authoritative = await listTopicItems(
+        changedTopicId,
+        filter ?? "unread",
+        topicSort
+      );
+      if (
+        !authoritative ||
+        !isTopic(selectedCollectionRef.current) ||
+        selectedCollectionRef.current.id !== changedTopicId
+      )
+        return;
+      setItems((current) => mergeTopicAddition(current, authoritative, itemId));
+    },
+    [topicId, filter, topicSort, listTopicItems]
+  );
+
   useEffect(() => {
     abort();
     (async () => {
@@ -249,8 +271,17 @@ export function ItemList({
   useEffect(() => {
     return onAnnotationChanged((item) => {
       setItems((prev) => prev.map((p) => (p.id === item.id ? item : p)));
+      if (topicId) void mergeAddedTopicItem(topicId, item.id);
     });
-  }, [onAnnotationChanged]);
+  }, [onAnnotationChanged, topicId, mergeAddedTopicItem]);
+
+  useEffect(() => {
+    return onAnnotationReplaced(({ oldId, item }) => {
+      setItems((prev) =>
+        prev.map((value) => (value.id === oldId ? item : value))
+      );
+    });
+  }, [onAnnotationReplaced]);
 
   useEffect(() => {
     return onAnnotationRemoved((id) => {
@@ -261,6 +292,14 @@ export function ItemList({
   useEffect(() => {
     return onFeedsRefreshed(() => requestItems(selectedCollectionRef.current));
   }, [onFeedsRefreshed, requestItems]);
+
+  useEffect(
+    () =>
+      onTopicItemAdded(async ({ topicId: changedTopicId, itemId }) => {
+        await mergeAddedTopicItem(changedTopicId, itemId);
+      }),
+    [mergeAddedTopicItem]
+  );
 
   return (
     <div className={cx(className, css.ItemList)}>

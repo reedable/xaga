@@ -66,7 +66,7 @@ remain after migration.
 - [Loader download consumers](../../../src-tauri/src/loader_download.rs)
 - [Injectable validation and staging](../../../src-tauri/src/resource_download.rs)
 - [Article loader lifecycle](../../../src-tauri/src/article_loader.rs)
-- [Wry response policy](../../../../wry/src/wkwebview/navigation.rs)
+- [Wry navigation policy](https://github.com/reedable/wry/blob/566f7b984147d58e05e69c8dcf8cf6336cc465bb/src/wkwebview/navigation.rs)
 - [Domain events](../../../crates/xaga-core/src/events.rs)
 - [Tauri event funnel](../../../src-tauri/src/events.rs)
 - [Platform events](../../../src/platform/events.ts)

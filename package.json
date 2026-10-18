@@ -1,13 +1,13 @@
 {
   "name": "xaga",
   "private": true,
-  "version": "0.7.3",
+  "version": "0.7.4",
   "type": "module",
   "scripts": {
     "clean": "rm -rf dist target",
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "test": "vitest run",
+    "build": "node scripts/csp-hash.mjs --check && tsc -b && vite build",
+    "test": "node --test scripts/csp-hash.test.mjs && vitest run",
     "lint": "eslint .",
     "preview": "vite preview",
     "audit": "cargo audit",

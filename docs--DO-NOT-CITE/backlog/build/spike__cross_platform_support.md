@@ -15,6 +15,8 @@ Xaga supports and verifies macOS only. Windows and Linux behavior is undefined f
 ## Remaining work
 
 - Verify `proxy_url` enforcement on WebView2 and WebKitGTK.
+- Verify PDF response-to-download routing on WebView2 and WebKitGTK and define
+  explicit unsupported behavior where equivalent routing is unavailable.
 - Define persistent or intentionally ephemeral loader storage for non-macOS platforms.
 - Replace the macOS-specific `clear_webview_history` path with platform implementations or explicit unsupported behavior.
 - Verify `FileLock`, rename-over-lock, and path-identity behavior on Windows and Linux; design a non-Unix path-identity check where required.

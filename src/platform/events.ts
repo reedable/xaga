@@ -9,7 +9,9 @@ export const DOMAIN_EVENT = [
   "unread:changed", // payload: Entry (schema-minted)
   "bookmark:changed", // payload: Entry (schema-minted)
   "annotation:changed", // payload: ListItem (schema-minted)
+  "annotation:replaced", // payload: { oldId, item: ListItem }
   "annotation:removed", // payload: string (annotation id)
+  "favicon:changed", // payload: Article (schema-minted)
   "embedding:changed", // payload: none
   "embedding:shutdown", // payload: none
   "feed:refreshed", // payload: Feed (schema-minted)

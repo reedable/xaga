@@ -29,8 +29,12 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
   const [abort, abortControllerRef] = useAbortController();
   const { queryByItem } = useRelatedItems(abortControllerRef);
   const [embeddedItems, setEmbeddedItems] = useState<Ranked<Item>[]>([]);
-  const { onUnreadChanged, onBookmarkChanged, onAnnotationChanged } =
-    useEvents();
+  const {
+    onUnreadChanged,
+    onBookmarkChanged,
+    onAnnotationChanged,
+    onAnnotationReplaced,
+  } = useEvents();
 
   const requestRelatedItems = useCallback(
     async (id: string) => {
@@ -92,6 +96,16 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
       );
     });
   }, [onAnnotationChanged]);
+
+  useEffect(() => {
+    return onAnnotationReplaced(({ oldId, item }) => {
+      setEmbeddedItems((prev) =>
+        prev.map((value) =>
+          value.id === oldId ? { ...value, ...item } : value
+        )
+      );
+    });
+  }, [onAnnotationReplaced]);
 
   if (embeddedItems.length === 0) return null;
 

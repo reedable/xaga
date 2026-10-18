@@ -132,7 +132,9 @@ pub(crate) fn emit_domain<R: Runtime>(target: &impl Emitter<R>, event: DomainEve
         DomainEvent::UnreadChanged(entry) => target.emit(name, entry),
         DomainEvent::BookmarkChanged(entry) => target.emit(name, entry),
         DomainEvent::AnnotationChanged(item) => target.emit(name, item),
+        DomainEvent::AnnotationReplaced(replacement) => target.emit(name, replacement),
         DomainEvent::AnnotationRemoved { id } => target.emit(name, id),
+        DomainEvent::FaviconChanged(article) => target.emit(name, article),
         DomainEvent::FeedRefreshed(feed) => target.emit(name, feed),
         DomainEvent::LibraryModeChanged {
             is_library_read_only,
@@ -184,7 +186,10 @@ mod tests {
     use super::*;
 
     fn outcome<T: Serialize + Clone>() -> Outcome<T> {
-        Outcome { result: None, error: None }
+        Outcome {
+            result: None,
+            error: None,
+        }
     }
 
     fn all_variants() -> Vec<AppEvent> {
@@ -230,10 +235,11 @@ mod tests {
 
     /// The domain names pinned by xaga-core's `events::tests`; listed here to
     /// assert cross-enum uniqueness without reconstructing domain payloads.
-    const DOMAIN_NAMES: [&str; 8] = [
+    const DOMAIN_NAMES: [&str; 9] = [
         "unread:changed",
         "bookmark:changed",
         "annotation:changed",
+        "annotation:replaced",
         "annotation:removed",
         "embedding:changed",
         "embedding:shutdown",
@@ -281,10 +287,18 @@ mod tests {
 }
 
 /// Deliver an unsolicited error only to the webview that owns the operation.
-pub(crate) fn emit_error<R: Runtime>(app: &tauri::AppHandle<R>, label: &str, error: crate::error::SerializedError) {
+pub(crate) fn emit_error<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    label: &str,
+    error: crate::error::SerializedError,
+) {
     let event = AppEvent::Error(error);
     if let AppEvent::Error(payload) = &event {
-        if let Err(error) = app.emit_to(tauri::EventTarget::webview_window(label), event.name(), payload) {
+        if let Err(error) = app.emit_to(
+            tauri::EventTarget::webview_window(label),
+            event.name(),
+            payload,
+        ) {
             log::warn!("error notification failed: {error}");
         }
     }

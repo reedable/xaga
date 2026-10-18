@@ -35,7 +35,7 @@ and its independent enforcement path.
 
 ## References
 
-- [Wry response policy](../../../../wry/src/wkwebview/navigation.rs)
+- [Wry navigation policy](https://github.com/reedable/wry/blob/566f7b984147d58e05e69c8dcf8cf6336cc465bb/src/wkwebview/navigation.rs)
 - [Article loader](../../../src-tauri/src/article_loader.rs)
 - [Loader downloads](../../../src-tauri/src/loader_download.rs)
 - [Feed persistence](../../../crates/xaga-core/src/persistence/feeds.rs)

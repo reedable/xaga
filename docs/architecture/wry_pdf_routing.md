@@ -1,8 +1,8 @@
 # Wry PDF response routing
 
-Xaga's workspace overrides Wry with the sibling `../wry` checkout. The patch
-base is Wry 0.57.0, revision `792d0359ba6501a4fc360ece17de2ae42329a47c`.
-The local override requires that checkout; it is not a reproducible remote pin.
+Xaga's workspace pins its Wry override to revision
+`566f7b984147d58e05e69c8dcf8cf6336cc465bb` of the `reedable/wry` fork. The
+package version is `0.57.0+patch.1`.
 
 ## Build features
 

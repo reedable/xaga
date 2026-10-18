@@ -218,7 +218,7 @@ impl EmbeddingService {
         let embedder = load_default_embedder().await?;
         let service_embedder = Arc::clone(&embedder);
 
-        let db = EmbeddingsDb::open(&library_dir).await?;
+        let db = EmbeddingsDb::open_writer(&library_dir, lock.as_ref()).await?;
         // A clone shares the same underlying table state; handed to the app as its read handle so
         // reads see the service's writes (and the post-compaction reload) without a per-read reload.
         let read_db = db.clone();

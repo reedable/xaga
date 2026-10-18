@@ -14,6 +14,7 @@ use lancedb::DistanceType;
 use lancedb::query::{ExecutableQuery, QueryBase, Select};
 
 use super::EmbeddingsError;
+use crate::fs::FileLock;
 use crate::types::{EmbeddedEntry, Entry, Kind, PartialAnnotation};
 
 const EMBEDDING_DIM: i32 = 384;
@@ -449,6 +450,42 @@ pub struct EmbeddingsDb {
 }
 
 impl EmbeddingsDb {
+    /// Opens an existing embeddings table without creating or migrating it.
+    pub async fn open_readonly(library_dir: &Path) -> Result<Self, EmbeddingsError> {
+        let schema = make_schema();
+        let db_path = crate::library::index_path(library_dir);
+        let connection = lancedb::connect(db_path.to_str().ok_or_else(|| {
+            EmbeddingsError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "non-UTF-8 path",
+            ))
+        })?)
+        .execute()
+        .await?;
+        let table = connection.open_table("documents").execute().await?;
+
+        Ok(Self {
+            _connection: connection,
+            table,
+            schema,
+        })
+    }
+
+    /// Opens the embeddings table for mutation. Possession of the library lock is required for
+    /// creation and schema migration as well as subsequent writes through the returned handle.
+    pub async fn open_writer(
+        library_dir: &Path,
+        _lock: &FileLock,
+    ) -> Result<Self, EmbeddingsError> {
+        Self::open_mutating(library_dir).await
+    }
+
+    /// Test databases are isolated and do not participate in the process-level library lock.
+    #[cfg(test)]
+    pub async fn open(library_dir: &Path) -> Result<Self, EmbeddingsError> {
+        Self::open_mutating(library_dir).await
+    }
+
     /// Opens the `embeddings.lance` database inside `library_dir`, creating an empty table only
     /// on first run (when it does not exist yet).
     ///
@@ -457,7 +494,7 @@ impl EmbeddingsDb {
     /// "repaired" by overwriting or destroying a populated index — doing so has wiped the entire
     /// embeddings mirror. Clearing a corrupt DB is a separate, explicit operation (the `reset`
     /// command / [`Self::destroy`]).
-    pub async fn open(library_dir: &Path) -> Result<Self, EmbeddingsError> {
+    async fn open_mutating(library_dir: &Path) -> Result<Self, EmbeddingsError> {
         let schema = make_schema();
         let db_path = crate::library::index_path(library_dir);
         let connection = lancedb::connect(db_path.to_str().ok_or_else(|| {
@@ -475,7 +512,7 @@ impl EmbeddingsDb {
                 // is metadata-only (no fragment rewrite, no re-embed) — see lance schema_evolution.
                 if table.schema().await?.field_with_name("items").is_err() {
                     log::info!(
-                        "EmbeddingsDb::open: adding 'items' column to existing table (metadata-only)"
+                        "EmbeddingsDb: adding 'items' column to existing table (metadata-only)"
                     );
                     let items_schema = Arc::new(Schema::new(vec![Field::new(
                         "items",
@@ -524,7 +561,7 @@ impl EmbeddingsDb {
     /// Deletes the `embeddings.lance` directory entirely.
     /// Used when restarting the Reconciler with a fresh DB.
     /// Silently succeeds if the directory does not exist.
-    pub fn destroy(library_dir: &Path) -> std::io::Result<()> {
+    pub fn destroy(library_dir: &Path, _lock: &FileLock) -> std::io::Result<()> {
         match std::fs::remove_dir_all(crate::library::index_path(library_dir)) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             other => other,
@@ -1035,7 +1072,7 @@ impl EmbeddingsDb {
     }
 
     /// Deletes the row whose `id` column matches exactly.
-    pub async fn delete_by_id(&self, id: &str) -> Result<(), EmbeddingsError> {
+    pub(crate) async fn delete_by_id(&self, id: &str) -> Result<(), EmbeddingsError> {
         let escaped = id.replace('\'', "''");
         self.table.delete(&format!("id = '{escaped}'")).await?;
         Ok(())
@@ -1623,6 +1660,30 @@ impl EmbeddingsDb {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn readonly_open_does_not_create_the_documents_table() {
+        let dir = tempfile::tempdir().unwrap();
+
+        assert!(EmbeddingsDb::open_readonly(dir.path()).await.is_err());
+
+        let connection = lancedb::connect(
+            crate::library::index_path(dir.path())
+                .to_str()
+                .expect("UTF-8 test path"),
+        )
+        .execute()
+        .await
+        .unwrap();
+        assert!(
+            !connection
+                .table_names()
+                .execute()
+                .await
+                .unwrap()
+                .contains(&"documents".to_string())
+        );
+    }
 
     fn sample(id: &str, kind: &str, vector: Option<Vec<f32>>) -> EmbeddingEntry {
         EmbeddingEntry {

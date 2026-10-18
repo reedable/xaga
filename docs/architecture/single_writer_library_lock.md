@@ -20,7 +20,10 @@
 - Every library-writing command is refused centrally at the IPC boundary with a typed `E_READ_ONLY` error — the `WRITE_COMMANDS` registry next to `is_invoke_allowed` (`src-tauri/src/commands/mod.rs`), the same single-choke-point pattern as the window allowlist. New write commands must be added to that registry (it drives the early, uniform read-only rejection and the frontend affordance list; the ultimate enforcement is that a read-only instance has no writer, so `require_writer` errors regardless).
 - Incidental writes hiding in read flows no-op silently: `read_article`'s mark-read is skipped, so reading stays seamless — the entry simply stays unread.
 - The frontend learns the mode (`is_library_read_only` command + `library:mode-changed` event), shows a read-only badge, and disables write affordances.
-- Reads are untouched: `.md` reads, LanceDB reads (`embeddings_read` when available), search, lists.
+- Reads are untouched: `.md` reads, search, and lists. LanceDB readers use
+  `EmbeddingsDb::open_readonly`, which opens an existing table without creating or migrating it.
+  LanceDB writers use `EmbeddingsDb::open_writer` only after acquiring the library lock; the
+  writer retains that lock across asynchronous mutation work.
 
 ## In-process write serialization (the writer, axis 2)
 

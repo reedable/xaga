@@ -45,7 +45,7 @@ pub async fn handle(cmd: FeedsCommand, data_dir: &PathBuf) {
 /// Reads the unread and bookmarked entry-id sets from LanceDB — the same source the UI uses
 /// (`db.unread_ids()` / `db.get_bookmarked_ids()` via the read handle). Dies on db open/read error.
 async fn read_state_sets(data_dir: &Path) -> (HashSet<String>, HashSet<String>) {
-    let db = match EmbeddingsDb::open(data_dir).await {
+    let db = match EmbeddingsDb::open_readonly(data_dir).await {
         Ok(db) => db,
         Err(e) => die(e),
     };
