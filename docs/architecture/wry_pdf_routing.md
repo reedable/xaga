@@ -69,7 +69,8 @@ and persists accepted output through the library writer.
 
 `src-tauri/tests/resource_download_webview.rs` serves controlled resources
 through a local proxy using a reserved external hostname. Its cases are `icon`,
-`pdf`, `invalid-pdf`, `html`, and `blob-pdf`. Run each in a macOS GUI session:
+`pdf`, `invalid-pdf`, `favicon-pdf`, `html`, and `blob-pdf`. Run each in a macOS
+GUI session:
 
 ```sh
 XAGA_DOWNLOAD_SMOKE_CASE=pdf cargo test -p xaga --test resource_download_webview --features wry-pdf-downloads --locked --offline
@@ -80,6 +81,8 @@ retained staging paths when the callback returns no path, injected validation,
 and cleanup. The PDF fixture is a one-page PDF; the invalid fixture is labelled
 PDF but fails the signature validator. The test uses the production validator with the current
 `%PDF-` signature contract; it does not establish parser safety.
+The `favicon-pdf` case assigns that PDF response to the favicon consumer and
+verifies rejection by image validation rather than acceptance by the PDF consumer.
 
 The rendering cases check HTML document and local PDF iframe load signals with
 no download callback. They do not visually inspect PDF pixels or establish
