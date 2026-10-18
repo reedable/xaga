@@ -62,34 +62,47 @@ pub(crate) async fn save_article(
     } else {
         None
     };
-    let favicon = favicon.or_else(|| existing.as_ref().and_then(|(_, fm)| fm.favicon.as_deref()));
+    let existing_favicon = existing.as_ref().and_then(|(_, fm)| fm.favicon.clone());
 
     // Prepare candidate local URLs, write image files before Markdown, and
     // commit only URLs whose files were successfully persisted.
-    let mut extraction = crate::persistence::images::extract_images(id, markdown, url_data);
+    let extraction = crate::persistence::images::extract_images(id, markdown, url_data);
 
-    // The favicon is localised exactly like a body image: its bytes join the same
-    // per-entry directory and the stored value becomes a local ref, so displaying
-    // the entry issues no request from the main window. `extract_favicon` returns
-    // `None` for a value that is already local, which is what makes a re-save a
-    // no-op rather than a re-hash.
+    // A successful remote acquisition atomically refreshes the shared URL-identity resource.
+    // Failure retains the article's existing local favicon and never removes cached bytes.
     let favicon = match favicon {
-        Some(url) => match crate::persistence::images::extract_favicon(url, url_data) {
-            Some((hash, image)) => {
-                if let Some(image) = image {
-                    if !extraction
-                        .images
-                        .iter()
-                        .any(|existing| existing.file_name == image.file_name)
+        Some(url) if url.starts_with("http://") || url.starts_with("https://") => {
+            let shared = crate::util::normalize_url(url)
+                .ok()
+                .map(|normalized| crate::util::url_hash12(&normalized));
+            match crate::persistence::images::extract_shared_favicon(url, url_data) {
+                Some((hash, bytes)) => {
+                    match crate::persistence::images::write_shared_favicon(
+                        library_dir, &hash, bytes, token,
+                    )
+                    .await
                     {
-                        extraction.images.push(image);
+                        Ok(()) => Some(crate::library::favicon_ref(&hash)),
+                        Err(error) => {
+                            log::warn!("failed to write shared favicon {hash}: {error}");
+                            if crate::library::favicon_path(library_dir, &hash).is_file() {
+                                Some(crate::library::favicon_ref(&hash))
+                            } else {
+                                existing_favicon
+                            }
+                        }
                     }
                 }
-                Some(crate::library::entry_image_ref(id, &hash))
+                None => match shared {
+                    Some(hash) if crate::library::favicon_path(library_dir, &hash).is_file() => {
+                        Some(crate::library::favicon_ref(&hash))
+                    }
+                    _ => existing_favicon,
+                },
             }
-            None => Some(url.to_string()),
-        },
-        None => None,
+        }
+        Some(local) => Some(local.to_string()),
+        None => existing_favicon,
     };
 
     let landed =
@@ -609,9 +622,9 @@ Original body
         std::fs::write(&orphan, b"orphan").unwrap();
         save_article(lib, id, "https://example.com/a", "T", None, None, None,
             article.favicon.as_deref(), &article.content, &no_data(), WriteToken::for_test()).await.unwrap();
-        for url in [image_url, icon_url] {
-            assert!(image_dir.join(format!("{}.png", crate::persistence::images::image_url_hash(url))).exists());
-        }
+        assert!(image_dir.join(format!("{}.png", crate::persistence::images::image_url_hash(image_url))).exists());
+        let favicon_hash = crate::util::url_hash12(&crate::util::normalize_url(icon_url).unwrap());
+        assert!(crate::library::favicon_path(lib, &favicon_hash).exists());
         assert!(!orphan.exists());
         let stored = std::fs::read_to_string(crate::library::entry_path(lib, id)).unwrap();
         assert!(!stored.contains("images:"));
@@ -721,19 +734,19 @@ Original body
         .unwrap();
 
         let article = read_article(lib, id).await.unwrap();
-        let hash = crate::persistence::images::image_url_hash(favicon_url);
+        let hash = crate::util::url_hash12(&crate::util::normalize_url(favicon_url).unwrap());
 
         // Stored value is a local ref — nothing for the main window to fetch.
         assert_eq!(
             article.favicon.as_deref(),
-            Some(crate::library::entry_image_ref(id, &hash).as_str())
+            Some(crate::library::favicon_ref(&hash).as_str())
         );
-        assert!(crate::library::entry_image_path(lib, id, &format!("{hash}.png")).exists());
+        assert!(crate::library::favicon_path(lib, &hash).exists());
+        assert!(!crate::library::entry_images_dir(lib, id).exists());
     }
 
     #[tokio::test]
-    async fn save_article_keeps_the_favicon_ref_when_bytes_are_absent() {
-        // A failed favicon fetch degrades to a broken ref, never to a live URL.
+    async fn new_article_has_no_favicon_when_acquisition_fails() {
         let dir = tempfile::tempdir().unwrap();
         let lib = dir.path();
         let id = "abcdef123456";
@@ -747,8 +760,32 @@ Original body
         .unwrap();
 
         let article = read_article(lib, id).await.unwrap();
-        assert!(article.favicon.as_deref().unwrap().starts_with("../images/"));
-        assert!(!article.favicon.as_deref().unwrap().contains("http"));
+        assert!(article.favicon.is_none());
+    }
+
+    #[tokio::test]
+    async fn failed_acquisition_reuses_the_shared_url_identity_when_cached() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        let favicon_url = "https://example.com/favicon.ico";
+
+        save_article(
+            lib, "first-entry1", "https://example.com/a", "A", None, None, None,
+            Some(favicon_url), "body", &data(favicon_url, PNG_DATA), WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        let first = read_article(lib, "first-entry1").await.unwrap();
+
+        save_article(
+            lib, "second-entry", "https://example.com/b", "B", None, None, None,
+            Some(favicon_url), "body", &no_data(), WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        let second = read_article(lib, "second-entry").await.unwrap();
+
+        assert_eq!(second.favicon, first.favicon);
     }
 
     #[tokio::test]
@@ -779,9 +816,7 @@ Original body
     }
 
     #[tokio::test]
-    async fn save_article_gc_keeps_the_favicon_file() {
-        // The favicon is referenced from frontmatter, not the body — the sweep
-        // must still treat it as live.
+    async fn entry_image_gc_does_not_remove_the_shared_favicon() {
         let dir = tempfile::tempdir().unwrap();
         let lib = dir.path();
         let id = "abcdef123456";
@@ -797,8 +832,8 @@ Original body
         .await
         .unwrap();
 
-        let hash = crate::persistence::images::image_url_hash(favicon_url);
-        assert!(crate::library::entry_image_path(lib, id, &format!("{hash}.png")).exists());
+        let hash = crate::util::url_hash12(&crate::util::normalize_url(favicon_url).unwrap());
+        assert!(crate::library::favicon_path(lib, &hash).exists());
     }
 
     #[tokio::test]

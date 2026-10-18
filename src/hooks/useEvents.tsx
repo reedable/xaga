@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { usePlatform } from "../platform/Platform";
-import type { Entry, Feed, ListItem } from "../types";
+import type { Article, Entry, Feed, ListItem } from "../types";
 import { debounced } from "../utils/Decorator";
 
 export function subscribe(register: () => Promise<() => void>): () => void {
@@ -52,6 +52,12 @@ export function useEvents() {
   const onAnnotationRemoved = useCallback(
     (callback: (id: string) => void) =>
       subscribe(() => platform.onAnnotationRemoved(callback)),
+    [platform]
+  );
+
+  const onFaviconChanged = useCallback(
+    (callback: (article: Article) => void) =>
+      subscribe(() => platform.onFaviconChanged(callback)),
     [platform]
   );
 
@@ -108,6 +114,7 @@ export function useEvents() {
     onBookmarkChanged,
     onAnnotationChanged,
     onAnnotationRemoved,
+    onFaviconChanged,
     onEmbeddingsChanged,
     onLoaderClosed,
     onLoaderPageLoaded,

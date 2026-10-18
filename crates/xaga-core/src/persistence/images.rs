@@ -375,6 +375,37 @@ pub(crate) fn extract_favicon(
     Some((hash, image))
 }
 
+/// Validates and decodes a remotely acquired favicon for shared storage. The normalized source
+/// URL is its identity; the stored file is extensionless because one identity has one canonical
+/// location regardless of response representation.
+pub(crate) fn extract_shared_favicon(
+    url: &str,
+    url_data: &HashMap<String, String>,
+) -> Option<(String, Vec<u8>)> {
+    if !is_remote(url) {
+        return None;
+    }
+    let normalized = crate::util::normalize_url(url).ok()?;
+    let hash = crate::util::url_hash12(&normalized);
+    let data_uri = url_data.get(url).or_else(|| url_data.get(&normalized))?;
+    let image = decode_data_uri(
+        &hash,
+        data_uri,
+        &base64::engine::general_purpose::STANDARD,
+    )?;
+    Some((hash, image.bytes))
+}
+
+/// Atomically replaces the cached bytes for one favicon URL identity.
+pub(crate) async fn write_shared_favicon(
+    library_dir: &Path,
+    hash: &str,
+    bytes: Vec<u8>,
+    _token: WriteToken,
+) -> std::io::Result<()> {
+    crate::fs::write_atomic_async(crate::library::favicon_path(library_dir, hash), bytes).await
+}
+
 // ── Disk I/O ──────────────────────────────────────────────────────────────────
 //
 // Ordering invariant (see docs/architecture/crash_consistency.md): images are
@@ -521,9 +552,57 @@ pub async fn read_entry_images(library_dir: &Path, id: &str, refs: &[String]) ->
     let mut out = Vec::with_capacity(refs.len());
     let mut total: usize = 0;
     for reference in refs {
-        out.push(resolve_ref(id, reference, &files, &engine, &mut total).await);
+        let resolved = if let Some(hash) = crate::library::parse_favicon_ref(reference) {
+            resolve_favicon_ref(library_dir, hash, &engine, &mut total).await
+        } else {
+            resolve_ref(id, reference, &files, &engine, &mut total).await
+        };
+        out.push(resolved);
     }
     out
+}
+
+async fn resolve_favicon_ref(
+    library_dir: &Path,
+    hash: &str,
+    engine: &base64::engine::GeneralPurpose,
+    total: &mut usize,
+) -> Option<String> {
+    let bytes = read_capped_bytes(&crate::library::favicon_path(library_dir, hash), MAX_IMAGE_BYTES).await?;
+    let media_type = media_type_for_bytes(&bytes)?;
+    *total = total.checked_add(bytes.len())?;
+    if *total > MAX_READ_RESPONSE_BYTES {
+        return None;
+    }
+    Some(format!("data:{media_type};base64,{}", engine.encode(&bytes)))
+}
+
+fn media_type_for_bytes(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("image/webp")
+    } else if bytes.starts_with(&[0, 0, 1, 0]) {
+        Some("image/x-icon")
+    } else if bytes.len() >= 12
+        && &bytes[4..8] == b"ftyp"
+        && bytes[..bytes.len().min(32)]
+            .windows(4)
+            .any(|brand| brand == b"avif" || brand == b"avis")
+    {
+        Some("image/avif")
+    } else if std::str::from_utf8(bytes).ok().is_some_and(|text| {
+        let text = text.trim_start_matches('\u{feff}').trim_start();
+        text.starts_with("<svg") || text.find("<svg").is_some_and(|offset| offset < 1024)
+    }) {
+        Some("image/svg+xml")
+    } else {
+        None
+    }
 }
 
 /// Reuse already-persisted bytes for another reference to the same remote URL.
@@ -758,6 +837,27 @@ mod tests {
         // The re-save path: a second save must not re-hash an existing ref.
         assert!(extract_favicon("../images/e1/4f2a91c3e0b7", &HashMap::new()).is_none());
         assert!(extract_favicon("data:image/png;base64,AAAA", &HashMap::new()).is_none());
+    }
+
+    #[tokio::test]
+    async fn shared_favicon_round_trips_from_its_extensionless_identity() {
+        let tmp = tempfile::tempdir().unwrap();
+        let url = "https://www.x.test/favicon.ico#fragment";
+        let (hash, bytes) =
+            extract_shared_favicon(url, &map(&[(url, PNG_DATA)])).expect("valid favicon");
+        write_shared_favicon(tmp.path(), &hash, bytes, token())
+            .await
+            .unwrap();
+
+        let reference = crate::library::favicon_ref(&hash);
+        let read = read_entry_images(tmp.path(), "any-entry", &[reference]).await;
+        assert!(read[0].as_ref().unwrap().starts_with("data:image/png;base64,"));
+        assert_eq!(
+            hash,
+            crate::util::url_hash12(
+                &crate::util::normalize_url("https://x.test/favicon.ico").unwrap()
+            )
+        );
     }
 
     #[test]

@@ -1166,6 +1166,15 @@ export class TauriPlatform implements Platform {
     return listen<string>(name, listener);
   }
 
+  onFaviconChanged(callback: (article: Article) => void): Promise<UnlistenFn> {
+    const name: DomainEvent = "favicon:changed";
+    const listener = decorate((e) => {
+      const result = ArticleSchema.transform(toArticle).safeParse(e.payload);
+      if (result.success) callback(result.data);
+    }).with(logged, { logger, name });
+    return listen<unknown>(name, listener);
+  }
+
   onEmbeddingsChanged(callback: () => void): Promise<UnlistenFn> {
     const name: DomainEvent = "embedding:changed";
     const listener = decorate(callback).with(logged, { logger, name });

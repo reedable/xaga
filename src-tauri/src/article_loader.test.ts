@@ -72,6 +72,25 @@ describe("loader diagnostics", () => {
   });
 });
 
+describe("favicon selection", () => {
+  it("prefers 32x32 over 16x16 regardless of declaration order", () => {
+    const { context } = loader();
+    const link = (href: string, sizes: string) => ({
+      getAttribute: (name: string) => ({ href, sizes })[name as "href" | "sizes"],
+    });
+    context.URL = URL;
+    context.document.baseURI = "https://example.org/article";
+    context.document.querySelectorAll = () => [
+      link("/favicon-16.png", "16x16"),
+      link("/favicon-32.png", "32x32"),
+    ];
+
+    expect(runInContext("__xagaFaviconUrl()", context)).toBe(
+      "https://example.org/favicon-32.png"
+    );
+  });
+});
+
 describe("deadline snapshot", () => {
   it("keeps normal settled-page capture working", async () => {
     vi.useFakeTimers();

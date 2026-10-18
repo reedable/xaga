@@ -26,6 +26,7 @@ import useEntries from "../../hooks/useEntries";
 import { useEvents } from "../../hooks/useEvents";
 import { useErrorSink } from "../../hooks/useErrorSink";
 import FaviconLoadError from "../../utils/FaviconLoadError";
+import { isLocalFaviconReference } from "../../utils/isLocalFaviconReference";
 import useRouter from "../../hooks/useRouter";
 import { usePlatform } from "../../platform/Platform";
 import { isArticle, type Entry } from "../../types";
@@ -55,7 +56,7 @@ export function Toolbar({ reload }: ToolbarProps) {
   const [, abortControllerRef] = useAbortController();
   const { addBookmark, removeBookmark } = useBookmarks(abortControllerRef);
   const { markEntryRead, markEntryUnread } = useEntries(abortControllerRef);
-  const { onBookmarkChanged, onUnreadChanged } = useEvents();
+  const { onBookmarkChanged, onUnreadChanged, onFaviconChanged } = useEvents();
   const { loadArticleByUrl, loading } = useArticles(abortControllerRef);
 
   const { url, entryId } = state;
@@ -77,7 +78,7 @@ export function Toolbar({ reload }: ToolbarProps) {
   // Only persisted local references may supply an icon. Never render a stored
   // remote URL directly: that would fetch from the privileged main window.
   const storedFavicon = isArticle(entry) ? entry.favicon : undefined;
-  const isLocalFaviconRef = !!storedFavicon?.startsWith("../images/");
+  const isLocalFaviconRef = isLocalFaviconReference(storedFavicon);
   const displayFavicon = isLocalFaviconRef ? favicon : null;
 
   const qrButtonRef = useRef<HTMLButtonElement>(null);
@@ -135,8 +136,8 @@ export function Toolbar({ reload }: ToolbarProps) {
   }, [entryId, platform]);
 
   // The favicon is fetched inside the article loader at ingestion and stored
-  // under the entry's image directory, so displaying it makes no network request
-  // from this (privileged) window. The bytes come back over IPC.
+  // in the library, so displaying it makes no network request from this
+  // privileged window. The bytes come back over IPC.
   useEffect(() => {
     setFavicon(null);
     if (!entry || !storedFavicon) return;
@@ -166,6 +167,13 @@ export function Toolbar({ reload }: ToolbarProps) {
         if (entry.id === entryId) setLatestEntry(entry);
       }),
     [onBookmarkChanged, entryId]
+  );
+  useEffect(
+    () =>
+      onFaviconChanged((article) => {
+        if (article.id === entryId) setLatestEntry(article);
+      }),
+    [onFaviconChanged, entryId]
   );
   useEffect(
     () =>

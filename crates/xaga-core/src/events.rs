@@ -12,7 +12,7 @@
 //! not here: their payload types and semantics belong to src-tauri (see
 //! `AppEvent` there and docs/architecture/layer_ownership.md).
 
-use crate::types::{Entry, Feed, ListItem};
+use crate::types::{Article, Entry, Feed, ListItem};
 
 pub enum DomainEvent {
     /// An entry's unread state changed.
@@ -23,6 +23,8 @@ pub enum DomainEvent {
     AnnotationChanged(ListItem),
     /// An annotation was removed.
     AnnotationRemoved { id: String },
+    /// An article save changed or refreshed its locally persisted favicon.
+    FaviconChanged(Article),
     /// The embedding service drained a queue tier; embeddings-backed reads
     /// may return new results.
     EmbeddingChanged,
@@ -48,6 +50,7 @@ impl DomainEvent {
             DomainEvent::BookmarkChanged(_) => "bookmark:changed",
             DomainEvent::AnnotationChanged(_) => "annotation:changed",
             DomainEvent::AnnotationRemoved { .. } => "annotation:removed",
+            DomainEvent::FaviconChanged(_) => "favicon:changed",
             DomainEvent::EmbeddingChanged => "embedding:changed",
             DomainEvent::EmbeddingShutdown => "embedding:shutdown",
             DomainEvent::FeedRefreshed(_) => "feed:refreshed",
@@ -91,6 +94,12 @@ mod tests {
                 color: None,
             }),
             DomainEvent::AnnotationRemoved { id: String::new() },
+            DomainEvent::FaviconChanged(crate::types::Article {
+                meta: entry(),
+                content: String::new(),
+                annotations: Vec::new(),
+                favicon: None,
+            }),
             DomainEvent::EmbeddingChanged,
             DomainEvent::EmbeddingShutdown,
             DomainEvent::FeedRefreshed(Feed {
@@ -121,6 +130,7 @@ mod tests {
                 "bookmark:changed",
                 "annotation:changed",
                 "annotation:removed",
+                "favicon:changed",
                 "embedding:changed",
                 "embedding:shutdown",
                 "feed:refreshed",

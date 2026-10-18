@@ -49,12 +49,12 @@ or fetching their nested resources in the tested WebKit image contexts. This
 does not imply that stored SVG bytes have been sanitized or that opening those
 bytes as a top-level document has the same protections.
 
-SVG favicons also use locally stored resources rendered as images in the toolbar,
-not inline SVG markup in the main webview. Their original validated SVG bytes
-are retained. Opening a cached article does not itself retry a failed favicon
-acquisition; reloading the article retries its icon. A successful save and the
-toolbar's refresh timing are separate: the current UI can require navigating away
-and back before displaying the updated icon.
+Favicons are shared, extensionless resources keyed by normalized source URL under
+`favicons/`. The toolbar renders them as local image data, never as inline markup
+or a remote URL. Opening a cached article performs no favicon request. A remote
+load of a new or refreshed article reacquires its current icon; successful
+validation atomically replaces the shared resource, while failure preserves the
+cached bytes. Read-only instances can display but not replace shared resources.
 
 The account setting `load_remote_image` gates recovery and the article loader's
 additional body-image capture fetches. The absent-value default is defined once

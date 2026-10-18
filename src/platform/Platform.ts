@@ -249,6 +249,7 @@ export interface Platform {
   onBookmarkChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
   onAnnotationChanged(callback: (item: ListItem) => void): Promise<UnlistenFn>;
   onAnnotationRemoved(callback: (id: string) => void): Promise<UnlistenFn>;
+  onFaviconChanged(callback: (article: Article) => void): Promise<UnlistenFn>;
   onEmbeddingsChanged(callback: () => void): Promise<UnlistenFn>;
   onSetTheme(callback: (theme: string) => void): Promise<UnlistenFn>;
   onShowSidebar(callback: (show: boolean) => void): Promise<UnlistenFn>;

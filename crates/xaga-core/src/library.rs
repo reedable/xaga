@@ -17,6 +17,7 @@ const ENTRIES_SUBDIR: &str = "entries";
 const TOPICS_SUBDIR: &str = "topics";
 const FEEDS_SUBDIR: &str = "feeds";
 const IMAGES_SUBDIR: &str = "images";
+const FAVICONS_SUBDIR: &str = "favicons";
 const INDEX_NAME: &str = "embeddings.lance";
 
 /// The directory holding entry `.md` files.
@@ -87,6 +88,30 @@ pub fn feed_path(library_dir: &Path, id: &str) -> PathBuf {
 #[inline]
 pub fn images_dir(library_dir: &Path) -> PathBuf {
     library_dir.join(IMAGES_SUBDIR)
+}
+
+/// The directory holding shared favicon resources.
+#[inline]
+pub fn favicons_dir(library_dir: &Path) -> PathBuf {
+    library_dir.join(FAVICONS_SUBDIR)
+}
+
+/// The canonical extensionless file for a normalized favicon URL identity.
+#[inline]
+pub fn favicon_path(library_dir: &Path, hash: &str) -> PathBuf {
+    library_dir.join(format!("{FAVICONS_SUBDIR}/{hash}"))
+}
+
+/// The reference stored in article frontmatter for a shared favicon.
+#[inline]
+pub fn favicon_ref(hash: &str) -> String {
+    format!("../{FAVICONS_SUBDIR}/{hash}")
+}
+
+/// Parses a shared favicon reference and rejects traversal or foreign paths.
+pub fn parse_favicon_ref(reference: &str) -> Option<&str> {
+    let hash = reference.strip_prefix("../favicons/")?;
+    crate::persistence::entries::is_safe_id(hash).then_some(hash)
 }
 
 /// The directory holding one entry's extracted images
@@ -210,5 +235,13 @@ mod tests {
     fn parse_rejects_backslash_and_nul_components() {
         assert_eq!(parse_entry_image_ref("../images/a\\b/x.jpg"), None);
         assert_eq!(parse_entry_image_ref("../images/a3f2c1/x\0.jpg"), None);
+    }
+
+    #[test]
+    fn shared_favicon_ref_round_trips_and_rejects_traversal() {
+        let reference = favicon_ref("4f2a91c3e0b7");
+        assert_eq!(parse_favicon_ref(&reference), Some("4f2a91c3e0b7"));
+        assert_eq!(parse_favicon_ref("../favicons/../../entries/x.md"), None);
+        assert_eq!(parse_favicon_ref("../favicons/a/b"), None);
     }
 }

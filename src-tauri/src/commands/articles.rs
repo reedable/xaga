@@ -665,6 +665,7 @@ pub async fn save_article(
     state: State<'_, AppState>,
     diagnostic_id: Option<String>,
     diagnostics: State<'_, ArticleDiagnostics>,
+    app: tauri::AppHandle,
 ) -> Result<Article, AppError> {
     let result: Result<_, AppError> = async {
         let writer = crate::commands::require_writer(&state)?;
@@ -688,6 +689,10 @@ pub async fn save_article(
             Job::UpsertEntry {
                 article: article.clone(),
             },
+        );
+        crate::events::emit_domain(
+            &app,
+            xaga_core::events::DomainEvent::FaviconChanged(article.clone()),
         );
         Ok(article)
     }
@@ -717,6 +722,7 @@ pub async fn create_article(
     state: State<'_, AppState>,
     diagnostic_id: Option<String>,
     diagnostics: State<'_, ArticleDiagnostics>,
+    app: tauri::AppHandle,
 ) -> Result<Article, AppError> {
     let result: Result<_, AppError> = async {
         let writer = crate::commands::require_writer(&state)?;
@@ -739,6 +745,10 @@ pub async fn create_article(
             Job::UpsertEntry {
                 article: article.clone(),
             },
+        );
+        crate::events::emit_domain(
+            &app,
+            xaga_core::events::DomainEvent::FaviconChanged(article.clone()),
         );
         Ok(article)
     }
@@ -843,9 +853,9 @@ const MAX_IMAGE_REFS_PER_CALL: usize = 256;
 
 /// Resolves an article's stored image references to `data:` URIs for rendering,
 /// index-aligned with `refs`. A reference that is not a well-formed
-/// `../images/<id>/<file>` for this entry, or whose file is missing/oversize,
-/// resolves to `null` — a bad reference is data, not a fault, so the reader
-/// simply leaves that image's `src` untouched.
+/// `../images/<id>/<file>` for this entry or `../favicons/<identity>`, or whose
+/// file is missing/oversize, resolves to `null` — a bad reference is data, not
+/// a fault, so the reader simply leaves that image's `src` untouched.
 ///
 /// NOT in `WRITE_COMMANDS` (it only reads, so it must work on a read-only
 /// instance) and NOT in `LOADER_COMMANDS` (loader webviews render untrusted

@@ -133,6 +133,7 @@ pub(crate) fn emit_domain<R: Runtime>(target: &impl Emitter<R>, event: DomainEve
         DomainEvent::BookmarkChanged(entry) => target.emit(name, entry),
         DomainEvent::AnnotationChanged(item) => target.emit(name, item),
         DomainEvent::AnnotationRemoved { id } => target.emit(name, id),
+        DomainEvent::FaviconChanged(article) => target.emit(name, article),
         DomainEvent::FeedRefreshed(feed) => target.emit(name, feed),
         DomainEvent::LibraryModeChanged {
             is_library_read_only,
