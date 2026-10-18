@@ -293,26 +293,42 @@ pub async fn receive_image(
     id: String,
     data_uri: Option<String>,
 ) -> Result<(), AppError> {
-    if window.label() != format!("loader-{id}") { return Err(AppError::Unauthorized); }
+    if window.label() != format!("loader-{id}") {
+        return Err(AppError::Unauthorized);
+    }
     {
         let map = pending.lock().map_err(|e| e.to_string())?;
-        if !map.get(&id).is_some_and(|r| r.purpose == article_loader::LoaderPurpose::Image && !r.download_active) {
+        if !map.get(&id).is_some_and(|r| {
+            r.purpose == article_loader::LoaderPurpose::Image && !r.download_active
+        }) {
             return Ok(());
         }
     }
     let result = tauri::async_runtime::spawn_blocking(move || {
-        data_uri.ok_or_else(|| "image bytes unavailable".to_string())
+        data_uri
+            .ok_or_else(|| "image bytes unavailable".to_string())
             .and_then(|data| crate::resource_download::validate_image_data(&data))
-    }).await.map_err(|e| e.to_string())?;
+    })
+    .await
+    .map_err(|e| e.to_string())?;
     let mut map = pending.lock().map_err(|e| e.to_string())?;
     // A timeout, cancellation or native download may have won while decoding.
-    if !map.get(&id).is_some_and(|r| r.purpose == article_loader::LoaderPurpose::Image && !r.download_active) {
+    if !map
+        .get(&id)
+        .is_some_and(|r| r.purpose == article_loader::LoaderPurpose::Image && !r.download_active)
+    {
         return Ok(());
     }
     let request = map.remove(&id).unwrap();
     let capture = match result {
-        Ok(data) => article_loader::LoaderCapture { image_data: Some(data), ..Default::default() },
-        Err(error) => article_loader::LoaderCapture { download_error: Some(error), ..Default::default() },
+        Ok(data) => article_loader::LoaderCapture {
+            image_data: Some(data),
+            ..Default::default()
+        },
+        Err(error) => article_loader::LoaderCapture {
+            download_error: Some(error),
+            ..Default::default()
+        },
     };
     let _ = request.tx.send(capture);
     let _ = window.close();
@@ -370,12 +386,36 @@ pub(crate) fn add_loader_diagnostic_event(
         "script_started" => ("script", ArticleDiagnosticOutcome::Started, ""),
         "page_loaded" => ("page_load", ArticleDiagnosticOutcome::Succeeded, ""),
         "dom_settled" => ("dom_settle", ArticleDiagnosticOutcome::Succeeded, ""),
-        "images_skipped_pdf" => ("image_capture", ArticleDiagnosticOutcome::Skipped, "image:pdf"),
-        "images_attempted" => ("image_capture", ArticleDiagnosticOutcome::Started, "image:attempted"),
-        "images_skipped_disabled" => ("image_capture", ArticleDiagnosticOutcome::Skipped, "image:disabled"),
-        "images_skipped_no_candidates" => ("image_capture", ArticleDiagnosticOutcome::Skipped, "image:no-candidates"),
-        "images_skipped_deadline" => ("image_capture", ArticleDiagnosticOutcome::Skipped, "image:deadline-before-fetch"),
-        "images_interrupted_deadline" => ("image_capture", ArticleDiagnosticOutcome::Warning, "image:deadline-after-fetch"),
+        "images_skipped_pdf" => (
+            "image_capture",
+            ArticleDiagnosticOutcome::Skipped,
+            "image:pdf",
+        ),
+        "images_attempted" => (
+            "image_capture",
+            ArticleDiagnosticOutcome::Started,
+            "image:attempted",
+        ),
+        "images_skipped_disabled" => (
+            "image_capture",
+            ArticleDiagnosticOutcome::Skipped,
+            "image:disabled",
+        ),
+        "images_skipped_no_candidates" => (
+            "image_capture",
+            ArticleDiagnosticOutcome::Skipped,
+            "image:no-candidates",
+        ),
+        "images_skipped_deadline" => (
+            "image_capture",
+            ArticleDiagnosticOutcome::Skipped,
+            "image:deadline-before-fetch",
+        ),
+        "images_interrupted_deadline" => (
+            "image_capture",
+            ArticleDiagnosticOutcome::Warning,
+            "image:deadline-after-fetch",
+        ),
         "images_started" => ("images", ArticleDiagnosticOutcome::Started, ""),
         "images_finished" => ("images", ArticleDiagnosticOutcome::Succeeded, ""),
         "image_captured" => (
@@ -1018,11 +1058,29 @@ pub async fn replace_annotation(
         );
     }
 
-    // The old id is gone; consumers holding it (topic item lists, related lists) evict it.
-    // The new row announces itself through the SyncAnnotations live event.
+    let replacement = article
+        .annotations
+        .iter()
+        .find(|annotation| annotation.id == id)
+        .map(|annotation| xaga_core::types::ListItem {
+            id: annotation.id.clone(),
+            title: annotation.title.clone(),
+            created_at: annotation.created_at.clone(),
+            url: article.meta.url.clone(),
+            is_unread: false,
+            is_bookmarked: false,
+            reference: Some(annotation.reference.clone()),
+            color: Some(annotation.color.clone()),
+        })
+        .ok_or_else(|| AppError::Message("replacement annotation missing".into()))?;
     crate::events::emit_domain(
         &window,
-        xaga_core::events::DomainEvent::AnnotationRemoved { id: old_id.clone() },
+        xaga_core::events::DomainEvent::AnnotationReplaced(
+            xaga_core::events::AnnotationReplacement {
+                old_id: old_id.clone(),
+                item: replacement,
+            },
+        ),
     );
 
     Ok(article)
@@ -1210,12 +1268,21 @@ pub async fn recover_entry_images(
         (library.path.clone(), library.writer.clone())
     };
     let current = articles::read_article(&library, &id).await?;
-    let expected = if recovery.summary { current.meta.description.as_deref().unwrap_or("") } else { &current.content };
-    if expected != recovery.expected || !*state.load_remote_image.read().unwrap() || writer.is_none() {
+    let expected = if recovery.summary {
+        current.meta.description.as_deref().unwrap_or("")
+    } else {
+        &current.content
+    };
+    if expected != recovery.expected
+        || !*state.load_remote_image.read().unwrap()
+        || writer.is_none()
+    {
         return Ok(current);
     }
     let writer = writer.unwrap();
-    let attempt = diagnostic_id.as_deref().and_then(|id| diagnostics.get_attempt(id))
+    let attempt = diagnostic_id
+        .as_deref()
+        .and_then(|id| diagnostics.get_attempt(id))
         .unwrap_or_else(|| diagnostics.create_attempt("render"));
     let timeout_secs = *state.loader_timeout_secs.read().unwrap();
     let allowed_domains = state.allowed_domains.read().unwrap().clone();
@@ -1224,37 +1291,78 @@ pub async fn recover_entry_images(
     let mut seen = std::collections::HashSet::new();
     let mut bytes = 0;
     for patch in &recovery.patches {
-        if !seen.insert(patch.url.clone()) { continue; }
-        if attempt.is_cancelled() { return Err(AppError::Message("load cancelled".into())); }
-        if let Some(image) = xaga_core::persistence::images::read_entry_image_url(&library, &id, &patch.url).await {
+        if !seen.insert(patch.url.clone()) {
+            continue;
+        }
+        if attempt.is_cancelled() {
+            return Err(AppError::Message("load cancelled".into()));
+        }
+        if let Some(image) =
+            xaga_core::persistence::images::read_entry_image_url(&library, &id, &patch.url).await
+        {
             bytes += image.len();
-            if bytes > 32 * 1024 * 1024 { break; }
+            if bytes > 32 * 1024 * 1024 {
+                break;
+            }
             data.insert(patch.url.clone(), image);
             continue;
         }
-        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now()).as_secs();
-        if remaining == 0 { break; }
-        let proxy = Arc::new(xaga_core::network_proxy::start_scoped(proxy_config.inner().clone())
-            .await.map_err(|e| AppError::Message(e.to_string()))?);
+        let remaining = deadline
+            .saturating_duration_since(tokio::time::Instant::now())
+            .as_secs();
+        if remaining == 0 {
+            break;
+        }
+        let proxy = Arc::new(
+            xaga_core::network_proxy::start_scoped(proxy_config.inner().clone())
+                .await
+                .map_err(|e| AppError::Message(e.to_string()))?,
+        );
         let capture = article_loader::load_via_webview(
-            &app, &pending, &patch.url, remaining, false,
-            article_loader::LoaderPurpose::Image, true, &allowed_domains,
-            state.named_stores_supported, proxy, attempt.clone(),
-        ).await;
+            &app,
+            &pending,
+            &patch.url,
+            remaining,
+            false,
+            article_loader::LoaderPurpose::Image,
+            true,
+            &allowed_domains,
+            state.named_stores_supported,
+            proxy,
+            attempt.clone(),
+        )
+        .await;
         match capture {
             Ok(capture) if capture.image_data.is_some() => {
                 let image = capture.image_data.unwrap();
                 bytes += image.len();
                 // Base64 transport budget corresponds to the existing 24 MiB resource budget.
-                if bytes > 32 * 1024 * 1024 { break; }
+                if bytes > 32 * 1024 * 1024 {
+                    break;
+                }
                 data.insert(patch.url.clone(), image);
             }
-            _ => attempt.add_event("native", "images", ArticleDiagnosticOutcome::Warning,
-                "image:recovery-unavailable", "image recovery did not return usable bytes"),
+            _ => attempt.add_event(
+                "native",
+                "images",
+                ArticleDiagnosticOutcome::Warning,
+                "image:recovery-unavailable",
+                "image recovery did not return usable bytes",
+            ),
         }
     }
-    if attempt.is_cancelled() { return Err(AppError::Message("load cancelled".into())); }
-    let article = writer.recover_images(id, recovery, data).await.map_err(AppError::from)?;
-    state.enqueue(Tier::Interactive, Job::UpsertEntry { article: article.clone() });
+    if attempt.is_cancelled() {
+        return Err(AppError::Message("load cancelled".into()));
+    }
+    let article = writer
+        .recover_images(id, recovery, data)
+        .await
+        .map_err(AppError::from)?;
+    state.enqueue(
+        Tier::Interactive,
+        Job::UpsertEntry {
+            article: article.clone(),
+        },
+    );
     Ok(article)
 }

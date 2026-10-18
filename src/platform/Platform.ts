@@ -25,7 +25,9 @@ import type {
 } from "../types";
 
 export interface Platform {
-  onError(callback: (error: import("./errors").AppError) => void): Promise<UnlistenFn>;
+  onError(
+    callback: (error: import("./errors").AppError) => void
+  ): Promise<UnlistenFn>;
   // Window
   setWindowTitle(title: string): Promise<void>;
   /** Wait for pending edits before closing; false keeps the window open. */
@@ -78,7 +80,10 @@ export interface Platform {
   getArticleDiagnostic(id: string): Promise<ArticleDiagnostic | null>;
   readEntry(signal: AbortSignal, id: string): Promise<Entry>;
   openStoredPdf(url: string): Promise<void>;
-  readStoredPdf(signal: AbortSignal, url: string): Promise<{ pdfBase64?: string | null } | null>;
+  readStoredPdf(
+    signal: AbortSignal,
+    url: string
+  ): Promise<{ pdfBase64?: string | null } | null>;
   loadArticle(
     signal: AbortSignal,
     url: string,
@@ -116,7 +121,12 @@ export interface Platform {
   // rendering, index-aligned with `refs`. A `null` at index i means that
   // reference did not resolve (missing/oversize/foreign) and its `src` should be
   // left as-is.
-  recoverEntryImages(signal: AbortSignal, id: string, recovery: ImageRecovery, diagnosticId?: string): Promise<Article>;
+  recoverEntryImages(
+    signal: AbortSignal,
+    id: string,
+    recovery: ImageRecovery,
+    diagnosticId?: string
+  ): Promise<Article>;
   readEntryImages(
     signal: AbortSignal,
     id: string,
@@ -155,7 +165,13 @@ export interface Platform {
     signal: AbortSignal,
     topic: Omit<
       Topic,
-      "id" | "createdAt" | "unreadCount" | "entryCount" | "isPinned" | "__kind" | "members"
+      | "id"
+      | "createdAt"
+      | "unreadCount"
+      | "entryCount"
+      | "isPinned"
+      | "__kind"
+      | "members"
     >
   ): Promise<Topic>;
   saveTopic(signal: AbortSignal, topic: Topic): Promise<Topic>;
@@ -237,8 +253,12 @@ export interface Platform {
   onFeedsExported(
     callback: (outcome: ExportOutcome) => void
   ): Promise<UnlistenFn>;
-  onBookmarksImported(callback: (outcome: BookmarkImportOutcome) => void): Promise<UnlistenFn>;
-  onBookmarksExported(callback: (outcome: ExportOutcome) => void): Promise<UnlistenFn>;
+  onBookmarksImported(
+    callback: (outcome: BookmarkImportOutcome) => void
+  ): Promise<UnlistenFn>;
+  onBookmarksExported(
+    callback: (outcome: ExportOutcome) => void
+  ): Promise<UnlistenFn>;
   onFeedRefreshed(callback: (feed: Feed) => void): Promise<UnlistenFn>;
   /** Fires once after `refresh_all_feeds` completes (not per feed). */
   onFeedsRefreshed(callback: () => void): Promise<UnlistenFn>;
@@ -248,6 +268,9 @@ export interface Platform {
   onUnreadChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
   onBookmarkChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
   onAnnotationChanged(callback: (item: ListItem) => void): Promise<UnlistenFn>;
+  onAnnotationReplaced(
+    callback: (replacement: { oldId: string; item: ListItem }) => void
+  ): Promise<UnlistenFn>;
   onAnnotationRemoved(callback: (id: string) => void): Promise<UnlistenFn>;
   onFaviconChanged(callback: (article: Article) => void): Promise<UnlistenFn>;
   onEmbeddingsChanged(callback: () => void): Promise<UnlistenFn>;

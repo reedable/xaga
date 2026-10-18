@@ -49,6 +49,12 @@ export function useEvents() {
     [platform]
   );
 
+  const onAnnotationReplaced = useCallback(
+    (callback: (replacement: { oldId: string; item: ListItem }) => void) =>
+      subscribe(() => platform.onAnnotationReplaced(callback)),
+    [platform]
+  );
+
   const onAnnotationRemoved = useCallback(
     (callback: (id: string) => void) =>
       subscribe(() => platform.onAnnotationRemoved(callback)),
@@ -113,6 +119,7 @@ export function useEvents() {
     onUnreadChanged,
     onBookmarkChanged,
     onAnnotationChanged,
+    onAnnotationReplaced,
     onAnnotationRemoved,
     onFaviconChanged,
     onEmbeddingsChanged,
