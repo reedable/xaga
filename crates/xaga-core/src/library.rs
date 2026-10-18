@@ -155,8 +155,7 @@ pub fn parse_entry_image_ref(reference: &str) -> Option<(&str, &str)> {
     if hash.contains('/') {
         return None;
     }
-    if crate::persistence::entries::is_safe_id(id)
-        && crate::persistence::entries::is_safe_id(hash)
+    if crate::persistence::entries::is_safe_id(id) && crate::persistence::entries::is_safe_id(hash)
     {
         Some((id, hash))
     } else {

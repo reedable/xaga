@@ -6,8 +6,8 @@ use xaga_core::query::items;
 use xaga_core::types::{Entry, Kind, ListItem};
 
 use super::parse_item_filter;
-use crate::{AppState, EmbeddingStartupState};
 use crate::error::AppError;
+use crate::{AppState, EmbeddingStartupState};
 
 #[tauri::command]
 pub async fn read_entry(id: String, state: State<'_, AppState>) -> Result<Entry, AppError> {

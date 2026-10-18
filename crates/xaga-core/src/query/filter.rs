@@ -13,17 +13,33 @@ pub trait Filterable {
 }
 
 impl Filterable for Entry {
-    fn is_unread(&self) -> bool { self.is_unread }
-    fn is_bookmarked(&self) -> bool { self.is_bookmarked }
-    fn url(&self) -> Option<&str> { Some(&self.url) }
-    fn reference(&self) -> &str { "" }
+    fn is_unread(&self) -> bool {
+        self.is_unread
+    }
+    fn is_bookmarked(&self) -> bool {
+        self.is_bookmarked
+    }
+    fn url(&self) -> Option<&str> {
+        Some(&self.url)
+    }
+    fn reference(&self) -> &str {
+        ""
+    }
 }
 
 impl Filterable for EmbeddedEntry {
-    fn is_unread(&self) -> bool { self.entry.is_unread }
-    fn is_bookmarked(&self) -> bool { self.entry.is_bookmarked }
-    fn url(&self) -> Option<&str> { Some(&self.entry.url) }
-    fn reference(&self) -> &str { &self.reference }
+    fn is_unread(&self) -> bool {
+        self.entry.is_unread
+    }
+    fn is_bookmarked(&self) -> bool {
+        self.entry.is_bookmarked
+    }
+    fn url(&self) -> Option<&str> {
+        Some(&self.entry.url)
+    }
+    fn reference(&self) -> &str {
+        &self.reference
+    }
 }
 
 /// Filter `items` according to `item_filter` — predicate only, no sorting.

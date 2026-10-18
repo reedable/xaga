@@ -55,8 +55,15 @@ fn main() {
                 s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK")
                     .unwrap();
             } else {
-                let body=format!("<!doctype html><meta charset=utf-8><title>Xaga fingerprint comparison</title><body>Measuring<script>{}</script>",include_str!("fixtures/fingerprint_probe.js"));
-                let _=write!(s,"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len());
+                let body = format!(
+                    "<!doctype html><meta charset=utf-8><title>Xaga fingerprint comparison</title><body>Measuring<script>{}</script>",
+                    include_str!("fixtures/fingerprint_probe.js")
+                );
+                let _ = write!(
+                    s,
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
             }
         }
     });

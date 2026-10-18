@@ -6,6 +6,11 @@ Conventions for code and documentation, as distinct from what the system is (arc
 
 [Documentation](documentation.md) — durable and transient documents, task lifecycle, structure, filenames, and labels.
 
+## Code formatting
+
+[Rust formatting](rust_formatting.md) — apply `rustfmt` consistently across the
+Cargo workspace and keep `cargo fmt --all --check` passing.
+
 ## Vocabulary
 
 Naming rules for symbols, in [vocabulary/](vocabulary/):

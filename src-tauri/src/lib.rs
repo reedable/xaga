@@ -1,14 +1,14 @@
-mod command_policy;
-mod loader_identity;
-mod resource_download;
-mod loader_download;
-mod article_loader;
 mod article_diagnostics;
+mod article_loader;
+mod command_policy;
 mod commands;
 mod error;
 mod events;
 mod fetch_client;
+mod loader_download;
+mod loader_identity;
 mod native;
+mod resource_download;
 mod ui_network;
 #[cfg(target_os = "macos")]
 mod webview_policy;
@@ -21,9 +21,7 @@ use tauri::menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuIte
 use tauri::window::Color;
 use tauri::{Manager, Runtime, Theme, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_window_state::StateFlags;
-use xaga_core::embeddings::{
-    Embedder, EmbeddingService, EmbeddingsDb, Job, ShutdownReason, Tier,
-};
+use xaga_core::embeddings::{Embedder, EmbeddingService, EmbeddingsDb, Job, ShutdownReason, Tier};
 use xaga_core::network_proxy;
 
 /// The app's settings.json path, under xaga-core's data root — the single
@@ -425,7 +423,8 @@ pub(crate) fn update_settings(
 ) -> Result<SettingsOutcome, crate::error::AppError> {
     let path = settings_path()?;
     let baseline = *state.settings_baseline.read().unwrap();
-    let (outcome, new_baseline) = update_settings_file(&state.account_lock, &path, baseline, delta)?;
+    let (outcome, new_baseline) =
+        update_settings_file(&state.account_lock, &path, baseline, delta)?;
     *state.settings_baseline.write().unwrap() = new_baseline;
     Ok(outcome)
 }
@@ -448,15 +447,14 @@ pub(crate) fn refresh_state_from_settings(state: &AppState, s: &UserSettings) {
         s.feed_max_body_bytes.unwrap_or(DEFAULT_FEED_MAX_BODY_BYTES);
     *state.import_max_bytes.write().unwrap() =
         s.import_max_bytes.unwrap_or(DEFAULT_IMPORT_MAX_BYTES);
-    *state.max_redirects.write().unwrap() =
-        fetch_client::effective_max_redirects(s.max_redirects);
+    *state.max_redirects.write().unwrap() = fetch_client::effective_max_redirects(s.max_redirects);
     *state.referer_allowed.write().unwrap() = s.referer_allowed.unwrap_or(false);
     *state.gzip_allowed.write().unwrap() = s.gzip_allowed.unwrap_or(false);
-    *state.html_reader_font_family.write().unwrap() =
-        s.html_reader_font_family.unwrap_or_else(|| "system".to_string());
+    *state.html_reader_font_family.write().unwrap() = s
+        .html_reader_font_family
+        .unwrap_or_else(|| "system".to_string());
     *state.html_reader_font_size.write().unwrap() = s.html_reader_font_size.unwrap_or(16.0);
-    *state.html_reader_line_height.write().unwrap() =
-        s.html_reader_line_height.unwrap_or(1.75);
+    *state.html_reader_line_height.write().unwrap() = s.html_reader_line_height.unwrap_or(1.75);
     *state.show_sidebar.write().unwrap() = s.show_sidebar.unwrap_or(true);
     *state.allowed_domains.write().unwrap() = s.allowed_domains.unwrap_or_default();
     *state.inline_pdf_reader.write().unwrap() = s.inline_pdf_reader.unwrap_or(false);
@@ -601,9 +599,12 @@ pub fn run() {
     // essentially never fails, and running the loader without this proxy would
     // silently reopen the SSRF hole.
     let proxy_config = network_proxy::ProxyConfig::new(
-        Arc::clone(&http_allowed), Arc::clone(&connect_nonstandard_ports_allowed));
-    let network_proxy_port = tauri::async_runtime::block_on(network_proxy::start(proxy_config.clone()))
-        .expect("failed to start SSRF filtering proxy for the article loader");
+        Arc::clone(&http_allowed),
+        Arc::clone(&connect_nonstandard_ports_allowed),
+    );
+    let network_proxy_port =
+        tauri::async_runtime::block_on(network_proxy::start(proxy_config.clone()))
+            .expect("failed to start SSRF filtering proxy for the article loader");
 
     // The model download dials through the proxy like every other outbound
     // request (docs/architecture/security/fetching_remote_content.md,
@@ -632,17 +633,14 @@ pub fn run() {
     let html_reader_line_height: Arc<RwLock<f64>> = Arc::new(RwLock::new(1.75));
     let show_sidebar: Arc<RwLock<bool>> = Arc::new(RwLock::new(true));
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
-    let embedding_query_model: Arc<Mutex<Option<Arc<Embedder>>>> =
-        Arc::new(Mutex::new(None));
-    let embedding_startup_state =
-        Arc::new(RwLock::new(EmbeddingStartupState::Loading));
+    let embedding_query_model: Arc<Mutex<Option<Arc<Embedder>>>> = Arc::new(Mutex::new(None));
+    let embedding_startup_state = Arc::new(RwLock::new(EmbeddingStartupState::Loading));
     let embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>> = Arc::new(Mutex::new(None));
     let allowed_domains: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
     let load_remote_image = Arc::new(RwLock::new(DEFAULT_LOAD_REMOTE_IMAGE));
     let inline_pdf_reader: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let html_reader_view: Arc<RwLock<String>> = Arc::new(RwLock::new("reader".to_string()));
-    let settings_baseline: Arc<RwLock<Option<std::time::SystemTime>>> =
-        Arc::new(RwLock::new(None));
+    let settings_baseline: Arc<RwLock<Option<std::time::SystemTime>>> = Arc::new(RwLock::new(None));
 
     // setup_ prefixed values are consumed by Tauri's .setup() closure.
     // There is no semantic meaning here.
@@ -1442,7 +1440,10 @@ fn install_signal_handler(
         let library = Arc::clone(&app_handle.state::<AppState>().library);
         if let Some(svc) = svc {
             log::info!("signal: waiting for embedding service to drain");
-            events::emit_domain(&app_handle, xaga_core::events::DomainEvent::EmbeddingShutdown);
+            events::emit_domain(
+                &app_handle,
+                xaga_core::events::DomainEvent::EmbeddingShutdown,
+            );
             tauri::async_runtime::block_on(svc.shutdown());
             // Signals always exit — restart flag is intentionally ignored.
         }
@@ -1528,16 +1529,22 @@ mod settings_funnel_tests {
         let registry = Mutex::new(AccountLock::default());
         let (_, baseline) = update_settings_file(&registry, &path, None, |s| {
             s.theme = Some("dark".into());
-        }).unwrap();
-        assert_eq!(load_settings(&path).import_max_bytes.unwrap_or(DEFAULT_IMPORT_MAX_BYTES), 64 * 1024 * 1024);
+        })
+        .unwrap();
+        assert_eq!(
+            load_settings(&path)
+                .import_max_bytes
+                .unwrap_or(DEFAULT_IMPORT_MAX_BYTES),
+            64 * 1024 * 1024
+        );
         update_settings_file(&registry, &path, baseline, |s| {
             s.import_max_bytes = Some(128 * 1024 * 1024);
-        }).unwrap();
+        })
+        .unwrap();
         let reloaded = load_settings(&path);
         assert_eq!(reloaded.import_max_bytes, Some(128 * 1024 * 1024));
         assert_eq!(reloaded.theme.as_deref(), Some("dark"));
     }
-
 
     #[test]
     fn contended_settings_write_is_typed_and_can_be_retried() {
@@ -1550,7 +1557,6 @@ mod settings_funnel_tests {
         drop(other);
         assert!(update_settings_file(&registry, &path, settings_mtime(&path), |_| {}).is_ok());
     }
-
 
     /// Plan test 5: the stale-view outcome. A write attempted with a baseline
     /// older than the file's mtime is refused with the fresh content; a retry
@@ -1565,7 +1571,8 @@ mod settings_funnel_tests {
 
         // First-ever write: baseline None matches the missing file.
         let (outcome, baseline) =
-            update_settings_file(&registry, &path, None, |s| s.theme = Some("dark".into())).unwrap();
+            update_settings_file(&registry, &path, None, |s| s.theme = Some("dark".into()))
+                .unwrap();
         let SettingsOutcome::Written(written) = outcome else {
             panic!("expected Written");
         };
@@ -1575,13 +1582,19 @@ mod settings_funnel_tests {
         // holds the then-current baseline) writes.
         std::thread::sleep(std::time::Duration::from_millis(10));
         let (outcome2, baseline_after_other) =
-            update_settings_file(&registry, &path, baseline, |s| s.theme = Some("light".into())).unwrap();
+            update_settings_file(&registry, &path, baseline, |s| {
+                s.theme = Some("light".into())
+            })
+            .unwrap();
         assert!(matches!(outcome2, SettingsOutcome::Written(_)));
 
         // The first process still holds its old baseline → refused, and the
         // payload is the fresh on-disk content.
         let (outcome3, refreshed_baseline) =
-            update_settings_file(&registry, &path, baseline, |s| s.theme = Some("auto".into())).unwrap();
+            update_settings_file(&registry, &path, baseline, |s| {
+                s.theme = Some("auto".into())
+            })
+            .unwrap();
         let SettingsOutcome::StaleView(fresh) = outcome3 else {
             panic!("expected StaleView");
         };
@@ -1590,9 +1603,10 @@ mod settings_funnel_tests {
 
         // Retry with the refreshed baseline: succeeds, delta applied to the
         // fresh state.
-        let (outcome4, _) =
-            update_settings_file(&registry, &path, refreshed_baseline, |s| s.theme = Some("auto".into()))
-                .unwrap();
+        let (outcome4, _) = update_settings_file(&registry, &path, refreshed_baseline, |s| {
+            s.theme = Some("auto".into())
+        })
+        .unwrap();
         let SettingsOutcome::Written(w) = outcome4 else {
             panic!("expected Written");
         };
@@ -1614,7 +1628,8 @@ mod settings_funnel_tests {
         let lease = account_lease(&registry, &path).expect("first holder acquires the flock");
         // A settings write while the lease is held goes through (shared handle, no self-contention).
         let (outcome, _) =
-            update_settings_file(&registry, &path, None, |s| s.theme = Some("dark".into())).unwrap();
+            update_settings_file(&registry, &path, None, |s| s.theme = Some("dark".into()))
+                .unwrap();
         assert!(matches!(outcome, SettingsOutcome::Written(_)));
         // Still held while the lease is alive (not released after the transient write).
         assert!(registry.lock().unwrap().handle.is_some());
@@ -1638,13 +1653,11 @@ mod remote_image_setting_tests {
         let missing: UserSettings = serde_json::from_str("{}").unwrap();
         assert_eq!(missing.load_remote_image(), DEFAULT_LOAD_REMOTE_IMAGE);
         for value in [false, true] {
-            let settings: UserSettings = serde_json::from_value(
-                serde_json::json!({"load_remote_image": value})
-            ).unwrap();
+            let settings: UserSettings =
+                serde_json::from_value(serde_json::json!({"load_remote_image": value})).unwrap();
             assert_eq!(settings.load_remote_image(), value);
-            let roundtrip: UserSettings = serde_json::from_str(
-                &serde_json::to_string(&settings).unwrap()
-            ).unwrap();
+            let roundtrip: UserSettings =
+                serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
             assert_eq!(roundtrip.load_remote_image(), value);
         }
     }

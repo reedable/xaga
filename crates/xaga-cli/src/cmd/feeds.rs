@@ -31,7 +31,10 @@ pub async fn handle(cmd: FeedsCommand, data_dir: &PathBuf) {
                 Ok(feeds) => {
                     for feed in &feeds {
                         let updated = feed.updated_at.as_deref().unwrap_or("unknown");
-                        println!("[{}] {} ({} entries)", feed.id, feed.title, feed.entry_count);
+                        println!(
+                            "[{}] {} ({} entries)",
+                            feed.id, feed.title, feed.entry_count
+                        );
                         println!("  url:     {}", feed.url);
                         println!("  updated: {updated}");
                     }

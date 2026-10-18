@@ -110,7 +110,9 @@ pub(crate) async fn save_topic(
         updates.push(("id", serde_json::json!(id)));
         updates.push(("created", serde_json::json!(topic.created_at)));
     }
-    super::documents::upsert(&path, &updates, None, _token).await.map_err(document_error)?;
+    super::documents::upsert(&path, &updates, None, _token)
+        .await
+        .map_err(document_error)?;
     Ok(topic)
 }
 
@@ -141,7 +143,9 @@ pub(crate) async fn set_topic_pinned(
     } else {
         tags.retain(|tag| tag != crate::tags::PINNED);
     }
-    super::documents::upsert(&path, &[("tags", serde_json::json!(tags))], None, _token).await.map_err(document_error)?;
+    super::documents::upsert(&path, &[("tags", serde_json::json!(tags))], None, _token)
+        .await
+        .map_err(document_error)?;
     Ok(true)
 }
 
@@ -312,17 +316,34 @@ mod tests {
         let path = crate::library::topic_path(dir.path(), "topic");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let raw = "---\nid: topic\ntitle: Original\ncreated: '2026-01-01'\nupdated: '2026-01-02'\nthreshold: 0.8\nitems:\n  - type: entry\n    id: article\n  - type: annotation\n    id: highlight\n    reference: article\n---\n";
-        for raw in [raw.to_string(), raw.replace("  - type:", "- type:").replace("    id:", "  id:").replace("    reference:", "  reference:")] {
-        std::fs::write(&path, &raw).unwrap();
-        let fm = parse_frontmatter(&raw).unwrap();
-        let expected_items = serde_json::to_value(&fm.items).unwrap();
-        save_topic(dir.path(), "topic", "Updated", "", fm.threshold, fm.items,
-            WriteToken::for_test()).await.unwrap();
-        let saved = read_topic(dir.path(), "topic").await.unwrap();
-        assert_eq!(saved.title, "Updated");
-        assert_eq!(saved.members.len(), 2);
-        let stored = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(serde_json::to_value(parse_frontmatter(&stored).unwrap().items).unwrap(), expected_items);
+        for raw in [
+            raw.to_string(),
+            raw.replace("  - type:", "- type:")
+                .replace("    id:", "  id:")
+                .replace("    reference:", "  reference:"),
+        ] {
+            std::fs::write(&path, &raw).unwrap();
+            let fm = parse_frontmatter(&raw).unwrap();
+            let expected_items = serde_json::to_value(&fm.items).unwrap();
+            save_topic(
+                dir.path(),
+                "topic",
+                "Updated",
+                "",
+                fm.threshold,
+                fm.items,
+                WriteToken::for_test(),
+            )
+            .await
+            .unwrap();
+            let saved = read_topic(dir.path(), "topic").await.unwrap();
+            assert_eq!(saved.title, "Updated");
+            assert_eq!(saved.members.len(), 2);
+            let stored = std::fs::read_to_string(&path).unwrap();
+            assert_eq!(
+                serde_json::to_value(parse_frontmatter(&stored).unwrap().items).unwrap(),
+                expected_items
+            );
         }
     }
 
@@ -344,12 +365,18 @@ mod tests {
         .await
         .unwrap();
         let saved = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(parse_frontmatter(&saved).unwrap().tags, vec!["pinned", "research"]);
+        assert_eq!(
+            parse_frontmatter(&saved).unwrap().tags,
+            vec!["pinned", "research"]
+        );
         set_topic_pinned(dir.path(), "topic", false, WriteToken::for_test())
             .await
             .unwrap();
         let saved = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(crate::md::test_frontmatter_values(&saved)["custom"], crate::md::test_frontmatter_values(ORIGINAL)["custom"]);
+        assert_eq!(
+            crate::md::test_frontmatter_values(&saved)["custom"],
+            crate::md::test_frontmatter_values(ORIGINAL)["custom"]
+        );
         assert!(saved.ends_with("---\n\nUser-authored body\n\n"));
         let fm = parse_frontmatter(&saved).unwrap();
         assert_eq!(fm.tags, vec!["research"]);

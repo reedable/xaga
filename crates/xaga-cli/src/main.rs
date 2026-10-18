@@ -48,12 +48,14 @@ enum Command {
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
-    if cli.dry_run && !matches!(
-        &cli.command,
-        Command::Articles(cmd::articles::ArticlesArgs {
-            subcommand: cmd::articles::ArticlesCommand::RepairSummaries,
-        }) | Command::Images(_)
-    ) {
+    if cli.dry_run
+        && !matches!(
+            &cli.command,
+            Command::Articles(cmd::articles::ArticlesArgs {
+                subcommand: cmd::articles::ArticlesCommand::RepairSummaries,
+            }) | Command::Images(_)
+        )
+    {
         die("--dry-run is supported for articles repair-summaries and images gc");
     }
     let rc = settings::load();
@@ -61,7 +63,9 @@ async fn main() {
 
     match cli.command {
         Command::Feeds(args) => cmd::feeds::handle(args.subcommand, &data_dir).await,
-        Command::Articles(args) => cmd::articles::handle(args.subcommand, &data_dir, cli.dry_run).await,
+        Command::Articles(args) => {
+            cmd::articles::handle(args.subcommand, &data_dir, cli.dry_run).await
+        }
         Command::Topics(args) => cmd::topics::handle(args.subcommand, &data_dir).await,
         Command::Bookmarks(args) => cmd::bookmarks::handle(args.subcommand, &data_dir).await,
         Command::Embeddings(args) => cmd::embeddings::handle(args.subcommand, &data_dir).await,

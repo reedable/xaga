@@ -247,7 +247,10 @@ pub async fn import_bookmarks(
 pub async fn export_bookmarks(library_dir: &Path, dest_path: &Path) -> Result<(), BookmarksError> {
     let mut entries: Vec<Entry> = Vec::new();
 
-    for_each_md(&library::entries_dir(library_dir), &md_to_entry, |e| entries.push(e)).await;
+    for_each_md(&library::entries_dir(library_dir), &md_to_entry, |e| {
+        entries.push(e)
+    })
+    .await;
 
     entries.retain(|e| e.is_bookmarked);
 

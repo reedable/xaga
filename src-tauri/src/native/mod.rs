@@ -83,7 +83,9 @@ pub(crate) fn export_feeds_dialog(app: &AppHandle) {
                     &app,
                     crate::events::AppEvent::FeedsExported(crate::events::Outcome {
                         result: None,
-                        error: error.as_ref().map(crate::error::AppError::import_export_error),
+                        error: error
+                            .as_ref()
+                            .map(crate::error::AppError::import_export_error),
                     }),
                 );
             });
@@ -131,7 +133,9 @@ pub(crate) fn export_bookmarks_dialog(app: &AppHandle) {
             };
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<AppState>();
-                let error = bookmarks::export_bookmarks(state.inner(), &path).await.err();
+                let error = bookmarks::export_bookmarks(state.inner(), &path)
+                    .await
+                    .err();
                 if let Some(ref e) = error {
                     log::warn!("export_bookmarks: {e}");
                 }
@@ -139,7 +143,9 @@ pub(crate) fn export_bookmarks_dialog(app: &AppHandle) {
                     &app,
                     crate::events::AppEvent::BookmarksExported(crate::events::Outcome {
                         result: None,
-                        error: error.as_ref().map(crate::error::AppError::import_export_error),
+                        error: error
+                            .as_ref()
+                            .map(crate::error::AppError::import_export_error),
                     }),
                 );
             });

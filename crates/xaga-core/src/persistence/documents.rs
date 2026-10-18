@@ -100,7 +100,10 @@ mod tests {
         assert!(fm.tags.is_empty());
         assert_eq!(fm.annotations[0].content, "Irreplaceable");
         assert_eq!(body, "Original body");
-        assert_eq!(crate::md::test_frontmatter_values(&raw)["custom"], crate::md::test_frontmatter_values(ORIGINAL)["custom"]);
+        assert_eq!(
+            crate::md::test_frontmatter_values(&raw)["custom"],
+            crate::md::test_frontmatter_values(ORIGINAL)["custom"]
+        );
         upsert(
             &path,
             &[("summary", serde_json::Value::Null)],
@@ -125,7 +128,10 @@ mod tests {
         .unwrap();
         let raw = std::fs::read_to_string(&path).unwrap();
         assert!(parse_document(&raw).unwrap().0.annotations.is_empty());
-        assert_eq!(crate::md::test_frontmatter_values(&raw)["custom"], crate::md::test_frontmatter_values(ORIGINAL)["custom"]);
+        assert_eq!(
+            crate::md::test_frontmatter_values(&raw)["custom"],
+            crate::md::test_frontmatter_values(ORIGINAL)["custom"]
+        );
     }
 
     #[tokio::test]

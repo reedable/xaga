@@ -159,7 +159,8 @@ Last line</summary></entry></feed>"#).unwrap();
         expected.insert(
             "summary".into(),
             noyalib::Value::String(
-                "<img src=\"https://example.org/comic.png\">\nOriginal summary\r<br/>\nLast line".into(),
+                "<img src=\"https://example.org/comic.png\">\nOriginal summary\r<br/>\nLast line"
+                    .into(),
             ),
         );
         assert_eq!(md::test_frontmatter_values(&saved), expected);

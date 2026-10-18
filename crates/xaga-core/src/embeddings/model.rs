@@ -77,9 +77,7 @@ pub fn model_present() -> bool {
 /// name the app's lease guard). It re-checks `model_files_present` under the held right (a
 /// raced contender may have finished between the caller's check and its acquire), then
 /// downloads + commits.
-pub async fn download_model(
-    client: &reqwest::Client,
-) -> Result<DownloadOutcome, EmbeddingsError> {
+pub async fn download_model(client: &reqwest::Client) -> Result<DownloadOutcome, EmbeddingsError> {
     let model_dir = default_model_dir();
 
     // Re-check under the caller's held right: a raced contender may have completed the
@@ -88,15 +86,12 @@ pub async fn download_model(
         return Ok(DownloadOutcome::Ready);
     }
 
-    let parent = model_dir.parent().ok_or_else(|| {
-        EmbeddingsError::ModelDownload("model_dir has no parent".into())
-    })?;
+    let parent = model_dir
+        .parent()
+        .ok_or_else(|| EmbeddingsError::ModelDownload("model_dir has no parent".into()))?;
 
     let staging_dir = {
-        let name = model_dir
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
+        let name = model_dir.file_name().unwrap_or_default().to_string_lossy();
         parent.join(format!("{name}-download"))
     };
 
@@ -119,9 +114,7 @@ pub async fn download_model(
     // readers consider valid.
     crate::fs::replace_dir_atomic_async(staging_dir, model_dir.clone())
         .await
-        .map_err(|e| {
-            EmbeddingsError::ModelDownload(format!("rename staging to model dir: {e}"))
-        })?;
+        .map_err(|e| EmbeddingsError::ModelDownload(format!("rename staging to model dir: {e}")))?;
 
     log::info!("embedding model ready at {}", model_dir.display());
     Ok(DownloadOutcome::Ready)
@@ -276,11 +269,18 @@ mod tests {
     }
 
     fn chunks(parts: &[&[u8]]) -> Chunks {
-        Chunks(parts.iter().map(|p| bytes::Bytes::copy_from_slice(p)).collect())
+        Chunks(
+            parts
+                .iter()
+                .map(|p| bytes::Bytes::copy_from_slice(p))
+                .collect(),
+        )
     }
 
     async fn temp_file(dir: &tempfile::TempDir) -> tokio::fs::File {
-        tokio::fs::File::create(dir.path().join("out")).await.unwrap()
+        tokio::fs::File::create(dir.path().join("out"))
+            .await
+            .unwrap()
     }
 
     #[tokio::test]
@@ -326,7 +326,10 @@ mod tests {
         let err = verify_checksum("model.onnx", "aa", "bb").expect_err("mismatch must refuse");
         let msg = err.to_string();
         assert!(msg.contains("model.onnx"), "names the file: {msg}");
-        assert!(msg.contains("checksum mismatch"), "names the refusal: {msg}");
+        assert!(
+            msg.contains("checksum mismatch"),
+            "names the refusal: {msg}"
+        );
     }
 
     #[test]
@@ -418,9 +421,14 @@ mod tests {
     async fn over_cap_refuses_before_the_offending_write() {
         let dir = tempfile::tempdir().unwrap();
         let mut file = temp_file(&dir).await;
-        let err = write_capped(&mut chunks(&[b"aaaa", b"bbbb", b"cc"]), &mut file, "model.onnx", 9)
-            .await
-            .expect_err("third chunk would exceed the cap");
+        let err = write_capped(
+            &mut chunks(&[b"aaaa", b"bbbb", b"cc"]),
+            &mut file,
+            "model.onnx",
+            9,
+        )
+        .await
+        .expect_err("third chunk would exceed the cap");
         let msg = err.to_string();
         assert!(msg.contains("model.onnx"), "names the file: {msg}");
         assert!(msg.contains("9-byte cap"), "names the cap: {msg}");

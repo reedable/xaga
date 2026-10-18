@@ -29,9 +29,14 @@ pub fn data_root() -> Option<PathBuf> {
 /// counter), so they never corrupt a shared buffer; the last `rename` to
 /// complete wins, and the result is always one writer's complete bytes.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("md")) {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput,
-            "Markdown writes must use persistence::documents::upsert"));
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Markdown writes must use persistence::documents::upsert",
+        ));
     }
     write_atomic_bytes(path, bytes)
 }
@@ -41,7 +46,8 @@ pub(crate) async fn write_markdown_async(
     document: crate::persistence::documents::ValidatedDocument,
 ) -> std::io::Result<()> {
     tokio::task::spawn_blocking(move || write_atomic_bytes(&path, document.as_bytes()))
-        .await.map_err(std::io::Error::other)?
+        .await
+        .map_err(std::io::Error::other)?
 }
 
 fn write_atomic_bytes(path: &Path, bytes: &[u8]) -> std::io::Result<()> {

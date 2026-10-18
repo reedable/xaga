@@ -118,7 +118,8 @@ async fn gc(data_dir: &Path, dry_run: bool) {
     }
 
     let verb = if dry_run { "would remove" } else { "removed" };
-    println!("{verb} {removed_dirs} orphan director{} and {removed_files} unreferenced file{}",
+    println!(
+        "{verb} {removed_dirs} orphan director{} and {removed_files} unreferenced file{}",
         if removed_dirs == 1 { "y" } else { "ies" },
         if removed_files == 1 { "" } else { "s" },
     );

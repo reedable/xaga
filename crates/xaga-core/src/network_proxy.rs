@@ -914,9 +914,11 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(n, 0);
-        assert!(TcpStream::connect((Ipv4Addr::LOCALHOST, port))
-            .await
-            .is_err());
+        assert!(
+            TcpStream::connect((Ipv4Addr::LOCALHOST, port))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -958,12 +960,16 @@ mod tests {
 
     #[tokio::test]
     async fn deny_all_local_exception_is_exact_and_loopback_only() {
-        assert!(ProxyConfig::deny_all()
-            .with_local_endpoint("example.org".into(), "127.0.0.1:1420".parse().unwrap())
-            .is_err());
-        assert!(ProxyConfig::deny_all()
-            .with_local_endpoint("localhost".into(), "192.0.2.1:1420".parse().unwrap())
-            .is_err());
+        assert!(
+            ProxyConfig::deny_all()
+                .with_local_endpoint("example.org".into(), "127.0.0.1:1420".parse().unwrap())
+                .is_err()
+        );
+        assert!(
+            ProxyConfig::deny_all()
+                .with_local_endpoint("localhost".into(), "192.0.2.1:1420".parse().unwrap())
+                .is_err()
+        );
         let server = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
         let address = server.local_addr().unwrap();
         let proxy = start_scoped(

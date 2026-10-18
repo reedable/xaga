@@ -26,7 +26,10 @@ pub fn load() -> Config {
     match toml::from_str(&text) {
         Ok(cfg) => cfg,
         Err(e) => {
-            eprintln!("warning: {} is malformed, using defaults: {e}", path.display());
+            eprintln!(
+                "warning: {} is malformed, using defaults: {e}",
+                path.display()
+            );
             Config::default()
         }
     }
@@ -62,7 +65,12 @@ pub fn resolve_data_dir(cli_override: Option<PathBuf>, rc: &Config) -> PathBuf {
 
 /// Pretty-print the active config for `config show`.
 pub fn display(rc: &Config, resolved: &Path) {
-    println!("rc file:  {}", rc_path().map(|p| p.display().to_string()).unwrap_or_default());
+    println!(
+        "rc file:  {}",
+        rc_path()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default()
+    );
     println!(
         "data_dir: {}  ({})",
         resolved.display(),

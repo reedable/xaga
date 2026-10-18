@@ -380,8 +380,9 @@ impl Op {
         match self {
             Op::RepairSummary { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SavePdf { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
-            Op::RecoverImages { resp, .. }
-            | Op::SaveArticle { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::RecoverImages { resp, .. } | Op::SaveArticle { resp, .. } => {
+                drop(resp.send(Err(WriterError::ShuttingDown)))
+            }
             Op::AddAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::ReplaceAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RemoveAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -408,7 +409,10 @@ impl Op {
         match self {
             Op::RepairSummary { id, summary, resp } => {
                 let result = crate::persistence::summary_repair::repair_summary(
-                    library_dir, &id, &summary, token,
+                    library_dir,
+                    &id,
+                    &summary,
+                    token,
                 )
                 .await
                 .map_err(WriterError::from);
@@ -420,9 +424,21 @@ impl Op {
                     .map_err(WriterError::from);
                 let _ = resp.send(result);
             }
-            Op::RecoverImages { id, recovery, data, resp } => {
-                let result = crate::persistence::image_recovery::apply(library_dir, &id, recovery, data, token)
-                    .await.map_err(WriterError::from);
+            Op::RecoverImages {
+                id,
+                recovery,
+                data,
+                resp,
+            } => {
+                let result = crate::persistence::image_recovery::apply(
+                    library_dir,
+                    &id,
+                    recovery,
+                    data,
+                    token,
+                )
+                .await
+                .map_err(WriterError::from);
                 let _ = resp.send(result);
             }
             Op::SaveArticle {
@@ -817,18 +833,38 @@ impl LibraryWriter {
 
     // ── Write API (mirrors the persistence write API, minus library_dir) ─────────────
 
-    pub(crate) async fn repair_summary(&self, id: String, summary: String) -> Result<bool, WriterError> {
+    pub(crate) async fn repair_summary(
+        &self,
+        id: String,
+        summary: String,
+    ) -> Result<bool, WriterError> {
         let (resp, rx) = oneshot::channel();
-        self.submit(Tier::Interactive, Op::RepairSummary { id, summary, resp }, rx)
-            .await
+        self.submit(
+            Tier::Interactive,
+            Op::RepairSummary { id, summary, resp },
+            rx,
+        )
+        .await
     }
 
     pub async fn recover_images(
-        &self, id: String, recovery: crate::persistence::image_recovery::ImageRecovery,
+        &self,
+        id: String,
+        recovery: crate::persistence::image_recovery::ImageRecovery,
         data: std::collections::HashMap<String, String>,
     ) -> Result<Article, WriterError> {
         let (resp, rx) = oneshot::channel();
-        self.submit(Tier::Interactive, Op::RecoverImages { id, recovery, data, resp }, rx).await
+        self.submit(
+            Tier::Interactive,
+            Op::RecoverImages {
+                id,
+                recovery,
+                data,
+                resp,
+            },
+            rx,
+        )
+        .await
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1421,18 +1457,46 @@ mod tests {
         let w = start_writer(dir.path());
         let url = "https://example.com/preservation";
         let id = crate::util::url_hash12(url);
-        w.write_feed_entry(Tier::Interactive, url.into(), "Feed title".into(), None, None,
-            Some("Feed summary".into())).await.unwrap();
+        w.write_feed_entry(
+            Tier::Interactive,
+            url.into(),
+            "Feed title".into(),
+            None,
+            None,
+            Some("Feed summary".into()),
+        )
+        .await
+        .unwrap();
         let path = crate::library::entry_path(dir.path(), &id);
         let original = std::fs::read_to_string(&path).unwrap();
-        std::fs::write(&path, original.replacen("---\n", "---\ncustom: {nested: [one, two]}\n", 1)).unwrap();
+        std::fs::write(
+            &path,
+            original.replacen("---\n", "---\ncustom: {nested: [one, two]}\n", 1),
+        )
+        .unwrap();
         let mut note = annotation("keep");
         note.content = "Irreplaceable note".into();
-        w.add_annotation(Tier::Interactive, id.clone(), note).await.unwrap();
-        w.patch_entry_tags(Tier::Interactive, id.clone(), TagPatch::AddBookmark).await.unwrap();
+        w.add_annotation(Tier::Interactive, id.clone(), note)
+            .await
+            .unwrap();
+        w.patch_entry_tags(Tier::Interactive, id.clone(), TagPatch::AddBookmark)
+            .await
+            .unwrap();
         // Exactly the regressed download input: new body, omitted feed metadata.
-        w.save_article(Tier::Interactive, id.clone(), url.into(), "Downloaded title".into(),
-            None, None, None, None, "Downloaded body".into(), Default::default()).await.unwrap();
+        w.save_article(
+            Tier::Interactive,
+            id.clone(),
+            url.into(),
+            "Downloaded title".into(),
+            None,
+            None,
+            None,
+            None,
+            "Downloaded body".into(),
+            Default::default(),
+        )
+        .await
+        .unwrap();
         let saved = articles::read_article(dir.path(), &id).await.unwrap();
         assert_eq!(saved.meta.description.as_deref(), Some("Feed summary"));
         assert_eq!(saved.content, "Downloaded body");
@@ -1441,17 +1505,36 @@ mod tests {
         assert_eq!(saved.annotations.len(), 1);
         assert_eq!(saved.annotations[0].content, "Irreplaceable note");
         let before_feed = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(crate::md::test_frontmatter_values(&before_feed)["custom"], noyalib::from_str::<noyalib::Value>("{nested: [one, two]}").unwrap());
+        assert_eq!(
+            crate::md::test_frontmatter_values(&before_feed)["custom"],
+            noyalib::from_str::<noyalib::Value>("{nested: [one, two]}").unwrap()
+        );
         // A repeated feed discovery must not replace the downloaded/user data.
-        w.write_feed_entry(Tier::Interactive, url.into(), "Stale title".into(), None, None, None).await.unwrap();
+        w.write_feed_entry(
+            Tier::Interactive,
+            url.into(),
+            "Stale title".into(),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), before_feed);
-        w.add_annotation(Tier::Interactive, id.clone(), annotation("temporary")).await.unwrap();
-        w.remove_annotation(Tier::Interactive, id.clone(), "temporary".into()).await.unwrap();
+        w.add_annotation(Tier::Interactive, id.clone(), annotation("temporary"))
+            .await
+            .unwrap();
+        w.remove_annotation(Tier::Interactive, id.clone(), "temporary".into())
+            .await
+            .unwrap();
         let saved = articles::read_article(dir.path(), &id).await.unwrap();
         assert_eq!(saved.meta.description.as_deref(), Some("Feed summary"));
         assert_eq!(saved.annotations.len(), 1);
         assert_eq!(saved.annotations[0].content, "Irreplaceable note");
-        assert_eq!(crate::md::test_frontmatter_values(&std::fs::read_to_string(&path).unwrap())["custom"], crate::md::test_frontmatter_values(&before_feed)["custom"]);
+        assert_eq!(
+            crate::md::test_frontmatter_values(&std::fs::read_to_string(&path).unwrap())["custom"],
+            crate::md::test_frontmatter_values(&before_feed)["custom"]
+        );
         w.shutdown().await;
     }
 

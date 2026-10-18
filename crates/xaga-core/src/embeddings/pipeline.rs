@@ -3,11 +3,11 @@ use std::sync::Arc;
 
 use sha2::Digest;
 
-use crate::types::{Annotation, Article, Entry, Feed, Kind, ListItem, Topic};
 use super::db::EmbeddingEntry;
 use super::model::Embedder;
 use super::row::{article_embed_text, checksum, feed_embed_text, topic_embed_text};
 use super::{EmbeddingsDb, EmbeddingsError};
+use crate::types::{Annotation, Article, Entry, Feed, Kind, ListItem, Topic};
 
 /// Compares old and new tag state; sends the entry to the appropriate channels
 /// when is_unread or is_bookmarked actually changed.
@@ -147,8 +147,7 @@ pub(crate) async fn sync_annotations(
         std::collections::HashMap::new();
     for id in &to_delete {
         if let Some((stored_checksum, _)) = existing.get(id) {
-            if current_checksums.contains(stored_checksum)
-                && !carried.contains_key(stored_checksum)
+            if current_checksums.contains(stored_checksum) && !carried.contains_key(stored_checksum)
             {
                 if let Some(e) = db.get_entry(id).await? {
                     carried.insert(e.checksum.clone(), (e.vector, e.topics));
@@ -197,12 +196,17 @@ pub(crate) async fn sync_annotations(
             None => (None, None),
         };
         let topics = if existing.contains_key(&annotation.id) {
-            db.get_entry(&annotation.id).await?.map(|e| e.topics).unwrap_or_default()
+            db.get_entry(&annotation.id)
+                .await?
+                .map(|e| e.topics)
+                .unwrap_or_default()
         } else {
             carried_topics.unwrap_or_default()
         };
-        db.upsert(annotation_embedding_entry(article, annotation, topics, vector))
-            .await?;
+        db.upsert(annotation_embedding_entry(
+            article, annotation, topics, vector,
+        ))
+        .await?;
         let _ = annotation_tx.send(annotation_list_item(article, annotation));
     }
 
@@ -248,8 +252,13 @@ async fn embed_annotations(
         let vector = compute_vector(embedder, title, body).await?;
         // Carry the existing row's topics forward — the topic path owns that column.
         let topics = existing.map(|e| e.topics).unwrap_or_default();
-        db.upsert(annotation_embedding_entry(article, annotation, topics, Some(vector)))
-            .await?;
+        db.upsert(annotation_embedding_entry(
+            article,
+            annotation,
+            topics,
+            Some(vector),
+        ))
+        .await?;
     }
 
     Ok(())
@@ -294,8 +303,14 @@ pub async fn sync_entry_row(
         // Carry the existing row's topics + items forward so this write never clobbers the reverse
         // index or the recorded annotation membership — for entry rows `items` holds that membership,
         // owned by the annotation reconcile path, not this one.
-        row.topics = existing.as_ref().map(|e| e.topics.clone()).unwrap_or_default();
-        row.items = existing.as_ref().map(|e| e.items.clone()).unwrap_or_default();
+        row.topics = existing
+            .as_ref()
+            .map(|e| e.topics.clone())
+            .unwrap_or_default();
+        row.items = existing
+            .as_ref()
+            .map(|e| e.items.clone())
+            .unwrap_or_default();
         db.upsert(row).await?;
         emit_entry_changes(&article.meta, old_tags.as_deref(), unread_tx, bookmarked_tx);
     }
@@ -336,8 +351,14 @@ pub async fn sync_topic_row(topic: &Topic, db: &EmbeddingsDb) -> Result<(), Embe
     };
 
     if changed {
-        row.topics = existing.as_ref().map(|e| e.topics.clone()).unwrap_or_default();
-        row.items = existing.as_ref().map(|e| e.items.clone()).unwrap_or_default();
+        row.topics = existing
+            .as_ref()
+            .map(|e| e.topics.clone())
+            .unwrap_or_default();
+        row.items = existing
+            .as_ref()
+            .map(|e| e.items.clone())
+            .unwrap_or_default();
         db.upsert(row).await?;
     }
 
@@ -361,7 +382,10 @@ pub async fn embed_entry_vector(
     };
 
     if needs_vector {
-        log::debug!("embed_entry_vector: embedding id={id} title={:?}", article.meta.title);
+        log::debug!(
+            "embed_entry_vector: embedding id={id} title={:?}",
+            article.meta.title
+        );
         let vector = compute_vector(
             embedder,
             article.meta.title.clone(),
@@ -369,8 +393,14 @@ pub async fn embed_entry_vector(
         )
         .await?;
         let mut row = EmbeddingEntry::from_article(article, Some(vector));
-        row.topics = existing.as_ref().map(|e| e.topics.clone()).unwrap_or_default();
-        row.items = existing.as_ref().map(|e| e.items.clone()).unwrap_or_default();
+        row.topics = existing
+            .as_ref()
+            .map(|e| e.topics.clone())
+            .unwrap_or_default();
+        row.items = existing
+            .as_ref()
+            .map(|e| e.items.clone())
+            .unwrap_or_default();
         db.upsert(row).await?;
     }
 
@@ -395,7 +425,11 @@ pub async fn embed_topic_vector(
     };
 
     if needs_vector {
-        log::debug!("embed_topic_vector: embedding id={} title={:?}", topic.id, topic.title);
+        log::debug!(
+            "embed_topic_vector: embedding id={} title={:?}",
+            topic.id,
+            topic.title
+        );
         let vector = compute_vector(
             embedder,
             topic.title.clone(),
@@ -403,8 +437,14 @@ pub async fn embed_topic_vector(
         )
         .await?;
         let mut row = EmbeddingEntry::from_topic(topic, Some(vector));
-        row.topics = existing.as_ref().map(|e| e.topics.clone()).unwrap_or_default();
-        row.items = existing.as_ref().map(|e| e.items.clone()).unwrap_or_default();
+        row.topics = existing
+            .as_ref()
+            .map(|e| e.topics.clone())
+            .unwrap_or_default();
+        row.items = existing
+            .as_ref()
+            .map(|e| e.items.clone())
+            .unwrap_or_default();
         db.upsert(row).await?;
     }
 
@@ -453,7 +493,11 @@ pub(crate) async fn reconcile_topic_membership_chunked(
     member_ids: &[String],
     chunk_size: usize,
 ) -> Result<(), EmbeddingsError> {
-    let prior: Vec<String> = db.get_entry(topic_id).await?.map(|t| t.items).unwrap_or_default();
+    let prior: Vec<String> = db
+        .get_entry(topic_id)
+        .await?
+        .map(|t| t.items)
+        .unwrap_or_default();
     let new_set: HashSet<&str> = member_ids.iter().map(|s| s.as_str()).collect();
     let prior_set: HashSet<&str> = prior.iter().map(|s| s.as_str()).collect();
 
@@ -505,7 +549,9 @@ async fn write_topic_delta(
     let mut ids: Vec<String> = Vec::with_capacity(member_ids.len());
     let mut rows: Vec<EmbeddingEntry> = Vec::with_capacity(member_ids.len());
     for member_id in member_ids {
-        let Some(mut m) = db.get_entry(member_id).await? else { continue };
+        let Some(mut m) = db.get_entry(member_id).await? else {
+            continue;
+        };
         let has = m.topics.iter().any(|t| t == topic_id);
         if add && !has {
             m.topics.push(topic_id.to_string());
@@ -622,7 +668,11 @@ pub(crate) async fn add_topic_member(
     member_id: &str,
 ) -> Result<(), EmbeddingsError> {
     write_topic_delta(db, topic_id, &[member_id], true).await?;
-    let mut base = db.get_entry(topic_id).await?.map(|t| t.items).unwrap_or_default();
+    let mut base = db
+        .get_entry(topic_id)
+        .await?
+        .map(|t| t.items)
+        .unwrap_or_default();
     if !base.iter().any(|m| m == member_id) {
         base.push(member_id.to_string());
         set_topic_base(db, topic_id, &base).await?;
@@ -638,7 +688,11 @@ pub(crate) async fn remove_topic_member(
     member_id: &str,
 ) -> Result<(), EmbeddingsError> {
     write_topic_delta(db, topic_id, &[member_id], false).await?;
-    let base = db.get_entry(topic_id).await?.map(|t| t.items).unwrap_or_default();
+    let base = db
+        .get_entry(topic_id)
+        .await?
+        .map(|t| t.items)
+        .unwrap_or_default();
     if base.iter().any(|m| m == member_id) {
         let new_base: Vec<String> = base.into_iter().filter(|m| m != member_id).collect();
         set_topic_base(db, topic_id, &new_base).await?;
@@ -664,10 +718,19 @@ pub(crate) async fn embed_feed(
         return Ok(());
     }
 
-    log::debug!("embed_feed: embedding feed id={} title={:?}", feed.id, feed.title);
-    let vector =
-        compute_vector(embedder, feed.title.clone(), feed_embed_text(feed).to_string()).await?;
-    db.upsert(EmbeddingEntry::from_feed(feed, Some(vector))).await?;
+    log::debug!(
+        "embed_feed: embedding feed id={} title={:?}",
+        feed.id,
+        feed.title
+    );
+    let vector = compute_vector(
+        embedder,
+        feed.title.clone(),
+        feed_embed_text(feed).to_string(),
+    )
+    .await?;
+    db.upsert(EmbeddingEntry::from_feed(feed, Some(vector)))
+        .await?;
     Ok(())
 }
 
@@ -730,7 +793,9 @@ mod tests {
         // The `.md` now holds the same content under a new id with a new color.
         let new = annotation("new-id", "red");
         let (tx, _rx) = flume::unbounded::<ListItem>();
-        sync_annotations(&article(vec![new]), &db, &tx).await.unwrap();
+        sync_annotations(&article(vec![new]), &db, &tx)
+            .await
+            .unwrap();
 
         assert!(db.get_entry("old-id").await.unwrap().is_none());
         let row = db.get_entry("new-id").await.unwrap().unwrap();
@@ -749,7 +814,9 @@ mod tests {
         new.text = vec!["different text".to_string()];
         new.title = "different text".to_string();
         let (tx, _rx) = flume::unbounded::<ListItem>();
-        sync_annotations(&article(vec![new]), &db, &tx).await.unwrap();
+        sync_annotations(&article(vec![new]), &db, &tx)
+            .await
+            .unwrap();
 
         let row = db.get_entry("new-id").await.unwrap().unwrap();
         assert_eq!(row.vector, None);
