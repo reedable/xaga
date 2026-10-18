@@ -20,6 +20,10 @@ for bookmarking or manual Topic membership.
   Topic even when no text could be extracted from it.
 - Preserve an existing Entry's metadata, tags, annotations, and other authored
   fields when a PDF is downloaded or refreshed for its URL.
+- Maintain one Markdown identity record per normalized source URL. Prefer and
+  preserve `entries/{hash12}.md` when it exists; only create
+  `pdfs/{hash12}.md` when the Entry is absent. Until activation is designed,
+  keep PDF companions outside normal Entry discovery.
 - Represent the Entry as a PDF explicitly; do not infer its representation only
   from a filename extension or from the continued presence of extracted text.
 - Keep PDF presentation backed by the validated stored PDF bytes rather than
@@ -41,15 +45,15 @@ for bookmarking or manual Topic membership.
 - Preserve read-only behavior: existing PDF Entries and stored PDFs remain
   readable, but creating the companion or refreshing extraction requires the
   active library writer.
-- Keep recovery able to detect stored PDFs without a companion Entry and repair
-  them when sufficient metadata is available, without silently discarding the
-  PDF.
+- Keep recovery able to detect stored PDFs without either form of Markdown
+  identity record and repair them when sufficient metadata is available,
+  without silently discarding the PDF.
 - Provide an explicit CLI migration for existing libraries. It must support a
   non-writing dry run, acquire the library write lock before mutation, be safe
   to rerun after interruption, avoid network access, and report migrated,
   already represented, failed, and unresolved PDFs separately.
 - Recover a legacy PDF's source identity only from durable library evidence,
-  including its valid source-identity sidecar or an existing Entry or Feed item
+  including its valid Entry-format PDF companion or an existing Entry or Feed item
   whose normalized URL produces the PDF filename's hash. A legacy filename
   contains only a one-way URL hash; do not invent a source URL or silently
   create an incorrectly identified Entry when no matching evidence exists.
@@ -59,6 +63,13 @@ for bookmarking or manual Topic membership.
 - Define the PDF-specific Entry metadata and Markdown-body contract, including
   how a companion is distinguished from an HTML article and how extraction
   provenance or status is recorded.
+- Define activation and repair for the two valid layouts: a feed-discovered PDF
+  may use a richer `entries/{hash12}.md`, while a manually visited PDF may use a
+  provisional `pdfs/{hash12}.md`. Normal writers do not create both. Recovery
+  must nevertheless detect duplicates introduced by older builds or external
+  edits and reconcile them without double indexing, split future edits, or loss
+  of metadata, tags, annotations, Topic membership, timestamps, or content.
+  The duplicate-reconciliation mechanism remains deliberately unresolved.
 - Decide the authoritative title and timestamps when the load begins with only
   a URL, when a Feed Entry already exists, and when the PDF supplies document
   metadata.
@@ -66,9 +77,9 @@ for bookmarking or manual Topic membership.
   files to coexist, while a later response that is genuinely HTML may still
   replace the PDF representation. Specify ordering, hard-kill windows, and
   recovery for the two-file commit.
-- Extend the library writer's PDF operation to create or update the companion
-  Entry without clobbering existing user state, then enqueue state and embedding
-  work only after the durable representation lands.
+- Extend the library writer's PDF operation to activate or enrich the selected
+  identity record without clobbering existing user state, then enqueue state and
+  embedding work only after the durable representation lands.
 - Evaluate PDF extraction libraries and their transitive licenses, supported
   formats, native distribution cost, parser safety history, and ability to run
   under enforceable resource limits outside the UI process.
@@ -105,7 +116,6 @@ for bookmarking or manual Topic membership.
 - `crates/xaga-core/src/recovery/`
 - `crates/xaga-cli/src/cmd/articles.rs`
 - `src-tauri/src/commands/articles.rs`
-- `docs-transient/available/enhancement__pdfs--persist-source-identity.md`
 - `docs/architecture/wry_pdf_routing.md`
 - `docs/architecture/crash_consistency.md`
 - `docs/architecture/single_writer_library_lock.md`

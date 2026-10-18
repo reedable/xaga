@@ -23,9 +23,19 @@ Two failure classes are distinguished, and they are covered by different mechani
 
 ### PDF representation replacement
 
-PDF bytes are validated before an atomic write to `pdfs/{hash12}.pdf`. Download
-staging remains outside the library. A failed validation or replacement leaves
-the previous PDF intact. A successful Markdown save removes the URL-associated
-PDF afterward, under the same writer lane. Those two filesystem operations are
-not one transaction: a crash between them can leave both representations, and
-local lookup prefers the PDF. A successful HTML refresh removes that stale PDF.
+PDF bytes and their Markdown identity are validated before durable mutation.
+One normalized URL has one Markdown identity record: an existing
+`entries/{hash12}.md` takes precedence, because it may contain richer feed
+metadata and user-authored state. When that Entry is absent, the writer
+atomically commits a frontmatter-only `pdfs/{hash12}.md` before atomically
+committing `pdfs/{hash12}.pdf`. A crash can leave a harmless companion without
+bytes; it cannot leave newly committed PDF bytes without reversible identity.
+A failed companion commit prevents PDF replacement, while a failed PDF commit
+leaves the complete identity record and previous PDF bytes.
+
+A successful HTML Markdown save removes the URL-associated PDF first and its
+companion second, under the same writer lane. A crash between removals can leave
+only the companion. Markdown persistence and PDF-resource removal are not one transaction:
+a crash before removal can still leave both representations, and local lookup
+prefers the PDF. A successful HTML refresh removes those stale PDF resources.
+Download staging remains outside the library.

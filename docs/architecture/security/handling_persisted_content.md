@@ -182,6 +182,17 @@ normal article lookup/ingestion; an invalid stored file reports an error. Refres
 can replace it after validation. These are format and path checks, not a guarantee
 of PDF parser safety.
 
+Every newly persisted PDF has exactly one Markdown identity record for its
+normalized source URL. An existing `entries/{hash12}.md` is authoritative and
+is preserved rather than duplicated. Otherwise persistence creates a
+frontmatter-only `pdfs/{hash12}.md` companion using the standard Entry document
+format. Companion reads treat the file as untrusted: they reject
+unsafe stems, symlinks, nonregular or oversized files, malformed Markdown,
+non-HTTP(S) or non-normalized source URLs, nonempty bodies, and URLs that do not
+hash back to the filename stem. The companion is migration evidence, not
+authorization to open an arbitrary path. Legacy PDFs without one remain
+readable through the existing URL-keyed API.
+
 The trusted `read_stored_pdf` command returns validated bytes for local Blob
 presentation. The trusted `open_stored_pdf` command derives and validates the same
 file before opening it in the default app; it accepts a source URL, never a local

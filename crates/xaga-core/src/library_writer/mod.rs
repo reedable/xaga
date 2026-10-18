@@ -1565,6 +1565,10 @@ mod tests {
         w.save_pdf(url.into(), Some(b"%PDF-valid".to_vec()))
             .await
             .unwrap();
+        let pdf_stem = crate::util::url_hash12(&crate::util::normalize_url(url).unwrap());
+        // The existing Entry is the one Markdown identity record; saving PDF
+        // bytes neither changes it nor creates a competing companion.
+        assert!(!crate::library::pdf_entry_path(dir.path(), &pdf_stem).exists());
         let after = articles::read_article(dir.path(), &id).await.unwrap();
         assert_eq!(before.content, after.content);
         assert_eq!(after.annotations.len(), 1);
@@ -1599,6 +1603,7 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+        assert!(!crate::library::pdf_entry_path(dir.path(), &pdf_stem).exists());
         assert_eq!(
             articles::read_article(dir.path(), &id)
                 .await
