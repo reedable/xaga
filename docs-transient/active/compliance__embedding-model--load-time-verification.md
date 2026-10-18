@@ -8,14 +8,14 @@ Files already on disk are checked for existence only (`model_files_present`, `cr
 
 - Verify every model file against the pinned manifest before passing it to fastembed or ONNX Runtime.
 - Reuse the bytes already read by `Embedder::load`; verification must not require a second file read.
-- Refuse to execute mismatched content.
-- Do not delete evidence or initiate a replacement download without an explicit recovery policy.
+- Fail loading without executing mismatched content.
+- Preserve the installed files unchanged when verification fails.
+- Do not initiate or offer a replacement download; recovery is outside this task.
 - Keep download-time verification unchanged.
 
 ## Remaining work
 
 - Measure load-time hashing cost for the complete model.
-- Decide whether a mismatch only fails loading or may offer a separately authorized verified download; preserve the failed files unless deletion is explicitly chosen.
 - Add verification to `Embedder::load` using `MODEL_FILES` and the existing checksum comparison.
 - Test valid, missing, and mismatched files.
 - Update the durable trust and remote-content documentation.

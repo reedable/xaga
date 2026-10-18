@@ -24,4 +24,4 @@ Backfill computes vectors one object at a time, retrieves the existing row, repl
 - `crates/xaga-core/src/embeddings/service.rs`
 - `crates/xaga-core/src/embeddings/db.rs`
 - `docs/architecture/design_scale.md`
-- [Bound fresh-reindex memory](defect__fresh_reindex_memory_ceiling.md)
+- [Bound fresh-reindex memory](defect__fresh-reindex-memory-ceiling.md)

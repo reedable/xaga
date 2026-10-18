@@ -36,5 +36,5 @@ known WebKit loopback bypass is a containment defect, not an opt-in mechanism.
 - [Network proxy](../../../crates/xaga-core/src/network_proxy.rs)
 - [Remote-content policy](../../../docs/architecture/security/fetching_remote_content.md)
 - [Secure by default](../../../docs/principles/secure_by_default.md)
-- [Loopback containment task](compliance__loopback_proxy_bypass.md)
-- [Feed retrieval migration](compliance__eliminate_reqwest.md)
+- [Loopback containment task](compliance__loopback-proxy-bypass.md)
+- [Feed retrieval migration](compliance__eliminate-reqwest.md)

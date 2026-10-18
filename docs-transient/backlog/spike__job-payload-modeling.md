@@ -24,4 +24,4 @@ Embedding jobs carry different forms according to their work: authoritative doma
 - `crates/xaga-core/src/embeddings/service.rs`
 - `crates/xaga-core/src/embeddings/pipeline.rs`
 - `docs/principles/carry_intent_end_to_end.md`
-- [Bound fresh-reindex memory](defect__fresh_reindex_memory_ceiling.md)
+- [Bound fresh-reindex memory](defect__fresh-reindex-memory-ceiling.md)

@@ -23,5 +23,5 @@ Fresh recovery collects domain objects and enqueues content-carrying embedding j
 - `crates/xaga-core/src/recovery/dispatch.rs`
 - `crates/xaga-core/src/embeddings/service.rs`
 - `docs/architecture/design_scale.md`
-- [Job payload modeling](spike__job_payload_modeling.md)
-- [Embedding backfill costs](spike__embed_backfill_per_row_costs.md)
+- [Job payload modeling](spike__job-payload-modeling.md)
+- [Embedding backfill costs](spike__embed-backfill-per-row-costs.md)
