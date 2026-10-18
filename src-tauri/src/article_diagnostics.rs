@@ -69,7 +69,11 @@ impl DownloadDiagnostic {
 }
 
 fn bounded_download_text(value: &str) -> String {
-    value.chars().filter(|c| !c.is_control()).take(4096).collect()
+    value
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(4096)
+        .collect()
 }
 
 fn diagnostic_url(value: &str) -> String {
@@ -195,12 +199,19 @@ impl ArticleLoadAttempt {
         self.record_event(source, step, outcome, code, detail, None);
     }
 
-    pub(crate) fn record_download(&self, requested: bool, accepted: bool, mut download: DownloadDiagnostic) {
+    pub(crate) fn record_download(
+        &self,
+        requested: bool,
+        accepted: bool,
+        mut download: DownloadDiagnostic,
+    ) {
         download.loader_label = bounded_download_text(&download.loader_label);
         download.source_url = diagnostic_url(&download.source_url);
         download.current_url = download.current_url.map(|url| diagnostic_url(&url));
         download.download_url = diagnostic_url(&download.download_url);
-        download.destination = download.destination.map(|path| bounded_download_text(&path));
+        download.destination = download
+            .destination
+            .map(|path| bounded_download_text(&path));
         self.record_event(
             "native",
             if requested { "download_requested" } else { "download_finished" },
@@ -239,9 +250,17 @@ impl ArticleLoadAttempt {
         if attempt.diagnostic.events.len() >= MAX_EVENTS {
             // Preserve image decisions and results when navigation noise fills
             // the buffer. Loader reports already have a separate 64-event cap.
-            let index = attempt.diagnostic.events.iter().enumerate().skip(1)
-                .find(|(_, event)| event.step != "image_capture" && !event.code.starts_with("image:"))
-                .map(|(index, _)| index).unwrap_or(1);
+            let index = attempt
+                .diagnostic
+                .events
+                .iter()
+                .enumerate()
+                .skip(1)
+                .find(|(_, event)| {
+                    event.step != "image_capture" && !event.code.starts_with("image:")
+                })
+                .map(|(index, _)| index)
+                .unwrap_or(1);
             attempt.diagnostic.events.remove(index);
             attempt.diagnostic.dropped_events += 1;
         }
@@ -334,14 +353,19 @@ mod tests {
         let diagnostics = ArticleDiagnostics::default();
         let attempt = diagnostics.create_attempt("load");
         for _ in 0..140 {
-            attempt.record_download(true, false, DownloadDiagnostic {
-                loader_label: "loader-7".into(),
-                source_url: "https://example.org/article".into(),
-                current_url: Some("data:text/html,private-content".into()),
-                download_url: "https://user:password@example.org/file?token=investigate#secret".into(),
-                destination: Some(format!("/Downloads/{}\n", "x".repeat(5000))),
-                success: None,
-            });
+            attempt.record_download(
+                true,
+                false,
+                DownloadDiagnostic {
+                    loader_label: "loader-7".into(),
+                    source_url: "https://example.org/article".into(),
+                    current_url: Some("data:text/html,private-content".into()),
+                    download_url: "https://user:password@example.org/file?token=investigate#secret"
+                        .into(),
+                    destination: Some(format!("/Downloads/{}\n", "x".repeat(5000))),
+                    success: None,
+                },
+            );
         }
         let record = attempt.get_diagnostic();
         assert_eq!(record.events.len(), MAX_EVENTS);
@@ -349,11 +373,23 @@ mod tests {
         let event = record.events.back().unwrap();
         assert_eq!(event.code, "article:download-rejected");
         let evidence = event.download.as_ref().unwrap();
-        assert_eq!(evidence.download_url, "https://example.org/file?token=investigate");
-        assert_eq!(evidence.current_url.as_deref(), Some("[non-HTTP URL omitted]"));
+        assert_eq!(
+            evidence.download_url,
+            "https://example.org/file?token=investigate"
+        );
+        assert_eq!(
+            evidence.current_url.as_deref(),
+            Some("[non-HTTP URL omitted]")
+        );
         assert_eq!(evidence.destination.as_ref().unwrap().len(), 4096);
         assert!(evidence.success.is_none());
-        assert!(diagnostics.create_attempt("other").get_diagnostic().events.is_empty());
+        assert!(
+            diagnostics
+                .create_attempt("other")
+                .get_diagnostic()
+                .events
+                .is_empty()
+        );
     }
     #[test]
     fn bounds_and_isolates_attempts() {
@@ -378,10 +414,30 @@ mod tests {
         let diagnostics = ArticleDiagnostics::default();
         let attempt = diagnostics.create_attempt("load");
         attempt.add_started_event("fetch");
-        attempt.add_event("native", "image_capture", ArticleDiagnosticOutcome::Started, "image:enabled", "");
-        attempt.add_event("loader", "image_capture", ArticleDiagnosticOutcome::Started, "image:attempted", "");
-        attempt.add_event("loader", "images", ArticleDiagnosticOutcome::Succeeded, "image:captured", "");
-        for _ in 0..500 { attempt.add_started_event("navigation"); }
+        attempt.add_event(
+            "native",
+            "image_capture",
+            ArticleDiagnosticOutcome::Started,
+            "image:enabled",
+            "",
+        );
+        attempt.add_event(
+            "loader",
+            "image_capture",
+            ArticleDiagnosticOutcome::Started,
+            "image:attempted",
+            "",
+        );
+        attempt.add_event(
+            "loader",
+            "images",
+            ArticleDiagnosticOutcome::Succeeded,
+            "image:captured",
+            "",
+        );
+        for _ in 0..500 {
+            attempt.add_started_event("navigation");
+        }
         let record = attempt.get_diagnostic();
         assert_eq!(record.events.len(), MAX_EVENTS);
         for code in ["image:enabled", "image:attempted", "image:captured"] {

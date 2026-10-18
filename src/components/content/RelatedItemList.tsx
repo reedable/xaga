@@ -11,6 +11,7 @@ import useAbortController from "../../hooks/useAbortController";
 import { useEvents } from "../../hooks/useEvents";
 import useRelatedItems from "../../hooks/useRelatedItems";
 import useRouter from "../../hooks/useRouter";
+import { useEmbeddingStartupState } from "../../hooks/useEmbeddingStartupState";
 import { isPartialAnnotation, type Ranked, type Item } from "../../types";
 import cx from "../../utils/cx";
 import { abortable, decorate, retriable } from "../../utils/Decorator";
@@ -25,6 +26,7 @@ interface RelatedItemListProps {
 }
 
 export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
+  const embeddingStartupState = useEmbeddingStartupState();
   const { selectItem } = useRouter();
   const [abort, abortControllerRef] = useAbortController();
   const { queryByItem } = useRelatedItems(abortControllerRef);
@@ -64,6 +66,7 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
   );
 
   useEffect(() => {
+    if (embeddingStartupState !== "available") return;
     abort();
 
     (async () => {
@@ -71,7 +74,7 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
     })();
 
     return abort;
-  }, [abort, requestRelatedItems, itemId]);
+  }, [abort, requestRelatedItems, itemId, embeddingStartupState]);
 
   useEffect(() => {
     return onUnreadChanged((entry) => {
@@ -107,7 +110,8 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
     });
   }, [onAnnotationReplaced]);
 
-  if (embeddedItems.length === 0) return null;
+  if (embeddingStartupState !== "available" || embeddedItems.length === 0)
+    return null;
 
   return (
     <div className={cx(className, css.RelatedItemList)}>

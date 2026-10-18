@@ -12,4 +12,4 @@ The map of `docs/`.
 
 ## Transient
 
-See [documentation conventions](conventions/documentation.md) for transient task organization and structure.
+Transient tasks live in `../docs-transient/`. See [documentation conventions](conventions/documentation.md) for their lifecycle, organization, and structure.

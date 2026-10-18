@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useContentLoader } from "./useContentLoader";
@@ -30,6 +30,13 @@ vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 let root: ReturnType<typeof createRoot>;
 let hook: ReturnType<typeof useContentLoader>;
 let controller: { current: AbortController };
+function Host() {
+  const value = useContentLoader(controller);
+  useEffect(() => {
+    hook = value;
+  }, [value]);
+  return null;
+}
 beforeEach(async () => {
   vi.clearAllMocks();
   mocks.settings.inlinePdfReader = true;
@@ -44,10 +51,6 @@ beforeEach(async () => {
   URL.createObjectURL = vi.fn(() => "blob:pdf-test");
   URL.revokeObjectURL = vi.fn();
   controller = { current: new AbortController() };
-  function Host() {
-    hook = useContentLoader(controller);
-    return null;
-  }
   root = createRoot(document.createElement("div"));
   await act(() => root.render(<Host />));
 });
@@ -65,17 +68,13 @@ it("reuses the stored PDF without article lookup or network loading", async () =
 it("opens the persisted PDF in the default app after ingestion", async () => {
   mocks.settings.inlinePdfReader = false;
   // Settings are read during render.
-  await act(() => root.render(<HostForSettings />));
+  await act(() => root.render(<Host />));
   await act(() => hook.resolve("https://example.org/paper"));
   expect(mocks.platform.openStoredPdf).toHaveBeenCalledWith(
     "https://example.org/paper"
   );
   expect(URL.createObjectURL).not.toHaveBeenCalled();
 });
-function HostForSettings() {
-  hook = useContentLoader(controller);
-  return null;
-}
 it("refresh bypasses local PDF and article lookups", async () => {
   await act(() => hook.resolve("https://example.org/paper", true));
   expect(mocks.platform.readStoredPdf).not.toHaveBeenCalled();

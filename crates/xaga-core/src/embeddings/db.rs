@@ -924,7 +924,13 @@ impl EmbeddingsDb {
 
                     map.insert(
                         ids.value(i).to_string(),
-                        (checksums.value(i).to_string(), reference, has_vector, kind, item_ids),
+                        (
+                            checksums.value(i).to_string(),
+                            reference,
+                            has_vector,
+                            kind,
+                            item_ids,
+                        ),
                     );
                 }
             }
@@ -1819,7 +1825,10 @@ mod tests {
             .unwrap()
             .expect("entry row present");
 
-        assert!(entry.items.is_empty(), "an entry with no members/annotations reads back empty");
+        assert!(
+            entry.items.is_empty(),
+            "an entry with no members/annotations reads back empty"
+        );
     }
 
     /// `reconcile_topic_membership` adds the topic to newly-listed members, removes it from

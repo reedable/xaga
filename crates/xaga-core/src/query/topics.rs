@@ -1,9 +1,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::{
-    library, md::parse_document, persistence::topics::TopicsError, types::CollectionItem,
-};
+use crate::{library, md::parse_document, persistence::topics::TopicsError, types::CollectionItem};
 
 /// Returns the union of embedding-matched items and manually curated items for a topic,
 /// with the given filter applied and ordered by `sort`. Deduplicates by ID.

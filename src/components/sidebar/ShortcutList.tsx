@@ -9,7 +9,7 @@ import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRouter from "../../hooks/useRouter";
 import { ALL_ITEMS } from "../../Shortcuts";
-import { useAllItemsCounts } from "../../providers/AllItemsCountsProvider";
+import { useAllItemsCounts } from "../../hooks/useAllItemsCounts";
 import { isFeed, isTopic, type Countable } from "../../types";
 import ExpandableList from "./ExpandableList";
 import css from "./ShortcutList.module.css";

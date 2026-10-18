@@ -12,8 +12,8 @@ fn main() {
     use std::{
         io::{Read, Write},
         sync::{
-            atomic::{AtomicUsize, Ordering},
             Arc,
+            atomic::{AtomicUsize, Ordering},
         },
         time::Duration,
     };

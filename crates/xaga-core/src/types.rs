@@ -4,8 +4,8 @@
 use serde::{Deserialize, Serialize};
 
 pub use crate::domain::{
-    Annotation, Article, Bookmarkable, Colorable, Countable, Document, Entry, Feed, Item,
-    Kind, Note, Pinnable, Reference, Topic, WebResource,
+    Annotation, Article, Bookmarkable, Colorable, Countable, Document, Entry, Feed, Item, Kind,
+    Note, Pinnable, Reference, Topic, WebResource,
 };
 
 // ── ItemFilter ────────────────────────────────────────────────────────────────
@@ -67,10 +67,16 @@ impl std::str::FromStr for ItemSort {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum CollectionItem {
-    Entry { id: String },
+    Entry {
+        id: String,
+    },
     /// `reference` is the parent article's ID, stored so the annotation can be looked up from the
     /// article file without scanning the library. Older entries deserialize with `reference = ""`.
-    Annotation { id: String, #[serde(default)] reference: String },
+    Annotation {
+        id: String,
+        #[serde(default)]
+        reference: String,
+    },
 }
 
 impl CollectionItem {
@@ -120,10 +126,18 @@ pub struct ListItem {
 }
 
 impl Item for ListItem {
-    fn id(&self) -> &str { &self.id }
-    fn title(&self) -> &str { &self.title }
-    fn created_at(&self) -> &str { &self.created_at }
-    fn updated_at(&self) -> Option<&str> { None }
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn title(&self) -> &str {
+        &self.title
+    }
+    fn created_at(&self) -> &str {
+        &self.created_at
+    }
+    fn updated_at(&self) -> Option<&str> {
+        None
+    }
 }
 
 // ── PartialAnnotation ───────────────────────────────────────────────────────────
@@ -169,21 +183,37 @@ pub struct EmbeddedEntry {
 }
 
 impl Item for EmbeddedEntry {
-    fn id(&self) -> &str { self.entry.id() }
-    fn title(&self) -> &str { self.entry.title() }
-    fn created_at(&self) -> &str { self.entry.created_at() }
-    fn updated_at(&self) -> Option<&str> { self.entry.updated_at() }
-    fn description(&self) -> Option<&str> { self.entry.description() }
-    fn published_at(&self) -> Option<&str> { self.entry.published_at() }
+    fn id(&self) -> &str {
+        self.entry.id()
+    }
+    fn title(&self) -> &str {
+        self.entry.title()
+    }
+    fn created_at(&self) -> &str {
+        self.entry.created_at()
+    }
+    fn updated_at(&self) -> Option<&str> {
+        self.entry.updated_at()
+    }
+    fn description(&self) -> Option<&str> {
+        self.entry.description()
+    }
+    fn published_at(&self) -> Option<&str> {
+        self.entry.published_at()
+    }
 }
 
 impl std::ops::Deref for EmbeddedEntry {
     type Target = Entry;
-    fn deref(&self) -> &Entry { &self.entry }
+    fn deref(&self) -> &Entry {
+        &self.entry
+    }
 }
 
 impl std::ops::DerefMut for EmbeddedEntry {
-    fn deref_mut(&mut self) -> &mut Entry { &mut self.entry }
+    fn deref_mut(&mut self) -> &mut Entry {
+        &mut self.entry
+    }
 }
 
 /// A `Topic` returned from an embedding similarity query, carrying its score + `kind`.

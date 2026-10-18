@@ -6,8 +6,8 @@ use xaga_core::query::items;
 use xaga_core::types::{Entry, Kind, ListItem};
 
 use super::parse_item_filter;
-use crate::AppState;
 use crate::error::AppError;
+use crate::{AppState, EmbeddingStartupState};
 
 #[tauri::command]
 pub async fn read_entry(id: String, state: State<'_, AppState>) -> Result<Entry, AppError> {
@@ -58,8 +58,8 @@ pub async fn mark_entry_unread(id: String, state: State<'_, AppState>) -> Result
 }
 
 #[tauri::command]
-pub fn is_cache_ready(state: State<'_, AppState>) -> bool {
-    state.embeddings_read.lock().unwrap().is_some()
+pub fn embedding_startup_state(state: State<'_, AppState>) -> EmbeddingStartupState {
+    *state.embedding_startup_state.read().unwrap()
 }
 
 #[tauri::command]

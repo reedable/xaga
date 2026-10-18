@@ -121,11 +121,23 @@ pub async fn load_via_webview(
     attempt.add_succeeded_event("url_validation");
     if purpose == LoaderPurpose::Article {
         attempt.add_event(
-            "native", "image_capture",
-            if load_remote_image { ArticleDiagnosticOutcome::Started } else { ArticleDiagnosticOutcome::Skipped },
-            if load_remote_image { "image:enabled" } else { "image:disabled" },
-            if load_remote_image { "additional article image capture enabled; awaiting page readiness" }
-            else { "additional article image capture disabled by preference" },
+            "native",
+            "image_capture",
+            if load_remote_image {
+                ArticleDiagnosticOutcome::Started
+            } else {
+                ArticleDiagnosticOutcome::Skipped
+            },
+            if load_remote_image {
+                "image:enabled"
+            } else {
+                "image:disabled"
+            },
+            if load_remote_image {
+                "additional article image capture enabled; awaiting page readiness"
+            } else {
+                "additional article image capture disabled by preference"
+            },
         );
     }
 

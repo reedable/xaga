@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use clap::{Args, Subcommand};
-use xaga_core::persistence::articles;
 use xaga_core::embeddings::EmbeddingsDb;
+use xaga_core::persistence::articles;
 
 use crate::die;
 
@@ -31,12 +31,23 @@ pub async fn handle(cmd: ArticlesCommand, data_dir: &Path, dry_run: bool) {
             }
             let lock = xaga_core::library::acquire_lock(data_dir)
                 .unwrap_or_else(|| die("another process holds the library lock"));
-            let writer = xaga_core::library_writer::LibraryWriter::start(data_dir.to_path_buf(), lock);
-            let report = xaga_core::persistence::summary_repair::repair_summaries(&writer, dry_run).await;
+            let writer =
+                xaga_core::library_writer::LibraryWriter::start(data_dir.to_path_buf(), lock);
+            let report =
+                xaga_core::persistence::summary_repair::repair_summaries(&writer, dry_run).await;
             writer.shutdown().await;
-            println!("{}: {}; skipped (summary present): {}; unavailable locally: {}; errors: {}",
+            println!(
+                "{}: {}; skipped (summary present): {}; unavailable locally: {}; errors: {}",
                 if dry_run { "Would repair" } else { "Repaired" },
-                if dry_run { report.would_repair } else { report.repaired }, report.skipped, report.unavailable, report.errors.len());
+                if dry_run {
+                    report.would_repair
+                } else {
+                    report.repaired
+                },
+                report.skipped,
+                report.unavailable,
+                report.errors.len()
+            );
             for error in &report.errors {
                 eprintln!("{error}");
             }
@@ -64,17 +75,15 @@ pub async fn handle(cmd: ArticlesCommand, data_dir: &Path, dry_run: bool) {
             }
         }
 
-        ArticlesCommand::Read { id } => {
-            match articles::read_article(data_dir, &id).await {
-                Ok(doc) => {
-                    println!("url:      {}", doc.meta.url);
-                    println!("title:    {}", doc.meta.title);
-                    println!("created_at: {}", doc.meta.created_at);
-                    println!();
-                    print!("{}", doc.content);
-                }
-                Err(e) => die(e),
+        ArticlesCommand::Read { id } => match articles::read_article(data_dir, &id).await {
+            Ok(doc) => {
+                println!("url:      {}", doc.meta.url);
+                println!("title:    {}", doc.meta.title);
+                println!("created_at: {}", doc.meta.created_at);
+                println!();
+                print!("{}", doc.content);
             }
-        }
+            Err(e) => die(e),
+        },
     }
 }

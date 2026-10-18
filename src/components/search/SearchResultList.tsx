@@ -15,6 +15,7 @@ import { useEvents } from "../../hooks/useEvents";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRouter from "../../hooks/useRouter";
 import useSearch from "../../hooks/useSearch";
+import { useEmbeddingStartupState } from "../../hooks/useEmbeddingStartupState";
 import {
   isPartialAnnotation,
   isEntry,
@@ -45,6 +46,7 @@ export function SearchResultList({
   const { selectItem, state, clearSearch } = useRouter();
   const { entryId } = state;
   const { loading, error, search } = useSearch();
+  const embeddingStartupState = useEmbeddingStartupState();
   const { onUnreadChanged, onBookmarkChanged } = useEvents();
   const [, abortControllerRef] = useAbortController();
   const { feeds } = useFeeds(abortControllerRef);
@@ -53,7 +55,8 @@ export function SearchResultList({
 
   const visibleResults = useMemo((): Item[] => {
     if (typeFilter === "topics") return results.filter(isTopic);
-    if (typeFilter === "annotations") return results.filter(isPartialAnnotation);
+    if (typeFilter === "annotations")
+      return results.filter(isPartialAnnotation);
     if (typeFilter === "feeds") {
       // Hybrid: name-matches first (local title/URL filter over all feeds), then the
       // semantic feed hits from the unified search appended after, deduped by id.
@@ -66,7 +69,9 @@ export function SearchResultList({
           )
         : [];
       const seen = new Set(nameMatched.map((feed) => feed.id));
-      const semantic = results.filter(isFeed).filter((feed) => !seen.has(feed.id));
+      const semantic = results
+        .filter(isFeed)
+        .filter((feed) => !seen.has(feed.id));
       return [...nameMatched, ...semantic];
     }
     return results.filter(isEntry);
@@ -76,12 +81,12 @@ export function SearchResultList({
     (async () => {
       setResults([]);
 
-      if (searchQuery.trim().length) {
+      if (embeddingStartupState === "available" && searchQuery.trim().length) {
         const r = await search(searchQuery);
         if (r) setResults(r);
       }
     })();
-  }, [searchQuery, search]);
+  }, [searchQuery, search, embeddingStartupState]);
 
   useEffect(() => {
     return onUnreadChanged((entry) => {
@@ -105,9 +110,18 @@ export function SearchResultList({
         className={css.SearchInput}
         onClear={clearSearch}
         onSaveAsTopic={onSaveAsTopic}
+        disabled={embeddingStartupState !== "available"}
       />
 
-      {searchQuery && (
+      {embeddingStartupState !== "available" && (
+        <div className={cx(css.List, css.Placeholder)}>
+          <Typography variant="body2" color="text.secondary">
+            Search is unavailable because embedding startup did not complete.
+          </Typography>
+        </div>
+      )}
+
+      {embeddingStartupState === "available" && searchQuery && (
         <div className={css.Header}>
           <Typography variant="overline" color="text.secondary">
             Results for: {searchQuery}
@@ -141,13 +155,15 @@ export function SearchResultList({
         </div>
       )}
 
-      <div>
-        <Collapse in={loading}>
-          <LinearProgress variant="indeterminate" />
-        </Collapse>
-      </div>
+      {embeddingStartupState === "available" && (
+        <div>
+          <Collapse in={loading}>
+            <LinearProgress variant="indeterminate" />
+          </Collapse>
+        </div>
+      )}
 
-      {!!error && !loading && (
+      {embeddingStartupState === "available" && !!error && !loading && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography variant="body2" color="error">
             Search failed
@@ -155,7 +171,7 @@ export function SearchResultList({
         </div>
       )}
 
-      {!searchQuery && !loading && (
+      {embeddingStartupState === "available" && !searchQuery && !loading && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography variant="body2" color="text.disabled">
             Type to search
@@ -163,15 +179,19 @@ export function SearchResultList({
         </div>
       )}
 
-      {searchQuery && !error && !loading && visibleResults.length === 0 && (
-        <div className={cx(css.List, css.Placeholder)}>
-          <Typography variant="body2" color="text.disabled">
-            {`No ${typeFilter} for "${searchQuery}"`}
-          </Typography>
-        </div>
-      )}
+      {embeddingStartupState === "available" &&
+        searchQuery &&
+        !error &&
+        !loading &&
+        visibleResults.length === 0 && (
+          <div className={cx(css.List, css.Placeholder)}>
+            <Typography variant="body2" color="text.disabled">
+              {`No ${typeFilter} for "${searchQuery}"`}
+            </Typography>
+          </div>
+        )}
 
-      {visibleResults.length > 0 && (
+      {embeddingStartupState === "available" && visibleResults.length > 0 && (
         <List className={css.List} disablePadding>
           {visibleResults.map((item) => (
             <div key={item.id} className={css.ListItem}>
@@ -208,13 +228,16 @@ export function SearchResultList({
         </List>
       )}
 
-      {searchQuery && loading && results.length === 0 && (
-        <div className={cx(css.List, css.Placeholder)}>
-          <Typography variant="body2" color="text.disabled">
-            Searching…
-          </Typography>
-        </div>
-      )}
+      {embeddingStartupState === "available" &&
+        searchQuery &&
+        loading &&
+        results.length === 0 && (
+          <div className={cx(css.List, css.Placeholder)}>
+            <Typography variant="body2" color="text.disabled">
+              Searching…
+            </Typography>
+          </div>
+        )}
     </div>
   );
 }

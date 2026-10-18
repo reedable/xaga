@@ -7,9 +7,9 @@ pub mod library;
 pub mod settings;
 pub mod topics;
 
-pub(crate) use crate::command_policy::is_invoke_allowed;
 #[cfg(test)]
 use crate::command_policy::TRUSTED_WINDOW_LABELS;
+pub(crate) use crate::command_policy::is_invoke_allowed;
 
 /// Commands that write to the open library (`.md` entity files and/or LanceDB). A
 /// read-only instance — one that did not win the library lock at startup — has these
@@ -133,13 +133,23 @@ mod tests {
             );
         }
         // Read commands pass regardless of mode.
-        for command in ["read_article", "find_article", "list_annotations", "list_feeds"] {
+        for command in [
+            "read_article",
+            "find_article",
+            "list_annotations",
+            "list_feeds",
+        ] {
             assert!(!is_write_refused(command, true));
         }
         // Account/app-scope commands are not library writes and must never be gated:
         // `set_library` must work FROM a read-only instance (it is how one becomes the
         // writer of a different library), and settings/mode reads are process-local.
-        for command in ["set_library", "get_library", "is_library_read_only", "set_theme"] {
+        for command in [
+            "set_library",
+            "get_library",
+            "is_library_read_only",
+            "set_theme",
+        ] {
             assert!(
                 !is_write_refused(command, true),
                 "{command} is not a library write and must not be gated"

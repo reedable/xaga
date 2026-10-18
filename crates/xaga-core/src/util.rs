@@ -86,12 +86,18 @@ mod tests {
 
     #[test]
     fn normalize_url_keeps_bare_www_host() {
-        assert_eq!(normalize_url("https://www.com/a").unwrap(), "https://www.com/a");
+        assert_eq!(
+            normalize_url("https://www.com/a").unwrap(),
+            "https://www.com/a"
+        );
     }
 
     #[test]
     fn normalize_url_strips_trailing_slash() {
-        assert_eq!(normalize_url("https://example.com/").unwrap(), "https://example.com");
+        assert_eq!(
+            normalize_url("https://example.com/").unwrap(),
+            "https://example.com"
+        );
     }
 
     #[test]

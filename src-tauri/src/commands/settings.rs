@@ -34,7 +34,10 @@ pub async fn set_theme(
             *state.theme.write().unwrap() = theme.clone();
             update_theme_checkmarks(&app, &theme);
             if let Some(main) = app.get_webview_window("main") {
-                crate::events::emit_app(&main, crate::events::AppEvent::SettingsTheme(theme.clone()));
+                crate::events::emit_app(
+                    &main,
+                    crate::events::AppEvent::SettingsTheme(theme.clone()),
+                );
             }
             Ok(())
         }
@@ -57,7 +60,10 @@ pub async fn set_refresh_on_startup(
         SettingsOutcome::Written(_) => {
             *state.refresh_on_startup.write().unwrap() = value;
             if let Some(main) = app.get_webview_window("main") {
-                crate::events::emit_app(&main, crate::events::AppEvent::SettingsRefreshOnStartup(value));
+                crate::events::emit_app(
+                    &main,
+                    crate::events::AppEvent::SettingsRefreshOnStartup(value),
+                );
             }
             Ok(())
         }
@@ -65,7 +71,9 @@ pub async fn set_refresh_on_startup(
 }
 
 #[tauri::command]
-pub async fn get_html_reader_prefs(state: State<'_, AppState>) -> Result<HtmlReaderPrefs, AppError> {
+pub async fn get_html_reader_prefs(
+    state: State<'_, AppState>,
+) -> Result<HtmlReaderPrefs, AppError> {
     Ok(HtmlReaderPrefs {
         font_family: state.html_reader_font_family.read().unwrap().clone(),
         font_size: *state.html_reader_font_size.read().unwrap(),
@@ -84,7 +92,10 @@ pub async fn set_html_reader_font_family(
         SettingsOutcome::Written(_) => {
             *state.html_reader_font_family.write().unwrap() = value.clone();
             if let Some(main) = app.get_webview_window("main") {
-                crate::events::emit_app(&main, crate::events::AppEvent::SettingsHtmlReaderFontFamily(value.clone()));
+                crate::events::emit_app(
+                    &main,
+                    crate::events::AppEvent::SettingsHtmlReaderFontFamily(value.clone()),
+                );
             }
             Ok(())
         }
@@ -102,7 +113,10 @@ pub async fn set_html_reader_font_size(
         SettingsOutcome::Written(_) => {
             *state.html_reader_font_size.write().unwrap() = value;
             if let Some(main) = app.get_webview_window("main") {
-                crate::events::emit_app(&main, crate::events::AppEvent::SettingsHtmlReaderFontSize(value));
+                crate::events::emit_app(
+                    &main,
+                    crate::events::AppEvent::SettingsHtmlReaderFontSize(value),
+                );
             }
             Ok(())
         }
@@ -120,7 +134,10 @@ pub async fn set_html_reader_line_height(
         SettingsOutcome::Written(_) => {
             *state.html_reader_line_height.write().unwrap() = value;
             if let Some(main) = app.get_webview_window("main") {
-                crate::events::emit_app(&main, crate::events::AppEvent::SettingsHtmlReaderLineHeight(value));
+                crate::events::emit_app(
+                    &main,
+                    crate::events::AppEvent::SettingsHtmlReaderLineHeight(value),
+                );
             }
             Ok(())
         }
@@ -149,7 +166,10 @@ pub async fn set_html_reader_view(
             *state.html_reader_view.write().unwrap() = value.clone();
             update_view_checkmarks(&app, &value);
             if let Some(main) = app.get_webview_window("main") {
-                crate::events::emit_app(&main, crate::events::AppEvent::SettingsHtmlReaderView(value.clone()));
+                crate::events::emit_app(
+                    &main,
+                    crate::events::AppEvent::SettingsHtmlReaderView(value.clone()),
+                );
             }
             Ok(())
         }
@@ -172,7 +192,10 @@ pub async fn set_inline_pdf_reader(
         SettingsOutcome::Written(_) => {
             *state.inline_pdf_reader.write().unwrap() = value;
             if let Some(main) = app.get_webview_window("main") {
-                crate::events::emit_app(&main, crate::events::AppEvent::SettingsInlinePdfReader(value));
+                crate::events::emit_app(
+                    &main,
+                    crate::events::AppEvent::SettingsInlinePdfReader(value),
+                );
             }
             Ok(())
         }
@@ -195,7 +218,10 @@ pub async fn set_allowed_domains(
         SettingsOutcome::Written(_) => {
             *state.allowed_domains.write().unwrap() = domains.clone();
             if let Some(main) = app.get_webview_window("main") {
-                crate::events::emit_app(&main, crate::events::AppEvent::SettingsAllowedDomains(domains.clone()));
+                crate::events::emit_app(
+                    &main,
+                    crate::events::AppEvent::SettingsAllowedDomains(domains.clone()),
+                );
             }
             Ok(())
         }
@@ -203,10 +229,7 @@ pub async fn set_allowed_domains(
 }
 
 #[tauri::command]
-pub async fn set_show_sidebar(
-    value: bool,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
+pub async fn set_show_sidebar(value: bool, state: State<'_, AppState>) -> Result<(), AppError> {
     match update_settings(&state, |s| s.show_sidebar = Some(value))? {
         SettingsOutcome::StaleView(fresh) => Err(stale_view_error(&state, &fresh)),
         SettingsOutcome::Written(_) => {
@@ -251,10 +274,7 @@ fn validate_import_max_bytes(value: u64) -> Result<(), AppError> {
 }
 
 #[tauri::command]
-pub async fn set_import_max_bytes(
-    value: u64,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
+pub async fn set_import_max_bytes(value: u64, state: State<'_, AppState>) -> Result<(), AppError> {
     validate_import_max_bytes(value)?;
     match update_settings(&state, |s| s.import_max_bytes = Some(value))? {
         SettingsOutcome::StaleView(fresh) => Err(stale_view_error(&state, &fresh)),
@@ -271,11 +291,19 @@ mod import_limit_tests {
 
     #[test]
     fn import_limit_must_be_positive_whole_mib_and_exact_in_the_ui() {
-        for value in [1024 * 1024, crate::DEFAULT_IMPORT_MAX_BYTES, 128 * 1024 * 1024, 8_589_934_591 * 1024 * 1024] {
+        for value in [
+            1024 * 1024,
+            crate::DEFAULT_IMPORT_MAX_BYTES,
+            128 * 1024 * 1024,
+            8_589_934_591 * 1024 * 1024,
+        ] {
             assert!(validate_import_max_bytes(value).is_ok());
         }
         for value in [0, 1, 512 * 1024, 9_007_199_254_740_992, u64::MAX] {
-            assert!(matches!(validate_import_max_bytes(value), Err(AppError::InvalidImportLimit)));
+            assert!(matches!(
+                validate_import_max_bytes(value),
+                Err(AppError::InvalidImportLimit)
+            ));
         }
     }
 }

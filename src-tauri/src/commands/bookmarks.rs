@@ -45,4 +45,3 @@ pub async fn remove_bookmark(id: String, state: State<'_, AppState>) -> Result<E
     );
     Ok(entry)
 }
-

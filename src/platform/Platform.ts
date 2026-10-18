@@ -56,7 +56,7 @@ export interface Platform {
   removeFeed(signal: AbortSignal, feedUrl: string): Promise<string>;
 
   // Startup
-  isCacheReady(): Promise<boolean>;
+  embeddingStartupState(): Promise<EmbeddingStartupState>;
 
   // Entries
   listEntries(
@@ -350,6 +350,8 @@ export interface Platform {
     callback: (value: boolean) => void
   ): Promise<UnlistenFn>;
 }
+
+export type EmbeddingStartupState = "loading" | "available" | "unavailable";
 
 export const PlatformContext = createContext<Platform | null>(null);
 

@@ -16,12 +16,12 @@ use serde::{Serialize, Serializer};
 use xaga_core::embeddings::EmbeddingsError;
 use xaga_core::error::DomainError;
 use xaga_core::library_writer::WriterError;
+use xaga_core::network_proxy::ProxyError;
 use xaga_core::persistence::bookmarks::BookmarksError;
 use xaga_core::persistence::entries::EntryError;
 use xaga_core::persistence::feeds::FeedError;
 use xaga_core::persistence::topics::TopicsError;
 use xaga_core::query::items::ItemError;
-use xaga_core::network_proxy::ProxyError;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AppError {

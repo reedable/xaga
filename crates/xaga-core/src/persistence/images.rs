@@ -240,8 +240,14 @@ fn next_image(markdown: &str, from: usize) -> Option<ImageMatch<'_>> {
                 continue;
             };
             let tail = &markdown[gt + 1..];
-            let Some(close) = tail.find(')') else { i = bang + 2; continue; };
-            if tail[..close].contains('\n') { i = bang + 2; continue; }
+            let Some(close) = tail.find(')') else {
+                i = bang + 2;
+                continue;
+            };
+            if tail[..close].contains('\n') {
+                i = bang + 2;
+                continue;
+            }
             (&markdown[url_open + 1..gt], gt + 1 + close + 1)
         } else {
             // Bare url: read to whitespace (optional title follows) or `)`.
@@ -313,7 +319,8 @@ pub(crate) fn extract_images(
             let url = markdown_unescape(m.url_raw);
             let hash = image_url_hash(&url);
 
-            let image = url_data.get(&url)
+            let image = url_data
+                .get(&url)
                 .and_then(|data_uri| decode_data_uri(&hash, data_uri, &engine));
             if let Some(image) = image {
                 let start = out.len();
@@ -324,7 +331,11 @@ pub(crate) fn extract_images(
                 out.push_str(&markdown[m.span.start..url_start]);
                 out.push_str(&crate::library::entry_image_ref(id, &hash));
                 out.push_str(&markdown[url_end..m.span.end]);
-                rewrites.push((start..out.len(), markdown[m.span.clone()].to_string(), image.file_name.clone()));
+                rewrites.push((
+                    start..out.len(),
+                    markdown[m.span.clone()].to_string(),
+                    image.file_name.clone(),
+                ));
                 if !images.iter().any(|img| img.file_name == image.file_name) {
                     images.push(image);
                 }
@@ -388,11 +399,7 @@ pub(crate) fn extract_shared_favicon(
     let normalized = crate::util::normalize_url(url).ok()?;
     let hash = crate::util::url_hash12(&normalized);
     let data_uri = url_data.get(url).or_else(|| url_data.get(&normalized))?;
-    let image = decode_data_uri(
-        &hash,
-        data_uri,
-        &base64::engine::general_purpose::STANDARD,
-    )?;
+    let image = decode_data_uri(&hash, data_uri, &base64::engine::general_purpose::STANDARD)?;
     Some((hash, image.bytes))
 }
 
@@ -439,7 +446,10 @@ pub(crate) async fn write_entry_images(
         let path = crate::library::entry_image_path(library_dir, id, &img.file_name);
         match crate::fs::write_atomic_async(path, img.bytes.clone()).await {
             Ok(()) => landed.push(img.file_name.clone()),
-            Err(e) => log::warn!("failed to write image {} for entry {id}: {e}", img.file_name),
+            Err(e) => log::warn!(
+                "failed to write image {} for entry {id}: {e}",
+                img.file_name
+            ),
         }
     }
     landed
@@ -473,7 +483,10 @@ pub(crate) async fn gc_entry_images(
                 let name = entry.file_name();
                 let name = name.to_string_lossy();
                 // The ref is ext-less, so keep by file stem (`<hash>` of `<hash>.<ext>`).
-                let stem = name.rsplit_once('.').map(|(s, _)| s).unwrap_or(name.as_ref());
+                let stem = name
+                    .rsplit_once('.')
+                    .map(|(s, _)| s)
+                    .unwrap_or(name.as_ref());
                 if !keep.contains(stem) {
                     let path = entry.path();
                     if let Err(e) = tokio::fs::remove_file(&path).await {
@@ -509,9 +522,7 @@ pub fn referenced_image_hashes(id: &str, body: &str) -> HashSet<String> {
     while let Some(pos) = rest.find(&prefix) {
         let after = &rest[pos + prefix.len()..];
         let end = after
-            .find(|c: char| {
-                c == ')' || c == ']' || c == '"' || c == '\'' || c.is_whitespace()
-            })
+            .find(|c: char| c == ')' || c == ']' || c == '"' || c == '\'' || c.is_whitespace())
             .unwrap_or(after.len());
         if end > 0 {
             out.insert(after[..end].to_string());
@@ -523,7 +534,10 @@ pub fn referenced_image_hashes(id: &str, body: &str) -> HashSet<String> {
 
 /// The stored image files of one entry, mapped `hash → (path, ext)` — the entry
 /// directory read once so a batch of refs resolves without one `read_dir` each.
-async fn list_entry_image_files(library_dir: &Path, id: &str) -> HashMap<String, (std::path::PathBuf, String)> {
+async fn list_entry_image_files(
+    library_dir: &Path,
+    id: &str,
+) -> HashMap<String, (std::path::PathBuf, String)> {
     let dir = crate::library::entry_images_dir(library_dir, id);
     let mut out = HashMap::new();
     let Ok(mut rd) = tokio::fs::read_dir(&dir).await else {
@@ -546,7 +560,11 @@ async fn list_entry_image_files(library_dir: &Path, id: &str) -> HashMap<String,
 /// an oversize file, or the response byte budget being exhausted. A bad
 /// reference is data, never an error — the reader leaves the ref in place, and
 /// in the sandboxed blob iframe a relative ref fetches nothing.
-pub async fn read_entry_images(library_dir: &Path, id: &str, refs: &[String]) -> Vec<Option<String>> {
+pub async fn read_entry_images(
+    library_dir: &Path,
+    id: &str,
+    refs: &[String],
+) -> Vec<Option<String>> {
     let engine = base64::engine::general_purpose::STANDARD;
     let files = list_entry_image_files(library_dir, id).await;
     let mut out = Vec::with_capacity(refs.len());
@@ -568,13 +586,20 @@ async fn resolve_favicon_ref(
     engine: &base64::engine::GeneralPurpose,
     total: &mut usize,
 ) -> Option<String> {
-    let bytes = read_capped_bytes(&crate::library::favicon_path(library_dir, hash), MAX_IMAGE_BYTES).await?;
+    let bytes = read_capped_bytes(
+        &crate::library::favicon_path(library_dir, hash),
+        MAX_IMAGE_BYTES,
+    )
+    .await?;
     let media_type = media_type_for_bytes(&bytes)?;
     *total = total.checked_add(bytes.len())?;
     if *total > MAX_READ_RESPONSE_BYTES {
         return None;
     }
-    Some(format!("data:{media_type};base64,{}", engine.encode(&bytes)))
+    Some(format!(
+        "data:{media_type};base64,{}",
+        engine.encode(&bytes)
+    ))
 }
 
 fn media_type_for_bytes(bytes: &[u8]) -> Option<&'static str> {
@@ -608,9 +633,14 @@ fn media_type_for_bytes(bytes: &[u8]) -> Option<&'static str> {
 /// Reuse already-persisted bytes for another reference to the same remote URL.
 /// This performs only local reads; the URL chooses a hash, never a filesystem path.
 pub async fn read_entry_image_url(library_dir: &Path, id: &str, url: &str) -> Option<String> {
-    if !super::entries::is_safe_id(id) || !is_remote(url) { return None; }
+    if !super::entries::is_safe_id(id) || !is_remote(url) {
+        return None;
+    }
     let reference = crate::library::entry_image_ref(id, &image_url_hash(url));
-    read_entry_images(library_dir, id, &[reference]).await.pop().flatten()
+    read_entry_images(library_dir, id, &[reference])
+        .await
+        .pop()
+        .flatten()
 }
 
 async fn resolve_ref(
@@ -636,7 +666,10 @@ async fn resolve_ref(
         return None;
     }
 
-    Some(format!("data:{media_type};base64,{}", engine.encode(&bytes)))
+    Some(format!(
+        "data:{media_type};base64,{}",
+        engine.encode(&bytes)
+    ))
 }
 
 /// Reads a file into a `Vec<u8>`, rejecting one over `max`. Enforced on the read
@@ -657,11 +690,13 @@ async fn read_capped_bytes(path: &Path, max: u64) -> Option<Vec<u8>> {
 mod tests {
     use super::*;
 
-    const PNG_DATA: &str =
-        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+    const PNG_DATA: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
 
     fn map(pairs: &[(&str, &str)]) -> HashMap<String, String> {
-        pairs.iter().map(|(u, d)| (u.to_string(), d.to_string())).collect()
+        pairs
+            .iter()
+            .map(|(u, d)| (u.to_string(), d.to_string()))
+            .collect()
     }
 
     #[test]
@@ -716,9 +751,13 @@ mod tests {
         let md = r#"![description](<https://x.test/p.png> "Additional content")"#;
         let out = extract_images("entry1", md, &map(&[(url, PNG_DATA)]));
         let file = out.images[0].file_name.clone();
-        assert_eq!(out.persisted_body(&[file]), format!(
-            r#"![description](<../images/entry1/{}> "Additional content")"#, image_url_hash(url)
-        ));
+        assert_eq!(
+            out.persisted_body(&[file]),
+            format!(
+                r#"![description](<../images/entry1/{}> "Additional content")"#,
+                image_url_hash(url)
+            )
+        );
     }
 
     #[test]
@@ -851,7 +890,12 @@ mod tests {
 
         let reference = crate::library::favicon_ref(&hash);
         let read = read_entry_images(tmp.path(), "any-entry", &[reference]).await;
-        assert!(read[0].as_ref().unwrap().starts_with("data:image/png;base64,"));
+        assert!(
+            read[0]
+                .as_ref()
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
         assert_eq!(
             hash,
             crate::util::url_hash12(
@@ -888,7 +932,12 @@ mod tests {
         let reference = crate::library::entry_image_ref("e1", &hash);
         let read = read_entry_images(lib, "e1", &[reference]).await;
         assert_eq!(read.len(), 1);
-        assert!(read[0].as_ref().unwrap().starts_with("data:image/png;base64,"));
+        assert!(
+            read[0]
+                .as_ref()
+                .unwrap()
+                .starts_with("data:image/png;base64,")
+        );
     }
 
     #[tokio::test]
@@ -922,7 +971,9 @@ mod tests {
         let kept_file = format!("{hash}.png");
 
         let dir = crate::library::entry_images_dir(lib, "e");
-        tokio::fs::write(dir.join("orphan.png"), b"stale").await.unwrap();
+        tokio::fs::write(dir.join("orphan.png"), b"stale")
+            .await
+            .unwrap();
 
         // keep is the set of referenced HASHES; files kept by stem.
         let keep: HashSet<String> = std::iter::once(hash).collect();

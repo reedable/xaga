@@ -40,7 +40,10 @@ impl DownloadJob {
     }
     fn finish(self, success: bool) -> Result<Accepted, String> {
         match self {
-            Self::Icon(s) => s.finish(success).and_then(prepare_favicon).map(Accepted::Icon),
+            Self::Icon(s) => s
+                .finish(success)
+                .and_then(prepare_favicon)
+                .map(Accepted::Icon),
             Self::Image(s) => s.finish(success).map(Accepted::Image),
             Self::Pdf(s) => s.finish(success).map(Accepted::Pdf),
         }

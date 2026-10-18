@@ -7,6 +7,7 @@ import { PlatformContext } from "./platform/Platform";
 import { TauriPlatform } from "./platform/TauriPlatform";
 import { AppearanceProvider } from "./providers/AppearanceProvider";
 import { SettingsProvider } from "./providers/SettingsProvider";
+import { EmbeddingStartupProvider } from "./providers/EmbeddingStartupProvider";
 import { decorate, logged } from "./utils/Decorator";
 import Logger from "./utils/Logger";
 
@@ -37,7 +38,9 @@ createRoot(root!).render(
     <ErrorSinkProvider subscribeErrors={platform.onError}>
       <SettingsProvider>
         <AppearanceProvider>
-          <App entryPoint={getCurrentWindow().label} />
+          <EmbeddingStartupProvider>
+            <App entryPoint={getCurrentWindow().label} />
+          </EmbeddingStartupProvider>
         </AppearanceProvider>
       </SettingsProvider>
     </ErrorSinkProvider>

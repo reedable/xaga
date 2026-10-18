@@ -98,7 +98,10 @@ pub async fn refresh_all_feeds(
                     state.enqueue(Tier::Interactive, Job::UpsertEntry { article });
                 }
 
-                crate::events::emit_domain(&window, xaga_core::events::DomainEvent::FeedRefreshed(feed.clone()));
+                crate::events::emit_domain(
+                    &window,
+                    xaga_core::events::DomainEvent::FeedRefreshed(feed.clone()),
+                );
                 refreshed.push(feed);
             }
 
@@ -155,7 +158,13 @@ pub async fn rename_feed(
     );
 
     let feed = writer
-        .rename_feed(WriteTier::Interactive, id.clone(), title, unread, bookmarked)
+        .rename_feed(
+            WriteTier::Interactive,
+            id.clone(),
+            title,
+            unread,
+            bookmarked,
+        )
         .await
         .map_err(AppError::from)?;
 
@@ -200,10 +209,7 @@ pub async fn list_entries(
         ));
     };
 
-    let entries = db
-        .list_entries_by_ids(&ids)
-        .await
-        .map_err(AppError::from)?;
+    let entries = db.list_entries_by_ids(&ids).await.map_err(AppError::from)?;
     let mut items = xaga_core::query::filter::filter_items(entries, &item_filter)
         .await
         .map_err(|e| e.to_string())?;

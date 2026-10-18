@@ -50,7 +50,9 @@ impl EmbeddingsError {
             EmbeddingsError::ModelDownload(_) => "Couldn't download the search model.",
             EmbeddingsError::Model(_) => "The search model failed.",
             EmbeddingsError::Tokenize(_) => "Couldn't process text for search.",
-            EmbeddingsError::LanceDb(_) | EmbeddingsError::Arrow(_) => "The search database failed.",
+            EmbeddingsError::LanceDb(_) | EmbeddingsError::Arrow(_) => {
+                "The search database failed."
+            }
             EmbeddingsError::Json(_) | EmbeddingsError::Parse(_) => "Couldn't process search data.",
         }
     }
@@ -71,6 +73,9 @@ impl From<arrow_schema::ArrowError> for EmbeddingsError {
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
 pub use db::{AllItemsCounts, EmbeddingEntry, EmbeddingsDb, KindStatus};
-pub use model::{default_model_dir, download_model, model_present, load_default_embedder, model_files_present, DownloadOutcome, Embedder, DEFAULT_MODEL_REPO};
+pub use model::{
+    DEFAULT_MODEL_REPO, DownloadOutcome, Embedder, default_model_dir, download_model,
+    load_default_embedder, model_files_present, model_present,
+};
 pub use pipeline::{embed_entry_vector, embed_topic_vector, sync_entry_row, sync_topic_row};
 pub use service::{EmbeddingService, EntityRef, Job, ShutdownReason, StatePatch, Tier};

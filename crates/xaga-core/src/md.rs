@@ -67,8 +67,10 @@ pub(crate) fn patch_document(
         noyalib::from_str_with_config(&rest[..end], &FM_PARSER)
             .map_err(|e| MdError::Frontmatter(e.to_string()))?;
     for (key, value) in updates {
-        fields.insert((*key).to_owned(), noyalib::to_value(value)
-            .map_err(|e| MdError::Frontmatter(e.to_string()))?);
+        fields.insert(
+            (*key).to_owned(),
+            noyalib::to_value(value).map_err(|e| MdError::Frontmatter(e.to_string()))?,
+        );
     }
     // Unsupported image-map storage is omitted on every save (crash_consistency.md).
     fields.remove("images");
@@ -81,14 +83,25 @@ pub(crate) fn patch_document(
         Some(body) => format!("\n{body}\n"),
         None => rest[end + 5..].to_string(),
     };
-    let rendered = format!("{prefix}---\n{}\n---\n{suffix}", yaml.trim_end_matches('\n'));
+    let rendered = format!(
+        "{prefix}---\n{}\n---\n{suffix}",
+        yaml.trim_end_matches('\n')
+    );
     parse_document(&rendered)?;
     Ok(rendered)
 }
 
 #[cfg(test)]
-pub(crate) fn test_frontmatter_values(raw: &str) -> std::collections::BTreeMap<String, noyalib::Value> {
-    let yaml = raw.trim_start().strip_prefix("---\n").unwrap().split_once("\n---\n").unwrap().0;
+pub(crate) fn test_frontmatter_values(
+    raw: &str,
+) -> std::collections::BTreeMap<String, noyalib::Value> {
+    let yaml = raw
+        .trim_start()
+        .strip_prefix("---\n")
+        .unwrap()
+        .split_once("\n---\n")
+        .unwrap()
+        .0;
     noyalib::from_str_with_config(yaml, &FM_PARSER).unwrap()
 }
 
@@ -287,24 +300,30 @@ mod tests {
     fn frontmatter_edits_preserve_siblings_and_escape_multiline_values() {
         let raw = "---\nsource: https://example.com/a\nsummary: |\n  Old summary\n# Keep this comment\ntags: [research]\ncustom: {nested: [one, two]}\n---\n\nBody\n\n";
         let summary = "New summary\n---\ntags: [injected]\n";
-        let patched = patch_document(raw, &[("summary", serde_json::json!(summary))], None).unwrap();
+        let patched =
+            patch_document(raw, &[("summary", serde_json::json!(summary))], None).unwrap();
         let (fm, _) = parse_document(&patched).unwrap();
         assert_eq!(fm.summary.as_deref(), Some(summary));
         assert_eq!(fm.tags, vec!["research"]);
-        assert_eq!(test_frontmatter_values(&patched)["custom"], test_frontmatter_values(raw)["custom"]);
+        assert_eq!(
+            test_frontmatter_values(&patched)["custom"],
+            test_frontmatter_values(raw)["custom"]
+        );
         assert!(patched.ends_with("---\n\nBody\n\n"));
     }
 
     #[test]
     fn summary_carriage_returns_roundtrip_without_changing_other_fields() {
-        let raw = "---\nsource: https://example.org/a\ntitle: Saved\ntags: [research]\n---\n\nBody\n\n";
+        let raw =
+            "---\nsource: https://example.org/a\ntitle: Saved\ntags: [research]\n---\n\nBody\n\n";
         for summary in [
             "First\r<br/>\nSecond",
             "First\r\nSecond\r\n",
             "First\rSecond",
             "Quote: \"text\"\r<br/>\n\r<br/>\nLast\n\n",
         ] {
-            let saved = patch_document(raw, &[("summary", serde_json::json!(summary))], None).unwrap();
+            let saved =
+                patch_document(raw, &[("summary", serde_json::json!(summary))], None).unwrap();
             let mut expected = test_frontmatter_values(raw);
             expected.insert("summary".into(), noyalib::Value::String(summary.into()));
             assert_eq!(test_frontmatter_values(&saved), expected);

@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useErrorSink } from "../hooks/useErrorSink";
@@ -95,28 +95,51 @@ describe("article error details", () => {
   });
 });
 
-it.each([false, true])("shows favicon warning without claiming article failure (remedy=%s)", async (retry) => {
-  let push: (error: unknown) => void = () => {};
-  function Capture() {
-    push = useErrorSink().pushError;
-    return null;
+it.each([false, true])(
+  "shows favicon warning without claiming article failure (remedy=%s)",
+  async (retry) => {
+    let push: (error: unknown) => void = () => {};
+    function Capture() {
+      const nextPush = useErrorSink().pushError;
+      useEffect(() => {
+        push = nextPush;
+      }, [nextPush]);
+      return null;
+    }
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    mounted.push(root);
+    await act(() =>
+      root.render(
+        <ErrorSinkProvider>
+          <Capture />
+        </ErrorSinkProvider>
+      )
+    );
+    await act(() =>
+      push(new FaviconLoadError("https://example.org/article", retry))
+    );
+    const alert = document.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("The site icon couldn’t be loaded.");
+    expect(alert?.className).toContain("MuiAlert-filledWarning");
+    expect(alert?.textContent).not.toContain("Article loading failed");
+    expect(
+      alert?.textContent?.includes(
+        "Reloading the article will also retry loading its icon."
+      )
+    ).toBe(retry);
+    // A second notification for the same article must not replace the first.
+    await act(() =>
+      push(new FaviconLoadError("https://example.org/article", !retry))
+    );
+    expect(
+      alert?.textContent?.includes(
+        "Reloading the article will also retry loading its icon."
+      )
+    ).toBe(retry);
   }
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  mounted.push(root);
-  await act(() => root.render(<ErrorSinkProvider><Capture /></ErrorSinkProvider>));
-  await act(() => push(new FaviconLoadError("https://example.org/article", retry)));
-  const alert = document.querySelector('[role="alert"]');
-  expect(alert?.textContent).toContain("The site icon couldn’t be loaded.");
-  expect(alert?.className).toContain("MuiAlert-filledWarning");
-  expect(alert?.textContent).not.toContain("Article loading failed");
-  expect(alert?.textContent?.includes("Reloading the article will also retry loading its icon.")).toBe(retry);
-  // A second notification for the same article must not replace the first.
-  await act(() => push(new FaviconLoadError("https://example.org/article", !retry)));
-  expect(alert?.textContent?.includes("Reloading the article will also retry loading its icon.")).toBe(retry);
-});
-
+);
 
 it("shows native network errors through the existing sink and diagnostic action", async () => {
   let deliver: (error: unknown) => void = () => {};
@@ -128,9 +151,22 @@ it("shows native network errors through the existing sink and diagnostic action"
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  await act(() => root.render(<ErrorSinkProvider subscribeErrors={subscribe}>{null}</ErrorSinkProvider>));
-  await act(() => deliver({code: "proxy:blocked", message: "Remote content was blocked.", detail: "main; private evidence", diagnosticId: "network-1"}));
-  expect(document.querySelector('[role="alert"]')?.textContent).toBe("Remote content was blocked.Details");
+  await act(() =>
+    root.render(
+      <ErrorSinkProvider subscribeErrors={subscribe}>{null}</ErrorSinkProvider>
+    )
+  );
+  await act(() =>
+    deliver({
+      code: "proxy:blocked",
+      message: "Remote content was blocked.",
+      detail: "main; private evidence",
+      diagnosticId: "network-1",
+    })
+  );
+  expect(document.querySelector('[role="alert"]')?.textContent).toBe(
+    "Remote content was blocked.Details"
+  );
   expect(document.body.textContent).not.toContain("private evidence");
   await act(() => root.unmount());
   expect(stop).toHaveBeenCalledOnce();
@@ -139,22 +175,34 @@ it("shows native network errors through the existing sink and diagnostic action"
 it("shows the image-load message and diagnostics through the existing AppError contract", async () => {
   let push: (error: unknown) => void = () => {};
   function CaptureImageError() {
-    push = useErrorSink().pushError;
+    const nextPush = useErrorSink().pushError;
+    useEffect(() => {
+      push = nextPush;
+    }, [nextPush]);
     return null;
   }
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
   mounted.push(root);
-  await act(() => root.render(<ErrorSinkProvider><CaptureImageError /></ErrorSinkProvider>));
+  await act(() =>
+    root.render(
+      <ErrorSinkProvider>
+        <CaptureImageError />
+      </ErrorSinkProvider>
+    )
+  );
   const log = vi.spyOn(console, "error").mockImplementation(() => {});
   try {
-    await act(() => push({
-      code: "app:error",
-      message: "An image couldn’t be loaded. Reloading the article will retry loading its images.",
-      detail: "One or more local article images could not be resolved.",
-      diagnosticId: "image-attempt",
-    }));
+    await act(() =>
+      push({
+        code: "app:error",
+        message:
+          "An image couldn’t be loaded. Reloading the article will retry loading its images.",
+        detail: "One or more local article images could not be resolved.",
+        diagnosticId: "image-attempt",
+      })
+    );
     expect(document.body.textContent).toContain("An image couldn’t be loaded.");
     expect(document.body.textContent).toContain("Details");
     expect(document.body.textContent).not.toContain("Something went wrong.");

@@ -51,7 +51,11 @@ fn main() {
                 eprintln!("DESTINATION {line}");
                 hits.lock().unwrap().push(line);
                 let body = b"local-probe-response";
-                let _=write!(s,"HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Private-Network: true\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",body.len());
+                let _ = write!(
+                    s,
+                    "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Private-Network: true\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
                 let _ = s.write_all(body);
             });
         }

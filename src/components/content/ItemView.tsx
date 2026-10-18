@@ -31,11 +31,12 @@ export function ItemView({ className }: ItemViewProps) {
   // feed entry may need ingestion, or may have a persisted PDF representation.
   // Route classification changes must not restart that same resolution.
   const resolveRef = useRef(resolve);
-  resolveRef.current = resolve;
+  useEffect(() => {
+    resolveRef.current = resolve;
+  }, [resolve]);
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
   useEffect(() => {
     abort();
-    setResolvedUrl(null);
     if (!url) return;
     const signal = abortControllerRef.current.signal;
     void resolveRef.current(url).finally(() => {

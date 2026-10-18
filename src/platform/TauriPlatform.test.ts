@@ -6,8 +6,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { openUrlMock } = vi.hoisted(() => ({ openUrlMock: vi.fn() }));
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
-const { closeRequested } = vi.hoisted(() => ({ closeRequested: vi.fn().mockResolvedValue(() => {}) }));
-vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ label: "main", onCloseRequested: closeRequested }) }));
+const { closeRequested } = vi.hoisted(() => ({
+  closeRequested: vi.fn().mockResolvedValue(() => {}),
+}));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ label: "main", onCloseRequested: closeRequested }),
+}));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: openUrlMock }));
 // TauriPlatform registers a module-load event listener; no-op it under test.
 vi.mock("@tauri-apps/api/event", () => ({
@@ -15,6 +19,14 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import { TauriPlatform } from "./TauriPlatform";
+
+it("reads the embedding startup state from the native boundary", async () => {
+  invokeMock.mockResolvedValueOnce("unavailable");
+  await expect(new TauriPlatform().embeddingStartupState()).resolves.toBe(
+    "unavailable"
+  );
+  expect(invokeMock).toHaveBeenLastCalledWith("embedding_startup_state");
+});
 
 it("maps All Items counts from the native boundary", async () => {
   invokeMock.mockResolvedValueOnce({ entry_count: 12, unread_count: 4 });
@@ -32,14 +44,29 @@ it("keeps All Items counts unavailable when the cache is unavailable", async () 
 
 it("preserves native download evidence when reading diagnostics", async () => {
   const download = {
-    loaderLabel: "loader-0", sourceUrl: "https://example.org/",
-    currentUrl: "https://example.org/", downloadUrl: "https://example.org/favicon.ico",
-    destination: "/Downloads/favicon.ico", success: null,
+    loaderLabel: "loader-0",
+    sourceUrl: "https://example.org/",
+    currentUrl: "https://example.org/",
+    downloadUrl: "https://example.org/favicon.ico",
+    destination: "/Downloads/favicon.ico",
+    success: null,
   };
   invokeMock.mockResolvedValueOnce({
-    id: "attempt", startedAtMs: 1, mode: "refresh", outcome: "succeeded",
-    events: [{ elapsedMs: 10, source: "native", step: "download_requested",
-      outcome: "warning", code: "article:download-rejected", detail: "", download }],
+    id: "attempt",
+    startedAtMs: 1,
+    mode: "refresh",
+    outcome: "succeeded",
+    events: [
+      {
+        elapsedMs: 10,
+        source: "native",
+        step: "download_requested",
+        outcome: "warning",
+        code: "article:download-rejected",
+        detail: "",
+        download,
+      },
+    ],
     droppedEvents: 0,
   });
   const result = await new TauriPlatform().getArticleDiagnostic("attempt");
@@ -69,34 +96,45 @@ describe("TauriPlatform.openUrl scheme allowlist", () => {
   });
 });
 
-
 it("deduplicates native errors delivered during startup backlog drain", async () => {
   const { listen } = await import("@tauri-apps/api/event");
   const stop = vi.fn();
-  const error = {code: "proxy:blocked", message: "Remote content was blocked.", detail: "main", diagnosticId: "network-1"};
+  const error = {
+    code: "proxy:blocked",
+    message: "Remote content was blocked.",
+    detail: "main",
+    diagnosticId: "network-1",
+  };
   vi.mocked(listen).mockImplementationOnce(async (_name, handler) => {
-    handler({payload: error} as never);
+    handler({ payload: error } as never);
     return stop;
   });
   invokeMock.mockResolvedValueOnce([error]);
   const deliver = vi.fn();
   const unlisten = await new TauriPlatform().onError(deliver);
-  expect(vi.mocked(listen)).toHaveBeenLastCalledWith("app:error", expect.any(Function), {target: {kind: "WebviewWindow", label: "main"}});
+  expect(vi.mocked(listen)).toHaveBeenLastCalledWith(
+    "app:error",
+    expect.any(Function),
+    { target: { kind: "WebviewWindow", label: "main" } }
+  );
   expect(invokeMock).toHaveBeenLastCalledWith("take_ui_errors");
   expect(deliver).toHaveBeenCalledExactlyOnceWith(error);
   unlisten();
   expect(stop).toHaveBeenCalledOnce();
 });
 
-
 it("awaits pending edits before deciding whether the window may close", async () => {
   closeRequested.mockClear();
   let finish!: (saved: boolean) => void;
-  const saved = new Promise<boolean>((resolve) => { finish = resolve; });
+  const saved = new Promise<boolean>((resolve) => {
+    finish = resolve;
+  });
   await new TauriPlatform().onWindowCloseRequested(() => saved);
   const event = { preventDefault: vi.fn() };
   let completed = false;
-  const closing = closeRequested.mock.calls[0][0](event).then(() => { completed = true; });
+  const closing = closeRequested.mock.calls[0][0](event).then(() => {
+    completed = true;
+  });
   await Promise.resolve();
   expect(completed).toBe(false);
   finish(false);

@@ -107,9 +107,17 @@ pub(crate) async fn write_entry(
     _token: WriteToken,
 ) -> Result<Article, EntryError> {
     write_read_entry(
-        library_dir, url, title, &Utc::now().to_rfc3339(), published_at,
-        updated_at, summary, &[crate::tags::UNREAD.to_string()], _token,
-    ).await
+        library_dir,
+        url,
+        title,
+        &Utc::now().to_rfc3339(),
+        published_at,
+        updated_at,
+        summary,
+        &[crate::tags::UNREAD.to_string()],
+        _token,
+    )
+    .await
 }
 
 /// Writes a new Entry to `entries/{hash12}.md` with the supplied initial tags.
@@ -140,7 +148,11 @@ pub(crate) async fn write_read_entry(
             ("created", serde_json::json!(created_at)),
             ("tags", serde_json::json!(tags)),
         ];
-        for (key, value) in [("published", published_at), ("updated", updated_at), ("summary", summary)] {
+        for (key, value) in [
+            ("published", published_at),
+            ("updated", updated_at),
+            ("summary", summary),
+        ] {
             if let Some(value) = value {
                 updates.push((key, serde_json::json!(value)));
             }
@@ -206,10 +218,7 @@ pub(crate) async fn set_entry_tags(
         annotations: fm.annotations,
         favicon: fm.favicon,
     };
-    super::documents::upsert(
-        &path, &[("tags", serde_json::json!(tags))], None, _token,
-    )
-    .await?;
+    super::documents::upsert(&path, &[("tags", serde_json::json!(tags))], None, _token).await?;
     Ok(article.meta)
 }
 
@@ -226,11 +235,33 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let original = "---\nsource: https://example.com/a\ntitle: Saved\nsummary: Saved summary\ntags: [research, bookmark]\ncustom: retained\n---\n\nSaved body\n";
         std::fs::write(&path, original).unwrap();
-        let result = write_entry(dir.path(), url, "Replacement", None, None, None, WriteToken::for_test()).await.unwrap();
+        let result = write_entry(
+            dir.path(),
+            url,
+            "Replacement",
+            None,
+            None,
+            None,
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
         assert_eq!(result.meta.description.as_deref(), Some("Saved summary"));
         assert_eq!(result.content, "Saved body");
-        let result = write_read_entry(dir.path(), url, "Replacement", "now", None, None, None, &[], WriteToken::for_test()).await.unwrap();
+        let result = write_read_entry(
+            dir.path(),
+            url,
+            "Replacement",
+            "now",
+            None,
+            None,
+            None,
+            &[],
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
         assert_eq!(result.meta.description.as_deref(), Some("Saved summary"));
         assert!(result.meta.is_bookmarked);
@@ -239,16 +270,46 @@ mod tests {
     #[tokio::test]
     async fn bookmark_tag_preserves_existing_feed_tags() {
         let dir = tempfile::tempdir().unwrap();
-        let article = write_entry(dir.path(), "https://example.com/a", "Title", None, None, None, crate::library_writer::WriteToken::for_test()).await.unwrap();
-        set_entry_tags(dir.path(), &article.meta.id, vec!["unread".into(), "bookmark".into()], crate::library_writer::WriteToken::for_test()).await.unwrap();
-        assert_eq!(read_entry_tags(dir.path(), &article.meta.id).await.unwrap(), vec!["unread", "bookmark"]);
+        let article = write_entry(
+            dir.path(),
+            "https://example.com/a",
+            "Title",
+            None,
+            None,
+            None,
+            crate::library_writer::WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        set_entry_tags(
+            dir.path(),
+            &article.meta.id,
+            vec!["unread".into(), "bookmark".into()],
+            crate::library_writer::WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            read_entry_tags(dir.path(), &article.meta.id).await.unwrap(),
+            vec!["unread", "bookmark"]
+        );
     }
 
     #[tokio::test]
     async fn entry_write_escapes_frontmatter_injection_in_title() {
         let dir = tempfile::tempdir().unwrap();
         let hostile = "safe\n---\ntags:\n- bookmark";
-        let article = write_entry(dir.path(), "https://example.com/x", hostile, None, None, None, WriteToken::for_test()).await.unwrap();
+        let article = write_entry(
+            dir.path(),
+            "https://example.com/x",
+            hostile,
+            None,
+            None,
+            None,
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
         let saved = read_entry(dir.path(), &article.meta.id).await.unwrap();
         assert_eq!(saved.title, hostile);
         assert!(!saved.is_bookmarked);

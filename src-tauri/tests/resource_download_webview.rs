@@ -15,7 +15,10 @@ mod webview_policy;
 fn main() {}
 #[cfg(target_os = "macos")]
 fn main() {
-    use resource_download::{ByteValidator, IMAGE_MAX_BYTES, prepare_favicon, ImageValidator, PdfValidator, StagedDownload};
+    use resource_download::{
+        ByteValidator, IMAGE_MAX_BYTES, ImageValidator, PdfValidator, StagedDownload,
+        prepare_favicon,
+    };
     use std::{
         io::{Cursor, Read, Write},
         net::TcpListener,
@@ -27,8 +30,28 @@ fn main() {
     };
     use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, webview::DownloadEvent};
     let scenario = std::env::var("XAGA_DOWNLOAD_SMOKE_CASE").unwrap_or_else(|_| "icon".into());
-    assert!(["icon", "image", "image-document", "svg", "svg-document", "svg-icon-document", "avif", "avif-document", "avif-icon-document", "pdf", "invalid-pdf", "html", "blob-pdf"].contains(&scenario.as_str()));
-    let content_image = matches!(scenario.as_str(), "image" | "image-document" | "svg" | "svg-document" | "avif" | "avif-document");
+    assert!(
+        [
+            "icon",
+            "image",
+            "image-document",
+            "svg",
+            "svg-document",
+            "svg-icon-document",
+            "avif",
+            "avif-document",
+            "avif-icon-document",
+            "pdf",
+            "invalid-pdf",
+            "html",
+            "blob-pdf"
+        ]
+        .contains(&scenario.as_str())
+    );
+    let content_image = matches!(
+        scenario.as_str(),
+        "image" | "image-document" | "svg" | "svg-document" | "avif" | "avif-document"
+    );
     let svg = scenario.starts_with("svg");
     let avif = scenario.starts_with("avif");
     let image_document = scenario.ends_with("-document");
@@ -74,7 +97,9 @@ fn main() {
         include_bytes!("fixtures/color-profile.avif").to_vec()
     } else if content_image {
         let mut data = Cursor::new(Vec::new());
-        image::DynamicImage::new_rgba8(1200, 300).write_to(&mut data, image::ImageFormat::Png).unwrap();
+        image::DynamicImage::new_rgba8(1200, 300)
+            .write_to(&mut data, image::ImageFormat::Png)
+            .unwrap();
         data.into_inner()
     } else {
         let mut data = Cursor::new(Vec::new());
@@ -84,8 +109,16 @@ fn main() {
         data.into_inner()
     };
     let original_image = body.clone();
-    let image_mime = if svg { "image/svg+xml" } else if avif { "image/avif" } else { "image/png" };
-    let mime = if image_document { image_mime } else if rendering {
+    let image_mime = if svg {
+        "image/svg+xml"
+    } else if avif {
+        "image/avif"
+    } else {
+        "image/png"
+    };
+    let mime = if image_document {
+        image_mime
+    } else if rendering {
         "text/html"
     } else if pdf {
         "application/pdf"

@@ -44,16 +44,20 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     let annotations_differ = |article: &Article| -> bool {
         let membership_differs = db_meta.get(&article.meta.id).is_some_and(|(.., recorded)| {
             let recorded: HashSet<&str> = recorded.iter().map(|s| s.as_str()).collect();
-            let current: HashSet<&str> = article.annotations.iter().map(|a| a.id.as_str()).collect();
+            let current: HashSet<&str> =
+                article.annotations.iter().map(|a| a.id.as_str()).collect();
             recorded != current
         });
         membership_differs
-            || article.annotations.iter().any(|a| match db_meta.get(&a.id) {
-                None => true,
-                Some((stored, _, has_vector, ..)) => {
-                    stored != &annotation_checksum(a) || !has_vector
-                }
-            })
+            || article
+                .annotations
+                .iter()
+                .any(|a| match db_meta.get(&a.id) {
+                    None => true,
+                    Some((stored, _, has_vector, ..)) => {
+                        stored != &annotation_checksum(a) || !has_vector
+                    }
+                })
     };
 
     // Reconcile as we walk: record every on-disk id (for `to_delete` below) and stream only the
@@ -70,19 +74,23 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     })
     .await;
 
-    let entries_outcome = for_each_md(&library::entries_dir(library_dir), &md_to_article, |article| {
-        fs_ids.insert(article.meta.id.clone());
-        let needs_embed = needs_embedding(
-            &article.meta.id,
-            &checksum(&article.meta.title, article_embed_text(&article)),
-        );
-        // Stream when the entry needs (re)embedding OR its annotations drifted from the `.md`
-        // (membership, content, or a pending vector) — the consumers re-check each and do only
-        // the work required (`sync_entry_row` for rows, `embed_annotations` for vectors).
-        if needs_embed || annotations_differ(&article) {
-            sink.article(article);
-        }
-    })
+    let entries_outcome = for_each_md(
+        &library::entries_dir(library_dir),
+        &md_to_article,
+        |article| {
+            fs_ids.insert(article.meta.id.clone());
+            let needs_embed = needs_embedding(
+                &article.meta.id,
+                &checksum(&article.meta.title, article_embed_text(&article)),
+            );
+            // Stream when the entry needs (re)embedding OR its annotations drifted from the `.md`
+            // (membership, content, or a pending vector) — the consumers re-check each and do only
+            // the work required (`sync_entry_row` for rows, `embed_annotations` for vectors).
+            if needs_embed || annotations_differ(&article) {
+                sink.article(article);
+            }
+        },
+    )
     .await;
 
     // Feeds: diff like items — re-embed a feed only when its row is absent, its checksum changed,
@@ -286,9 +294,12 @@ mod tests {
         let article = read_article(lib, "abcdef123456").await.unwrap();
 
         let db = EmbeddingsDb::open(lib).await.unwrap();
-        db.upsert(EmbeddingEntry::from_article(&article, Some(vec![0.5f32; 384])))
-            .await
-            .unwrap();
+        db.upsert(EmbeddingEntry::from_article(
+            &article,
+            Some(vec![0.5f32; 384]),
+        ))
+        .await
+        .unwrap();
 
         // Deny enumeration on the entries dir so the walk cannot observe the source.
         let entries = crate::library::entries_dir(lib);

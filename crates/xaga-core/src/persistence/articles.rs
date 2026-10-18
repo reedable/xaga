@@ -78,7 +78,10 @@ pub(crate) async fn save_article(
             match crate::persistence::images::extract_shared_favicon(url, url_data) {
                 Some((hash, bytes)) => {
                     match crate::persistence::images::write_shared_favicon(
-                        library_dir, &hash, bytes, token,
+                        library_dir,
+                        &hash,
+                        bytes,
+                        token,
                     )
                     .await
                     {
@@ -116,7 +119,10 @@ pub(crate) async fn save_article(
     ];
     // Initial metadata is supplied only for a newly discovered article.
     if existing.is_none() {
-        updates.push(("created", serde_json::json!(chrono::Utc::now().to_rfc3339())));
+        updates.push((
+            "created",
+            serde_json::json!(chrono::Utc::now().to_rfc3339()),
+        ));
         updates.push(("aliases", serde_json::json!([title])));
     }
     for (key, value) in [
@@ -213,18 +219,19 @@ pub(crate) async fn add_annotation(
     let favicon = fm.favicon.clone();
     let article = article_from_fm(article_id, fm, annotations, favicon, body);
     super::documents::upsert(
-            &path,
-            &[(
-                "annotations",
-                serde_json::json!(
-                    article
-                        .annotations
-                        .iter()
-                        .map(FrontmatterAnnotation::from)
-                        .collect::<Vec<_>>()
-                ),
-            )],
-            None, _token,
+        &path,
+        &[(
+            "annotations",
+            serde_json::json!(
+                article
+                    .annotations
+                    .iter()
+                    .map(FrontmatterAnnotation::from)
+                    .collect::<Vec<_>>()
+            ),
+        )],
+        None,
+        _token,
     )
     .await?;
     Ok(article)
@@ -267,18 +274,19 @@ pub(crate) async fn replace_annotation(
     let favicon = fm.favicon.clone();
     let article = article_from_fm(article_id, fm, annotations, favicon, body);
     super::documents::upsert(
-            &path,
-            &[(
-                "annotations",
-                serde_json::json!(
-                    article
-                        .annotations
-                        .iter()
-                        .map(FrontmatterAnnotation::from)
-                        .collect::<Vec<_>>()
-                ),
-            )],
-            None, _token,
+        &path,
+        &[(
+            "annotations",
+            serde_json::json!(
+                article
+                    .annotations
+                    .iter()
+                    .map(FrontmatterAnnotation::from)
+                    .collect::<Vec<_>>()
+            ),
+        )],
+        None,
+        _token,
     )
     .await?;
     Ok(article)
@@ -307,18 +315,19 @@ pub(crate) async fn remove_annotation(
     let favicon = fm.favicon.clone();
     let article = article_from_fm(article_id, fm, annotations, favicon, body);
     super::documents::upsert(
-            &path,
-            &[(
-                "annotations",
-                serde_json::json!(
-                    article
-                        .annotations
-                        .iter()
-                        .map(FrontmatterAnnotation::from)
-                        .collect::<Vec<_>>()
-                ),
-            )],
-            None, _token,
+        &path,
+        &[(
+            "annotations",
+            serde_json::json!(
+                article
+                    .annotations
+                    .iter()
+                    .map(FrontmatterAnnotation::from)
+                    .collect::<Vec<_>>()
+            ),
+        )],
+        None,
+        _token,
     )
     .await?;
     Ok(article)
@@ -485,7 +494,10 @@ Original body
             .unwrap();
         let stored = std::fs::read_to_string(path).unwrap();
         for key in ["aliases", "custom"] {
-            assert_eq!(crate::md::test_frontmatter_values(&stored)[key], crate::md::test_frontmatter_values(USER_DOCUMENT)[key]);
+            assert_eq!(
+                crate::md::test_frontmatter_values(&stored)[key],
+                crate::md::test_frontmatter_values(USER_DOCUMENT)[key]
+            );
         }
         assert!(stored.ends_with("---\n\nOriginal body\n\n\n"));
         let (fm, _) = parse_document(&stored).unwrap();
@@ -535,8 +547,7 @@ Original body
         assert!(crate::library::entry_image_path(lib, id, &format!("{hash}.png")).exists());
     }
 
-    const PNG_DATA: &str =
-        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+    const PNG_DATA: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
 
     fn no_data() -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
@@ -570,9 +581,11 @@ Original body
         let article = read_article(lib, "abcdef123456").await.unwrap();
         let hash = crate::persistence::images::image_url_hash(url);
         // Body is a local ref; no remote URL and no base64 survive.
-        assert!(article
-            .content
-            .contains(&format!("../images/abcdef123456/{hash}")));
+        assert!(
+            article
+                .content
+                .contains(&format!("../images/abcdef123456/{hash}"))
+        );
         assert!(!article.content.contains("http"));
         assert!(!article.content.contains("base64"));
         // The file was written.
@@ -590,20 +603,50 @@ Original body
         let raw = "---\nsource: https://example.com/article\ntitle: Legacy\ncreated_at: 2026-01-01T00:00:00Z\nimages: obsolete-metadata\n---\n![alt](../images/abcdef123456/123456abcdef)\n";
         std::fs::write(&path, raw).unwrap();
         let article = read_article(dir.path(), id).await.unwrap();
-        assert!(article.content.contains("../images/abcdef123456/123456abcdef"));
+        assert!(
+            article
+                .content
+                .contains("../images/abcdef123456/123456abcdef")
+        );
         assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
-        save_article(dir.path(), id, &article.meta.url, "Updated", None, None, None, None,
-            &article.content, &no_data(), WriteToken::for_test()).await.unwrap();
+        save_article(
+            dir.path(),
+            id,
+            &article.meta.url,
+            "Updated",
+            None,
+            None,
+            None,
+            None,
+            &article.content,
+            &no_data(),
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
         let stored = std::fs::read_to_string(&path).unwrap();
         assert!(!crate::md::test_frontmatter_values(&stored).contains_key("images"));
         assert!(!stored.contains("obsolete-metadata"));
         assert!(stored.contains("![alt](../images/abcdef123456/123456abcdef)"));
         // Metadata-only saves also omit the unsupported field.
         std::fs::write(&path, raw).unwrap();
-        crate::persistence::entries::set_entry_tags(dir.path(), id, vec!["bookmark".into()], WriteToken::for_test()).await.unwrap();
+        crate::persistence::entries::set_entry_tags(
+            dir.path(),
+            id,
+            vec!["bookmark".into()],
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
         let stored = std::fs::read_to_string(&path).unwrap();
         assert!(!crate::md::test_frontmatter_values(&stored).contains_key("images"));
-        assert!(read_article(dir.path(), id).await.unwrap().meta.is_bookmarked);
+        assert!(
+            read_article(dir.path(), id)
+                .await
+                .unwrap()
+                .meta
+                .is_bookmarked
+        );
     }
 
     #[tokio::test]
@@ -615,14 +658,47 @@ Original body
         let icon_url = "https://example.com/icon.png";
         let mut bytes = data(image_url, PNG_DATA);
         bytes.extend(data(icon_url, PNG_DATA));
-        let article = save_article(lib, id, "https://example.com/a", "T", None, None, None,
-            Some(icon_url), &format!("![alt]({image_url})"), &bytes, WriteToken::for_test()).await.unwrap();
+        let article = save_article(
+            lib,
+            id,
+            "https://example.com/a",
+            "T",
+            None,
+            None,
+            None,
+            Some(icon_url),
+            &format!("![alt]({image_url})"),
+            &bytes,
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
         let image_dir = crate::library::entry_images_dir(lib, id);
         let orphan = image_dir.join("000000000000.png");
         std::fs::write(&orphan, b"orphan").unwrap();
-        save_article(lib, id, "https://example.com/a", "T", None, None, None,
-            article.favicon.as_deref(), &article.content, &no_data(), WriteToken::for_test()).await.unwrap();
-        assert!(image_dir.join(format!("{}.png", crate::persistence::images::image_url_hash(image_url))).exists());
+        save_article(
+            lib,
+            id,
+            "https://example.com/a",
+            "T",
+            None,
+            None,
+            None,
+            article.favicon.as_deref(),
+            &article.content,
+            &no_data(),
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        assert!(
+            image_dir
+                .join(format!(
+                    "{}.png",
+                    crate::persistence::images::image_url_hash(image_url)
+                ))
+                .exists()
+        );
         let favicon_hash = crate::util::url_hash12(&crate::util::normalize_url(icon_url).unwrap());
         assert!(crate::library::favicon_path(lib, &favicon_hash).exists());
         assert!(!orphan.exists());
@@ -640,8 +716,17 @@ Original body
         let svg = "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=";
 
         save_article(
-            lib, id, "https://example.com/a", "T", None, None, None, None,
-            &format!("![a]({url_a})"), &data(url_a, PNG_DATA), WriteToken::for_test(),
+            lib,
+            id,
+            "https://example.com/a",
+            "T",
+            None,
+            None,
+            None,
+            None,
+            &format!("![a]({url_a})"),
+            &data(url_a, PNG_DATA),
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
@@ -650,8 +735,17 @@ Original body
 
         // Re-save referencing a different image: the first file is swept.
         save_article(
-            lib, id, "https://example.com/a", "T", None, None, None, None,
-            &format!("![b]({url_b})"), &data(url_b, svg), WriteToken::for_test(),
+            lib,
+            id,
+            "https://example.com/a",
+            "T",
+            None,
+            None,
+            None,
+            None,
+            &format!("![b]({url_b})"),
+            &data(url_b, svg),
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
@@ -670,8 +764,17 @@ Original body
         let lib = dir.path();
         let url = "https://example.com/missing.png";
         save_article(
-            lib, "abcdef123456", "https://example.com/a", "T", None, None, None, None,
-            &format!("![x]({url})"), &no_data(), WriteToken::for_test(),
+            lib,
+            "abcdef123456",
+            "https://example.com/a",
+            "T",
+            None,
+            None,
+            None,
+            None,
+            &format!("![x]({url})"),
+            &no_data(),
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
@@ -679,7 +782,12 @@ Original body
         assert_eq!(article.content, format!("![x]({url})"));
         // No file was written.
         let images_dir = crate::library::entry_images_dir(lib, "abcdef123456");
-        assert!(std::fs::read_dir(&images_dir).map(|d| d.count()).unwrap_or(0) == 0);
+        assert!(
+            std::fs::read_dir(&images_dir)
+                .map(|d| d.count())
+                .unwrap_or(0)
+                == 0
+        );
     }
 
     #[tokio::test]
@@ -692,14 +800,35 @@ Original body
         let good_hash = crate::persistence::images::image_url_hash(good);
         let bad_hash = crate::persistence::images::image_url_hash(bad);
         // A directory at the destination makes atomic file replacement fail.
-        std::fs::create_dir_all(crate::library::entry_image_path(lib, id, &format!("{bad_hash}.png"))).unwrap();
+        std::fs::create_dir_all(crate::library::entry_image_path(
+            lib,
+            id,
+            &format!("{bad_hash}.png"),
+        ))
+        .unwrap();
         let mut bytes = data(good, PNG_DATA);
         bytes.extend(data(bad, PNG_DATA));
         let body = format!("![bad]({bad}) ![good]({good}) ![again]({bad})");
-        save_article(lib, id, "https://example.com/a", "T", None, None, None, None,
-            &body, &bytes, WriteToken::for_test()).await.unwrap();
+        save_article(
+            lib,
+            id,
+            "https://example.com/a",
+            "T",
+            None,
+            None,
+            None,
+            None,
+            &body,
+            &bytes,
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
         let saved = read_article(lib, id).await.unwrap();
-        assert_eq!(saved.content, format!("![bad]({bad}) ![good](../images/{id}/{good_hash}) ![again]({bad})"));
+        assert_eq!(
+            saved.content,
+            format!("![bad]({bad}) ![good](../images/{id}/{good_hash}) ![again]({bad})")
+        );
         assert!(crate::library::entry_image_path(lib, id, &format!("{good_hash}.png")).is_file());
     }
 
@@ -709,8 +838,17 @@ Original body
         let lib = dir.path();
         let body = "# Heading\n\nProse with a [link](https://x.test/) only.\n";
         save_article(
-            lib, "abcdef123456", "https://example.com/a", "T", None, None, None, None,
-            body, &no_data(), WriteToken::for_test(),
+            lib,
+            "abcdef123456",
+            "https://example.com/a",
+            "T",
+            None,
+            None,
+            None,
+            None,
+            body,
+            &no_data(),
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
@@ -727,8 +865,17 @@ Original body
         let favicon_url = "https://example.com/favicon.ico";
 
         save_article(
-            lib, id, "https://example.com/a", "T", None, None, None, Some(favicon_url),
-            "body", &data(favicon_url, PNG_DATA), WriteToken::for_test(),
+            lib,
+            id,
+            "https://example.com/a",
+            "T",
+            None,
+            None,
+            None,
+            Some(favicon_url),
+            "body",
+            &data(favicon_url, PNG_DATA),
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
@@ -753,8 +900,17 @@ Original body
         let favicon_url = "https://example.com/favicon.ico";
 
         save_article(
-            lib, id, "https://example.com/a", "T", None, None, None, Some(favicon_url),
-            "body", &no_data(), WriteToken::for_test(),
+            lib,
+            id,
+            "https://example.com/a",
+            "T",
+            None,
+            None,
+            None,
+            Some(favicon_url),
+            "body",
+            &no_data(),
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
@@ -770,16 +926,34 @@ Original body
         let favicon_url = "https://example.com/favicon.ico";
 
         save_article(
-            lib, "first-entry1", "https://example.com/a", "A", None, None, None,
-            Some(favicon_url), "body", &data(favicon_url, PNG_DATA), WriteToken::for_test(),
+            lib,
+            "first-entry1",
+            "https://example.com/a",
+            "A",
+            None,
+            None,
+            None,
+            Some(favicon_url),
+            "body",
+            &data(favicon_url, PNG_DATA),
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
         let first = read_article(lib, "first-entry1").await.unwrap();
 
         save_article(
-            lib, "second-entry", "https://example.com/b", "B", None, None, None,
-            Some(favicon_url), "body", &no_data(), WriteToken::for_test(),
+            lib,
+            "second-entry",
+            "https://example.com/b",
+            "B",
+            None,
+            None,
+            None,
+            Some(favicon_url),
+            "body",
+            &no_data(),
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
@@ -797,16 +971,34 @@ Original body
         let favicon_url = "https://example.com/favicon.ico";
 
         save_article(
-            lib, id, "https://example.com/a", "T", None, None, None, Some(favicon_url),
-            "body", &data(favicon_url, PNG_DATA), WriteToken::for_test(),
+            lib,
+            id,
+            "https://example.com/a",
+            "T",
+            None,
+            None,
+            None,
+            Some(favicon_url),
+            "body",
+            &data(favicon_url, PNG_DATA),
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
         let first = read_article(lib, id).await.unwrap().favicon.unwrap();
 
         save_article(
-            lib, id, "https://example.com/a", "T", None, None, None, Some(&first),
-            "body", &no_data(), WriteToken::for_test(),
+            lib,
+            id,
+            "https://example.com/a",
+            "T",
+            None,
+            None,
+            None,
+            Some(&first),
+            "body",
+            &no_data(),
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
@@ -826,8 +1018,17 @@ Original body
         url_data.insert(body_url.to_string(), PNG_DATA.to_string());
 
         save_article(
-            lib, id, "https://example.com/a", "T", None, None, None, Some(favicon_url),
-            &format!("![a]({body_url})"), &url_data, WriteToken::for_test(),
+            lib,
+            id,
+            "https://example.com/a",
+            "T",
+            None,
+            None,
+            None,
+            Some(favicon_url),
+            &format!("![a]({body_url})"),
+            &url_data,
+            WriteToken::for_test(),
         )
         .await
         .unwrap();
@@ -862,8 +1063,8 @@ Original body
             annotation("old-id", "yellow", "n"),
             WriteToken::for_test(),
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
         let created_at = article.annotations[0].created_at.clone();
         assert!(!created_at.is_empty());
 
@@ -936,8 +1137,8 @@ Original body
             annotation("a1", "yellow", "edited"),
             WriteToken::for_test(),
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
         assert_eq!(article.annotations[0].content, "edited");
     }
 

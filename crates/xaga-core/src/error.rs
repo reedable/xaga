@@ -24,12 +24,12 @@ use thiserror::Error;
 
 use crate::embeddings::EmbeddingsError;
 use crate::library_writer::WriterError;
+use crate::network_proxy::ProxyError;
 use crate::persistence::bookmarks::BookmarksError;
 use crate::persistence::entries::EntryError;
 use crate::persistence::feeds::FeedError;
 use crate::persistence::topics::TopicsError;
 use crate::query::items::ItemError;
-use crate::network_proxy::ProxyError;
 
 #[derive(Debug, Error)]
 pub enum DomainError {

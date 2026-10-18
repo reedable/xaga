@@ -19,12 +19,14 @@ export type SearchInputProps = {
   className?: string;
   onClear?: () => void;
   onSaveAsTopic?: (title: string) => void;
+  disabled?: boolean;
 };
 
 export function SearchInput({
   className,
   onClear,
   onSaveAsTopic,
+  disabled = false,
 }: SearchInputProps) {
   const { invokeSearch, search } = useRouter();
   const [inputValue, setInputValue] = useState(search ?? "");
@@ -95,6 +97,7 @@ export function SearchInput({
         size="small"
         placeholder="Search…"
         value={inputValue}
+        disabled={disabled}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         autoComplete="off"

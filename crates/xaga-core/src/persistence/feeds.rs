@@ -155,12 +155,12 @@ pub async fn add_feed(
 
     let new_entries =
         match fetch_and_merge(client, &mut atom, &id, timeout_secs, max_body_bytes).await {
-        Ok(entries) => entries,
-        Err(e) => {
-            commit_via_writer(writer, &id, &empty_atom, Vec::new(), false).await?;
-            return Err(e);
-        }
-    };
+            Ok(entries) => entries,
+            Err(e) => {
+                commit_via_writer(writer, &id, &empty_atom, Vec::new(), false).await?;
+                return Err(e);
+            }
+        };
 
     match commit_via_writer(writer, &id, &atom, new_entries, false).await {
         Ok(created) => Ok((atom_to_feed(&id, &atom, unread, bookmarked), created)),
@@ -268,7 +268,12 @@ async fn commit_via_writer(
         }
     }
     writer
-        .write_feed_atom(WriteTier::Regular, id.to_string(), atom.clone(), require_exists)
+        .write_feed_atom(
+            WriteTier::Regular,
+            id.to_string(),
+            atom.clone(),
+            require_exists,
+        )
         .await
         .map_err(|e| FeedError::Writer(e.to_string()))?;
     Ok(created)
@@ -397,11 +402,7 @@ pub(crate) async fn rename_feed(
 }
 
 /// Remove a feed (deletes `{id}.atom`).
-pub(crate) async fn remove_feed(
-    library_dir: &Path,
-    id: &str,
-    _token: WriteToken,
-) -> Result<()> {
+pub(crate) async fn remove_feed(library_dir: &Path, id: &str, _token: WriteToken) -> Result<()> {
     let path = crate::library::feed_path(library_dir, id);
     if !path.exists() {
         return Err(FeedError::NotFound(id.to_string()));
@@ -648,21 +649,27 @@ mod tests {
         let path = crate::library::feed_path(lib, id);
 
         // Add creates it.
-        write_feed_atom(lib, id, &atom, false, WriteToken::for_test()).await.unwrap();
+        write_feed_atom(lib, id, &atom, false, WriteToken::for_test())
+            .await
+            .unwrap();
         assert!(tokio::fs::try_exists(&path).await.unwrap());
 
         // User removes it (as if during a refresh's fetch).
         tokio::fs::remove_file(&path).await.unwrap();
 
         // Refresh commit must skip — no resurrection.
-        write_feed_atom(lib, id, &atom, true, WriteToken::for_test()).await.unwrap();
+        write_feed_atom(lib, id, &atom, true, WriteToken::for_test())
+            .await
+            .unwrap();
         assert!(
             !tokio::fs::try_exists(&path).await.unwrap(),
             "refresh must not resurrect a removed feed"
         );
 
         // Sanity: an add commit still would.
-        write_feed_atom(lib, id, &atom, false, WriteToken::for_test()).await.unwrap();
+        write_feed_atom(lib, id, &atom, false, WriteToken::for_test())
+            .await
+            .unwrap();
         assert!(tokio::fs::try_exists(&path).await.unwrap());
     }
 }
