@@ -1,7 +1,5 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
@@ -11,8 +9,7 @@ import { subscribe } from "../hooks/useEvents";
 import { usePlatform } from "../platform/Platform";
 import type { AllItemsCounts } from "../types";
 import { debounced } from "../utils/Decorator";
-
-const AllItemsCountsContext = createContext<AllItemsCounts | null>(null);
+import AllItemsCountsContext from "./AllItemsCountsContext";
 
 export function AllItemsCountsProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
@@ -27,7 +24,7 @@ export function AllItemsCountsProvider({ children }: { children: ReactNode }) {
   }, [platform]);
 
   useEffect(() => {
-    void refresh();
+    void platform.getAllItemsCounts().then(setCounts, () => setCounts(null));
     const refreshAfterChange = debounced(refresh, { wait: 400 });
     const stopUnread = subscribe(() =>
       platform.onUnreadChanged(refreshAfterChange)
@@ -47,8 +44,4 @@ export function AllItemsCountsProvider({ children }: { children: ReactNode }) {
       {children}
     </AllItemsCountsContext.Provider>
   );
-}
-
-export function useAllItemsCounts() {
-  return useContext(AllItemsCountsContext);
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { initialThemeSetting } from "./AppearanceProvider";
+import { initialThemeSetting } from "./initialThemeSetting";
 
 const bootstrapWindow = window as Window & {
   __XAGA_THEME_SETTING__?: unknown;

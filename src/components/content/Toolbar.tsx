@@ -63,7 +63,10 @@ export function Toolbar({ reload }: ToolbarProps) {
 
   const { url, entryId } = state;
   const [latestEntry, setLatestEntry] = useState<Entry | null>(null);
-  const [favicon, setFavicon] = useState<string | null>(null);
+  const [favicon, setFavicon] = useState<{
+    reference: string;
+    data: string | null;
+  } | null>(null);
 
   // Reset on navigation so button states stay cleared until the current
   // entry is loaded; a lingering latestEntry from a previous visit to the
@@ -81,7 +84,10 @@ export function Toolbar({ reload }: ToolbarProps) {
   // remote URL directly: that would fetch from the privileged main window.
   const storedFavicon = isArticle(entry) ? entry.favicon : undefined;
   const isLocalFaviconRef = isLocalFaviconReference(storedFavicon);
-  const displayFavicon = isLocalFaviconRef ? favicon : null;
+  const displayFavicon =
+    isLocalFaviconRef && favicon && favicon.reference === storedFavicon
+      ? favicon.data
+      : null;
 
   const qrButtonRef = useRef<HTMLButtonElement>(null);
   const [qrOpen, setQrOpen] = useState(false);
@@ -141,7 +147,6 @@ export function Toolbar({ reload }: ToolbarProps) {
   // in the library, so displaying it makes no network request from this
   // privileged window. The bytes come back over IPC.
   useEffect(() => {
-    setFavicon(null);
     if (!entry || !storedFavicon) return;
     const reportFailure = () =>
       pushError(new FaviconLoadError(entry.url, true));
@@ -155,7 +160,7 @@ export function Toolbar({ reload }: ToolbarProps) {
       .readEntryImages(controller.signal, entry.id, [storedFavicon])
       .then(([dataUri]) => {
         if (controller.signal.aborted) return;
-        setFavicon(dataUri ?? null);
+        setFavicon({ reference: storedFavicon, data: dataUri ?? null });
         if (!dataUri) reportFailure();
       })
       .catch(() => {

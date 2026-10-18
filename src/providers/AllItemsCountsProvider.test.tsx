@@ -1,10 +1,8 @@
 import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import {
-  AllItemsCountsProvider,
-  useAllItemsCounts,
-} from "./AllItemsCountsProvider";
+import { useAllItemsCounts } from "../hooks/useAllItemsCounts";
+import { AllItemsCountsProvider } from "./AllItemsCountsProvider";
 import type { AllItemsCounts } from "../types";
 
 const platform = vi.hoisted(() => ({

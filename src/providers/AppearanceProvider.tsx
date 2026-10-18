@@ -17,17 +17,10 @@ import AppearanceContext, {
   type ThemeMode,
   type ThemeSetting,
 } from "./AppearanceContext";
+import { initialThemeSetting } from "./initialThemeSetting";
 
 function systemPrefersDark(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
-
-export function initialThemeSetting(): ThemeSetting {
-  const value = (window as Window & { __XAGA_THEME_SETTING__?: unknown })
-    .__XAGA_THEME_SETTING__;
-  return value === "light" || value === "dark" || value === "auto"
-    ? value
-    : "auto";
 }
 
 export function AppearanceProvider({ children }: { children: ReactNode }) {
@@ -81,27 +74,33 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
 
   const setHtmlReaderFontFamily = useCallback(
     (value: FontFamily) => {
-      void saveSettings(() => platform.setHtmlReaderFontFamily(value)).then((saved) => {
-        if (saved) setHtmlReaderFontFamilyState(value);
-      });
+      void saveSettings(() => platform.setHtmlReaderFontFamily(value)).then(
+        (saved) => {
+          if (saved) setHtmlReaderFontFamilyState(value);
+        }
+      );
     },
     [platform, saveSettings]
   );
 
   const setHtmlReaderFontSize = useCallback(
     (value: number) => {
-      void saveSettings(() => platform.setHtmlReaderFontSize(value)).then((saved) => {
-        if (saved) setHtmlReaderFontSizeState(value);
-      });
+      void saveSettings(() => platform.setHtmlReaderFontSize(value)).then(
+        (saved) => {
+          if (saved) setHtmlReaderFontSizeState(value);
+        }
+      );
     },
     [platform, saveSettings]
   );
 
   const setHtmlReaderLineHeight = useCallback(
     (value: number) => {
-      void saveSettings(() => platform.setHtmlReaderLineHeight(value)).then((saved) => {
-        if (saved) setHtmlReaderLineHeightState(value);
-      });
+      void saveSettings(() => platform.setHtmlReaderLineHeight(value)).then(
+        (saved) => {
+          if (saved) setHtmlReaderLineHeightState(value);
+        }
+      );
     },
     [platform, saveSettings]
   );
