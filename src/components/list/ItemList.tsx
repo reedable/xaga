@@ -46,6 +46,10 @@ import {
   type TopicSort,
 } from "../../types";
 import cx from "../../utils/cx";
+import {
+  itemMatchesTextFilter,
+  mergeAllItemsAnnotationChange,
+} from "../../utils/mergeAllItemsAnnotationChange";
 import { mergeTopicAddition } from "../../utils/mergeTopicAddition";
 import ItemStatus from "../ItemStatus";
 import Quotes from "../Quotes";
@@ -107,6 +111,8 @@ export function ItemList({
   const [items, setItems] = useState<Item[]>([]);
   const [filterText, setFilterText] = useState("");
   const [topicSort, setTopicSort] = useState<TopicSort>("relevance");
+  const allItemsMergeRef = useRef({ shortcutId, filter, filterText });
+  allItemsMergeRef.current = { shortcutId, filter, filterText };
 
   // Virtuoso only renders on-screen rows, so moving the selection off-screen
   // requires an imperative scroll to bring the target row into view before it
@@ -141,16 +147,7 @@ export function ItemList({
   }, [loadingFeeds]);
 
   const displayItems = useMemo(() => {
-    if (!filterText) return items;
-    const lower = filterText.toLowerCase();
-    return items.filter((item) => {
-      if (item.title.toLowerCase().includes(lower)) return true;
-      if (isEntry(item)) {
-        if (item.url.toLowerCase().includes(lower)) return true;
-        if (item.description?.toLowerCase().includes(lower)) return true;
-      }
-      return false;
-    });
+    return items.filter((item) => itemMatchesTextFilter(item, filterText));
   }, [items, filterText]);
 
   // Up/Down move the selection to the adjacent visible item, clamped at both
@@ -270,7 +267,16 @@ export function ItemList({
 
   useEffect(() => {
     return onAnnotationChanged((item) => {
-      setItems((prev) => prev.map((p) => (p.id === item.id ? item : p)));
+      const active = allItemsMergeRef.current;
+      setItems((current) =>
+        mergeAllItemsAnnotationChange(
+          current,
+          item,
+          active.shortcutId === ALL_ITEMS.id,
+          active.filter,
+          active.filterText
+        )
+      );
       if (topicId) void mergeAddedTopicItem(topicId, item.id);
     });
   }, [onAnnotationChanged, topicId, mergeAddedTopicItem]);
