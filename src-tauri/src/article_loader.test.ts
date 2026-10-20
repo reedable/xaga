@@ -92,6 +92,29 @@ describe("favicon selection", () => {
 });
 
 describe("deadline snapshot", () => {
+  it("starts capture only once when WebKit repeats the load callback", async () => {
+    vi.useFakeTimers();
+    const { context, invoke, listeners } = loader();
+    context.document.images = [{ src: "https://example.org/image.png" }];
+    context.fetch = vi.fn().mockRejectedValue(new Error("unavailable"));
+    runInContext("__xagaFaviconUrl = function() { return null; }", context);
+
+    listeners.load();
+    listeners.load();
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(context.fetch).toHaveBeenCalledTimes(1);
+    expect(
+      invoke.mock.calls.filter(
+        ([name, args]) =>
+          name === "add_loader_diagnostic_event" &&
+          args.event === "images_attempted"
+      )
+    ).toHaveLength(1);
+    expect(
+      invoke.mock.calls.filter(([name]) => name === "receive_html")
+    ).toHaveLength(1);
+  });
   it("keeps normal settled-page capture working", async () => {
     vi.useFakeTimers();
     const { context, invoke, listeners } = loader();

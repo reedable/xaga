@@ -6,6 +6,10 @@ function __xagaDiagnostic(event, count) {
 }
 __xagaDiagnostic('script_started');
 var __xagaImageCounts = {};
+// WebKit can deliver more than one load callback for a document. Keep this
+// guard outside the callback so a repeated delivery cannot start a second DOM
+// observer and image-capture pass.
+var __xagaLoadHandled = false;
 function __xagaImageProblem(event) {
     __xagaImageCounts[event] = Math.min(100000, (__xagaImageCounts[event] || 0) + 1);
 }
@@ -245,6 +249,8 @@ if (__xagaIsImageDocument() && !window.__LOADER_IMAGE_ONLY__) {
 }
 
 window.addEventListener('load', function() {
+    if (__xagaLoadHandled) return;
+    __xagaLoadHandled = true;
     __xagaDiagnostic('page_loaded');
     // Favicon documents are handled above; none of the article capture applies.
     if (window.__LOADER_IMAGE_ONLY__) { __xagaCaptureImage(); return; }
