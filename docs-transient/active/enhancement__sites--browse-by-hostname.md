@@ -56,4 +56,3 @@ articles with the same list filters used for Feeds.
 - `src/domain.ts`
 - `src/platform/Platform.ts`
 - `docs/principles/single_source_of_truth.md`
-
