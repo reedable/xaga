@@ -69,6 +69,7 @@
     "commands::bookmarks::add_bookmark",
     "commands::bookmarks::remove_bookmark",
     "commands::topics::create_topic",
+    "commands::topics::create_topic_with_member",
     "commands::topics::save_topic",
     "commands::topics::list_topics",
     "commands::topics::read_topic",

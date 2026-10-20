@@ -32,7 +32,7 @@ import type {
 } from "../types";
 import { abortable, decorate, logged } from "../utils/Decorator";
 import Logger from "../utils/Logger";
-import type { Platform } from "./Platform";
+import type { CreateTopicInput, Platform } from "./Platform";
 
 const logger = Logger.getLogger("TauriPlatform");
 
@@ -94,6 +94,11 @@ const FeedSchema = ItemSchema.extend({
   is_pinned: z.boolean(),
 });
 
+const ReferenceSchema = z.object({
+  __kind: z.enum(["entry", "annotation", "note"]),
+  id: z.string(),
+});
+
 const toFeed = (data: z.infer<typeof FeedSchema>): Feed => {
   return {
     ...toItem(data),
@@ -143,6 +148,7 @@ const TopicSchema = ItemSchema.extend({
   entry_count: z.number(),
   unread_count: z.number(),
   is_pinned: z.boolean(),
+  members: z.array(ReferenceSchema).optional(),
 });
 
 const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
@@ -153,8 +159,13 @@ const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
   entryCount: data.entry_count,
   unreadCount: data.unread_count,
   isPinned: data.is_pinned,
-  members: [],
+  members: data.members ?? [],
 });
+
+const toTopicItem = (item: Entry | Annotation) =>
+  item.__kind === "annotation"
+    ? { type: "annotation", id: item.id, reference: item.reference }
+    : { type: "entry", id: item.id };
 
 const AnnotationSchema = z.object({
   id: z.string(),
@@ -870,16 +881,7 @@ export class TauriPlatform implements Platform {
 
   async createTopic(
     signal: AbortSignal,
-    topic: Omit<
-      Topic,
-      | "id"
-      | "createdAt"
-      | "unreadCount"
-      | "entryCount"
-      | "isPinned"
-      | "__kind"
-      | "members"
-    >
+    topic: CreateTopicInput
   ): Promise<Topic> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -889,6 +891,23 @@ export class TauriPlatform implements Platform {
       title: topic.title,
       description: topic.description ?? null,
       threshold: topic.threshold ?? null,
+    });
+    return TopicSchema.transform(toTopic).parse(result);
+  }
+
+  async createTopicWithMember(
+    signal: AbortSignal,
+    topic: CreateTopicInput,
+    member: Entry | Annotation
+  ): Promise<Topic> {
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "create_topic_with_member" });
+    const result = await invoker<unknown>("create_topic_with_member", {
+      title: topic.title,
+      description: topic.description ?? null,
+      threshold: topic.threshold ?? null,
+      item: toTopicItem(member),
     });
     return TopicSchema.transform(toTopic).parse(result);
   }
@@ -966,14 +985,9 @@ export class TauriPlatform implements Platform {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "add_topic_item" });
-    // `Entry | Annotation` is a discriminated union on `__kind`; dispatch on the brand.
-    const topicItem =
-      item.__kind === "annotation"
-        ? { type: "annotation", id: item.id, reference: item.reference }
-        : { type: "entry", id: item.id };
     const result = await invoker<unknown>("add_topic_item", {
       topicId,
-      item: topicItem,
+      item: toTopicItem(item),
     });
     return TopicSchema.transform(toTopic).parse(result);
   }

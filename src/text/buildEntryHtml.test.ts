@@ -50,9 +50,9 @@ it("emits the Xaga reader's bounded compact-title treatment", () => {
   const html = buildEntryHtml("<p>Body</p>", "Title", style);
   const compact = html.replace(/\s+/g, " ");
 
-  expect(compact).toContain(
-    ".xaga-reader-title { display: block; line-height: 1.25em; max-height: round(up, 20vh, 1lh); overflow-y: hidden; }"
-  );
+  expect(compact).toContain(".xaga-reader-title { display: block;");
+  expect(compact).toContain("max-height: round(up, 20vh, 1lh);");
+  expect(compact).toContain("overflow-y: hidden;");
   expect(compact).toContain(
     "@media (prefers-reduced-motion: no-preference) { position: sticky; top: 0; }"
   );
@@ -68,36 +68,54 @@ it("emits the Xaga reader's bounded compact-title treatment", () => {
 
 it.each([
   {
-    themeMode: "light" as const,
-    fontFamily: "serif" as const,
-    fontSize: 18,
-    lineHeight: 1.5,
-    fontStack: 'Georgia,"Times New Roman",serif',
-    rhythm: 27,
+    fontFamily: "system" as const,
+    expectedOverride: null,
   },
   {
-    themeMode: "dark" as const,
+    fontFamily: "serif" as const,
+    expectedOverride: "var(--lliw-typography__font-family--serif)",
+  },
+  {
+    fontFamily: "sans-serif" as const,
+    expectedOverride: "var(--lliw-typography__font-family--sans-serif)",
+  },
+  {
     fontFamily: "monospace" as const,
-    fontSize: 14,
-    lineHeight: 2,
-    fontStack: '"Courier New",Courier,monospace',
-    rhythm: 28,
+    expectedOverride: "var(--lliw-typography__font-family--monospace)",
   },
 ])(
-  "preserves $themeMode reader appearance variables around the compact title",
-  ({ fontStack, rhythm, ...appearance }) => {
-    const html = buildEntryHtml("<p>Body</p>", "Title", appearance);
-
-    expect(html).toContain(`color-scheme: ${appearance.themeMode};`);
-    expect(html).toContain(
-      `--lliw-typography__font-family: ${fontStack};`
-    );
-    expect(html).toContain(
-      `--lliw-typography__font-size: ${appearance.fontSize}px;`
-    );
-    expect(html).toContain(`--lliw-typography__rhythm-unit: ${rhythm}px;`);
+  "delegates the $fontFamily reader category to lliwio",
+  ({ fontFamily, expectedOverride }) => {
+    const html = buildEntryHtml("<p>Body</p>", "Title", {
+      ...style,
+      fontFamily,
+    });
+    if (expectedOverride) {
+      expect(html).toMatch(
+        new RegExp(
+          `color-scheme: light;\\s*--lliw-typography__font-family: ${expectedOverride.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")};`
+        )
+      );
+    } else {
+      expect(html).toMatch(
+        /color-scheme: light;\s*--lliw-typography__font-size:/
+      );
+    }
   }
 );
+
+it("preserves reader size, rhythm, and theme overrides", () => {
+  const html = buildEntryHtml("<p>Body</p>", "Title", {
+    themeMode: "dark",
+    fontFamily: "system",
+    fontSize: 14,
+    lineHeight: 2,
+  });
+
+  expect(html).toContain("color-scheme: dark;");
+  expect(html).toContain("--lliw-typography__font-size: 14px;");
+  expect(html).toContain("--lliw-typography__rhythm-unit: 28px;");
+});
 
 it("renders the escaped canonical title in a sibling header", async () => {
   const dom = await render("<p>Body</p>", '<img src=x onerror="bad"> & title');

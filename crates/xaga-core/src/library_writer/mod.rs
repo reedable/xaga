@@ -235,6 +235,14 @@ enum Op {
         items: Vec<CollectionItem>,
         resp: oneshot::Sender<Result<Topic, WriterError>>,
     },
+    CreateTopicWithMember {
+        id: String,
+        title: String,
+        description: String,
+        threshold: Option<f32>,
+        item: CollectionItem,
+        resp: oneshot::Sender<Result<Topic, WriterError>>,
+    },
     /// Edits a topic's metadata without touching its item list. The existing
     /// items are re-read and written back inside the topic's lane, so a
     /// concurrent item add/remove cannot be lost.
@@ -335,6 +343,7 @@ impl Op {
                 format!("entry/{id}")
             }
             Op::SaveTopic { id, .. }
+            | Op::CreateTopicWithMember { id, .. }
             | Op::EditTopicMeta { id, .. }
             | Op::DeleteTopic { id, .. }
             | Op::SetTopicPinned { id, .. }
@@ -361,6 +370,7 @@ impl Op {
             Op::PatchEntryTags { .. } => "patch_entry_tags",
             Op::BookmarkEntry { .. } => "bookmark_entry",
             Op::SaveTopic { .. } => "save_topic",
+            Op::CreateTopicWithMember { .. } => "create_topic_with_member",
             Op::EditTopicMeta { .. } => "edit_topic_meta",
             Op::DeleteTopic { .. } => "delete_topic",
             Op::SetTopicPinned { .. } => "set_topic_pinned",
@@ -389,6 +399,9 @@ impl Op {
             Op::PatchEntryTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::BookmarkEntry { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SaveTopic { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::CreateTopicWithMember { resp, .. } => {
+                drop(resp.send(Err(WriterError::ShuttingDown)))
+            }
             Op::DeleteTopic { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::EditTopicMeta { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetTopicPinned { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -589,6 +602,43 @@ impl Op {
                 )
                 .await
                 .map_err(WriterError::from);
+                let _ = resp.send(r);
+            }
+            Op::CreateTopicWithMember {
+                id,
+                title,
+                description,
+                threshold,
+                item,
+                resp,
+            } => {
+                let r = async {
+                    let article_id = match &item {
+                        CollectionItem::Entry { id } => id,
+                        CollectionItem::Annotation { reference, .. } => reference,
+                    };
+                    let article = articles::read_article(library_dir, article_id).await?;
+                    if let CollectionItem::Annotation { id, .. } = &item
+                        && !article
+                            .annotations
+                            .iter()
+                            .any(|annotation| annotation.id == *id)
+                    {
+                        return Err(WriterError::Entry(EntryError::NotFound));
+                    }
+                    topics::save_topic(
+                        library_dir,
+                        &id,
+                        &title,
+                        &description,
+                        threshold,
+                        vec![item],
+                        token,
+                    )
+                    .await
+                    .map_err(WriterError::from)
+                }
+                .await;
                 let _ = resp.send(r);
             }
             Op::EditTopicMeta {
@@ -1069,6 +1119,29 @@ impl LibraryWriter {
         let id = uuid::Uuid::new_v4().to_string();
         self.save_topic(tier, id, title, description, threshold, vec![])
             .await
+    }
+
+    /// Creates a topic with one already-persisted member in the same writer operation and
+    /// topic-document write. The member is validated before the topic file is created.
+    pub async fn create_topic_with_member(
+        &self,
+        tier: Tier,
+        title: String,
+        description: String,
+        threshold: Option<f32>,
+        item: CollectionItem,
+    ) -> Result<Topic, WriterError> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let (resp, rx) = oneshot::channel();
+        let op = Op::CreateTopicWithMember {
+            id,
+            title,
+            description,
+            threshold,
+            item,
+            resp,
+        };
+        self.submit(tier, op, rx).await
     }
 
     pub async fn delete_topic(&self, tier: Tier, id: String) -> Result<(), WriterError> {
@@ -1808,6 +1881,106 @@ mod tests {
             matches!(r, Err(WriterError::ShuttingDown)),
             "a post-shutdown write must be refused, not stranded; got {r:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn create_topic_with_member_persists_entry_and_annotation_members() {
+        let dir = tempfile::tempdir().unwrap();
+        let w = start_writer(dir.path());
+        seed_article(&w, "abcdef123456").await;
+
+        let entry_topic = w
+            .create_topic_with_member(
+                Tier::Interactive,
+                "Entry topic".into(),
+                "Description".into(),
+                Some(0.7),
+                CollectionItem::Entry {
+                    id: "abcdef123456".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            entry_topic.members.as_slice(),
+            [crate::types::Reference::Entry { id }] if id == "abcdef123456"
+        ));
+        assert_eq!(
+            topics::read_topic_items(dir.path(), &entry_topic.id)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+
+        w.add_annotation(
+            Tier::Interactive,
+            "abcdef123456".into(),
+            annotation("annotation-1"),
+        )
+        .await
+        .unwrap();
+        let annotation_topic = w
+            .create_topic_with_member(
+                Tier::Interactive,
+                "Annotation topic".into(),
+                String::new(),
+                None,
+                CollectionItem::Annotation {
+                    id: "annotation-1".into(),
+                    reference: "abcdef123456".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            annotation_topic.members.as_slice(),
+            [crate::types::Reference::Annotation { id }] if id == "annotation-1"
+        ));
+        w.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn create_topic_with_missing_member_leaves_no_topic() {
+        let dir = tempfile::tempdir().unwrap();
+        let w = start_writer(dir.path());
+
+        let result = w
+            .create_topic_with_member(
+                Tier::Interactive,
+                "Orphan".into(),
+                String::new(),
+                None,
+                CollectionItem::Entry {
+                    id: "missing".into(),
+                },
+            )
+            .await;
+        assert!(matches!(
+            result,
+            Err(WriterError::Entry(EntryError::NotFound))
+        ));
+        assert!(topics::list_topics(dir.path()).await.unwrap().is_empty());
+
+        seed_article(&w, "abcdef123456").await;
+        let result = w
+            .create_topic_with_member(
+                Tier::Interactive,
+                "Orphan annotation".into(),
+                String::new(),
+                None,
+                CollectionItem::Annotation {
+                    id: "missing-annotation".into(),
+                    reference: "abcdef123456".into(),
+                },
+            )
+            .await;
+        assert!(matches!(
+            result,
+            Err(WriterError::Entry(EntryError::NotFound))
+        ));
+        assert!(topics::list_topics(dir.path()).await.unwrap().is_empty());
+        w.shutdown().await;
     }
 
     /// Many writes submitted concurrently with shutdown must each resolve — Ok (drained) or ShuttingDown

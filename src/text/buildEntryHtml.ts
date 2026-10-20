@@ -88,6 +88,7 @@ export function buildEntryHtml(
   const prefersDark = themeMode === "dark";
   const fg = "var(--lliw-semanticColor__color--primary)";
   const fontStack = FONT_FAMILY_CSS[fontFamily];
+  const fontFamilyOverride = fontStack ? `--lliw-typography__font-family: ${fontStack};` : "";
 
   // Embed annotations in a non-executed <script type="application/json"> data
   // island (see the return below). See
@@ -107,17 +108,17 @@ export function buildEntryHtml(
       ${readerCss}
       :root {
         color-scheme: ${themeMode};
-        --lliw-typography__font-family: ${fontStack};
+        ${fontFamilyOverride}
         --lliw-typography__font-size: ${fontSize}px;
         --lliw-typography__rhythm-unit: ${fontSize * lineHeight}px;
       }
       @keyframes header__h1--scale {
         from {
-          font-weight: 401;
         }
         to {
           font-size: round(down, var(--lliw-1i) * 1rem, 1px);
           font-weight: 800;
+          font-width: 72%;
           line-height: round(up, 1em, 1rlh);
         }
       }
@@ -135,7 +136,7 @@ export function buildEntryHtml(
       }
       body>header {
         max-width: calc(680px + 2rem);
-        margin: 0 auto 1rlh auto;
+        margin: 0 auto;
 
         @media (prefers-reduced-motion: no-preference) {
           position: sticky;
@@ -144,7 +145,8 @@ export function buildEntryHtml(
       }
       .xaga-reader-title {
         display: block;
-        line-height: 1.25em;
+        /* hanging-punctuation: first; --> FIXME This gets clipped by h1 */
+        line-height: max(round(up, 1em / 1rlh, 1px), 1em);
         max-height: round(up, 20vh, 1lh);
         overflow-y: hidden;
       }
@@ -162,7 +164,7 @@ export function buildEntryHtml(
           animation-name: header__h1--scale;
           animation-timeline: scroll(nearest);
           animation-fill-mode: both;
-          animation-range: 0 min(100vh, 75%);
+          animation-range: 0 min(20cqh, 100%);
           position: absolute;
           top: 0;
 
