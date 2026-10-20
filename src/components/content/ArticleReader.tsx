@@ -7,7 +7,6 @@ import {
   DialogContentText,
   DialogTitle,
   LinearProgress,
-  Typography,
 } from "@mui/material";
 import {
   forwardRef,
@@ -34,7 +33,6 @@ import { imageReferences } from "../../text/imageReferences";
 import { markdownToHtml } from "../../text/markdownPipeline";
 import { isAbortError } from "../../types";
 import ArticleLoadAttempt from "../../utils/ArticleLoadAttempt";
-import { FONT_FAMILY_CSS } from "../../utils/FontFamily";
 import cx from "../../utils/cx";
 import css from "./ArticleReader.module.css";
 import { HtmlReader } from "./HtmlReader";
@@ -64,7 +62,6 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
     const platform = usePlatform();
     const { pushError } = useErrorSink();
     const [abort, abortControllerRef] = useAbortController();
-    const [title, setTitle] = useState<string | null>(null);
     const [summaryHtml, setSummaryHtml] = useState<string | null>(null);
     const [contentHtml, setContentHtml] = useState<string | null>(null);
 
@@ -136,7 +133,6 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       async (reload = false) => {
         if (!url) return;
         const signal = abortControllerRef.current.signal;
-        setTitle(null);
         setSummaryHtml(null);
         setContentHtml(null);
 
@@ -151,7 +147,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
           if (!article) return;
           signal.throwIfAborted();
 
-          setTitle(article.title ?? "Untitled");
+          const title = article.title ?? "Untitled";
 
           setAnnotationsFromArticle(article);
           if (reload) {
@@ -167,6 +163,7 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
                   article.id,
                   (id, refs) => platform.readEntryImages(signal, id, refs)
                 ),
+                title,
                 htmlReaderStyle
               )
             );
@@ -238,17 +235,21 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       setPendingUpdate(null);
       setAnnotationsFromArticle(article);
 
-      if (article.content) {
-        const html = await markdownToHtml(article.content);
-        if (html) {
-          const inlined = await prepareEntryImages(
-            html,
+      const title = article.title ?? "Untitled";
+      const render = async (markdown: string) =>
+        buildEntryHtml(
+          await prepareEntryImages(
+            await markdownToHtml(markdown),
             article.id,
             resolveEntryImages
-          );
-          setContentHtml(buildEntryHtml(inlined, htmlReaderStyle));
-        }
-      }
+          ),
+          title,
+          htmlReaderStyle
+        );
+      setSummaryHtml(
+        article.description ? await render(article.description) : null
+      );
+      setContentHtml(await render(article.content));
     }, [
       entryId,
       htmlReaderStyle,
@@ -340,16 +341,6 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       <>
         <div className={css.Content}>
           <div className={css.Entry}>
-            <div className={css.Title}>
-              <Typography
-                component="h1"
-                variant="h5"
-                sx={{ fontFamily: FONT_FAMILY_CSS[htmlReaderFontFamily] }}
-              >
-                {title ?? <>Loading...</>}
-              </Typography>
-            </div>
-
             <div
               className={cx(
                 css.ProgressBar,

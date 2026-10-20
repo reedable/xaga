@@ -74,10 +74,15 @@ export interface SerializedAnnotation {
 
 // ── Builder ───────────────────────────────────────────────────────────────────
 
+function escapeText(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
 export function buildEntryHtml(
   bodyHtml: string,
+  title: string,
   style: HtmlReaderStyle,
-  annotations: SerializedAnnotation[] = []
+  annotations: SerializedAnnotation[] = [],
 ): string {
   const { themeMode, fontFamily, fontSize, lineHeight } = style;
   const prefersDark = themeMode === "dark";
@@ -94,33 +99,157 @@ export function buildEntryHtml(
   // printed value into app.security.csp (script-src) in src-tauri/tauri.conf.json.
   const annotationsJson = JSON.stringify(annotations).replace(/</g, "\\u003c");
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    ${readerCss}
-    :root {
-      color-scheme: ${themeMode};
-      --lliw-typography__font-family: ${fontStack};
-      --lliw-typography__font-size: ${fontSize}px;
-      --lliw-typography__rhythm-unit: ${fontSize * lineHeight}px;
-    }
-    body{margin:0 0 4.5rem 0;padding:0.5rem 2rem 2rem}
-    article{max-width:680px;margin:0 auto}
-    img{max-width:100%;height:auto}
-    .xaga-unavailable-image{display:block;padding:.5em 0;white-space:pre-wrap}
-    .xaga-image-title{display:block;font-size:.9em;margin-top:.25em}
-    audio,video{display:none}
-    a{cursor:pointer}
-    table{border-collapse:collapse;width:100%}
-    th,td{border:1px solid var(--lliw-semanticColor__color--tertiary);padding:0.4rem 0.6rem}
-    ${Object.entries(prefersDark ? MARK_COLORS_DARK : MARK_COLORS_LIGHT)
-      .map(
-        ([name, t]) =>
-          `mark[data-ann-color="${name}"]{background:${t.bg};border-radius:2px;cursor:pointer;outline:1px solid ${t.accent}${prefersDark ? ";color:#000000" : ""}}` +
-          `mark[data-ann-color="${name}"]:hover{background:${t.accent};color:${prefersDark ? "#000000" : fg}}`
-      )
-      .join("")}
-    mark.xf{background:${prefersDark ? "#7b6200" : "#fff176"};border-radius:2px;color:inherit}
-    mark.xf.xfa{background:${prefersDark ? "#e65100" : "#ff9800"};border-radius:2px;color:${prefersDark ? "#fff" : "#000"};outline:2px solid ${prefersDark ? "#ff6d00" : "#e65100"}}
-  </style></head><body><article>${bodyHtml}</article><script type="application/json" id="__xaga_annotations__">${annotationsJson}</script><script>
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      ${readerCss}
+      :root {
+        color-scheme: ${themeMode};
+        --lliw-typography__font-family: ${fontStack};
+        --lliw-typography__font-size: ${fontSize}px;
+        --lliw-typography__rhythm-unit: ${fontSize * lineHeight}px;
+      }
+      @keyframes header__h1--scale {
+        from {
+          font-weight: 401;
+        }
+        to {
+          font-size: round(down, var(--lliw-1i) * 1rem, 1px);
+          font-weight: 800;
+          line-height: round(up, 1em, 1rlh);
+        }
+      }
+      @keyframes header__h1-after--width {
+        from {
+          width: 0%;
+        }
+        to {
+          width: 100%;
+        }
+      }
+      body{
+        margin:0 0 4.5rem 0;
+        padding: 0 2rem;
+      }
+      body>header {
+        max-width: calc(680px + 2rem);
+        margin: 0 auto 1rlh auto;
+
+        @media (prefers-reduced-motion: no-preference) {
+          position: sticky;
+          top: 0;
+        }
+      }
+      .xaga-reader-title {
+        display: block;
+        line-height: 1.25em;
+        max-height: round(up, 20vh, 1lh);
+        overflow-y: hidden;
+      }
+      body>header>h1:not([aria-hidden]) {
+        background-color: var(--lliw-semanticColor__background-color--primary);
+        display: block;
+        width: 100%;
+
+        /* WebKit does not support this as of Oct 2026 */
+        @media (prefers-reduced-transparency: no-preference) {
+          background-color: oklch(from var(--lliw-semanticColor__background-color--primary) l c h / 0.8125);
+        }
+
+        @media (prefers-reduced-motion: no-preference) {
+          animation-name: header__h1--scale;
+          animation-timeline: scroll(nearest);
+          animation-fill-mode: both;
+          animation-range: 0 min(100vh, 75%);
+          position: absolute;
+          top: 0;
+
+          &::after {
+            animation-name: header__h1-after--width;
+            animation-timeline: scroll(nearest);
+            animation-fill-mode: both;
+            border-top: 2px solid var(--lliw-semanticColor__color--link);
+            content: '';
+            display: block;
+            height: 3px;
+          }
+        }
+      }
+      /* header spacer is hidden from AT */
+      body>h1[aria-hidden] {
+        display: none;
+
+        @media (prefers-reduced-motion: no-preference) {
+          display: block;
+          pointer-events: none;
+          top: 0;
+          visibility: hidden;
+          width: 100%;
+          z-index: -1;
+        }
+      }
+      article {
+        max-width: 680px;
+        margin: 1rlh auto;
+      }
+      img {
+        max-width: 100%;
+        height: auto;
+      }
+      .xaga-unavailable-image {
+        display: block;
+        padding: 0.5em 0;
+        white-space: pre-wrap;
+      }
+      .xaga-image-title {
+        display: block;
+        font-size: 0.9em;
+        margin-top: 0.25em;
+      }
+      audio, video {
+        display: none;
+      }
+      a {
+        cursor: pointer;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th, td {
+        border: 1px solid var(--lliw-semanticColor__color--tertiary);
+        padding: 0.4rem 0.6rem;
+      }
+      ${Object.entries(prefersDark ? MARK_COLORS_DARK : MARK_COLORS_LIGHT)
+        .map(
+          ([name, t]) =>
+            `mark[data-ann-color="${name}"]{background:${t.bg};border-radius:2px;cursor:pointer;outline:1px solid ${t.accent}${prefersDark ? ";color:#000000" : ""}}` +
+            `mark[data-ann-color="${name}"]:hover{background:${t.accent};color:${prefersDark ? "#000000" : fg}}`,
+        )
+        .join("")}
+      mark.xf {
+        background: ${prefersDark ? "#7b6200" : "#fff176"};
+        border-radius: 2px;
+        color: inherit;
+      }
+      mark.xf.xfa {
+        background: ${prefersDark ? "#e65100" : "#ff9800"};
+        border-radius: 2px;
+        color: ${prefersDark ? "#fff" : "#000"};
+        outline: 2px solid ${prefersDark ? "#ff6d00" : "#e65100"};
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1><span class="xaga-reader-title">${escapeText(title)}</span></h1>
+    </header>
+    <!-- h1 spacer to keep the scroll position stable -->
+    <h1 aria-hidden="true"><span class="xaga-reader-title">${escapeText(title)}</span></h1>
+    <article>${bodyHtml}</article>
+    <script type="application/json" id="__xaga_annotations__">${annotationsJson}</script><script>
     document.addEventListener('error', function(event) {
       const img = event.target;
       if (!(img instanceof HTMLImageElement)) return;
@@ -138,11 +267,13 @@ export function buildEntryHtml(
       img.replaceWith(fallback);
     }, true);
     var __ANNOTATIONS__ = JSON.parse(document.getElementById('__xaga_annotations__').textContent || '[]');
+    var __ARTICLE__ = document.querySelector('article');
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
-    // Build a TreeWalker that visits only text nodes outside <script>, <style>,
-    // and existing <mark data-ann-id> elements (to avoid double-counting).
+    // Build a TreeWalker that visits only perceivable text nodes outside
+    // <script>, <style>, and existing <mark data-ann-id> elements (to avoid
+    // double-counting).
     function makeTextWalker(root) {
       return document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
         acceptNode: function(node) {
@@ -150,6 +281,7 @@ export function buildEntryHtml(
           while (p && p !== root) {
             var tag = p.tagName ? p.tagName.toUpperCase() : '';
             if (tag === 'SCRIPT' || tag === 'STYLE') return NodeFilter.FILTER_REJECT;
+            if (p.getAttribute && p.getAttribute('aria-hidden') === 'true') return NodeFilter.FILTER_REJECT;
             if (tag === 'MARK' && p.dataset && p.dataset.annId) return NodeFilter.FILTER_REJECT;
             p = p.parentElement;
           }
@@ -160,19 +292,19 @@ export function buildEntryHtml(
 
     // Block-level tags that delimit segment boundaries.
     var BLOCK_TAGS = {P:1,H1:1,H2:1,H3:1,H4:1,H5:1,H6:1,LI:1,BLOCKQUOTE:1,TD:1,TH:1,PRE:1,DIV:1,SECTION:1,ARTICLE:1};
-    function closestBlock(node) {
+    function closestBlock(node, root) {
       var el = node.parentElement;
-      while (el && el !== document.body) {
+      while (el && el !== root) {
         if (BLOCK_TAGS[el.tagName ? el.tagName.toUpperCase() : '']) return el;
         el = el.parentElement;
       }
-      return document.body;
+      return root;
     }
 
     // Apply one segment of an annotation highlight to the document.
     // segText is the exact string to find; targetOcc is the 0-based occurrence index.
     function applyHighlightSegment(id, segText, targetOcc, color, note) {
-      var walker = makeTextWalker(document.body);
+      var walker = makeTextWalker(__ARTICLE__);
       var count = 0;
       var node;
 
@@ -226,14 +358,14 @@ export function buildEntryHtml(
 
     // Remove all highlight marks with the given annotationId, unwrapping text content.
     function removeHighlight(annotationId) {
-      var marks = document.querySelectorAll('mark[data-ann-id="' + annotationId + '"]');
+      var marks = __ARTICLE__.querySelectorAll('mark[data-ann-id="' + annotationId + '"]');
       for (var i = 0; i < marks.length; i++) {
         var mark = marks[i];
         var parent = mark.parentNode;
         while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
         parent.removeChild(mark);
       }
-      document.body.normalize();
+      __ARTICLE__.normalize();
     }
 
     // Collect text segments and their occurrence indices from the current selection.
@@ -243,10 +375,11 @@ export function buildEntryHtml(
       var sel = window.getSelection();
       if (!sel || sel.isCollapsed) return null;
       var range = sel.getRangeAt(0);
+      if (!__ARTICLE__.contains(range.startContainer) || !__ARTICLE__.contains(range.endContainer)) return null;
 
       // Collect all text nodes in document order (for occurrence counting).
       var allNodes = [];
-      var walkerAll = makeTextWalker(document.body);
+      var walkerAll = makeTextWalker(__ARTICLE__);
       var n;
       while ((n = walkerAll.nextNode())) allNodes.push(n);
 
@@ -465,9 +598,11 @@ export function buildEntryHtml(
         clearFindMarks();
         window.parent.postMessage({ type: '${FIND_RESULT}', total: 0, current: 0 }, '*');
       } else if (msg.type === '${SCROLL_TO_ANNOTATION}') {
-        var mark = document.querySelector('mark[data-ann-id="' + msg.annotationId + '"]');
+        var mark = __ARTICLE__.querySelector('mark[data-ann-id="' + msg.annotationId + '"]');
         if (mark) mark.scrollIntoView({ block: 'center', behavior: 'smooth' });
       }
     });
-  </script></body></html>`;
+  </script>
+  </body>
+</html>`;
 }

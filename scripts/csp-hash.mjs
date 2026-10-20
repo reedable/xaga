@@ -38,6 +38,7 @@ async function readerScriptHash() {
     );
     const html = buildEntryHtml(
       "",
+      "",
       {
         themeMode: "light",
         fontFamily: "system",

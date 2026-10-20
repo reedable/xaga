@@ -13,6 +13,27 @@ The rendering path applies its own controls and does not depend on ingest-time s
 - **The reader is a sandboxed, opaque-origin iframe.** `sandbox="allow-scripts"` only (`HtmlReader.tsx:340`) — no `allow-same-origin` — so the reader document has an opaque origin: no access to the app's DOM, IPC, or storage. Content is delivered as a `Blob` URL via `location.replace` and the object URL is revoked after load.
 - **The reader's own script is CSP-hash-pinned.** The bundled CSP (`tauri.conf.json`) has `script-src 'self' 'sha256-…'` with no `unsafe-inline`; the single inline reader script is byte-stable and its hash is allow-listed. `node scripts/csp-hash.mjs --check` verifies the configured hash and runs before every production frontend build; run the command without `--check` to print a replacement value. No other inline script can execute in the app's pages.
 - **Annotations enter the reader through a JSON data island**, a non-executed `<script type="application/json">` block (`buildEntryHtml.ts:89-102`). Every `<` in the JSON is escaped to `\u003c`, so annotation text containing `</script>` or `<!--` cannot break out of the island element.
+- **The canonical saved title is reader text, not article content.** The builder
+  escapes it as text and emits `<header><h1>` as a sibling immediately before
+  `<article>`. It is never interpolated as trusted HTML. A publisher-supplied
+  heading already present in the saved body is left unchanged, so duplicate
+  headings are possible by design.
+- **Compact-title presentation belongs to Xaga's reader builder.** It is tied to
+  the iframe's scroll container and is not a general lliwio-css typography
+  primitive. Without a reduced-motion preference, the header stays sticky and
+  its heading compacts over the initial scroll range; the opaque theme
+  background keeps article text from showing through, and a scroll-linked rule
+  shows reading progress. With reduced motion, the title remains in normal
+  document flow and the hidden layout spacer is not rendered. The visible title
+  text is capped at `20vh`, rounded to a complete line; exceptionally malformed
+  titles may therefore end with a hard visual cutoff, while their complete text
+  remains in the document for assistive technology. The duplicate layout spacer
+  is `aria-hidden` and excluded from the reader's Find traversal.
+- **Annotation identity is scoped to `<article>`.** Stored-highlight traversal,
+  occurrence counting, and new-selection lookup exclude the sibling header.
+  Selections wholly inside the header or crossing the header/article boundary
+  are refused, so adding or changing the displayed title cannot shift an
+  existing annotation occurrence or create an annotation over reader metadata.
 - **`postMessage` traffic is source-checked.** The parent only accepts messages whose `source` is the reader iframe's own `contentWindow` (`HtmlReader.tsx:273-276`), so a sibling frame (e.g. the PDF viewer) or any window holding a reference cannot spoof reader events such as link opens.
 - **No raw-HTML sinks in the app UI.** The React tree contains no `dangerouslySetInnerHTML` and no `srcdoc`; feed titles/summaries render as React text nodes, which are escaped by construction.
 - The app shell CSP also sets `object-src 'none'`, `base-uri 'self'`, `form-action 'none'`, and restricts `connect-src` to the IPC endpoints.
