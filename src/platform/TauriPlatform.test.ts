@@ -20,6 +20,49 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 import { TauriPlatform } from "./TauriPlatform";
 
+it("creates a topic with an existing member through one native command", async () => {
+  invokeMock.mockResolvedValueOnce({
+    id: "topic-1",
+    title: "Reading",
+    created_at: "2026-10-20T00:00:00Z",
+    updated_at: null,
+    description: "Worth revisiting",
+    threshold: 0.75,
+    entry_count: 1,
+    unread_count: 1,
+    is_pinned: false,
+    members: [{ __kind: "annotation", id: "annotation-1" }],
+  });
+  const member = {
+    __kind: "annotation" as const,
+    id: "annotation-1",
+    title: "Highlight",
+    createdAt: "2026-10-20T00:00:00Z",
+    reference: "entry-1",
+    text: ["Highlight"],
+    occurrence: [0],
+    color: "yellow",
+    content: "",
+  };
+
+  const result = await new TauriPlatform().createTopicWithMember(
+    new AbortController().signal,
+    { title: "Reading", description: "Worth revisiting", threshold: 0.75 },
+    member
+  );
+
+  expect(result.id).toBe("topic-1");
+  expect(result.members).toEqual([
+    { __kind: "annotation", id: "annotation-1" },
+  ]);
+  expect(invokeMock).toHaveBeenLastCalledWith("create_topic_with_member", {
+    title: "Reading",
+    description: "Worth revisiting",
+    threshold: 0.75,
+    item: { type: "annotation", id: "annotation-1", reference: "entry-1" },
+  });
+});
+
 it("reads the embedding startup state from the native boundary", async () => {
   invokeMock.mockResolvedValueOnce("unavailable");
   await expect(new TauriPlatform().embeddingStartupState()).resolves.toBe(

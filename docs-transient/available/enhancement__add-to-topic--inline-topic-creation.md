@@ -51,6 +51,8 @@ content context.
   Topic creation.
 - Integrate atomic create-with-member for existing items and staged selection
   for an annotation that has not yet been persisted.
+- Make annotation persistence awaitable at the reader boundary and apply staged
+  memberships only after that persistence succeeds.
 - Refresh Topic and shortcut provider state after creation without invoking the
   normal create-dialog navigation behavior.
 - Cover title prefilling, initial empty-library creation, cancellation, form
@@ -65,8 +67,11 @@ content context.
 - `src/components/content/TopicMenuButton.module.css`
 - `src/components/dialogs/EditTopicDialog.tsx`
 - `src/components/content/AnnotationTooltip.tsx`
+- `src/components/content/HtmlReader.tsx`
 - `src/components/content/Toolbar.tsx`
 - `src/AppLayout.tsx`
 - `src/hooks/useTopics.tsx`
-- `docs-transient/available/enhancement__topics--create-with-member.md`
-
+- `src/hooks/useAnnotations.tsx`
+- `crates/xaga-core/src/library_writer/mod.rs`
+- `src-tauri/src/commands/topics.rs`
+- `src/platform/Platform.ts`
