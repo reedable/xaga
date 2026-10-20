@@ -1,5 +1,6 @@
 import { useCallback, useContext, type RefObject } from "react";
 import { usePlatform } from "../platform/Platform";
+import type { CreateTopicInput } from "../platform/Platform";
 import TopicsContext from "../providers/TopicsContext";
 import type { Annotation, Entry, Filter, Topic, TopicSort } from "../types";
 import sortByUnreadCount from "../utils/sortByUnreadCount";
@@ -18,26 +19,36 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
   const { listTopics } = useSidebar(abortControllerRef);
 
   const createTopic = useCallback(
-    async (
-      topic: Omit<
-        Topic,
-        | "id"
-        | "createdAt"
-        | "unreadCount"
-        | "entryCount"
-        | "isPinned"
-        | "__kind"
-        | "members"
-      >
-    ) => {
+    async (topic: CreateTopicInput) => {
       const signal = abortControllerRef.current.signal;
       try {
-        return await platform.createTopic(signal, topic);
+        const created = await platform.createTopic(signal, topic);
+        setTopics((prev) => [...prev, created].sort(sortByUnreadCount));
+        return created;
       } catch (e) {
         pushError(e);
       }
     },
-    [abortControllerRef, platform, pushError]
+    [abortControllerRef, platform, pushError, setTopics]
+  );
+
+  const createTopicWithMember = useCallback(
+    async (topicInput: CreateTopicInput, member: Entry | Annotation) => {
+      const signal = abortControllerRef.current.signal;
+      try {
+        const topic = await platform.createTopicWithMember(
+          signal,
+          topicInput,
+          member
+        );
+        setTopics((prev) => [...prev, topic].sort(sortByUnreadCount));
+        emitTopicItemAdded({ topicId: topic.id, itemId: member.id });
+        return topic;
+      } catch (e) {
+        pushError(e);
+      }
+    },
+    [abortControllerRef, platform, pushError, setTopics]
   );
 
   const saveTopic = useCallback(
@@ -153,6 +164,7 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     setTopicPinned,
     requestTopics,
     createTopic,
+    createTopicWithMember,
     saveTopic,
     deleteTopic,
     listTopicItems,

@@ -287,6 +287,39 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn favicon_pdf_response_stays_with_image_consumer() {
+        let (downloads, rx) = fixture();
+        let url = "https://example.org/favicon.ico";
+        let path = downloads.request(url).unwrap();
+        std::fs::write(&path, b"%PDF-test").unwrap();
+
+        downloads.finish(url, true);
+        let capture = tokio::time::timeout(std::time::Duration::from_secs(2), rx)
+            .await
+            .expect("favicon rejection must not wait for the article deadline")
+            .unwrap();
+
+        assert_eq!(capture.html, "original article");
+        assert_eq!(capture.mime_type, "text/html");
+        assert!(capture.favicon_data.is_none());
+        assert!(capture.pdf_bytes.is_none());
+        assert!(capture.download_error.is_none());
+        assert!(!path.parent().unwrap().exists());
+
+        let report = serde_json::to_value(downloads.attempt.get_diagnostic()).unwrap();
+        assert!(report["events"].as_array().unwrap().iter().any(|event| {
+            event["step"] == "download_validation"
+                && event["outcome"] == "warning"
+                && event["code"] == "article:resource-rejected"
+        }));
+        assert!(report["events"].as_array().unwrap().iter().any(|event| {
+            event["step"] == "favicon"
+                && event["outcome"] == "warning"
+                && event["code"] == "article:favicon-unavailable"
+        }));
+    }
+
     #[test]
     fn native_phase_owns_redirected_downloads_and_rejects_without_a_consumer() {
         let (downloads, mut rx) = fixture();

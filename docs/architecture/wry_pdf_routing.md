@@ -20,16 +20,24 @@ image consumer during favicon capture.
 
 Validated PDF bytes are committed through the library writer to
 `pdfs/{url_hash12(normalize_url(source_url))}.pdf`. The source URL, rather than a
-redirect destination, defines identity. The PDF and Markdown operations share
-the entry's writer lane. PDF replacement preserves existing Markdown and its
-annotations; a successful HTML save removes the associated PDF. A failed PDF
-validation leaves the previous stored PDF intact.
+redirect destination, defines identity. One normalized URL has one Markdown
+identity record. If `entries/{hash12}.md` already exists, it takes precedence:
+it may contain richer feed metadata and user-authored state, so the PDF writer
+preserves it and does not create a competing companion. Otherwise, the writer
+first creates an Entry-format, frontmatter-only identity companion at
+`pdfs/{hash12}.md`. It records the normalized source URL so a future migration
+can reverse the otherwise one-way filename; its initial title is that URL. The
+reader validates that the URL is normalized HTTP(S), hashes back to the
+companion's stem, and has an empty body. These operations share the entry's
+writer lane. A successful HTML save removes the PDF and dormant companion. A
+failed PDF validation leaves all previous files intact.
 
 Local lookup precedes article ingestion. Stored PDFs are size-bounded and their
 signature is rechecked before use. Explicit refresh bypasses local lookup.
 New downloads require a writable library; cached files remain readable in a
-read-only library. PDF files are associated documents, not separately indexed
-library entries.
+read-only library. Legacy PDFs without companions remain readable when the caller
+already knows their URL. Companions under `pdfs/` remain dormant until entry
+discovery is deliberately expanded beyond `entries/`.
 
 The General setting **Show PDFs in the reading pane** controls presentation.
 When enabled, the frontend displays validated bytes through a local Blob URL.
@@ -69,7 +77,8 @@ and persists accepted output through the library writer.
 
 `src-tauri/tests/resource_download_webview.rs` serves controlled resources
 through a local proxy using a reserved external hostname. Its cases are `icon`,
-`pdf`, `invalid-pdf`, `html`, and `blob-pdf`. Run each in a macOS GUI session:
+`pdf`, `invalid-pdf`, `favicon-pdf`, `html`, and `blob-pdf`. Run each in a macOS
+GUI session:
 
 ```sh
 XAGA_DOWNLOAD_SMOKE_CASE=pdf cargo test -p xaga --test resource_download_webview --features wry-pdf-downloads --locked --offline
@@ -80,6 +89,8 @@ retained staging paths when the callback returns no path, injected validation,
 and cleanup. The PDF fixture is a one-page PDF; the invalid fixture is labelled
 PDF but fails the signature validator. The test uses the production validator with the current
 `%PDF-` signature contract; it does not establish parser safety.
+The `favicon-pdf` case assigns that PDF response to the favicon consumer and
+verifies rejection by image validation rather than acceptance by the PDF consumer.
 
 The rendering cases check HTML document and local PDF iframe load signals with
 no download callback. They do not visually inspect PDF pixels or establish

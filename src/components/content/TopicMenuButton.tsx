@@ -1,6 +1,8 @@
 import { Close, CreateNewFolder } from "@mui/icons-material";
 import {
   Badge,
+  Box,
+  Button,
   Checkbox,
   Drawer,
   IconButton,
@@ -24,6 +26,7 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import useAbortController from "../../hooks/useAbortController";
@@ -31,6 +34,7 @@ import { useEvents } from "../../hooks/useEvents";
 import { useTopics } from "../../hooks/useTopics";
 import { useEmbeddingStartupState } from "../../hooks/useEmbeddingStartupState";
 import type { Annotation, Entry } from "../../types";
+import { TopicFormFields, useTopicForm } from "../dialogs/TopicFormFields";
 import css from "./TopicMenuButton.module.css";
 
 const MotionListItem = motion(ListItem);
@@ -38,6 +42,50 @@ const MotionListItem = motion(ListItem);
 interface TopicMenuButtonProps {
   item: Entry | Annotation | null;
   disabled?: boolean;
+}
+
+function InlineTopicForm({
+  initialTitle,
+  onCancel,
+  onCreate,
+}: {
+  initialTitle: string;
+  onCancel: () => void;
+  onCreate: (
+    values: ReturnType<typeof useTopicForm>["values"]
+  ) => Promise<boolean>;
+}) {
+  const form = useTopicForm({ title: initialTitle });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (event: React.SubmitEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!form.values.title) return;
+    setSaving(true);
+    try {
+      if (await onCreate(form.values)) onCancel();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Box component="form" onSubmit={handleSubmit} className={css.InlineForm}>
+      <TopicFormFields form={form} busy={saving} autoFocus />
+      <div className={css.InlineFormActions}>
+        <Button onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+        <Button
+          type="submit"
+          variant="contained"
+          disabled={!form.values.title || saving}
+        >
+          Create Topic
+        </Button>
+      </div>
+    </Box>
+  );
 }
 
 export interface TopicMenuButtonHandle {
@@ -53,6 +101,9 @@ export const TopicMenuButton = forwardRef<
   const { onAnnotationRemoved } = useEvents();
   const {
     topics,
+    createTopic,
+    createTopicWithMember,
+    setTopicPinned,
     listEntryTopics,
     addTopicItem,
     removeTopicItem,
@@ -72,6 +123,9 @@ export const TopicMenuButton = forwardRef<
     new Map()
   );
   const [relevanceLoading, setRelevanceLoading] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createInitialTitle, setCreateInitialTitle] = useState("");
+  const filterInputRef = useRef<HTMLInputElement>(null);
 
   const itemId = item?.id;
 
@@ -109,10 +163,20 @@ export const TopicMenuButton = forwardRef<
     ref,
     () => ({
       async addToTopics(item: Entry | Annotation) {
-        await Promise.all(
-          [...selectedTopicIds].map((topicId) => addTopicItem(topicId, item))
+        const results = await Promise.all(
+          [...selectedTopicIds].map(async (topicId) => ({
+            topicId,
+            topic: await addTopicItem(topicId, item),
+          }))
         );
-        setSelectedTopicIds(new Set());
+        const addedIds = new Set(
+          results.filter(({ topic }) => topic).map(({ topicId }) => topicId)
+        );
+        setSelectedTopicIds((previous) => {
+          const next = new Set(previous);
+          for (const topicId of addedIds) next.delete(topicId);
+          return next;
+        });
       },
     }),
     [selectedTopicIds, addTopicItem]
@@ -143,7 +207,37 @@ export const TopicMenuButton = forwardRef<
   const handleClose = useCallback(() => {
     setOpen(false);
     setFilterText("");
+    setCreating(false);
   }, []);
+
+  const startCreating = useCallback(() => {
+    setCreateInitialTitle(topics.length > 0 ? filterText.trim() : "");
+    setCreating(true);
+  }, [filterText, topics.length]);
+
+  const stopCreating = useCallback(() => {
+    setCreating(false);
+    requestAnimationFrame(() => filterInputRef.current?.focus());
+  }, []);
+
+  const handleCreate = useCallback(
+    async (values: ReturnType<typeof useTopicForm>["values"]) => {
+      const input = {
+        title: values.title,
+        description: values.description,
+        threshold: values.threshold,
+      };
+      const topic = item
+        ? await createTopicWithMember(input, item)
+        : await createTopic(input);
+      if (!topic) return false;
+      setTopicPinned(topic.id, values.pinned);
+      if (item) setMemberIds((previous) => new Set([...previous, topic.id]));
+      else setSelectedTopicIds((previous) => new Set([...previous, topic.id]));
+      return true;
+    },
+    [createTopic, createTopicWithMember, item, setTopicPinned]
+  );
 
   const handleSortByChange = useCallback(
     async (event: SelectChangeEvent) => {
@@ -224,7 +318,7 @@ export const TopicMenuButton = forwardRef<
         <IconButton
           size="small"
           onClick={handleOpen}
-          disabled={topics.length === 0 || disabled}
+          disabled={disabled}
           aria-label="Add to Topic"
         >
           <Badge
@@ -290,59 +384,78 @@ export const TopicMenuButton = forwardRef<
 
           {relevanceLoading && <LinearProgress />}
 
-          <div className={css.DrawerFilter}>
-            <TextField
-              placeholder="Filter topics…"
-              size="small"
-              fullWidth
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              autoFocus
-              autoComplete="off"
-              variant="standard"
-              slotProps={{
-                htmlInput: { spellCheck: false },
-                input: {
-                  endAdornment: filterText && (
-                    <InputAdornment position="end">
-                      <Tooltip title="Clear">
-                        <IconButton
-                          size="small"
-                          edge="end"
-                          onClick={() => setFilterText("")}
-                          aria-label="Clear"
-                        >
-                          <Close fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </InputAdornment>
-                  ),
-                },
-              }}
+          {!creating && (
+            <div className={css.DrawerFilter}>
+              <TextField
+                placeholder="Filter topics…"
+                size="small"
+                fullWidth
+                value={filterText}
+                inputRef={filterInputRef}
+                onChange={(e) => setFilterText(e.target.value)}
+                autoFocus
+                autoComplete="off"
+                variant="standard"
+                slotProps={{
+                  htmlInput: { spellCheck: false },
+                  input: {
+                    endAdornment: filterText && (
+                      <InputAdornment position="end">
+                        <Tooltip title="Clear">
+                          <IconButton
+                            size="small"
+                            edge="end"
+                            onClick={() => setFilterText("")}
+                            aria-label="Clear"
+                          >
+                            <Close fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+            </div>
+          )}
+          {creating ? (
+            <InlineTopicForm
+              initialTitle={createInitialTitle}
+              onCancel={stopCreating}
+              onCreate={handleCreate}
             />
-          </div>
-          <List className={css.DrawerList} disablePadding>
-            {filteredTopics.map((t) => (
-              <MotionListItem
-                key={t.id}
-                layout
-                transition={{ duration: 0.3, ease: "easeOut" }}
-                disablePadding
-              >
-                <ListItemButton onClick={() => handleToggle(t.id)} dense>
-                  <Checkbox
-                    checked={
-                      item ? memberIds.has(t.id) : selectedTopicIds.has(t.id)
-                    }
-                    size="small"
-                    disableRipple
-                    className={css.Checkbox}
-                  />
-                  <ListItemText primary={t.title} />
-                </ListItemButton>
-              </MotionListItem>
-            ))}
-          </List>
+          ) : (
+            <List className={css.DrawerList} disablePadding>
+              {filteredTopics.map((t) => (
+                <MotionListItem
+                  key={t.id}
+                  layout
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                  disablePadding
+                >
+                  <ListItemButton onClick={() => handleToggle(t.id)} dense>
+                    <Checkbox
+                      checked={
+                        item ? memberIds.has(t.id) : selectedTopicIds.has(t.id)
+                      }
+                      size="small"
+                      disableRipple
+                      className={css.Checkbox}
+                    />
+                    <ListItemText primary={t.title} />
+                  </ListItemButton>
+                </MotionListItem>
+              ))}
+              {(topics.length === 0 ||
+                (filterText.trim() && filteredTopics.length === 0)) && (
+                <ListItem>
+                  <Button onClick={startCreating} fullWidth variant="outlined">
+                    Create a New Topic
+                  </Button>
+                </ListItem>
+              )}
+            </List>
+          )}
         </div>
       </Drawer>
     </>

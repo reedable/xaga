@@ -18,7 +18,10 @@ import {
 import type { Annotation } from "../../types";
 import cx from "../../utils/cx";
 import Logger from "../../utils/Logger";
-import { AnnotationTooltip, type AnnotationTooltipHandle } from "./AnnotationTooltip";
+import {
+  AnnotationTooltip,
+  type AnnotationTooltipHandle,
+} from "./AnnotationTooltip";
 import { FindBar } from "./FindBar";
 import css from "./HtmlReader.module.css";
 
@@ -45,12 +48,16 @@ interface HtmlReaderProps {
   html: string;
   annotationId?: string;
   onClickLink?: (url: string) => void; //outgoing links in the html content
-  onSaveAnnotation?: (annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">) => void;
+  onSaveAnnotation?: (
+    annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">
+  ) => Promise<void>;
   onReplaceAnnotation?: (
     oldId: string,
-    annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">,
+    annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">
   ) => void;
-  onRemoveAnnotation?: (annotation: Pick<Annotation, "id" | "reference">) => void;
+  onRemoveAnnotation?: (
+    annotation: Pick<Annotation, "id" | "reference">
+  ) => void;
 }
 
 export function HtmlReader({
@@ -102,7 +109,7 @@ export function HtmlReader({
         position: toViewportPosition(rect),
       });
     },
-    [entryId, isLibraryReadOnly, toViewportPosition],
+    [entryId, isLibraryReadOnly, toViewportPosition]
   );
 
   const handleClickHighlight = useCallback(
@@ -119,7 +126,7 @@ export function HtmlReader({
         position: toViewportPosition(rect),
       });
     },
-    [annotations, entryId, toViewportPosition],
+    [annotations, entryId, toViewportPosition]
   );
 
   const handleChangeTooltip = useCallback(
@@ -130,13 +137,14 @@ export function HtmlReader({
       // delete/create, not an update: the annotation is replaced under a new id —
       // color is part of its identity — so a crash-stranded change is visible to the
       // backend's id-set diffs. First save of a fresh selection keeps the minted id.
-      const isRecolor = color !== null && tooltip.color !== null && color !== tooltip.color;
+      const isRecolor =
+        color !== null && tooltip.color !== null && color !== tooltip.color;
       const id = isRecolor ? uuidv4() : tooltip.annotationId;
 
       if (tooltip.occurrence.length > 0) {
         iframeRef.current?.contentWindow?.postMessage(
           { type: "remove-highlight", annotationId: tooltip.annotationId },
-          "*",
+          "*"
         );
         if (color !== null) {
           iframeRef.current?.contentWindow?.postMessage(
@@ -152,7 +160,7 @@ export function HtmlReader({
                 },
               ],
             },
-            "*",
+            "*"
           );
         }
       }
@@ -168,7 +176,7 @@ export function HtmlReader({
           content: note,
         });
       } else if (color !== null && color !== tooltip.color) {
-        onSaveAnnotation?.({
+        void onSaveAnnotation?.({
           id,
           title: tooltip.text.join(" "),
           reference: entryId,
@@ -181,9 +189,17 @@ export function HtmlReader({
         onRemoveAnnotation?.({ id: tooltip.annotationId, reference: entryId });
       }
 
-      setTooltip((prev) => (prev ? { ...prev, annotationId: id, color, note } : null));
+      setTooltip((prev) =>
+        prev ? { ...prev, annotationId: id, color, note } : null
+      );
     },
-    [tooltip, onSaveAnnotation, onReplaceAnnotation, onRemoveAnnotation, entryId],
+    [
+      tooltip,
+      onSaveAnnotation,
+      onReplaceAnnotation,
+      onRemoveAnnotation,
+      entryId,
+    ]
   );
 
   const handleCloseTooltip = useCallback(async () => {
@@ -202,7 +218,7 @@ export function HtmlReader({
         color: tooltip.color,
         content: tooltip.note ?? "",
       };
-      onSaveAnnotation?.(annotation);
+      await onSaveAnnotation?.(annotation);
       await tooltipRef.current?.addAnnotationToTopics(annotation as Annotation);
     }
 
@@ -211,16 +227,22 @@ export function HtmlReader({
 
   const handleIframeLoad = useCallback(() => {
     if (annotations?.length) {
-      iframeRef.current?.contentWindow?.postMessage({ type: "apply-highlights", annotations }, "*");
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: "apply-highlights", annotations },
+        "*"
+      );
     }
     if (annotationId) {
       iframeRef.current?.contentWindow?.postMessage(
         { type: SCROLL_TO_ANNOTATION, annotationId },
-        "*",
+        "*"
       );
     }
     if (findOpen && findQuery) {
-      iframeRef.current?.contentWindow?.postMessage({ type: FIND_IN_PAGE, query: findQuery }, "*");
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: FIND_IN_PAGE, query: findQuery },
+        "*"
+      );
     }
   }, [annotations, annotationId, findOpen, findQuery]);
 
@@ -232,13 +254,19 @@ export function HtmlReader({
   }, []);
 
   const handleFindNavigate = useCallback((direction: 1 | -1) => {
-    iframeRef.current?.contentWindow?.postMessage({ type: FIND_NAVIGATE, direction }, "*");
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: FIND_NAVIGATE, direction },
+      "*"
+    );
   }, []);
 
   // Send updated query to iframe whenever it changes while find bar is open.
   useEffect(() => {
     if (!findOpen) return;
-    iframeRef.current?.contentWindow?.postMessage({ type: FIND_IN_PAGE, query: findQuery }, "*");
+    iframeRef.current?.contentWindow?.postMessage(
+      { type: FIND_IN_PAGE, query: findQuery },
+      "*"
+    );
   }, [findQuery, findOpen]);
 
   // Reveal the annotation when it changes within an already-loaded article. The
@@ -248,7 +276,7 @@ export function HtmlReader({
     if (!annotationId) return;
     iframeRef.current?.contentWindow?.postMessage(
       { type: SCROLL_TO_ANNOTATION, annotationId },
-      "*",
+      "*"
     );
   }, [annotationId]);
 
@@ -296,7 +324,7 @@ export function HtmlReader({
           handleSelectionMade(
             msg.texts as string[],
             msg.occurrences as number[],
-            msg.rect as HtmlReaderSelectionRect,
+            msg.rect as HtmlReaderSelectionRect
           );
           break;
         case SELECTION_CLEARED:
@@ -307,7 +335,11 @@ export function HtmlReader({
           handleCloseTooltip();
           break;
         case HIGHLIGHT_CLICKED:
-          handleClickHighlight(msg.annotationId, msg.text, msg.rect as HtmlReaderSelectionRect);
+          handleClickHighlight(
+            msg.annotationId,
+            msg.text,
+            msg.rect as HtmlReaderSelectionRect
+          );
           break;
         case FIND_OPEN:
           setFindOpen(true);
@@ -328,7 +360,12 @@ export function HtmlReader({
 
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [onClickLink, handleSelectionMade, handleClickHighlight, handleCloseTooltip]);
+  }, [
+    onClickLink,
+    handleSelectionMade,
+    handleClickHighlight,
+    handleCloseTooltip,
+  ]);
 
   return (
     <div className={cx(css.HtmlReader, className)}>
@@ -355,7 +392,9 @@ export function HtmlReader({
       {tooltip && (
         <AnnotationTooltip
           ref={tooltipRef}
-          annotation={annotations?.find((a) => a.id === tooltip.annotationId) ?? null}
+          annotation={
+            annotations?.find((a) => a.id === tooltip.annotationId) ?? null
+          }
           position={tooltip.position}
           text={tooltip.text}
           color={tooltip.color}

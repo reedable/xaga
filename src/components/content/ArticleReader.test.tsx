@@ -105,8 +105,20 @@ beforeEach(() => {
 afterEach(async () => {
   await act(() => root.unmount());
 });
+
+function expectReaderTitle(title: string) {
+  const readerDocument = new DOMParser().parseFromString(
+    mocks.html,
+    "text/html"
+  );
+  expect(readerDocument.querySelector("body > header > h1")?.textContent).toBe(
+    title
+  );
+}
+
 it("presents unavailable summary image text consistently across view switches", async () => {
   await act(() => root.render(<ArticleReader />));
+  expectReaderTitle("Comic");
   expect(mocks.html).toContain('class="xaga-unavailable-image">Comic</span>');
   expect(mocks.html).not.toContain('src="https://');
   mocks.appearance.htmlReaderView = "reader";
@@ -114,9 +126,16 @@ it("presents unavailable summary image text consistently across view switches", 
   expect(mocks.html).toContain("<article><p>Full body</p></article>");
   mocks.appearance.htmlReaderView = "summary";
   await act(() => root.render(<ArticleReader />));
+  expectReaderTitle("Comic");
   expect(mocks.html).toContain('class="xaga-unavailable-image">Comic</span>');
   expect(mocks.html).not.toContain('src="https://');
   expect(mocks.sink.pushError).not.toHaveBeenCalled();
+});
+
+it("has no external title heading outside the iframe document", async () => {
+  await act(() => root.render(<ArticleReader />));
+  expect(document.querySelector("h1")).toBeNull();
+  expectReaderTitle("Comic");
 });
 it("reproduces the empty iframe document when URL ingestion has removed the saved summary", async () => {
   mocks.article.description = undefined;
@@ -153,7 +172,11 @@ it("offers an update on loader close and saves only after Update", async () => {
   };
   mocks.extract.mockResolvedValue(extracted);
   mocks.read.mockResolvedValue(mocks.article);
-  mocks.save.mockResolvedValue({ ...mocks.article, content: "Updated body" });
+  mocks.save.mockResolvedValue({
+    ...mocks.article,
+    title: "Updated",
+    content: "Updated body",
+  });
   await act(() => root.render(<ArticleReader />));
   await closeLoader();
   expect(document.querySelector("[role=dialog]")?.textContent).toContain(
@@ -162,6 +185,7 @@ it("offers an update on loader close and saves only after Update", async () => {
   expect(mocks.save).not.toHaveBeenCalled();
   await act(() => clickDialogButton("Update"));
   expect(mocks.save).toHaveBeenCalledExactlyOnceWith(mocks.article, extracted);
+  expectReaderTitle("Updated");
 });
 it("keeps the saved article when Keep old is selected", async () => {
   mocks.extract.mockResolvedValue({
@@ -191,6 +215,7 @@ it("recovers a viewed summary then displays the saved local image", async () => 
     patches: [{ url: "https://example.org/comic.png" }],
   });
   expect(mocks.html).toContain(`src="${data}"`);
+  expectReaderTitle("Comic");
   expect(mocks.html).not.toContain('src="https://');
 });
 

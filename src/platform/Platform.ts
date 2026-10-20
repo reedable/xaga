@@ -24,6 +24,17 @@ import type {
   TopicSort,
 } from "../types";
 
+export type CreateTopicInput = Omit<
+  Topic,
+  | "id"
+  | "createdAt"
+  | "unreadCount"
+  | "entryCount"
+  | "isPinned"
+  | "__kind"
+  | "members"
+>;
+
 export interface Platform {
   onError(
     callback: (error: import("./errors").AppError) => void
@@ -161,18 +172,11 @@ export interface Platform {
   listAnnotations(signal: AbortSignal): Promise<PartialAnnotation[]>;
 
   // Topics
-  createTopic(
+  createTopic(signal: AbortSignal, topic: CreateTopicInput): Promise<Topic>;
+  createTopicWithMember(
     signal: AbortSignal,
-    topic: Omit<
-      Topic,
-      | "id"
-      | "createdAt"
-      | "unreadCount"
-      | "entryCount"
-      | "isPinned"
-      | "__kind"
-      | "members"
-    >
+    topic: CreateTopicInput,
+    member: Entry | Annotation
   ): Promise<Topic>;
   saveTopic(signal: AbortSignal, topic: Topic): Promise<Topic>;
   deleteTopic(signal: AbortSignal, id: string): Promise<void>;

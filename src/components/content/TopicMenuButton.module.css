@@ -31,3 +31,17 @@
   flex: 1;
   overflow-y: auto;
 }
+
+.InlineForm {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.InlineFormActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

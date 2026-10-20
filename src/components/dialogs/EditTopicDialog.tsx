@@ -1,17 +1,9 @@
-import { Add, Remove } from "@mui/icons-material";
 import {
-  Box,
   Button,
-  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
-  IconButton,
-  TextField,
-  Tooltip,
-  Typography,
 } from "@mui/material";
 import {
   useCallback,
@@ -20,10 +12,10 @@ import {
   useState,
   type SubmitEvent,
 } from "react";
-import { TOPIC_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
 import { useTopics } from "../../hooks/useTopics";
 import type { Topic } from "../../types";
+import { TopicFormFields, useTopicForm } from "./TopicFormFields";
 
 type EditTopicDialogProps = {
   open: boolean;
@@ -51,12 +43,8 @@ export default function EditTopicDialog({
   const [, abortControllerRef] = useAbortController();
   const { pinnedTopicIds } = useTopics(abortControllerRef);
 
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [thresholdString, setThresholdString] = useState(
-    TOPIC_THRESHOLD.toFixed(2)
-  );
-  const [pinnedState, setPinnedState] = useState(false);
+  const form = useTopicForm();
+  const resetForm = form.reset;
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -66,48 +54,35 @@ export default function EditTopicDialog({
 
   useEffect(() => {
     if (open && !wasOpen.current) {
-      setTitle(topic?.title ?? initialTitle ?? "");
-      setDescription(topic?.description ?? "");
-      setThresholdString((topic?.threshold ?? TOPIC_THRESHOLD).toFixed(2));
-      setPinnedState(pinnedTopicIds.includes(topic?.id ?? ""));
+      resetForm({
+        title: topic?.title ?? initialTitle,
+        description: topic?.description,
+        threshold: topic?.threshold,
+        pinned: pinnedTopicIds.includes(topic?.id ?? ""),
+      });
     }
     wasOpen.current = open;
-  }, [open, pinnedTopicIds, topic, initialTitle]);
-
-  const parseThreshold = useCallback(() => {
-    const thresholdNumber = parseFloat(thresholdString);
-    if (isNaN(thresholdNumber)) return TOPIC_THRESHOLD;
-    return Math.max(-1, Math.min(1, thresholdNumber));
-  }, [thresholdString]);
-
-  const handleDecrement = useCallback(() => {
-    const next = Math.max(-1, parseFloat((parseThreshold() - 0.01).toFixed(2)));
-    setThresholdString(next.toFixed(2));
-  }, [parseThreshold]);
-
-  const handleIncrement = useCallback(() => {
-    const next = Math.min(1, parseFloat((parseThreshold() + 0.01).toFixed(2)));
-    setThresholdString(next.toFixed(2));
-  }, [parseThreshold]);
-
-  const handleThresholdBlur = useCallback(() => {
-    setThresholdString(parseThreshold().toFixed(2));
-  }, [parseThreshold]);
+  }, [open, pinnedTopicIds, topic, initialTitle, resetForm]);
 
   const handleSubmit = useCallback(
     async (e: SubmitEvent<HTMLFormElement>) => {
       e.preventDefault();
-      if (!title.trim()) return;
+      if (!form.values.title) return;
 
       setSaving(true);
       try {
-        await onSave(title.trim(), description, parseThreshold(), pinnedState);
+        await onSave(
+          form.values.title,
+          form.values.description,
+          form.values.threshold,
+          form.values.pinned
+        );
         onClose();
       } finally {
         setSaving(false);
       }
     },
-    [description, onClose, onSave, parseThreshold, pinnedState, title]
+    [form.values, onClose, onSave]
   );
 
   const handleDelete = useCallback(async () => {
@@ -137,78 +112,7 @@ export default function EditTopicDialog({
             pt: "16px !important",
           }}
         >
-          <TextField
-            label="Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
-            autoFocus
-            fullWidth
-          />
-
-          <TextField
-            label="Description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            multiline
-            minRows={4}
-            fullWidth
-          />
-
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={pinnedState}
-                onChange={(e) => setPinnedState(e.target.checked)}
-                disabled={busy}
-              />
-            }
-            label="Add to Shortcuts"
-          />
-
-          <Box>
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              display="block"
-              gutterBottom
-            >
-              Similarity threshold
-            </Typography>
-
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Tooltip title="Decrease threshold">
-                <IconButton
-                  size="small"
-                  onClick={handleDecrement}
-                  disabled={busy}
-                  aria-label="Decrease threshold"
-                >
-                  <Remove fontSize="small" />
-                </IconButton>
-              </Tooltip>
-
-              <TextField
-                value={thresholdString}
-                onChange={(e) => setThresholdString(e.target.value)}
-                onBlur={handleThresholdBlur}
-                size="small"
-                sx={{ width: 80 }}
-                slotProps={{ htmlInput: { style: { textAlign: "center" } } }}
-              />
-
-              <Tooltip title="Increase threshold">
-                <IconButton
-                  size="small"
-                  onClick={handleIncrement}
-                  disabled={busy}
-                  aria-label="Increase threshold"
-                >
-                  <Add fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </Box>
-          </Box>
+          <TopicFormFields form={form} busy={busy} autoFocus />
         </DialogContent>
 
         <DialogActions>
@@ -228,7 +132,7 @@ export default function EditTopicDialog({
           <Button
             type="submit"
             variant="contained"
-            disabled={!title.trim() || busy}
+            disabled={!form.values.title || busy}
           >
             Save
           </Button>

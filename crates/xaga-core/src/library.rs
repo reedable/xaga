@@ -18,12 +18,32 @@ const TOPICS_SUBDIR: &str = "topics";
 const FEEDS_SUBDIR: &str = "feeds";
 const IMAGES_SUBDIR: &str = "images";
 const FAVICONS_SUBDIR: &str = "favicons";
+const PDFS_SUBDIR: &str = "pdfs";
 const INDEX_NAME: &str = "embeddings.lance";
 
 /// The directory holding entry `.md` files.
 #[inline]
 pub fn entries_dir(library_dir: &Path) -> PathBuf {
     library_dir.join(ENTRIES_SUBDIR)
+}
+
+/// The directory holding stored PDFs and their dormant Markdown companions.
+#[inline]
+pub fn pdfs_dir(library_dir: &Path) -> PathBuf {
+    library_dir.join(PDFS_SUBDIR)
+}
+
+/// Path to a stored PDF (`<library>/pdfs/<hash12>.pdf`).
+#[inline]
+pub fn pdf_path(library_dir: &Path, hash12: &str) -> PathBuf {
+    library_dir.join(format!("{PDFS_SUBDIR}/{hash12}.pdf"))
+}
+
+/// Path to a stored PDF's dormant Entry-format companion
+/// (`<library>/pdfs/<hash12>.md`).
+#[inline]
+pub fn pdf_entry_path(library_dir: &Path, hash12: &str) -> PathBuf {
+    library_dir.join(format!("{PDFS_SUBDIR}/{hash12}.md"))
 }
 
 /// The directory holding topic `.md` files.

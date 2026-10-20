@@ -55,6 +55,38 @@ pub async fn create_topic(
 }
 
 #[tauri::command]
+pub async fn create_topic_with_member(
+    title: String,
+    description: String,
+    threshold: Option<f32>,
+    item: CollectionItem,
+    state: State<'_, AppState>,
+) -> Result<Topic, AppError> {
+    let writer = crate::commands::require_writer(&state)?;
+    let member_id = item.id().to_string();
+    let topic = writer
+        .create_topic_with_member(WriteTier::Interactive, title, description, threshold, item)
+        .await
+        .map_err(AppError::from)?;
+    for job in create_topic_with_member_jobs(&topic, member_id) {
+        state.enqueue(Tier::Interactive, job);
+    }
+    Ok(topic)
+}
+
+fn create_topic_with_member_jobs(topic: &Topic, member_id: String) -> [Job; 2] {
+    [
+        Job::UpsertTopic {
+            topic: topic.clone(),
+        },
+        Job::AddMember {
+            topic_id: topic.id.clone(),
+            member_id,
+        },
+    ]
+}
+
+#[tauri::command]
 pub async fn set_topic_pinned(
     id: String,
     pinned: bool,
@@ -249,4 +281,36 @@ pub async fn rank_topics_by_item(
             similarity: e.similarity,
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_with_member_indexes_topic_before_membership_delta() {
+        let topic = Topic {
+            id: "topic-1".into(),
+            title: "Topic".into(),
+            created_at: "2026-10-20T00:00:00Z".into(),
+            updated_at: None,
+            description: None,
+            threshold: None,
+            is_pinned: false,
+            entry_count: 1,
+            unread_count: 0,
+            members: vec![],
+        };
+
+        let [upsert, membership] = create_topic_with_member_jobs(&topic, "entry-1".into());
+        assert!(matches!(
+            upsert,
+            Job::UpsertTopic { topic: queued } if queued.id == "topic-1"
+        ));
+        assert!(matches!(
+            membership,
+            Job::AddMember { topic_id, member_id }
+                if topic_id == "topic-1" && member_id == "entry-1"
+        ));
+    }
 }

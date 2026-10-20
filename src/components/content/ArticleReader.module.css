@@ -1,27 +1,10 @@
-.Title {
-  align-items: flex-start;
-  display: flex;
-  flex-direction: column;
-  margin: 0.25rem 1rem 0 2rem;
-
-  h1 {
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    flex-grow: 1;
-    line-clamp: 3;
-    -webkit-line-clamp: 3;
-  }
-}
-
 .ProgressBar {
   border-top: 0;
   margin: 0 1rem 0 2rem;
-  transition: border-top 200ms ease-in;
+  /* transition: border-top 200ms ease-in; */
 
   &.ProgressBarLoaded {
-    border-top: 1px solid var(--dark-gray);
-
-    transition: border-top 200ms ease-in;
+    /* transition: border-top 200ms ease-in; */
   }
 }
 

@@ -46,8 +46,12 @@ The lock is the process-level face of the same discipline as the two-producer ru
 
 ### URL-associated PDFs
 
-`LibraryWriter::save_pdf` serializes PDF writes in the normalized URL's entry
-lane, alongside Markdown operations. Validation precedes atomic replacement.
-Successful Markdown saves remove the associated PDF in that lane; PDF saves
-leave Markdown and annotations intact. A newly downloaded PDF requires the
-library writer, while validated local reads do not require write ownership.
+`LibraryWriter::save_pdf` serializes PDF and Entry-format companion writes in
+the normalized URL's entry lane, alongside Markdown operations. Validation
+precedes mutation; a missing companion is atomically created before the PDF.
+An existing canonical Entry remains untouched and suppresses creation of a
+duplicate companion. Successful HTML Markdown saves remove the associated PDF
+before its dormant companion in that
+lane; PDF saves leave canonical Markdown and annotations intact. A newly
+downloaded PDF requires the library writer, while validated local reads do not
+require write ownership.

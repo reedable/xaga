@@ -43,6 +43,7 @@ fn main() {
             "avif-icon-document",
             "pdf",
             "invalid-pdf",
+            "favicon-pdf",
             "html",
             "blob-pdf"
         ]
@@ -56,9 +57,11 @@ fn main() {
     let avif = scenario.starts_with("avif");
     let image_document = scenario.ends_with("-document");
     let pdf = matches!(scenario.as_str(), "pdf" | "invalid-pdf");
+    let favicon_pdf = scenario == "favicon-pdf";
+    let pdf_response = pdf || favicon_pdf;
     let rendering = matches!(scenario.as_str(), "html" | "blob-pdf");
     let valid = scenario != "invalid-pdf";
-    if pdf {
+    if pdf_response {
         assert!(
             cfg!(feature = "wry-pdf-downloads"),
             "PDF smoke requires wry-pdf-downloads"
@@ -85,7 +88,7 @@ fn main() {
         use base64::Engine;
         let encoded = base64::engine::general_purpose::STANDARD.encode(pdf_fixture());
         format!("<!doctype html><script>const b=Uint8Array.from(atob('{encoded}'),c=>c.charCodeAt(0)); const f=document.createElement('iframe'); f.onload=()=>document.title='SMOKE-PASS'; f.src=URL.createObjectURL(new Blob([b],{{type:'application/pdf'}})); document.documentElement.append(f);</script>").into_bytes()
-    } else if pdf {
+    } else if pdf_response {
         if valid {
             pdf_fixture()
         } else {
@@ -120,7 +123,7 @@ fn main() {
         image_mime
     } else if rendering {
         "text/html"
-    } else if pdf {
+    } else if pdf_response {
         "application/pdf"
     } else {
         "application/octet-stream"
@@ -252,7 +255,9 @@ fn main() {
                         let assigned = job.path().to_owned();
                         assert!(success, "transport must succeed before testing byte validation");
                         let result = job.finish(success);
-                        if !valid {
+                        if favicon_pdf {
+                            assert!(result.is_err(), "favicon PDF must fail image validation");
+                        } else if !valid {
                             assert_eq!(result.unwrap_err(), "unsupported download format");
                         } else if pdf {
                             assert_eq!(result.unwrap(), "pdf");
@@ -261,7 +266,7 @@ fn main() {
                         }
                         assert!(!assigned.parent().unwrap().exists());
                         assert_eq!(seen.load(Ordering::SeqCst), 1, "exactly one final resource retrieval through proxy");
-                        println!("PASS: {scenario}, native download and redirect through proxy, callback path={path:?}, validation checked, staging cleaned");
+                        println!("PASS: {scenario}, native download and redirect through proxy, callback path={path:?}, request-purpose validation checked, staging cleaned");
                         completed.store(true, Ordering::SeqCst);
                         handle.exit(0);
                         false

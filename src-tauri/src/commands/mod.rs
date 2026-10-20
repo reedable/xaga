@@ -32,6 +32,7 @@ pub(crate) const WRITE_COMMANDS: &[&str] = &[
     "remove_feed",
     "set_feed_pinned",
     "create_topic",
+    "create_topic_with_member",
     "save_topic",
     "delete_topic",
     "add_topic_item",

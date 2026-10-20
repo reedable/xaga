@@ -292,8 +292,10 @@ without a pending consumer are rejected. Renderer callbacks cannot replace a
 capture while its native download is active. The callback may report a redirected URL, as
 verified on macOS. It is not proof of the initiating frame. During the favicon
 phase the first accepted candidate must pass the image validator regardless of
-its URL; it cannot become arbitrary persisted content. The original requested
-favicon URL remains storage identity. Completion is matched to the accepted
+its response MIME type, disposition, URL, or filename; a PDF-shaped response is
+rejected as an image and cannot reach PDF persistence or presentation. Favicon
+rejection returns the already captured article without favicon data. The original
+requested favicon URL remains storage identity. Completion is matched to the accepted
 callback URL, ignoring fragments. Other backends need native verification.
 
 Favicon and recovery responses use the same `ImageValidator`, for both native
@@ -309,6 +311,13 @@ it at the extensionless shared path `favicons/<normalized-url-hash>` and records
 only that local reference in the article. A successful later remote load
 atomically replaces the same identity; acquisition failure preserves the cached
 resource. PDF validation remains separate.
+
+The request-purpose boundary is covered at both layers: the ordinary Rust suite
+injects PDF bytes into a production favicon download and asserts that article
+capture survives without favicon or PDF output; the macOS native-download smoke
+case `favicon-pdf` verifies the same image-validator selection for a real
+`application/pdf` WebKit response. Run both with
+`sh scripts/test-favicon-pdf-consumer-isolation.sh` in a macOS GUI session.
 
 Standalone SVG image documents are recognized by their image content type;
 capture does not require an HTML `img` element or canvas readback. This supports
