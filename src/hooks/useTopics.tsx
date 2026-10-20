@@ -22,12 +22,14 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     async (topic: CreateTopicInput) => {
       const signal = abortControllerRef.current.signal;
       try {
-        return await platform.createTopic(signal, topic);
+        const created = await platform.createTopic(signal, topic);
+        setTopics((prev) => [...prev, created].sort(sortByUnreadCount));
+        return created;
       } catch (e) {
         pushError(e);
       }
     },
-    [abortControllerRef, platform, pushError]
+    [abortControllerRef, platform, pushError, setTopics]
   );
 
   const createTopicWithMember = useCallback(

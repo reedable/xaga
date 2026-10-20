@@ -116,9 +116,9 @@ export function buildEntryHtml(
         from {
         }
         to {
-          font-size: round(down, var(--lliw-1i) * 1rem, 1px);
-          font-weight: 800;
-          font-width: 72%;
+          font-size: round(down, var(--lliw-1) * 1rem, 1px);
+          font-weight: 700;
+          font-width: 50%;
           line-height: round(up, 1em, 1rlh);
         }
       }

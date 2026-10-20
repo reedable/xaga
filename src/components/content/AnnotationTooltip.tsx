@@ -158,7 +158,7 @@ export const AnnotationTooltip = forwardRef<
               </SwatchTarget>
             ))}
 
-            <Collapse in={annotation != null} orientation="horizontal">
+            <Collapse in={color !== null} orientation="horizontal">
               <div className={css.ColorRowAction}>
                 <TopicMenuButton
                   ref={collectionMenuRef}
