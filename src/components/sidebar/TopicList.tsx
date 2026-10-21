@@ -1,12 +1,15 @@
 import { Add, Feed as FeedIcon } from "@mui/icons-material";
 import { IconButton, Tooltip } from "@mui/material";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
+import { useSidebarSort } from "../../hooks/useSidebarSort";
 import useRouter from "../../hooks/useRouter";
 import { type Topic } from "../../types";
+import sortSidebarCollections from "../../utils/sortSidebarCollections";
 import ExpandableList from "./ExpandableList";
 import SidebarItem from "./SidebarItem";
+import SidebarSortControl from "./SidebarSortControl";
 import css from "./TopicList.module.css";
 import UnreadCount from "./UnreadCount";
 
@@ -30,6 +33,11 @@ export default function TopicList({
   const { topicId } = state;
   const [, abortControllerRef] = useAbortController();
   const { loadingFeedIds } = useFeeds(abortControllerRef);
+  const [sortMode, setSortMode] = useSidebarSort("topics");
+  const sortedTopics = useMemo(
+    () => sortSidebarCollections(topics, sortMode),
+    [sortMode, topics]
+  );
 
   const handleSelectTopic = useCallback(
     (topic: Topic) => selectTopic(topic),
@@ -58,7 +66,15 @@ export default function TopicList({
         </Tooltip>
       )}
     >
-      {topics.map((topic) => (
+      {isExpanded && (
+        <SidebarSortControl
+          label="Topics"
+          sortMode={sortMode}
+          onChange={setSortMode}
+        />
+      )}
+
+      {sortedTopics.map((topic) => (
         <SidebarItem
           collection={topic}
           key={topic.id}
