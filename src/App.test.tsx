@@ -34,6 +34,15 @@ vi.mock("./providers/FeedsProvider", () => ({
 vi.mock("./providers/TopicsProvider", () => ({
   TopicsProvider: ({ children }: { children: ReactNode }) => children,
 }));
+vi.mock("./providers/SitesProvider", () => ({
+  SitesProvider: ({
+    children,
+    enabled,
+  }: {
+    children: ReactNode;
+    enabled: boolean;
+  }) => <div data-sites-enabled={String(enabled)}>{children}</div>,
+}));
 
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -58,14 +67,21 @@ async function renderWith(state: typeof mocks.startupState) {
 it("waits while embedding startup is loading", async () => {
   await renderWith("loading");
   expect(container.querySelector("[data-testid='app-layout']")).toBeNull();
+  expect(
+    container.querySelector("[data-sites-enabled='false']")
+  ).not.toBeNull();
 });
 
 it("renders the main application when embeddings are available", async () => {
   await renderWith("available");
   expect(container.querySelector("[data-testid='app-layout']")).not.toBeNull();
+  expect(container.querySelector("[data-sites-enabled='true']")).not.toBeNull();
 });
 
 it("renders the main application when embeddings are unavailable", async () => {
   await renderWith("unavailable");
   expect(container.querySelector("[data-testid='app-layout']")).not.toBeNull();
+  expect(
+    container.querySelector("[data-sites-enabled='false']")
+  ).not.toBeNull();
 });

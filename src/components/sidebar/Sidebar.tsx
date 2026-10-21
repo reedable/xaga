@@ -6,12 +6,14 @@ import { useFeeds } from "../../hooks/useFeeds";
 import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import { useSidebar } from "../../hooks/useSidebar";
 import { useTopics } from "../../hooks/useTopics";
+import { useSites } from "../../hooks/useSites";
 import cx from "../../utils/cx";
 import sortByUnreadCount from "../../utils/sortByUnreadCount";
 import FeedList from "./FeedList";
 import ShortcutList from "./ShortcutList";
 import css from "./Sidebar.module.css";
 import TopicList from "./TopicList";
+import SiteList from "./SiteList";
 
 type SidebarProps = {
   className?: string;
@@ -29,6 +31,7 @@ export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
     useFeeds(abortControllerRef);
 
   const { expandedList, setExpandedList } = useSidebar(abortControllerRef);
+  const { sites } = useSites(abortControllerRef);
 
   const pinnedCollections = useMemo(
     () =>
@@ -115,6 +118,12 @@ export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
         onAddFeed={onAddFeed}
         onClickHeader={() => handleExpandedList("FEEDS")}
         isExpanded={expandedList === "FEEDS"}
+      />
+
+      <SiteList
+        sites={sites}
+        onClickHeader={() => handleExpandedList("SITES")}
+        isExpanded={expandedList === "SITES"}
       />
     </div>
   );

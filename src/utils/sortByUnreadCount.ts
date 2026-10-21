@@ -1,6 +1,5 @@
-import type { Countable } from "../types";
-import sortByTitle from "./sortByTitle";
+type CountSummary = { title: string; unreadCount: number };
 
-export default function sortByUnreadCount(a: Countable, b: Countable) {
-  return b.unreadCount - a.unreadCount || sortByTitle(a, b);
+export default function sortByUnreadCount(a: CountSummary, b: CountSummary) {
+  return b.unreadCount - a.unreadCount || a.title.localeCompare(b.title);
 }

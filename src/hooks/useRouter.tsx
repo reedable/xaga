@@ -16,6 +16,7 @@ import {
   type Filter,
   type Item,
   type NavigationState,
+  type Site,
   type Topic,
 } from "../types";
 import { decorate, logged } from "../utils/Decorator";
@@ -34,6 +35,7 @@ function isSameNavigation(a: NavigationState, b: NavigationState) {
   return (
     a.topicId === b.topicId &&
     a.feedId === b.feedId &&
+    a.siteHostname === b.siteHostname &&
     a.shortcutId === b.shortcutId &&
     a.entryId === b.entryId &&
     a.annotationId === b.annotationId &&
@@ -86,6 +88,18 @@ export default function useRouter() {
     (feed: Feed, filter?: Filter) => {
       const next: NavigationState = {
         feedId: feed.id,
+        filter: filter ?? state.filter,
+      };
+      if (isSameNavigation(state, next)) return;
+      return logged_navigate(`/?${searchParams.toString()}`, { state: next });
+    },
+    [logged_navigate, searchParams, state]
+  );
+
+  const selectSite = useCallback(
+    (site: Site, filter?: Filter) => {
+      const next: NavigationState = {
+        siteHostname: site.hostname,
         filter: filter ?? state.filter,
       };
       if (isSameNavigation(state, next)) return;
@@ -195,7 +209,8 @@ export default function useRouter() {
     (item: Item) => {
       if (isCollection(item)) return selectCollection(item);
       if (isEntry(item)) return selectEntry(item);
-      if (isAnnotation(item) || isPartialAnnotation(item)) return selectAnnotation(item);
+      if (isAnnotation(item) || isPartialAnnotation(item))
+        return selectAnnotation(item);
       logger.error("Unknown item type", item);
     },
     [selectAnnotation, selectCollection, selectEntry]
@@ -250,6 +265,7 @@ export default function useRouter() {
     selectItem,
     selectCollection,
     selectFeed,
+    selectSite,
     selectFilter: applyFilter,
     selectTopic,
     selectUrl,

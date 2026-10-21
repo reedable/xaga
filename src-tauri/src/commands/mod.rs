@@ -5,6 +5,7 @@ pub mod entries;
 pub mod feeds;
 pub mod library;
 pub mod settings;
+pub mod sites;
 pub mod topics;
 
 #[cfg(test)]

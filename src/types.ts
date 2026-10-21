@@ -29,7 +29,9 @@ export type Ranked<T extends Item> = T & { similarity: number };
 
 export type RankedItem = Ranked<Entry> | Ranked<Topic> | Ranked<Feed>;
 
-export function isRanked<T extends Item>(o: T | null | undefined): o is Ranked<T> {
+export function isRanked<T extends Item>(
+  o: T | null | undefined
+): o is Ranked<T> {
   return !!o && typeof (o as Ranked<T>).similarity === "number";
 }
 
@@ -43,6 +45,25 @@ export type AllItemsCounts = {
   unreadCount: number;
 };
 
+/** A derived grouping of Entries whose stored URLs share a normalized hostname. */
+export type Site = {
+  id: string;
+  title: string;
+  hostname: string;
+  entryCount: number;
+  unreadCount: number;
+};
+
+export function isSite(value: unknown): value is Site {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof (value as Site).hostname === "string" &&
+    typeof (value as Site).entryCount === "number" &&
+    typeof (value as Site).unreadCount === "number"
+  );
+}
+
 // ── Cache projection (derived) ──────────────────────────────────────────────────
 
 /** An annotation record as stored in the embeddings DB — no text[]/occurrence[]/content. */
@@ -53,7 +74,9 @@ export type PartialAnnotation = Pick<
 
 // An annotation in list form (saved list or embedding-query result). Identified by reference +
 // color + url; a full `Annotation` carries no url, which is what separates the two forms.
-export function isPartialAnnotation(item?: Item | null): item is PartialAnnotation {
+export function isPartialAnnotation(
+  item?: Item | null
+): item is PartialAnnotation {
   return (
     isItem(item) &&
     "color" in item &&
@@ -67,13 +90,22 @@ export function isPartialAnnotation(item?: Item | null): item is PartialAnnotati
 
 // ── Presentation ──────────────────────────────────────────────────────────────
 
-const FILTERS = ["recommended", "all", "unread", "bookmarked", "saved", "archived"] as const;
+const FILTERS = [
+  "recommended",
+  "all",
+  "unread",
+  "bookmarked",
+  "saved",
+  "archived",
+] as const;
 
 export type Filter = (typeof FILTERS)[number];
 
 export function isFilter(value?: unknown): value is Filter {
   return (
-    !!value && typeof value === "string" && (FILTERS as readonly string[]).includes(value)
+    !!value &&
+    typeof value === "string" &&
+    (FILTERS as readonly string[]).includes(value)
   );
 }
 
@@ -89,7 +121,9 @@ const HTML_READER_VIEWS: string[] = ["reader", "summary"] as const;
 
 export type HtmlReaderView = (typeof HTML_READER_VIEWS)[number];
 
-export function isHtmlReaderView(value?: string | null): value is HtmlReaderView {
+export function isHtmlReaderView(
+  value?: string | null
+): value is HtmlReaderView {
   return !!value && HTML_READER_VIEWS.includes(value);
 }
 
@@ -97,7 +131,9 @@ export function isHtmlReaderView(value?: string | null): value is HtmlReaderView
 export type Shortcut = Countable & { filter: Filter };
 
 export function isShortcut(item?: Item | null): item is Shortcut {
-  return isItem(item) && "filter" in item && isFilter((item as Shortcut).filter);
+  return (
+    isItem(item) && "filter" in item && isFilter((item as Shortcut).filter)
+  );
 }
 
 // ── Import ───────────────────────────────────────────────────────────────────
@@ -134,6 +170,7 @@ export type ExportOutcome = {
 export type NavigationState = {
   topicId?: Topic["id"];
   feedId?: Feed["id"];
+  siteHostname?: Site["hostname"];
   shortcutId?: Shortcut["id"];
   entryId?: Entry["id"];
   annotationId?: Annotation["id"];

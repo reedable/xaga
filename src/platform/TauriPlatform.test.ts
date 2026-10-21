@@ -80,6 +80,35 @@ it("maps All Items counts from the native boundary", async () => {
   expect(invokeMock).toHaveBeenLastCalledWith("get_all_items_counts");
 });
 
+it("maps Site summaries and sends Site filters through the native boundary", async () => {
+  invokeMock.mockResolvedValueOnce([
+    { hostname: "example.com", entry_count: 2, unread_count: 1 },
+  ]);
+  const platform = new TauriPlatform();
+  await expect(
+    platform.listSites(new AbortController().signal)
+  ).resolves.toEqual([
+    {
+      id: "example.com",
+      title: "example.com",
+      hostname: "example.com",
+      entryCount: 2,
+      unreadCount: 1,
+    },
+  ]);
+
+  invokeMock.mockResolvedValueOnce([]);
+  await platform.listSiteEntries(
+    new AbortController().signal,
+    "example.com",
+    "saved"
+  );
+  expect(invokeMock).toHaveBeenLastCalledWith("list_site_entries", {
+    hostname: "example.com",
+    itemFilter: "saved",
+  });
+});
+
 it("keeps All Items counts unavailable when the cache is unavailable", async () => {
   invokeMock.mockResolvedValueOnce(null);
   await expect(new TauriPlatform().getAllItemsCounts()).resolves.toBeNull();
