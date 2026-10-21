@@ -16,6 +16,8 @@ Standing architecture rules for this project. Each has its own doc; keep this in
 
 7. [Article loading diagnostics](article_loading_diagnostics.md) — per-attempt stage and failure records, local log/history, proxy attribution, privacy boundaries, and observation limits.
 
+8. [Sites](sites.md) — Site identity is a normalized HTTP(S) Entry hostname; membership and counts are derived at read time from Entry rows, never persisted or inferred from Feeds.
+
 ## Security
 
 Architecture of the security-critical paths, in [security/](security/). These describe how a subsystem works and why — design and limits, not findings or status.

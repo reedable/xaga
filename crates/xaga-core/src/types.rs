@@ -125,6 +125,15 @@ pub struct ListItem {
     pub color: Option<String>,
 }
 
+// ── SiteSummary (derived from Entry URLs) ────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SiteSummary {
+    pub hostname: String,
+    pub entry_count: usize,
+    pub unread_count: usize,
+}
+
 impl Item for ListItem {
     fn id(&self) -> &str {
         &self.id

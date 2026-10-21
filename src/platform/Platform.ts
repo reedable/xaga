@@ -20,6 +20,7 @@ import type {
   Item,
   ListItem,
   AllItemsCounts,
+  Site,
   Topic,
   TopicSort,
 } from "../types";
@@ -65,6 +66,14 @@ export interface Platform {
   refreshAllFeeds(signal: AbortSignal): Promise<Feed[]>;
   renameFeed(signal: AbortSignal, feedId: string, title: string): Promise<Feed>;
   removeFeed(signal: AbortSignal, feedUrl: string): Promise<string>;
+
+  // Sites (derived from Entry URLs)
+  listSites(signal: AbortSignal): Promise<Site[]>;
+  listSiteEntries(
+    signal: AbortSignal,
+    hostname: string,
+    filter: Filter
+  ): Promise<Entry[]>;
 
   // Startup
   embeddingStartupState(): Promise<EmbeddingStartupState>;

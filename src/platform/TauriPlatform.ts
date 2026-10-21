@@ -27,6 +27,7 @@ import type {
   Item,
   ListItem,
   AllItemsCounts,
+  Site,
   Topic,
   TopicSort,
 } from "../types";
@@ -127,6 +128,20 @@ const ReadEntryImagesSchema = z.array(z.string().nullable());
 const AllItemsCountsSchema = z.object({
   entry_count: z.number(),
   unread_count: z.number(),
+});
+
+const SiteSchema = z.object({
+  hostname: z.string(),
+  entry_count: z.number(),
+  unread_count: z.number(),
+});
+
+const toSite = (data: z.infer<typeof SiteSchema>): Site => ({
+  id: data.hostname,
+  title: data.hostname,
+  hostname: data.hostname,
+  entryCount: data.entry_count,
+  unreadCount: data.unread_count,
 });
 
 const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
@@ -517,6 +532,32 @@ export class TauriPlatform implements Platform {
       .with(logged, { logger, name: "remove_feed" });
 
     return await invoker("remove_feed", { url: feedUrl });
+  }
+
+  // Sites ---------------------------------------------------------------------
+
+  async listSites(signal: AbortSignal): Promise<Site[]> {
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "list_sites" });
+    return z
+      .array(SiteSchema.transform(toSite))
+      .parse(await invoker("list_sites"));
+  }
+
+  async listSiteEntries(
+    signal: AbortSignal,
+    hostname: string,
+    itemFilter: Filter = "unread"
+  ): Promise<Entry[]> {
+    const invoker = decorate(invoke)
+      .with(abortable, { signal })
+      .with(logged, { logger, name: "list_site_entries" });
+    const results = await invoker<unknown[]>("list_site_entries", {
+      hostname,
+      itemFilter,
+    });
+    return results.map((entry) => EntrySchema.transform(toEntry).parse(entry));
   }
 
   // Entries -------------------------------------------------------------------

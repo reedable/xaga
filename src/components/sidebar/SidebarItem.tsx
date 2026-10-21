@@ -8,23 +8,28 @@ import {
 } from "@mui/material";
 import { motion } from "framer-motion";
 import type { ElementType, ReactNode } from "react";
-import type { Countable } from "../../types";
 import cx from "../../utils/cx";
 import css from "./SidebarItem.module.css";
 
 const MotionListItem = motion(ListItem);
 
-export interface SidebarItemProps<T extends Countable> {
+type SidebarSummary = {
+  title: string;
+  entryCount: number;
+  unreadCount: number;
+};
+
+export interface SidebarItemProps<T extends SidebarSummary> {
   className?: string;
   collection: T;
   icon?: ElementType;
   loading?: boolean;
   selected?: boolean;
   onSelectCollection: (collection: T) => void;
-  renderSecondaryAction?: (collection: Countable) => ReactNode;
+  renderSecondaryAction?: (collection: T) => ReactNode;
 }
 
-export default function SidebarItem<T extends Countable>({
+export default function SidebarItem<T extends SidebarSummary>({
   className,
   collection,
   icon: Icon = RssFeed,

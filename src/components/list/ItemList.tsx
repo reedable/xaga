@@ -31,6 +31,7 @@ import useEntries from "../../hooks/useEntries";
 import { useEvents } from "../../hooks/useEvents";
 import { useFeeds } from "../../hooks/useFeeds";
 import useRouter from "../../hooks/useRouter";
+import { useSites } from "../../hooks/useSites";
 import { useTopics } from "../../hooks/useTopics";
 import { onTopicItemAdded } from "../../events/topicMembership";
 import { ALL_ITEMS, SHORTCUTS } from "../../Shortcuts";
@@ -43,6 +44,8 @@ import {
   type Filter,
   type Item,
   type Topic,
+  type Site,
+  isSite,
   type TopicSort,
 } from "../../types";
 import cx from "../../utils/cx";
@@ -73,10 +76,12 @@ export function ItemList({
   onEditFeed,
   onEditTopic,
 }: ItemListProps) {
-  const { filter, selectItem, state, selectFilter } = useRouter();
+  const { filter, selectItem, selectSite, state, selectFilter } = useRouter();
   const { feedId, topicId, shortcutId, entryId: selectedItemId } = state;
+  const { siteHostname } = state;
   const [abort, abortControllerRef] = useAbortController();
   const { topics, listTopicItems } = useTopics(abortControllerRef);
+  const { sites, listSiteEntries } = useSites(abortControllerRef);
 
   const {
     feeds,
@@ -91,9 +96,10 @@ export function ItemList({
     () =>
       (feedId && feeds.find((f) => f.id === feedId)) ||
       (topicId && topics.find((t) => t.id === topicId)) ||
+      (siteHostname && sites.find((site) => site.hostname === siteHostname)) ||
       (shortcutId && SHORTCUTS.find((s) => s.id === shortcutId)) ||
       ALL_ITEMS,
-    [feedId, topicId, shortcutId, feeds, topics]
+    [feedId, topicId, siteHostname, shortcutId, feeds, topics, sites]
   );
 
   const { listEntries, listAllItems, markEntryRead } =
@@ -106,6 +112,7 @@ export function ItemList({
     onAnnotationChanged,
     onAnnotationReplaced,
     onAnnotationRemoved,
+    onEmbeddingsChanged,
   } = useEvents();
 
   const [items, setItems] = useState<Item[]>([]);
@@ -131,10 +138,14 @@ export function ItemList({
   const handleCollectionChange = useCallback(
     (event: SelectChangeEvent<string>) => {
       const id = event.target.value;
-      const item = items.find((i) => i.id === id);
-      if (item) selectItem(item);
+      const collection = [...SHORTCUTS, ...topics, ...feeds].find(
+        (item) => item.id === id
+      );
+      if (collection) selectItem(collection);
+      const site = sites.find((item) => item.hostname === id);
+      if (site) selectSite(site);
     },
-    [items, selectItem]
+    [feeds, selectItem, selectSite, sites, topics]
   );
 
   const handleRefresh = useCallback(() => {
@@ -181,7 +192,7 @@ export function ItemList({
   );
 
   const requestItems = useCallback(
-    async (selectedList: Item) => {
+    async (selectedList: Item | Site) => {
       setLoading(true);
 
       try {
@@ -195,6 +206,9 @@ export function ItemList({
             topicSort
           );
           if (items) setItems(items);
+        } else if (isSite(selectedList)) {
+          const entries = await listSiteEntries(selectedList.hostname, filter);
+          if (entries) setItems(entries);
         } else {
           const entries = await listAllItems(filter);
           if (entries) setItems(entries);
@@ -203,7 +217,14 @@ export function ItemList({
         setLoading(false);
       }
     },
-    [filter, listEntries, listTopicItems, listAllItems, topicSort]
+    [
+      filter,
+      listEntries,
+      listTopicItems,
+      listSiteEntries,
+      listAllItems,
+      topicSort,
+    ]
   );
 
   const handleFilter = useCallback(
@@ -251,7 +272,13 @@ export function ItemList({
     })();
     // Depend on IDs, not objects, so feed/topic identity changes from
     // requestFeeds/requestTopics don't re-trigger a full list reload.
-  }, [feedId, topicId, shortcutId, requestItems, abort]);
+  }, [feedId, topicId, siteHostname, shortcutId, requestItems, abort]);
+
+  useEffect(() => {
+    return onEmbeddingsChanged(() => {
+      if (siteHostname) void requestItems(selectedCollectionRef.current);
+    });
+  }, [onEmbeddingsChanged, requestItems, siteHostname]);
 
   useEffect(() => {
     return onUnreadChanged((entry) => {
@@ -261,9 +288,13 @@ export function ItemList({
 
   useEffect(() => {
     return onBookmarkChanged((entry) => {
+      if (siteHostname) {
+        void requestItems(selectedCollectionRef.current);
+        return;
+      }
       setItems((prev) => prev.map((p) => (p.id === entry.id ? entry : p)));
     });
-  }, [onBookmarkChanged]);
+  }, [onBookmarkChanged, requestItems, siteHostname]);
 
   useEffect(() => {
     return onAnnotationChanged((item) => {
@@ -375,6 +406,14 @@ export function ItemList({
                   <MenuItem key={f.id} value={f.id}>
                     <Typography component="span" variant="body2">
                       {f.title}
+                    </Typography>
+                  </MenuItem>
+                ))}
+                {sites.length > 0 && <ListSubheader>Sites</ListSubheader>}
+                {sites.map((site) => (
+                  <MenuItem key={site.hostname} value={site.hostname}>
+                    <Typography component="span" variant="body2">
+                      {site.title}
                     </Typography>
                   </MenuItem>
                 ))}

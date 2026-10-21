@@ -66,6 +66,8 @@
     "commands::feeds::rename_feed",
     "commands::feeds::remove_feed",
     "commands::feeds::list_entries",
+    "commands::sites::list_sites",
+    "commands::sites::list_site_entries",
     "commands::bookmarks::add_bookmark",
     "commands::bookmarks::remove_bookmark",
     "commands::topics::create_topic",
