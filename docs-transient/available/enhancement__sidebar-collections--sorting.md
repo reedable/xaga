@@ -10,12 +10,18 @@ or by unread count, and restore each section's choice across application launche
 - Provide exactly two sort modes for each section: unread count and alphabetical
   title.
 - Let Shortcuts, Topics, Feeds, and Sites hold independent sort selections.
+- Place each section's sort control inside its expanded content, immediately
+  before its collection rows; it does not need to remain reachable while the
+  section is collapsed.
+- Changing a sort selection must not expand, collapse, or otherwise change the
+  accordion state.
 - Default every section to unread-count ordering when it has no saved selection.
 - Preserve the current unread-count ordering semantics: unread count descending,
   then alphabetical title.
 - Sort alphabetically by title using the existing title comparison semantics.
-- Keep **All items** fixed at the top of Shortcuts; sort only the pinned
-  collections beneath it.
+- In Shortcuts, place the sort control before **All items**. Keep **All items**
+  fixed as the first collection row and sort only the pinned collections beneath
+  it.
 - Apply sorting to current provider state without changing the authoritative
   order or data held by the Feed and Topic providers.
 - Persist the four sort selections as client-side view state and restore them
@@ -41,10 +47,11 @@ or by unread count, and restore each section's choice across application launche
 - `src/components/sidebar/ShortcutList.tsx`
 - `src/components/sidebar/TopicList.tsx`
 - `src/components/sidebar/FeedList.tsx`
+- `src/components/sidebar/SiteList.tsx`
 - `src/providers/FeedsProvider.tsx`
 - `src/providers/TopicsProvider.tsx`
 - `src/providers/ExpandedListProvider.tsx`
 - `src/storage/viewState.ts`
 - `src/utils/sortByTitle.ts`
 - `src/utils/sortByUnreadCount.ts`
-- `docs-transient/available/enhancement__sites--browse-by-hostname.md`
+- `docs/architecture/sites.md`
