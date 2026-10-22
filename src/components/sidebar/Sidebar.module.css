@@ -47,4 +47,15 @@
     padding: 0.05rem 0.5rem;
     white-space: nowrap;
   }
+
+  .FilterInput {
+    flex-shrink: 0;
+    margin-top: 0.5rem;
+    padding: 0 1rem 0.75rem;
+
+    input {
+      font-size: 0.8125em;
+      padding: 5px 8px;
+    }
+  }
 }

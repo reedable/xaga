@@ -53,7 +53,8 @@ export default function ShortcutList({
   return (
     <ExpandableList
       className={css.ShortcutList}
-      label="shortcuts"
+      count={shortcuts.length}
+      label="Shortcuts"
       isExpanded={isExpanded}
       onClickHeader={onClickHeader}
     >

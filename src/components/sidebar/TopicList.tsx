@@ -47,6 +47,7 @@ export default function TopicList({
   return (
     <ExpandableList
       className={css.TopicList}
+      count={topics.length}
       label="Topics"
       isExpanded={isExpanded}
       onClickHeader={onClickHeader}

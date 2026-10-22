@@ -1,5 +1,5 @@
-import { Refresh } from "@mui/icons-material";
-import { IconButton, Tooltip } from "@mui/material";
+import { Clear, Refresh } from "@mui/icons-material";
+import { IconButton, InputAdornment, TextField, Tooltip } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
@@ -17,11 +17,19 @@ import SiteList from "./SiteList";
 
 type SidebarProps = {
   className?: string;
+  filter: string;
+  onFilterChange: (filter: string) => void;
   onAddFeed: () => void;
   onAddTopic: () => void;
 };
 
-export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
+export function Sidebar({
+  className,
+  filter,
+  onFilterChange,
+  onAddFeed,
+  onAddTopic,
+}: SidebarProps) {
   const [, abortControllerRef] = useAbortController();
   const isLibraryReadOnly = useLibraryReadOnly();
 
@@ -40,6 +48,28 @@ export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
         ...pinnedFeedIds.flatMap((id) => feeds.filter((f) => f.id === id)),
       ].sort(sortByUnreadCount),
     [feeds, pinnedFeedIds, pinnedTopicIds, topics]
+  );
+  const normalizedFilter = filter.trim().toLocaleLowerCase();
+  const matchesFilter = useCallback(
+    ({ title }: { title: string }) =>
+      title.toLocaleLowerCase().includes(normalizedFilter),
+    [normalizedFilter]
+  );
+  const filteredPinnedCollections = useMemo(
+    () => pinnedCollections.filter(matchesFilter),
+    [matchesFilter, pinnedCollections]
+  );
+  const filteredTopics = useMemo(
+    () => topics.filter(matchesFilter),
+    [matchesFilter, topics]
+  );
+  const filteredFeeds = useMemo(
+    () => feeds.filter(matchesFilter),
+    [feeds, matchesFilter]
+  );
+  const filteredSites = useMemo(
+    () => sites.filter(matchesFilter),
+    [matchesFilter, sites]
   );
 
   const handleExpandedList = useCallback(
@@ -99,13 +129,13 @@ export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
       </div>
 
       <ShortcutList
-        shortcuts={pinnedCollections}
+        shortcuts={filteredPinnedCollections}
         onClickHeader={() => handleExpandedList("SHORTCUTS")}
         isExpanded={expandedList === "SHORTCUTS"}
       />
 
       <TopicList
-        topics={topics}
+        topics={filteredTopics}
         addDisabled={isLibraryReadOnly}
         onAddTopic={onAddTopic}
         onClickHeader={() => handleExpandedList("TOPICS")}
@@ -113,7 +143,7 @@ export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
       />
 
       <FeedList
-        feeds={feeds}
+        feeds={filteredFeeds}
         addDisabled={isLibraryReadOnly}
         onAddFeed={onAddFeed}
         onClickHeader={() => handleExpandedList("FEEDS")}
@@ -121,9 +151,38 @@ export function Sidebar({ className, onAddFeed, onAddTopic }: SidebarProps) {
       />
 
       <SiteList
-        sites={sites}
+        sites={filteredSites}
         onClickHeader={() => handleExpandedList("SITES")}
         isExpanded={expandedList === "SITES"}
+      />
+
+      <TextField
+        className={css.FilterInput}
+        fullWidth
+        placeholder="Filter collections…"
+        size="small"
+        value={filter}
+        variant="standard"
+        onChange={(event) => onFilterChange(event.target.value)}
+        slotProps={{
+          htmlInput: { "aria-label": "Filter collections" },
+          input: {
+            endAdornment: filter ? (
+              <InputAdornment position="end">
+                <Tooltip title="Clear filter">
+                  <IconButton
+                    aria-label="Clear collection filter"
+                    edge="end"
+                    size="small"
+                    onClick={() => onFilterChange("")}
+                  >
+                    <Clear fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ) : null,
+          },
+        }}
       />
     </div>
   );

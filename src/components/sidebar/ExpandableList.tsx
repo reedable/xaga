@@ -7,6 +7,7 @@ import css from "./ExpandableList.module.css";
 export interface ExpandableListProps {
   children?: ReactNode;
   className?: string;
+  count: number;
   label: string;
   isExpanded: boolean;
   onClickHeader: () => void;
@@ -16,6 +17,7 @@ export interface ExpandableListProps {
 export default function ExpandableList({
   children,
   className,
+  count,
   label,
   isExpanded,
   onClickHeader,
@@ -35,7 +37,7 @@ export default function ExpandableList({
           <ChevronRight className={css.ChevronIcon} />
 
           <Typography className={css.Label} component="div" variant="overline">
-            {label}
+            {label} ({count})
           </Typography>
         </ToggleButton>
 

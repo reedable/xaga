@@ -36,6 +36,7 @@ export default function SiteList({
   return (
     <ExpandableList
       className={css.SiteList}
+      count={sites.length}
       label="Sites"
       isExpanded={isExpanded}
       onClickHeader={onClickHeader}

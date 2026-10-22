@@ -47,6 +47,7 @@ export default function FeedList({
   return (
     <ExpandableList
       className={css.FeedList}
+      count={feeds.length}
       label="Feeds"
       isExpanded={isExpanded}
       onClickHeader={onClickHeader}

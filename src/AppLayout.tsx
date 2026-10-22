@@ -25,6 +25,8 @@ import useRouter from "./hooks/useRouter";
 import { useTopics } from "./hooks/useTopics";
 import { usePlatform } from "./platform/Platform";
 import { useEmbeddingStartupState } from "./hooks/useEmbeddingStartupState";
+import { useSettings } from "./hooks/useSettings";
+import { useSidebarFilter } from "./hooks/useSidebarFilter";
 import { type Feed, type Topic } from "./types";
 
 export function AppLayout() {
@@ -32,7 +34,9 @@ export function AppLayout() {
   const appRef = useRef<HTMLDivElement>(null);
   const [autoHideSidebar, setAutoHideSidebar] = useState(false);
   const { showSidebar } = useAppearance();
+  const { library } = useSettings();
   const embeddingStartupState = useEmbeddingStartupState();
+  const [sidebarFilter, setSidebarFilter] = useSidebarFilter(library);
 
   const platform = usePlatform();
   const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
@@ -198,6 +202,8 @@ export function AppLayout() {
         >
           <Sidebar
             className={css.Sidebar}
+            filter={sidebarFilter}
+            onFilterChange={setSidebarFilter}
             onAddFeed={() => setIsAddingFeed(true)}
             onAddTopic={() => setIsAddingTopic(true)}
           />
