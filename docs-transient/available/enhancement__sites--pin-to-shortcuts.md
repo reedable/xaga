@@ -20,6 +20,11 @@ hostnames stored as library-specific metadata.
   gating and error path.
 - Show pinned Sites in Shortcuts with their current total and unread counts and
   route selection to the Site's article list.
+- Give the selected Site the same collection-header Settings affordance used for
+  Feeds and Topics. Its dialog shows the normalized hostname as read-only identity
+  and uses the existing **Add to Shortcuts** checkbox pattern to pin or unpin it.
+- Disable the Site pin control in read-only mode and restore its persisted state
+  whenever the dialog opens.
 - Keep **All items** fixed at the top of Shortcuts; include pinned Sites in the
   ordering applied to the remaining pinned collections.
 - Retain a pin when its Site temporarily has no derived Entries, so transient
@@ -30,14 +35,14 @@ hostnames stored as library-specific metadata.
 
 ## Remaining work
 
-- Complete `enhancement__sites--browse-by-hostname.md` so a normalized Site has a
-  shared identity and navigation target.
+- Complete `spike__define-tag-collection-bookmark-pin-shortcut-site.md` and apply
+  its definitions and ownership decisions to this story.
 - Define the library metadata schema and core read/write API for pinned Site
   hostnames.
 - Add a library-writer operation and Tauri commands for pinning and unpinning a
   Site.
-- Carry Site pin state through the platform boundary and integrate pinned Sites
-  into Shortcuts.
+- Carry Site pin state through the platform boundary, add the Site Settings dialog,
+  and integrate pinned Sites into Shortcuts.
 - Test missing and malformed metadata, normalization, atomic replacement,
   concurrent pin changes, read-only refusal, library isolation, empty pinned
   Sites, counts, selection, and **All items** placement.
@@ -45,7 +50,8 @@ hostnames stored as library-specific metadata.
 
 ## References
 
-- `docs-transient/available/enhancement__sites--browse-by-hostname.md`
+- `docs-transient/available/spike__define-tag-collection-bookmark-pin-shortcut-site.md`
+- `docs/architecture/sites.md`
 - `crates/xaga-core/src/library.rs`
 - `crates/xaga-core/src/library_writer/mod.rs`
 - `src-tauri/src/commands/mod.rs`
@@ -53,4 +59,3 @@ hostnames stored as library-specific metadata.
 - `docs/architecture/crash_consistency.md`
 - `docs/architecture/single_writer_library_lock.md`
 - `docs/principles/single_source_of_truth.md`
-

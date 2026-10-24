@@ -57,6 +57,24 @@ instances load a query-only model alongside their read-only database handle, so
 their existing embedding reads and semantic search remain available without
 starting a writer service.
 
+Library mode and embedding startup state are orthogonal. Library mode selects the
+initialization path, but either mode begins with embeddings `loading` and can end
+with them `available` or `unavailable`:
+
+| Library mode | Embedding state | Runtime capability |
+| --- | --- | --- |
+| Read-write | `loading` | Library writes are permitted; embedding resources are initializing and embedding-backed reads are not yet available. |
+| Read-write | `available` | Library writes and embedding-backed reads are available. |
+| Read-write | `unavailable` | Library writes remain available; embedding-backed reads are unavailable. |
+| Read-only | `loading` | Library writes are refused; query-only embedding resources are initializing and embedding-backed reads are not yet available. |
+| Read-only | `available` | Library writes are refused; embedding-backed reads are available from the read-only database and query model. |
+| Read-only | `unavailable` | Library writes and embedding-backed reads are unavailable. |
+
+Non-embedding, file-backed reads remain available in every combination. An
+embedding failure therefore does not change the library's read-write/read-only
+mode, and library mode alone does not determine whether embedding-backed reads
+are available.
+
 ## The anchoring record
 
 Values anchored 2026-07-11:
