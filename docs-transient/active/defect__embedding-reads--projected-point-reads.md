@@ -27,4 +27,3 @@ full-row retrieval for mutations.
 - `crates/xaga-core/src/embeddings/pipeline.rs`
 - `src-tauri/src/commands/topics.rs`
 - `src-tauri/src/commands/articles.rs`
-
