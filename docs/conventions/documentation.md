@@ -4,6 +4,12 @@
 
 Durable documentation governs, describes, and names the system. It is long-lived and may be cited by code and other durable documents.
 
+Ideas live under `docs-transient/ideas/`. The directory is a place to hold ideas,
+not a document format: an idea may be prose, a drawing, a poem, a code snippet, a
+runnable experiment, another kind of artifact, or a directory containing several
+of these. Ideas have no required structure, metadata, template, status, or
+expectation that they become tasks or durable documentation.
+
 Transient tasks live under `docs-transient/`, contain only remaining work, and
 occupy one of four directories:
 
