@@ -42,6 +42,10 @@ remain after migration.
   `DomainEvent` → the Tauri event funnel → platform events and UI. Existing loader
   diagnostics do not automatically provide model readiness, installation errors,
   service-start errors, or a retry control.
+- Extend or deliberately replace the existing event-driven three-state embedding
+  startup contract; do not add a parallel readiness channel. Preserve
+  subscribe-before-snapshot initialization and idempotent handling of duplicate
+  state delivery when the richer status model reaches the frontend.
 - Add download progress reporting: the current callback interface exposes request
   and completion but no transferred-byte progress. Expose bytes received and total
   when known through the native/Wry boundary and model status events; show
@@ -73,3 +77,4 @@ remain after migration.
 - [Model trust](../../../docs/architecture/security/embedding_model_trust.md)
 - [Remote content policy](../../../docs/architecture/security/fetching_remote_content.md)
 - [First-run model consent](compliance__embedding-model--oobe-download-consent.md)
+- [Embedding startup experience](../available/enhancement__embedding-startup-experience.md)

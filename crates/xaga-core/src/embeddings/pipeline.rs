@@ -196,9 +196,8 @@ pub(crate) async fn sync_annotations(
             None => (None, None),
         };
         let topics = if existing.contains_key(&annotation.id) {
-            db.get_entry(&annotation.id)
+            db.find_topic_ids_by_item_id(&annotation.id)
                 .await?
-                .map(|e| e.topics)
                 .unwrap_or_default()
         } else {
             carried_topics.unwrap_or_default()
@@ -494,9 +493,8 @@ pub(crate) async fn reconcile_topic_membership_chunked(
     chunk_size: usize,
 ) -> Result<(), EmbeddingsError> {
     let prior: Vec<String> = db
-        .get_entry(topic_id)
+        .find_item_ids_by_topic_id(topic_id)
         .await?
-        .map(|t| t.items)
         .unwrap_or_default();
     let new_set: HashSet<&str> = member_ids.iter().map(|s| s.as_str()).collect();
     let prior_set: HashSet<&str> = prior.iter().map(|s| s.as_str()).collect();
@@ -669,9 +667,8 @@ pub(crate) async fn add_topic_member(
 ) -> Result<(), EmbeddingsError> {
     write_topic_delta(db, topic_id, &[member_id], true).await?;
     let mut base = db
-        .get_entry(topic_id)
+        .find_item_ids_by_topic_id(topic_id)
         .await?
-        .map(|t| t.items)
         .unwrap_or_default();
     if !base.iter().any(|m| m == member_id) {
         base.push(member_id.to_string());
@@ -689,9 +686,8 @@ pub(crate) async fn remove_topic_member(
 ) -> Result<(), EmbeddingsError> {
     write_topic_delta(db, topic_id, &[member_id], false).await?;
     let base = db
-        .get_entry(topic_id)
+        .find_item_ids_by_topic_id(topic_id)
         .await?
-        .map(|t| t.items)
         .unwrap_or_default();
     if base.iter().any(|m| m == member_id) {
         let new_base: Vec<String> = base.into_iter().filter(|m| m != member_id).collect();

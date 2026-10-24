@@ -1077,6 +1077,73 @@ impl EmbeddingsDb {
         Ok(None)
     }
 
+    /// Finds the topic ids recorded on an item row without reading its embedding vector.
+    pub async fn find_topic_ids_by_item_id(
+        &self,
+        item_id: &str,
+    ) -> Result<Option<Vec<String>>, EmbeddingsError> {
+        self.find_string_list_by_id(item_id, "topics").await
+    }
+
+    /// Finds the item ids recorded on a topic row without reading its embedding vector.
+    pub(crate) async fn find_item_ids_by_topic_id(
+        &self,
+        topic_id: &str,
+    ) -> Result<Option<Vec<String>>, EmbeddingsError> {
+        self.find_string_list_by_id(topic_id, "items").await
+    }
+
+    async fn find_string_list_by_id(
+        &self,
+        id: &str,
+        column: &str,
+    ) -> Result<Option<Vec<String>>, EmbeddingsError> {
+        let Some(batch) = self.find_batch_by_id(id, &[column]).await? else {
+            return Ok(None);
+        };
+
+        let values = batch
+            .column_by_name(column)
+            .and_then(|array| array.as_any().downcast_ref::<ListArray>())
+            .filter(|array| !array.is_null(0))
+            .map(|array| {
+                let values = array.value(0);
+                values
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .map(|strings| {
+                        (0..strings.len())
+                            .map(|index| strings.value(index).to_string())
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+
+        Ok(Some(values))
+    }
+
+    async fn find_batch_by_id(
+        &self,
+        id: &str,
+        columns: &[&str],
+    ) -> Result<Option<RecordBatch>, EmbeddingsError> {
+        let escaped = id.replace('\'', "''");
+        let mut batches = self
+            .table
+            .query()
+            .select(Select::columns(columns))
+            .only_if(format!("id = '{escaped}'"))
+            .limit(1)
+            .execute()
+            .await?
+            .try_collect::<Vec<RecordBatch>>()
+            .await
+            .map_err(|error| EmbeddingsError::LanceDb(error.to_string()))?;
+
+        Ok(batches.pop().filter(|batch| batch.num_rows() > 0))
+    }
+
     /// Deletes the row whose `id` column matches exactly.
     pub(crate) async fn delete_by_id(&self, id: &str) -> Result<(), EmbeddingsError> {
         let escaped = id.replace('\'', "''");
@@ -1767,6 +1834,40 @@ mod tests {
         );
 
         assert!(pending.is_pinned);
+    }
+
+    #[tokio::test]
+    async fn projected_point_reads_decode_lists_without_materializing_vectors() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let mut row = sample(
+            "topic-x",
+            "topic",
+            Some(vec![0.5f32; EMBEDDING_DIM as usize]),
+        );
+        row.items = vec!["entry-1".to_string(), "annotation-1".to_string()];
+        db.upsert(row).await.unwrap();
+
+        assert_eq!(
+            db.find_topic_ids_by_item_id("topic-x").await.unwrap(),
+            Some(vec!["topic-1".to_string(), "topic-2".to_string()])
+        );
+        assert_eq!(
+            db.find_item_ids_by_topic_id("topic-x").await.unwrap(),
+            Some(vec!["entry-1".to_string(), "annotation-1".to_string()])
+        );
+        assert_eq!(db.find_topic_ids_by_item_id("missing").await.unwrap(), None);
+
+        for column in ["topics", "items"] {
+            let batch = db
+                .find_batch_by_id("topic-x", &[column])
+                .await
+                .unwrap()
+                .expect("row present");
+            assert_eq!(batch.num_columns(), 1);
+            assert!(batch.column_by_name(column).is_some());
+            assert!(batch.column_by_name("vector").is_none());
+        }
     }
 
     #[tokio::test]

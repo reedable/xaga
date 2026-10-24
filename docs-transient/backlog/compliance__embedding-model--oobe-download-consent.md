@@ -18,6 +18,10 @@ A fresh install (or wiped model dir) contacts Hugging Face at app startup, unpro
 - Decide whether consent is presented in first-run UI, settings, or both, and define dismissal behavior.
 - Move startup download behind the persisted consent decision.
 - Add an on-demand command and status events around the existing verified download path.
+- Extend or deliberately replace the existing event-driven three-state embedding
+  startup contract; do not introduce an independent readiness channel. Preserve
+  subscribe-before-snapshot initialization and idempotent handling of duplicate
+  state delivery.
 - Surface unavailable, downloading, ready, and failed states without blocking application startup.
 - Test fresh install, decline, later consent, concurrent processes, failure, retry, and already-installed model paths.
 
@@ -30,3 +34,4 @@ A fresh install (or wiped model dir) contacts Hugging Face at app startup, unpro
 - `src/platform/events.ts`
 - `docs/architecture/security/embedding_model_trust.md`
 - `docs/architecture/security/fetching_remote_content.md`
+- `docs-transient/available/enhancement__embedding-startup-experience.md`

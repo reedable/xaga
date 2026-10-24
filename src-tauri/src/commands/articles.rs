@@ -1021,11 +1021,10 @@ pub async fn replace_annotation(
         let db = state.embeddings_read.lock().unwrap().clone();
         match db {
             Some(db) => db
-                .get_entry(&old_id)
+                .find_topic_ids_by_item_id(&old_id)
                 .await
                 .ok()
                 .flatten()
-                .map(|e| e.topics)
                 .unwrap_or_default(),
             None => Vec::new(),
         }
@@ -1112,11 +1111,10 @@ pub async fn remove_annotation(
         let db = state.embeddings_read.lock().unwrap().clone();
         match db {
             Some(db) => db
-                .get_entry(&annotation_id)
+                .find_topic_ids_by_item_id(&annotation_id)
                 .await
                 .ok()
                 .flatten()
-                .map(|e| e.topics)
                 .unwrap_or_default(),
             None => Vec::new(),
         }

@@ -248,10 +248,9 @@ pub async fn list_entry_topics(
         ));
     };
     Ok(db
-        .get_entry(&entry_id)
+        .find_topic_ids_by_item_id(&entry_id)
         .await
         .map_err(AppError::from)?
-        .map(|e| e.topics)
         .unwrap_or_default())
 }
 
