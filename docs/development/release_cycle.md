@@ -38,9 +38,9 @@ A subsequent Cargo command refreshes the workspace package versions recorded in 
 After publishing a final release, select the kind of next release and enter development immediately:
 
 ```sh
-npm run version:bump -- patch
-npm run version:bump -- minor
-npm run version:bump -- major
+npm run bump:patch
+npm run bump:minor
+npm run bump:major
 ```
 
 Only one command is used. For example, `patch` changes `0.8.4` to `0.8.5-dev`; `minor` changes it to `0.9.0-dev`; and `major` changes it to `1.0.0-dev`.
@@ -52,13 +52,23 @@ Commit the synchronized version files and refreshed `Cargo.lock` as the start of
 Use the normal development command while changing the application:
 
 ```sh
-npm run tauri:dev
+npm run dev
 ```
+
+The short `dev` and `build` commands operate on the Xaga desktop application. Vite-only commands live under the `ui:` namespace:
+
+```sh
+npm run ui:dev
+npm run ui:build
+npm run ui:preview
+```
+
+Run the complete script and UI test suite with `npm test`. Run only the Node-based build and release script tests with `npm run test:scripts`, or only the UI tests with `npm run test:ui`.
 
 Create an identifiable production-mode artifact from a clean development commit with:
 
 ```sh
-npm run tauri:build:alpha
+npm run build:alpha
 ```
 
 The alpha build does not edit the committed version. It supplies `x.y.z-dev+alpha.<commit>` to Tauri for that invocation and uses the Alpha application icon. It refuses a dirty working tree, a final version, or a release-candidate version.
@@ -66,7 +76,7 @@ The alpha build does not edit the committed version. It supplies `x.y.z-dev+alph
 The ordinary production build is:
 
 ```sh
-npm run tauri:build
+npm run build
 ```
 
 It runs the advisory Rust dependency audit and then the Tauri build. The audit report does not stop the build; compilation or bundling failures do.
@@ -76,7 +86,7 @@ It runs the advisory Rust dependency audit and then the Tauri build. The audit r
 From `x.y.z-dev`, create and build the first candidate with:
 
 ```sh
-npm run tauri:release:rc
+npm run release:rc
 ```
 
 This command requires a clean working tree, changes `x.y.z-dev` to `x.y.z-rc.1` in every version file, and runs a production build. Repeating it from `x.y.z-rc.N` increments the candidate to `x.y.z-rc.(N+1)` and builds again.
@@ -88,7 +98,7 @@ Commit the version change before tagging a candidate. Do not tag a candidate tha
 From either `x.y.z-dev` or `x.y.z-rc.N`, finalize and build with:
 
 ```sh
-npm run tauri:release
+npm run release
 ```
 
 This command requires a clean working tree, removes the prerelease identifier, synchronizes the final `x.y.z` version across the version files, and runs a production build. It is rejected when the current version is already final.
