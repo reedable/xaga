@@ -7,22 +7,10 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { alphaIcons, generateAlphaIcons } from "./alpha-icons.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TAURI_CONF = resolve(ROOT, "src-tauri/tauri.conf.json");
-const TAURI_BIN = resolve(ROOT, "node_modules/.bin/tauri");
-const ALPHA_ICON_SOURCE = resolve(
-  ROOT,
-  "assets/Xaga-iOS-Alpha-1024x1024@1x.png"
-);
-const ALPHA_ICON_DIR = resolve(ROOT, "target/alpha-icons");
-const ALPHA_ICONS = [
-  "32x32.png",
-  "128x128.png",
-  "128x128@2x.png",
-  "icon.icns",
-  "icon.ico",
-].map((name) => resolve(ALPHA_ICON_DIR, name));
 
 export function validateCleanStatus(status) {
   if (status !== "") {
@@ -46,7 +34,7 @@ export function alphaVersion(version, commitHash) {
   return `${version}+alpha.${commitHash}`;
 }
 
-export function tauriBuildArgs(version, icons = ALPHA_ICONS) {
+export function tauriBuildArgs(version, icons = alphaIcons) {
   return [
     "run",
     "tauri",
@@ -78,7 +66,7 @@ function main() {
   const buildVersion = alphaVersion(version, commitHash);
 
   console.log(`Building Xaga ${buildVersion}`);
-  run(TAURI_BIN, ["icon", ALPHA_ICON_SOURCE, "--output", ALPHA_ICON_DIR]);
+  generateAlphaIcons();
   run("npm", ["run", "audit:report"]);
   run("npm", tauriBuildArgs(buildVersion));
 }
