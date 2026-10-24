@@ -27,9 +27,6 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Verify tag and application version
         shell: bash
         run: |
@@ -45,6 +42,9 @@ jobs:
             echo "Tag version ($tag_version) does not match app version ($app_version)."
             exit 1
           fi
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install JavaScript dependencies
         run: npm ci
