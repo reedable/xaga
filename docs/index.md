@@ -10,6 +10,8 @@ The map of `docs/`.
 
 3. [Conventions](conventions/index.md) — conventions for code and documentation
 
+4. [Development](development/index.md) — development builds, version transitions, and releases
+
 ## Transient
 
 Transient tasks live in `../docs-transient/`. See [documentation conventions](conventions/documentation.md) for their lifecycle, organization, and structure.

@@ -21,9 +21,9 @@ export function validateCleanStatus(status) {
 }
 
 export function alphaVersion(version, commitHash) {
-  if (!/^\d+\.\d+\.\d+$/.test(version)) {
+  if (!/^\d+\.\d+\.\d+-dev$/.test(version)) {
     throw new Error(
-      `Expected the committed app version to be major.minor.patch; got ${JSON.stringify(version)}`
+      `Expected the committed app version to be major.minor.patch-dev; got ${JSON.stringify(version)}`
     );
   }
   if (!/^[0-9a-f]+$/.test(commitHash)) {

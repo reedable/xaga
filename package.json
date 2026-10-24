@@ -23,6 +23,8 @@
     "tauri:release:patch": "npm run check:uncommitted && npm run version:bump -- patch && npm run tauri:build",
     "tauri:release:minor": "npm run check:uncommitted && npm run version:bump -- minor && npm run tauri:build",
     "tauri:release:major": "npm run check:uncommitted && npm run version:bump -- major && npm run tauri:build",
+    "tauri:release:rc": "npm run check:uncommitted && npm run version:bump -- rc && npm run tauri:build",
+    "tauri:release": "npm run check:uncommitted && npm run version:bump -- release && npm run tauri:build",
     "cli:debug": "cargo run -p xaga-cli --",
     "cli:build": "npm run audit:report && cargo build -p xaga-cli"
   },
