@@ -25,14 +25,17 @@ test("requires a hexadecimal commit hash", () => {
 });
 
 test("passes the alpha version to Tauri across npm's argument boundary", () => {
-  assert.deepEqual(tauriBuildArgs("0.8.4+alpha.5f97d65"), [
-    "run",
-    "tauri",
-    "--",
-    "build",
-    "--config",
-    '{"version":"0.8.4+alpha.5f97d65"}',
-  ]);
+  assert.deepEqual(
+    tauriBuildArgs("0.8.4+alpha.5f97d65", ["/tmp/alpha/icon.icns"]),
+    [
+      "run",
+      "tauri",
+      "--",
+      "build",
+      "--config",
+      '{"version":"0.8.4+alpha.5f97d65","bundle":{"icon":["/tmp/alpha/icon.icns"]}}',
+    ]
+  );
 });
 
 test("accepts a clean git status", () => {
