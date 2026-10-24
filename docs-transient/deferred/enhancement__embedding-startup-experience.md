@@ -1,5 +1,7 @@
 # Keep the application visible during embedding startup
 
+> **Deferred:** An attempt to implement this story resulted in a serious performance regression.
+
 ## Summary
 
 The main window remains blank while the embedding model and database initialize,
