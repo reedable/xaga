@@ -3,8 +3,8 @@ use xaga_core::query::items::{self, EmbeddedItemSource};
 use xaga_core::types::{EmbeddedEntry, EmbeddedItem};
 
 use super::parse_item_filter;
-use crate::AppState;
 use crate::error::AppError;
+use crate::{AppState, get_bookmarked_ids, get_unread_ids};
 
 #[tauri::command]
 pub async fn search_by_item(
@@ -75,7 +75,8 @@ pub async fn search_by_text(
     .await
     .map_err(AppError::from)?;
 
-    let result = items::enrich_embedded(&library, entries).await;
+    let (unread, bookmarked) = tokio::join!(get_unread_ids(&state), get_bookmarked_ids(&state));
+    let result = items::enrich_embedded(&library, entries, &unread, &bookmarked).await;
     log::debug!("search_by_text: ok ({} entries)", result.len());
     Ok(result)
 }

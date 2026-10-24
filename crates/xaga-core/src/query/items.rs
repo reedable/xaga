@@ -1,13 +1,11 @@
-use std::path::Path;
+use std::{collections::HashSet, path::Path};
 
 use thiserror::Error;
 
 use crate::{
     embeddings::EmbeddingsDb,
     query::filter,
-    types::{
-        EmbeddedEntry, EmbeddedFeed, EmbeddedItem, EmbeddedTopic, Feed, ItemFilter, Kind, ListItem,
-    },
+    types::{EmbeddedEntry, EmbeddedFeed, EmbeddedItem, EmbeddedTopic, ItemFilter, Kind, ListItem},
 };
 
 // ── EmbeddedItemSource ──────────────────────────────────────────────────────────
@@ -168,34 +166,32 @@ pub async fn list_all_items(library_dir: &Path, item_filter: ItemFilter) -> Resu
     Ok(items)
 }
 
-/// Enriches raw LanceDB results: rows with no URL are topic rows.
-/// For each, loads the full Topic from disk and wraps it as EmbeddedItem::Topic.
-/// Falls back to EmbeddedItem::Entry for any row that can't be resolved as a topic.
-pub async fn enrich_embedded(library_dir: &Path, entries: Vec<EmbeddedEntry>) -> Vec<EmbeddedItem> {
+/// Enriches raw LanceDB results from their authoritative files while preserving rank.
+/// Feed rows whose source `.atom` file cannot be read are omitted. Rows with no URL are
+/// resolved as topics and fall back to entries when they cannot be resolved.
+pub async fn enrich_embedded(
+    library_dir: &Path,
+    entries: Vec<EmbeddedEntry>,
+    unread: &HashSet<String>,
+    bookmarked: &HashSet<String>,
+) -> Vec<EmbeddedItem> {
     let mut result = Vec::with_capacity(entries.len());
     for entry in entries {
         if entry.kind == Kind::Feed {
-            // Feed stats are deferred: counts returned as 0. The server-side lookup
-            // (read the feed `.atom` membership + intersect the unread/bookmarked id-sets
-            // via `feeds::feed_summary`) is TECH_DEBT.md "Search and counts" → embedded
-            // feed results return counts = 0.
-            result.push(EmbeddedItem::Feed(EmbeddedFeed {
-                feed: Feed {
-                    id: entry.entry.id.clone(),
-                    url: entry.entry.url.clone(),
-                    title: entry.entry.title.clone(),
-                    description: None,
-                    entry_count: 0,
-                    unread_count: 0,
-                    created_at: entry.entry.created_at.clone(),
-                    updated_at: entry.entry.updated_at.clone(),
-                    // Pinned state is not shown in search results; deferred like the counts above.
-                    is_pinned: false,
-                    members: vec![],
-                },
-                kind: entry.kind,
-                similarity: entry.similarity,
-            }));
+            if let Ok(feed) = crate::persistence::feeds::read_feed(
+                library_dir,
+                &entry.entry.id,
+                unread,
+                bookmarked,
+            )
+            .await
+            {
+                result.push(EmbeddedItem::Feed(EmbeddedFeed {
+                    feed,
+                    kind: entry.kind,
+                    similarity: entry.similarity,
+                }));
+            }
             continue;
         }
         if entry.entry.url.is_empty() {
@@ -213,4 +209,95 @@ pub async fn enrich_embedded(library_dir: &Path, entries: Vec<EmbeddedEntry>) ->
         result.push(EmbeddedItem::Entry(entry));
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Entry;
+
+    fn embedded_entry(id: &str, kind: Kind, similarity: f32) -> EmbeddedEntry {
+        EmbeddedEntry {
+            entry: Entry {
+                id: id.to_string(),
+                url: format!("https://index.example/{id}"),
+                title: format!("Indexed {id}"),
+                created_at: "2025-01-01T00:00:00+00:00".to_string(),
+                published_at: None,
+                updated_at: None,
+                description: None,
+                is_unread: false,
+                is_bookmarked: false,
+                color: None,
+            },
+            kind,
+            similarity,
+            reference: String::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn enriches_feeds_from_atom_and_omits_missing_feeds_without_reordering() {
+        let directory = tempfile::tempdir().unwrap();
+        let library_dir = directory.path();
+        tokio::fs::create_dir_all(crate::library::feeds_dir(library_dir))
+            .await
+            .unwrap();
+
+        let feed_xml = r#"<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Authoritative feed</title>
+  <id>stored-feed-id</id>
+  <updated>2026-10-23T12:00:00Z</updated>
+  <link href="https://example.com/feed.xml" rel="self" />
+  <category term="pinned" scheme="https://xaga.app/ns/tag" />
+  <entry>
+    <title>One</title>
+    <id>one</id>
+    <updated>2026-10-23T11:00:00Z</updated>
+    <link href="https://example.com/one" rel="alternate" />
+  </entry>
+  <entry>
+    <title>Two</title>
+    <id>two</id>
+    <updated>2026-10-23T10:00:00Z</updated>
+    <link href="https://example.com/two" rel="alternate" />
+  </entry>
+</feed>"#;
+        tokio::fs::write(crate::library::feed_path(library_dir, "feed"), feed_xml)
+            .await
+            .unwrap();
+
+        let unread = HashSet::from([crate::util::url_hash12("https://example.com/one")]);
+        let bookmarked = HashSet::from([crate::util::url_hash12("https://example.com/two")]);
+        let entries = vec![
+            embedded_entry("first", Kind::Entry, 0.9),
+            embedded_entry("feed", Kind::Feed, 0.8),
+            embedded_entry("missing", Kind::Feed, 0.7),
+            embedded_entry("last", Kind::Entry, 0.6),
+        ];
+
+        let enriched = enrich_embedded(library_dir, entries, &unread, &bookmarked).await;
+
+        assert_eq!(enriched.len(), 3);
+        assert!(matches!(
+            &enriched[0],
+            EmbeddedItem::Entry(entry) if entry.entry.id == "first" && entry.similarity == 0.9
+        ));
+        match &enriched[1] {
+            EmbeddedItem::Feed(feed) => {
+                assert_eq!(feed.feed.id, "feed");
+                assert_eq!(feed.feed.title, "Authoritative feed");
+                assert_eq!(feed.feed.url, "https://example.com/feed.xml");
+                assert_eq!(feed.feed.entry_count, 2);
+                assert_eq!(feed.feed.unread_count, 1);
+                assert!(feed.feed.is_pinned);
+                assert_eq!(feed.similarity, 0.8);
+            }
+            _ => panic!("second result should be the authoritative feed"),
+        }
+        assert!(matches!(
+            &enriched[2],
+            EmbeddedItem::Entry(entry) if entry.entry.id == "last" && entry.similarity == 0.6
+        ));
+    }
 }

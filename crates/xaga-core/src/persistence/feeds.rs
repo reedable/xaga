@@ -361,6 +361,18 @@ pub async fn list_feeds(
     Ok(feeds)
 }
 
+/// Read one feed from its authoritative Atom file and derive its current state.
+pub(crate) async fn read_feed(
+    library_dir: &Path,
+    id: &str,
+    unread: &HashSet<String>,
+    bookmarked: &HashSet<String>,
+) -> Result<Feed> {
+    let xml = tokio::fs::read_to_string(crate::library::feed_path(library_dir, id)).await?;
+    let feed = parse_atom(&xml).map_err(FeedError::AtomParse)?;
+    Ok(atom_to_feed(id, &feed, unread, bookmarked))
+}
+
 /// Adds (or removes) the app-local `pinned` category on a feed's `.atom`, under
 /// [`TAG_CATEGORY_SCHEME`]. Idempotent. Returns whether the file changed.
 pub(crate) async fn set_feed_pinned(
