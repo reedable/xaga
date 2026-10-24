@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { alphaVersion, validateCleanStatus } from "./build-alpha.mjs";
+import {
+  alphaVersion,
+  tauriBuildArgs,
+  validateCleanStatus,
+} from "./build-alpha.mjs";
 
 test("adds alpha metadata containing the commit hash", () => {
   assert.equal(alphaVersion("0.8.3", "f62fb2f"), "0.8.3+alpha.f62fb2f");
@@ -18,6 +22,17 @@ test("requires a hexadecimal commit hash", () => {
     () => alphaVersion("0.8.3", "comparison-a"),
     /invalid commit hash/
   );
+});
+
+test("passes the alpha version to Tauri across npm's argument boundary", () => {
+  assert.deepEqual(tauriBuildArgs("0.8.4+alpha.5f97d65"), [
+    "run",
+    "tauri",
+    "--",
+    "build",
+    "--config",
+    '{"version":"0.8.4+alpha.5f97d65"}',
+  ]);
 });
 
 test("accepts a clean git status", () => {

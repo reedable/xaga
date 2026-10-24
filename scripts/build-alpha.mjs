@@ -33,6 +33,17 @@ export function alphaVersion(version, commitHash) {
   return `${version}+alpha.${commitHash}`;
 }
 
+export function tauriBuildArgs(version) {
+  return [
+    "run",
+    "tauri",
+    "--",
+    "build",
+    "--config",
+    JSON.stringify({ version }),
+  ];
+}
+
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: ROOT, stdio: "inherit" });
   if (result.error) throw result.error;
@@ -54,13 +65,8 @@ function main() {
   const buildVersion = alphaVersion(version, commitHash);
 
   console.log(`Building Xaga ${buildVersion}`);
-  run("npm", [
-    "run",
-    "tauri:build",
-    "--",
-    "--config",
-    JSON.stringify({ version: buildVersion }),
-  ]);
+  run("npm", ["run", "audit:report"]);
+  run("npm", tauriBuildArgs(buildVersion));
 }
 
 if (
