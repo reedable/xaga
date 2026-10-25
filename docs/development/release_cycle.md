@@ -81,6 +81,11 @@ npm run build
 
 It runs the advisory Rust dependency audit and then the Tauri build. The audit report does not stop the build; compilation or bundling failures do.
 
+Rust compilation requires the Protocol Buffers compiler because Lance generates
+code during its build. On macOS, install it with `brew install protobuf` and
+verify it is available with `protoc --version`. The release workflow installs
+this prerequisite explicitly in both its verification and build jobs.
+
 ## Release candidates
 
 From `x.y.z-dev`, prepare the first candidate with:
@@ -133,10 +138,11 @@ The tag must point to the commit containing both the prepared version and the re
 
 1. Check out the tagged commit.
 2. Require a final or numbered-RC tag whose version equals `src-tauri/tauri.conf.json`.
-3. Run JavaScript tests and linting.
-4. Check the Rust workspace with the lockfile.
-5. Build a universal macOS application for Apple Silicon and Intel.
-6. Create a draft GitHub Release and upload the build artifacts.
+3. Install the Protocol Buffers compiler required by Lance.
+4. Run JavaScript tests and linting.
+5. Check the Rust workspace with the lockfile.
+6. Build a universal macOS application for Apple Silicon and Intel.
+7. Create a draft GitHub Release and upload the build artifacts.
 
 The draft must be inspected before it is published. RC drafts are marked as GitHub prereleases; final drafts are not. The workflow intentionally has no form inputs: the committed version and pushed tag identify the release.
 

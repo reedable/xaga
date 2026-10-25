@@ -48,6 +48,11 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Protocol Buffers compiler
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: brew install protobuf && protoc --version
+
       - name: Install JavaScript dependencies
         run: npm ci
 
@@ -90,6 +95,11 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_targets }}
+
+      - name: Install Protocol Buffers compiler
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: brew install protobuf && protoc --version
 
       - name: Install JavaScript dependencies
         run: npm ci
