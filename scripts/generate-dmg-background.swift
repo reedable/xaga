@@ -42,6 +42,7 @@ func drawText(
 }
 
 let white = NSColor(calibratedWhite: 0.96, alpha: 1)
+let commandColor = NSColor(calibratedRed: 1.0, green: 0.76, blue: 0.33, alpha: 1)
 
 drawText(
   "Before opening Xaga",
@@ -60,7 +61,7 @@ drawText(
   "shasum -a 256 /path/to/Xaga.dmg",
   in: NSRect(x: 151, y: 373, width: 500, height: 20),
   font: .monospacedSystemFont(ofSize: 13.7, weight: .regular),
-  color: white,
+  color: commandColor,
   alignment: .left
 )
 
@@ -90,7 +91,7 @@ drawText(
   "xattr -dr com.apple.quarantine /path/to/Xaga.app",
   in: NSRect(x: 151, y: 180, width: 500, height: 20),
   font: .monospacedSystemFont(ofSize: 13.7, weight: .regular),
-  color: white,
+  color: commandColor,
   alignment: .left
 )
 drawText(
