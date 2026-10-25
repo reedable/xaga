@@ -7,7 +7,7 @@ The committed application version describes its lifecycle state:
 | State             | Version                   | Meaning                                                                      |
 | ----------------- | ------------------------- | ---------------------------------------------------------------------------- |
 | Development       | `0.8.5-dev`               | Work toward the next release is in progress.                                 |
-| Local alpha       | `0.8.5-dev+alpha.9c62ffc` | An invocation-only version identifies a local build of a development commit. |
+| Local alpha       | `0.8.5-rc.1+alpha.9c62ffc` | An invocation-only version identifies local validation of an unpublished RC. |
 | Release candidate | `0.8.5-rc.1`              | A distributable candidate for the final `0.8.5` release.                     |
 | Final             | `0.8.5`                   | The published release version.                                               |
 
@@ -16,14 +16,14 @@ The normal ordering is:
 ```text
 0.8.4
 0.8.5-dev
-0.8.5-dev+alpha.<commit>
 0.8.5-rc.1
+0.8.5-rc.1+alpha.<commit>
 0.8.5-rc.2
 0.8.5
 0.8.6-dev
 ```
 
-`-dev` and `-rc.N` are SemVer prerelease identifiers. `+alpha.<commit>` is build metadata: it identifies a local artifact without creating another release stage. Alpha versions are local-only and must not be Git tags or GitHub Releases.
+`-dev` and `-rc.N` are SemVer prerelease identifiers. `+alpha.<commit>` is build metadata: it identifies local validation of an RC without creating another release stage. Alpha versions are local-only and must not be Git tags or GitHub Releases.
 
 `src-tauri/tauri.conf.json` is the application-version source of truth. `scripts/bump-version.mjs` keeps it synchronized with `package.json` and the `[package]` versions in:
 
@@ -65,14 +65,6 @@ npm run ui:preview
 
 Run the complete script and UI test suite with `npm test`. Run only the Node-based build and release script tests with `npm run test:scripts`, or only the UI tests with `npm run test:ui`.
 
-Create an identifiable production-mode artifact from a clean development commit with:
-
-```sh
-npm run build:alpha
-```
-
-The alpha build does not edit the committed version. It supplies `x.y.z-dev+alpha.<commit>` to Tauri for that invocation and uses the Alpha application icon. It refuses a dirty working tree, a final version, or a release-candidate version.
-
 The ordinary production build is:
 
 ```sh
@@ -94,7 +86,17 @@ From `x.y.z-dev`, prepare the first candidate with:
 npm run version:rc
 ```
 
-This command requires a clean working tree and changes `x.y.z-dev` to `x.y.z-rc.1` in every source version file. Repeating it from `x.y.z-rc.N` increments the candidate to `x.y.z-rc.(N+1)`. Run a Cargo command to refresh `Cargo.lock`, validate the changes, and commit them before tagging.
+This command requires a clean working tree and changes `x.y.z-dev` to `x.y.z-rc.1` in every source version file. Repeating it from `x.y.z-rc.N` increments the candidate to `x.y.z-rc.(N+1)`. Run a Cargo command to refresh `Cargo.lock`, validate the changes, and commit them before building or tagging.
+
+After committing the RC, create its local validation build with:
+
+```sh
+npm run build:alpha
+```
+
+The alpha build does not edit version files, commit, tag, push, or publish anything. It supplies `x.y.z-rc.N+alpha.<commit>` to Tauri for this invocation and uses the Alpha application icon. It requires a clean working tree and a numbered RC version so that the artifact corresponds exactly to a commit.
+
+The command also refuses an RC when its matching `vX.Y.Z-rc.N` tag already exists locally. A tagged RC is immutable: make further changes under the next RC by running `npm run version:rc`, committing the result, and building a new alpha. Do not delete or move a published RC tag in order to rebuild it.
 
 Commit the version change before tagging a candidate. Do not tag a candidate that has not been committed and validated. A matching `vX.Y.Z-rc.N` tag starts GitHub release automation and creates a draft marked as a prerelease.
 

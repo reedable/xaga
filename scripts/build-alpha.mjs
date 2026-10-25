@@ -21,9 +21,9 @@ export function validateCleanStatus(status) {
 }
 
 export function alphaVersion(version, commitHash) {
-  if (!/^\d+\.\d+\.\d+-dev$/.test(version)) {
+  if (!/^\d+\.\d+\.\d+-rc\.\d+$/.test(version)) {
     throw new Error(
-      `Expected the committed app version to be major.minor.patch-dev; got ${JSON.stringify(version)}`
+      `Alpha builds require a committed release-candidate version (major.minor.patch-rc.N); got ${JSON.stringify(version)}. Prepare one with npm run version:rc, then commit it.`
     );
   }
   if (!/^[0-9a-f]+$/.test(commitHash)) {
@@ -32,6 +32,14 @@ export function alphaVersion(version, commitHash) {
     );
   }
   return `${version}+alpha.${commitHash}`;
+}
+
+export function validateUnpublishedVersion(version, tagExists) {
+  if (tagExists) {
+    throw new Error(
+      `Release candidate ${version} has already been tagged and cannot be rebuilt as an alpha. Run npm run version:rc, commit the new RC version, and try again.`
+    );
+  }
 }
 
 export function tauriBuildArgs(version, icons = alphaIcons) {
@@ -64,6 +72,13 @@ function main() {
   }).trim();
   const { version } = JSON.parse(readFileSync(TAURI_CONF, "utf8"));
   const buildVersion = alphaVersion(version, commitHash);
+  const tagExists =
+    spawnSync(
+      "git",
+      ["show-ref", "--verify", "--quiet", `refs/tags/v${version}`],
+      { cwd: ROOT }
+    ).status === 0;
+  validateUnpublishedVersion(version, tagExists);
 
   console.log(`Building Xaga ${buildVersion}`);
   generateAlphaIcons();
