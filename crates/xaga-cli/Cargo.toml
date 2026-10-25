@@ -1,6 +1,6 @@
 [package]
 name = "xaga-cli"
-version = "0.9.0-dev"
+version = "0.9.0-rc.1"
 edition = "2024"
 
 [dependencies]
