@@ -7,7 +7,10 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run icons && npm run ui:dev",
-    "beforeBuildCommand": "npm run icons && npm run ui:build"
+    "beforeBuildCommand": "npm run icons && npm run ui:build",
+    "windows": {
+      "staticVCRuntime": true
+    }
   },
   "app": {
     "macOSPrivateApi": true,
