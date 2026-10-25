@@ -103,17 +103,17 @@ drawText(
 )
 drawText(
   "Full instructions",
-  in: NSRect(x: 134, y: 83, width: 520, height: 18),
+  in: NSRect(x: 40, y: 83, width: 620, height: 18),
   font: .systemFont(ofSize: 12, weight: .semibold),
   color: white,
-  alignment: .left
+  alignment: .center
 )
 drawText(
-  "https://github.com/reedable/xaga/blob/develop/docs/installation.md",
-  in: NSRect(x: 134, y: 67, width: 540, height: 20),
+  "https://github.com/reedable/xaga/blob/main/docs/installation.md",
+  in: NSRect(x: 40, y: 67, width: 620, height: 20),
   font: .monospacedSystemFont(ofSize: 12, weight: .regular),
   color: white,
-  alignment: .left
+  alignment: .center
 )
 
 image.unlockFocus()
