@@ -38,9 +38,9 @@ A subsequent Cargo command refreshes the workspace package versions recorded in 
 After publishing a final release, select the kind of next release and enter development immediately:
 
 ```sh
-npm run bump:patch
-npm run bump:minor
-npm run bump:major
+npm run version:patch
+npm run version:minor
+npm run version:major
 ```
 
 Only one command is used. For example, `patch` changes `0.8.4` to `0.8.5-dev`; `minor` changes it to `0.9.0-dev`; and `major` changes it to `1.0.0-dev`.
@@ -83,46 +83,49 @@ It runs the advisory Rust dependency audit and then the Tauri build. The audit r
 
 ## Release candidates
 
-From `x.y.z-dev`, create and build the first candidate with:
+From `x.y.z-dev`, prepare the first candidate with:
 
 ```sh
-npm run release:rc
+npm run version:rc
 ```
 
-This command requires a clean working tree, changes `x.y.z-dev` to `x.y.z-rc.1` in every version file, and runs a production build. Repeating it from `x.y.z-rc.N` increments the candidate to `x.y.z-rc.(N+1)` and builds again.
+This command requires a clean working tree and changes `x.y.z-dev` to `x.y.z-rc.1` in every source version file. Repeating it from `x.y.z-rc.N` increments the candidate to `x.y.z-rc.(N+1)`. Run a Cargo command to refresh `Cargo.lock`, validate the changes, and commit them before tagging.
 
 Commit the version change before tagging a candidate. Do not tag a candidate that has not been committed and validated. A matching `vX.Y.Z-rc.N` tag starts GitHub release automation and creates a draft marked as a prerelease.
 
 ## Finalizing a release
 
-From either `x.y.z-dev` or `x.y.z-rc.N`, finalize and build with:
+From either `x.y.z-dev` or `x.y.z-rc.N`, prepare the final version with:
 
 ```sh
-npm run release
+npm run version:release
 ```
 
-This command requires a clean working tree, removes the prerelease identifier, synchronizes the final `x.y.z` version across the version files, and runs a production build. It is rejected when the current version is already final.
+This command requires a clean working tree, removes the prerelease identifier, and synchronizes the final `x.y.z` version across the source version files. It is rejected when the current version is already final. Run a Cargo command to refresh `Cargo.lock`, then validate and commit the changes.
 
-After the build succeeds:
+## Tagging a release
 
-1. Review the version-file and `Cargo.lock` changes.
-2. Commit the final version.
-3. Create an annotated `vX.Y.Z` tag on that commit.
+Version preparation never commits, tags, pushes, or performs the distributable build. After preparing either an RC or final version:
+
+1. Run `cargo check --workspace` to refresh and validate `Cargo.lock`.
+2. Review and commit the synchronized version changes.
+3. Run `npm run release:tag` from the clean committed tree.
 4. Push the commit and tag to GitHub.
 
-For example:
+For a final release, for example:
 
 ```sh
-git add package.json package-lock.json Cargo.lock \
+git add package.json Cargo.lock \
   src-tauri/tauri.conf.json src-tauri/Cargo.toml \
   crates/xaga-core/Cargo.toml crates/xaga-cli/Cargo.toml
 git commit -m "Release v0.8.5"
-git tag -a v0.8.5 -m "Xaga v0.8.5"
-git push <github-remote> <branch>
-git push <github-remote> v0.8.5
+npm run release:tag
+git push github <branch> --follow-tags
 ```
 
-The tag must point to the commit containing both the final version and the release workflow.
+`release:tag` requires a clean tree; verifies the versions in `package.json`, `tauri.conf.json`, the three workspace manifests, and their `Cargo.lock` entries; rejects `-dev`; accepts final and positive-numbered RC versions; and refuses to replace an existing local tag. It creates an annotated `v<version>` tag on `HEAD` but never commits or pushes.
+
+The tag must point to the commit containing both the prepared version and the release workflow. Pushing it delegates tests, the distributable build, and draft GitHub Release creation to GitHub Actions.
 
 ## GitHub release automation
 
