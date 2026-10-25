@@ -1,6 +1,6 @@
 # Installing Xaga
 
-Xaga currently supports macOS.
+Xaga currently supports Apple Silicon Macs. Intel Macs are not supported.
 
 Download the latest appropriate build from the repository's
 [GitHub Releases](https://github.com/reedable/xaga/releases) page and open the

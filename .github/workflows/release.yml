@@ -74,10 +74,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: macOS Universal
+          - name: macOS Apple Silicon
             runner: macos-14
-            target: universal-apple-darwin
-            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+            target: aarch64-apple-darwin
+            rust_targets: aarch64-apple-darwin
 
           # Add Linux and Windows entries here when Xaga supports them.
 

@@ -145,13 +145,13 @@ The tag must point to the commit containing both the prepared version and the re
 3. Install the Protocol Buffers compiler required by Lance.
 4. Run JavaScript tests and linting.
 5. Check the Rust workspace with the lockfile.
-6. Build a universal macOS application for Apple Silicon and Intel.
+6. Build the macOS application for Apple Silicon (`aarch64`). Intel Macs are not currently supported.
 7. Create a draft GitHub Release and upload the build artifacts.
 8. Verify that the macOS application bundle has a valid code signature.
 
 The draft must be inspected before it is published. RC drafts are marked as GitHub prereleases; final drafts are not. The workflow intentionally has no form inputs: the committed version and pushed tag identify the release.
 
-The build matrix contains only macOS while macOS is the only supported platform. Linux and Windows belong in the same matrix after the application supports and is tested on those platforms.
+The build matrix contains only Apple Silicon macOS while that is the only supported platform and architecture. Linux and Windows belong in the same matrix after the application supports and is tested on those platforms. Intel macOS can be added as a separate artifact if the project later chooses to support it; releases are not universal binaries.
 
 ## Distribution boundary
 
