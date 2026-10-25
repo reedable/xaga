@@ -31,7 +31,7 @@ The normal ordering is:
 - `crates/xaga-core/Cargo.toml`
 - `crates/xaga-cli/Cargo.toml`
 
-A subsequent Cargo command refreshes the workspace package versions recorded in `Cargo.lock`.
+`version:rc` refreshes the workspace package versions recorded in `Cargo.lock` automatically with `cargo metadata --no-deps`; this resolves metadata without compiling the Rust workspace. Other version commands require a subsequent Cargo command to refresh the lockfile.
 
 ## Starting development
 
@@ -86,7 +86,7 @@ From `x.y.z-dev`, prepare the first candidate with:
 npm run version:rc
 ```
 
-This command requires a clean working tree and changes `x.y.z-dev` to `x.y.z-rc.1` in every source version file. Repeating it from `x.y.z-rc.N` increments the candidate to `x.y.z-rc.(N+1)`. Run a Cargo command to refresh `Cargo.lock`, validate the changes, and commit them before building or tagging.
+This command requires a clean working tree and changes `x.y.z-dev` to `x.y.z-rc.1` in every source version file. Repeating it from `x.y.z-rc.N` increments the candidate to `x.y.z-rc.(N+1)`. It then runs `cargo metadata --format-version 1 --no-deps` to refresh the workspace versions in `Cargo.lock` without compiling. Review and commit the version files and refreshed lockfile before building or tagging.
 
 After committing the RC, create its local validation build with:
 
@@ -112,12 +112,14 @@ This command requires a clean working tree, removes the prerelease identifier, a
 
 ## Tagging a release
 
-Version preparation never commits, tags, pushes, or performs the distributable build. After preparing either an RC or final version:
+Version preparation never commits, tags, pushes, or performs the distributable build. After preparing an RC:
 
-1. Run `cargo check --workspace` to refresh and validate `Cargo.lock`.
-2. Review and commit the synchronized version changes.
+1. Review and commit the synchronized version changes, including the automatically refreshed `Cargo.lock`.
+2. Run `npm run build:alpha` to validate the committed RC locally.
 3. Run `npm run release:tag` from the clean committed tree.
 4. Push the commit and tag to GitHub.
+
+For a final version, run `cargo check --workspace` after `npm run version:release`, then review and commit the synchronized version files and `Cargo.lock` before tagging.
 
 For a final release, for example:
 

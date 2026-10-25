@@ -23,7 +23,7 @@
     "version:patch": "npm run check:uncommitted && npm run version:bump -- patch",
     "version:minor": "npm run check:uncommitted && npm run version:bump -- minor",
     "version:major": "npm run check:uncommitted && npm run version:bump -- major",
-    "version:rc": "npm run check:uncommitted && npm run version:bump -- rc",
+    "version:rc": "npm run check:uncommitted && npm run version:bump -- rc && node scripts/refresh-cargo-lock.mjs",
     "version:release": "npm run check:uncommitted && npm run version:bump -- release",
     "release:tag": "node scripts/release-tag.mjs",
     "cli:debug": "cargo run -p xaga-cli --",

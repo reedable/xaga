@@ -106,10 +106,14 @@ function main() {
   console.log("  package.json");
   for (const file of CARGO_FILES)
     console.log(`  ${file.slice(ROOT.length + 1)}`);
-  console.log(
-    "\nNote: Cargo.lock still shows the old version until you run a cargo command\n" +
-      "(e.g. `cargo check`), which refreshes the workspace packages."
-  );
+  if (command === "rc") {
+    console.log("\nThe version:rc command will refresh Cargo.lock next.");
+  } else {
+    console.log(
+      "\nNote: Cargo.lock still shows the old version until you run a cargo command\n" +
+        "(e.g. `cargo check`), which refreshes the workspace packages."
+    );
+  }
 }
 
 if (
