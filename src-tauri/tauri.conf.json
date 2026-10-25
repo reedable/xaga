@@ -44,7 +44,22 @@
     ],
     "macOS": {
       "minimumSystemVersion": "14.0",
-      "signingIdentity": "-"
+      "signingIdentity": "-",
+      "dmg": {
+        "background": "dmg/background.png",
+        "windowSize": {
+          "width": 700,
+          "height": 500
+        },
+        "appPosition": {
+          "x": 175,
+          "y": 195
+        },
+        "applicationFolderPosition": {
+          "x": 525,
+          "y": 195
+        }
+      }
     }
   }
 }
