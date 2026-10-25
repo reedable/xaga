@@ -42,62 +42,60 @@ func drawText(
 }
 
 let white = NSColor(calibratedWhite: 0.96, alpha: 1)
-let muted = NSColor(calibratedWhite: 0.76, alpha: 1)
 let accent = NSColor(calibratedRed: 0.68, green: 0.47, blue: 0.95, alpha: 1)
-let warning = NSColor(calibratedRed: 1.0, green: 0.76, blue: 0.33, alpha: 1)
 
 drawText(
-  "Install Xaga safely",
-  in: NSRect(x: 40, y: 438, width: 620, height: 42),
+  "Before opening Xaga",
+  in: NSRect(x: 40, y: 448, width: 620, height: 38),
   font: .systemFont(ofSize: 28, weight: .semibold),
   color: white
 )
 drawText(
-  "Do not open Xaga yet",
-  in: NSRect(x: 40, y: 405, width: 620, height: 28),
-  font: .systemFont(ofSize: 17, weight: .semibold),
-  color: warning
+  "1. In Terminal, run shasum -a 256 on this DMG.\nCompare the result with the SHA-256 on GitHub Releases.",
+  in: NSRect(x: 70, y: 375, width: 560, height: 48),
+  font: .systemFont(ofSize: 15, weight: .medium),
+  color: white
 )
 
 let arrow = NSBezierPath()
 arrow.lineWidth = 4
-arrow.move(to: NSPoint(x: 285, y: 305))
-arrow.line(to: NSPoint(x: 415, y: 305))
-arrow.move(to: NSPoint(x: 397, y: 319))
-arrow.line(to: NSPoint(x: 415, y: 305))
-arrow.line(to: NSPoint(x: 397, y: 291))
+arrow.move(to: NSPoint(x: 350, y: 350))
+arrow.line(to: NSPoint(x: 350, y: 270))
+arrow.move(to: NSPoint(x: 336, y: 288))
+arrow.line(to: NSPoint(x: 350, y: 270))
+arrow.line(to: NSPoint(x: 364, y: 288))
 accent.setStroke()
 arrow.stroke()
 
 drawText(
-  "Copy Xaga to a writable folder you control",
-  in: NSRect(x: 145, y: 185, width: 410, height: 30),
+  "2. Drag Xaga to Applications or another writable folder.",
+  in: NSRect(x: 100, y: 220, width: 500, height: 26),
+  font: .systemFont(ofSize: 15, weight: .medium),
+  color: white
+)
+
+drawText(
+  "3. In Terminal,",
+  in: NSRect(x: 65, y: 180, width: 570, height: 24),
   font: .systemFont(ofSize: 15, weight: .medium),
   color: white
 )
 drawText(
-  "Applications is optional and does not make an app trusted.",
-  in: NSRect(x: 100, y: 159, width: 500, height: 24),
-  font: .systemFont(ofSize: 13),
-  color: muted
+  "xattr -dr com.apple.quarantine /path/to/Xaga.app",
+  in: NSRect(x: 40, y: 139, width: 620, height: 28),
+  font: .monospacedSystemFont(ofSize: 14, weight: .medium),
+  color: accent
 )
-
 drawText(
-  "Before launching: verify the SHA-256 shown on the GitHub release,\nthen follow the Terminal steps in the installation guide.",
-  in: NSRect(x: 65, y: 104, width: 570, height: 64),
-  font: .systemFont(ofSize: 15),
+  "4. Open the copied Xaga.app.",
+  in: NSRect(x: 65, y: 108, width: 570, height: 25),
+  font: .systemFont(ofSize: 16, weight: .semibold),
   color: white
 )
 drawText(
-  "Do not use “Open Anyway”; it may become stuck.",
-  in: NSRect(x: 65, y: 72, width: 570, height: 24),
-  font: .systemFont(ofSize: 14, weight: .semibold),
-  color: warning
-)
-drawText(
-  "github.com/reedable/xaga  →  Installation",
-  in: NSRect(x: 65, y: 37, width: 570, height: 24),
-  font: .monospacedSystemFont(ofSize: 13, weight: .medium),
+  "Full instructions: github.com/reedable/xaga  →  Installation",
+  in: NSRect(x: 40, y: 58, width: 620, height: 24),
+  font: .monospacedSystemFont(ofSize: 12, weight: .medium),
   color: accent
 )
 
