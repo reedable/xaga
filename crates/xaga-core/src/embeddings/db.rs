@@ -2304,7 +2304,7 @@ mod tests {
 
     /// Null-vector rows must be excluded from both similarity paths: the `nearest_to`
     /// ANN branch (via `vector IS NOT NULL`) and the full-scan branch (via `is_null`).
-    /// Also verifies lancedb 0.27 accepts `vector IS NOT NULL` on a FixedSizeList column.
+    /// Also verifies lancedb 0.33 accepts `vector IS NOT NULL` on a FixedSizeList column.
     #[tokio::test]
     async fn null_vector_rows_excluded_from_similarity() {
         let dir = tempfile::tempdir().unwrap();
