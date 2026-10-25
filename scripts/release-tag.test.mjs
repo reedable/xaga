@@ -13,7 +13,10 @@ test("creates final and release-candidate tag names", () => {
 });
 
 test("rejects development and unsupported release versions", () => {
-  assert.throws(() => releaseTagName("0.9.0-dev"), /final or a numbered/);
+  assert.throws(
+    () => releaseTagName("0.9.0-dev"),
+    /Development version 0\.9\.0-dev cannot be tagged.*version:rc.*version:release/
+  );
   assert.throws(() => releaseTagName("0.9.0-rc.0"), /final or a numbered/);
   assert.throws(() => releaseTagName("0.9.0+alpha.abc"), /final or a numbered/);
 });
@@ -40,6 +43,6 @@ test("requires every recorded application version to match", () => {
         ...synchronized,
         { label: "lock", version: "0.8.5-dev" },
       ]),
-    /not synchronized.*lock=0\.8\.5-dev/
+    /Application version is 0\.9\.0-rc\.1.*lock=0\.8\.5-dev/
   );
 });

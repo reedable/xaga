@@ -10,6 +10,11 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const RELEASE_DOC = "docs/development/release_cycle.md#tagging-a-release";
 
 export function releaseTagName(version) {
+  if (/^\d+\.\d+\.\d+-dev$/.test(version)) {
+    throw new Error(
+      `Development version ${version} cannot be tagged as a release. Prepare an RC with npm run version:rc or a final release with npm run version:release. See ${RELEASE_DOC}.`
+    );
+  }
   if (!/^\d+\.\d+\.\d+(?:-rc\.[1-9]\d*)?$/.test(version)) {
     throw new Error(
       `Release version must be final or a numbered release candidate; got ${JSON.stringify(version)}. See ${RELEASE_DOC}.`
@@ -31,11 +36,17 @@ export function validateVersionRecords(records) {
   if (!expected) throw new Error("No application versions were found.");
   const mismatches = records.filter(({ version }) => version !== expected);
   if (mismatches.length > 0) {
-    const details = records
+    const details = mismatches
       .map(({ label, version }) => `${label}=${version}`)
       .join(", ");
+    const lockfileOnly = mismatches.every(({ label }) =>
+      label.startsWith("Cargo.lock:")
+    );
+    const remedy = lockfileOnly
+      ? " Run cargo check --workspace to refresh Cargo.lock."
+      : " Run the appropriate version:* command to synchronize the source version files.";
     throw new Error(
-      `Application versions are not synchronized: ${details}. See ${RELEASE_DOC}.`
+      `Application version is ${expected}, but these records differ: ${details}.${remedy} See ${RELEASE_DOC}.`
     );
   }
   return expected;
@@ -98,8 +109,10 @@ function main() {
   });
   validateCleanStatus(status);
 
-  const version = validateVersionRecords(versionRecords());
+  const records = versionRecords();
+  const version = validateVersionRecords(records.slice(0, 5));
   const tag = releaseTagName(version);
+  validateVersionRecords(records);
   const existing = spawnSync(
     "git",
     ["rev-parse", "--verify", "--quiet", `refs/tags/${tag}`],
