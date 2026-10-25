@@ -42,7 +42,6 @@ func drawText(
 }
 
 let white = NSColor(calibratedWhite: 0.96, alpha: 1)
-let accent = NSColor(calibratedRed: 0.68, green: 0.47, blue: 0.95, alpha: 1)
 
 drawText(
   "Before opening Xaga",
@@ -57,19 +56,9 @@ drawText(
   color: white
 )
 
-let arrow = NSBezierPath()
-arrow.lineWidth = 4
-arrow.move(to: NSPoint(x: 350, y: 350))
-arrow.line(to: NSPoint(x: 350, y: 270))
-arrow.move(to: NSPoint(x: 336, y: 288))
-arrow.line(to: NSPoint(x: 350, y: 270))
-arrow.line(to: NSPoint(x: 364, y: 288))
-accent.setStroke()
-arrow.stroke()
-
 drawText(
-  "2. Drag Xaga to Applications or another writable folder.",
-  in: NSRect(x: 100, y: 220, width: 500, height: 26),
+  "2. Drag Xaga to a\nwritable folder.",
+  in: NSRect(x: 240, y: 280, width: 220, height: 48),
   font: .systemFont(ofSize: 15, weight: .medium),
   color: white
 )
@@ -84,7 +73,7 @@ drawText(
   "xattr -dr com.apple.quarantine /path/to/Xaga.app",
   in: NSRect(x: 40, y: 139, width: 620, height: 28),
   font: .monospacedSystemFont(ofSize: 14, weight: .medium),
-  color: accent
+  color: white
 )
 drawText(
   "4. Open the copied Xaga.app.",
@@ -96,7 +85,7 @@ drawText(
   "Full instructions: github.com/reedable/xaga  →  Installation",
   in: NSRect(x: 40, y: 58, width: 620, height: 24),
   font: .monospacedSystemFont(ofSize: 12, weight: .medium),
-  color: accent
+  color: white
 )
 
 image.unlockFocus()
