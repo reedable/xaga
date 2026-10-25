@@ -14,11 +14,8 @@ let outputURL: URL = {
 let image = NSImage(size: canvasSize)
 image.lockFocus()
 
-let background = NSGradient(
-  starting: NSColor(calibratedRed: 0.055, green: 0.063, blue: 0.082, alpha: 1),
-  ending: NSColor(calibratedRed: 0.105, green: 0.078, blue: 0.170, alpha: 1)
-)!
-background.draw(in: NSRect(origin: .zero, size: canvasSize), angle: -90)
+NSColor.black.setFill()
+NSRect(origin: .zero, size: canvasSize).fill()
 
 func drawText(
   _ text: String,
