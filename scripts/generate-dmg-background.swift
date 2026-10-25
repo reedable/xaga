@@ -3,7 +3,9 @@
 import AppKit
 import Foundation
 
-let canvasSize = NSSize(width: 700, height: 500)
+// Finder's title and bottom bars reduce the visible background area by roughly
+// 60 points. Keep the composition within the top 500 points of this canvas.
+let canvasSize = NSSize(width: 700, height: 560)
 let outputURL: URL = {
   if CommandLine.arguments.count > 1 {
     return URL(fileURLWithPath: CommandLine.arguments[1])
@@ -45,47 +47,66 @@ let white = NSColor(calibratedWhite: 0.96, alpha: 1)
 
 drawText(
   "Before opening Xaga",
-  in: NSRect(x: 40, y: 448, width: 620, height: 38),
+  in: NSRect(x: 40, y: 497, width: 620, height: 38),
   font: .systemFont(ofSize: 28, weight: .semibold),
   color: white
 )
 drawText(
-  "1. In Terminal, run shasum -a 256 on this DMG.\nCompare the result with the SHA-256 on GitHub Releases.",
-  in: NSRect(x: 70, y: 375, width: 560, height: 48),
-  font: .systemFont(ofSize: 15, weight: .medium),
-  color: white
+  "1. Verify the SHA-256 on this DMG with GitHub Releases",
+  in: NSRect(x: 134, y: 450, width: 520, height: 22),
+  font: .systemFont(ofSize: 16, weight: .semibold),
+  color: white,
+  alignment: .left
+)
+drawText(
+  "shasum -a 256 /path/to/Xaga.dmg",
+  in: NSRect(x: 151, y: 429, width: 500, height: 20),
+  font: .monospacedSystemFont(ofSize: 14, weight: .regular),
+  color: white,
+  alignment: .left
 )
 
 drawText(
   "2. Drag Xaga to a\nwritable folder.",
-  in: NSRect(x: 240, y: 280, width: 220, height: 48),
-  font: .systemFont(ofSize: 15, weight: .medium),
+  in: NSRect(x: 240, y: 333, width: 220, height: 45),
+  font: .systemFont(ofSize: 16, weight: .semibold),
   color: white
 )
 
 drawText(
   "3. In Terminal,",
-  in: NSRect(x: 65, y: 180, width: 570, height: 24),
-  font: .systemFont(ofSize: 15, weight: .medium),
-  color: white
+  in: NSRect(x: 134, y: 256, width: 520, height: 22),
+  font: .systemFont(ofSize: 16, weight: .semibold),
+  color: white,
+  alignment: .left
 )
 drawText(
   "xattr -dr com.apple.quarantine /path/to/Xaga.app",
-  in: NSRect(x: 40, y: 139, width: 620, height: 28),
-  font: .monospacedSystemFont(ofSize: 14, weight: .medium),
-  color: white
+  in: NSRect(x: 151, y: 235, width: 500, height: 20),
+  font: .monospacedSystemFont(ofSize: 14, weight: .regular),
+  color: white,
+  alignment: .left
 )
 drawText(
   "4. Open the copied Xaga.app.",
-  in: NSRect(x: 65, y: 108, width: 570, height: 25),
+  in: NSRect(x: 134, y: 194, width: 520, height: 22),
   font: .systemFont(ofSize: 16, weight: .semibold),
-  color: white
+  color: white,
+  alignment: .left
 )
 drawText(
-  "Full instructions: github.com/reedable/xaga  →  Installation",
-  in: NSRect(x: 40, y: 58, width: 620, height: 24),
-  font: .monospacedSystemFont(ofSize: 12, weight: .medium),
-  color: white
+  "Full instructions",
+  in: NSRect(x: 134, y: 140, width: 520, height: 18),
+  font: .systemFont(ofSize: 12, weight: .semibold),
+  color: white,
+  alignment: .left
+)
+drawText(
+  "https://github.com/reedable/xaga/blob/develop/docs/installation.md",
+  in: NSRect(x: 134, y: 121, width: 540, height: 20),
+  font: .monospacedSystemFont(ofSize: 12, weight: .regular),
+  color: white,
+  alignment: .left
 )
 
 image.unlockFocus()
