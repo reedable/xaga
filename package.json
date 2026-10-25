@@ -1,6 +1,6 @@
 {
   "name": "xaga",
-  "version": "0.9.0-rc.1",
+  "version": "0.9.0-rc.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -37,6 +37,7 @@
     "@mozilla/readability": "^0.6.0",
     "@mui/icons-material": "^7.3.9",
     "@mui/material": "^7.3.9",
+    "@reedable/lliwio-css": "https://github.com/reedable/lliwio-css/releases/download/v0.0.2/reedable-lliwio-css-0.0.2.tgz",
     "@tauri-apps/api": "~2.12.0",
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-opener": "^2.5.3",

@@ -1,4 +1,4 @@
-import readerCss from "../../../lliwio-css/src/index.css?inline";
+import readerCss from "@reedable/lliwio-css/index.css?inline";
 import { type ThemeMode } from "../providers/AppearanceContext";
 import { FONT_FAMILY_CSS, type FontFamily } from "../utils/FontFamily";
 
@@ -75,20 +75,25 @@ export interface SerializedAnnotation {
 // ── Builder ───────────────────────────────────────────────────────────────────
 
 function escapeText(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
 export function buildEntryHtml(
   bodyHtml: string,
   title: string,
   style: HtmlReaderStyle,
-  annotations: SerializedAnnotation[] = [],
+  annotations: SerializedAnnotation[] = []
 ): string {
   const { themeMode, fontFamily, fontSize, lineHeight } = style;
   const prefersDark = themeMode === "dark";
   const fg = "var(--lliw-semanticColor__color--primary)";
   const fontStack = FONT_FAMILY_CSS[fontFamily];
-  const fontFamilyOverride = fontStack ? `--lliw-typography__font-family: ${fontStack};` : "";
+  const fontFamilyOverride = fontStack
+    ? `--lliw-typography__font-family: ${fontStack};`
+    : "";
 
   // Embed annotations in a non-executed <script type="application/json"> data
   // island (see the return below). See
@@ -228,7 +233,7 @@ export function buildEntryHtml(
         .map(
           ([name, t]) =>
             `mark[data-ann-color="${name}"]{background:${t.bg};border-radius:2px;cursor:pointer;outline:1px solid ${t.accent}${prefersDark ? ";color:#000000" : ""}}` +
-            `mark[data-ann-color="${name}"]:hover{background:${t.accent};color:${prefersDark ? "#000000" : fg}}`,
+            `mark[data-ann-color="${name}"]:hover{background:${t.accent};color:${prefersDark ? "#000000" : fg}}`
         )
         .join("")}
       mark.xf {

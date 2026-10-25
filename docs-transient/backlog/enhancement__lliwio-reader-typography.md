@@ -2,7 +2,8 @@
 
 ## Summary
 
-The reader imports `lliwio-css` from a sibling checkout at build time. Typography needs application-level visual verification and a reproducible distribution arrangement.
+The reader imports the exact `lliwio-css` release tarball pinned in
+`package.json`. Typography still needs application-level visual verification.
 
 ## Requirements
 
@@ -17,8 +18,7 @@ The reader imports `lliwio-css` from a sibling checkout at build time. Typograph
 - Review prose, headings, quotations, code, tables, figures, multilingual text, and feed summaries in the bundled application.
 - Review font and spacing controls and title typography.
 - Verify interaction styling and supported CSS functions in each supported webview.
-- Decide whether to vendor, package, or otherwise pin `lliwio-css` for reproducible builds.
-- Add the selected dependency arrangement and targeted visual regression coverage.
+- Add targeted visual regression coverage.
 
 ## References
 
