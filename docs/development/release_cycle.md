@@ -143,6 +143,7 @@ The tag must point to the commit containing both the prepared version and the re
 5. Check the Rust workspace with the lockfile.
 6. Build a universal macOS application for Apple Silicon and Intel.
 7. Create a draft GitHub Release and upload the build artifacts.
+8. Verify that the macOS application bundle has a valid code signature.
 
 The draft must be inspected before it is published. RC drafts are marked as GitHub prereleases; final drafts are not. The workflow intentionally has no form inputs: the committed version and pushed tag identify the release.
 
@@ -150,4 +151,4 @@ The build matrix contains only macOS while macOS is the only supported platform.
 
 ## Distribution boundary
 
-The automated build does not yet establish Apple code signing or notarization. A draft artifact can be used to validate the pipeline, but public macOS distribution must account for Gatekeeper and the project's signing policy before the draft is published.
+The automated build applies a local ad-hoc signature and verifies the completed application bundle. That signature supplies bundle integrity but no developer identity: GitHub holds no signing key, and Gatekeeper still requires the user to approve the application manually. Public distribution without that override requires a paid Apple Developer ID certificate and Apple notarization; those credentials are not currently part of the workflow.

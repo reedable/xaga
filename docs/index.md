@@ -2,6 +2,12 @@
 
 The map of `docs/`.
 
+## Using Xaga
+
+1. [Installation](installation.md) — download, install, and open Xaga on macOS
+
+2. [User guide](user_guide.md) — usage documentation (coming soon)
+
 ## Durable
 
 1. [Principles](principles/index.md) — what governs decisions: decision ownership, least visibility, secure by default, single source of truth, carried intent, priority, DRY.
