@@ -31,7 +31,7 @@ The normal ordering is:
 - `crates/xaga-core/Cargo.toml`
 - `crates/xaga-cli/Cargo.toml`
 
-`version:rc` refreshes the workspace package versions recorded in `Cargo.lock` automatically with `cargo metadata --no-deps`; this resolves metadata without compiling the Rust workspace. Other version commands require a subsequent Cargo command to refresh the lockfile.
+The version commands update the three Xaga workspace package entries in `Cargo.lock` directly alongside the source version files. They do not invoke Cargo, resolve dependencies, access the network, or compile the Rust workspace.
 
 ## Starting development
 
@@ -86,7 +86,7 @@ From `x.y.z-dev`, prepare the first candidate with:
 npm run version:rc
 ```
 
-This command requires a clean working tree and changes `x.y.z-dev` to `x.y.z-rc.1` in every source version file. Repeating it from `x.y.z-rc.N` increments the candidate to `x.y.z-rc.(N+1)`. It then runs `cargo metadata --format-version 1 --no-deps` to refresh the workspace versions in `Cargo.lock` without compiling. Review and commit the version files and refreshed lockfile before building or tagging.
+This command requires a clean working tree and changes `x.y.z-dev` to `x.y.z-rc.1` in every source version file and in the three corresponding `Cargo.lock` package entries. Repeating it from `x.y.z-rc.N` increments the candidate to `x.y.z-rc.(N+1)`. Review and commit the version files and refreshed lockfile before building or tagging.
 
 After committing the RC, create its local validation build with:
 
@@ -108,7 +108,7 @@ From either `x.y.z-dev` or `x.y.z-rc.N`, prepare the final version with:
 npm run version:release
 ```
 
-This command requires a clean working tree, removes the prerelease identifier, and synchronizes the final `x.y.z` version across the source version files. It is rejected when the current version is already final. Run a Cargo command to refresh `Cargo.lock`, then validate and commit the changes.
+This command requires a clean working tree, removes the prerelease identifier, and synchronizes the final `x.y.z` version across the source version files and `Cargo.lock`. It is rejected when the current version is already final. Review and commit the changes before tagging.
 
 ## Tagging a release
 
@@ -119,7 +119,7 @@ Version preparation never commits, tags, pushes, or performs the distributable b
 3. Run `npm run release:tag` from the clean committed tree.
 4. Push the commit and tag to GitHub.
 
-For a final version, run `cargo check --workspace` after `npm run version:release`, then review and commit the synchronized version files and `Cargo.lock` before tagging.
+For a final version, review and commit the synchronized version files and `Cargo.lock` after `npm run version:release`, then tag the clean committed tree.
 
 For a final release, for example:
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { nextVersion } from "./bump-version.mjs";
+import { nextVersion, replaceCargoLockVersions } from "./bump-version.mjs";
 
 test("version bumps start a development version", () => {
   assert.equal(nextVersion("0.8.4", "patch"), "0.8.5-dev");
@@ -38,4 +38,37 @@ test("rejects unsupported versions and commands", () => {
   );
   assert.throws(() => nextVersion("0.8.5-beta.1", "rc"), /Expected version/);
   assert.throws(() => nextVersion("0.8.5", "beta"), /Expected one of/);
+});
+
+test("updates exactly the Xaga workspace package versions in Cargo.lock", () => {
+  const lock = `[[package]]
+name = "dependency"
+version = "0.9.0"
+
+[[package]]
+name = "xaga"
+version = "0.8.5-rc.1"
+
+[[package]]
+name = "xaga-cli"
+version = "0.8.5-rc.1"
+
+[[package]]
+name = "xaga-core"
+version = "0.8.5-rc.1"
+`;
+  const updated = replaceCargoLockVersions(lock, "0.8.5-rc.2");
+  assert.match(updated, /name = "dependency"\nversion = "0\.9\.0"/);
+  assert.equal(updated.match(/version = "0\.8\.5-rc\.2"/g)?.length, 3);
+});
+
+test("rejects an incomplete Cargo.lock workspace package set", () => {
+  assert.throws(
+    () =>
+      replaceCargoLockVersions(
+        '[[package]]\nname = "xaga"\nversion = "0.8.5-rc.1"\n',
+        "0.8.5-rc.2"
+      ),
+    /Expected 3.*updated 1/
+  );
 });

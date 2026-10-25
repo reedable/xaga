@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TAURI_CONF = resolve(ROOT, "src-tauri/tauri.conf.json");
 const PACKAGE_JSON = resolve(ROOT, "package.json");
+const CARGO_LOCK = resolve(ROOT, "Cargo.lock");
 const CARGO_FILES = [
   resolve(ROOT, "src-tauri/Cargo.toml"),
   resolve(ROOT, "crates/xaga-core/Cargo.toml"),
@@ -17,6 +18,7 @@ const CARGO_FILES = [
 const VERSION_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:-(dev|rc\.(\d+)))?$/;
 const VERSION_IN_FILE = "\\d+\\.\\d+\\.\\d+(?:-(?:dev|rc\\.\\d+))?";
 const COMMANDS = ["patch", "minor", "major", "rc", "release"];
+const WORKSPACE_PACKAGES = ["xaga", "xaga-core", "xaga-cli"];
 
 export function nextVersion(current, command) {
   const match = VERSION_PATTERN.exec(current);
@@ -82,6 +84,27 @@ function replaceCargoVersion(text, next, file) {
   return replaced;
 }
 
+export function replaceCargoLockVersions(text, next) {
+  let replacements = 0;
+  const names = WORKSPACE_PACKAGES.join("|");
+  const replaced = text.replace(
+    new RegExp(
+      `(\\[\\[package\\]\\]\\nname = "(?:${names})"\\nversion = ")${VERSION_IN_FILE}(")`,
+      "g"
+    ),
+    (_match, before, after) => {
+      replacements += 1;
+      return `${before}${next}${after}`;
+    }
+  );
+  if (replacements !== WORKSPACE_PACKAGES.length) {
+    throw new Error(
+      `Expected ${WORKSPACE_PACKAGES.length} Xaga workspace packages in Cargo.lock; updated ${replacements}`
+    );
+  }
+  return replaced;
+}
+
 function main() {
   const command = process.argv[2];
   const confText = readFileSync(TAURI_CONF, "utf8");
@@ -100,20 +123,16 @@ function main() {
     writeFileSync(file, replaceCargoVersion(text, next, file));
   }
 
+  const cargoLockText = readFileSync(CARGO_LOCK, "utf8");
+  writeFileSync(CARGO_LOCK, replaceCargoLockVersions(cargoLockText, next));
+
   console.log(`Xaga app version: ${current} -> ${next} (${command})`);
   console.log("Updated:");
   console.log("  src-tauri/tauri.conf.json");
   console.log("  package.json");
   for (const file of CARGO_FILES)
     console.log(`  ${file.slice(ROOT.length + 1)}`);
-  if (command === "rc") {
-    console.log("\nThe version:rc command will refresh Cargo.lock next.");
-  } else {
-    console.log(
-      "\nNote: Cargo.lock still shows the old version until you run a cargo command\n" +
-        "(e.g. `cargo check`), which refreshes the workspace packages."
-    );
-  }
+  console.log("  Cargo.lock");
 }
 
 if (
