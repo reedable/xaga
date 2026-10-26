@@ -1,0 +1,134 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify release
+    runs-on: macos-14
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Verify tag and application version
+        shell: bash
+        run: |
+          release_doc="docs/development/release_cycle.md"
+
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?$ ]]; then
+            echo "::error::Release tag must look like v0.8.5 or v0.8.5-rc.1; got $GITHUB_REF_NAME. See $release_doc#github-release-automation."
+            exit 1
+          fi
+
+          tag_version="${GITHUB_REF_NAME#v}"
+          app_version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+
+          if [[ "$tag_version" != "$app_version" ]]; then
+            echo "::error::Tag version ($tag_version) does not match app version ($app_version). See $release_doc#version-lifecycle."
+            exit 1
+          fi
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies and build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+
+      - name: Install Protocol Buffers compiler
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: brew install protobuf && protoc --version
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Run JavaScript tests
+        run: npm test
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Check Rust workspace
+        run: cargo check --workspace --locked
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: verify
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            runner: macos-14
+            target: aarch64-apple-darwin
+            rust_targets: aarch64-apple-darwin
+
+          # Add Linux and Windows entries here when Xaga supports them.
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+
+      - name: Cache Rust dependencies and build output
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          key: ${{ matrix.target }}
+
+      - name: Install Protocol Buffers compiler
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: brew install protobuf && protoc --version
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Build and upload release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Xaga ${{ github.ref_name }}
+          generateReleaseNotes: true
+          releaseDraft: true
+          prerelease: ${{ contains(github.ref_name, '-rc.') }}
+          args: --target ${{ matrix.target }}
+
+      - name: Verify macOS app signature
+        shell: bash
+        run: |
+          app_path="target/${{ matrix.target }}/release/bundle/macos/Xaga.app"
+          codesign --verify --deep --strict --verbose=2 "$app_path"

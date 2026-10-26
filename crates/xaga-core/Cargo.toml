@@ -1,6 +1,6 @@
 [package]
 name = "xaga-core"
-version = "0.8.3"
+version = "0.9.0"
 edition = "2024"
 
 [dependencies]
@@ -30,10 +30,10 @@ bytes             = "1"
 # Embeddings pipeline
 fastembed           = "=3.14.1"
 ort-sys             = { version = "=2.0.0-rc.4", default-features = false, features = ["download-binaries"] }
-lancedb             = "0.27"
-arrow-array         = "57"
-arrow-buffer        = "57"
-arrow-schema        = "57"
+lancedb             = "0.33"
+arrow-array         = "58"
+arrow-buffer        = "58"
+arrow-schema        = "58"
 
 [dev-dependencies]
 tokio               = { version = "1", features = ["rt-multi-thread", "macros"] }

@@ -4,7 +4,7 @@ _A quiet tool for a noisy age._
 
 News readers are built around FOMO. They optimize for speed and volume, selling the anxiety of missing out under the banner of "be the first to know." Xaga rejects that premise. Being first is not the goal. Understanding is.
 
-**Discover, Understand, Connect, Insight.**
+**Turn your discovery to insight.**
 
 Xaga is a Personal Knowledge Management (PKM) tool.
 
@@ -34,4 +34,7 @@ Xaga cannot sort this for you. No tool can.
 
 ## Next step
 
-This document is the why. Find out how Xaga is built. See [docs/](docs/): its principles, architecture, and conventions.
+This document is the why.
+
+- **Using Xaga?** Start with [installation](docs/installation.md), then visit the [user guide](docs/user_guide.md).
+- **Developing Xaga?** Start with the [developer documentation](docs/index.md) for its principles, architecture, conventions, and development cycle.

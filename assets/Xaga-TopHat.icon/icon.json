@@ -6,6 +6,7 @@
     {
       "layers" : [
         {
+          "blend-mode" : "normal",
           "hidden" : false,
           "image-name" : "Image.png",
           "name" : "Image"

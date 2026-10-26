@@ -14,7 +14,7 @@ import {
   type SerializedAnnotation,
 } from "./buildEntryHtml";
 
-vi.mock("../../../lliwio-css/src/index.css?inline", () => ({ default: "" }));
+vi.mock("@reedable/lliwio-css/index.css?inline", () => ({ default: "" }));
 
 const style: HtmlReaderStyle = {
   themeMode: "light",

@@ -5,7 +5,7 @@ import ArticleReader from "./ArticleReader";
 
 // This test follows summary data through React; stylesheet bundling is checked
 // by the application build and rendering by the native WebKit probe.
-vi.mock("../../../../lliwio-css/src/index.css?inline", () => ({ default: "" }));
+vi.mock("@reedable/lliwio-css/index.css?inline", () => ({ default: "" }));
 
 const mocks = vi.hoisted(() => ({
   appearance: {
