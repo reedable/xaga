@@ -24,11 +24,10 @@ Follow this procedure before launching Xaga:
 4. Open the disk image and copy **Xaga.app** to a writable folder you control.
    Choose **Applications** only if you have already decided to install Xaga
    there; that location does not establish that an application is safe.
-5. In Terminal, type the following command, add a space, drag the copied
-   **Xaga.app** into Terminal, and press Return:
+5. In Terminal, type the following command supplying your own path to Xaga.app.
 
    ```sh
-   xattr -dr com.apple.quarantine
+   xattr -dr com.apple.quarantine /path/to/Xaga.app
    ```
 
 6. Open that copy of Xaga.
