@@ -2,29 +2,27 @@
 
 ## Summary
 
-Tag, Collection, Bookmark, Pin, Shortcut, and Site do not have complete, mutually
-consistent domain definitions. Persisted tags combine arbitrary labels with
-reserved state markers; the domain exposes some markers as capabilities and
-booleans; Shortcuts projects pinned entities alongside built-in navigation; and
-Site is a derived hostname grouping that becomes durable in some sense if a pin
-must survive after its Entries disappear. Define these concepts and their
-relationships before selecting persistence for pinned Sites.
+Resolve the remaining Tag, Collection, Pin, Shortcut, and Site definitions and
+the transition from Bookmark to an editable tag. Record domain definitions and
+identify implementation and migration changes, including persistence for pinned
+Sites.
 
 ## Requirements
 
 - Define each concept independently of its persistence, cache, command, and UI
   representations.
-- Define Tag and the relationship between arbitrary tags and the reserved
-  `unread`, `bookmark`, and `pinned` markers.
+- Define Tag identity, editing, and applicability across item types using the
+  model in the linked idea; identify the required domain-model changes.
 - Decide whether tags belong in the domain model and whether arbitrary persisted
   tags belong in the LanceDB mirror.
 - Define Collection membership and identity and the relationship of Feed, Topic,
   and Site to Collection.
-- Define Bookmark and its relationship to Entry, the `bookmark` tag, bookmark
-  state, bookmark import/export, and the `Bookmarkable` capability.
+- Define how bookmark import/export and the existing `Bookmarkable` capability
+  transition to bookmark as an ordinary editable tag.
 - Define Pin as an action, state, or relationship; its relationship to the
   `pinned` marker and `Pinnable`; and whether it is intrinsic to a target or
-  membership in Shortcuts.
+  membership in Shortcuts. Pinning gives
+  access through Shortcuts and can apply to individual articles.
 - Define Shortcut, including built-in navigation targets, pinned targets, typed
   target identity, ordering, and whether Shortcut has a durable domain
   representation or remains a UI projection.
@@ -47,12 +45,15 @@ relationships before selecting persistence for pinned Sites.
 - Compare Pin/Shortcut ownership models and their consequences for existing
   Feed/Topic pins, Site persistence, deletion, dangling targets, ordering,
   concurrency, migration, and external edits.
-- Present definition options and their modeling consequences for decision.
+- Present options and modeling consequences for the unresolved definitions.
 - Record the chosen definitions in durable domain documentation and identify the
   implementation and migration changes they require.
 
 ## References
 
+- [Tags and the Inspector](../ideas/tags-and-inspector.md)
+- [Store Unread Outside Tags](../available/refactor__store-unread-outside-tags.md)
+- [Pin Articles to Shortcuts](../available/enhancement__pin-articles-to-shortcuts.md)
 - `src/domain.ts`
 - `src/types.ts`
 - `src/Shortcuts.ts`

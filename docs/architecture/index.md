@@ -18,6 +18,8 @@ Standing architecture rules for this project. Each has its own doc; keep this in
 
 8. [Sites](sites.md) — Site identity is a normalized HTTP(S) Entry hostname; membership and counts are derived at read time from Entry rows, never persisted or inferred from Feeds.
 
+9. [ListView behavior](list_view.md) — read-state changes and unpinning preserve the current browsing context.
+
 ## Security
 
 Architecture of the security-critical paths, in [security/](security/). These describe how a subsystem works and why — design and limits, not findings or status.
