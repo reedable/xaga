@@ -60,9 +60,6 @@ mod tests {
 
     fn row(id: &str, url: &str, is_unread: bool, is_bookmarked: bool) -> EmbeddingEntry {
         let mut tags = vec![];
-        if is_unread {
-            tags.push("unread".to_string());
-        }
         if is_bookmarked {
             tags.push("bookmark".to_string());
         }

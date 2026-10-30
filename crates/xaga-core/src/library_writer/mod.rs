@@ -124,8 +124,6 @@ pub enum BookmarkOutcome {
 /// intent end-to-end (docs/principles/carry_intent_end_to_end.md).
 #[derive(Debug, Clone, Copy)]
 pub enum TagPatch {
-    MarkRead,
-    MarkUnread,
     AddBookmark,
     RemoveBookmark,
 }
@@ -133,16 +131,6 @@ pub enum TagPatch {
 impl TagPatch {
     fn apply(self, mut tags: Vec<String>) -> Vec<String> {
         match self {
-            TagPatch::MarkRead => {
-                tags.retain(|t| t != crate::tags::UNREAD);
-                tags
-            }
-            TagPatch::MarkUnread => {
-                if !crate::tags::is_unread(&tags) {
-                    tags.push(crate::tags::UNREAD.to_string());
-                }
-                tags
-            }
             TagPatch::AddBookmark => {
                 if !crate::tags::is_bookmarked(&tags) {
                     tags.push(crate::tags::BOOKMARK.to_string());
@@ -207,6 +195,11 @@ enum Op {
         article_id: String,
         annotation_id: String,
         resp: oneshot::Sender<Result<Article, WriterError>>,
+    },
+    SetEntryUnread {
+        id: String,
+        is_unread: bool,
+        resp: oneshot::Sender<Result<Entry, WriterError>>,
     },
     PatchEntryTags {
         id: String,
@@ -332,6 +325,7 @@ impl Op {
             | Op::AddAnnotation { article_id: id, .. }
             | Op::ReplaceAnnotation { article_id: id, .. }
             | Op::RemoveAnnotation { article_id: id, .. }
+            | Op::SetEntryUnread { id, .. }
             | Op::PatchEntryTags { id, .. } => format!("entry/{id}"),
             Op::SavePdf { url, .. }
             | Op::BookmarkEntry { url, .. }
@@ -367,6 +361,7 @@ impl Op {
             Op::AddAnnotation { .. } => "add_annotation",
             Op::ReplaceAnnotation { .. } => "replace_annotation",
             Op::RemoveAnnotation { .. } => "remove_annotation",
+            Op::SetEntryUnread { .. } => "set_entry_unread",
             Op::PatchEntryTags { .. } => "patch_entry_tags",
             Op::BookmarkEntry { .. } => "bookmark_entry",
             Op::SaveTopic { .. } => "save_topic",
@@ -396,6 +391,7 @@ impl Op {
             Op::AddAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::ReplaceAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RemoveAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::SetEntryUnread { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::PatchEntryTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::BookmarkEntry { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SaveTopic { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -527,6 +523,16 @@ impl Op {
                         .await
                         .map_err(WriterError::from);
                 let _ = resp.send(r);
+            }
+            Op::SetEntryUnread {
+                id,
+                is_unread,
+                resp,
+            } => {
+                let result = entries::set_entry_unread(library_dir, &id, is_unread, token)
+                    .await
+                    .map_err(WriterError::from);
+                let _ = resp.send(result);
             }
             Op::PatchEntryTags { id, patch, resp } => {
                 // The whole tag read-modify-write runs inside the lane and cannot interleave.
@@ -1027,6 +1033,26 @@ impl LibraryWriter {
         self.submit(tier, op, rx).await
     }
 
+    /// Sets reading state without changing organizational tags.
+    pub async fn set_entry_unread(
+        &self,
+        tier: Tier,
+        id: String,
+        is_unread: bool,
+    ) -> Result<Entry, WriterError> {
+        let (resp, rx) = oneshot::channel();
+        self.submit(
+            tier,
+            Op::SetEntryUnread {
+                id,
+                is_unread,
+                resp,
+            },
+            rx,
+        )
+        .await
+    }
+
     pub async fn patch_entry_tags(
         &self,
         tier: Tier,
@@ -1522,6 +1548,27 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn reading_state_bookmark_and_annotation_mutations_share_the_entry_lane() {
+        let dir = tempfile::tempdir().unwrap();
+        let writer = start_writer(dir.path());
+        seed_article(&writer, "saved").await;
+        let (read, bookmark, annotation) = tokio::join!(
+            writer.set_entry_unread(Tier::Interactive, "saved".into(), false),
+            writer.patch_entry_tags(Tier::Interactive, "saved".into(), TagPatch::AddBookmark),
+            writer.add_annotation(Tier::Interactive, "saved".into(), annotation("note")),
+        );
+        read.unwrap();
+        bookmark.unwrap();
+        annotation.unwrap();
+        let saved = articles::read_article(dir.path(), "saved").await.unwrap();
+        assert!(!saved.meta.is_unread && saved.meta.is_bookmarked);
+        assert_eq!(saved.annotations[0].id, "note");
+        let raw = std::fs::read_to_string(crate::library::entry_path(dir.path(), "saved")).unwrap();
+        assert!(!crate::md::test_frontmatter_values(&raw).contains_key("is_unread"));
+        writer.shutdown().await;
     }
 
     #[tokio::test]

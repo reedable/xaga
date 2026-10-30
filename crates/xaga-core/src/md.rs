@@ -72,6 +72,9 @@ pub(crate) fn patch_document(
             noyalib::to_value(value).map_err(|e| MdError::Frontmatter(e.to_string()))?,
         );
     }
+    if fields.get("is_unread") == Some(&noyalib::Value::Bool(false)) {
+        fields.remove("is_unread");
+    }
     // Unsupported image-map storage is omitted on every save (crash_consistency.md).
     fields.remove("images");
     // Block scalars in noyalib 0.0.15 do not preserve embedded carriage returns.
@@ -154,7 +157,7 @@ fn with_reference(mut annotations: Vec<Annotation>, article_id: &str) -> Vec<Ann
 
 /// Converts .md storage format to Entry domain object
 pub(crate) fn md_to_entry(md: Markdown) -> Entry {
-    let is_unread = crate::tags::is_unread(&md.fm.tags);
+    let is_unread = md.fm.is_unread.unwrap_or(false);
     let is_bookmarked = crate::tags::is_bookmarked(&md.fm.tags);
 
     Entry {
@@ -184,6 +187,7 @@ pub struct Frontmatter {
     pub annotations: Vec<Annotation>,
     pub threshold: Option<f32>,
     pub tags: Vec<String>,
+    pub is_unread: Option<bool>,
     pub favicon: Option<String>,
     pub items: Vec<CollectionItem>,
 }
@@ -259,6 +263,8 @@ struct FrontmatterRaw {
     #[serde(default)]
     tags: Vec<String>,
     #[serde(default)]
+    is_unread: Option<bool>,
+    #[serde(default)]
     favicon: Option<String>,
     #[serde(default)]
     items: Vec<CollectionItem>,
@@ -285,6 +291,7 @@ pub(crate) fn split_document(raw: &str) -> Result<(Frontmatter, String), MdError
             annotations: fm.annotations.into_iter().map(Into::into).collect(),
             threshold: fm.threshold,
             tags: fm.tags,
+            is_unread: fm.is_unread,
             favicon: fm.favicon,
             items: fm.items,
         },
@@ -295,6 +302,27 @@ pub(crate) fn split_document(raw: &str) -> Result<(Frontmatter, String), MdError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reading_state_comes_only_from_the_dedicated_field() {
+        for (fields, expected) in [
+            ("tags: [unread]", false),
+            ("is_unread: true", true),
+            ("is_unread: false\ntags: [unread]", false),
+            ("title: Manually supplied", false),
+        ] {
+            let fm = parse_frontmatter(&doc(fields)).unwrap();
+            let entry = md_to_entry(Markdown {
+                id: "entry".into(),
+                fm,
+                body: String::new(),
+            });
+            assert_eq!(entry.is_unread, expected, "{fields}");
+        }
+        let saved = patch_document(&doc("is_unread: false\ntags: [research]"), &[], None).unwrap();
+        assert!(!test_frontmatter_values(&saved).contains_key("is_unread"));
+        assert_eq!(parse_frontmatter(&saved).unwrap().tags, vec!["research"]);
+    }
 
     #[test]
     fn frontmatter_edits_preserve_siblings_and_escape_multiline_values() {

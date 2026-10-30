@@ -9,16 +9,16 @@ use super::row::{article_embed_text, checksum, feed_embed_text, topic_embed_text
 use super::{EmbeddingsDb, EmbeddingsError};
 use crate::types::{Annotation, Article, Entry, Feed, Kind, ListItem, Topic};
 
-/// Compares old and new tag state; sends the entry to the appropriate channels
+/// Compares old and new state; sends the entry to the appropriate channels
 /// when is_unread or is_bookmarked actually changed.
 fn emit_entry_changes(
     entry: &Entry,
-    old_tags: Option<&[String]>,
+    old: Option<&EmbeddingEntry>,
     unread_tx: &flume::Sender<Entry>,
     bookmarked_tx: &flume::Sender<Entry>,
 ) {
-    let old_unread = old_tags.map_or(false, crate::tags::is_unread);
-    let old_bookmarked = old_tags.map_or(false, crate::tags::is_bookmarked);
+    let old_unread = old.is_some_and(|row| row.is_unread);
+    let old_bookmarked = old.is_some_and(|row| row.is_bookmarked);
     let new_unread = entry.is_unread;
     let new_bookmarked = entry.is_bookmarked;
     if old_unread != new_unread || old_bookmarked != new_bookmarked {
@@ -294,11 +294,15 @@ pub async fn sync_entry_row(
     // Write only when something the row stores actually changed.
     let changed = match &existing {
         None => true,
-        Some(e) => !content_unchanged || e.tags != row.tags || e.summary != row.summary,
+        Some(e) => {
+            !content_unchanged
+                || e.tags != row.tags
+                || e.is_unread != row.is_unread
+                || e.summary != row.summary
+        }
     };
 
     if changed {
-        let old_tags = existing.as_ref().map(|e| e.tags.clone());
         // Carry the existing row's topics + items forward so this write never clobbers the reverse
         // index or the recorded annotation membership — for entry rows `items` holds that membership,
         // owned by the annotation reconcile path, not this one.
@@ -311,7 +315,7 @@ pub async fn sync_entry_row(
             .map(|e| e.items.clone())
             .unwrap_or_default();
         db.upsert(row).await?;
-        emit_entry_changes(&article.meta, old_tags.as_deref(), unread_tx, bookmarked_tx);
+        emit_entry_changes(&article.meta, existing.as_ref(), unread_tx, bookmarked_tx);
     }
 
     // Reconcile annotation rows (embedder-free) only when the recorded membership (the entry row's
@@ -631,7 +635,6 @@ pub(crate) async fn apply_state(
         }
     }
     if let Some(v) = is_unread {
-        set_tag(&mut row.tags, crate::tags::UNREAD, v);
         row.is_unread = v;
     }
     if let Some(v) = is_bookmarked {

@@ -1,6 +1,6 @@
 use tauri::State;
 use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
-use xaga_core::library_writer::{TagPatch, Tier as WriteTier};
+use xaga_core::library_writer::Tier as WriteTier;
 use xaga_core::persistence::entries;
 use xaga_core::query::items;
 use xaga_core::types::{Entry, Kind, ListItem};
@@ -21,7 +21,7 @@ pub async fn read_entry(id: String, state: State<'_, AppState>) -> Result<Entry,
 pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<Entry, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let entry = writer
-        .patch_entry_tags(WriteTier::Interactive, id.clone(), TagPatch::MarkRead)
+        .set_entry_unread(WriteTier::Interactive, id.clone(), false)
         .await
         .map_err(AppError::from)?;
     state.enqueue(
@@ -41,7 +41,7 @@ pub async fn mark_entry_read(id: String, state: State<'_, AppState>) -> Result<E
 pub async fn mark_entry_unread(id: String, state: State<'_, AppState>) -> Result<Entry, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let entry = writer
-        .patch_entry_tags(WriteTier::Interactive, id.clone(), TagPatch::MarkUnread)
+        .set_entry_unread(WriteTier::Interactive, id.clone(), true)
         .await
         .map_err(AppError::from)?;
     state.enqueue(

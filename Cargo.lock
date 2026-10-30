@@ -10465,7 +10465,7 @@ dependencies = [
 
 [[package]]
 name = "xaga"
-version = "0.9.1-dev"
+version = "0.10.0-dev"
 dependencies = [
  "avif-parse",
  "base64 0.22.1",
@@ -10500,15 +10500,19 @@ dependencies = [
 
 [[package]]
 name = "xaga-cli"
-version = "0.9.1-dev"
+version = "0.10.0-dev"
 dependencies = [
  "chrono",
  "clap",
  "dirs 5.0.1",
+ "flume",
+ "lancedb",
+ "noyalib",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
  "similar",
+ "tempfile",
  "tokio",
  "toml 0.8.2",
  "xaga-core",
@@ -10516,7 +10520,7 @@ dependencies = [
 
 [[package]]
 name = "xaga-core"
-version = "0.9.1-dev"
+version = "0.10.0-dev"
 dependencies = [
  "arrow-array",
  "arrow-buffer",

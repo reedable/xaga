@@ -55,3 +55,12 @@ before its dormant companion in that
 lane; PDF saves leave canonical Markdown and annotations intact. A newly
 downloaded PDF requires the library writer, while validated local reads do not
 require write ownership.
+
+### Disposable 0.9-to-0.10 CLI converter
+
+`xaga-cli library upgrade` is an explicit exception to the runtime writer lane
+requirement. It holds the exclusive library lock for the entire conversion and
+cache reconciliation, runs file conversions sequentially, and commits each file
+with fsync and atomic replacement. All migration-specific rules and direct cache
+updates live in the CLI; no legacy conversion API is built into core. See the
+[upgrade contract](../library_upgrade.md) and [crash ordering](crash_consistency.md#article-reading-state-and-explicit-library-upgrades).

@@ -124,6 +124,7 @@ pub(crate) async fn save_article(
             serde_json::json!(chrono::Utc::now().to_rfc3339()),
         ));
         updates.push(("aliases", serde_json::json!([title])));
+        updates.push(("is_unread", serde_json::json!(true)));
     }
     for (key, value) in [
         ("published", published_at),
@@ -361,7 +362,8 @@ summary: |
   Second line
 # User-maintained metadata
 aliases: [Original, My alias]
-tags: [unread, bookmark, research, 'project/custom']
+is_unread: true
+tags: [bookmark, research, 'project/custom']
 custom:
   nested: [one, two]
 annotations:
@@ -408,7 +410,7 @@ Original body
         let stored = std::fs::read_to_string(path).unwrap();
         let stored_fields = crate::md::test_frontmatter_values(&stored);
         let original_fields = crate::md::test_frontmatter_values(USER_DOCUMENT);
-        for key in ["aliases", "tags", "custom", "annotations"] {
+        for key in ["aliases", "tags", "is_unread", "custom", "annotations"] {
             assert_eq!(stored_fields[key], original_fields[key], "changed {key}");
         }
         assert_eq!(

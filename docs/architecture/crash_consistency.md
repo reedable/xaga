@@ -39,3 +39,42 @@ only the companion. Markdown persistence and PDF-resource removal are not one tr
 a crash before removal can still leave both representations, and local lookup
 prefers the PDF. A successful HTML refresh removes those stale PDF resources.
 Download staging remains outside the library.
+
+### Article reading state and explicit library upgrades
+
+Reading-state writes run in the entry's library-writer lane and atomically patch
+`is_unread` without changing tags, annotations, content, or unrelated timestamps.
+Unread is stored as `is_unread: true`; marking read removes the field. Command
+handlers enqueue typed `StatePatch` updates after the file mutation. LanceDB's
+`is_unread` column is derived; cache state changes do not synthesize tag markers.
+Recovery compares the cached boolean with the file independently of the content
+checksum, so a crash between the authoritative write and cache update heals.
+
+The CLI performs the explicit 0.9-to-0.10 conversion under the library write lock.
+The disposable CLI owns all legacy-format rules. It converts entries sequentially
+with sibling temporary files, file fsync, atomic rename and directory fsync,
+without using the runtime `LibraryWriter`. No migration-specific API is added
+to core. An existing boolean wins over a conflicting legacy `unread` tag;
+otherwise the tag determines state.
+The field update and removal of the legacy marker share one atomic replacement.
+Read state is represented by omission, including normalization of explicit false.
+Files already in the new representation require no rewrite. Conversion applies
+the existing removal rule for unsupported `images` metadata.
+
+A crash may leave a library partially converted. Rerunning the upgrade is safe:
+it preserves converted files and retries cache reconciliation even when no file
+needs rewriting. Success requires both file conversion and cache reconciliation;
+errors identify unfinished work and cause a nonzero CLI exit status. The app
+never performs this format conversion automatically.
+
+Cache reconciliation updates existing Entry rows in bounded batches of at most
+1024 file identities, partitioned by the new boolean state. Each update changes
+only `is_unread` and removes the legacy `unread` tag; vectors, memberships and
+other columns survive. The bound limits SQL expression size and avoids a commit
+per file. Missing rows are left for ordinary recovery. The converter retains at
+most one article document and one batch of identities, rather than accumulating
+the corpus in memory. Failed batches are retried from files on the next invocation.
+
+After the file batches, a final cache pass removes legacy unread markers from
+stale rows as well, without changing their stored boolean state. Normal recovery
+removes rows whose source is gone.

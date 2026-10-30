@@ -39,6 +39,8 @@ enum Command {
     Embeddings(cmd::embeddings::EmbeddingsArgs),
     /// Garbage-collect stored entry images
     Images(cmd::images::ImagesArgs),
+    /// Manage the library storage format
+    Library(cmd::library::LibraryArgs),
     /// Read or write ~/.xagarc
     Config(cmd::config::ConfigArgs),
 }
@@ -74,6 +76,7 @@ async fn main() {
             *dry_run |= cli.dry_run;
             cmd::images::handle(args.subcommand, &data_dir).await;
         }
+        Command::Library(args) => cmd::library::handle(args.subcommand, &data_dir).await,
         Command::Config(args) => cmd::config::handle(args.subcommand, &rc, &data_dir),
     }
 }

@@ -25,13 +25,13 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     db: &EmbeddingsDb,
     sink: &mut S,
 ) -> Result<RepairResidue, EmbeddingsError> {
-    let db_meta = db.list_entries_meta().await?; // id → (checksum, reference, has_vector, kind, items)
+    let db_meta = db.list_entries_meta().await?; // id → (checksum, reference, has_vector, kind, items, is_unread)
 
     // Embedding is needed when the row is absent, its content changed, or its vector is missing.
     let needs_embedding = |id: &str, cksum: &str| -> bool {
         match db_meta.get(id) {
             None => true,
-            Some((stored, _, has_vector, _, _)) => stored != cksum || !has_vector,
+            Some((stored, _, has_vector, _, _, _)) => stored != cksum || !has_vector,
         }
     };
 
@@ -42,12 +42,15 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     // — no per-entry query. Recovery reconciles the checksum of every row it knows about;
     // there is no reason not to (the universal-backstop contract, crash_consistency.md).
     let annotations_differ = |article: &Article| -> bool {
-        let membership_differs = db_meta.get(&article.meta.id).is_some_and(|(.., recorded)| {
-            let recorded: HashSet<&str> = recorded.iter().map(|s| s.as_str()).collect();
-            let current: HashSet<&str> =
-                article.annotations.iter().map(|a| a.id.as_str()).collect();
-            recorded != current
-        });
+        let membership_differs =
+            db_meta
+                .get(&article.meta.id)
+                .is_some_and(|(_, _, _, _, recorded, _)| {
+                    let recorded: HashSet<&str> = recorded.iter().map(|s| s.as_str()).collect();
+                    let current: HashSet<&str> =
+                        article.annotations.iter().map(|a| a.id.as_str()).collect();
+                    recorded != current
+                });
         membership_differs
             || article
                 .annotations
@@ -83,10 +86,13 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
                 &article.meta.id,
                 &checksum(&article.meta.title, article_embed_text(&article)),
             );
-            // Stream when the entry needs (re)embedding OR its annotations drifted from the `.md`
+            // Stream when content, reading state, or annotations drifted from the `.md`
             // (membership, content, or a pending vector) — the consumers re-check each and do only
             // the work required (`sync_entry_row` for rows, `embed_annotations` for vectors).
-            if needs_embed || annotations_differ(&article) {
+            let state_differs = db_meta
+                .get(&article.meta.id)
+                .is_some_and(|(_, _, _, _, _, unread)| *unread != article.meta.is_unread);
+            if needs_embed || state_differs || annotations_differ(&article) {
                 sink.article(article);
             }
         },
@@ -125,7 +131,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     let to_delete: Vec<String> = if source_reliable {
         db_meta
             .into_iter()
-            .filter(|(id, (_, reference, _, kind, _))| {
+            .filter(|(id, (_, reference, _, kind, _, _))| {
                 if kind == Kind::Feed.as_str() {
                     return !feed_ids.contains(id);
                 }
@@ -193,6 +199,38 @@ mod tests {
             is_pinned: false,
             vector: Some(vec![0.5f32; 384]),
         }
+    }
+
+    #[tokio::test]
+    async fn recovery_detects_reading_state_drift_without_content_or_annotation_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = library::entry_path(dir.path(), "entry");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            "---\nsource: https://example.org/a\ntitle: Saved\nis_unread: true\n---\n\nBody\n",
+        )
+        .unwrap();
+        let article = read_article(dir.path(), "entry").await.unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let mut row = EmbeddingEntry::from_article(&article, Some(vec![0.1; 384]));
+        row.is_unread = false;
+        db.upsert(row).await.unwrap();
+        let mut sink = CollectingSink { articles: vec![] };
+        repair_item_embeddings(dir.path(), &db, &mut sink)
+            .await
+            .unwrap();
+        assert_eq!(sink.articles, vec!["entry"]);
+        let (tx, _) = flume::unbounded();
+        let (annotation_tx, _) = flume::unbounded();
+        crate::embeddings::sync_entry_row(&article, &db, &tx, &tx, &annotation_tx)
+            .await
+            .unwrap();
+        let mut sink = CollectingSink { articles: vec![] };
+        repair_item_embeddings(dir.path(), &db, &mut sink)
+            .await
+            .unwrap();
+        assert!(sink.articles.is_empty());
     }
 
     /// A crash-stranded note edit: the `.md`'s annotation content diverged from the stored row

@@ -1,6 +1,6 @@
 [package]
 name = "xaga-core"
-version = "0.9.1-dev"
+version = "0.10.0-dev"
 edition = "2024"
 
 [dependencies]
