@@ -267,8 +267,8 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
    * Otherwise loads from the network and returns the fresh content.
    * Call `loadArticle` instead if you need the fresh content every time.
    *
-   * WARNING: `loadArticle` implicitly calls `save_article`, which moves the
-   * md file from unread/ to read/ directory, i.e. marks the item read.
+   * Reading through the native `read_article` command marks the Entry read
+   * when the library is writable, including readback after a download.
    */
   const readArticle = useCallback(
     async (entryId: Entry["id"]) => {

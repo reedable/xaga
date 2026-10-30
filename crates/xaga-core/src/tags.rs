@@ -4,17 +4,10 @@
 //! `tags` column), and the command layer (state toggles). Depending on this module does not couple
 //! those layers to each other — it is a shared leaf like `types`/`util`.
 
-/// The `unread` state tag.
-pub const UNREAD: &str = "unread";
 /// The `bookmark` state tag.
 pub const BOOKMARK: &str = "bookmark";
 /// The `pinned` state tag.
 pub(crate) const PINNED: &str = "pinned";
-
-/// Whether the `unread` tag is present.
-pub fn is_unread(tags: &[String]) -> bool {
-    tags.iter().any(|t| t == UNREAD)
-}
 
 /// Whether the `bookmark` tag is present.
 pub fn is_bookmarked(tags: &[String]) -> bool {

@@ -1,6 +1,6 @@
 [package]
 name = "xaga-cli"
-version = "0.9.1-dev"
+version = "0.10.0-dev"
 edition = "2024"
 
 [dependencies]
@@ -14,3 +14,11 @@ serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml       = "0.8"
 similar    = "2"
+
+# Disposable library-format conversion stays entirely in the CLI.
+noyalib = "0.0.15"
+lancedb = "0.33"
+tempfile = "3"
+
+[dev-dependencies]
+flume = "0.11"

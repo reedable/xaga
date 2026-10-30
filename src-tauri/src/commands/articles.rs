@@ -851,16 +851,12 @@ pub async fn read_article(
         // NOTE: This command is NOT in WRITE_COMMANDS, so the command can be called by
         //       app read-only instances.
         //
-        // The tag update goes through the entry lane; a failure leaves the entry unread.
+        // The reading-state update goes through the entry lane; a failure leaves the entry unread.
         let Some(writer) = state.writer() else {
             return Ok(article);
         };
         let _ = writer
-            .patch_entry_tags(
-                WriteTier::Interactive,
-                id.clone(),
-                xaga_core::library_writer::TagPatch::MarkRead,
-            )
+            .set_entry_unread(WriteTier::Interactive, id.clone(), false)
             .await;
 
         state.enqueue(

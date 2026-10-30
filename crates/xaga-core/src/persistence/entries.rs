@@ -94,7 +94,7 @@ pub(crate) async fn find_entry_path(library_dir: &Path, id: &str) -> Option<Path
         .then_some(path)
 }
 
-/// Writes an Entry to `entries/{hash12}.md` with the `unread` tag, returning its [`Article`].
+/// Writes an Entry to `entries/{hash12}.md` with `is_unread: true`, returning its [`Article`].
 ///
 /// Existing entries are left untouched; new entries use the shared field-patch upsert.
 pub(crate) async fn write_entry(
@@ -106,7 +106,7 @@ pub(crate) async fn write_entry(
     summary: Option<&str>,
     _token: WriteToken,
 ) -> Result<Article, EntryError> {
-    write_read_entry(
+    write_initial_entry(
         library_dir,
         url,
         title,
@@ -114,7 +114,8 @@ pub(crate) async fn write_entry(
         published_at,
         updated_at,
         summary,
-        &[crate::tags::UNREAD.to_string()],
+        &[],
+        true,
         _token,
     )
     .await
@@ -135,6 +136,34 @@ pub(crate) async fn write_read_entry(
     tags: &[String],
     _token: WriteToken,
 ) -> Result<Article, EntryError> {
+    write_initial_entry(
+        library_dir,
+        url,
+        title,
+        created_at,
+        published_at,
+        updated_at,
+        summary,
+        tags,
+        false,
+        _token,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn write_initial_entry(
+    library_dir: &Path,
+    url: &str,
+    title: &str,
+    created_at: &str,
+    published_at: Option<&str>,
+    updated_at: Option<&str>,
+    summary: Option<&str>,
+    tags: &[String],
+    is_unread: bool,
+    _token: WriteToken,
+) -> Result<Article, EntryError> {
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
     let path = crate::library::entry_path(library_dir, &hash12);
@@ -147,6 +176,7 @@ pub(crate) async fn write_read_entry(
             ("aliases", serde_json::json!([title])),
             ("created", serde_json::json!(created_at)),
             ("tags", serde_json::json!(tags)),
+            ("is_unread", serde_json::json!(is_unread)),
         ];
         for (key, value) in [
             ("published", published_at),
@@ -210,7 +240,7 @@ pub(crate) async fn set_entry_tags(
             published_at: fm.published_at,
             updated_at: fm.updated_at,
             description: fm.summary,
-            is_unread: crate::tags::is_unread(&tags),
+            is_unread: fm.is_unread.unwrap_or(false),
             is_bookmarked: crate::tags::is_bookmarked(&tags),
             is_pinned: crate::tags::is_pinned(&tags),
             color: None,
@@ -223,9 +253,105 @@ pub(crate) async fn set_entry_tags(
     Ok(article.meta)
 }
 
+/// Reading state is independent of tags. Call inside the entry lane.
+pub(crate) async fn set_entry_unread(
+    library_dir: &Path,
+    id: &str,
+    is_unread: bool,
+    token: WriteToken,
+) -> Result<Entry, EntryError> {
+    let path = find_entry_path(library_dir, id)
+        .await
+        .ok_or(EntryError::NotFound)?;
+    let rendered = super::documents::upsert(
+        &path,
+        &[("is_unread", serde_json::json!(is_unread))],
+        None,
+        token,
+    )
+    .await?;
+    let fm = parse_frontmatter(&rendered)?;
+    Ok(md_to_entry(Markdown {
+        id: id.to_owned(),
+        fm,
+        body: String::new(),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn reading_state_writes_preserve_metadata_and_exact_body() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::library::entry_path(dir.path(), "saved");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let original = "---\nsource: https://example.org/a\ntags: [research, bookmark]\ncreated: yesterday\ncustom: {nested: [one, two]}\nannotations: []\n---\n\nBody\n\n";
+        std::fs::write(&path, original).unwrap();
+        for unread in [true, false, true, false] {
+            let entry = set_entry_unread(dir.path(), "saved", unread, WriteToken::for_test())
+                .await
+                .unwrap();
+            assert_eq!(entry.is_unread, unread);
+            assert!(entry.is_bookmarked);
+            let saved = std::fs::read_to_string(&path).unwrap();
+            let mut expected = crate::md::test_frontmatter_values(original);
+            if unread {
+                expected.insert("is_unread".into(), noyalib::Value::Bool(true));
+            }
+            assert_eq!(crate::md::test_frontmatter_values(&saved), expected);
+            assert!(saved.ends_with("---\n\nBody\n\n"));
+        }
+        assert!(
+            set_entry_unread(dir.path(), "missing", true, WriteToken::for_test())
+                .await
+                .is_err()
+        );
+        assert!(!crate::library::entry_path(dir.path(), "missing").exists());
+    }
+
+    #[tokio::test]
+    async fn new_feed_entries_are_unread_and_bookmark_imports_are_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let fetched = write_entry(
+            dir.path(),
+            "https://example.org/feed",
+            "Feed",
+            None,
+            None,
+            None,
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        assert!(fetched.meta.is_unread);
+        assert!(
+            read_entry_tags(dir.path(), &fetched.meta.id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        let imported = write_read_entry(
+            dir.path(),
+            "https://example.org/import",
+            "Import",
+            "then",
+            None,
+            None,
+            None,
+            &["bookmark".into()],
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        assert!(!imported.meta.is_unread);
+        let raw =
+            std::fs::read_to_string(crate::library::entry_path(dir.path(), &imported.meta.id))
+                .unwrap();
+        assert!(!crate::md::test_frontmatter_values(&raw).contains_key("is_unread"));
+        assert!(imported.meta.is_bookmarked);
+    }
 
     #[tokio::test]
     async fn creation_workflows_preserve_existing_document_and_return_saved_data() {

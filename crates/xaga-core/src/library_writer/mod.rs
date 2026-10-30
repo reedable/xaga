@@ -124,8 +124,6 @@ pub enum BookmarkOutcome {
 /// intent end-to-end (docs/principles/carry_intent_end_to_end.md).
 #[derive(Debug, Clone, Copy)]
 pub enum TagPatch {
-    MarkRead,
-    MarkUnread,
     AddBookmark,
     RemoveBookmark,
     SetPinned(bool),
@@ -138,16 +136,6 @@ impl TagPatch {
                 tags.retain(|t| t != crate::tags::PINNED);
                 if pinned {
                     tags.push(crate::tags::PINNED.to_string());
-                }
-                tags
-            }
-            TagPatch::MarkRead => {
-                tags.retain(|t| t != crate::tags::UNREAD);
-                tags
-            }
-            TagPatch::MarkUnread => {
-                if !crate::tags::is_unread(&tags) {
-                    tags.push(crate::tags::UNREAD.to_string());
                 }
                 tags
             }
@@ -215,6 +203,11 @@ enum Op {
         article_id: String,
         annotation_id: String,
         resp: oneshot::Sender<Result<Article, WriterError>>,
+    },
+    SetEntryUnread {
+        id: String,
+        is_unread: bool,
+        resp: oneshot::Sender<Result<Entry, WriterError>>,
     },
     PatchEntryTags {
         id: String,
@@ -340,6 +333,7 @@ impl Op {
             | Op::AddAnnotation { article_id: id, .. }
             | Op::ReplaceAnnotation { article_id: id, .. }
             | Op::RemoveAnnotation { article_id: id, .. }
+            | Op::SetEntryUnread { id, .. }
             | Op::PatchEntryTags { id, .. } => format!("entry/{id}"),
             Op::SavePdf { url, .. }
             | Op::BookmarkEntry { url, .. }
@@ -375,6 +369,7 @@ impl Op {
             Op::AddAnnotation { .. } => "add_annotation",
             Op::ReplaceAnnotation { .. } => "replace_annotation",
             Op::RemoveAnnotation { .. } => "remove_annotation",
+            Op::SetEntryUnread { .. } => "set_entry_unread",
             Op::PatchEntryTags { .. } => "patch_entry_tags",
             Op::BookmarkEntry { .. } => "bookmark_entry",
             Op::SaveTopic { .. } => "save_topic",
@@ -404,6 +399,7 @@ impl Op {
             Op::AddAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::ReplaceAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RemoveAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::SetEntryUnread { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::PatchEntryTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::BookmarkEntry { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SaveTopic { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -535,6 +531,16 @@ impl Op {
                         .await
                         .map_err(WriterError::from);
                 let _ = resp.send(r);
+            }
+            Op::SetEntryUnread {
+                id,
+                is_unread,
+                resp,
+            } => {
+                let result = entries::set_entry_unread(library_dir, &id, is_unread, token)
+                    .await
+                    .map_err(WriterError::from);
+                let _ = resp.send(result);
             }
             Op::PatchEntryTags { id, patch, resp } => {
                 // The whole tag read-modify-write runs inside the lane and cannot interleave.
@@ -1035,6 +1041,26 @@ impl LibraryWriter {
         self.submit(tier, op, rx).await
     }
 
+    /// Sets reading state without changing organizational tags.
+    pub async fn set_entry_unread(
+        &self,
+        tier: Tier,
+        id: String,
+        is_unread: bool,
+    ) -> Result<Entry, WriterError> {
+        let (resp, rx) = oneshot::channel();
+        self.submit(
+            tier,
+            Op::SetEntryUnread {
+                id,
+                is_unread,
+                resp,
+            },
+            rx,
+        )
+        .await
+    }
+
     pub async fn patch_entry_tags(
         &self,
         tier: Tier,
@@ -1533,6 +1559,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reading_state_bookmark_and_annotation_mutations_share_the_entry_lane() {
+        let dir = tempfile::tempdir().unwrap();
+        let writer = start_writer(dir.path());
+        seed_article(&writer, "saved").await;
+        let (read, bookmark, annotation) = tokio::join!(
+            writer.set_entry_unread(Tier::Interactive, "saved".into(), false),
+            writer.patch_entry_tags(Tier::Interactive, "saved".into(), TagPatch::AddBookmark),
+            writer.add_annotation(Tier::Interactive, "saved".into(), annotation("note")),
+        );
+        read.unwrap();
+        bookmark.unwrap();
+        annotation.unwrap();
+        let saved = articles::read_article(dir.path(), "saved").await.unwrap();
+        assert!(!saved.meta.is_unread && saved.meta.is_bookmarked);
+        assert_eq!(saved.annotations[0].id, "note");
+        let raw = std::fs::read_to_string(crate::library::entry_path(dir.path(), "saved")).unwrap();
+        assert!(!crate::md::test_frontmatter_values(&raw).contains_key("is_unread"));
+        writer.shutdown().await;
+    }
+
+    #[tokio::test]
     async fn article_pin_shares_entry_lane_and_preserves_other_state() {
         let dir = tempfile::tempdir().unwrap();
         let w = start_writer(dir.path());
@@ -1554,9 +1601,12 @@ mod tests {
             original.replacen("---\n", "---\ncustom: retained\n", 1),
         )
         .unwrap();
+        w.set_entry_unread(Tier::Interactive, id.into(), false)
+            .await
+            .unwrap();
         let (pin, unread, bookmark) = tokio::join!(
             w.patch_entry_tags(Tier::Interactive, id.into(), TagPatch::SetPinned(true)),
-            w.patch_entry_tags(Tier::Interactive, id.into(), TagPatch::MarkUnread),
+            w.set_entry_unread(Tier::Interactive, id.into(), true),
             w.patch_entry_tags(Tier::Interactive, id.into(), TagPatch::AddBookmark),
         );
         pin.unwrap();
@@ -1564,9 +1614,18 @@ mod tests {
         bookmark.unwrap();
         let saved = articles::read_article(dir.path(), id).await.unwrap();
         assert!(saved.meta.is_pinned && saved.meta.is_unread && saved.meta.is_bookmarked);
+        let read = w
+            .set_entry_unread(Tier::Interactive, id.into(), false)
+            .await
+            .unwrap();
+        assert!(read.is_pinned && !read.is_unread && read.is_bookmarked);
+        w.set_entry_unread(Tier::Interactive, id.into(), true)
+            .await
+            .unwrap();
         assert_eq!(saved.annotations[0].id, "kept");
         assert_eq!(saved.content, "body");
         let tags = entries::read_entry_tags(dir.path(), id).await.unwrap();
+        assert!(!tags.iter().any(|tag| tag == "unread"));
         assert!(
             tags.contains(&"research".to_string()) && tags.contains(&"project/custom".to_string())
         );

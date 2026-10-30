@@ -323,6 +323,7 @@ struct BatchSummaryColumns<'a> {
     colors: Option<&'a StringArray>,
     summaries: Option<&'a StringArray>,
     tags: Option<&'a ListArray>,
+    unread: &'a BooleanArray,
     kinds: Option<&'a StringArray>,
 }
 
@@ -360,6 +361,10 @@ impl<'a> BatchSummaryColumns<'a> {
             summaries: batch
                 .column_by_name("summary")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>()),
+            unread: batch
+                .column_by_name("is_unread")?
+                .as_any()
+                .downcast_ref::<BooleanArray>()?,
             tags: batch
                 .column_by_name("tags")
                 .and_then(|c| c.as_any().downcast_ref::<ListArray>()),
@@ -400,7 +405,7 @@ impl<'a> BatchSummaryColumns<'a> {
             })
         }
         let tags = self.tags_at(i);
-        let is_unread = crate::tags::is_unread(&tags);
+        let is_unread = self.unread.value(i);
         let is_bookmarked = crate::tags::is_bookmarked(&tags);
         Entry {
             id: self.ids.value(i).to_string(),
@@ -673,7 +678,7 @@ impl EmbeddingsDb {
 
     /// Columns needed to build an `Entry` — everything except the vector, so these
     /// list reads never touch the large embedding column.
-    const SUMMARY_COLUMNS: [&'static str; 11] = [
+    const SUMMARY_COLUMNS: [&'static str; 12] = [
         "id",
         "kind",
         "source",
@@ -684,6 +689,7 @@ impl EmbeddingsDb {
         "reference",
         "color",
         "summary",
+        "is_unread",
         "tags",
     ];
 
@@ -885,12 +891,13 @@ impl EmbeddingsDb {
     /// `has_vector` is false for rows inserted before their embedding was computed.
     /// `kind` is the row-kind discriminator ("entry" | "annotation" | "topic" | "feed").
     /// Used by recovery to determine which files need (re-)embedding.
-    /// Returns `id → (checksum, reference, has_vector, kind, items)` for every row, in one full scan.
+    /// Returns `id → (checksum, reference, has_vector, kind, items, is_unread)` for every row, in one full scan.
     /// `items` is the row's membership list — for entry rows, the recorded annotation membership that
     /// recovery diffs against the `.md` to gate the annotation reconcile without a per-entry query.
     pub(crate) async fn list_entries_meta(
         &self,
-    ) -> Result<HashMap<String, (String, String, bool, String, Vec<String>)>, EmbeddingsError> {
+    ) -> Result<HashMap<String, (String, String, bool, String, Vec<String>, bool)>, EmbeddingsError>
+    {
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -923,6 +930,9 @@ impl EmbeddingsDb {
                 .column_by_name("kind")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
+            let unread = batch
+                .column_by_name("is_unread")
+                .and_then(|c| c.as_any().downcast_ref::<BooleanArray>());
             let items = batch
                 .column_by_name("items")
                 .and_then(|c| c.as_any().downcast_ref::<ListArray>());
@@ -951,6 +961,7 @@ impl EmbeddingsDb {
                             has_vector,
                             kind,
                             item_ids,
+                            unread.is_some_and(|a| a.value(i)),
                         ),
                     );
                 }
@@ -1792,7 +1803,7 @@ mod tests {
             reference: String::new(),
             color: String::new(),
             summary: "a summary".to_string(),
-            tags: vec!["unread".to_string()],
+            tags: vec![],
             topics: vec!["topic-1".to_string(), "topic-2".to_string()],
             items: vec![],
             is_unread: true,
@@ -2108,6 +2119,44 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn unread_summaries_and_sync_events_use_the_boolean_without_tags() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let mut row = sample("entry-1", "entry", None);
+        row.tags.clear();
+        row.is_unread = true;
+        db.upsert(row).await.unwrap();
+        assert!(db.list_entries().await.unwrap()[0].is_unread);
+        let article = crate::types::Article {
+            meta: db.list_entries().await.unwrap().remove(0),
+            content: "Body".into(),
+            annotations: vec![],
+            favicon: None,
+        };
+        let mut initial =
+            EmbeddingEntry::from_article(&article, Some(vec![0.1; EMBEDDING_DIM as usize]));
+        initial.is_unread = false;
+        db.upsert(initial).await.unwrap();
+        let (unread_tx, unread_rx) = flume::unbounded();
+        let (bookmark_tx, _) = flume::unbounded();
+        let (annotation_tx, _) = flume::unbounded();
+        crate::embeddings::sync_entry_row(&article, &db, &unread_tx, &bookmark_tx, &annotation_tx)
+            .await
+            .unwrap();
+        assert_eq!(unread_rx.len(), 1);
+        let row = db.get_entry("entry-1").await.unwrap().unwrap();
+        assert!(row.is_unread);
+        assert!(row.tags.is_empty());
+        assert!(row.vector.is_some());
+        crate::embeddings::sync_entry_row(&article, &db, &unread_tx, &bookmark_tx, &annotation_tx)
+            .await
+            .unwrap();
+        assert_eq!(unread_rx.len(), 1);
+        assert_eq!(db.all_items_counts().await.unwrap().unread_count, 1);
+        assert!(db.unread_ids().await.unwrap().contains("entry-1"));
+    }
+
     /// `apply_state` write-through flips the boolean columns + tags from the carried values,
     /// preserves the vector/topics, and emits a change event only for columns that changed.
     #[tokio::test]
@@ -2121,7 +2170,7 @@ mod tests {
             Some(vec![0.1f32; EMBEDDING_DIM as usize]),
         );
 
-        e.tags = vec!["unread".to_string()];
+        e.tags = vec!["research".to_string()];
         e.is_unread = true;
         e.is_bookmarked = false;
         e.topics = vec!["topic-1".to_string()];
@@ -2147,6 +2196,7 @@ mod tests {
         assert!(!row.is_unread && row.is_bookmarked);
         assert!(!row.tags.contains(&"unread".to_string()));
         assert!(row.tags.contains(&"bookmark".to_string()));
+        assert!(row.tags.contains(&"research".to_string()));
         assert!(row.vector.is_some(), "vector preserved");
         assert_eq!(row.topics, vec!["topic-1".to_string()], "topics preserved");
         assert_eq!(unread_rx.len(), 1, "is_unread changed → one event");

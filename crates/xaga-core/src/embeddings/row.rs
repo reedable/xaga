@@ -5,10 +5,7 @@
 //! received on the queue — the object is carried end-to-end, never flattened into an intermediate
 //! and never re-read from a file.
 //!
-//! The `tags` column is reconstructed from the object's state booleans (`is_unread` /
-//! `is_bookmarked` / `is_pinned`). The row only ever uses those three state tags (see
-//! `BatchSummaryColumns::summary_at` in `db.rs`); arbitrary file tags are not consulted by the
-//! index, so this is behavior-preserving for queries and counts.
+//! Reading state is stored only in `is_unread`; `tags` mirrors bookmark and pin state.
 
 use sha2::Digest;
 
@@ -56,9 +53,6 @@ impl EmbeddingEntry {
     pub(crate) fn from_article(article: &Article, vector: Option<Vec<f32>>) -> EmbeddingEntry {
         let meta = &article.meta;
         let mut tags = Vec::new();
-        if meta.is_unread {
-            tags.push(crate::tags::UNREAD.to_string());
-        }
         if meta.is_bookmarked {
             tags.push(crate::tags::BOOKMARK.to_string());
         }
