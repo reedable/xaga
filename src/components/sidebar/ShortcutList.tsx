@@ -11,7 +11,7 @@ import { useSidebarSort } from "../../hooks/useSidebarSort";
 import useRouter from "../../hooks/useRouter";
 import { ALL_ITEMS } from "../../Shortcuts";
 import { useAllItemsCounts } from "../../hooks/useAllItemsCounts";
-import { isFeed, isTopic, type Countable } from "../../types";
+import { isEntry, isFeed, isTopic, type Countable } from "../../types";
 import sortSidebarCollections from "../../utils/sortSidebarCollections";
 import ExpandableList from "./ExpandableList";
 import css from "./ShortcutList.module.css";
@@ -30,8 +30,8 @@ export default function ShortcutList({
   shortcuts,
   onClickHeader,
 }: ShortcutListProps) {
-  const { selectCollection, state } = useRouter();
-  const { feedId, topicId, shortcutId } = state;
+  const { selectArticleScope, selectCollection, state } = useRouter();
+  const { feedId, topicId, shortcutId, articleScopeId } = state;
   const [, abortControllerRef] = useAbortController();
   const { loadingFeedIds } = useFeeds(abortControllerRef);
   const [sortMode, setSortMode] = useSidebarSort("shortcuts");
@@ -46,8 +46,11 @@ export default function ShortcutList({
   );
 
   const handleSelectShortcut = useCallback(
-    (collection: Countable) => selectCollection(collection),
-    [selectCollection]
+    (collection: Countable) =>
+      isEntry(collection)
+        ? selectArticleScope(collection)
+        : selectCollection(collection),
+    [selectArticleScope, selectCollection]
   );
 
   return (
@@ -70,7 +73,7 @@ export default function ShortcutList({
         icon={Newspaper}
         collection={allItems}
         loading={loadingFeedIds.size > 0}
-        selected={shortcutId === ALL_ITEMS.id}
+        selected={!articleScopeId && shortcutId === ALL_ITEMS.id}
         onSelectCollection={handleSelectShortcut}
         renderSecondaryAction={
           counts ? () => <UnreadCount count={counts.unreadCount} /> : undefined
@@ -86,7 +89,9 @@ export default function ShortcutList({
               ? RssFeed
               : isTopic(shortcut)
                 ? FeedIcon
-                : FolderOutlined
+                : isEntry(shortcut)
+                  ? Newspaper
+                  : FolderOutlined
           }
           loading={
             isFeed(shortcut)
@@ -98,12 +103,14 @@ export default function ShortcutList({
               ? feedId === shortcut.id
               : isTopic(shortcut)
                 ? topicId === shortcut.id
-                : false
+                : isEntry(shortcut) && articleScopeId === shortcut.id
           }
           onSelectCollection={handleSelectShortcut}
-          renderSecondaryAction={() => (
-            <UnreadCount count={shortcut.unreadCount} />
-          )}
+          renderSecondaryAction={
+            isEntry(shortcut)
+              ? undefined
+              : () => <UnreadCount count={shortcut.unreadCount} />
+          }
         />
       ))}
     </ExpandableList>

@@ -35,6 +35,7 @@ export type Collection<T extends Item & { __kind: string }> = Countable & {
 
 // ── Entities (all branded) ──────────────────────────────────────────────────────
 export type Entry = WebResource &
+  Pinnable &
   Bookmarkable &
   Colorable & {
     readonly __kind: "entry";

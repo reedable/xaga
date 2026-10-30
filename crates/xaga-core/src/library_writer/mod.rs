@@ -126,11 +126,19 @@ pub enum BookmarkOutcome {
 pub enum TagPatch {
     AddBookmark,
     RemoveBookmark,
+    SetPinned(bool),
 }
 
 impl TagPatch {
     fn apply(self, mut tags: Vec<String>) -> Vec<String> {
         match self {
+            TagPatch::SetPinned(pinned) => {
+                tags.retain(|t| t != crate::tags::PINNED);
+                if pinned {
+                    tags.push(crate::tags::PINNED.to_string());
+                }
+                tags
+            }
             TagPatch::AddBookmark => {
                 if !crate::tags::is_bookmarked(&tags) {
                     tags.push(crate::tags::BOOKMARK.to_string());
@@ -1569,6 +1577,79 @@ mod tests {
         let raw = std::fs::read_to_string(crate::library::entry_path(dir.path(), "saved")).unwrap();
         assert!(!crate::md::test_frontmatter_values(&raw).contains_key("is_unread"));
         writer.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn article_pin_shares_entry_lane_and_preserves_other_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let w = start_writer(dir.path());
+        let id = "pinned-article";
+        seed_article(&w, id).await;
+        w.add_annotation(Tier::Interactive, id.into(), annotation("kept"))
+            .await
+            .unwrap();
+        let path = crate::library::entry_path(dir.path(), id);
+        let original = std::fs::read_to_string(&path).unwrap();
+        let original = crate::md::patch_document(
+            &original,
+            &[("tags", serde_json::json!(["research", "project/custom"]))],
+            None,
+        )
+        .unwrap();
+        std::fs::write(
+            &path,
+            original.replacen("---\n", "---\ncustom: retained\n", 1),
+        )
+        .unwrap();
+        w.set_entry_unread(Tier::Interactive, id.into(), false)
+            .await
+            .unwrap();
+        let (pin, unread, bookmark) = tokio::join!(
+            w.patch_entry_tags(Tier::Interactive, id.into(), TagPatch::SetPinned(true)),
+            w.set_entry_unread(Tier::Interactive, id.into(), true),
+            w.patch_entry_tags(Tier::Interactive, id.into(), TagPatch::AddBookmark),
+        );
+        pin.unwrap();
+        unread.unwrap();
+        bookmark.unwrap();
+        let saved = articles::read_article(dir.path(), id).await.unwrap();
+        assert!(saved.meta.is_pinned && saved.meta.is_unread && saved.meta.is_bookmarked);
+        let read = w
+            .set_entry_unread(Tier::Interactive, id.into(), false)
+            .await
+            .unwrap();
+        assert!(read.is_pinned && !read.is_unread && read.is_bookmarked);
+        w.set_entry_unread(Tier::Interactive, id.into(), true)
+            .await
+            .unwrap();
+        assert_eq!(saved.annotations[0].id, "kept");
+        assert_eq!(saved.content, "body");
+        let tags = entries::read_entry_tags(dir.path(), id).await.unwrap();
+        assert!(!tags.iter().any(|tag| tag == "unread"));
+        assert!(
+            tags.contains(&"research".to_string()) && tags.contains(&"project/custom".to_string())
+        );
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .contains("custom: retained")
+        );
+        w.shutdown().await;
+        drop(w);
+        let w = start_writer(dir.path());
+        assert!(
+            articles::read_article(dir.path(), id)
+                .await
+                .unwrap()
+                .meta
+                .is_pinned
+        );
+        let unpinned = w
+            .patch_entry_tags(Tier::Interactive, id.into(), TagPatch::SetPinned(false))
+            .await
+            .unwrap();
+        assert!(!unpinned.is_pinned && unpinned.is_unread && unpinned.is_bookmarked);
+        w.shutdown().await;
     }
 
     #[tokio::test]

@@ -78,3 +78,14 @@ the corpus in memory. Failed batches are retried from files on the next invocati
 After the file batches, a final cache pass removes legacy unread markers from
 stale rows as well, without changing their stored boolean state. Normal recovery
 removes rows whose source is gone.
+
+### Article pins
+
+Article pinning changes only the `pinned` tag through the library writer's existing
+entry-tag patch lane, atomically replacing the `.md` before queuing an Interactive
+`SyncState` cache update. The command announces committed pin intent to the UI;
+read-only instances refuse the command through the central write gate. A crash
+between file commit and cache update leaves the source intact. Recovery compares
+the file's article pin state with cached pinned entry identities even when content
+and annotation checksums match, and syncs differing rows without re-embedding
+unchanged content. Fresh recovery derives article pins from the same file parser.

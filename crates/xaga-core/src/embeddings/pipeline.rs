@@ -101,6 +101,7 @@ fn annotation_list_item(article: &Article, annotation: &Annotation) -> ListItem 
         url: article.meta.url.clone(),
         is_unread: false,
         is_bookmarked: false,
+        is_pinned: false,
         reference: Some(article.meta.id.clone()),
         color: Some(annotation.color.clone()),
     }
@@ -299,6 +300,7 @@ pub async fn sync_entry_row(
                 || e.tags != row.tags
                 || e.is_unread != row.is_unread
                 || e.summary != row.summary
+                || e.is_pinned != row.is_pinned
         }
     };
 
@@ -350,7 +352,12 @@ pub async fn sync_topic_row(topic: &Topic, db: &EmbeddingsDb) -> Result<(), Embe
 
     let changed = match &existing {
         None => true,
-        Some(e) => !content_unchanged || e.tags != row.tags || e.summary != row.summary,
+        Some(e) => {
+            !content_unchanged
+                || e.tags != row.tags
+                || e.summary != row.summary
+                || e.is_pinned != row.is_pinned
+        }
     };
 
     if changed {
@@ -600,6 +607,7 @@ fn entry_from_row(row: &EmbeddingEntry) -> Entry {
         description: opt(&row.summary),
         is_unread: row.is_unread,
         is_bookmarked: row.is_bookmarked,
+        is_pinned: row.is_pinned,
         color: None,
     }
 }
@@ -762,6 +770,7 @@ mod tests {
                 description: None,
                 is_unread: false,
                 is_bookmarked: false,
+                is_pinned: false,
                 color: None,
             },
             content: "body".to_string(),

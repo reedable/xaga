@@ -63,6 +63,7 @@ pub async fn list_topic_items(
                     url: e.entry.url.clone(),
                     is_unread: e.entry.is_unread,
                     is_bookmarked: e.entry.is_bookmarked,
+                    is_pinned: e.entry.is_pinned,
                     reference: if e.reference.is_empty() {
                         None
                     } else {
@@ -100,6 +101,7 @@ pub async fn list_topic_items(
                 url: entry.url,
                 is_unread: entry.is_unread,
                 is_bookmarked: entry.is_bookmarked,
+                is_pinned: entry.is_pinned,
                 reference: None,
                 color: None,
             },
@@ -133,6 +135,7 @@ pub async fn list_topic_items(
                                 url: article.meta.url.clone(),
                                 is_unread: false,
                                 is_bookmarked: false,
+                                is_pinned: false,
                                 reference: Some(reference.clone()),
                                 color: Some(ann.color.clone()),
                             },

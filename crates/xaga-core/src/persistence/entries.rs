@@ -242,6 +242,7 @@ pub(crate) async fn set_entry_tags(
             description: fm.summary,
             is_unread: fm.is_unread.unwrap_or(false),
             is_bookmarked: crate::tags::is_bookmarked(&tags),
+            is_pinned: crate::tags::is_pinned(&tags),
             color: None,
         },
         content: body,

@@ -119,6 +119,7 @@ pub struct ListItem {
     pub url: String,
     pub is_unread: bool,
     pub is_bookmarked: bool,
+    pub is_pinned: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reference: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

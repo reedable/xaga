@@ -39,6 +39,7 @@ pub(crate) const WRITE_COMMANDS: &[&str] = &[
     "add_topic_item",
     "remove_topic_item",
     "set_topic_pinned",
+    "set_entry_pinned",
     "add_bookmark",
     "remove_bookmark",
     "reset_embeddings",

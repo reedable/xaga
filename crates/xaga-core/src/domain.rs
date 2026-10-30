@@ -129,6 +129,7 @@ pub struct Entry {
     pub description: Option<String>,
     pub is_unread: bool,
     pub is_bookmarked: bool,
+    pub is_pinned: bool,
     /// The bookmark color (from `Colorable`); `None` when uncolored.
     pub color: Option<String>,
 }
@@ -156,6 +157,11 @@ impl Item for Entry {
 impl WebResource for Entry {
     fn url(&self) -> &str {
         &self.url
+    }
+}
+impl Pinnable for Entry {
+    fn is_pinned(&self) -> bool {
+        self.is_pinned
     }
 }
 impl Bookmarkable for Entry {

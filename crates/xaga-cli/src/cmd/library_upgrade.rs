@@ -361,7 +361,7 @@ mod tests {
         let path = seed(
             dir.path(),
             "entry",
-            "is_unread: true\ntags: [research, bookmark]",
+            "is_unread: true\ntags: [research, bookmark, pinned]",
         );
         let original = fs::read_to_string(&path).unwrap();
         let article = read_article(dir.path(), "entry").await.unwrap();
@@ -390,7 +390,7 @@ mod tests {
             .update()
             .only_if("id = 'entry'")
             .column("is_unread", "false")
-            .column("tags", "['research', 'unread', 'bookmark']")
+            .column("tags", "['research', 'unread', 'bookmark', 'pinned']")
             .column("topics", "['topic']")
             .column(
                 "vector",
@@ -413,8 +413,9 @@ mod tests {
         let read_row = db.get_entry("read-entry").await.unwrap().unwrap();
         assert!(!read_row.is_unread && read_row.is_bookmarked);
         assert_eq!(read_row.tags, vec!["bookmark"]);
-        assert!(row.is_unread && row.is_bookmarked);
-        assert_eq!(row.tags, vec!["research", "bookmark"]);
+        assert!(row.is_unread && row.is_bookmarked && row.is_pinned);
+        assert_eq!(row.tags, vec!["research", "bookmark", "pinned"]);
+        assert_eq!(db.filter_pinned_entries().await.unwrap()[0].id, "entry");
         assert_eq!(row.topics, vec!["topic"]);
         assert_eq!(row.items, vec!["note"]);
         assert_eq!(row.vector, Some(vec![0.1; 384]));

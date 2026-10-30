@@ -53,7 +53,7 @@ Sites.
 
 - [Tags and the Inspector](../ideas/tags-and-inspector.md)
 - [Store Unread Outside Tags](../available/refactor__store-unread-outside-tags.md)
-- [Pin Articles to Shortcuts](../available/enhancement__pin-articles-to-shortcuts.md)
+- [Article shortcut behavior](../../docs/architecture/list_view.md#article-shortcuts)
 - `src/domain.ts`
 - `src/types.ts`
 - `src/Shortcuts.ts`

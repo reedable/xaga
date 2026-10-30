@@ -26,6 +26,8 @@ pub enum DomainEvent {
     UnreadChanged(Entry),
     /// An entry's bookmark state (or color) changed.
     BookmarkChanged(Entry),
+    /// An article pin changed in its authoritative file.
+    EntryPinChanged(Entry),
     /// An annotation was created or updated.
     AnnotationChanged(ListItem),
     /// An annotation's identity changed while preserving its place in collections.
@@ -57,6 +59,7 @@ impl DomainEvent {
         match self {
             DomainEvent::UnreadChanged(_) => "unread:changed",
             DomainEvent::BookmarkChanged(_) => "bookmark:changed",
+            DomainEvent::EntryPinChanged(_) => "entry-pin:changed",
             DomainEvent::AnnotationChanged(_) => "annotation:changed",
             DomainEvent::AnnotationReplaced(_) => "annotation:replaced",
             DomainEvent::AnnotationRemoved { .. } => "annotation:removed",
@@ -85,6 +88,7 @@ mod tests {
             description: None,
             is_unread: false,
             is_bookmarked: false,
+            is_pinned: false,
             color: None,
         }
     }
@@ -93,6 +97,7 @@ mod tests {
         vec![
             DomainEvent::UnreadChanged(entry()),
             DomainEvent::BookmarkChanged(entry()),
+            DomainEvent::EntryPinChanged(entry()),
             DomainEvent::AnnotationChanged(ListItem {
                 id: String::new(),
                 title: String::new(),
@@ -100,6 +105,7 @@ mod tests {
                 url: String::new(),
                 is_unread: false,
                 is_bookmarked: false,
+                is_pinned: false,
                 reference: None,
                 color: None,
             }),
@@ -112,6 +118,7 @@ mod tests {
                     url: String::new(),
                     is_unread: false,
                     is_bookmarked: false,
+                    is_pinned: false,
                     reference: None,
                     color: None,
                 },
@@ -151,6 +158,7 @@ mod tests {
             [
                 "unread:changed",
                 "bookmark:changed",
+                "entry-pin:changed",
                 "annotation:changed",
                 "annotation:replaced",
                 "annotation:removed",

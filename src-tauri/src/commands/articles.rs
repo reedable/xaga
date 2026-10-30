@@ -1064,6 +1064,7 @@ pub async fn replace_annotation(
             url: article.meta.url.clone(),
             is_unread: false,
             is_bookmarked: false,
+            is_pinned: false,
             reference: Some(annotation.reference.clone()),
             color: Some(annotation.color.clone()),
         })

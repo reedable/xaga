@@ -83,6 +83,9 @@
     "commands::topics::rank_topics_by_item",
     "commands::embeddings::search_by_item",
     "commands::embeddings::search_by_text",
-    "commands::embeddings::reset_embeddings"
+    "commands::embeddings::reset_embeddings",
+    "commands::entries::set_entry_pinned",
+    "commands::entries::list_pinned_entries",
+    "commands::entries::read_article_scope"
   ]
 }

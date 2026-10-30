@@ -221,3 +221,42 @@ it("allows closing after edits have been saved", async () => {
   await closeRequested.mock.calls[0][0](event);
   expect(event.preventDefault).not.toHaveBeenCalled();
 });
+
+it("preserves article pins across pin commands, discovery and side-effect-free scope reads", async () => {
+  const payload = {
+    id: "article",
+    title: "Pinned",
+    created_at: "2026-10-29",
+    updated_at: null,
+    published_at: null,
+    description: null,
+    url: "https://example.org",
+    is_unread: true,
+    is_bookmarked: false,
+    is_pinned: true,
+  };
+  const platform = new TauriPlatform();
+  invokeMock.mockResolvedValueOnce(payload);
+  expect((await platform.setEntryPinned("article", true)).isPinned).toBe(true);
+  expect(invokeMock).toHaveBeenLastCalledWith("set_entry_pinned", {
+    id: "article",
+    pinned: true,
+  });
+  invokeMock.mockResolvedValueOnce([payload]);
+  expect(
+    (await platform.listPinnedEntries(new AbortController().signal))[0].isPinned
+  ).toBe(true);
+  invokeMock.mockResolvedValueOnce({
+    ...payload,
+    content: "Body",
+    annotations: [],
+    favicon: null,
+  });
+  expect(
+    (await platform.readArticleScope(new AbortController().signal, "article"))
+      .isUnread
+  ).toBe(true);
+  expect(invokeMock).toHaveBeenLastCalledWith("read_article_scope", {
+    id: "article",
+  });
+});

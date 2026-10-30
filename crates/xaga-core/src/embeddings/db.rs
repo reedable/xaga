@@ -417,6 +417,7 @@ impl<'a> BatchSummaryColumns<'a> {
             description: opt_str(self.summaries, i),
             is_unread,
             is_bookmarked,
+            is_pinned: crate::tags::is_pinned(&tags),
             color: None,
         }
     }
@@ -620,6 +621,26 @@ impl EmbeddingsDb {
     /// (no full scan), selecting only `id`. Used for sidebar unread counts.
     pub async fn unread_ids(&self) -> Result<HashSet<String>, EmbeddingsError> {
         self.state_ids("is_unread = true").await
+    }
+
+    /// Entry pin identities, also used to detect pin-only drift during recovery.
+    pub(crate) async fn pinned_entry_ids(&self) -> Result<HashSet<String>, EmbeddingsError> {
+        self.state_ids("is_pinned = true").await
+    }
+
+    /// Pinned article summaries, without reading vectors.
+    pub async fn filter_pinned_entries(&self) -> Result<Vec<Entry>, EmbeddingsError> {
+        let batches: Vec<RecordBatch> = self
+            .table
+            .query()
+            .select(Select::columns(&Self::SUMMARY_COLUMNS))
+            .only_if("kind = 'entry' AND is_pinned = true")
+            .execute()
+            .await?
+            .try_collect()
+            .await
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+        Ok(entries_from_batches(&batches))
     }
 
     /// The set of entry ids currently bookmarked — read via the `is_bookmarked` Bitmap index.

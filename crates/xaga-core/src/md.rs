@@ -170,6 +170,7 @@ pub(crate) fn md_to_entry(md: Markdown) -> Entry {
         description: md.fm.summary,
         is_unread,
         is_bookmarked,
+        is_pinned: crate::tags::is_pinned(&md.fm.tags),
         color: None,
     }
 }
