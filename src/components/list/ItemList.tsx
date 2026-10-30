@@ -26,6 +26,10 @@ import {
   type MouseEvent,
 } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { usePlatform } from "../../platform/Platform";
+import { useErrorSink } from "../../hooks/useErrorSink";
+import { usePinnedEntries } from "../../hooks/usePinnedEntries";
+import { articleScopeItems } from "../../utils/articleScopeItems";
 import useAbortController from "../../hooks/useAbortController";
 import useEntries from "../../hooks/useEntries";
 import { useEvents } from "../../hooks/useEvents";
@@ -40,6 +44,7 @@ import {
   isEntry,
   isFeed,
   isTopic,
+  type Entry,
   type Feed,
   type Filter,
   type Item,
@@ -49,6 +54,7 @@ import {
   type TopicSort,
 } from "../../types";
 import cx from "../../utils/cx";
+import sortByTitle from "../../utils/sortByTitle";
 import {
   itemMatchesTextFilter,
   mergeAllItemsAnnotationChange,
@@ -76,8 +82,28 @@ export function ItemList({
   onEditFeed,
   onEditTopic,
 }: ItemListProps) {
-  const { filter, selectItem, selectSite, state, selectFilter } = useRouter();
-  const { feedId, topicId, shortcutId, entryId: selectedItemId } = state;
+  const {
+    filter,
+    selectItem,
+    selectSite,
+    selectArticleScope,
+    selectAnnotation,
+    state,
+    selectFilter,
+  } = useRouter();
+  const platform = usePlatform();
+  const { pushError } = useErrorSink();
+  const pinnedEntries = usePinnedEntries();
+  const { articleScopeId } = state;
+  const selectedItemId = state.annotationId ?? state.entryId;
+  const [scopedArticle, setScopedArticle] = useState<Entry | null>(null);
+  const articleRequestRef = useRef(0);
+  const articleStateRef = useRef<{ version: number; entry?: Entry }>({
+    version: 0,
+  });
+  const articleScopeRef = useRef(articleScopeId);
+  articleScopeRef.current = articleScopeId;
+  const { feedId, topicId, shortcutId } = state;
   const { siteHostname } = state;
   const [abort, abortControllerRef] = useAbortController();
   const { topics, listTopicItems } = useTopics(abortControllerRef);
@@ -94,12 +120,40 @@ export function ItemList({
 
   const selectedCollection = useMemo(
     () =>
+      (articleScopeId &&
+        (scopedArticle?.id === articleScopeId
+          ? scopedArticle
+          : pinnedEntries.find((entry) => entry.id === articleScopeId))) ||
       (feedId && feeds.find((f) => f.id === feedId)) ||
       (topicId && topics.find((t) => t.id === topicId)) ||
       (siteHostname && sites.find((site) => site.hostname === siteHostname)) ||
       (shortcutId && SHORTCUTS.find((s) => s.id === shortcutId)) ||
       ALL_ITEMS,
-    [feedId, topicId, siteHostname, shortcutId, feeds, topics, sites]
+    [
+      articleScopeId,
+      scopedArticle,
+      pinnedEntries,
+      feedId,
+      topicId,
+      siteHostname,
+      shortcutId,
+      feeds,
+      topics,
+      sites,
+    ]
+  );
+
+  const articleOptions = useMemo(
+    () =>
+      [
+        ...pinnedEntries,
+        ...(articleScopeId &&
+        scopedArticle?.id === articleScopeId &&
+        !pinnedEntries.some((entry) => entry.id === articleScopeId)
+          ? [scopedArticle]
+          : []),
+      ].sort(sortByTitle),
+    [pinnedEntries, articleScopeId, scopedArticle]
   );
 
   const { listEntries, listAllItems, markEntryRead } =
@@ -138,6 +192,13 @@ export function ItemList({
   const handleCollectionChange = useCallback(
     (event: SelectChangeEvent<string>) => {
       const id = event.target.value;
+      const article = pinnedEntries.find(
+        (entry) => `article:${entry.id}` === id
+      );
+      if (article) {
+        selectArticleScope(article);
+        return;
+      }
       const collection = [...SHORTCUTS, ...topics, ...feeds].find(
         (item) => item.id === id
       );
@@ -145,7 +206,15 @@ export function ItemList({
       const site = sites.find((item) => item.hostname === id);
       if (site) selectSite(site);
     },
-    [feeds, selectItem, selectSite, sites, topics]
+    [
+      feeds,
+      selectItem,
+      selectSite,
+      sites,
+      topics,
+      pinnedEntries,
+      selectArticleScope,
+    ]
   );
 
   const handleRefresh = useCallback(() => {
@@ -172,7 +241,7 @@ export function ItemList({
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
 
       const currentIndex = displayItems.findIndex(
-        (i) => i.id === selectedItemId
+        (i) => itemRefs.current.get(i.id) === e.currentTarget
       );
       if (currentIndex === -1) return;
 
@@ -188,11 +257,53 @@ export function ItemList({
         done: () => itemRefs.current.get(next.id)?.focus(),
       });
     },
-    [displayItems, selectedItemId, selectItem]
+    [displayItems, selectItem]
   );
+
+  const requestArticleScope = useCallback(async () => {
+    if (!articleScopeId) return;
+    const version = ++articleRequestRef.current;
+    const stateVersion = articleStateRef.current.version;
+    const signal = abortControllerRef.current.signal;
+    setLoading(true);
+    try {
+      const article = await platform.readArticleScope(signal, articleScopeId);
+      const next = await articleScopeItems(article, (id, refs) =>
+        platform.readEntryImages(signal, id, refs)
+      );
+      if (
+        signal.aborted ||
+        version !== articleRequestRef.current ||
+        articleScopeRef.current !== articleScopeId
+      )
+        return;
+      // State events can arrive while rendering/ordering a file-read snapshot.
+      const latest = articleStateRef.current;
+      if (latest.version > stateVersion && latest.entry?.id === article.id) {
+        article.isUnread = latest.entry.isUnread;
+        article.isBookmarked = latest.entry.isBookmarked;
+      }
+      setScopedArticle(article);
+      setItems(next);
+    } catch (error) {
+      if (!signal.aborted && articleScopeRef.current === articleScopeId)
+        pushError(error);
+    } finally {
+      if (
+        !signal.aborted &&
+        version === articleRequestRef.current &&
+        articleScopeRef.current === articleScopeId
+      )
+        setLoading(false);
+    }
+  }, [articleScopeId, abortControllerRef, platform, pushError]);
 
   const requestItems = useCallback(
     async (selectedList: Item | Site) => {
+      if (articleScopeId) {
+        await requestArticleScope();
+        return;
+      }
       setLoading(true);
 
       try {
@@ -218,6 +329,8 @@ export function ItemList({
       }
     },
     [
+      articleScopeId,
+      requestArticleScope,
       filter,
       listEntries,
       listTopicItems,
@@ -272,7 +385,15 @@ export function ItemList({
     })();
     // Depend on IDs, not objects, so feed/topic identity changes from
     // requestFeeds/requestTopics don't re-trigger a full list reload.
-  }, [feedId, topicId, siteHostname, shortcutId, requestItems, abort]);
+  }, [
+    articleScopeId,
+    feedId,
+    topicId,
+    siteHostname,
+    shortcutId,
+    requestItems,
+    abort,
+  ]);
 
   useEffect(() => {
     return onEmbeddingsChanged(() => {
@@ -282,12 +403,24 @@ export function ItemList({
 
   useEffect(() => {
     return onUnreadChanged((entry) => {
+      if (entry.id === articleScopeRef.current) {
+        articleStateRef.current = {
+          version: articleStateRef.current.version + 1,
+          entry,
+        };
+      }
       setItems((prev) => prev.map((p) => (p.id === entry.id ? entry : p)));
     });
   }, [onUnreadChanged]);
 
   useEffect(() => {
     return onBookmarkChanged((entry) => {
+      if (entry.id === articleScopeRef.current) {
+        articleStateRef.current = {
+          version: articleStateRef.current.version + 1,
+          entry,
+        };
+      }
       if (siteHostname) {
         void requestItems(selectedCollectionRef.current);
         return;
@@ -298,6 +431,14 @@ export function ItemList({
 
   useEffect(() => {
     return onAnnotationChanged((item) => {
+      if (
+        articleScopeId &&
+        "reference" in item &&
+        item.reference === articleScopeId
+      ) {
+        void requestArticleScope();
+        return;
+      }
       const active = allItemsMergeRef.current;
       setItems((current) =>
         mergeAllItemsAnnotationChange(
@@ -310,21 +451,47 @@ export function ItemList({
       );
       if (topicId) void mergeAddedTopicItem(topicId, item.id);
     });
-  }, [onAnnotationChanged, topicId, mergeAddedTopicItem]);
+  }, [
+    onAnnotationChanged,
+    topicId,
+    mergeAddedTopicItem,
+    articleScopeId,
+    requestArticleScope,
+  ]);
 
   useEffect(() => {
     return onAnnotationReplaced(({ oldId, item }) => {
+      if (
+        articleScopeId &&
+        "reference" in item &&
+        item.reference === articleScopeId
+      ) {
+        if (state.annotationId === oldId && isPartialAnnotation(item))
+          selectAnnotation(item);
+        void requestArticleScope();
+        return;
+      }
       setItems((prev) =>
         prev.map((value) => (value.id === oldId ? item : value))
       );
     });
-  }, [onAnnotationReplaced]);
+  }, [
+    onAnnotationReplaced,
+    articleScopeId,
+    requestArticleScope,
+    state.annotationId,
+    selectAnnotation,
+  ]);
 
   useEffect(() => {
     return onAnnotationRemoved((id) => {
+      if (articleScopeId) {
+        void requestArticleScope();
+        return;
+      }
       setItems((prev) => prev.filter((p) => p.id !== id));
     });
-  }, [onAnnotationRemoved]);
+  }, [onAnnotationRemoved, articleScopeId, requestArticleScope]);
 
   useEffect(() => {
     return onFeedsRefreshed(() => requestItems(selectedCollectionRef.current));
@@ -382,7 +549,11 @@ export function ItemList({
               <Select
                 className={css.CollectionSelect}
                 size="small"
-                value={selectedCollection.id}
+                value={
+                  articleScopeId
+                    ? `article:${articleScopeId}`
+                    : selectedCollection.id
+                }
                 onChange={handleCollectionChange}
               >
                 <ListSubheader>Shortcuts</ListSubheader>
@@ -390,6 +561,24 @@ export function ItemList({
                   <MenuItem key={s.id} value={s.id}>
                     <Typography component="span" variant="body2">
                       {s.title}
+                    </Typography>
+                  </MenuItem>
+                ))}
+                {articleScopeId &&
+                  !articleOptions.some(
+                    (entry) => entry.id === articleScopeId
+                  ) && (
+                    <MenuItem value={`article:${articleScopeId}`} disabled>
+                      Loading article…
+                    </MenuItem>
+                  )}
+                {articleOptions.map((entry) => (
+                  <MenuItem
+                    key={`article:${entry.id}`}
+                    value={`article:${entry.id}`}
+                  >
+                    <Typography component="span" variant="body2">
+                      {entry.title}
                     </Typography>
                   </MenuItem>
                 ))}
@@ -422,23 +611,25 @@ export function ItemList({
           )}
         </div>
 
-        <ToggleButtonGroup
-          aria-label="Filter"
-          className={css.FilterButtonGroup}
-          exclusive
-          value={filter}
-          onChange={handleFilter}
-        >
-          <ToggleButton size="small" value="unread" aria-label="Unread">
-            Unread
-          </ToggleButton>
-          <ToggleButton size="small" value="saved" aria-label="Saved">
-            Saved
-          </ToggleButton>
-          <ToggleButton size="small" value="all" aria-label="All">
-            All
-          </ToggleButton>
-        </ToggleButtonGroup>
+        {!articleScopeId && (
+          <ToggleButtonGroup
+            aria-label="Filter"
+            className={css.FilterButtonGroup}
+            exclusive
+            value={filter}
+            onChange={handleFilter}
+          >
+            <ToggleButton size="small" value="unread" aria-label="Unread">
+              Unread
+            </ToggleButton>
+            <ToggleButton size="small" value="saved" aria-label="Saved">
+              Saved
+            </ToggleButton>
+            <ToggleButton size="small" value="all" aria-label="All">
+              All
+            </ToggleButton>
+          </ToggleButtonGroup>
+        )}
 
         {isTopic(selectedCollection) && (
           <Select
@@ -494,7 +685,7 @@ export function ItemList({
       {!loading && items.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography component="div" variant="body2" color="text.disabled">
-            {getEmptyMessage(filter ?? "unread", "")}
+            {getEmptyMessage(articleScopeId ? "all" : (filter ?? "unread"), "")}
           </Typography>
         </div>
       )}
@@ -502,7 +693,10 @@ export function ItemList({
       {items.length > 0 && displayItems.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography component="div" variant="body2" color="text.disabled">
-            {getEmptyMessage(filter ?? "unread", filterText)}
+            {getEmptyMessage(
+              articleScopeId ? "all" : (filter ?? "unread"),
+              filterText
+            )}
           </Typography>
         </div>
       )}
@@ -521,7 +715,13 @@ export function ItemList({
                 }}
                 className={css.ListItemButton}
                 selected={selectedItemId === item.id}
-                tabIndex={selectedItemId === item.id ? 0 : -1}
+                tabIndex={
+                  selectedItemId === item.id ||
+                  (!displayItems.some((value) => value.id === selectedItemId) &&
+                    displayItems[0].id === item.id)
+                    ? 0
+                    : -1
+                }
                 onKeyDown={handleItemKeyDown}
                 onClick={() => selectItem(item)}
               >
@@ -554,9 +754,11 @@ export function ItemList({
         </div>
       )}
 
-      <div className={css.Toolbar}>
-        <Button onClick={handleMarkEntriesRead}>Mark all read</Button>
-      </div>
+      {!articleScopeId && (
+        <div className={css.Toolbar}>
+          <Button onClick={handleMarkEntriesRead}>Mark all read</Button>
+        </div>
+      )}
     </div>
   );
 }

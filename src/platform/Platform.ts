@@ -137,6 +137,8 @@ export interface Platform {
     id: string,
     diagnosticId?: string
   ): Promise<Article>;
+  /** Reads article content and annotations without an incidental mark-read. */
+  readArticleScope(signal: AbortSignal, id: string): Promise<Article>;
   // Resolves an entry's stored `../images/…` references to `data:` URIs for
   // rendering, index-aligned with `refs`. A `null` at index i means that
   // reference did not resolve (missing/oversize/foreign) and its `src` should be
@@ -157,7 +159,10 @@ export interface Platform {
   // "Frontend type branding (`__kind`)".
   createArticle(
     signal: AbortSignal,
-    article: Omit<Article, "id" | "createdAt" | "__kind" | "isBookmarked">,
+    article: Omit<
+      Article,
+      "id" | "createdAt" | "__kind" | "isBookmarked" | "isPinned"
+    >,
     imageData?: Record<string, string>,
     diagnosticId?: string
   ): Promise<Article>;
@@ -332,10 +337,13 @@ export interface Platform {
     callback: (view: HtmlReaderView) => void
   ): Promise<UnlistenFn>;
 
-  // Pinned state lives in the content files (feed `.atom` category / topic `.md` tag);
-  // surfaced on the Feed/Topic types (`isPinned`) and toggled per-item here.
+  // Pinned state lives in content files (feed `.atom` category / topic or article `.md` tag);
+  // surfaced on Feed/Topic/Entry (`isPinned`) and toggled per item here.
   setFeedPinned(id: string, pinned: boolean): Promise<void>;
   setTopicPinned(id: string, pinned: boolean): Promise<void>;
+  setEntryPinned(id: string, pinned: boolean): Promise<Entry>;
+  listPinnedEntries(signal: AbortSignal): Promise<Entry[]>;
+  onEntryPinChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
 
   // Persisted preferences
   getLoadRemoteImage(): Promise<boolean>;

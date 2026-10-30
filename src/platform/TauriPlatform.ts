@@ -118,6 +118,7 @@ const EntrySchema = ItemSchema.extend({
   description: z.string().nullable(),
   is_unread: z.boolean(),
   is_bookmarked: z.boolean(),
+  is_pinned: z.boolean().optional(),
   color: z.string().nullable().optional(),
 });
 
@@ -153,6 +154,7 @@ const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
     description: data.description ?? undefined,
     isUnread: data.is_unread,
     isBookmarked: data.is_bookmarked,
+    isPinned: data.is_pinned ?? false,
     color: data.color ?? undefined,
   };
 };
@@ -212,6 +214,7 @@ const ListItemSchema = z.object({
   url: z.string(),
   is_unread: z.boolean(),
   is_bookmarked: z.boolean(),
+  is_pinned: z.boolean().optional(),
   reference: z.string().optional(),
   color: z.string().optional(),
 });
@@ -236,6 +239,7 @@ const toListItem = (data: z.infer<typeof ListItemSchema>): ListItem =>
         url: data.url,
         isUnread: data.is_unread,
         isBookmarked: data.is_bookmarked,
+        isPinned: data.is_pinned ?? false,
       };
 
 const PartialAnnotationSchema = z.object({
@@ -753,6 +757,34 @@ export class TauriPlatform implements Platform {
     return ArticleSchema.transform(toArticle).parse(result);
   }
 
+  async setEntryPinned(id: string, pinned: boolean): Promise<Entry> {
+    const result = await invoke("set_entry_pinned", { id, pinned });
+    return EntrySchema.transform(toEntry).parse(result);
+  }
+
+  async listPinnedEntries(signal: AbortSignal): Promise<Entry[]> {
+    const result = await decorate(invoke).with(abortable, { signal })<unknown>(
+      "list_pinned_entries"
+    );
+    return z.array(EntrySchema.transform(toEntry)).parse(result);
+  }
+
+  async readArticleScope(signal: AbortSignal, id: string): Promise<Article> {
+    const result = await decorate(invoke).with(abortable, { signal })<unknown>(
+      "read_article_scope",
+      { id }
+    );
+    return ArticleSchema.transform(toArticle).parse(result);
+  }
+
+  onEntryPinChanged(callback: (entry: Entry) => void): Promise<UnlistenFn> {
+    const name: DomainEvent = "entry-pin:changed";
+    return listen<unknown>(name, (event) => {
+      const result = EntrySchema.transform(toEntry).safeParse(event.payload);
+      if (result.success) callback(result.data);
+    });
+  }
+
   async readEntry(signal: AbortSignal, id: string): Promise<Entry> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
@@ -821,7 +853,10 @@ export class TauriPlatform implements Platform {
   // "Frontend type branding (`__kind`)".
   async createArticle(
     signal: AbortSignal,
-    article: Omit<Article, "id" | "createdAt" | "__kind" | "isBookmarked">,
+    article: Omit<
+      Article,
+      "id" | "createdAt" | "__kind" | "isBookmarked" | "isPinned"
+    >,
     imageData: Record<string, string> = {},
     diagnosticId?: string
   ): Promise<Article> {

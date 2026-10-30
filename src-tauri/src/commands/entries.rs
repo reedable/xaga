@@ -89,3 +89,58 @@ pub async fn list_all_items(
         .await
         .map_err(AppError::from)
 }
+
+/// Pin intent is committed in the entry lane before updating the derived cache.
+#[tauri::command]
+pub async fn set_entry_pinned(
+    id: String,
+    pinned: bool,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Entry, AppError> {
+    let writer = crate::commands::require_writer(&state)?;
+    let entry = writer
+        .patch_entry_tags(
+            WriteTier::Interactive,
+            id.clone(),
+            TagPatch::SetPinned(pinned),
+        )
+        .await
+        .map_err(AppError::from)?;
+    state.enqueue(
+        Tier::Interactive,
+        Job::SyncState {
+            entity: EntityRef::new(id, Kind::Entry),
+            state: StatePatch {
+                is_pinned: Some(pinned),
+                ..Default::default()
+            },
+        },
+    );
+    crate::events::emit_domain(
+        &app,
+        xaga_core::events::DomainEvent::EntryPinChanged(entry.clone()),
+    );
+    Ok(entry)
+}
+
+#[tauri::command]
+pub async fn list_pinned_entries(state: State<'_, AppState>) -> Result<Vec<Entry>, AppError> {
+    let db = state.embeddings_read.lock().unwrap().clone();
+    let Some(db) = db else {
+        return Ok(vec![]);
+    };
+    db.reload().await.map_err(AppError::from)?;
+    db.filter_pinned_entries().await.map_err(AppError::from)
+}
+
+/// A source-file read for article scopes; unlike read_article, this does not mark read.
+#[tauri::command]
+pub async fn read_article_scope(
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<xaga_core::types::Article, AppError> {
+    xaga_core::persistence::articles::read_article(&state.library_path(), &id)
+        .await
+        .map_err(AppError::from)
+}

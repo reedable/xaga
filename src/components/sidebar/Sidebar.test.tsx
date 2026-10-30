@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../hooks/useAbortController", () => ({
   default: () => [undefined, { current: new AbortController() }],
 }));
+vi.mock("../../hooks/usePinnedEntries", () => ({ usePinnedEntries: () => [] }));
 vi.mock("../../hooks/useLibraryReadOnly", () => ({
   useLibraryReadOnly: () => false,
 }));

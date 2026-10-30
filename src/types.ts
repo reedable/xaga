@@ -172,6 +172,7 @@ export type NavigationState = {
   feedId?: Feed["id"];
   siteHostname?: Site["hostname"];
   shortcutId?: Shortcut["id"];
+  articleScopeId?: Entry["id"];
   entryId?: Entry["id"];
   annotationId?: Annotation["id"];
   url?: Entry["url"];

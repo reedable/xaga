@@ -7,6 +7,7 @@ import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import { useSidebar } from "../../hooks/useSidebar";
 import { useTopics } from "../../hooks/useTopics";
 import { useSites } from "../../hooks/useSites";
+import { usePinnedEntries } from "../../hooks/usePinnedEntries";
 import cx from "../../utils/cx";
 import sortByUnreadCount from "../../utils/sortByUnreadCount";
 import FeedList from "./FeedList";
@@ -33,6 +34,7 @@ export function Sidebar({
   const [, abortControllerRef] = useAbortController();
   const isLibraryReadOnly = useLibraryReadOnly();
 
+  const pinnedEntries = usePinnedEntries();
   const { topics, pinnedTopicIds } = useTopics(abortControllerRef);
 
   const { loading, feeds, pinnedFeedIds, refreshAllFeeds } =
@@ -44,10 +46,16 @@ export function Sidebar({
   const pinnedCollections = useMemo(
     () =>
       [
+        // Counts here are only the Shortcuts sorting projection; articles show none.
+        ...pinnedEntries.map((entry) => ({
+          ...entry,
+          entryCount: 0,
+          unreadCount: 0,
+        })),
         ...pinnedTopicIds.flatMap((id) => topics.filter((t) => t.id === id)),
         ...pinnedFeedIds.flatMap((id) => feeds.filter((f) => f.id === id)),
       ].sort(sortByUnreadCount),
-    [feeds, pinnedFeedIds, pinnedTopicIds, topics]
+    [feeds, pinnedFeedIds, pinnedTopicIds, topics, pinnedEntries]
   );
   const normalizedFilter = filter.trim().toLocaleLowerCase();
   const matchesFilter = useCallback(

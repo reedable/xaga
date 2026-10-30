@@ -28,7 +28,6 @@ data and on the list and reader currently open.
 
 ## References
 
-- [Pin Articles to Shortcuts](../available/enhancement__pin-articles-to-shortcuts.md)
 - [ListView behavior](../../docs/architecture/list_view.md)
 - `docs/principles/single_source_of_truth.md`
 - `docs/architecture/crash_consistency.md`
