@@ -39,3 +39,14 @@ only the companion. Markdown persistence and PDF-resource removal are not one tr
 a crash before removal can still leave both representations, and local lookup
 prefers the PDF. A successful HTML refresh removes those stale PDF resources.
 Download staging remains outside the library.
+
+### Article pins
+
+Article pinning changes only the `pinned` tag through the library writer's existing
+entry-tag patch lane, atomically replacing the `.md` before queuing an Interactive
+`SyncState` cache update. The command announces committed pin intent to the UI;
+read-only instances refuse the command through the central write gate. A crash
+between file commit and cache update leaves the source intact. Recovery compares
+the file's article pin state with cached pinned entry identities even when content
+and annotation checksums match, and syncs differing rows without re-embedding
+unchanged content. Fresh recovery derives article pins from the same file parser.

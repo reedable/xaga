@@ -62,6 +62,9 @@ impl EmbeddingEntry {
         if meta.is_bookmarked {
             tags.push(crate::tags::BOOKMARK.to_string());
         }
+        if meta.is_pinned {
+            tags.push(crate::tags::PINNED.to_string());
+        }
         EmbeddingEntry {
             id: meta.id.clone(),
             kind: Kind::Entry,
@@ -79,7 +82,7 @@ impl EmbeddingEntry {
             items: vec![],
             is_unread: meta.is_unread,
             is_bookmarked: meta.is_bookmarked,
-            is_pinned: false,
+            is_pinned: meta.is_pinned,
             vector,
         }
     }

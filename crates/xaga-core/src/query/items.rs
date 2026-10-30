@@ -142,6 +142,7 @@ pub async fn list_all_items(library_dir: &Path, item_filter: ItemFilter) -> Resu
             url: e.url,
             is_unread: e.is_unread,
             is_bookmarked: e.is_bookmarked,
+            is_pinned: e.is_pinned,
             reference: None,
             color: None,
         })
@@ -156,6 +157,7 @@ pub async fn list_all_items(library_dir: &Path, item_filter: ItemFilter) -> Resu
                     url: a.url,
                     is_unread: false,
                     is_bookmarked: false,
+                    is_pinned: false,
                     reference: Some(a.reference),
                     color: Some(a.color),
                 }),
@@ -228,6 +230,7 @@ mod tests {
                 description: None,
                 is_unread: false,
                 is_bookmarked: false,
+                is_pinned: false,
                 color: None,
             },
             kind,

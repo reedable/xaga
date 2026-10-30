@@ -50,7 +50,7 @@ hostnames stored as library-specific metadata.
 
 ## References
 
-- `docs-transient/available/spike__define-tag-collection-bookmark-pin-shortcut-site.md`
+- `docs-transient/active/spike__define-tag-collection-bookmark-pin-shortcut-site.md`
 - `docs/architecture/sites.md`
 - `crates/xaga-core/src/library.rs`
 - `crates/xaga-core/src/library_writer/mod.rs`

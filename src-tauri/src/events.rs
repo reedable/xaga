@@ -131,6 +131,7 @@ pub(crate) fn emit_domain<R: Runtime>(target: &impl Emitter<R>, event: DomainEve
     let result = match &event {
         DomainEvent::UnreadChanged(entry) => target.emit(name, entry),
         DomainEvent::BookmarkChanged(entry) => target.emit(name, entry),
+        DomainEvent::EntryPinChanged(entry) => target.emit(name, entry),
         DomainEvent::AnnotationChanged(item) => target.emit(name, item),
         DomainEvent::AnnotationReplaced(replacement) => target.emit(name, replacement),
         DomainEvent::AnnotationRemoved { id } => target.emit(name, id),

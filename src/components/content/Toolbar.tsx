@@ -6,6 +6,8 @@ import {
   CircleOutlined,
   Language,
   OpenInNew,
+  PushPin,
+  PushPinOutlined,
   QrCode2,
   Refresh,
   Search,
@@ -23,7 +25,8 @@ import useAbortController from "../../hooks/useAbortController";
 import { useArticles } from "../../hooks/useArticles";
 import { useBookmarks } from "../../hooks/useBookmarks";
 import useEntries from "../../hooks/useEntries";
-import { useEvents } from "../../hooks/useEvents";
+import { subscribe, useEvents } from "../../hooks/useEvents";
+import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import { useErrorSink } from "../../hooks/useErrorSink";
 import FaviconLoadError from "../../utils/FaviconLoadError";
 import { isLocalFaviconReference } from "../../utils/isLocalFaviconReference";
@@ -41,6 +44,8 @@ interface ToolbarProps {
 
 export function Toolbar({ reload }: ToolbarProps) {
   const platform = usePlatform();
+  const isLibraryReadOnly = useLibraryReadOnly();
+  const [pinning, setPinning] = useState(false);
   const embeddingStartupState = useEmbeddingStartupState();
   const { pushError } = useErrorSink();
   const {
@@ -102,6 +107,31 @@ export function Toolbar({ reload }: ToolbarProps) {
     if (entry.isBookmarked) await removeBookmark(entry);
     else await addBookmark(entry);
   }, [entry, addBookmark, removeBookmark]);
+
+  const togglePin = useCallback(async () => {
+    if (!entry || pinning) return;
+    setPinning(true);
+    try {
+      const updated = await platform.setEntryPinned(entry.id, !entry.isPinned);
+      setLatestEntry((current) =>
+        current?.id === updated.id ? updated : current
+      );
+    } catch (error) {
+      pushError(error);
+    } finally {
+      setPinning(false);
+    }
+  }, [entry, pinning, platform, pushError]);
+
+  useEffect(
+    () =>
+      subscribe(() =>
+        platform.onEntryPinChanged((updated) => {
+          if (updated.id === entryId) setLatestEntry(updated);
+        })
+      ),
+    [entryId, platform]
+  );
 
   const toggleRead = useCallback(async () => {
     if (!entry) return;
@@ -172,7 +202,11 @@ export function Toolbar({ reload }: ToolbarProps) {
   useEffect(
     () =>
       onBookmarkChanged((entry) => {
-        if (entry.id === entryId) setLatestEntry(entry);
+        if (entry.id === entryId)
+          setLatestEntry((current) => ({
+            ...entry,
+            isPinned: current?.isPinned ?? entry.isPinned,
+          }));
       }),
     [onBookmarkChanged, entryId]
   );
@@ -186,7 +220,11 @@ export function Toolbar({ reload }: ToolbarProps) {
   useEffect(
     () =>
       onUnreadChanged((entry) => {
-        if (entry.id === entryId) setLatestEntry(entry);
+        if (entry.id === entryId)
+          setLatestEntry((current) => ({
+            ...entry,
+            isPinned: current?.isPinned ?? entry.isPinned,
+          }));
       }),
     [onUnreadChanged, entryId]
   );
@@ -316,6 +354,31 @@ export function Toolbar({ reload }: ToolbarProps) {
               </IconButton>
             </Tooltip>
 
+            <Tooltip
+              title={
+                entry?.isPinned ? "Remove from Shortcuts" : "Add to Shortcuts"
+              }
+            >
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={togglePin}
+                  disabled={!entry || isLibraryReadOnly || pinning}
+                  aria-label={
+                    entry?.isPinned
+                      ? "Remove from Shortcuts"
+                      : "Add to Shortcuts"
+                  }
+                  aria-pressed={!!entry?.isPinned}
+                >
+                  {entry?.isPinned ? (
+                    <PushPin fontSize="small" color="primary" />
+                  ) : (
+                    <PushPinOutlined fontSize="small" />
+                  )}
+                </IconButton>
+              </span>
+            </Tooltip>
             <TopicMenuButton item={entry} disabled={!entry} />
           </div>
 

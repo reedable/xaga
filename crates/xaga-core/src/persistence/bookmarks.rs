@@ -169,6 +169,7 @@ fn parse(html: &str) -> Vec<Entry> {
             description: summary,
             is_unread: false,
             is_bookmarked: false,
+            is_pinned: false,
             color: None,
         });
     }

@@ -25,6 +25,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     db: &EmbeddingsDb,
     sink: &mut S,
 ) -> Result<RepairResidue, EmbeddingsError> {
+    let pinned_ids = db.pinned_entry_ids().await?;
     let db_meta = db.list_entries_meta().await?; // id → (checksum, reference, has_vector, kind, items)
 
     // Embedding is needed when the row is absent, its content changed, or its vector is missing.
@@ -86,7 +87,10 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
             // Stream when the entry needs (re)embedding OR its annotations drifted from the `.md`
             // (membership, content, or a pending vector) — the consumers re-check each and do only
             // the work required (`sync_entry_row` for rows, `embed_annotations` for vectors).
-            if needs_embed || annotations_differ(&article) {
+            if needs_embed
+                || annotations_differ(&article)
+                || pinned_ids.contains(&article.meta.id) != article.meta.is_pinned
+            {
                 sink.article(article);
             }
         },
@@ -262,6 +266,84 @@ mod tests {
         let mut sink = CollectingSink { articles: vec![] };
         repair_item_embeddings(lib, &db, &mut sink).await.unwrap();
         assert_eq!(sink.articles, Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn pin_only_drift_is_repaired_without_content_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        save_article(
+            lib,
+            "abcdef123456",
+            "https://example.com/a",
+            "Title",
+            None,
+            None,
+            None,
+            None,
+            "body",
+            &Default::default(),
+            crate::library_writer::WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        let article = read_article(lib, "abcdef123456").await.unwrap();
+        let db = EmbeddingsDb::open(lib).await.unwrap();
+        db.upsert(EmbeddingEntry::from_article(&article, Some(vec![0.5; 384])))
+            .await
+            .unwrap();
+        let writer = crate::library_writer::LibraryWriter::start(
+            lib.into(),
+            crate::library::acquire_lock(lib).unwrap(),
+        );
+        for pinned in [true, false] {
+            writer
+                .patch_entry_tags(
+                    crate::library_writer::Tier::Interactive,
+                    article.meta.id.clone(),
+                    crate::library_writer::TagPatch::SetPinned(pinned),
+                )
+                .await
+                .unwrap();
+            let mut sink = CollectingSink { articles: vec![] };
+            repair_item_embeddings(lib, &db, &mut sink).await.unwrap();
+            assert_eq!(sink.articles, vec![article.meta.id.clone()]);
+            let current = read_article(lib, &article.meta.id).await.unwrap();
+            let (unread, _) = flume::unbounded();
+            let (bookmarked, _) = flume::unbounded();
+            let (annotations, _) = flume::unbounded();
+            crate::embeddings::pipeline::sync_entry_row(
+                &current,
+                &db,
+                &unread,
+                &bookmarked,
+                &annotations,
+            )
+            .await
+            .unwrap();
+            let row = db.get_entry(&article.meta.id).await.unwrap().unwrap();
+            assert_eq!(row.is_pinned, pinned);
+            assert_eq!(row.vector, Some(vec![0.5; 384]));
+            let pins = db.filter_pinned_entries().await.unwrap();
+            assert_eq!(pins.len(), usize::from(pinned));
+            if pinned {
+                assert!(pins[0].is_pinned);
+            }
+            let mut sink = CollectingSink { articles: vec![] };
+            repair_item_embeddings(lib, &db, &mut sink).await.unwrap();
+            assert!(sink.articles.is_empty());
+        }
+        let other = tempfile::tempdir().unwrap();
+        assert!(
+            EmbeddingsDb::open(other.path())
+                .await
+                .unwrap()
+                .filter_pinned_entries()
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        writer.shutdown().await;
     }
 
     /// The regression guard: when the entries directory cannot be read (e.g. macOS TCC denying a
