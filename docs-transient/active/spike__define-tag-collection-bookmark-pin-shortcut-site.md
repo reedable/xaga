@@ -2,8 +2,8 @@
 
 ## Summary
 
-Resolve the remaining Tag, Collection, Pin, Shortcut, and Site definitions and
-the transition from Bookmark to an editable tag. Record domain definitions and
+Resolve the remaining Tag, Collection, Bookmark, Pin, Shortcut, and Site
+definitions. Record domain definitions and
 identify implementation and migration changes, including persistence for pinned
 Sites.
 
@@ -17,12 +17,8 @@ Sites.
   tags belong in the LanceDB mirror.
 - Define Collection membership and identity and the relationship of Feed, Topic,
   and Site to Collection.
-- Define how bookmark import/export and the existing `Bookmarkable` capability
-  transition to bookmark as an ordinary editable tag.
-- Define Pin as an action, state, or relationship; its relationship to the
-  `pinned` marker and `Pinnable`; and whether it is intrinsic to a target or
-  membership in Shortcuts. Pinning gives
-  access through Shortcuts and can apply to individual articles.
+- Define Bookmark separately from Tags, including its applicability across
+  entities and its relationship to bookmark state and import/export.
 - Define Shortcut, including built-in navigation targets, pinned targets, typed
   target identity, ordering, and whether Shortcut has a durable domain
   representation or remains a UI projection.
@@ -42,15 +38,13 @@ Sites.
   including the current Feed/Topic `isPinned` fields and the derived Site shape.
 - Determine what information is lost when domain objects and LanceDB rows retain
   only state derived from persisted tags.
-- Compare Pin/Shortcut ownership models and their consequences for existing
-  Feed/Topic pins, Site persistence, deletion, dangling targets, ordering,
-  concurrency, migration, and external edits.
 - Present options and modeling consequences for the unresolved definitions.
 - Record the chosen definitions in durable domain documentation and identify the
   implementation and migration changes they require.
 
 ## References
 
+- [Centralize Pin Storage](../available/refactor__pins--centralize-storage.md)
 - [Tags and the Inspector](../ideas/tags-and-inspector.md)
 - [Store Unread Outside Tags](../available/refactor__store-unread-outside-tags.md)
 - [Article shortcut behavior](../../docs/architecture/list_view.md#article-shortcuts)

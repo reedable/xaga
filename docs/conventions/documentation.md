@@ -47,6 +47,9 @@ Transient task documents use these sections, in order:
 
 Keep transient tasks focused on remaining work. Do not include completed-work summaries, implementation history, or lists of resolved items. Remove work as it is completed. Lasting decisions and descriptions of implemented behavior belong in durable documentation.
 
+Every task that changes the library storage model must explicitly require a
+minor-version increment while the app remains at major version 0.
+
 ## Transient task filenames
 
 Every transient task file uses a BEM-like name. The category is the block and the

@@ -12,8 +12,8 @@ entirely different systems. Neither “bookmark” nor “read-later” maps cle
 onto those categories, and those categories are examples, not a taxonomy the
 app should prescribe.
 
-Provide an initial ordinary, editable tag named `bookmark`. Users can rename it
-and create other tags. Applying a tag is expected to be a two-click
+Bookmark is a separate concept from Tags; its domain meaning and relationship
+to user-defined organization remain to be defined. Applying a tag is expected to be a two-click
 interaction: open the relevant control or view, then choose a tag. The exact
 controls remain to be designed.
 
@@ -25,7 +25,8 @@ Site identity and persistence still need further definition.
 ## Tags include visual labels
 
 An article or annotation can have **zero or more tags**. Tags are optional and
-can be combined; neither `bookmark` nor any other tag is required.
+can be combined; no tag is required. Tags can apply across domain entity types
+in principle, independently of which types currently support bookmarking.
 
 Abstractly, a tag is a label whose meaning the user supplies. Words and colors
 can express such labels. Choosing red for an annotation labels it visually;
@@ -127,6 +128,6 @@ Relevant implementation:
 - Recoloring currently replaces an annotation with a new ID in `HtmlReader`.
   Work through Inspector target continuity and preservation of relationships;
   do not assume recoloring is an in-place identity-preserving update.
-- Define tag identity, renaming, deletion, defaults, import/export, and migration
-  of existing bookmarks. An editable `bookmark` label must not conceal a special
-  hard-coded identity contract that makes ordinary editing break behavior.
+- Define tag identity, renaming, deletion, defaults, and import/export.
+- Define Bookmark's meaning and relationship to Tags without assuming a
+  conversion of existing bookmarks into ordinary tags.

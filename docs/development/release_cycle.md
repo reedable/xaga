@@ -34,7 +34,8 @@ The normal ordering is:
 The version commands update the three Xaga workspace package entries in `Cargo.lock` directly alongside the source version files. They do not invoke Cargo, resolve dependencies, access the network, or compile the Rust workspace.
 
 While the major version is 0, minor versions signal significant compatibility
-changes. The 0.10 reading-state format requires the [explicit library upgrade](../library_upgrade.md)
+changes. Every library storage-model change requires a minor-version increment.
+The 0.10 reading-state format requires the [explicit library upgrade](../library_upgrade.md)
 before using a 0.9 library; patch versions do not carry this format transition.
 
 ## Starting development
