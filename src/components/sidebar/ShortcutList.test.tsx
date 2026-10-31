@@ -8,8 +8,9 @@ import ShortcutList from "./ShortcutList";
 const mocks = vi.hoisted(() => ({
   sortMode: "alphabetical",
   selectCollection: vi.fn(),
+  selectSite: vi.fn(),
   selectArticleScope: vi.fn(),
-  state: {} as { articleScopeId?: string },
+  state: {} as { articleScopeId?: string; siteHostname?: string },
 }));
 
 vi.mock("../../hooks/useAbortController", () => ({
@@ -21,6 +22,7 @@ vi.mock("../../hooks/useFeeds", () => ({
 vi.mock("../../hooks/useRouter", () => ({
   default: () => ({
     selectCollection: mocks.selectCollection,
+    selectSite: mocks.selectSite,
     selectArticleScope: mocks.selectArticleScope,
     state: mocks.state,
   }),
@@ -152,5 +154,39 @@ it("sorts article shortcuts at zero, displays no count, and selects their articl
   expect(button.getAttribute("aria-pressed")).toBe("true");
   await act(async () => button.click());
   expect(mocks.selectArticleScope).toHaveBeenCalledWith(article);
+  expect(mocks.selectCollection).not.toHaveBeenCalled();
+});
+
+it("sorts pinned Sites with other shortcuts, keeps All items first, and selects Site scope", async () => {
+  const site = {
+    id: "example.com",
+    hostname: "example.com",
+    title: "example.com",
+    entryCount: 8,
+    unreadCount: 5,
+  };
+  mocks.sortMode = "unread";
+  mocks.state = { siteHostname: site.hostname };
+  await act(async () =>
+    root.render(
+      <ShortcutList
+        isExpanded
+        shortcuts={[...shortcuts, site]}
+        onClickHeader={vi.fn()}
+      />
+    )
+  );
+  expect(
+    [...container.querySelectorAll("[data-collection-title]")].map((node) =>
+      node.getAttribute("data-collection-title")
+    )
+  ).toEqual(["All items", "example.com", "Zulu", "Alpha"]);
+  const button = container.querySelector<HTMLButtonElement>(
+    '[data-collection-title="example.com"]'
+  )!;
+  expect(button.getAttribute("aria-pressed")).toBe("true");
+  expect(button.dataset.count).toBe("true");
+  await act(async () => button.click());
+  expect(mocks.selectSite).toHaveBeenCalledWith(site);
   expect(mocks.selectCollection).not.toHaveBeenCalled();
 });

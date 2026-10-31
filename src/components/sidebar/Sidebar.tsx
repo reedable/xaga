@@ -44,11 +44,12 @@ export function Sidebar({
   const missingPins = useMissingPins(pinnedEntries, feeds, topics);
 
   const { expandedList, setExpandedList } = useSidebar(abortControllerRef);
-  const { sites } = useSites(abortControllerRef);
+  const { sites, pinnedSites = [] } = useSites(abortControllerRef);
 
   const pinnedCollections = useMemo(
     () =>
       [
+        ...pinnedSites,
         // Counts here are only the Shortcuts sorting projection; articles show none.
         ...pinnedEntries.map((entry) => ({
           ...entry,
@@ -58,7 +59,7 @@ export function Sidebar({
         ...pinnedTopicIds.flatMap((id) => topics.filter((t) => t.id === id)),
         ...pinnedFeedIds.flatMap((id) => feeds.filter((f) => f.id === id)),
       ].sort(sortByUnreadCount),
-    [feeds, pinnedFeedIds, pinnedTopicIds, topics, pinnedEntries]
+    [feeds, pinnedFeedIds, pinnedTopicIds, topics, pinnedEntries, pinnedSites]
   );
   const normalizedFilter = filter.trim().toLocaleLowerCase();
   const matchesFilter = useCallback(
@@ -142,7 +143,7 @@ export function Sidebar({
       <ShortcutList
         shortcuts={filteredPinnedCollections}
         missing={missingPins.filter((pin) =>
-          `${pin.type}: ${pin.id}`
+          `${pin.type}: ${pin.type === "site" ? pin.hostname : pin.id}`
             .toLocaleLowerCase()
             .includes(normalizedFilter)
         )}

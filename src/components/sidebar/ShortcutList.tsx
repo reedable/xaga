@@ -2,6 +2,7 @@ import {
   Feed as FeedIcon,
   FolderOutlined,
   Newspaper,
+  Language,
   RssFeed,
 } from "@mui/icons-material";
 import { useCallback, useMemo } from "react";
@@ -11,7 +12,14 @@ import { useSidebarSort } from "../../hooks/useSidebarSort";
 import useRouter from "../../hooks/useRouter";
 import { ALL_ITEMS } from "../../Shortcuts";
 import { useAllItemsCounts } from "../../hooks/useAllItemsCounts";
-import { isEntry, isFeed, isTopic, type Countable } from "../../types";
+import {
+  isEntry,
+  isFeed,
+  isTopic,
+  isSite,
+  type Site,
+  type Countable,
+} from "../../types";
 import sortSidebarCollections from "../../utils/sortSidebarCollections";
 import ExpandableList from "./ExpandableList";
 import css from "./ShortcutList.module.css";
@@ -26,7 +34,7 @@ import MissingShortcut from "./MissingShortcut";
 type ShortcutListProps = {
   missing?: PinTarget[];
   isExpanded?: boolean;
-  shortcuts: Countable[];
+  shortcuts: (Countable | Site)[];
   onClickHeader: () => void;
 };
 
@@ -36,8 +44,9 @@ export default function ShortcutList({
   shortcuts,
   onClickHeader,
 }: ShortcutListProps) {
-  const { selectArticleScope, selectCollection, state } = useRouter();
-  const { feedId, topicId, shortcutId, articleScopeId } = state;
+  const { selectArticleScope, selectCollection, selectSite, state } =
+    useRouter();
+  const { feedId, topicId, shortcutId, articleScopeId, siteHostname } = state;
   const [, abortControllerRef] = useAbortController();
   const { loadingFeedIds } = useFeeds(abortControllerRef);
   const [sortMode, setSortMode] = useSidebarSort("shortcuts");
@@ -52,11 +61,13 @@ export default function ShortcutList({
   );
 
   const handleSelectShortcut = useCallback(
-    (collection: Countable) =>
-      isEntry(collection)
-        ? selectArticleScope(collection)
-        : selectCollection(collection),
-    [selectArticleScope, selectCollection]
+    (collection: Countable | Site) =>
+      isSite(collection)
+        ? selectSite(collection)
+        : isEntry(collection)
+          ? selectArticleScope(collection)
+          : selectCollection(collection),
+    [selectArticleScope, selectCollection, selectSite]
   );
 
   return (
@@ -89,15 +100,17 @@ export default function ShortcutList({
       {sortedShortcuts.map((shortcut) => (
         <SidebarItem
           collection={shortcut}
-          key={`${isEntry(shortcut) ? "entry" : isFeed(shortcut) ? "feed" : "topic"}:${shortcut.id}`}
+          key={`${isEntry(shortcut) ? "entry" : isFeed(shortcut) ? "feed" : isSite(shortcut) ? "site" : "topic"}:${shortcut.id}`}
           icon={
-            isFeed(shortcut)
-              ? RssFeed
-              : isTopic(shortcut)
-                ? FeedIcon
-                : isEntry(shortcut)
-                  ? Newspaper
-                  : FolderOutlined
+            isSite(shortcut)
+              ? Language
+              : isFeed(shortcut)
+                ? RssFeed
+                : isTopic(shortcut)
+                  ? FeedIcon
+                  : isEntry(shortcut)
+                    ? Newspaper
+                    : FolderOutlined
           }
           loading={
             isFeed(shortcut)
@@ -105,11 +118,13 @@ export default function ShortcutList({
               : loadingFeedIds.size > 0
           }
           selected={
-            isFeed(shortcut)
-              ? feedId === shortcut.id
-              : isTopic(shortcut)
-                ? topicId === shortcut.id
-                : isEntry(shortcut) && articleScopeId === shortcut.id
+            isSite(shortcut)
+              ? siteHostname === shortcut.hostname
+              : isFeed(shortcut)
+                ? feedId === shortcut.id
+                : isTopic(shortcut)
+                  ? topicId === shortcut.id
+                  : isEntry(shortcut) && articleScopeId === shortcut.id
           }
           onSelectCollection={handleSelectShortcut}
           renderSecondaryAction={

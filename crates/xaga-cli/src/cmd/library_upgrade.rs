@@ -334,16 +334,23 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
     for chunk in pins.pins.chunks(CACHE_BATCH_SIZE) {
         let targets: Vec<_> = chunk
             .iter()
-            .map(|target| {
+            .filter_map(|target| {
                 use xaga_core::pins::PinTarget;
                 let (kind, id) = match target {
                     PinTarget::Entry { id } => ("entry", id),
                     PinTarget::Feed { id } => ("feed", id),
                     PinTarget::Topic { id } => ("topic", id),
+                    PinTarget::Site { .. } => return None,
                 };
-                format!("(kind = '{kind}' AND id = '{}')", id.replace('\'', "''"))
+                Some(format!(
+                    "(kind = '{kind}' AND id = '{}')",
+                    id.replace('\'', "''")
+                ))
             })
             .collect();
+        if targets.is_empty() {
+            continue;
+        }
         if let Err(error) = table
             .update()
             .only_if(targets.join(" OR "))
@@ -538,6 +545,30 @@ mod tests {
         assert!(!values(&false_without_tags).contains_key("is_unread"));
         let unsupported = document("tags: [unread]\nimages: {old: unsupported}");
         assert!(!values(&convert(&unsupported).unwrap().rendered.unwrap()).contains_key("images"));
+    }
+
+    #[tokio::test]
+    async fn upgrade_preserves_site_pins_without_creating_site_cache_rows() {
+        use xaga_core::pins::{PinTarget, Pins};
+        let dir = tempfile::tempdir().unwrap();
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        let pins = Pins {
+            pins: vec![PinTarget::Site {
+                hostname: "example.com".into(),
+            }],
+        };
+        fs::write(library::pins_path(dir.path()), pins.serialize().unwrap()).unwrap();
+        let report = upgrade_library(dir.path(), &lock).await;
+        assert!(report.errors.is_empty(), "{report:?}");
+        assert_eq!(Pins::read(dir.path()).await.unwrap(), pins);
+        assert_eq!(
+            table(dir.path(), &lock)
+                .await
+                .count_rows(None)
+                .await
+                .unwrap(),
+            0
+        );
     }
 
     #[test]
