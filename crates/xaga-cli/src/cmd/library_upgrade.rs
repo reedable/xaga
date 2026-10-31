@@ -33,28 +33,133 @@ struct Conversion {
     color: Option<String>,
 }
 
-/// Edit only migration-owned fields. Serializing the entire generic Value tree
-/// would reinterpret plain IDs such as `29688640e516` as overflowing floats.
-/// The CST keeps every unrelated scalar's original bytes, including nested IDs.
+/// Significant CST tokens with byte ranges. Scalar tokens can include trailing
+/// whitespace; leave that trivia and sibling comments outside migration edits.
+fn migration_tokens(
+    node: &noyalib::cst::GreenNode,
+    source: &str,
+    offset: usize,
+    tokens: &mut Vec<(noyalib::cst::SyntaxKind, usize, usize)>,
+) {
+    use noyalib::cst::{GreenChild, SyntaxKind};
+    let mut cursor = offset;
+    for child in node.children() {
+        match child {
+            GreenChild::Node(node) => migration_tokens(node, source, cursor, tokens),
+            GreenChild::Token { kind, .. }
+                if !matches!(
+                    kind,
+                    SyntaxKind::Whitespace | SyntaxKind::Newline | SyntaxKind::Comment
+                ) =>
+            {
+                let end = cursor + source[cursor..cursor + child.text_len()].trim_end().len();
+                tokens.push((*kind, cursor, end));
+            }
+            _ => {}
+        }
+        cursor += child.text_len();
+    }
+}
+
+/// Edit only migration-owned fields, retaining every unrelated source byte.
+/// noyalib 0.0.15's path-shaped edits truncate indentless sequences and cannot
+/// remove multiline values. Use typed parser spans and CST token boundaries,
+/// and fully parse each edit before the next operation can access a lazy cache.
 fn patch_migration_fields(
     yaml: &str,
     fields: &BTreeMap<String, Value>,
     keys: &[&str],
 ) -> Result<String, Error> {
-    // The frontmatter slice excludes its final newline. Keep one so root
-    // insertions cannot join the previous scalar or block-scalar content.
-    let mut document = noyalib::cst::parse_document(&format!("{yaml}\n"))?;
-    for key in keys {
-        if let Some(value) = fields.get(*key) {
-            // JSON fragments are valid YAML and quote tag strings explicitly.
-            document.insert_entry("", key, &serde_json::to_string(value)?)?;
-        } else if document.get(key).is_some() {
-            document.remove(key)?;
-        }
-    }
-    let rendered = document.to_string();
+    use noyalib::cst::SyntaxKind;
     let config = ParserConfig::strict().with_policy(DenyAnchors);
-    let _: BTreeMap<String, Value> = noyalib::from_str_with_config(&rendered, &config)?;
+    let mut rendered = format!("{yaml}\n");
+    for key in keys {
+        let document = noyalib::cst::parse_document(&rendered)?;
+        let spans: BTreeMap<String, noyalib::Spanned<Value>> =
+            noyalib::from_str_with_config(&rendered, &config)?;
+        let mut tokens = Vec::new();
+        migration_tokens(document.syntax(), &rendered, 0, &mut tokens);
+        if let Some(span) = spans.get(*key) {
+            let start = span.start.index();
+            let end = tokens
+                .iter()
+                .filter(|(_, token_start, token_end)| {
+                    *token_start >= start && *token_end <= span.end.index()
+                })
+                .map(|(_, _, end)| *end)
+                .last()
+                .unwrap_or(start);
+            if let Some(value) = fields.get(*key) {
+                let fragment = serde_json::to_string(value)?;
+                let on_own_line = rendered[..start]
+                    .rsplit('\n')
+                    .next()
+                    .is_some_and(|prefix| prefix.trim().is_empty());
+                let replacement = if on_own_line {
+                    format!("  {fragment}")
+                } else {
+                    fragment
+                };
+                rendered.replace_range(start..end, &replacement);
+            } else {
+                let colon = tokens
+                    .iter()
+                    .rposition(|(kind, at, _)| *kind == SyntaxKind::ColonIndicator && *at < start)
+                    .ok_or("migration field has no key separator")?;
+                let (_, mut entry_start, key_end) = *tokens
+                    .get(colon.wrapping_sub(1))
+                    .ok_or("migration field has no key")?;
+                let stored_key: String =
+                    noyalib::from_str_with_config(&rendered[entry_start..key_end], &config)?;
+                if stored_key != *key {
+                    return Err("migration key span mismatch".into());
+                }
+                let mut entry_end = end;
+                // Flow mappings need one adjoining comma removed with the entry.
+                if let Some((SyntaxKind::Comma, _, comma_end)) =
+                    tokens.iter().find(|(_, at, _)| *at >= end)
+                {
+                    entry_end = *comma_end;
+                } else if let Some((SyntaxKind::Comma, comma_start, _)) =
+                    tokens.iter().rev().find(|(_, _, at)| *at <= entry_start)
+                {
+                    entry_start = *comma_start;
+                }
+                rendered.replace_range(entry_start..entry_end, "");
+                if spans.len() == 1
+                    && tokens
+                        .first()
+                        .is_none_or(|(kind, _, _)| *kind != SyntaxKind::OpenBrace)
+                {
+                    rendered.push_str("{}\n");
+                }
+            }
+        } else if let Some(value) = fields.get(*key) {
+            let fragment = serde_json::to_string(value)?;
+            if matches!(tokens.first(), Some((SyntaxKind::OpenBrace, _, _))) {
+                let close = tokens
+                    .iter()
+                    .rposition(|(kind, _, _)| *kind == SyntaxKind::CloseBrace)
+                    .ok_or("root mapping has no closing brace")?;
+                let comma = if spans.is_empty()
+                    || (close > 0 && tokens[close - 1].0 == SyntaxKind::Comma)
+                {
+                    ""
+                } else {
+                    ","
+                };
+                rendered.insert_str(
+                    tokens[close].1,
+                    &format!("{comma}{}: {fragment}", serde_json::to_string(key)?),
+                );
+            } else {
+                let mut document = document;
+                document.insert_entry("", key, &fragment)?;
+                rendered = document.to_string();
+            }
+        }
+        let _: BTreeMap<String, Value> = noyalib::from_str_with_config(&rendered, &config)?;
+    }
     Ok(rendered)
 }
 
@@ -657,6 +762,71 @@ mod tests {
                 .unwrap(),
             0
         );
+    }
+
+    #[test]
+    fn block_tag_migrations_preserve_siblings_body_and_retry_safely() {
+        let preserved = "# Keep this sibling comment\ncustom: {id: 29688640e516, ratio: 1.234567890123456789}\nfavicon: ../images/abcdef123456/112233445566\n";
+        for indent in ["", "  "] {
+            for tags in [
+                vec!["bookmark"],
+                vec!["pinned", "unread", "bookmark", "research"],
+            ] {
+                let sequence: String = tags
+                    .iter()
+                    .map(|tag| format!("{indent}- {tag}\n"))
+                    .collect();
+                for suffix in ["", preserved] {
+                    let original =
+                        format!("---\ntitle: Saved\ntags:\n{sequence}{suffix}---\n\nBody\r\n\n");
+                    let pinned = convert_markdown_pin(&original).unwrap();
+                    let after_pin = pinned.as_deref().unwrap_or(&original);
+                    let converted = convert(after_pin).unwrap();
+                    assert_eq!(converted.color.as_deref(), Some("blue"));
+                    let saved = converted.rendered.unwrap();
+                    assert!(saved.contains(suffix), "sibling changed: {saved}");
+                    assert!(saved.ends_with("---\n\nBody\r\n\n"));
+                    let expected: Vec<_> = tags
+                        .iter()
+                        .copied()
+                        .filter(|tag| *tag == "research")
+                        .collect();
+                    assert_eq!(
+                        values(&saved)["tags"],
+                        noyalib::to_value(&expected).unwrap()
+                    );
+                    assert_eq!(converted.is_unread, tags.contains(&"unread"));
+                    assert!(convert_markdown_pin(&saved).unwrap().is_none());
+                    assert!(convert(&saved).unwrap().rendered.is_none());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn multiline_and_flow_metadata_removal_preserves_other_fields() {
+        let cases = [
+            "title: Saved\ntags:\n- unread\n- bookmark\n- research\nis_unread:\n  false\nimages:\n  one:\n    nested: unsupported\n# Keep sibling\ncustom: {id: 29688640e516}\n",
+            "{images: {one: {nested: unsupported}}, tags: [unread, bookmark, research], is_unread: false, custom: {id: 29688640e516}}\n",
+            "{tags: [unread, bookmark, research], is_unread: false, custom: {id: 29688640e516}, images: {one: {nested: unsupported}}}\n",
+        ];
+        for fields in cases {
+            let raw = format!("---\n{fields}---\n\nExact body\r\n");
+            let converted = convert(&raw).unwrap();
+            let saved = converted.rendered.unwrap();
+            assert!(!converted.is_unread);
+            let result = values(&saved);
+            assert!(!result.contains_key("images"));
+            assert!(!result.contains_key("is_unread"));
+            assert_eq!(result["tags"], noyalib::to_value(&["research"]).unwrap());
+            assert_eq!(result["color"], Value::String("blue".into()));
+            assert!(saved.contains("custom: {id: 29688640e516}"));
+            assert!(saved.ends_with("---\n\nExact body\r\n"));
+            if fields.contains("# Keep sibling") {
+                assert!(saved.contains("# Keep sibling\n"));
+            }
+            assert!(convert(&saved).unwrap().rendered.is_none());
+        }
     }
 
     #[test]
