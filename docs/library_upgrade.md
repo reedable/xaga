@@ -1,7 +1,7 @@
 # Upgrading a library
 
 Use the CLI matching the application version you intend to run. The current
-0.11.0-dev CLI upgrades libraries to **0.11**, including central pin storage and
+0.12.0-dev CLI upgrades libraries to **0.12**, including Site pin support, central pin storage, and
 the reading-state conversion below.
 
 ## Reading-state format (0.10)
@@ -14,7 +14,7 @@ version metadata, or an incomplete upgrade select read-only mode at startup.
 
 1. Close Xaga and other processes using the library.
 2. Back up the library before changing its format.
-3. Run the CLI matching your destination app version (currently 0.11.0-dev):
+3. Run the CLI matching your destination app version (currently 0.12.0-dev):
 
    ```sh
    xaga-cli --data-dir /path/to/library library upgrade
@@ -48,8 +48,7 @@ upgrade, or restore the full backup to return to 0.9.
 ## Central pin format (0.11)
 
 Library version **0.11** stores all Entry, Feed, and Topic pins in
-[`pins.yaml`](architecture/pins.md), independently of entity content. The app and
-package versions are now **0.11.0-dev**. This format is not 0.10-compatible.
+[`pins.yaml`](architecture/pins.md), independently of entity content. This format was introduced in **0.11.0-dev** and is not 0.10-compatible.
 
 Using the CLI built with the central-pin implementation, close all library users,
 back up the library, and run the same `xaga-cli --data-dir /path/to/library library
@@ -65,6 +64,20 @@ normal runtime access; the application never silently migrates old markers.
 Wait for successful conversion before opening the library. Older application
 versions cannot safely edit the new pin representation; restoring the complete
 backup is the way to return to the old format.
+
+## Site pins (0.12)
+
+**0.12.0-dev** adds `type: site` targets identified by normalized `hostname` to the
+shared pin store. Close library users, back up the library, and run the same
+`library upgrade` command with the 0.12 CLI. The existing flat pins keep their
+representation and order; Site membership remains derived and requires no new
+entity files or cache rows. Cache pin reconciliation applies only to Entry,
+Feed, and Topic targets. Existing Site pins are retained on interrupted retries.
+
+Successful conversion advances the manifest to **0.12**. Older-version libraries
+open read-only in the 0.12 app until explicitly upgraded; the app never relabels
+them automatically. Returning to an older app format requires restoring the
+complete backup.
 
 ## Inspecting the library version
 
@@ -92,5 +105,5 @@ Startup never rewrites the version to make it match. Read-only opening does not
 perform recovery or initialize an absent cache. Explicit CLI upgrade errors still
 produce a nonzero exit status; close library users before upgrading.
 
-Migration targets use the running CLI’s major/minor version, currently **0.11**;
+Migration targets use the running CLI’s major/minor version, currently **0.12**;
 there is no separately assigned library revision number.

@@ -14,24 +14,28 @@ pub async fn set_pin(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
+    let target = target.normalized()?;
     super::require_writer(&state)?
         .set_pin(target.clone(), pinned)
         .await?;
-    let (id, kind) = match &target {
-        PinTarget::Entry { id } => (id.clone(), xaga_core::types::Kind::Entry),
-        PinTarget::Feed { id } => (id.clone(), xaga_core::types::Kind::Feed),
-        PinTarget::Topic { id } => (id.clone(), xaga_core::types::Kind::Topic),
+    let entity = match &target {
+        PinTarget::Entry { id } => Some((id.clone(), xaga_core::types::Kind::Entry)),
+        PinTarget::Feed { id } => Some((id.clone(), xaga_core::types::Kind::Feed)),
+        PinTarget::Topic { id } => Some((id.clone(), xaga_core::types::Kind::Topic)),
+        PinTarget::Site { .. } => None,
     };
-    state.enqueue(
-        xaga_core::embeddings::Tier::Interactive,
-        xaga_core::embeddings::Job::SyncState {
-            entity: xaga_core::embeddings::EntityRef::new(id, kind),
-            state: xaga_core::embeddings::StatePatch {
-                is_pinned: Some(pinned),
-                ..Default::default()
+    if let Some((id, kind)) = entity {
+        state.enqueue(
+            xaga_core::embeddings::Tier::Interactive,
+            xaga_core::embeddings::Job::SyncState {
+                entity: xaga_core::embeddings::EntityRef::new(id, kind),
+                state: xaga_core::embeddings::StatePatch {
+                    is_pinned: Some(pinned),
+                    ..Default::default()
+                },
             },
-        },
-    );
+        );
+    }
     crate::events::emit_domain(
         &app,
         xaga_core::events::DomainEvent::PinChanged { target, pinned },

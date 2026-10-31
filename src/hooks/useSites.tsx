@@ -30,5 +30,11 @@ export function useSites(abortControllerRef: RefObject<AbortController>) {
     [abortControllerRef, platform]
   );
 
-  return { ...context, listSiteEntries, loading, error };
+  return {
+    ...context,
+    pinnedSites: context.pinnedSites ?? [],
+    listSiteEntries,
+    loading,
+    error,
+  };
 }

@@ -43,7 +43,7 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
   );
 
   const pinnedFeedIds = useMemo(
-    () => pins.filter((pin) => pin.type === "feed").map((pin) => pin.id),
+    () => pins.flatMap((pin) => (pin.type === "feed" ? [pin.id] : [])),
     [pins]
   );
   const setFeedPinned = useCallback(

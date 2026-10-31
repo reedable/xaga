@@ -260,3 +260,27 @@ it("preserves article pins across pin commands, discovery and side-effect-free s
     id: "article",
   });
 });
+
+it("carries Site pin hostnames through discovery and generic mutation commands", async () => {
+  const platform = new TauriPlatform();
+  const target = { type: "site" as const, hostname: "www.example.com" };
+  invokeMock.mockResolvedValueOnce({
+    pins: [target, { type: "entry", id: "article" }],
+  });
+  expect(await platform.listPins(new AbortController().signal)).toEqual([
+    target,
+    { type: "entry", id: "article" },
+  ]);
+  invokeMock.mockResolvedValueOnce(undefined);
+  await platform.setPin(target, true);
+  expect(invokeMock).toHaveBeenLastCalledWith("set_pin", {
+    target,
+    pinned: true,
+  });
+  invokeMock.mockResolvedValueOnce({
+    pins: [{ type: "site", id: "not-a-hostname-field" }],
+  });
+  await expect(
+    platform.listPins(new AbortController().signal)
+  ).rejects.toThrow();
+});
