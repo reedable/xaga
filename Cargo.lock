@@ -10465,7 +10465,7 @@ dependencies = [
 
 [[package]]
 name = "xaga"
-version = "0.11.0-dev"
+version = "0.12.0-dev"
 dependencies = [
  "avif-parse",
  "base64 0.22.1",
@@ -10500,7 +10500,7 @@ dependencies = [
 
 [[package]]
 name = "xaga-cli"
-version = "0.11.0-dev"
+version = "0.12.0-dev"
 dependencies = [
  "chrono",
  "clap",
@@ -10520,7 +10520,7 @@ dependencies = [
 
 [[package]]
 name = "xaga-core"
-version = "0.11.0-dev"
+version = "0.12.0-dev"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
