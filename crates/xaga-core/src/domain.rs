@@ -37,9 +37,6 @@ pub trait Countable: Item {
 pub trait Pinnable: Item {
     fn is_pinned(&self) -> bool;
 }
-pub trait Bookmarkable: Item {
-    fn is_bookmarked(&self) -> bool;
-}
 pub trait Colorable: Item {
     fn color(&self) -> Option<&str>;
 }
@@ -162,11 +159,6 @@ impl WebResource for Entry {
 impl Pinnable for Entry {
     fn is_pinned(&self) -> bool {
         self.is_pinned
-    }
-}
-impl Bookmarkable for Entry {
-    fn is_bookmarked(&self) -> bool {
-        self.is_bookmarked
     }
 }
 impl Colorable for Entry {
@@ -312,11 +304,6 @@ impl WebResource for Article {
         self.meta.url()
     }
 }
-impl Bookmarkable for Article {
-    fn is_bookmarked(&self) -> bool {
-        self.meta.is_bookmarked()
-    }
-}
 impl Colorable for Article {
     fn color(&self) -> Option<&str> {
         self.meta.color()
@@ -358,11 +345,6 @@ impl Item for Note {
 impl Document for Note {
     fn content(&self) -> &str {
         &self.content
-    }
-}
-impl Bookmarkable for Note {
-    fn is_bookmarked(&self) -> bool {
-        self.is_bookmarked
     }
 }
 impl Colorable for Note {
