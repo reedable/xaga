@@ -1,3 +1,9 @@
-.SortControl {
-  content: '';
+li.SortControl {
+  line-height: inherit;
+  margin-bottom: 0.5rem;
+  padding-left: 44px;
+
+  .SortSelect div {
+    font-size: 0.8125em;
+  }
 }

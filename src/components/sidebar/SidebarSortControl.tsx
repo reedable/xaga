@@ -1,4 +1,4 @@
-import { ListSubheader, MenuItem, Select, Typography } from "@mui/material";
+import { ListSubheader, MenuItem, Select } from "@mui/material";
 import type { SidebarSortMode } from "../../hooks/useSidebarSort";
 import css from "./SidebarSortControl.module.css";
 
@@ -13,22 +13,16 @@ export default function SidebarSortControl({ label, sortMode, onChange }: Sideba
     <ListSubheader className={css.SortControl} component="li" disableSticky>
       <Select
         aria-label={`Sort ${label}`}
+        className={css.SortSelect}
         fullWidth
         size="small"
         value={sortMode}
         variant="standard"
         onChange={(event) => onChange(event.target.value as SidebarSortMode)}
+        sx={{ height: 24 }}
       >
-        <MenuItem value="unread">
-          <Typography component="span" variant="body2">
-            Unread count
-          </Typography>
-        </MenuItem>
-        <MenuItem value="alphabetical">
-          <Typography component="span" variant="body2">
-            Alphabetical
-          </Typography>
-        </MenuItem>
+        <MenuItem value="unread">Sort by unread count</MenuItem>
+        <MenuItem value="alphabetical">Sort alphabetically</MenuItem>
       </Select>
     </ListSubheader>
   );

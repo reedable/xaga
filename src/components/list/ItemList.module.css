@@ -2,6 +2,7 @@
   0% {
     transform: rotate(0deg);
   }
+
   100% {
     transform: rotate(360deg);
   }
@@ -53,7 +54,7 @@
           margin-right: 4px;
         }
 
-        & > div {
+        &>div {
           margin-left: -12px;
           margin-right: -2px;
         }
@@ -81,7 +82,7 @@
     .FilterButtonGroup {
       gap: 0.25em;
       margin: 0.25em 0 0 0;
-      padding: 0 1rem;
+      padding: 5.5px 1rem 0 1rem;
 
       button {
         border: var(--border);
@@ -95,12 +96,12 @@
 
     .SortSelect {
       font-size: 0.8125em;
-      margin: 1.5em 1rem 0;
+      margin: 1em 1rem 0;
       width: calc(100% - 2rem);
     }
 
     .FilterInput {
-      margin-top: 0.5em;
+      margin-top: 8.5px;
       padding: 0 1rem 0.5rem 1rem;
 
       input {
