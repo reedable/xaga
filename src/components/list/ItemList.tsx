@@ -284,7 +284,7 @@ export function ItemList({
       const latest = articleStateRef.current;
       if (latest.version > stateVersion && latest.entry?.id === article.id) {
         article.isUnread = latest.entry.isUnread;
-        article.isBookmarked = latest.entry.isBookmarked;
+        article.color = latest.entry.color;
       }
       setScopedArticle(article);
       setItems(next);
@@ -424,13 +424,9 @@ export function ItemList({
           entry,
         };
       }
-      if (siteHostname) {
-        void requestItems(selectedCollectionRef.current);
-        return;
-      }
       setItems((prev) => prev.map((p) => (p.id === entry.id ? entry : p)));
     });
-  }, [onBookmarkChanged, requestItems, siteHostname]);
+  }, [onBookmarkChanged]);
 
   useEffect(() => {
     return onAnnotationChanged((item) => {

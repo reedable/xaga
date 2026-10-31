@@ -37,6 +37,8 @@ import { useEmbeddingStartupState } from "../../hooks/useEmbeddingStartupState";
 import { isArticle, type Entry } from "../../types";
 import { AddressBar } from "../AddressBar";
 import css from "./Toolbar.module.css";
+import { ColorSwatches } from "./ColorSwatches";
+import colorCss from "../../colors.module.css";
 import { TopicMenuButton } from "./TopicMenuButton";
 
 interface ToolbarProps {
@@ -64,7 +66,15 @@ export function Toolbar({ reload, reloading = false }: ToolbarProps) {
   } = useRouter();
   const isSearchOpen = typeof search === "string";
   const [, abortControllerRef] = useAbortController();
-  const { addBookmark, removeBookmark } = useBookmarks(abortControllerRef);
+  const {
+    addBookmark,
+    removeBookmark,
+    loading: marking,
+    error: markingError,
+  } = useBookmarks(abortControllerRef);
+  const [bookmarkAnchor, setBookmarkAnchor] = useState<HTMLElement | null>(
+    null
+  );
   const { markEntryRead, markEntryUnread } = useEntries(abortControllerRef);
   const { onBookmarkChanged, onUnreadChanged, onFaviconChanged } = useEvents();
   const { loadArticleByUrl, loading } = useArticles(abortControllerRef);
@@ -116,11 +126,31 @@ export function Toolbar({ reload, reloading = false }: ToolbarProps) {
     else invokeSearch("");
   }, [isSearchOpen, invokeSearch, clearSearch]);
 
-  const toggleBookmark = useCallback(async () => {
-    if (!entry) return;
-    if (entry.isBookmarked) await removeBookmark(entry);
-    else await addBookmark(entry);
-  }, [entry, addBookmark, removeBookmark]);
+  const changeBookmark = useCallback(
+    async (color: string | null) => {
+      if (!entry || marking || isLibraryReadOnly) return;
+      const updated =
+        color === null
+          ? await removeBookmark(entry)
+          : await addBookmark(entry, color);
+      if (updated) {
+        setLatestEntry(updated);
+        setBookmarkAnchor(null);
+      }
+    },
+    [entry, marking, isLibraryReadOnly, addBookmark, removeBookmark]
+  );
+  useEffect(() => {
+    if (markingError) pushError(markingError);
+  }, [markingError, pushError]);
+  useEffect(() => {
+    setBookmarkAnchor(null);
+  }, [entryId]);
+  useEffect(() => {
+    const close = () => setBookmarkAnchor(null);
+    window.addEventListener("blur", close);
+    return () => window.removeEventListener("blur", close);
+  }, []);
 
   const togglePin = useCallback(async () => {
     if (!entry || pinning) return;
@@ -356,22 +386,50 @@ export function Toolbar({ reload, reloading = false }: ToolbarProps) {
             </span>
 
             <Tooltip
-              title={entry?.isBookmarked ? "Remove bookmark" : "Add bookmark"}
+              title={entry?.color ? "Change bookmark color" : "Add bookmark"}
             >
-              <IconButton
-                size="small"
-                onClick={toggleBookmark}
-                disabled={!entry}
-                aria-label={
-                  entry?.isBookmarked ? "Remove bookmark" : "Add bookmark"
-                }
-              >
-                <Bookmark
-                  fontSize="small"
-                  color={entry?.isBookmarked ? "primary" : undefined}
-                />
-              </IconButton>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={(event) => setBookmarkAnchor(event.currentTarget)}
+                  disabled={!entry || isLibraryReadOnly || marking}
+                  aria-label={
+                    entry?.color ? "Change bookmark color" : "Add bookmark"
+                  }
+                  aria-haspopup="dialog"
+                  aria-expanded={!!bookmarkAnchor}
+                >
+                  <Bookmark
+                    fontSize="small"
+                    className={entry?.color ? colorCss[entry.color] : undefined}
+                    style={
+                      entry?.color ? { color: "var(--color-icon)" } : undefined
+                    }
+                  />
+                </IconButton>
+              </span>
             </Tooltip>
+            <Popover
+              transitionDuration={0}
+              open={!!bookmarkAnchor && !!entry}
+              anchorEl={bookmarkAnchor}
+              onClose={() => setBookmarkAnchor(null)}
+              anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+              transformOrigin={{ vertical: "top", horizontal: "center" }}
+            >
+              <div
+                role="dialog"
+                aria-label="Bookmark color"
+                style={{ padding: 8 }}
+              >
+                <ColorSwatches
+                  color={entry?.color ?? null}
+                  onChange={changeBookmark}
+                  disabled={marking || isLibraryReadOnly}
+                  autoFocus
+                />
+              </div>
+            </Popover>
 
             <Tooltip
               title={

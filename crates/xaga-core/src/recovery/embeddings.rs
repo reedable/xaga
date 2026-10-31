@@ -38,7 +38,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     let needs_embedding = |id: &str, cksum: &str| -> bool {
         match db_meta.get(id) {
             None => true,
-            Some((stored, _, has_vector, _, _, _)) => stored != cksum || !has_vector,
+            Some((stored, _, has_vector, _, _, _, _)) => stored != cksum || !has_vector,
         }
     };
 
@@ -52,7 +52,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
         let membership_differs =
             db_meta
                 .get(&article.meta.id)
-                .is_some_and(|(_, _, _, _, recorded, _)| {
+                .is_some_and(|(_, _, _, _, recorded, _, _)| {
                     let recorded: HashSet<&str> = recorded.iter().map(|s| s.as_str()).collect();
                     let current: HashSet<&str> =
                         article.annotations.iter().map(|a| a.id.as_str()).collect();
@@ -108,9 +108,13 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
             // Stream when content, reading state, pin state, or annotations drifted from the `.md`
             // (membership, content, or a pending vector) — the consumers re-check each and do only
             // the work required (`sync_entry_row` for rows, `embed_annotations` for vectors).
-            let state_differs = db_meta
-                .get(&article.meta.id)
-                .is_some_and(|(_, _, _, _, _, unread)| *unread != article.meta.is_unread);
+            let state_differs =
+                db_meta
+                    .get(&article.meta.id)
+                    .is_some_and(|(_, _, _, _, _, unread, color)| {
+                        *unread != article.meta.is_unread
+                            || color.as_str() != article.meta.color.as_deref().unwrap_or("")
+                    });
             if needs_embed
                 || state_differs
                 || annotations_differ(&article)
@@ -157,7 +161,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     let to_delete: Vec<String> = if source_reliable {
         db_meta
             .into_iter()
-            .filter(|(id, (_, reference, _, kind, _, _))| {
+            .filter(|(id, (_, reference, _, kind, _, _, _))| {
                 if kind == Kind::Feed.as_str() {
                     return !feed_ids.contains(id);
                 }
@@ -221,9 +225,52 @@ mod tests {
             topics: vec![],
             items: vec![],
             is_unread: false,
-            is_bookmarked: false,
             is_pinned: false,
             vector: Some(vec![0.5f32; 384]),
+        }
+    }
+
+    #[tokio::test]
+    async fn recovery_detects_color_changes_and_removal_without_content_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = library::entry_path(dir.path(), "entry");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            "---\nsource: https://example.org/a\ntitle: Saved\ncolor: blue\n---\n\nBody\n",
+        )
+        .unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let article = read_article(dir.path(), "entry").await.unwrap();
+        db.upsert(EmbeddingEntry::from_article(&article, Some(vec![0.1; 384])))
+            .await
+            .unwrap();
+        let (events, _) = flume::unbounded();
+        let (annotations, _) = flume::unbounded();
+        for color in [Some("green"), None] {
+            let current = std::fs::read_to_string(&path).unwrap();
+            let updated =
+                crate::md::patch_document(&current, &[("color", serde_json::json!(color))], None)
+                    .unwrap();
+            std::fs::write(&path, updated).unwrap();
+            let mut sink = CollectingSink { articles: vec![] };
+            repair_item_embeddings(dir.path(), &db, &mut sink)
+                .await
+                .unwrap();
+            assert_eq!(sink.articles, ["entry"]);
+            let article = read_article(dir.path(), "entry").await.unwrap();
+            crate::embeddings::sync_entry_row(&article, &db, &events, &events, &annotations)
+                .await
+                .unwrap();
+            let mut sink = CollectingSink { articles: vec![] };
+            repair_item_embeddings(dir.path(), &db, &mut sink)
+                .await
+                .unwrap();
+            assert!(sink.articles.is_empty());
+            assert_eq!(
+                db.get_entry("entry").await.unwrap().unwrap().color,
+                color.unwrap_or("")
+            );
         }
     }
 

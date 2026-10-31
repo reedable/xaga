@@ -92,7 +92,6 @@ mod tests {
             updated_at: None,
             description: None,
             is_unread: false,
-            is_bookmarked: false,
             is_pinned: false,
             color: None,
         }
@@ -113,7 +112,6 @@ mod tests {
                 created_at: String::new(),
                 url: String::new(),
                 is_unread: false,
-                is_bookmarked: false,
                 is_pinned: false,
                 reference: None,
                 color: None,
@@ -126,7 +124,6 @@ mod tests {
                     created_at: String::new(),
                     url: String::new(),
                     is_unread: false,
-                    is_bookmarked: false,
                     is_pinned: false,
                     reference: None,
                     color: None,

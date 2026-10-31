@@ -120,7 +120,7 @@ beforeEach(() => {
     title: "Pinned article",
     url: "https://example.org/a",
     createdAt: "2026-10-29",
-    isBookmarked: false,
+
     isUnread: true,
     isPinned: true,
     content: "First passage. Last passage.",
@@ -305,3 +305,26 @@ it("filters article-scope rows without changing the open list target", async () 
 });
 
 vi.mock("../../hooks/useMissingPins", () => ({ useMissingPins: () => [] }));
+
+it("preserves a Site's open Saved list when article color is removed", async () => {
+  mocks.sites.sites = [
+    {
+      id: "example.org",
+      hostname: "example.org",
+      title: "example.org",
+      entryCount: 1,
+      unreadCount: 0,
+    },
+  ] as never;
+  const marked = { ...article, color: "blue" };
+  mocks.sites.listSiteEntries.mockResolvedValue([marked]);
+  await render({ siteHostname: "example.org", filter: "saved" });
+  expect(mocks.sites.listSiteEntries).toHaveBeenCalledOnce();
+  const before = rows().map((row) => row.textContent);
+  await act(async () =>
+    mocks.callbacks.onBookmarkChanged({ ...marked, color: undefined } as never)
+  );
+  expect(rows().map((row) => row.textContent)).toEqual(before);
+  expect(mocks.sites.listSiteEntries).toHaveBeenCalledOnce();
+  expect(route.state.siteHostname).toBe("example.org");
+});

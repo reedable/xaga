@@ -30,6 +30,7 @@ pub(super) struct UpgradeReport {
 struct Conversion {
     rendered: Option<String>,
     is_unread: bool,
+    color: Option<String>,
 }
 
 /// Edit only migration-owned fields. Serializing the entire generic Value tree
@@ -74,25 +75,39 @@ fn convert(raw: &str) -> Result<Conversion, Error> {
         None => Vec::new(),
     };
     let legacy_unread = tags.iter().any(|tag| tag == "unread");
+    let legacy_bookmark = tags.iter().any(|tag| tag == "bookmark");
+    let existing_color = match fields.get("color") {
+        Some(Value::String(value)) if xaga_core::types::COLOR_NAMES.contains(&value.as_str()) => {
+            Some(value.clone())
+        }
+        Some(Value::Null) | None => None,
+        Some(_) => return Err("color must be an annotation palette identifier".into()),
+    };
+    let color = existing_color.or_else(|| legacy_bookmark.then(|| "blue".into()));
     let existing: Option<bool> = match fields.get("is_unread") {
         Some(Value::Bool(value)) => Some(*value),
         Some(Value::Null) | None => None,
         Some(_) => return Err("is_unread must be a boolean".into()),
     };
     let is_unread = existing.unwrap_or(legacy_unread);
-    if !legacy_unread && existing != Some(false) {
+    if !legacy_unread
+        && !legacy_bookmark
+        && existing != Some(false)
+        && fields.get("color") != Some(&Value::Null)
+    {
         return Ok(Conversion {
             rendered: None,
             is_unread,
+            color,
         });
     }
-    if legacy_unread {
+    if legacy_unread || legacy_bookmark {
         fields.insert(
             "tags".into(),
             noyalib::to_value(
                 &tags
                     .into_iter()
-                    .filter(|tag| tag != "unread")
+                    .filter(|tag| tag != "unread" && tag != "bookmark")
                     .collect::<Vec<_>>(),
             )?,
         );
@@ -102,9 +117,18 @@ fn convert(raw: &str) -> Result<Conversion, Error> {
     } else {
         fields.remove("is_unread");
     }
+    if let Some(value) = &color {
+        fields.insert("color".into(), Value::String(value.clone()));
+    } else {
+        fields.remove("color");
+    }
     // Apply the same unsupported-field removal rule as ordinary Markdown writes.
     fields.remove("images");
-    let yaml = patch_migration_fields(&rest[..end], &fields, &["tags", "is_unread", "images"])?;
+    let yaml = patch_migration_fields(
+        &rest[..end],
+        &fields,
+        &["tags", "is_unread", "color", "images"],
+    )?;
     let rendered = format!(
         "{prefix}---\n{}\n---\n{}",
         yaml.trim_end_matches('\n'),
@@ -117,6 +141,7 @@ fn convert(raw: &str) -> Result<Conversion, Error> {
     Ok(Conversion {
         rendered: Some(rendered),
         is_unread,
+        color,
     })
 }
 
@@ -146,25 +171,30 @@ fn write_atomic(path: &Path, raw: &str, _lock: &FileLock) -> Result<(), Error> {
 /// columns. Missing rows remain reconstructible by normal recovery.
 async fn reconcile(
     table: &lancedb::Table,
-    states: &[(String, bool)],
+    states: &[(String, bool, Option<String>)],
     _lock: &FileLock,
 ) -> Result<usize, Error> {
     let mut updated = 0;
     for unread in [true, false] {
-        let ids: Vec<_> = states
-            .iter()
-            .filter(|(_, value)| *value == unread)
-            .map(|(id, _)| format!("'{}'", id.replace('\'', "''")))
-            .collect();
-        if ids.is_empty() {
-            continue;
+        for color in ["", "red", "orange", "yellow", "green", "blue", "violet"] {
+            let ids: Vec<_> = states
+                .iter()
+                .filter(|(_, state, marking)| {
+                    *state == unread && marking.as_deref().unwrap_or("") == color
+                })
+                .map(|(id, _, _)| format!("'{}'", id.replace('\'', "''")))
+                .collect();
+            if ids.is_empty() {
+                continue;
+            }
+            let result = table.update()
+                .only_if(format!("kind = 'entry' AND id IN ({}) AND (is_unread != {unread} OR color != '{color}' OR array_contains(tags, 'unread') OR array_contains(tags, 'bookmark'))", ids.join(",")))
+                .column("is_unread", unread.to_string())
+                .column("color", format!("'{color}'"))
+                .column("tags", "array_remove(array_remove(tags, 'unread'), 'bookmark')")
+                .execute().await?;
+            updated += result.rows_updated as usize;
         }
-        let result = table.update()
-            .only_if(format!("kind = 'entry' AND id IN ({}) AND (is_unread != {unread} OR array_contains(tags, 'unread'))", ids.join(",")))
-            .column("is_unread", unread.to_string())
-            .column("tags", "array_remove(tags, 'unread')")
-            .execute().await?;
-        updated += result.rows_updated as usize;
     }
     Ok(updated)
 }
@@ -306,6 +336,29 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
             return report;
         }
     };
+    let remove_legacy_column = async {
+        if table
+            .schema()
+            .await?
+            .field_with_name("is_bookmarked")
+            .is_ok()
+        {
+            for index in table.list_indices().await? {
+                if index.columns.iter().any(|column| column == "is_bookmarked") {
+                    table.drop_index(&index.name).await?;
+                }
+            }
+            table.drop_columns(&["is_bookmarked"]).await?;
+        }
+        Ok::<_, Error>(())
+    }
+    .await;
+    if let Err(error) = remove_legacy_column {
+        report
+            .errors
+            .push(format!("bookmark schema conversion: {error}"));
+        return report;
+    }
     if let Err(error) = convert_pins(dir, lock).await {
         report
             .errors
@@ -390,7 +443,7 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
                 } else {
                     report.unchanged += 1;
                 }
-                states.push((id.to_owned(), conversion.is_unread));
+                states.push((id.to_owned(), conversion.is_unread, conversion.color));
                 Ok(())
             })();
             process.map_err(|error| format!("{}: {error}", path.display()).into())
@@ -409,14 +462,30 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
     // This does not infer or change their boolean reading state.
     if let Err(error) = table
         .update()
-        .only_if("array_contains(tags, 'unread')")
-        .column("tags", "array_remove(tags, 'unread')")
+        .only_if("array_contains(tags, 'unread') OR array_contains(tags, 'bookmark')")
+        .column(
+            "tags",
+            "array_remove(array_remove(tags, 'unread'), 'bookmark')",
+        )
         .execute()
         .await
     {
         report.errors.push(format!(
             "cache legacy-marker cleanup: {error}; rerun library upgrade"
         ));
+    }
+    if report.errors.is_empty() {
+        for column in ["color", "kind"] {
+            if let Err(error) = table
+                .create_index(&[column], lancedb::index::Index::Bitmap(Default::default()))
+                .execute()
+                .await
+            {
+                report
+                    .errors
+                    .push(format!("{column} index: {error}; rerun library upgrade"));
+            }
+        }
     }
     if report.errors.is_empty() {
         if let Err(error) = upgrade.complete() {
@@ -430,7 +499,7 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
 
 async fn reconcile_report(
     table: &lancedb::Table,
-    states: &mut Vec<(String, bool)>,
+    states: &mut Vec<(String, bool, Option<String>)>,
     lock: &FileLock,
     report: &mut UpgradeReport,
 ) {
@@ -492,10 +561,31 @@ mod tests {
     }
 
     #[test]
+    fn bookmark_conversion_preserves_palette_colors_and_retries() {
+        for color in ["red", "orange", "yellow", "green", "blue", "violet"] {
+            let original = document(&format!("color: {color}\ntags: [research, bookmark]"));
+            let conversion = convert(&original).unwrap();
+            assert_eq!(conversion.color.as_deref(), Some(color));
+            let rendered = conversion.rendered.unwrap();
+            assert!(rendered.ends_with("---\n\nBody\n\n"));
+            assert_eq!(values(&rendered)["custom"], values(&original)["custom"]);
+            assert_eq!(
+                values(&rendered)["tags"],
+                noyalib::to_value(&["research"]).unwrap()
+            );
+            assert!(convert(&rendered).unwrap().rendered.is_none());
+        }
+        let unmarked = convert(&document("tags: [research]")).unwrap();
+        assert!(unmarked.color.is_none());
+        assert!(unmarked.rendered.is_none());
+        assert!(convert(&document("color: invalid\ntags: [bookmark]")).is_err());
+    }
+
+    #[test]
     fn conversion_preserves_state_metadata_and_exact_body_and_is_idempotent() {
         for (fields, unread, changed) in [
             ("tags: [research, unread, bookmark]", true, true),
-            ("tags: [research, bookmark]", false, false),
+            ("tags: [research, bookmark]", false, true),
             (
                 "is_unread: true\ntags: [research, unread, bookmark]",
                 true,
@@ -506,7 +596,7 @@ mod tests {
                 false,
                 true,
             ),
-            ("is_unread: true\ntags: [research, bookmark]", true, false),
+            ("is_unread: true\ntags: [research, bookmark]", true, true),
             ("is_unread: false\ntags: [research, bookmark]", false, true),
         ] {
             let original = document(fields);
@@ -515,10 +605,8 @@ mod tests {
             assert_eq!(converted.rendered.is_some(), changed);
             let saved = converted.rendered.as_deref().unwrap_or(&original);
             let mut expected = values(&original);
-            expected.insert(
-                "tags".into(),
-                noyalib::to_value(&vec!["research", "bookmark"]).unwrap(),
-            );
+            expected.insert("tags".into(), noyalib::to_value(&vec!["research"]).unwrap());
+            expected.insert("color".into(), Value::String("blue".into()));
             if unread {
                 expected.insert("is_unread".into(), Value::Bool(true));
             } else {
@@ -754,7 +842,7 @@ custom:
         let path = seed(
             dir.path(),
             "entry",
-            "is_unread: true\ntags: [research, bookmark, pinned]",
+            "is_unread: true\ncolor: blue\ntags: [research, pinned]",
         );
         let original = fs::read_to_string(&path).unwrap();
         let article = read_article(dir.path(), "entry").await.unwrap();
@@ -764,13 +852,32 @@ custom:
         xaga_core::embeddings::sync_entry_row(&article, &db, &tx, &tx, &annotation_tx)
             .await
             .unwrap();
-        seed(dir.path(), "read-entry", "tags: [bookmark]");
+        seed(dir.path(), "read-entry", "color: blue");
         let mut read_article = read_article(dir.path(), "read-entry").await.unwrap();
         read_article.annotations.clear();
         xaga_core::embeddings::sync_entry_row(&read_article, &db, &tx, &tx, &annotation_tx)
             .await
             .unwrap();
         let table = table(dir.path(), &lock).await;
+        table
+            .add_columns(
+                lancedb::table::NewColumnTransform::SqlExpressions(vec![(
+                    "is_bookmarked".into(),
+                    "true".into(),
+                )]),
+                None,
+            )
+            .await
+            .unwrap();
+        table
+            .create_index(
+                &["is_bookmarked"],
+                lancedb::index::Index::Bitmap(Default::default()),
+            )
+            .execute()
+            .await
+            .unwrap();
+
         table
             .update()
             .only_if("id = 'read-entry'")
@@ -805,12 +912,30 @@ custom:
             values(&original)["custom"]
         );
         let db = EmbeddingsDb::open_readonly(dir.path()).await.unwrap();
+        // Refresh this independently opened handle after CLI schema conversion.
+        table.checkout_latest().await.unwrap();
+        assert!(
+            table
+                .schema()
+                .await
+                .unwrap()
+                .field_with_name("is_bookmarked")
+                .is_err()
+        );
+        assert!(
+            table
+                .list_indices()
+                .await
+                .unwrap()
+                .iter()
+                .all(|index| !index.columns.iter().any(|column| column == "is_bookmarked"))
+        );
         let row = db.get_entry("entry").await.unwrap().unwrap();
         let read_row = db.get_entry("read-entry").await.unwrap().unwrap();
-        assert!(!read_row.is_unread && read_row.is_bookmarked);
-        assert_eq!(read_row.tags, vec!["bookmark"]);
-        assert!(row.is_unread && row.is_bookmarked && row.is_pinned);
-        assert_eq!(row.tags, vec!["research", "bookmark"]);
+        assert!(!read_row.is_unread && !read_row.color.is_empty());
+        assert!(read_row.tags.is_empty());
+        assert!(row.is_unread && !row.color.is_empty() && row.is_pinned);
+        assert_eq!(row.tags, vec!["research"]);
         assert_eq!(db.filter_pinned_entries().await.unwrap()[0].id, "entry");
         assert_eq!(row.topics, vec!["topic"]);
         assert_eq!(row.items, vec!["note"]);

@@ -40,8 +40,6 @@ human-readable names, and let users create tags for Entry organization.
 
 ## Remaining work
 
-- Complete central pin storage and color-backed bookmarks before repurposing
-  LanceDB tags for general-purpose identities.
 - Implement UUID v4 generation and Unicode-aware name comparison.
 - Implement core definitions, writer operations, platform creation API, and
   recovery discovery; connect the picker in the Entry-assignment story.
@@ -59,7 +57,6 @@ human-readable names, and let users create tags for Entry organization.
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Pin-store contract](../../docs/architecture/pins.md).
-- [Bookmark Articles with Colors](../active/enhancement__bookmark-state--color-markings.md) — prerequisite.
 - [Entry Tag Assignment](enhancement__tags--entry-assignment.md)
 - [Rename Tags](enhancement__tags--rename.md)
 - `crates/xaga-core/src/md.rs`

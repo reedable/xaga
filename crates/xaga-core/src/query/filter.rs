@@ -7,7 +7,7 @@ use crate::types::{EmbeddedEntry, Entry, Item, ItemFilter};
 /// part of the domain `Item` contract.
 pub trait Filterable {
     fn is_unread(&self) -> bool;
-    fn is_bookmarked(&self) -> bool;
+    fn color(&self) -> Option<&str>;
     fn url(&self) -> Option<&str>;
     fn reference(&self) -> &str;
 }
@@ -16,8 +16,8 @@ impl Filterable for Entry {
     fn is_unread(&self) -> bool {
         self.is_unread
     }
-    fn is_bookmarked(&self) -> bool {
-        self.is_bookmarked
+    fn color(&self) -> Option<&str> {
+        self.color.as_deref()
     }
     fn url(&self) -> Option<&str> {
         Some(&self.url)
@@ -31,8 +31,10 @@ impl Filterable for EmbeddedEntry {
     fn is_unread(&self) -> bool {
         self.entry.is_unread
     }
-    fn is_bookmarked(&self) -> bool {
-        self.entry.is_bookmarked
+    fn color(&self) -> Option<&str> {
+        (self.kind == crate::types::Kind::Entry)
+            .then_some(self.entry.color.as_deref())
+            .flatten()
     }
     fn url(&self) -> Option<&str> {
         Some(&self.entry.url)
@@ -55,11 +57,11 @@ pub async fn filter_items<T: Filterable>(
         }
 
         ItemFilter::Bookmarked => {
-            items.retain(|i| i.is_bookmarked());
+            items.retain(|i| i.color().is_some());
         }
 
         ItemFilter::Saved => {
-            items.retain(|i| i.is_bookmarked() || !i.reference().is_empty());
+            items.retain(|i| i.color().is_some() || !i.reference().is_empty());
         }
     }
 

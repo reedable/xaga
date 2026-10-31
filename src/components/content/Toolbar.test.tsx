@@ -5,6 +5,9 @@ import { Toolbar } from "./Toolbar";
 
 const mocks = vi.hoisted(() => ({
   readOnly: false,
+  bookmarkChanged: undefined as
+    | undefined
+    | ((entry: import("../../types").Entry) => void),
   pins: [] as Array<{ type: "entry"; id: string }>,
   setPin: vi.fn(),
   read: vi.fn(),
@@ -17,7 +20,12 @@ const mocks = vi.hoisted(() => ({
     onEntryPinChanged: vi.fn().mockResolvedValue(() => {}),
   },
   events: {
-    onBookmarkChanged: () => () => {},
+    onBookmarkChanged: (
+      handler: (entry: import("../../types").Entry) => void
+    ) => {
+      mocks.bookmarkChanged = handler;
+      return () => {};
+    },
     onUnreadChanged: () => () => {},
     onFaviconChanged: () => () => {},
   },
@@ -27,7 +35,12 @@ const mocks = vi.hoisted(() => ({
     invokeSearch: vi.fn(),
     clearSearch: vi.fn(),
   },
-  bookmarks: { addBookmark: vi.fn(), removeBookmark: vi.fn() },
+  bookmarks: {
+    loading: false,
+    error: null,
+    addBookmark: vi.fn(),
+    removeBookmark: vi.fn(),
+  },
   entries: { markEntryRead: vi.fn(), markEntryUnread: vi.fn() },
   articles: { loadArticleByUrl: vi.fn(), loading: false },
 }));
@@ -65,20 +78,23 @@ const article = {
   url: "https://example.org",
   content: "body",
   annotations: [],
-  isBookmarked: false,
   isPinned: false,
 };
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.readOnly = false;
   mocks.pins = [];
-  mocks.setPin.mockImplementation(async (target, pinned) => { mocks.pins = pinned ? [target] : []; });
+  mocks.setPin.mockImplementation(async (target, pinned) => {
+    mocks.pins = pinned ? [target] : [];
+  });
   mocks.platform.readArticle.mockResolvedValue(article);
   container = document.createElement("div");
+  document.body.appendChild(container);
   root = createRoot(container);
 });
 afterEach(async () => {
   await act(async () => root.unmount());
+  container.remove();
 });
 const button = (label: string) =>
   container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
@@ -120,7 +136,9 @@ it("reports a refused pin without displaying it as persisted", async () => {
   expect(button("Remove from Shortcuts")).toBeNull();
 });
 
-vi.mock("../../providers/PinsContext", () => ({ usePins: () => ({ pins: mocks.pins, setPin: mocks.setPin }) }));
+vi.mock("../../providers/PinsContext", () => ({
+  usePins: () => ({ pins: mocks.pins, setPin: mocks.setPin }),
+}));
 
 it("keeps Refresh visible beside Bookmark and focusable while reporting reload progress", async () => {
   const reload = vi.fn();
@@ -141,4 +159,82 @@ it("keeps Refresh visible beside Bookmark and focusable while reporting reload p
   expect(container.querySelector('[role="status"]')?.textContent).toBe("");
   await act(() => button("Refresh").click());
   expect(reload).toHaveBeenCalledOnce();
+});
+
+const paletteButton = (label: string) =>
+  document.querySelector<HTMLButtonElement>(
+    `[role="dialog"][aria-label="Bookmark color"] button[aria-label="${label}"]`
+  )!;
+it("assigns, recolors, and removes a bookmark without losing article context", async () => {
+  mocks.bookmarks.addBookmark.mockImplementation(async (entry, color) => ({
+    ...entry,
+    color,
+  }));
+  mocks.bookmarks.removeBookmark.mockImplementation(async (entry) => ({
+    ...entry,
+    color: undefined,
+  }));
+  await render();
+  await act(async () => button("Add bookmark").click());
+  expect(
+    document.querySelector('[role="dialog"][aria-label="Bookmark color"]')
+  ).not.toBeNull();
+  expect(document.activeElement).toBe(paletteButton("red"));
+  await act(async () => paletteButton("blue").click());
+  expect(mocks.bookmarks.addBookmark).toHaveBeenLastCalledWith(
+    expect.objectContaining({ id: "article" }),
+    "blue"
+  );
+  expect(button("Change bookmark color")).not.toBeNull();
+  await act(async () => button("Change bookmark color").click());
+  expect(paletteButton("blue").getAttribute("aria-pressed")).toBe("true");
+  await act(async () => paletteButton("violet").click());
+  expect(mocks.bookmarks.addBookmark).toHaveBeenLastCalledWith(
+    expect.objectContaining({ color: "blue" }),
+    "violet"
+  );
+  await act(async () => button("Change bookmark color").click());
+  await act(async () => paletteButton("Remove marking").click());
+  const confirmation = Array.from(
+    document.querySelectorAll<HTMLButtonElement>("button")
+  ).find((item) => item.textContent === "Remove")!;
+  await act(async () => confirmation.click());
+  expect(mocks.bookmarks.removeBookmark).toHaveBeenCalledOnce();
+  expect(button("Add bookmark")).not.toBeNull();
+  expect(mocks.router.selectUrl).not.toHaveBeenCalled();
+});
+it("reflects external color-to-color bookmark events", async () => {
+  await render();
+  await act(async () =>
+    mocks.bookmarkChanged?.({ ...article, __kind: "entry", color: "green" })
+  );
+  await act(async () => button("Change bookmark color").click());
+  expect(paletteButton("green").getAttribute("aria-pressed")).toBe("true");
+  await act(async () =>
+    mocks.bookmarkChanged?.({ ...article, __kind: "entry", color: "orange" })
+  );
+  expect(paletteButton("orange").getAttribute("aria-pressed")).toBe("true");
+});
+it("disables article color changes in read-only mode", async () => {
+  mocks.readOnly = true;
+  await render();
+  expect(button("Add bookmark").disabled).toBe(true);
+  expect(mocks.bookmarks.addBookmark).not.toHaveBeenCalled();
+});
+
+it("dismisses the swatch popup with Escape and restores toolbar focus", async () => {
+  await render();
+  button("Add bookmark").focus();
+  await act(async () => button("Add bookmark").click());
+  await act(async () => {
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  });
+  expect(
+    document.querySelector('[role="dialog"][aria-label="Bookmark color"]')
+  ).toBeNull();
+  expect(document.activeElement).toBe(button("Add bookmark"));
+  expect(mocks.bookmarks.addBookmark).not.toHaveBeenCalled();
 });

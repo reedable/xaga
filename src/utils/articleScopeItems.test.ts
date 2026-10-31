@@ -31,7 +31,7 @@ function article(
     title: "Title",
     url: "https://example.org",
     createdAt: "2026-10-29",
-    isBookmarked: false,
+
     isPinned: false,
     content,
     annotations,

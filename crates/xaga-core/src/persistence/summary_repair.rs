@@ -120,7 +120,7 @@ mod tests {
 
     fn article(summary: &str) -> String {
         format!(
-            "---\nsource: https://example.org/article\ntitle: Saved\ncreated: '2026-01-01'\ntags: [research, bookmark]\nannotations:\n  - id: note\n    text: [selection]\n    occurrence: [0]\n    color: yellow\n    note: Keep this note\n    created_at: '2026-01-01'\n{summary}---\n\nOriginal body\n\n"
+            "---\nsource: https://example.org/article\ntitle: Saved\ncreated: '2026-01-01'\ntags: [research]\ncolor: blue\nannotations:\n  - id: note\n    text: [selection]\n    occurrence: [0]\n    color: yellow\n    note: Keep this note\n    created_at: '2026-01-01'\n{summary}---\n\nOriginal body\n\n"
         )
     }
 
