@@ -48,14 +48,37 @@ export function ItemView({ className }: ItemViewProps) {
   const [readerRevision, setReaderRevision] = useState(0);
   const articleReaderRef = useRef<ArticleReaderHandle>(null);
 
+  const [reloading, setReloading] = useState(false);
+  const reloadAttempt = useRef<symbol | null>(null);
+  useEffect(() => {
+    reloadAttempt.current = null;
+    setReloading(false);
+    return () => {
+      reloadAttempt.current = null;
+    };
+  }, [url, entryId]);
+
   const handleReload = useCallback(async () => {
-    logger.debug("handleReload", entryId, url, articleReaderRef.current);
-    if (url) {
-      abort();
-      await resolve(url, true);
-      setReaderRevision((value) => value + 1);
-    } else articleReaderRef.current?.reload();
-  }, [entryId, url, abort, resolve]);
+    if (reloadAttempt.current) return;
+    const attempt = Symbol();
+    reloadAttempt.current = attempt;
+    setReloading(true);
+    try {
+      logger.debug("handleReload", entryId, url, articleReaderRef.current);
+      if (url) {
+        abort();
+        const signal = abortControllerRef.current.signal;
+        const succeeded = await resolve(url, true);
+        if (succeeded && !signal.aborted && reloadAttempt.current === attempt)
+          setReaderRevision((value) => value + 1);
+      } else await articleReaderRef.current?.reload();
+    } finally {
+      if (reloadAttempt.current === attempt) {
+        reloadAttempt.current = null;
+        setReloading(false);
+      }
+    }
+  }, [entryId, url, abort, resolve, abortControllerRef]);
 
   // The current URL's downloaded content was rejected.
   const blocked = !!url && blockedUrl === url;
@@ -66,7 +89,10 @@ export function ItemView({ className }: ItemViewProps) {
   return (
     <div className={cx(className, css.LayoutContainer)}>
       <div className={css.Layout}>
-        <Toolbar reload={entryId || url ? handleReload : null} />
+        <Toolbar
+          reload={entryId || url ? handleReload : null}
+          reloading={reloading}
+        />
 
         {isResolving ? (
           <div className={css.Placeholder}>Loading…</div>

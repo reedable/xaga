@@ -211,3 +211,98 @@ it("shows the image-load message and diagnostics through the existing AppError c
     log.mockRestore();
   }
 });
+
+it("queues concurrent errors, retains diagnostic identity through Details, and times each plain toast separately", async () => {
+  vi.useFakeTimers();
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  let push: (error: unknown) => void = () => {};
+  function Capture() {
+    const nextPush = useErrorSink().pushError;
+    useEffect(() => {
+      push = nextPush;
+    }, [nextPush]);
+    return null;
+  }
+  const read = vi.fn(async (id: string) => ({ id, events: [] }));
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  mounted.push(root);
+  const alert = () => document.querySelector('[role="alert"]')!;
+  try {
+    await act(() =>
+      root.render(
+        <PlatformContext.Provider
+          value={{ getArticleDiagnostic: read } as unknown as Platform}
+        >
+          <ErrorSinkProvider>
+            <Capture />
+          </ErrorSinkProvider>
+        </PlatformContext.Provider>
+      )
+    );
+    await act(() => {
+      push({
+        code: "app:error",
+        message: "First failure",
+        detail: "",
+        diagnosticId: "first",
+      });
+      push(new FaviconLoadError("https://example.org", false, "second"));
+    });
+    await act(() => vi.advanceTimersByTimeAsync(10000));
+    expect(alert().textContent).toContain("First failure");
+    await act(() =>
+      [...alert().querySelectorAll("button")]
+        .find((b) => b.textContent === "Details")!
+        .click()
+    );
+    expect(read).toHaveBeenLastCalledWith("first");
+    await act(() =>
+      push({ code: "app:error", message: "Third failure", detail: "" })
+    );
+    await act(() =>
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent === "Close")!
+        .click()
+    );
+    expect(alert().textContent).toContain("First failure");
+    await act(() =>
+      alert()
+        .querySelector<HTMLButtonElement>('button[aria-label="Close"]')!
+        .click()
+    );
+    expect(alert().textContent).toContain("site icon");
+    await act(() =>
+      [...alert().querySelectorAll("button")]
+        .find((b) => b.textContent === "Details")!
+        .click()
+    );
+    expect(read).toHaveBeenLastCalledWith("second");
+    await act(() =>
+      [...document.querySelectorAll("button")]
+        .find((b) => b.textContent === "Close")!
+        .click()
+    );
+    await act(() =>
+      alert()
+        .querySelector<HTMLButtonElement>('button[aria-label="Close"]')!
+        .click()
+    );
+    expect(alert().textContent).toContain("Third failure");
+    await act(() =>
+      push({ code: "app:error", message: "Fourth failure", detail: "" })
+    );
+    await act(() => vi.advanceTimersByTimeAsync(5999));
+    expect(alert().textContent).toContain("Third failure");
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(alert().textContent).toContain("Fourth failure");
+    await act(() => vi.advanceTimersByTimeAsync(5999));
+    expect(alert().textContent).toContain("Fourth failure");
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+  } finally {
+    vi.useRealTimers();
+    log.mockRestore();
+  }
+});
