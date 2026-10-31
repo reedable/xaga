@@ -33,4 +33,4 @@ changing behavior.
 - `crates/xaga-core/src/domain.rs`
 - `crates/xaga-core/src/types.rs`
 - `src/domain.ts`
-- [Domain-definition investigation](../active/spike__define-tag-collection-bookmark-pin-shortcut-site.md)
+- [Organization model](../../docs/architecture/organization_model.md)

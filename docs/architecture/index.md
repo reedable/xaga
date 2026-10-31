@@ -20,6 +20,8 @@ Standing architecture rules for this project. Each has its own doc; keep this in
 
 9. [ListView behavior](list_view.md) — read-state changes and unpinning preserve the current browsing context.
 
+10. [Organization model](organization_model.md) — target domain definitions for collections, pins, reading state, color bookmarks, and Entry Tags.
+
 ## Security
 
 Architecture of the security-critical paths, in [security/](security/). These describe how a subsystem works and why — design and limits, not findings or status.
