@@ -25,16 +25,33 @@ pub(crate) fn normalize_site_hostname(value: &str) -> Option<SiteHostname> {
         return None;
     }
 
+    let domain = dns_hostname(&url)?;
+    let domain = domain.strip_prefix("www.").unwrap_or(domain);
+    Some(SiteHostname(domain.to_string()))
+}
+
+fn dns_hostname(url: &Url) -> Option<&str> {
     let Host::Domain(domain) = url.host()? else {
         return None;
     };
     let domain = domain.strip_suffix('.').unwrap_or(domain);
-    let domain = domain.strip_prefix("www.").unwrap_or(domain);
-    if !is_valid_dns_hostname(domain) {
+    is_valid_dns_hostname(domain).then_some(domain)
+}
+
+/// Normalize a bare hostname supplied to the pin store, never a URL or path.
+pub(crate) fn normalize_pin_hostname(value: &str) -> Option<String> {
+    if value.is_empty()
+        || value.chars().any(|c| {
+            c.is_whitespace() || matches!(c, '/' | '\\' | ':' | '?' | '#' | '@' | '%' | '\0')
+        })
+    {
         return None;
     }
-
-    Some(SiteHostname(domain.to_string()))
+    // Pin payloads carry an existing Site identity, not an article URL.
+    // Reapplying the one-www alias rule would change www.www.example.com's
+    // derived identity (www.example.com) on every persistence round trip.
+    let url = Url::parse(&format!("https://{value}/")).ok()?;
+    dns_hostname(&url).map(str::to_owned)
 }
 
 fn is_valid_dns_hostname(hostname: &str) -> bool {
@@ -81,6 +98,18 @@ mod tests {
                 .map(SiteHostname::as_str),
             Some("news.example.com")
         );
+    }
+
+    #[test]
+    fn normalizes_pin_identity_without_reapplying_url_aliases() {
+        for (input, expected) in [
+            ("Example.COM.", "example.com"),
+            ("www.example.com", "www.example.com"),
+            ("BÜCHER.example", "xn--bcher-kva.example"),
+        ] {
+            assert_eq!(normalize_pin_hostname(input).as_deref(), Some(expected));
+            assert_eq!(normalize_pin_hostname(expected).as_deref(), Some(expected));
+        }
     }
 
     #[test]

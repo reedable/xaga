@@ -2,7 +2,8 @@
 
 Use the CLI matching the application version you intend to run. The current
 0.13.0-dev CLI upgrades libraries to **0.13**, including color-backed article
-bookmarks, central pin storage, and the reading-state conversion below.
+bookmarks, Site pin support, central pin storage, and the reading-state conversion
+below.
 
 ## Reading-state format (0.10)
 
@@ -49,7 +50,8 @@ upgrade, or restore the full backup to return to 0.9.
 ## Central pin format (0.11)
 
 Library version **0.11** stores all Entry, Feed, and Topic pins in
-[`pins.yaml`](architecture/pins.md), independently of entity content. This format is not 0.10-compatible.
+[`pins.yaml`](architecture/pins.md), independently of entity content. This format
+was introduced in **0.11.0-dev** and is not 0.10-compatible.
 
 Using the CLI built with the central-pin implementation, close all library users,
 back up the library, and run the same `xaga-cli --data-dir /path/to/library library
@@ -65,6 +67,21 @@ normal runtime access; the application never silently migrates old markers.
 Wait for successful conversion before opening the library. Older application
 versions cannot safely edit the new pin representation; restoring the complete
 backup is the way to return to the old format.
+
+## Site pins (0.12)
+
+**0.12.0-dev** adds `type: site` targets identified by normalized `hostname` to the
+shared pin store. Close library users, back up the library, and run the same
+`library upgrade` command with the matching destination CLI. The existing flat
+pins keep their representation and order; Site membership remains derived and requires no new
+entity files or cache rows. Cache pin reconciliation applies only to Entry,
+Feed, and Topic targets. Existing Site pins are retained on interrupted retries.
+
+Site pins require library version **0.12** or later. Successful conversion
+advances the manifest to the running CLI’s major/minor version, currently **0.13**.
+Version-mismatched libraries open read-only until explicitly upgraded; the app
+never relabels them automatically. Returning to an older app format requires
+restoring the complete backup.
 
 ## Article bookmark colors (0.13)
 

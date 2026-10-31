@@ -1,3 +1,4 @@
+import { emptySite } from "../../sites";
 import { Clear, Refresh, Settings } from "@mui/icons-material";
 import {
   Button,
@@ -76,6 +77,7 @@ type ItemListProps = {
   isSelectableHeader: boolean;
   onEditFeed: (feed: Feed) => void;
   onEditTopic: (topic: Topic) => void;
+  onEditSite?: (site: Site) => void;
 };
 
 export function ItemList({
@@ -83,6 +85,7 @@ export function ItemList({
   isSelectableHeader,
   onEditFeed,
   onEditTopic,
+  onEditSite,
 }: ItemListProps) {
   const {
     filter,
@@ -109,7 +112,11 @@ export function ItemList({
   const { siteHostname } = state;
   const [abort, abortControllerRef] = useAbortController();
   const { topics, listTopicItems } = useTopics(abortControllerRef);
-  const { sites, listSiteEntries } = useSites(abortControllerRef);
+  const {
+    sites,
+    pinnedSites = [],
+    listSiteEntries,
+  } = useSites(abortControllerRef);
 
   const {
     feeds,
@@ -129,7 +136,11 @@ export function ItemList({
           : pinnedEntries.find((entry) => entry.id === articleScopeId))) ||
       (feedId && feeds.find((f) => f.id === feedId)) ||
       (topicId && topics.find((t) => t.id === topicId)) ||
-      (siteHostname && sites.find((site) => site.hostname === siteHostname)) ||
+      (siteHostname &&
+        ([...sites, ...pinnedSites].find(
+          (site) => site.hostname === siteHostname
+        ) ??
+          emptySite(siteHostname))) ||
       (shortcutId && SHORTCUTS.find((s) => s.id === shortcutId)) ||
       ALL_ITEMS,
     [
@@ -143,8 +154,18 @@ export function ItemList({
       feeds,
       topics,
       sites,
+      pinnedSites,
     ]
   );
+
+  const siteOptions = useMemo(() => {
+    const options = new Map(
+      [...sites, ...pinnedSites].map((site) => [site.hostname, site])
+    );
+    if (isSite(selectedCollection))
+      options.set(selectedCollection.hostname, selectedCollection);
+    return [...options.values()];
+  }, [sites, pinnedSites, selectedCollection]);
 
   const articleOptions = useMemo(
     () =>
@@ -186,11 +207,13 @@ export function ItemList({
   const itemRefs = useRef(new Map<string, HTMLDivElement>());
 
   const handleEdit = useMemo(() => {
+    if (isSite(selectedCollection))
+      return () => onEditSite?.(selectedCollection);
     if (isFeed(selectedCollection)) return () => onEditFeed(selectedCollection);
     if (isTopic(selectedCollection))
       return () => onEditTopic(selectedCollection);
     return undefined;
-  }, [selectedCollection, onEditFeed, onEditTopic]);
+  }, [selectedCollection, onEditFeed, onEditTopic, onEditSite]);
 
   const handleCollectionChange = useCallback(
     (event: SelectChangeEvent<string>) => {
@@ -206,14 +229,14 @@ export function ItemList({
         (item) => item.id === id
       );
       if (collection) selectItem(collection);
-      const site = sites.find((item) => item.hostname === id);
+      const site = siteOptions.find((item) => item.hostname === id);
       if (site) selectSite(site);
     },
     [
       feeds,
       selectItem,
       selectSite,
-      sites,
+      siteOptions,
       topics,
       pinnedEntries,
       selectArticleScope,
@@ -597,8 +620,8 @@ export function ItemList({
                     </Typography>
                   </MenuItem>
                 ))}
-                {sites.length > 0 && <ListSubheader>Sites</ListSubheader>}
-                {sites.map((site) => (
+                {siteOptions.length > 0 && <ListSubheader>Sites</ListSubheader>}
+                {siteOptions.map((site) => (
                   <MenuItem key={site.hostname} value={site.hostname}>
                     <Typography component="span" variant="body2">
                       {site.title}

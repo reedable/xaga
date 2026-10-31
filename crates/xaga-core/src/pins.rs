@@ -9,15 +9,32 @@ pub enum PinTarget {
     Entry { id: String },
     Feed { id: String },
     Topic { id: String },
+    Site { hostname: String },
 }
 
 impl PinTarget {
+    /// Canonical identity at every persistence/command boundary.
+    pub fn normalized(mut self) -> Result<Self, PinsError> {
+        self.validate()?;
+        if let Self::Site { hostname } = &mut self {
+            *hostname =
+                crate::site::normalize_pin_hostname(hostname).ok_or(PinsError::InvalidTarget)?;
+        }
+        Ok(self)
+    }
+
     pub fn validate(&self) -> Result<(), PinsError> {
-        let (Self::Entry { id } | Self::Feed { id } | Self::Topic { id }) = self;
-        if crate::persistence::entries::is_safe_id(id) {
-            Ok(())
-        } else {
-            Err(PinsError::InvalidTarget)
+        match self {
+            Self::Site { hostname } => crate::site::normalize_pin_hostname(hostname)
+                .map(|_| ())
+                .ok_or(PinsError::InvalidTarget),
+            Self::Entry { id } | Self::Feed { id } | Self::Topic { id } => {
+                if crate::persistence::entries::is_safe_id(id) {
+                    Ok(())
+                } else {
+                    Err(PinsError::InvalidTarget)
+                }
+            }
         }
     }
 }
@@ -60,9 +77,15 @@ impl Pins {
 
     /// Validated encoding shared with the explicit offline converter.
     pub fn serialize(&self) -> Result<String, PinsError> {
-        self.validate()?;
+        let mut normalized = self.clone();
+        normalized.pins = normalized
+            .pins
+            .into_iter()
+            .map(PinTarget::normalized)
+            .collect::<Result<_, _>>()?;
+        normalized.validate()?;
         let yaml = noyalib::to_string_with_config(
-            self,
+            &normalized,
             &noyalib::SerializerConfig::new().block_scalars(false),
         )
         .map_err(|error| PinsError::Format(error.to_string()))?;
@@ -87,9 +110,14 @@ impl Pins {
             return Err(PinsError::Format("store exceeds 12 MiB".into()));
         }
         let raw = std::str::from_utf8(&bytes).map_err(|e| PinsError::Format(e.to_string()))?;
-        let store: Self =
+        let mut store: Self =
             noyalib::from_str_with_config(raw, &ParserConfig::strict().with_policy(DenyAnchors))
                 .map_err(|e| PinsError::Format(e.to_string()))?;
+        store.pins = store
+            .pins
+            .into_iter()
+            .map(PinTarget::normalized)
+            .collect::<Result<_, _>>()?;
         store.validate()?;
         Ok(store)
     }
@@ -127,7 +155,7 @@ impl Pins {
         pinned: bool,
         _token: crate::library_writer::WriteToken,
     ) -> Result<Self, PinsError> {
-        target.validate()?;
+        let target = target.normalized()?;
         let mut store = Self::read(dir).await?;
         if store.contains(&target) == pinned {
             return Ok(store);
@@ -147,6 +175,156 @@ impl Pins {
 mod tests {
     use super::*;
     use crate::{library, library_writer::LibraryWriter};
+
+    #[tokio::test]
+    async fn site_pins_normalize_persist_and_isolate_without_entity_files() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let writer = LibraryWriter::start(
+            first.path().into(),
+            library::acquire_lock(first.path()).unwrap(),
+        );
+        for hostname in ["Example.COM.", "example.com"] {
+            writer
+                .set_pin(
+                    PinTarget::Site {
+                        hostname: hostname.into(),
+                    },
+                    true,
+                )
+                .await
+                .unwrap();
+        }
+        let pins = Pins::read(first.path()).await.unwrap();
+        assert_eq!(
+            pins.pins,
+            vec![PinTarget::Site {
+                hostname: "example.com".into()
+            }]
+        );
+        assert_eq!(Pins::read(second.path()).await.unwrap(), Pins::default());
+        assert!(!library::index_path(first.path()).exists());
+        assert!(!library::entries_dir(first.path()).exists());
+        for hostname in [
+            "",
+            "../escape",
+            "https://example.com",
+            "example.com/path",
+            "user@example.com",
+            "127.0.0.1",
+            "[::1]",
+            "bad host",
+            "example.com:80",
+            "bad%2eexample",
+            "-bad.example",
+        ] {
+            assert!(
+                writer
+                    .set_pin(
+                        PinTarget::Site {
+                            hostname: hostname.into()
+                        },
+                        true
+                    )
+                    .await
+                    .is_err(),
+                "{hostname}"
+            );
+        }
+        assert_eq!(Pins::read(first.path()).await.unwrap(), pins);
+        writer.shutdown().await;
+        assert_eq!(Pins::read(first.path()).await.unwrap(), pins);
+    }
+
+    #[tokio::test]
+    async fn site_identity_with_www_survives_repeated_reads_and_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let hostname = crate::site::normalize_site_hostname("https://www.www.example.com/article")
+            .unwrap()
+            .to_string();
+        assert_eq!(hostname, "www.example.com");
+        let target = PinTarget::Site { hostname };
+        let writer = LibraryWriter::start(
+            dir.path().into(),
+            library::acquire_lock(dir.path()).unwrap(),
+        );
+        writer.set_pin(target.clone(), true).await.unwrap();
+        writer
+            .set_pin(
+                PinTarget::Site {
+                    hostname: "other.example".into(),
+                },
+                true,
+            )
+            .await
+            .unwrap();
+        for _ in 0..3 {
+            let pins = Pins::read(dir.path()).await.unwrap();
+            assert!(pins.contains(&target));
+            std::fs::write(library::pins_path(dir.path()), pins.serialize().unwrap()).unwrap();
+        }
+        writer.set_pin(target.clone(), false).await.unwrap();
+        assert!(!Pins::read(dir.path()).await.unwrap().contains(&target));
+        writer.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn concurrent_site_changes_share_the_pin_lane() {
+        let dir = tempfile::tempdir().unwrap();
+        let writer = LibraryWriter::start(
+            dir.path().into(),
+            library::acquire_lock(dir.path()).unwrap(),
+        );
+        let mut handles = Vec::new();
+        for i in 0..12 {
+            let writer = writer.clone();
+            handles.push(tokio::spawn(async move {
+                writer
+                    .set_pin(
+                        PinTarget::Site {
+                            hostname: format!("site{i}.example"),
+                        },
+                        true,
+                    )
+                    .await
+                    .unwrap();
+            }));
+        }
+        for handle in handles {
+            handle.await.unwrap();
+        }
+        let pins = Pins::read(dir.path()).await.unwrap();
+        assert_eq!(pins.pins.len(), 12);
+        writer
+            .set_pin(
+                PinTarget::Site {
+                    hostname: "site0.example".into(),
+                },
+                false,
+            )
+            .await
+            .unwrap();
+        assert_eq!(Pins::read(dir.path()).await.unwrap().pins.len(), 11);
+        writer.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn site_metadata_rejects_normalized_duplicates_and_unknown_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        for raw in [
+            "pins: [{type: site, hostname: example.com}, {type: site, hostname: EXAMPLE.COM.}]",
+            "pins: [{type: site, id: example.com}]",
+            "pins: [{type: site, hostname: example.com, id: x}]",
+            "pins: [{type: site, hostname: ../escape}]",
+        ] {
+            std::fs::write(library::pins_path(dir.path()), raw).unwrap();
+            assert!(Pins::read(dir.path()).await.is_err(), "{raw}");
+            assert_eq!(
+                std::fs::read_to_string(library::pins_path(dir.path())).unwrap(),
+                raw
+            );
+        }
+    }
 
     #[tokio::test]
     async fn typed_identity_order_unresolved_targets_and_noop_survive_restart() {

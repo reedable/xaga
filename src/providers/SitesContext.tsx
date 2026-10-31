@@ -3,6 +3,8 @@ import type { Site } from "../types";
 
 export type SitesContextType = {
   sites: Site[];
+  hasLoaded?: boolean;
+  pinnedSites?: Site[];
   refreshSites: () => Promise<void>;
 };
 

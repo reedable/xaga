@@ -1544,7 +1544,13 @@ export class TauriPlatform implements Platform {
     return z
       .object({
         pins: z.array(
-          z.object({ type: z.enum(["entry", "feed", "topic"]), id: z.string() })
+          z.union([
+            z.object({
+              type: z.enum(["entry", "feed", "topic"]),
+              id: z.string(),
+            }),
+            z.object({ type: z.literal("site"), hostname: z.string() }),
+          ])
         ),
       })
       .parse(result).pins;
