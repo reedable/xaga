@@ -51,16 +51,43 @@ Article shortcuts suppress counts and contribute zero to unread sorting; the
 built-in All items target stays first. Alphabetical/unread sorting is presentation
 state and never rewrites the sequence.
 
-The Site reference shape is reserved as `type: site` plus normalized `hostname`;
-Site support is not accepted by this version of the parser. Future nested groups
-use `type: group`, stable `id`, `title`, and an ordered `children` sequence. Neither
-Site controls nor groups are implemented by the flat-store contract.
+Site pins use `type: site` and a normalized `hostname`, not an entity ID:
 
-The central pin format is library version **0.11**, implemented by the
-0.11.0-dev application. Existing libraries require the explicit
-[CLI upgrade](../library_upgrade.md#central-pin-format-011); the application
-does not infer legacy membership when the store is missing. Older application
-versions cannot safely edit this representation.
+```yaml
+pins:
+  - type: site
+    hostname: example.com
+```
+
+The persistence boundary validates bare DNS hostnames and applies the Site
+identity rules for case, international domains, and terminal dots. Pin payloads
+already carry Site identities: the article URL’s one-leading-`www.` alias rule
+is not reapplied to them. For example, an article on `www.www.example.com`
+derives to `www.example.com`, which remains unchanged across pin reads/writes.
+URLs, paths, ports, credentials, and IP literals are refused. Hostnames never
+become filesystem path components. Equivalent Site references cannot occur twice.
+Site pin changes use the same writer lane and `pin:changed` event as other pins;
+there is no Site entity row or cache pin column to update.
+
+Site Settings shows a read-only hostname and an **Add to Shortcuts** checkbox.
+Membership comes from the shared pin store each time the dialog opens. Read-only
+libraries can navigate pinned Sites and inspect Settings, but cannot change pins.
+Pinned Sites use current derived total/unread counts and existing Site navigation.
+Once the Site list has loaded, a pinned hostname absent from that projection is
+still a valid empty Site with zero counts, not an unavailable target. Its pin
+survives cache recovery and out-of-band changes. Initial Site loading uses the
+same skeleton rows as other collection shortcuts. Alphabetical/unread sorting
+includes Sites while **All items** stays first.
+
+Site targets extend the library format to **0.12**, implemented by **0.12.0-dev**.
+Existing 0.11 libraries require the explicit
+[CLI upgrade](../library_upgrade.md#site-pins-012). Flat Entry/Feed/Topic pins
+retain their representation and order. Older applications cannot edit 0.12
+libraries; their version mismatch selects read-only mode. No Site membership is
+persisted or converted, and Site references never create cache entity rows.
+
+Future nested groups use `type: group`, stable `id`, `title`, and an ordered
+`children` sequence. Groups are not implemented by the flat-store contract.
 
 The recovery walk constructs a membership set once, so its per-entity membership
 lookup does not scan the ordered sequence. Article-shortcut resolution reads one

@@ -59,7 +59,7 @@ export function TopicsProvider({ children }: { children: ReactNode }) {
   );
 
   const pinnedTopicIds = useMemo(
-    () => pins.filter((pin) => pin.type === "topic").map((pin) => pin.id),
+    () => pins.flatMap((pin) => (pin.type === "topic" ? [pin.id] : [])),
     [pins]
   );
   const setTopicPinned = useCallback(

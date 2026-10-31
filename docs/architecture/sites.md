@@ -30,3 +30,15 @@ Entry-state events.
 
 Code: `crates/xaga-core/src/site.rs`, `crates/xaga-core/src/query/sites.rs`,
 `src-tauri/src/commands/sites.rs`.
+
+## Shortcuts
+
+A Site can be pinned through the selected Site’s Settings dialog. Only its
+normalized hostname is stored in the shared [`pins.yaml` store](pins.md); Site
+membership remains derived. A pinned Site with no currently derived Entries
+remains navigable with zero total and unread counts. Pin changes never create a
+Site file or an entity cache row, and unpinning does not change Entry data or
+the current reading scope. Site pin writes use the shared writer/read-only gate.
+
+Site targets require library version **0.12** and the explicit
+[CLI upgrade](../library_upgrade.md#site-pins-012) from older library versions.
