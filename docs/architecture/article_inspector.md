@@ -1,6 +1,6 @@
 # Inspector
 
-One shared Inspector provides Related and Topics views for Articles and
+One shared Inspector implementation provides Related and Topics views for Articles and
 Annotations. It replaces the standalone Add to Topic button and its drawer.
 The Tags tab is disabled with a visible explanation until Entry tag assignment
 is available. Its future picker belongs in this shared Inspector
@@ -23,7 +23,9 @@ backdrop. Drawer interaction and focus changes do not dismiss it. Close and
 backdrop clicks retain their drawer origin through dismissal, so the same
 event does not also trigger the tooltip's click-away dismissal. Closing the
 drawer restores focus to its tooltip opener when available, with the reader as
-fallback. Deleting the Annotation removes its retained tooltip without saving it.
+fallback. The tooltip remains visible after the drawer closes; a subsequent
+click outside it dismisses it normally. Deleting the Annotation removes its
+retained tooltip without saving it.
 Read-only inspection does not save. Uncolored text selections do not offer the
 Inspector action until a color has been assigned.
 
@@ -98,5 +100,6 @@ Remove marking. Its swatches slightly overlap when the Remove confirmation
 label is shown. The label uses its natural content width so the
 full text remains visible. Compaction is static base layout and works
 independently of motion support. Label expansion, swatch spacing transitions,
-and hover scaling animate only under `prefers-reduced-motion: no-preference`; reduced-motion or unsupported
-media queries retain the same complete layout without transitions.
+and hover scaling animate only under `prefers-reduced-motion: no-preference`;
+reduced-motion or unsupported media queries retain the same complete layout
+without transitions.

@@ -86,9 +86,9 @@ precedence over discovery.
 The Inspector's Article Tags view presents searchable selectable chips. Clicking
 a chip immediately assigns/removes that tag; removal preserves its definition.
 An unmatched name offers Create “name”, which creates and assigns. No Save step
-is required. The shared Inspector handles Articles and Annotations, shown as a
-wide panel or a narrow drawer as described in [Inspector](article_inspector.md). Initial
-tag assignment remains Article-only.
+is required. The shared Inspector handles Articles and Annotations; its
+presentation is specified in [Inspector](article_inspector.md). Initial tag
+assignment remains Article-only.
 
 A Tags sidebar multi-select list browses Entries carrying every selected tag.
 No selection means all Entries under existing text and Unread/Saved/All filters.
