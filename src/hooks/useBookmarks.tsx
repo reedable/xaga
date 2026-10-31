@@ -8,12 +8,12 @@ export function useBookmarks(abortControllerRef: RefObject<AbortController>) {
   const [error, setError] = useState<unknown>(null);
 
   const addBookmark = useCallback(
-    async (entry: Entry) => {
+    async (entry: Entry, color: string) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       setLoading(true);
       try {
-        return await platform.addBookmark(signal, entry.id);
+        return await platform.addBookmark(signal, entry.id, color);
       } catch (e) {
         setError(e);
       } finally {

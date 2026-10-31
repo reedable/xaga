@@ -107,3 +107,25 @@ allows core to atomically replace the manifest with the completed target version
 A crash or reported failure leaves the pending marker, and retry resumes the same
 target. Normal app startup opens mismatched, absent, incomplete or unreadable
 metadata read-only and never alters it. See [library version](library_version.md).
+
+### Article color markings
+
+Article color assignment, recoloring, and removal serialize in the Entry writer
+lane. One atomic frontmatter patch writes `color`, or removes it when unmarked,
+without modifying annotations, organizational tags, reading state, or body.
+The command carries the committed optional color in `StatePatch`: an absent
+patch field leaves color unchanged; an explicitly absent value removes it.
+Cache sync compares color values and emits `bookmark:changed` for assignment,
+removal, and color-to-color changes. Recovery compares file color with cached
+color independently of content checksums and repairs crash-stranded changes
+without recomputing unchanged content embeddings. Queued vector completion
+preserves cached color, reading state, and pin state rather than restoring the
+older state snapshot carried by the embedding job.
+
+The offline 0.13 converter commits color and legacy bookmark-marker removal in
+the same atomic replacement under the library lock. A valid existing palette
+color wins; a legacy marker without color supplies Blue. Retry re-reads converted
+files and reconciles their cache state even if no file needs rewriting. It keeps
+one document and at most 1024 identities/colors in memory, groups cache updates by
+palette color, preserves vectors and membership columns, and only completes the
+library version after schema conversion, reconciliation, and index creation.

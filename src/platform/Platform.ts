@@ -163,7 +163,7 @@ export interface Platform {
     signal: AbortSignal,
     article: Omit<
       Article,
-      "id" | "createdAt" | "__kind" | "isBookmarked" | "isPinned"
+      "id" | "createdAt" | "__kind" | "isPinned"
     >,
     imageData?: Record<string, string>,
     diagnosticId?: string
@@ -222,7 +222,7 @@ export interface Platform {
   ): Promise<RankedItem[]>;
 
   // Bookmarks
-  addBookmark(signal: AbortSignal, id: string): Promise<Entry>;
+  addBookmark(signal: AbortSignal, id: string, color: string): Promise<Entry>;
   removeBookmark(signal: AbortSignal, id: string): Promise<Entry>;
 
   // Embedding queries

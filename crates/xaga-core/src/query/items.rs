@@ -68,7 +68,7 @@ pub(crate) type Result<T> = std::result::Result<T, ItemError>;
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /// Fetch embedded items from `source`, preserving similarity rank, then filter.
-/// `is_unread` and `is_bookmarked` are read directly from LanceDB tags.
+/// Reading state and color are projected directly from LanceDB.
 pub async fn list_embedded_items(
     library_dir: &Path,
     source: EmbeddedItemSource,
@@ -122,47 +122,7 @@ pub async fn list_embedded_items(
 pub async fn list_all_items(library_dir: &Path, item_filter: ItemFilter) -> Result<Vec<ListItem>> {
     let db = EmbeddingsDb::open_readonly(library_dir).await?;
 
-    let (entries_result, annotations_result) =
-        tokio::join!(db.list_entries(), db.list_annotations());
-
-    let list_entries = entries_result?;
-    let annotations = annotations_result.unwrap_or_default();
-
-    let mut items: Vec<ListItem> = list_entries
-        .into_iter()
-        .filter(|e| match item_filter {
-            ItemFilter::All => true,
-            ItemFilter::Unread => e.is_unread,
-            ItemFilter::Bookmarked | ItemFilter::Saved => e.is_bookmarked,
-        })
-        .map(|e| ListItem {
-            id: e.id,
-            title: e.title,
-            created_at: e.created_at,
-            url: e.url,
-            is_unread: e.is_unread,
-            is_bookmarked: e.is_bookmarked,
-            is_pinned: e.is_pinned,
-            reference: None,
-            color: None,
-        })
-        .chain(
-            annotations
-                .into_iter()
-                .filter(|_| matches!(item_filter, ItemFilter::All | ItemFilter::Saved))
-                .map(|a| ListItem {
-                    id: a.id,
-                    title: a.title,
-                    created_at: a.created_at,
-                    url: a.url,
-                    is_unread: false,
-                    is_bookmarked: false,
-                    is_pinned: false,
-                    reference: Some(a.reference),
-                    color: Some(a.color),
-                }),
-        )
-        .collect();
+    let mut items = db.filter_items(item_filter).await?;
 
     items.sort_by(|a, b| b.created_at.cmp(&a.created_at));
     Ok(items)
@@ -229,7 +189,6 @@ mod tests {
                 updated_at: None,
                 description: None,
                 is_unread: false,
-                is_bookmarked: false,
                 is_pinned: false,
                 color: None,
             },

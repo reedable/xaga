@@ -38,7 +38,6 @@ export type Entry = WebResource &
   Colorable & {
     readonly __kind: "entry";
     isUnread?: boolean;
-    isBookmarked: boolean;
     // description? / publishedAt? from Item; color? (from Colorable) = the bookmark color
   };
 
@@ -71,7 +70,6 @@ export type Article = Entry &
 export type Note = Document &
   Colorable & {
     readonly __kind: "note";
-    isBookmarked: boolean;
   };
 
 export type Annotation = Document &

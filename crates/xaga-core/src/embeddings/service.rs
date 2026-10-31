@@ -44,7 +44,8 @@ impl EntityRef {
 #[derive(Debug, Clone, Default)]
 pub struct StatePatch {
     pub is_unread: Option<bool>,
-    pub is_bookmarked: Option<bool>,
+    /// `None` leaves color unchanged; `Some(None)` removes the marking.
+    pub color: Option<Option<String>>,
     pub is_pinned: Option<bool>,
 }
 
@@ -323,7 +324,7 @@ impl EmbeddingService {
         self.unread_changed_rx.clone()
     }
 
-    /// Returns a receiver that fires when an entry's is_bookmarked state changes.
+    /// Returns a receiver that fires when an entry's color changes.
     pub fn subscribe_to_bookmarked_changed(&self) -> flume::Receiver<Entry> {
         self.bookmarked_changed_rx.clone()
     }
@@ -562,7 +563,7 @@ async fn handle_job(
                 db,
                 &entity.id,
                 state.is_unread,
-                state.is_bookmarked,
+                state.color,
                 state.is_pinned,
                 &events.unread,
                 &events.bookmarked,

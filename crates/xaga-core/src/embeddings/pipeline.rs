@@ -10,7 +10,7 @@ use super::{EmbeddingsDb, EmbeddingsError};
 use crate::types::{Annotation, Article, Entry, Feed, Kind, ListItem, Topic};
 
 /// Compares old and new state; sends the entry to the appropriate channels
-/// when is_unread or is_bookmarked actually changed.
+/// when reading state or color changes.
 fn emit_entry_changes(
     entry: &Entry,
     old: Option<&EmbeddingEntry>,
@@ -18,14 +18,14 @@ fn emit_entry_changes(
     bookmarked_tx: &flume::Sender<Entry>,
 ) {
     let old_unread = old.is_some_and(|row| row.is_unread);
-    let old_bookmarked = old.is_some_and(|row| row.is_bookmarked);
+    let old_color = old.map(|row| row.color.as_str()).unwrap_or("");
     let new_unread = entry.is_unread;
-    let new_bookmarked = entry.is_bookmarked;
-    if old_unread != new_unread || old_bookmarked != new_bookmarked {
+    let new_color = entry.color.as_deref().unwrap_or("");
+    if old_unread != new_unread || old_color != new_color {
         if old_unread != new_unread {
             let _ = unread_tx.send(entry.clone());
         }
-        if old_bookmarked != new_bookmarked {
+        if old_color != new_color {
             let _ = bookmarked_tx.send(entry.clone());
         }
     }
@@ -86,7 +86,6 @@ pub(crate) fn annotation_embedding_entry(
         topics,
         items: vec![],
         is_unread: false,
-        is_bookmarked: false,
         is_pinned: false,
         vector,
     }
@@ -100,7 +99,6 @@ fn annotation_list_item(article: &Article, annotation: &Annotation) -> ListItem 
         created_at: annotation.created_at.clone(),
         url: article.meta.url.clone(),
         is_unread: false,
-        is_bookmarked: false,
         is_pinned: false,
         reference: Some(article.meta.id.clone()),
         color: Some(annotation.color.clone()),
@@ -298,6 +296,7 @@ pub async fn sync_entry_row(
         Some(e) => {
             !content_unchanged
                 || e.tags != row.tags
+                || e.color != row.color
                 || e.is_unread != row.is_unread
                 || e.summary != row.summary
                 || e.is_pinned != row.is_pinned
@@ -402,16 +401,7 @@ pub async fn embed_entry_vector(
             article_embed_text(article).to_string(),
         )
         .await?;
-        let mut row = EmbeddingEntry::from_article(article, Some(vector));
-        row.topics = existing
-            .as_ref()
-            .map(|e| e.topics.clone())
-            .unwrap_or_default();
-        row.items = existing
-            .as_ref()
-            .map(|e| e.items.clone())
-            .unwrap_or_default();
-        db.upsert(row).await?;
+        store_entry_vector(article, vector, existing.as_ref(), db).await?;
     }
 
     // Fill any pending annotation vectors. Rows (incl. stale-row deletes) were already
@@ -419,6 +409,26 @@ pub async fn embed_entry_vector(
     embed_annotations(article, embedder, db).await?;
 
     Ok(())
+}
+
+/// Vector completion does not own state: a higher-priority state mutation may have
+/// overtaken the Article snapshot carried by this queued embedding job.
+async fn store_entry_vector(
+    article: &Article,
+    vector: Vec<f32>,
+    existing: Option<&EmbeddingEntry>,
+    db: &EmbeddingsDb,
+) -> Result<(), EmbeddingsError> {
+    let mut row = EmbeddingEntry::from_article(article, Some(vector));
+    if let Some(existing) = existing {
+        row.color = existing.color.clone();
+        row.is_unread = existing.is_unread;
+        row.is_pinned = existing.is_pinned;
+        row.tags = existing.tags.clone();
+        row.topics = existing.topics.clone();
+        row.items = existing.items.clone();
+    }
+    db.upsert(row).await
 }
 
 /// Slow path (topic): computes and stores the topic's embedding vector when missing or stale.
@@ -606,14 +616,14 @@ fn entry_from_row(row: &EmbeddingEntry) -> Entry {
         updated_at: opt(&row.updated_at),
         description: opt(&row.summary),
         is_unread: row.is_unread,
-        is_bookmarked: row.is_bookmarked,
+
         is_pinned: row.is_pinned,
-        color: None,
+        color: opt(&row.color),
     }
 }
 
 /// Write-through state update for a `SyncState` job: applies the carried value(s) directly
-/// to the cached row's `tags` + denormalized boolean columns and emits the UI change event,
+/// to the cached row's reading state, color, and derived pin columns and emits the UI change event,
 /// without reading the `.md`. `get_entry` is still required because `upsert` replaces the
 /// whole row (preserving vector/topics/items/content). A `None` field is left unchanged; a
 /// missing row is a no-op (recovery will create it).
@@ -621,7 +631,7 @@ pub(crate) async fn apply_state(
     db: &EmbeddingsDb,
     id: &str,
     is_unread: Option<bool>,
-    is_bookmarked: Option<bool>,
+    color: Option<Option<String>>,
     is_pinned: Option<bool>,
     unread_tx: &flume::Sender<Entry>,
     bookmarked_tx: &flume::Sender<Entry>,
@@ -632,22 +642,13 @@ pub(crate) async fn apply_state(
     };
 
     let old_unread = row.is_unread;
-    let old_bookmarked = row.is_bookmarked;
+    let old_color = row.color.clone();
 
-    fn set_tag(tags: &mut Vec<String>, tag: &str, on: bool) {
-        let has = tags.iter().any(|t| t == tag);
-        if on && !has {
-            tags.push(tag.to_string());
-        } else if !on && has {
-            tags.retain(|t| t != tag);
-        }
-    }
     if let Some(v) = is_unread {
         row.is_unread = v;
     }
-    if let Some(v) = is_bookmarked {
-        set_tag(&mut row.tags, crate::tags::BOOKMARK, v);
-        row.is_bookmarked = v;
+    if let Some(value) = color {
+        row.color = value.unwrap_or_default();
     }
     if let Some(v) = is_pinned {
         row.tags.retain(|tag| tag != "pinned");
@@ -655,14 +656,14 @@ pub(crate) async fn apply_state(
     }
 
     let new_unread = row.is_unread;
-    let new_bookmarked = row.is_bookmarked;
+    let new_color = row.color.clone();
     let entry = entry_from_row(&row);
     db.upsert(row).await?;
 
     if new_unread != old_unread {
         let _ = unread_tx.send(entry.clone());
     }
-    if new_bookmarked != old_bookmarked {
+    if new_color != old_color {
         let _ = bookmarked_tx.send(entry);
     }
     Ok(())
@@ -769,13 +770,45 @@ mod tests {
                 updated_at: None,
                 description: None,
                 is_unread: false,
-                is_bookmarked: false,
                 is_pinned: false,
                 color: None,
             },
             content: "body".to_string(),
             annotations,
             favicon: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn pending_vector_completion_preserves_newer_color_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let queued = article(vec![]);
+        let (events, _) = flume::unbounded();
+        let (annotations, _) = flume::unbounded();
+        sync_entry_row(&queued, &db, &events, &events, &annotations)
+            .await
+            .unwrap();
+        for color in [Some("blue"), Some("green"), None] {
+            apply_state(
+                &db,
+                &queued.meta.id,
+                Some(true),
+                Some(color.map(str::to_owned)),
+                Some(true),
+                &events,
+                &events,
+            )
+            .await
+            .unwrap();
+            let current = db.get_entry(&queued.meta.id).await.unwrap().unwrap();
+            store_entry_vector(&queued, vec![0.1; 384], Some(&current), &db)
+                .await
+                .unwrap();
+            let row = db.get_entry(&queued.meta.id).await.unwrap().unwrap();
+            assert_eq!(row.color, color.unwrap_or(""));
+            assert!(row.is_unread && row.is_pinned);
+            assert!(row.vector.is_some());
         }
     }
 

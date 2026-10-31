@@ -127,7 +127,7 @@ it("sorts article shortcuts at zero, displays no count, and selects their articl
     title: "Article",
     url: "https://example.org",
     createdAt: "2026-10-29",
-    isBookmarked: false,
+
     isUnread: true,
     isPinned: true,
     entryCount: 0,

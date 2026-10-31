@@ -62,7 +62,6 @@ pub async fn list_topic_items(
                     created_at: e.entry.created_at.clone(),
                     url: e.entry.url.clone(),
                     is_unread: e.entry.is_unread,
-                    is_bookmarked: e.entry.is_bookmarked,
                     is_pinned: e.entry.is_pinned,
                     reference: if e.reference.is_empty() {
                         None
@@ -100,17 +99,16 @@ pub async fn list_topic_items(
                 created_at: entry.created_at,
                 url: entry.url,
                 is_unread: entry.is_unread,
-                is_bookmarked: entry.is_bookmarked,
                 is_pinned: entry.is_pinned,
                 reference: None,
-                color: None,
+                color: entry.color.clone(),
             },
         ));
     }
 
     // 3. Manually curated annotations.
     // Annotations have no unread/bookmarked state; filter::filter_items excludes them
-    // from Unread and Bookmarked via is_unread()==false and is_bookmarked()==false,
+    // from Unread and Bookmarked via is_unread()==false and color()==None,
     // and includes them in Saved via !reference().is_empty(). Replicated here since
     // Annotation does not implement Item.
     let include_annotations = matches!(
@@ -134,7 +132,6 @@ pub async fn list_topic_items(
                                 created_at: ann.created_at.clone(),
                                 url: article.meta.url.clone(),
                                 is_unread: false,
-                                is_bookmarked: false,
                                 is_pinned: false,
                                 reference: Some(reference.clone()),
                                 color: Some(ann.color.clone()),

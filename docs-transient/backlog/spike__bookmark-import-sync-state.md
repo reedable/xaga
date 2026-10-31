@@ -2,7 +2,7 @@
 
 ## Summary
 
-Importing a bookmark whose normalized URL already exists adds the bookmark tag and synchronizes that state to the embeddings database. Metadata from the bookmark file is ignored. Define whether existing entries should remain unchanged, merge selected imported metadata, or trigger a separate remote-content refresh; bookmark files do not contain article body content.
+Importing a bookmark whose normalized URL already exists assigns its bookmark color and synchronizes that state to the embeddings database. Other metadata from the bookmark file is ignored. Define whether existing entries should retain that behavior, merge selected imported metadata, or trigger a separate remote-content refresh; bookmark files do not contain article body content.
 
 ## Requirements
 
@@ -14,7 +14,7 @@ Importing a bookmark whose normalized URL already exists adds the bookmark tag a
 
 ## Remaining work
 
-- Compare tag-only behavior, merging selected bookmark metadata, and a separate remote refresh, including conflicts with locally stored and feed-derived values.
+- Compare marking-only behavior, merging selected bookmark metadata, and a separate remote refresh, including conflicts with locally stored and feed-derived values.
 - Decide which behavior applies when imported fields are absent, older, or different from the existing entry.
 - Define whether unchanged or already-bookmarked entries count as updated in the import result.
 - Implement the chosen semantics and enqueue the corresponding state sync or entry upsert.

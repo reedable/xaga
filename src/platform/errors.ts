@@ -20,6 +20,7 @@ export const ERROR_CODE = [
   "entry:malformed",
   "entry:too-large",
   "entry:color-change-requires-replace",
+  "entry:invalid-color",
   // DomainError — FeedError
   "feed:invalid-url",
   "feed:http",

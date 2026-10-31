@@ -181,7 +181,7 @@ pub(crate) async fn get_unread_ids(state: &AppState) -> std::collections::HashSe
     db.unread_ids().await.unwrap_or_default()
 }
 
-/// The set of bookmarked entry ids, read from LanceDB (the `is_bookmarked` Bitmap index).
+/// The set of bookmarked entry ids, read from LanceDB (the `color` Bitmap index).
 pub(crate) async fn get_bookmarked_ids(state: &AppState) -> std::collections::HashSet<String> {
     let db = state.embeddings_read.lock().unwrap().clone();
     let Some(db) = db else {

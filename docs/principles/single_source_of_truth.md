@@ -6,7 +6,7 @@
 
 - **`.atom` files** own feed membership (the entry id-set per feed).
 - **Entry `.md` files** own entry content and state (`is_unread` frontmatter,
-  bookmark tags, annotations). Reading state is independent of organizational
+  optional article `color`, organizational tags, annotations). Reading state is independent of organizational
   tags: `is_unread: true` means unread; an absent field or explicit false means
   read. Writers omit read state rather than persisting false. Collection unread
   counts aggregate member Entry booleans.

@@ -78,7 +78,7 @@ pub struct EmbeddingEntry {
     pub checksum: String,
     /// For annotation rows: the parent article ID. Empty for regular entries.
     pub reference: String,
-    /// For annotation rows: the highlight color. Empty for regular entries.
+    /// Article marking or annotation highlight color. Empty for unmarked Entries.
     pub color: String,
     pub summary: String,
     pub tags: Vec<String>,
@@ -96,7 +96,6 @@ pub struct EmbeddingEntry {
     /// Empty for annotation/feed rows. Nullable in storage; reads back empty when absent/null.
     pub items: Vec<String>,
     pub is_unread: bool,
-    pub is_bookmarked: bool,
     pub is_pinned: bool,
     /// `None` until the embedding is computed (row may be inserted before embedding).
     pub vector: Option<Vec<f32>>,
@@ -135,7 +134,6 @@ fn make_schema() -> Arc<Schema> {
             true,
         ),
         Field::new("is_unread", DataType::Boolean, false),
-        Field::new("is_bookmarked", DataType::Boolean, false),
         Field::new("is_pinned", DataType::Boolean, false),
         Field::new(
             "vector",
@@ -177,7 +175,6 @@ fn entries_to_batch(
     let mut colors = Vec::with_capacity(n);
     let mut summaries = Vec::with_capacity(n);
     let mut unread = Vec::with_capacity(n);
-    let mut bookmarked = Vec::with_capacity(n);
     let mut pinned = Vec::with_capacity(n);
 
     let mut tags_builder = ListBuilder::new(StringBuilder::new());
@@ -200,7 +197,6 @@ fn entries_to_batch(
         colors.push(entry.color);
         summaries.push(entry.summary);
         unread.push(entry.is_unread);
-        bookmarked.push(entry.is_bookmarked);
         pinned.push(entry.is_pinned);
 
         for tag in &entry.tags {
@@ -256,7 +252,6 @@ fn entries_to_batch(
             Arc::new(topics_builder.finish()),
             Arc::new(items_builder.finish()),
             Arc::new(BooleanArray::from(unread)),
-            Arc::new(BooleanArray::from(bookmarked)),
             Arc::new(BooleanArray::from(pinned)),
             Arc::new(vector_array),
         ],
@@ -294,7 +289,6 @@ async fn create_empty_documents_table(
             Arc::new(empty_topics),                          // topics
             Arc::new(empty_items),                           // items
             Arc::new(BooleanArray::from(Vec::<bool>::new())), // is_unread
-            Arc::new(BooleanArray::from(Vec::<bool>::new())), // is_bookmarked
             Arc::new(BooleanArray::from(Vec::<bool>::new())), // is_pinned
             Arc::new(empty_vector),
         ],
@@ -322,7 +316,6 @@ struct BatchSummaryColumns<'a> {
     references: Option<&'a StringArray>,
     colors: Option<&'a StringArray>,
     summaries: Option<&'a StringArray>,
-    tags: Option<&'a ListArray>,
     unread: &'a BooleanArray,
     pinned: Option<&'a BooleanArray>,
     kinds: Option<&'a StringArray>,
@@ -369,9 +362,6 @@ impl<'a> BatchSummaryColumns<'a> {
                 .column_by_name("is_unread")?
                 .as_any()
                 .downcast_ref::<BooleanArray>()?,
-            tags: batch
-                .column_by_name("tags")
-                .and_then(|c| c.as_any().downcast_ref::<ListArray>()),
             kinds: batch
                 .column_by_name("kind")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>()),
@@ -386,17 +376,6 @@ impl<'a> BatchSummaryColumns<'a> {
             .unwrap_or(Kind::Entry)
     }
 
-    fn tags_at(&self, i: usize) -> Vec<String> {
-        let Some(arr) = self.tags else { return vec![] };
-        let item = arr.value(i);
-        let Some(strings) = item.as_any().downcast_ref::<StringArray>() else {
-            return vec![];
-        };
-        (0..strings.len())
-            .map(|j| strings.value(j).to_string())
-            .collect()
-    }
-
     fn summary_at(&self, i: usize) -> Entry {
         fn opt_str(col: Option<&StringArray>, i: usize) -> Option<String> {
             col.and_then(|a| {
@@ -408,9 +387,7 @@ impl<'a> BatchSummaryColumns<'a> {
                 }
             })
         }
-        let tags = self.tags_at(i);
         let is_unread = self.unread.value(i);
-        let is_bookmarked = crate::tags::is_bookmarked(&tags);
         Entry {
             id: self.ids.value(i).to_string(),
             url: self.sources.value(i).to_string(),
@@ -420,9 +397,8 @@ impl<'a> BatchSummaryColumns<'a> {
             updated_at: opt_str(self.updated_ats, i),
             description: opt_str(self.summaries, i),
             is_unread,
-            is_bookmarked,
             is_pinned: self.pinned.is_some_and(|values| values.value(i)),
-            color: None,
+            color: opt_str(self.colors, i),
         }
     }
 
@@ -588,8 +564,8 @@ impl EmbeddingsDb {
     }
 
     /// Creates scalar indexes when absent, idempotently: BTree on `id` (id-set retrieval) and
-    /// `published_at` (ordered reads); Bitmap on the low-cardinality state booleans
-    /// `is_unread`/`is_bookmarked`/`is_pinned` so state filters and counts are index-driven rather
+    /// `published_at` (ordered reads); Bitmap on low-cardinality state and kind columns
+    /// `is_unread`/`color`/`kind`/`is_pinned` so state filters and counts are index-driven rather
     /// than full scans. Intended to run after recovery has populated the rows, so indexes train
     /// over real data.
     pub(crate) async fn ensure_indexes(&self) -> Result<(), EmbeddingsError> {
@@ -614,9 +590,8 @@ impl EmbeddingsDb {
             log::info!("EmbeddingsDb: created BTree index on `{col}`");
         }
 
-        // Low-cardinality state booleans: Bitmap is the right index (the unread/bookmarked id-sets
-        // for sidebar counts, and the Saved list, become index-driven not scans).
-        for col in ["is_unread", "is_bookmarked", "is_pinned"] {
+        // Bitmap indexes serve the state id-sets, sidebar counts, and Saved membership.
+        for col in ["is_unread", "is_pinned", "color", "kind"] {
             if indexed.contains(col) {
                 continue;
             }
@@ -657,9 +632,9 @@ impl EmbeddingsDb {
         Ok(entries_from_batches(&batches))
     }
 
-    /// The set of entry ids currently bookmarked — read via the `is_bookmarked` Bitmap index.
+    /// The set of entry ids currently bookmarked — read via the `color` Bitmap index.
     pub async fn get_bookmarked_ids(&self) -> Result<HashSet<String>, EmbeddingsError> {
-        self.state_ids("is_bookmarked = true").await
+        self.state_ids("color != ''").await
     }
 
     /// Projects entry-row ids matching a state `predicate` into a set, selecting only the `id`
@@ -739,6 +714,49 @@ impl EmbeddingsDb {
         Ok(entries_from_batches(&batches))
     }
 
+    /// Mixed list membership is evaluated by indexed kind/color predicates in LanceDB.
+    pub(crate) async fn filter_items(
+        &self,
+        filter: crate::types::ItemFilter,
+    ) -> Result<Vec<crate::types::ListItem>, EmbeddingsError> {
+        use crate::types::{ItemFilter, ListItem};
+        let predicate = match filter {
+            ItemFilter::All => "kind IN ('entry', 'annotation')",
+            ItemFilter::Unread => "kind = 'entry' AND is_unread = true",
+            ItemFilter::Bookmarked => "kind = 'entry' AND color != ''",
+            ItemFilter::Saved => "(kind = 'entry' AND color != '') OR kind = 'annotation'",
+        };
+        let batches: Vec<RecordBatch> = self
+            .table
+            .query()
+            .select(Select::columns(&Self::SUMMARY_COLUMNS))
+            .only_if(predicate)
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+        let mut items = Vec::new();
+        for batch in &batches {
+            if let Some(cols) = BatchSummaryColumns::from_batch(batch) {
+                for i in 0..batch.num_rows() {
+                    let entry = cols.summary_at(i);
+                    items.push(ListItem {
+                        id: entry.id,
+                        title: entry.title,
+                        created_at: entry.created_at,
+                        url: entry.url,
+                        is_unread: entry.is_unread,
+                        is_pinned: entry.is_pinned,
+                        reference: (cols.kind_at(i) == Kind::Annotation)
+                            .then(|| cols.reference_at(i)),
+                        color: entry.color,
+                    });
+                }
+            }
+        }
+        Ok(items)
+    }
+
     /// All entry rows (`kind = 'entry'`).
     pub async fn list_entries(&self) -> Result<Vec<Entry>, EmbeddingsError> {
         let batches: Vec<RecordBatch> = self
@@ -761,10 +779,7 @@ impl EmbeddingsDb {
             .table
             .query()
             .select(Select::columns(&Self::SUMMARY_COLUMNS))
-            .only_if(format!(
-                "{} AND is_bookmarked = true",
-                Kind::Entry.predicate()
-            ))
+            .only_if(format!("{} AND color != ''", Kind::Entry.predicate()))
             .execute()
             .await?
             .try_collect()
@@ -916,8 +931,10 @@ impl EmbeddingsDb {
     /// recovery diffs against the `.md` to gate the annotation reconcile without a per-entry query.
     pub(crate) async fn list_entries_meta(
         &self,
-    ) -> Result<HashMap<String, (String, String, bool, String, Vec<String>, bool)>, EmbeddingsError>
-    {
+    ) -> Result<
+        HashMap<String, (String, String, bool, String, Vec<String>, bool, String)>,
+        EmbeddingsError,
+    > {
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -950,6 +967,9 @@ impl EmbeddingsDb {
                 .column_by_name("kind")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>());
 
+            let colors = batch
+                .column_by_name("color")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>());
             let unread = batch
                 .column_by_name("is_unread")
                 .and_then(|c| c.as_any().downcast_ref::<BooleanArray>());
@@ -982,6 +1002,7 @@ impl EmbeddingsDb {
                             kind,
                             item_ids,
                             unread.is_some_and(|a| a.value(i)),
+                            colors.map_or(String::new(), |a| a.value(i).to_owned()),
                         ),
                     );
                 }
@@ -1120,7 +1141,6 @@ impl EmbeddingsDb {
                 topics: read_list("topics"),
                 items: read_list("items"),
                 is_unread: get_bool("is_unread"),
-                is_bookmarked: get_bool("is_bookmarked"),
                 is_pinned: get_bool("is_pinned"),
                 vector,
             }));
@@ -1828,7 +1848,6 @@ mod tests {
             topics: vec!["topic-1".to_string(), "topic-2".to_string()],
             items: vec![],
             is_unread: true,
-            is_bookmarked: false,
             is_pinned: true,
             vector,
         }
@@ -1867,7 +1886,7 @@ mod tests {
             vec!["topic-1".to_string(), "topic-2".to_string()]
         );
 
-        assert!(got.is_unread && got.is_pinned && !got.is_bookmarked);
+        assert!(got.is_unread && got.is_pinned && got.color.is_empty());
 
         let v = got.vector.expect("vector present");
 
@@ -2193,7 +2212,7 @@ mod tests {
 
         e.tags = vec!["research".to_string()];
         e.is_unread = true;
-        e.is_bookmarked = false;
+        e.color.clear();
         e.topics = vec!["topic-1".to_string()];
         db.upsert(e).await.unwrap();
 
@@ -2205,7 +2224,7 @@ mod tests {
             &db,
             "entry-1",
             Some(false),
-            Some(true),
+            Some(Some("blue".into())),
             None,
             &unread_tx,
             &bm_tx,
@@ -2214,14 +2233,14 @@ mod tests {
         .unwrap();
 
         let row = db.get_entry("entry-1").await.unwrap().unwrap();
-        assert!(!row.is_unread && row.is_bookmarked);
+        assert!(!row.is_unread && !row.color.is_empty());
         assert!(!row.tags.contains(&"unread".to_string()));
-        assert!(row.tags.contains(&"bookmark".to_string()));
+        assert!(!row.tags.contains(&"bookmark".to_string()));
         assert!(row.tags.contains(&"research".to_string()));
         assert!(row.vector.is_some(), "vector preserved");
         assert_eq!(row.topics, vec!["topic-1".to_string()], "topics preserved");
         assert_eq!(unread_rx.len(), 1, "is_unread changed → one event");
-        assert_eq!(bm_rx.len(), 1, "is_bookmarked changed → one event");
+        assert_eq!(bm_rx.len(), 1, "color changed → one event");
 
         // A no-op patch (same value) emits nothing.
         crate::embeddings::pipeline::apply_state(
@@ -2237,6 +2256,238 @@ mod tests {
         .unwrap();
 
         assert_eq!(unread_rx.len(), 1, "no event when unchanged");
+    }
+
+    #[tokio::test]
+    async fn color_events_include_recolor_and_removal_and_preserve_cached_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        db.upsert(sample("marked", "entry", Some(vec![0.1; 384])))
+            .await
+            .unwrap();
+        let (unread, unread_events) = flume::unbounded();
+        let (colors, color_events) = flume::unbounded();
+        for color in [Some("blue"), Some("green"), None] {
+            crate::embeddings::pipeline::apply_state(
+                &db,
+                "marked",
+                None,
+                Some(color.map(str::to_owned)),
+                None,
+                &unread,
+                &colors,
+            )
+            .await
+            .unwrap();
+            assert_eq!(color_events.recv().unwrap().color.as_deref(), color);
+            crate::embeddings::pipeline::apply_state(
+                &db,
+                "marked",
+                None,
+                Some(color.map(str::to_owned)),
+                None,
+                &unread,
+                &colors,
+            )
+            .await
+            .unwrap();
+            assert!(color_events.is_empty());
+            let row = db.get_entry("marked").await.unwrap().unwrap();
+            assert_eq!(row.color, color.unwrap_or(""));
+            assert_eq!(row.topics, ["topic-1", "topic-2"]);
+            assert!(row.vector.is_some());
+            assert_eq!(
+                db.filter_bookmarked().await.unwrap().len(),
+                usize::from(color.is_some())
+            );
+        }
+        assert!(unread_events.is_empty());
+        assert!(
+            db.table
+                .schema()
+                .await
+                .unwrap()
+                .field_with_name("is_bookmarked")
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn color_queries_survive_cache_rebuild_and_index_creation() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(crate::library::entries_dir(dir.path())).unwrap();
+        for color in ["", "red", "orange", "yellow", "green", "blue", "violet"] {
+            let id = if color.is_empty() { "unmarked" } else { color };
+            let marking = if color.is_empty() {
+                String::new()
+            } else {
+                format!("color: {color}\n")
+            };
+            let annotation = if color.is_empty() {
+                "annotations:\n  - id: highlight\n    text: [selection]\n    occurrence: [0]\n    color: yellow\n    created_at: today\n"
+            } else {
+                ""
+            };
+            // A legacy tag alone must not restore marked state in normal recovery.
+            std::fs::write(crate::library::entry_path(dir.path(), id), format!("---\nsource: https://example.org/{id}\ntitle: {id}\ntags: [research, bookmark]\n{marking}{annotation}---\n\nBody\n")).unwrap();
+        }
+        let mut db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let (events, _) = flume::unbounded();
+        let (annotations, _) = flume::unbounded();
+        for pass in 0..2 {
+            if pass == 1 {
+                db.reset().await.unwrap();
+            }
+            for id in [
+                "unmarked", "red", "orange", "yellow", "green", "blue", "violet",
+            ] {
+                let article = crate::persistence::articles::read_article(dir.path(), id)
+                    .await
+                    .unwrap();
+                crate::embeddings::sync_entry_row(&article, &db, &events, &events, &annotations)
+                    .await
+                    .unwrap();
+            }
+            db.ensure_indexes().await.unwrap();
+            assert_eq!(
+                db.filter_items(crate::types::ItemFilter::All)
+                    .await
+                    .unwrap()
+                    .len(),
+                8
+            );
+            let marked = db
+                .filter_items(crate::types::ItemFilter::Bookmarked)
+                .await
+                .unwrap();
+            assert_eq!(marked.len(), 6);
+            assert!(
+                marked
+                    .iter()
+                    .all(|item| item.color.is_some() && item.reference.is_none())
+            );
+            assert_eq!(db.get_bookmarked_ids().await.unwrap().len(), 6);
+            let saved = db
+                .filter_items(crate::types::ItemFilter::Saved)
+                .await
+                .unwrap();
+            assert_eq!(saved.len(), 7);
+            assert!(saved.iter().any(
+                |item| item.id == "highlight" && item.reference.as_deref() == Some("unmarked")
+            ));
+            assert!(
+                db.list_entries()
+                    .await
+                    .unwrap()
+                    .iter()
+                    .find(|entry| entry.id == "unmarked")
+                    .unwrap()
+                    .color
+                    .is_none()
+            );
+        }
+    }
+
+    /// Explicit scale verification; isolated synthetic cache, no model download.
+    #[tokio::test]
+    #[ignore = "creates a two-million-row isolated cache for query-plan and mutation measurements"]
+    async fn color_queries_at_design_scale() {
+        use std::time::Instant;
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let mut blue = 0usize;
+        let mut annotations = 0usize;
+        let started = Instant::now();
+        for start in (0..2_000_000).step_by(32_768) {
+            let rows = (start..(start + 32_768).min(2_000_000))
+                .map(|i| {
+                    let annotation = i % 10 == 0;
+                    let mut row = sample(
+                        &format!("scale-{i}"),
+                        if annotation { "annotation" } else { "entry" },
+                        None,
+                    );
+                    row.is_pinned = false;
+                    row.topics.clear();
+                    row.color = if annotation {
+                        annotations += 1;
+                        "yellow".into()
+                    } else if i % 7 == 0 {
+                        blue += 1;
+                        "blue".into()
+                    } else {
+                        String::new()
+                    };
+                    row
+                })
+                .collect();
+            db.add_batch(rows).await.unwrap();
+        }
+        println!(
+            "scale rows=2000000 load_ms={}",
+            started.elapsed().as_millis()
+        );
+        let started = Instant::now();
+        db.ensure_indexes().await.unwrap();
+        println!("index_ms={}", started.elapsed().as_millis());
+        let (events, _) = flume::unbounded();
+        for (stage, color, marked_delta, blue_delta) in [
+            ("initial", None, 0usize, 0usize),
+            ("assigned", Some(Some("green".to_string())), 1, 0),
+            ("recolored", Some(Some("blue".to_string())), 1, 1),
+            ("removed", Some(None), 0, 0),
+        ] {
+            if let Some(color) = color {
+                let started = Instant::now();
+                crate::embeddings::pipeline::apply_state(
+                    &db,
+                    "scale-1",
+                    None,
+                    Some(color),
+                    None,
+                    &events,
+                    &events,
+                )
+                .await
+                .unwrap();
+                println!("{stage} mutation_ms={}", started.elapsed().as_millis());
+            }
+            for (name, predicate, expected) in [
+                (
+                    "blue",
+                    "kind = 'entry' AND color = 'blue'",
+                    blue + blue_delta,
+                ),
+                (
+                    "marked",
+                    "kind = 'entry' AND color != ''",
+                    blue + marked_delta,
+                ),
+                (
+                    "saved",
+                    "(kind = 'entry' AND color != '') OR kind = 'annotation'",
+                    blue + marked_delta + annotations,
+                ),
+            ] {
+                let query = db
+                    .table
+                    .query()
+                    .select(Select::columns(&EmbeddingsDb::SUMMARY_COLUMNS))
+                    .only_if(predicate);
+                let plan = query.explain_plan(false).await.unwrap();
+                println!("{stage} {name} plan={plan}");
+                assert!(plan.contains("ScalarIndex"), "missing scalar index: {plan}");
+                let started = Instant::now();
+                let batches: Vec<RecordBatch> =
+                    query.execute().await.unwrap().try_collect().await.unwrap();
+                let count: usize = batches.iter().map(RecordBatch::num_rows).sum();
+                println!(
+                    "{stage} {name} rows={count} query_ms={}",
+                    started.elapsed().as_millis()
+                );
+                assert_eq!(count, expected);
+            }
+        }
     }
 
     /// The reconcile is member-type-agnostic: an annotation-kind member gets its `topics`
@@ -2482,7 +2733,7 @@ mod tests {
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
 
         let mut e1 = sample("e1", "entry", Some(vec![0.1f32; EMBEDDING_DIM as usize]));
-        e1.is_bookmarked = true;
+        e1.color = "blue".into();
         e1.tags = vec!["bookmark".to_string()];
         e1.summary = "s1".to_string();
         let e2 = sample("e2", "entry", Some(vec![0.2f32; EMBEDDING_DIM as usize]));
@@ -2529,7 +2780,7 @@ mod tests {
 
         let e1_read = db.list_entries_by_ids(&["e1".to_string()]).await.unwrap();
         assert_eq!(e1_read[0].description.as_deref(), Some("s1"));
-        assert!(e1_read[0].is_bookmarked);
+        assert!(e1_read[0].color.is_some());
     }
 
     /// `get_embedding_status` counts per kind and distinguishes embedded from pending
