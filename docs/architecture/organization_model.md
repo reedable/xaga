@@ -46,7 +46,10 @@ Bookmarking an article assigns a color from the annotation swatch palette.
 Color is optional; removal of the color removes the bookmark. There is no separate
 stored or derived bookmark boolean. Article frontmatter stores optional `color`;
 LanceDB carries the color, using an empty string for an unmarked Entry. Existing
-bookmarks and imported bookmarks without colors receive Blue.
+bookmarks and imported bookmarks without colors receive Blue. Palette identifiers
+are `red`, `orange`, `yellow`, `green`, `blue`, and `violet`. Article marking
+commands carry optional color through the writer and cache; `bookmark:changed`
+announces assignment, removal, and recoloring even when membership stays marked.
 
 Every color-marked article is a bookmarked item eligible for bookmark export,
 including formats unable to carry color. Saved includes marked articles and

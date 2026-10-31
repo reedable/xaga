@@ -46,7 +46,6 @@ const article: Entry = {
   url: "https://example.org",
   isPinned: true,
   isUnread: true,
-  isBookmarked: false,
 };
 beforeEach(() => {
   vi.clearAllMocks();
@@ -110,4 +109,14 @@ it("allows refreshed article metadata to replace the pin command's snapshot", as
 vi.mock("../providers/PinsContext", () => {
   const pins = [{ type: "entry", id: "article" }];
   return { usePins: () => ({ pins }) };
+});
+
+it("refreshes pinned article colors for color-to-color and removal events", async () => {
+  await act(async () => root.render(<Probe />));
+  for (const color of ["blue", "green", undefined]) {
+    mocks.platform.listPinnedEntries.mockResolvedValue([{ ...article, color }]);
+    await act(async () => mocks.callbacks.bookmark({ ...article, color }));
+    expect(entries[0].color).toBe(color);
+    expect(entries[0].isPinned).toBe(true);
+  }
 });

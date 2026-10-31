@@ -37,6 +37,8 @@ While the major version is 0, minor versions signal significant compatibility
 changes. Every library storage-model change requires a minor-version increment.
 The 0.10 reading-state format requires the [explicit library upgrade](../library_upgrade.md)
 before using a 0.9 library; patch versions do not carry this format transition.
+The 0.13 article-color format likewise requires an explicit upgrade and minor
+version increment; it removes the old bookmark boolean and tag representation.
 
 Library versions use the application's `major.minor` convention. Each library
 stores its own completed version in `library.yaml`; it is read at runtime and is

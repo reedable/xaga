@@ -6,6 +6,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Palette identifiers shared by article markings and annotation swatches.
+pub const COLOR_NAMES: [&str; 6] = ["red", "orange", "yellow", "green", "blue", "violet"];
+
 // ── Item + capabilities (TS intersections → Rust supertraits) ────────────────────
 
 pub trait Item {
@@ -125,7 +128,6 @@ pub struct Entry {
     pub updated_at: Option<String>,
     pub description: Option<String>,
     pub is_unread: bool,
-    pub is_bookmarked: bool,
     pub is_pinned: bool,
     /// The bookmark color (from `Colorable`); `None` when uncolored.
     pub color: Option<String>,
@@ -324,7 +326,6 @@ pub struct Note {
     pub created_at: String,
     pub updated_at: Option<String>,
     pub content: String,
-    pub is_bookmarked: bool,
     pub color: Option<String>,
 }
 

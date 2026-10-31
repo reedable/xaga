@@ -20,9 +20,10 @@ Code: `src-tauri/src/native/feeds.rs`, `src-tauri/src/native/bookmarks.rs`, `cra
 
 - **`href`** — passed through `normalize_url`, same validation a manually entered feed/article URL gets. Entries whose URL fails to normalize are skipped, not imported.
 - **Link text (title) and the following `<dd>` (description)** — read via `.text()`, which yields only text nodes. There is no DOMPurify-equivalent sanitization step here, and none is needed for the same reason the Rendering path doesn't rely on it either: `.text()` discards markup by construction, so no HTML from the bookmarks file can survive into the extracted title/description as anything but inert text.
+- **`color`** — accepted only when it matches a shared swatch palette identifier. Missing or unsupported import colors fall back to Blue.
 - **`add_date`/`published_at`/`last_modified`** — parsed as integers via `str::parse::<i64>`; unparseable values are silently dropped (`None`), never propagated as an error.
 
-Extracted entries are persisted through `write_read_entry` / `set_entry_tags` (`persistence/entries.rs`), the same `render_entry` / serde_yaml frontmatter boundary that Feed XML and Article HTML entries go through — see `handling_remote_content.md`, "Persistence." Title and description injection into frontmatter is bounded the same way regardless of whether the entry originated from a fetched feed or an imported bookmark.
+Extracted entries are persisted through `write_read_entry` / `set_entry_color` (`persistence/entries.rs`) in the serialized Entry writer lane, the same strict noyalib field-patch frontmatter boundary that Feed XML and Article HTML entries go through — see `handling_remote_content.md`, "Persistence." Title and description injection into frontmatter is bounded the same way regardless of whether the entry originated from a fetched feed or an imported bookmark.
 
 ## What a hostile import file cannot do
 

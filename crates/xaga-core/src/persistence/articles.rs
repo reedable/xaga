@@ -363,7 +363,8 @@ summary: |
 # User-maintained metadata
 aliases: [Original, My alias]
 is_unread: true
-tags: [bookmark, research, 'project/custom']
+tags: [research, 'project/custom']
+color: blue
 custom:
   nested: [one, two]
 annotations:
@@ -426,7 +427,7 @@ Original body
             Some("2026-01-03T00:00:00Z")
         );
         assert!(article.meta.is_unread);
-        assert!(article.meta.is_bookmarked);
+        assert!(article.meta.color.is_some());
         assert_eq!(article.annotations[0].content, "My irreplaceable note");
         assert_eq!(
             article.favicon.as_deref(),
@@ -632,10 +633,10 @@ Original body
         assert!(stored.contains("![alt](../images/abcdef123456/123456abcdef)"));
         // Metadata-only saves also omit the unsupported field.
         std::fs::write(&path, raw).unwrap();
-        crate::persistence::entries::set_entry_tags(
+        crate::persistence::entries::set_entry_color(
             dir.path(),
             id,
-            vec!["bookmark".into()],
+            Some("blue".into()),
             WriteToken::for_test(),
         )
         .await
@@ -647,7 +648,8 @@ Original body
                 .await
                 .unwrap()
                 .meta
-                .is_bookmarked
+                .color
+                .is_some()
         );
     }
 

@@ -50,18 +50,18 @@ pub(crate) async fn import_bookmarks(
     // never re-reads. This is user-initiated CRUD (the user ran the import and is waiting), so the
     // upsert rides Interactive (T1); its embedding follows to Regular via `embed_follow`, per the
     // priority definitions in the embedding service's `run_loop`. Already-existing entries only
-    // gained the bookmark tag, which is a state change → SyncState (Interactive).
+    // received a bookmark color, which is a state change → SyncState (Interactive).
     let added_ids: Vec<String> = result.added.iter().map(|a| a.meta.id.clone()).collect();
     for article in result.added {
         state.enqueue(Tier::Interactive, Job::UpsertEntry { article });
     }
-    for id in &result.updated {
+    for entry in &result.updated {
         state.enqueue(
             Tier::Interactive,
             Job::SyncState {
-                entity: EntityRef::new(id.clone(), Kind::Entry),
+                entity: EntityRef::new(entry.id.clone(), Kind::Entry),
                 state: StatePatch {
-                    is_bookmarked: Some(true),
+                    color: Some(entry.color.clone()),
                     ..Default::default()
                 },
             },
@@ -70,7 +70,7 @@ pub(crate) async fn import_bookmarks(
 
     Ok(BookmarkImportResult {
         added: added_ids,
-        updated: result.updated,
+        updated: result.updated.into_iter().map(|entry| entry.id).collect(),
         failed: result.failed.len(),
     })
 }

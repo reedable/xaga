@@ -1,16 +1,20 @@
 use tauri::State;
 use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
-use xaga_core::library_writer::{TagPatch, Tier as WriteTier};
+use xaga_core::library_writer::Tier as WriteTier;
 use xaga_core::types::{Entry, Kind};
 
 use crate::AppState;
 use crate::error::AppError;
 
 #[tauri::command]
-pub async fn add_bookmark(id: String, state: State<'_, AppState>) -> Result<Entry, AppError> {
+pub async fn add_bookmark(
+    id: String,
+    color: String,
+    state: State<'_, AppState>,
+) -> Result<Entry, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let entry = writer
-        .patch_entry_tags(WriteTier::Interactive, id.clone(), TagPatch::AddBookmark)
+        .set_entry_color(WriteTier::Interactive, id.clone(), Some(color))
         .await
         .map_err(AppError::from)?;
     state.enqueue(
@@ -18,7 +22,7 @@ pub async fn add_bookmark(id: String, state: State<'_, AppState>) -> Result<Entr
         Job::SyncState {
             entity: EntityRef::new(id, Kind::Entry),
             state: StatePatch {
-                is_bookmarked: Some(true),
+                color: Some(entry.color.clone()),
                 ..Default::default()
             },
         },
@@ -30,7 +34,7 @@ pub async fn add_bookmark(id: String, state: State<'_, AppState>) -> Result<Entr
 pub async fn remove_bookmark(id: String, state: State<'_, AppState>) -> Result<Entry, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let entry = writer
-        .patch_entry_tags(WriteTier::Interactive, id.clone(), TagPatch::RemoveBookmark)
+        .set_entry_color(WriteTier::Interactive, id.clone(), None)
         .await
         .map_err(AppError::from)?;
     state.enqueue(
@@ -38,7 +42,7 @@ pub async fn remove_bookmark(id: String, state: State<'_, AppState>) -> Result<E
         Job::SyncState {
             entity: EntityRef::new(id, Kind::Entry),
             state: StatePatch {
-                is_bookmarked: Some(false),
+                color: Some(None),
                 ..Default::default()
             },
         },

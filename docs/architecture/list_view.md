@@ -3,6 +3,8 @@
 The ListView preserves the user's browsing context while they work. Changing an
 item's read/unread state updates its displayed state without removing its row
 from the current list, even when the list was opened with the Unread filter.
+Assigning, recoloring, or removing an article bookmark likewise updates the
+existing row without recomputing membership, including a Site’s Saved list.
 Explicit navigation or changing the filter establishes a new list.
 
 Removing a pin removes its shortcut without closing or clearing the list opened

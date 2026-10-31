@@ -30,30 +30,136 @@ pub(super) struct UpgradeReport {
 struct Conversion {
     rendered: Option<String>,
     is_unread: bool,
+    color: Option<String>,
 }
 
-/// Edit only migration-owned fields. Serializing the entire generic Value tree
-/// would reinterpret plain IDs such as `29688640e516` as overflowing floats.
-/// The CST keeps every unrelated scalar's original bytes, including nested IDs.
+/// Significant CST tokens with byte ranges. Scalar tokens can include trailing
+/// whitespace; leave that trivia and sibling comments outside migration edits.
+fn migration_tokens(
+    node: &noyalib::cst::GreenNode,
+    source: &str,
+    offset: usize,
+    tokens: &mut Vec<(noyalib::cst::SyntaxKind, usize, usize)>,
+) {
+    use noyalib::cst::{GreenChild, SyntaxKind};
+    let mut cursor = offset;
+    for child in node.children() {
+        match child {
+            GreenChild::Node(node) => migration_tokens(node, source, cursor, tokens),
+            GreenChild::Token { kind, .. }
+                if !matches!(
+                    kind,
+                    SyntaxKind::Whitespace | SyntaxKind::Newline | SyntaxKind::Comment
+                ) =>
+            {
+                let end = cursor + source[cursor..cursor + child.text_len()].trim_end().len();
+                tokens.push((*kind, cursor, end));
+            }
+            _ => {}
+        }
+        cursor += child.text_len();
+    }
+}
+
+/// Edit only migration-owned fields, retaining every unrelated source byte.
+/// noyalib 0.0.15's path-shaped edits truncate indentless sequences and cannot
+/// remove multiline values. Use typed parser spans and CST token boundaries,
+/// and fully parse each edit before the next operation can access a lazy cache.
 fn patch_migration_fields(
     yaml: &str,
     fields: &BTreeMap<String, Value>,
     keys: &[&str],
 ) -> Result<String, Error> {
-    // The frontmatter slice excludes its final newline. Keep one so root
-    // insertions cannot join the previous scalar or block-scalar content.
-    let mut document = noyalib::cst::parse_document(&format!("{yaml}\n"))?;
-    for key in keys {
-        if let Some(value) = fields.get(*key) {
-            // JSON fragments are valid YAML and quote tag strings explicitly.
-            document.insert_entry("", key, &serde_json::to_string(value)?)?;
-        } else if document.get(key).is_some() {
-            document.remove(key)?;
-        }
-    }
-    let rendered = document.to_string();
+    use noyalib::cst::SyntaxKind;
     let config = ParserConfig::strict().with_policy(DenyAnchors);
-    let _: BTreeMap<String, Value> = noyalib::from_str_with_config(&rendered, &config)?;
+    let mut rendered = format!("{yaml}\n");
+    for key in keys {
+        let document = noyalib::cst::parse_document(&rendered)?;
+        let spans: BTreeMap<String, noyalib::Spanned<Value>> =
+            noyalib::from_str_with_config(&rendered, &config)?;
+        let mut tokens = Vec::new();
+        migration_tokens(document.syntax(), &rendered, 0, &mut tokens);
+        if let Some(span) = spans.get(*key) {
+            let start = span.start.index();
+            let end = tokens
+                .iter()
+                .filter(|(_, token_start, token_end)| {
+                    *token_start >= start && *token_end <= span.end.index()
+                })
+                .map(|(_, _, end)| *end)
+                .last()
+                .unwrap_or(start);
+            if let Some(value) = fields.get(*key) {
+                let fragment = serde_json::to_string(value)?;
+                let on_own_line = rendered[..start]
+                    .rsplit('\n')
+                    .next()
+                    .is_some_and(|prefix| prefix.trim().is_empty());
+                let replacement = if on_own_line {
+                    format!("  {fragment}")
+                } else {
+                    fragment
+                };
+                rendered.replace_range(start..end, &replacement);
+            } else {
+                let colon = tokens
+                    .iter()
+                    .rposition(|(kind, at, _)| *kind == SyntaxKind::ColonIndicator && *at < start)
+                    .ok_or("migration field has no key separator")?;
+                let (_, mut entry_start, key_end) = *tokens
+                    .get(colon.wrapping_sub(1))
+                    .ok_or("migration field has no key")?;
+                let stored_key: String =
+                    noyalib::from_str_with_config(&rendered[entry_start..key_end], &config)?;
+                if stored_key != *key {
+                    return Err("migration key span mismatch".into());
+                }
+                let mut entry_end = end;
+                // Flow mappings need one adjoining comma removed with the entry.
+                if let Some((SyntaxKind::Comma, _, comma_end)) =
+                    tokens.iter().find(|(_, at, _)| *at >= end)
+                {
+                    entry_end = *comma_end;
+                } else if let Some((SyntaxKind::Comma, comma_start, _)) =
+                    tokens.iter().rev().find(|(_, _, at)| *at <= entry_start)
+                {
+                    entry_start = *comma_start;
+                }
+                rendered.replace_range(entry_start..entry_end, "");
+                if spans.len() == 1
+                    && tokens
+                        .first()
+                        .is_none_or(|(kind, _, _)| *kind != SyntaxKind::OpenBrace)
+                {
+                    rendered.push_str("{}\n");
+                }
+            }
+        } else if let Some(value) = fields.get(*key) {
+            let fragment = serde_json::to_string(value)?;
+            if matches!(tokens.first(), Some((SyntaxKind::OpenBrace, _, _))) {
+                let close = tokens
+                    .iter()
+                    .rposition(|(kind, _, _)| *kind == SyntaxKind::CloseBrace)
+                    .ok_or("root mapping has no closing brace")?;
+                let comma = if spans.is_empty()
+                    || (close > 0 && tokens[close - 1].0 == SyntaxKind::Comma)
+                {
+                    ""
+                } else {
+                    ","
+                };
+                rendered.insert_str(
+                    tokens[close].1,
+                    &format!("{comma}{}: {fragment}", serde_json::to_string(key)?),
+                );
+            } else {
+                let mut document = document;
+                document.insert_entry("", key, &fragment)?;
+                rendered = document.to_string();
+            }
+        }
+        let _: BTreeMap<String, Value> = noyalib::from_str_with_config(&rendered, &config)?;
+    }
     Ok(rendered)
 }
 
@@ -74,25 +180,39 @@ fn convert(raw: &str) -> Result<Conversion, Error> {
         None => Vec::new(),
     };
     let legacy_unread = tags.iter().any(|tag| tag == "unread");
+    let legacy_bookmark = tags.iter().any(|tag| tag == "bookmark");
+    let existing_color = match fields.get("color") {
+        Some(Value::String(value)) if xaga_core::types::COLOR_NAMES.contains(&value.as_str()) => {
+            Some(value.clone())
+        }
+        Some(Value::Null) | None => None,
+        Some(_) => return Err("color must be an annotation palette identifier".into()),
+    };
+    let color = existing_color.or_else(|| legacy_bookmark.then(|| "blue".into()));
     let existing: Option<bool> = match fields.get("is_unread") {
         Some(Value::Bool(value)) => Some(*value),
         Some(Value::Null) | None => None,
         Some(_) => return Err("is_unread must be a boolean".into()),
     };
     let is_unread = existing.unwrap_or(legacy_unread);
-    if !legacy_unread && existing != Some(false) {
+    if !legacy_unread
+        && !legacy_bookmark
+        && existing != Some(false)
+        && fields.get("color") != Some(&Value::Null)
+    {
         return Ok(Conversion {
             rendered: None,
             is_unread,
+            color,
         });
     }
-    if legacy_unread {
+    if legacy_unread || legacy_bookmark {
         fields.insert(
             "tags".into(),
             noyalib::to_value(
                 &tags
                     .into_iter()
-                    .filter(|tag| tag != "unread")
+                    .filter(|tag| tag != "unread" && tag != "bookmark")
                     .collect::<Vec<_>>(),
             )?,
         );
@@ -102,9 +222,18 @@ fn convert(raw: &str) -> Result<Conversion, Error> {
     } else {
         fields.remove("is_unread");
     }
+    if let Some(value) = &color {
+        fields.insert("color".into(), Value::String(value.clone()));
+    } else {
+        fields.remove("color");
+    }
     // Apply the same unsupported-field removal rule as ordinary Markdown writes.
     fields.remove("images");
-    let yaml = patch_migration_fields(&rest[..end], &fields, &["tags", "is_unread", "images"])?;
+    let yaml = patch_migration_fields(
+        &rest[..end],
+        &fields,
+        &["tags", "is_unread", "color", "images"],
+    )?;
     let rendered = format!(
         "{prefix}---\n{}\n---\n{}",
         yaml.trim_end_matches('\n'),
@@ -117,6 +246,7 @@ fn convert(raw: &str) -> Result<Conversion, Error> {
     Ok(Conversion {
         rendered: Some(rendered),
         is_unread,
+        color,
     })
 }
 
@@ -146,25 +276,30 @@ fn write_atomic(path: &Path, raw: &str, _lock: &FileLock) -> Result<(), Error> {
 /// columns. Missing rows remain reconstructible by normal recovery.
 async fn reconcile(
     table: &lancedb::Table,
-    states: &[(String, bool)],
+    states: &[(String, bool, Option<String>)],
     _lock: &FileLock,
 ) -> Result<usize, Error> {
     let mut updated = 0;
     for unread in [true, false] {
-        let ids: Vec<_> = states
-            .iter()
-            .filter(|(_, value)| *value == unread)
-            .map(|(id, _)| format!("'{}'", id.replace('\'', "''")))
-            .collect();
-        if ids.is_empty() {
-            continue;
+        for color in ["", "red", "orange", "yellow", "green", "blue", "violet"] {
+            let ids: Vec<_> = states
+                .iter()
+                .filter(|(_, state, marking)| {
+                    *state == unread && marking.as_deref().unwrap_or("") == color
+                })
+                .map(|(id, _, _)| format!("'{}'", id.replace('\'', "''")))
+                .collect();
+            if ids.is_empty() {
+                continue;
+            }
+            let result = table.update()
+                .only_if(format!("kind = 'entry' AND id IN ({}) AND (is_unread != {unread} OR color != '{color}' OR array_contains(tags, 'unread') OR array_contains(tags, 'bookmark'))", ids.join(",")))
+                .column("is_unread", unread.to_string())
+                .column("color", format!("'{color}'"))
+                .column("tags", "array_remove(array_remove(tags, 'unread'), 'bookmark')")
+                .execute().await?;
+            updated += result.rows_updated as usize;
         }
-        let result = table.update()
-            .only_if(format!("kind = 'entry' AND id IN ({}) AND (is_unread != {unread} OR array_contains(tags, 'unread'))", ids.join(",")))
-            .column("is_unread", unread.to_string())
-            .column("tags", "array_remove(tags, 'unread')")
-            .execute().await?;
-        updated += result.rows_updated as usize;
     }
     Ok(updated)
 }
@@ -306,6 +441,29 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
             return report;
         }
     };
+    let remove_legacy_column = async {
+        if table
+            .schema()
+            .await?
+            .field_with_name("is_bookmarked")
+            .is_ok()
+        {
+            for index in table.list_indices().await? {
+                if index.columns.iter().any(|column| column == "is_bookmarked") {
+                    table.drop_index(&index.name).await?;
+                }
+            }
+            table.drop_columns(&["is_bookmarked"]).await?;
+        }
+        Ok::<_, Error>(())
+    }
+    .await;
+    if let Err(error) = remove_legacy_column {
+        report
+            .errors
+            .push(format!("bookmark schema conversion: {error}"));
+        return report;
+    }
     if let Err(error) = convert_pins(dir, lock).await {
         report
             .errors
@@ -397,7 +555,7 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
                 } else {
                     report.unchanged += 1;
                 }
-                states.push((id.to_owned(), conversion.is_unread));
+                states.push((id.to_owned(), conversion.is_unread, conversion.color));
                 Ok(())
             })();
             process.map_err(|error| format!("{}: {error}", path.display()).into())
@@ -416,14 +574,30 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
     // This does not infer or change their boolean reading state.
     if let Err(error) = table
         .update()
-        .only_if("array_contains(tags, 'unread')")
-        .column("tags", "array_remove(tags, 'unread')")
+        .only_if("array_contains(tags, 'unread') OR array_contains(tags, 'bookmark')")
+        .column(
+            "tags",
+            "array_remove(array_remove(tags, 'unread'), 'bookmark')",
+        )
         .execute()
         .await
     {
         report.errors.push(format!(
             "cache legacy-marker cleanup: {error}; rerun library upgrade"
         ));
+    }
+    if report.errors.is_empty() {
+        for column in ["color", "kind"] {
+            if let Err(error) = table
+                .create_index(&[column], lancedb::index::Index::Bitmap(Default::default()))
+                .execute()
+                .await
+            {
+                report
+                    .errors
+                    .push(format!("{column} index: {error}; rerun library upgrade"));
+            }
+        }
     }
     if report.errors.is_empty() {
         if let Err(error) = upgrade.complete() {
@@ -437,7 +611,7 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
 
 async fn reconcile_report(
     table: &lancedb::Table,
-    states: &mut Vec<(String, bool)>,
+    states: &mut Vec<(String, bool, Option<String>)>,
     lock: &FileLock,
     report: &mut UpgradeReport,
 ) {
@@ -499,10 +673,31 @@ mod tests {
     }
 
     #[test]
+    fn bookmark_conversion_preserves_palette_colors_and_retries() {
+        for color in ["red", "orange", "yellow", "green", "blue", "violet"] {
+            let original = document(&format!("color: {color}\ntags: [research, bookmark]"));
+            let conversion = convert(&original).unwrap();
+            assert_eq!(conversion.color.as_deref(), Some(color));
+            let rendered = conversion.rendered.unwrap();
+            assert!(rendered.ends_with("---\n\nBody\n\n"));
+            assert_eq!(values(&rendered)["custom"], values(&original)["custom"]);
+            assert_eq!(
+                values(&rendered)["tags"],
+                noyalib::to_value(&["research"]).unwrap()
+            );
+            assert!(convert(&rendered).unwrap().rendered.is_none());
+        }
+        let unmarked = convert(&document("tags: [research]")).unwrap();
+        assert!(unmarked.color.is_none());
+        assert!(unmarked.rendered.is_none());
+        assert!(convert(&document("color: invalid\ntags: [bookmark]")).is_err());
+    }
+
+    #[test]
     fn conversion_preserves_state_metadata_and_exact_body_and_is_idempotent() {
         for (fields, unread, changed) in [
             ("tags: [research, unread, bookmark]", true, true),
-            ("tags: [research, bookmark]", false, false),
+            ("tags: [research, bookmark]", false, true),
             (
                 "is_unread: true\ntags: [research, unread, bookmark]",
                 true,
@@ -513,7 +708,7 @@ mod tests {
                 false,
                 true,
             ),
-            ("is_unread: true\ntags: [research, bookmark]", true, false),
+            ("is_unread: true\ntags: [research, bookmark]", true, true),
             ("is_unread: false\ntags: [research, bookmark]", false, true),
         ] {
             let original = document(fields);
@@ -522,10 +717,8 @@ mod tests {
             assert_eq!(converted.rendered.is_some(), changed);
             let saved = converted.rendered.as_deref().unwrap_or(&original);
             let mut expected = values(&original);
-            expected.insert(
-                "tags".into(),
-                noyalib::to_value(&vec!["research", "bookmark"]).unwrap(),
-            );
+            expected.insert("tags".into(), noyalib::to_value(&vec!["research"]).unwrap());
+            expected.insert("color".into(), Value::String("blue".into()));
             if unread {
                 expected.insert("is_unread".into(), Value::Bool(true));
             } else {
@@ -569,6 +762,71 @@ mod tests {
                 .unwrap(),
             0
         );
+    }
+
+    #[test]
+    fn block_tag_migrations_preserve_siblings_body_and_retry_safely() {
+        let preserved = "# Keep this sibling comment\ncustom: {id: 29688640e516, ratio: 1.234567890123456789}\nfavicon: ../images/abcdef123456/112233445566\n";
+        for indent in ["", "  "] {
+            for tags in [
+                vec!["bookmark"],
+                vec!["pinned", "unread", "bookmark", "research"],
+            ] {
+                let sequence: String = tags
+                    .iter()
+                    .map(|tag| format!("{indent}- {tag}\n"))
+                    .collect();
+                for suffix in ["", preserved] {
+                    let original =
+                        format!("---\ntitle: Saved\ntags:\n{sequence}{suffix}---\n\nBody\r\n\n");
+                    let pinned = convert_markdown_pin(&original).unwrap();
+                    let after_pin = pinned.as_deref().unwrap_or(&original);
+                    let converted = convert(after_pin).unwrap();
+                    assert_eq!(converted.color.as_deref(), Some("blue"));
+                    let saved = converted.rendered.unwrap();
+                    assert!(saved.contains(suffix), "sibling changed: {saved}");
+                    assert!(saved.ends_with("---\n\nBody\r\n\n"));
+                    let expected: Vec<_> = tags
+                        .iter()
+                        .copied()
+                        .filter(|tag| *tag == "research")
+                        .collect();
+                    assert_eq!(
+                        values(&saved)["tags"],
+                        noyalib::to_value(&expected).unwrap()
+                    );
+                    assert_eq!(converted.is_unread, tags.contains(&"unread"));
+                    assert!(convert_markdown_pin(&saved).unwrap().is_none());
+                    assert!(convert(&saved).unwrap().rendered.is_none());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn multiline_and_flow_metadata_removal_preserves_other_fields() {
+        let cases = [
+            "title: Saved\ntags:\n- unread\n- bookmark\n- research\nis_unread:\n  false\nimages:\n  one:\n    nested: unsupported\n# Keep sibling\ncustom: {id: 29688640e516}\n",
+            "{images: {one: {nested: unsupported}}, tags: [unread, bookmark, research], is_unread: false, custom: {id: 29688640e516}}\n",
+            "{tags: [unread, bookmark, research], is_unread: false, custom: {id: 29688640e516}, images: {one: {nested: unsupported}}}\n",
+        ];
+        for fields in cases {
+            let raw = format!("---\n{fields}---\n\nExact body\r\n");
+            let converted = convert(&raw).unwrap();
+            let saved = converted.rendered.unwrap();
+            assert!(!converted.is_unread);
+            let result = values(&saved);
+            assert!(!result.contains_key("images"));
+            assert!(!result.contains_key("is_unread"));
+            assert_eq!(result["tags"], noyalib::to_value(&["research"]).unwrap());
+            assert_eq!(result["color"], Value::String("blue".into()));
+            assert!(saved.contains("custom: {id: 29688640e516}"));
+            assert!(saved.ends_with("---\n\nExact body\r\n"));
+            if fields.contains("# Keep sibling") {
+                assert!(saved.contains("# Keep sibling\n"));
+            }
+            assert!(convert(&saved).unwrap().rendered.is_none());
+        }
     }
 
     #[test]
@@ -785,7 +1043,7 @@ custom:
         let path = seed(
             dir.path(),
             "entry",
-            "is_unread: true\ntags: [research, bookmark, pinned]",
+            "is_unread: true\ncolor: blue\ntags: [research, pinned]",
         );
         let original = fs::read_to_string(&path).unwrap();
         let article = read_article(dir.path(), "entry").await.unwrap();
@@ -795,13 +1053,32 @@ custom:
         xaga_core::embeddings::sync_entry_row(&article, &db, &tx, &tx, &annotation_tx)
             .await
             .unwrap();
-        seed(dir.path(), "read-entry", "tags: [bookmark]");
+        seed(dir.path(), "read-entry", "color: blue");
         let mut read_article = read_article(dir.path(), "read-entry").await.unwrap();
         read_article.annotations.clear();
         xaga_core::embeddings::sync_entry_row(&read_article, &db, &tx, &tx, &annotation_tx)
             .await
             .unwrap();
         let table = table(dir.path(), &lock).await;
+        table
+            .add_columns(
+                lancedb::table::NewColumnTransform::SqlExpressions(vec![(
+                    "is_bookmarked".into(),
+                    "true".into(),
+                )]),
+                None,
+            )
+            .await
+            .unwrap();
+        table
+            .create_index(
+                &["is_bookmarked"],
+                lancedb::index::Index::Bitmap(Default::default()),
+            )
+            .execute()
+            .await
+            .unwrap();
+
         table
             .update()
             .only_if("id = 'read-entry'")
@@ -836,12 +1113,30 @@ custom:
             values(&original)["custom"]
         );
         let db = EmbeddingsDb::open_readonly(dir.path()).await.unwrap();
+        // Refresh this independently opened handle after CLI schema conversion.
+        table.checkout_latest().await.unwrap();
+        assert!(
+            table
+                .schema()
+                .await
+                .unwrap()
+                .field_with_name("is_bookmarked")
+                .is_err()
+        );
+        assert!(
+            table
+                .list_indices()
+                .await
+                .unwrap()
+                .iter()
+                .all(|index| !index.columns.iter().any(|column| column == "is_bookmarked"))
+        );
         let row = db.get_entry("entry").await.unwrap().unwrap();
         let read_row = db.get_entry("read-entry").await.unwrap().unwrap();
-        assert!(!read_row.is_unread && read_row.is_bookmarked);
-        assert_eq!(read_row.tags, vec!["bookmark"]);
-        assert!(row.is_unread && row.is_bookmarked && row.is_pinned);
-        assert_eq!(row.tags, vec!["research", "bookmark"]);
+        assert!(!read_row.is_unread && !read_row.color.is_empty());
+        assert!(read_row.tags.is_empty());
+        assert!(row.is_unread && !row.color.is_empty() && row.is_pinned);
+        assert_eq!(row.tags, vec!["research"]);
         assert_eq!(db.filter_pinned_entries().await.unwrap()[0].id, "entry");
         assert_eq!(row.topics, vec!["topic"]);
         assert_eq!(row.items, vec!["note"]);
