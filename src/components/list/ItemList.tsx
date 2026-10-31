@@ -18,14 +18,7 @@ import {
   Typography,
   type SelectChangeEvent,
 } from "@mui/material";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { usePlatform } from "../../platform/Platform";
 import { useErrorSink } from "../../hooks/useErrorSink";
@@ -112,17 +105,9 @@ export function ItemList({
   const { siteHostname } = state;
   const [abort, abortControllerRef] = useAbortController();
   const { topics, listTopicItems } = useTopics(abortControllerRef);
-  const {
-    sites,
-    pinnedSites = [],
-    listSiteEntries,
-  } = useSites(abortControllerRef);
+  const { sites, pinnedSites = [], listSiteEntries } = useSites(abortControllerRef);
 
-  const {
-    feeds,
-    loading: loadingFeeds,
-    refreshAllFeeds,
-  } = useFeeds(abortControllerRef);
+  const { feeds, loading: loadingFeeds, refreshAllFeeds } = useFeeds(abortControllerRef);
 
   const missingPins = useMissingPins(pinnedEntries, feeds, topics);
   const [loading, setLoading] = useState(false);
@@ -137,9 +122,7 @@ export function ItemList({
       (feedId && feeds.find((f) => f.id === feedId)) ||
       (topicId && topics.find((t) => t.id === topicId)) ||
       (siteHostname &&
-        ([...sites, ...pinnedSites].find(
-          (site) => site.hostname === siteHostname
-        ) ??
+        ([...sites, ...pinnedSites].find((site) => site.hostname === siteHostname) ??
           emptySite(siteHostname))) ||
       (shortcutId && SHORTCUTS.find((s) => s.id === shortcutId)) ||
       ALL_ITEMS,
@@ -155,15 +138,12 @@ export function ItemList({
       topics,
       sites,
       pinnedSites,
-    ]
+    ],
   );
 
   const siteOptions = useMemo(() => {
-    const options = new Map(
-      [...sites, ...pinnedSites].map((site) => [site.hostname, site])
-    );
-    if (isSite(selectedCollection))
-      options.set(selectedCollection.hostname, selectedCollection);
+    const options = new Map([...sites, ...pinnedSites].map((site) => [site.hostname, site]));
+    if (isSite(selectedCollection)) options.set(selectedCollection.hostname, selectedCollection);
     return [...options.values()];
   }, [sites, pinnedSites, selectedCollection]);
 
@@ -177,11 +157,10 @@ export function ItemList({
           ? [scopedArticle]
           : []),
       ].sort(sortByTitle),
-    [pinnedEntries, articleScopeId, scopedArticle]
+    [pinnedEntries, articleScopeId, scopedArticle],
   );
 
-  const { listEntries, listAllItems, markEntryRead } =
-    useEntries(abortControllerRef);
+  const { listEntries, listAllItems, markEntryRead } = useEntries(abortControllerRef);
 
   const {
     onFeedsRefreshed,
@@ -207,40 +186,26 @@ export function ItemList({
   const itemRefs = useRef(new Map<string, HTMLDivElement>());
 
   const handleEdit = useMemo(() => {
-    if (isSite(selectedCollection))
-      return () => onEditSite?.(selectedCollection);
+    if (isSite(selectedCollection)) return () => onEditSite?.(selectedCollection);
     if (isFeed(selectedCollection)) return () => onEditFeed(selectedCollection);
-    if (isTopic(selectedCollection))
-      return () => onEditTopic(selectedCollection);
+    if (isTopic(selectedCollection)) return () => onEditTopic(selectedCollection);
     return undefined;
   }, [selectedCollection, onEditFeed, onEditTopic, onEditSite]);
 
   const handleCollectionChange = useCallback(
     (event: SelectChangeEvent<string>) => {
       const id = event.target.value;
-      const article = pinnedEntries.find(
-        (entry) => `article:${entry.id}` === id
-      );
+      const article = pinnedEntries.find((entry) => `article:${entry.id}` === id);
       if (article) {
         selectArticleScope(article);
         return;
       }
-      const collection = [...SHORTCUTS, ...topics, ...feeds].find(
-        (item) => item.id === id
-      );
+      const collection = [...SHORTCUTS, ...topics, ...feeds].find((item) => item.id === id);
       if (collection) selectItem(collection);
       const site = siteOptions.find((item) => item.hostname === id);
       if (site) selectSite(site);
     },
-    [
-      feeds,
-      selectItem,
-      selectSite,
-      siteOptions,
-      topics,
-      pinnedEntries,
-      selectArticleScope,
-    ]
+    [feeds, selectItem, selectSite, siteOptions, topics, pinnedEntries, selectArticleScope],
   );
 
   const handleRefresh = useCallback(() => {
@@ -267,7 +232,7 @@ export function ItemList({
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
 
       const currentIndex = displayItems.findIndex(
-        (i) => itemRefs.current.get(i.id) === e.currentTarget
+        (i) => itemRefs.current.get(i.id) === e.currentTarget,
       );
       if (currentIndex === -1) return;
 
@@ -283,7 +248,7 @@ export function ItemList({
         done: () => itemRefs.current.get(next.id)?.focus(),
       });
     },
-    [displayItems, selectItem]
+    [displayItems, selectItem],
   );
 
   const requestArticleScope = useCallback(async () => {
@@ -295,7 +260,7 @@ export function ItemList({
     try {
       const article = await platform.readArticleScope(signal, articleScopeId);
       const next = await articleScopeItems(article, (id, refs) =>
-        platform.readEntryImages(signal, id, refs)
+        platform.readEntryImages(signal, id, refs),
       );
       if (
         signal.aborted ||
@@ -312,8 +277,7 @@ export function ItemList({
       setScopedArticle(article);
       setItems(next);
     } catch (error) {
-      if (!signal.aborted && articleScopeRef.current === articleScopeId)
-        pushError(error);
+      if (!signal.aborted && articleScopeRef.current === articleScopeId) pushError(error);
     } finally {
       if (
         !signal.aborted &&
@@ -337,11 +301,7 @@ export function ItemList({
           const entries = await listEntries(selectedList, filter);
           if (entries) setItems(entries);
         } else if (isTopic(selectedList)) {
-          const items = await listTopicItems(
-            selectedList.id,
-            filter ?? "unread",
-            topicSort
-          );
+          const items = await listTopicItems(selectedList.id, filter ?? "unread", topicSort);
           if (items) setItems(items);
         } else if (isSite(selectedList)) {
           const entries = await listSiteEntries(selectedList.hostname, filter);
@@ -363,14 +323,14 @@ export function ItemList({
       listSiteEntries,
       listAllItems,
       topicSort,
-    ]
+    ],
   );
 
   const handleFilter = useCallback(
     (_event: MouseEvent<HTMLElement>, value: string) => {
       selectFilter(value);
     },
-    [selectFilter]
+    [selectFilter],
   );
 
   const handleMarkEntriesRead = useCallback(async () => {
@@ -378,7 +338,7 @@ export function ItemList({
       displayItems
         .filter(isEntry)
         .map((entry) => entry.id)
-        .map(markEntryRead)
+        .map(markEntryRead),
     );
   }, [displayItems, markEntryRead]);
 
@@ -388,11 +348,7 @@ export function ItemList({
   const mergeAddedTopicItem = useCallback(
     async (changedTopicId: string, itemId: string) => {
       if (changedTopicId !== topicId) return;
-      const authoritative = await listTopicItems(
-        changedTopicId,
-        filter ?? "unread",
-        topicSort
-      );
+      const authoritative = await listTopicItems(changedTopicId, filter ?? "unread", topicSort);
       if (
         !authoritative ||
         !isTopic(selectedCollectionRef.current) ||
@@ -401,7 +357,7 @@ export function ItemList({
         return;
       setItems((current) => mergeTopicAddition(current, authoritative, itemId));
     },
-    [topicId, filter, topicSort, listTopicItems]
+    [topicId, filter, topicSort, listTopicItems],
   );
 
   useEffect(() => {
@@ -411,15 +367,7 @@ export function ItemList({
     })();
     // Depend on IDs, not objects, so feed/topic identity changes from
     // requestFeeds/requestTopics don't re-trigger a full list reload.
-  }, [
-    articleScopeId,
-    feedId,
-    topicId,
-    siteHostname,
-    shortcutId,
-    requestItems,
-    abort,
-  ]);
+  }, [articleScopeId, feedId, topicId, siteHostname, shortcutId, requestItems, abort]);
 
   useEffect(() => {
     return onEmbeddingsChanged(() => {
@@ -453,11 +401,7 @@ export function ItemList({
 
   useEffect(() => {
     return onAnnotationChanged((item) => {
-      if (
-        articleScopeId &&
-        "reference" in item &&
-        item.reference === articleScopeId
-      ) {
+      if (articleScopeId && "reference" in item && item.reference === articleScopeId) {
         void requestArticleScope();
         return;
       }
@@ -468,34 +412,21 @@ export function ItemList({
           item,
           active.shortcutId === ALL_ITEMS.id,
           active.filter,
-          active.filterText
-        )
+          active.filterText,
+        ),
       );
       if (topicId) void mergeAddedTopicItem(topicId, item.id);
     });
-  }, [
-    onAnnotationChanged,
-    topicId,
-    mergeAddedTopicItem,
-    articleScopeId,
-    requestArticleScope,
-  ]);
+  }, [onAnnotationChanged, topicId, mergeAddedTopicItem, articleScopeId, requestArticleScope]);
 
   useEffect(() => {
     return onAnnotationReplaced(({ oldId, item }) => {
-      if (
-        articleScopeId &&
-        "reference" in item &&
-        item.reference === articleScopeId
-      ) {
-        if (state.annotationId === oldId && isPartialAnnotation(item))
-          selectAnnotation(item);
+      if (articleScopeId && "reference" in item && item.reference === articleScopeId) {
+        if (state.annotationId === oldId && isPartialAnnotation(item)) selectAnnotation(item);
         void requestArticleScope();
         return;
       }
-      setItems((prev) =>
-        prev.map((value) => (value.id === oldId ? item : value))
-      );
+      setItems((prev) => prev.map((value) => (value.id === oldId ? item : value)));
     });
   }, [
     onAnnotationReplaced,
@@ -524,7 +455,7 @@ export function ItemList({
       onTopicItemAdded(async ({ topicId: changedTopicId, itemId }) => {
         await mergeAddedTopicItem(changedTopicId, itemId);
       }),
-    [mergeAddedTopicItem]
+    [mergeAddedTopicItem],
   );
 
   return (
@@ -557,10 +488,7 @@ export function ItemList({
             <div className={css.HeadingControl}>
               <Tooltip title="Refresh">
                 <IconButton
-                  className={cx(
-                    css.RefreshButton,
-                    refreshSpin && css.RefreshLoading
-                  )}
+                  className={cx(css.RefreshButton, refreshSpin && css.RefreshLoading)}
                   size="small"
                   onClick={handleRefresh}
                 >
@@ -571,11 +499,7 @@ export function ItemList({
               <Select
                 className={css.CollectionSelect}
                 size="small"
-                value={
-                  articleScopeId
-                    ? `article:${articleScopeId}`
-                    : selectedCollection.id
-                }
+                value={articleScopeId ? `article:${articleScopeId}` : selectedCollection.id}
                 onChange={handleCollectionChange}
               >
                 <ListSubheader>Shortcuts</ListSubheader>
@@ -586,19 +510,13 @@ export function ItemList({
                     </Typography>
                   </MenuItem>
                 ))}
-                {articleScopeId &&
-                  !articleOptions.some(
-                    (entry) => entry.id === articleScopeId
-                  ) && (
-                    <MenuItem value={`article:${articleScopeId}`} disabled>
-                      Loading article…
-                    </MenuItem>
-                  )}
+                {articleScopeId && !articleOptions.some((entry) => entry.id === articleScopeId) && (
+                  <MenuItem value={`article:${articleScopeId}`} disabled>
+                    Loading article…
+                  </MenuItem>
+                )}
                 {articleOptions.map((entry) => (
-                  <MenuItem
-                    key={`article:${entry.id}`}
-                    value={`article:${entry.id}`}
-                  >
+                  <MenuItem key={`article:${entry.id}`} value={`article:${entry.id}`}>
                     <Typography component="span" variant="body2">
                       {entry.title}
                     </Typography>
@@ -662,8 +580,8 @@ export function ItemList({
             variant="standard"
             onChange={(e) => setTopicSort(e.target.value as TopicSort)}
           >
-            <MenuItem value="relevance">Most relevant</MenuItem>
-            <MenuItem value="timestamp">Most recent</MenuItem>
+            <MenuItem value="relevance">Sort by most relevant</MenuItem>
+            <MenuItem value="timestamp">Sort by most recent</MenuItem>
           </Select>
         )}
 
@@ -671,7 +589,7 @@ export function ItemList({
           className={css.FilterInput}
           size="small"
           fullWidth
-          placeholder="Filter…"
+          placeholder="Filter items…"
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
           variant="standard"
@@ -693,15 +611,17 @@ export function ItemList({
               ) : null,
             },
           }}
+          sx={{
+            "& .MuiInputBase-input": {
+              paddingLeft: "0px !important",
+            },
+          }}
         />
       </div>
 
       <div>
         <Collapse in={loading}>
-          <LinearProgress
-            variant="indeterminate"
-            color={loadingFeeds ? "warning" : "primary"}
-          />
+          <LinearProgress variant="indeterminate" color={loadingFeeds ? "warning" : "primary"} />
         </Collapse>
       </div>
 
@@ -716,10 +636,7 @@ export function ItemList({
       {items.length > 0 && displayItems.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography component="div" variant="body2" color="text.disabled">
-            {getEmptyMessage(
-              articleScopeId ? "all" : (filter ?? "unread"),
-              filterText
-            )}
+            {getEmptyMessage(articleScopeId ? "all" : (filter ?? "unread"), filterText)}
           </Typography>
         </div>
       )}

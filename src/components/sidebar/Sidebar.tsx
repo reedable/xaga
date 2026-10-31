@@ -38,8 +38,7 @@ export function Sidebar({
   const pinnedEntries = usePinnedEntries();
   const { topics, pinnedTopicIds } = useTopics(abortControllerRef);
 
-  const { loading, feeds, pinnedFeedIds, refreshAllFeeds } =
-    useFeeds(abortControllerRef);
+  const { loading, feeds, pinnedFeedIds, refreshAllFeeds } = useFeeds(abortControllerRef);
 
   const missingPins = useMissingPins(pinnedEntries, feeds, topics);
 
@@ -59,36 +58,26 @@ export function Sidebar({
         ...pinnedTopicIds.flatMap((id) => topics.filter((t) => t.id === id)),
         ...pinnedFeedIds.flatMap((id) => feeds.filter((f) => f.id === id)),
       ].sort(sortByUnreadCount),
-    [feeds, pinnedFeedIds, pinnedTopicIds, topics, pinnedEntries, pinnedSites]
+    [feeds, pinnedFeedIds, pinnedTopicIds, topics, pinnedEntries, pinnedSites],
   );
   const normalizedFilter = filter.trim().toLocaleLowerCase();
   const matchesFilter = useCallback(
-    ({ title }: { title: string }) =>
-      title.toLocaleLowerCase().includes(normalizedFilter),
-    [normalizedFilter]
+    ({ title }: { title: string }) => title.toLocaleLowerCase().includes(normalizedFilter),
+    [normalizedFilter],
   );
   const filteredPinnedCollections = useMemo(
     () => pinnedCollections.filter(matchesFilter),
-    [matchesFilter, pinnedCollections]
+    [matchesFilter, pinnedCollections],
   );
-  const filteredTopics = useMemo(
-    () => topics.filter(matchesFilter),
-    [matchesFilter, topics]
-  );
-  const filteredFeeds = useMemo(
-    () => feeds.filter(matchesFilter),
-    [feeds, matchesFilter]
-  );
-  const filteredSites = useMemo(
-    () => sites.filter(matchesFilter),
-    [matchesFilter, sites]
-  );
+  const filteredTopics = useMemo(() => topics.filter(matchesFilter), [matchesFilter, topics]);
+  const filteredFeeds = useMemo(() => feeds.filter(matchesFilter), [feeds, matchesFilter]);
+  const filteredSites = useMemo(() => sites.filter(matchesFilter), [matchesFilter, sites]);
 
   const handleExpandedList = useCallback(
     (listType: typeof expandedList) => {
       setExpandedList((prev) => (prev === listType ? null : listType));
     },
-    [setExpandedList]
+    [setExpandedList],
   );
 
   const stopRequestedRef = useRef(false);
@@ -145,7 +134,7 @@ export function Sidebar({
         missing={missingPins.filter((pin) =>
           `${pin.type}: ${pin.type === "site" ? pin.hostname : pin.id}`
             .toLocaleLowerCase()
-            .includes(normalizedFilter)
+            .includes(normalizedFilter),
         )}
         onClickHeader={() => handleExpandedList("SHORTCUTS")}
         isExpanded={expandedList === "SHORTCUTS"}
@@ -173,6 +162,10 @@ export function Sidebar({
         isExpanded={expandedList === "SITES"}
       />
 
+      {/*
+        TODO Consider placing a filter button next to refresh at the top to
+             reveal filter input. More user interaction, but more intuitive.
+      */}
       <TextField
         className={css.FilterInput}
         fullWidth
@@ -198,6 +191,11 @@ export function Sidebar({
                 </Tooltip>
               </InputAdornment>
             ) : null,
+          },
+        }}
+        sx={{
+          "& .MuiInputBase-input": {
+            paddingLeft: "0px !important",
           },
         }}
       />
