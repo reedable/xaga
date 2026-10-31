@@ -56,9 +56,6 @@ impl EmbeddingEntry {
         if meta.is_bookmarked {
             tags.push(crate::tags::BOOKMARK.to_string());
         }
-        if meta.is_pinned {
-            tags.push(crate::tags::PINNED.to_string());
-        }
         EmbeddingEntry {
             id: meta.id.clone(),
             kind: Kind::Entry,
@@ -83,10 +80,7 @@ impl EmbeddingEntry {
 
     /// Builds a feed row from a domain `Feed`. Feed rows carry no created/updated timestamps.
     pub(crate) fn from_feed(feed: &Feed, vector: Option<Vec<f32>>) -> EmbeddingEntry {
-        let mut tags = Vec::new();
-        if feed.is_pinned {
-            tags.push(crate::tags::PINNED.to_string());
-        }
+        let tags = Vec::new();
         EmbeddingEntry {
             id: feed.id.clone(),
             kind: Kind::Feed,
@@ -112,10 +106,7 @@ impl EmbeddingEntry {
     /// Builds a topic row from a `Topic`. `topics`/`items` are reconcile-managed (written empty
     /// here, carried forward by the sync/embed paths).
     pub(crate) fn from_topic(topic: &Topic, vector: Option<Vec<f32>>) -> EmbeddingEntry {
-        let mut tags = Vec::new();
-        if topic.is_pinned {
-            tags.push(crate::tags::PINNED.to_string());
-        }
+        let tags = Vec::new();
         EmbeddingEntry {
             id: topic.id.clone(),
             kind: Kind::Topic,

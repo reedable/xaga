@@ -270,6 +270,14 @@ mod tests {
             .await
             .unwrap();
 
+        crate::pins::Pins::set(
+            library_dir,
+            crate::pins::PinTarget::Feed { id: "feed".into() },
+            true,
+            crate::library_writer::WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
         let unread = HashSet::from([crate::util::url_hash12("https://example.com/one")]);
         let bookmarked = HashSet::from([crate::util::url_hash12("https://example.com/two")]);
         let entries = vec![

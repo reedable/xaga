@@ -27,9 +27,8 @@ use xaga_core::query::items::ItemError;
 pub(crate) enum AppError {
     #[error(transparent)]
     Domain(#[from] DomainError),
-    /// A library write was refused because this instance did not win the
-    /// library lock. Absorbs the former `E_READ_ONLY` string.
-    #[error("this instance is read-only — another xaga instance holds the library lock")]
+    /// A library write was refused because this instance has no library writer.
+    #[error("this library is open in read-only mode")]
     ReadOnly,
     /// A command was invoked from a window not permitted to call it.
     #[error("command not available from this window")]
@@ -74,9 +73,7 @@ impl AppError {
     pub(crate) fn user_message(&self) -> &'static str {
         match self {
             AppError::Domain(e) => e.user_message(),
-            AppError::ReadOnly => {
-                "This library is read-only because another xaga window has it open."
-            }
+            AppError::ReadOnly => "This library is open in read-only mode.",
             AppError::Unauthorized => "This action isn't available here.",
             AppError::UnsupportedDownload(_) => "This download’s format isn’t supported.",
             AppError::SettingsStaleView => {
@@ -120,6 +117,7 @@ macro_rules! app_from_domain {
     };
 }
 app_from_domain!(
+    xaga_core::pins::PinsError,
     EntryError,
     FeedError,
     EmbeddingsError,

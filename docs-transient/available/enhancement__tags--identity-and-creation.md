@@ -58,7 +58,7 @@ human-readable names, and let users create tags for Entry organization.
 
 - [Organization model](../../docs/architecture/organization_model.md)
 
-- [Centralize Pin Storage](refactor__pins--centralize-storage.md) — prerequisite.
+- [Pin-store contract](../../docs/architecture/pins.md).
 - [Bookmark Articles with Colors](enhancement__bookmark-state--color-markings.md) — prerequisite.
 - [Entry Tag Assignment](enhancement__tags--entry-assignment.md)
 - [Rename Tags](enhancement__tags--rename.md)

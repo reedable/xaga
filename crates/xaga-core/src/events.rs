@@ -28,6 +28,10 @@ pub enum DomainEvent {
     BookmarkChanged(Entry),
     /// An article pin changed in its authoritative file.
     EntryPinChanged(Entry),
+    PinChanged {
+        target: crate::pins::PinTarget,
+        pinned: bool,
+    },
     /// An annotation was created or updated.
     AnnotationChanged(ListItem),
     /// An annotation's identity changed while preserving its place in collections.
@@ -45,8 +49,8 @@ pub enum DomainEvent {
     FeedRefreshed(Feed),
     /// A refresh-all pass finished.
     FeedsRefreshed,
-    /// The library's runtime mode, announced at startup. `true` = this instance did not
-    /// win the library lock: write commands are refused (`E_READ_ONLY`) and the UI
+    /// The library's runtime mode, announced at startup. `true` = this instance has no
+    /// library writer: write commands are refused (`E_READ_ONLY`) and the UI
     /// disables write affordances. Mode is fixed for the process's lifetime — a library
     /// switch restarts the process.
     LibraryModeChanged { is_library_read_only: bool },
@@ -60,6 +64,7 @@ impl DomainEvent {
             DomainEvent::UnreadChanged(_) => "unread:changed",
             DomainEvent::BookmarkChanged(_) => "bookmark:changed",
             DomainEvent::EntryPinChanged(_) => "entry-pin:changed",
+            DomainEvent::PinChanged { .. } => "pin:changed",
             DomainEvent::AnnotationChanged(_) => "annotation:changed",
             DomainEvent::AnnotationReplaced(_) => "annotation:replaced",
             DomainEvent::AnnotationRemoved { .. } => "annotation:removed",
@@ -98,6 +103,10 @@ mod tests {
             DomainEvent::UnreadChanged(entry()),
             DomainEvent::BookmarkChanged(entry()),
             DomainEvent::EntryPinChanged(entry()),
+            DomainEvent::PinChanged {
+                target: crate::pins::PinTarget::Entry { id: "entry".into() },
+                pinned: true,
+            },
             DomainEvent::AnnotationChanged(ListItem {
                 id: String::new(),
                 title: String::new(),
@@ -159,6 +168,7 @@ mod tests {
                 "unread:changed",
                 "bookmark:changed",
                 "entry-pin:changed",
+                "pin:changed",
                 "annotation:changed",
                 "annotation:replaced",
                 "annotation:removed",

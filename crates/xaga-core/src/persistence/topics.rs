@@ -81,9 +81,10 @@ pub(crate) async fn save_topic(
         .as_ref()
         .map(|(_, fm)| fm.created_at.clone())
         .unwrap_or_else(|| Utc::now().to_rfc3339());
-    let is_pinned = existing
-        .as_ref()
-        .is_some_and(|(_, fm)| crate::tags::is_pinned(&fm.tags));
+    let is_pinned = crate::pins::Pins::read(library_dir)
+        .await
+        .map_err(std::io::Error::other)?
+        .contains(&crate::pins::PinTarget::Topic { id: id.into() });
 
     let updated_at = Utc::now().to_rfc3339();
 
@@ -116,39 +117,6 @@ pub(crate) async fn save_topic(
     Ok(topic)
 }
 
-/// Adds or removes the `pinned` frontmatter tag on a topic's `.md`. Returns true if it changed.
-/// Preserves the topic's timestamps (a pin toggle is not a content edit). The `is_pinned` LanceDB
-/// column is updated by the command's `SyncState` job; membership is unchanged.
-/// Mirrors `feeds::set_feed_pinned`.
-pub(crate) async fn set_topic_pinned(
-    library_dir: &Path,
-    id: &str,
-    pinned: bool,
-    _token: WriteToken,
-) -> Result<bool, TopicsError> {
-    let path = crate::library::topic_path(library_dir, id);
-    if !tokio::fs::try_exists(&path).await? {
-        return Err(TopicsError::NotFound);
-    }
-    let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, _) = parse_document(&raw)?;
-
-    if crate::tags::is_pinned(&fm.tags) == pinned {
-        return Ok(false);
-    }
-
-    let mut tags = fm.tags;
-    if pinned {
-        tags.push(crate::tags::PINNED.to_string());
-    } else {
-        tags.retain(|tag| tag != crate::tags::PINNED);
-    }
-    super::documents::upsert(&path, &[("tags", serde_json::json!(tags))], None, _token)
-        .await
-        .map_err(document_error)?;
-    Ok(true)
-}
-
 /// Returns the topic for the given id.
 pub async fn read_topic(library_dir: &Path, id: &str) -> Result<Topic, TopicsError> {
     let path = crate::library::topic_path(library_dir, id);
@@ -157,11 +125,16 @@ pub async fn read_topic(library_dir: &Path, id: &str) -> Result<Topic, TopicsErr
     }
     let raw = crate::fs::read_md_capped(&path).await?;
     let (fm, body) = parse_document(&raw)?;
-    Ok(md_to_topic(Markdown {
+    let mut topic = md_to_topic(Markdown {
         id: crate::util::item_id(&path),
         fm,
         body,
-    }))
+    });
+    topic.is_pinned = crate::pins::Pins::read(library_dir)
+        .await
+        .map_err(std::io::Error::other)?
+        .contains(&crate::pins::PinTarget::Topic { id: id.into() });
+    Ok(topic)
 }
 
 /// Returns a topic's stored membership (the `.md` `items:` list) — the storage shape
@@ -201,6 +174,15 @@ pub async fn list_topics(library_dir: &Path) -> Result<Vec<Topic>, TopicsError> 
     // for_each_md handles the missing dir and skips any file that fails to read or parse.
     for_each_md(&topics_dir, &md_to_topic, |t| topics.push(t)).await;
 
+    let pins = crate::pins::Pins::read(library_dir)
+        .await
+        .map_err(std::io::Error::other)?;
+    let pin_targets: std::collections::HashSet<_> = pins.pins.into_iter().collect();
+    for topic in &mut topics {
+        topic.is_pinned = pin_targets.contains(&crate::pins::PinTarget::Topic {
+            id: topic.id.clone(),
+        });
+    }
     topics.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(topics)
 }
@@ -348,7 +330,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn topic_updates_and_pin_changes_preserve_user_data() {
+    async fn topic_updates_preserve_user_data() {
         let dir = tempfile::tempdir().unwrap();
         let path = crate::library::topic_path(dir.path(), "topic");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -369,9 +351,7 @@ mod tests {
             parse_frontmatter(&saved).unwrap().tags,
             vec!["pinned", "research"]
         );
-        set_topic_pinned(dir.path(), "topic", false, WriteToken::for_test())
-            .await
-            .unwrap();
+
         let saved = std::fs::read_to_string(&path).unwrap();
         assert_eq!(
             crate::md::test_frontmatter_values(&saved)["custom"],
@@ -379,7 +359,7 @@ mod tests {
         );
         assert!(saved.ends_with("---\n\nUser-authored body\n\n"));
         let fm = parse_frontmatter(&saved).unwrap();
-        assert_eq!(fm.tags, vec!["research"]);
+        assert_eq!(fm.tags, vec!["pinned", "research"]);
         assert_eq!(fm.created_at, "2026-01-01T00:00:00Z");
         assert_eq!(fm.summary.as_deref(), Some("Description"));
     }

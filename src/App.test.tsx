@@ -85,3 +85,5 @@ it("renders the main application when embeddings are unavailable", async () => {
     container.querySelector("[data-sites-enabled='false']")
   ).not.toBeNull();
 });
+
+vi.mock("./providers/PinsProvider", () => ({ default: ({ children }: { children: ReactNode }) => children }));

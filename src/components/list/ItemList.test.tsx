@@ -303,3 +303,5 @@ it("filters article-scope rows without changing the open list target", async () 
   expect(rows()).toHaveLength(3);
   expect(mocks.read).toHaveBeenCalledTimes(1);
 });
+
+vi.mock("../../hooks/useMissingPins", () => ({ useMissingPins: () => [] }));

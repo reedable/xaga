@@ -1,8 +1,8 @@
 use tauri::State;
-use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
+use xaga_core::embeddings::{Job, Tier};
 use xaga_core::library_writer::Tier as WriteTier;
 use xaga_core::persistence::feeds;
-use xaga_core::types::{Entry, Feed, Kind};
+use xaga_core::types::{Entry, Feed};
 
 use super::parse_item_filter;
 use crate::error::AppError;
@@ -121,28 +121,10 @@ pub async fn refresh_all_feeds(
 pub async fn set_feed_pinned(
     id: String,
     pinned: bool,
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let writer = crate::commands::require_writer(&state)?;
-    let changed = writer
-        .set_feed_pinned(WriteTier::Interactive, id.clone(), pinned)
-        .await
-        .map_err(AppError::from)?;
-
-    if changed {
-        state.enqueue(
-            Tier::Interactive,
-            Job::SyncState {
-                entity: EntityRef::new(id, Kind::Feed),
-                state: StatePatch {
-                    is_pinned: Some(pinned),
-                    ..Default::default()
-                },
-            },
-        );
-    }
-
-    Ok(())
+    super::pins::set_pin(xaga_core::pins::PinTarget::Feed { id }, pinned, app, state).await
 }
 
 #[tauri::command]

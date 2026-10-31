@@ -25,6 +25,8 @@ import type {
   TopicSort,
 } from "../types";
 
+import type { PinTarget, PinChange } from "../pins";
+
 export type CreateTopicInput = Omit<
   Topic,
   | "id"
@@ -337,8 +339,10 @@ export interface Platform {
     callback: (view: HtmlReaderView) => void
   ): Promise<UnlistenFn>;
 
-  // Pinned state lives in content files (feed `.atom` category / topic or article `.md` tag);
-  // surfaced on Feed/Topic/Entry (`isPinned`) and toggled per item here.
+  // Membership is owned by the library pin store and projected onto targets.
+  listPins(signal: AbortSignal): Promise<PinTarget[]>;
+  setPin(target: PinTarget, pinned: boolean): Promise<void>;
+  onPinChanged(callback: (change: PinChange) => void): Promise<UnlistenFn>;
   setFeedPinned(id: string, pinned: boolean): Promise<void>;
   setTopicPinned(id: string, pinned: boolean): Promise<void>;
   setEntryPinned(id: string, pinned: boolean): Promise<Entry>;

@@ -194,16 +194,26 @@ async fn write_initial_entry(
 
 /// Reads an entry by id and returns its metadata. Does not modify the file.
 pub async fn read_entry(library_dir: &Path, id: &str) -> Result<Entry, EntryError> {
+    let mut entry = read_entry_metadata(library_dir, id).await?;
+    entry.is_pinned = crate::pins::Pins::read(library_dir)
+        .await
+        .map_err(std::io::Error::other)?
+        .contains(&crate::pins::PinTarget::Entry { id: id.into() });
+    Ok(entry)
+}
+
+pub(crate) async fn read_entry_metadata(library_dir: &Path, id: &str) -> Result<Entry, EntryError> {
     let path = find_entry_path(library_dir, id)
         .await
         .ok_or(EntryError::NotFound)?;
     let raw = crate::fs::read_md_capped(&path).await?;
     let fm = parse_frontmatter(&raw)?;
-    Ok(md_to_entry(Markdown {
+    let entry = md_to_entry(Markdown {
         id: id.to_string(),
         fm,
         body: String::new(),
-    }))
+    });
+    Ok(entry)
 }
 
 /// Returns an entry's frontmatter tags — a persistence detail, not on the domain `Entry`.
@@ -242,7 +252,10 @@ pub(crate) async fn set_entry_tags(
             description: fm.summary,
             is_unread: fm.is_unread.unwrap_or(false),
             is_bookmarked: crate::tags::is_bookmarked(&tags),
-            is_pinned: crate::tags::is_pinned(&tags),
+            is_pinned: crate::pins::Pins::read(library_dir)
+                .await
+                .map_err(std::io::Error::other)?
+                .contains(&crate::pins::PinTarget::Entry { id: id.into() }),
             color: None,
         },
         content: body,
@@ -271,11 +284,16 @@ pub(crate) async fn set_entry_unread(
     )
     .await?;
     let fm = parse_frontmatter(&rendered)?;
-    Ok(md_to_entry(Markdown {
+    let mut entry = md_to_entry(Markdown {
         id: id.to_owned(),
         fm,
         body: String::new(),
-    }))
+    });
+    entry.is_pinned = crate::pins::Pins::read(library_dir)
+        .await
+        .map_err(std::io::Error::other)?
+        .contains(&crate::pins::PinTarget::Entry { id: id.into() });
+    Ok(entry)
 }
 
 #[cfg(test)]

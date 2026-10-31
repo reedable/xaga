@@ -7,6 +7,7 @@
 
 export const DOMAIN_EVENT = [
   "unread:changed", // payload: Entry (schema-minted)
+  "pin:changed", // payload: { target: PinTarget, pinned: boolean }
   "entry-pin:changed", // payload: Entry
   "bookmark:changed", // payload: Entry (schema-minted)
   "annotation:changed", // payload: ListItem (schema-minted)

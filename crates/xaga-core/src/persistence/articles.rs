@@ -149,7 +149,7 @@ pub(crate) async fn save_article(
     let keep = crate::persistence::images::referenced_image_hashes(id, &rendered);
     crate::persistence::images::gc_entry_images(library_dir, id, &keep, token).await;
 
-    Ok(article)
+    project_pin(library_dir, article).await
 }
 
 /// Returns the article for the given URL if it exists, or `None` if not found.
@@ -180,7 +180,7 @@ pub async fn read_article(library_dir: &Path, id: &str) -> Result<Article, Entry
 
     let raw = crate::fs::read_md_capped(&path).await?;
     let (fm, body) = parse_document(&raw)?;
-    Ok(article_from_document(id, fm, body))
+    project_pin(library_dir, article_from_document(id, fm, body)).await
 }
 
 /// Adds or updates an annotation in the article's frontmatter (upsert by id). A same-id
@@ -235,7 +235,7 @@ pub(crate) async fn add_annotation(
         _token,
     )
     .await?;
-    Ok(article)
+    project_pin(library_dir, article).await
 }
 
 /// Replaces an annotation under a new id — the delete and the create land in one atomic
@@ -290,7 +290,7 @@ pub(crate) async fn replace_annotation(
         _token,
     )
     .await?;
-    Ok(article)
+    project_pin(library_dir, article).await
 }
 
 /// Removes an annotation by id. Returns the updated [`Article`].
@@ -331,7 +331,7 @@ pub(crate) async fn remove_annotation(
         _token,
     )
     .await?;
-    Ok(article)
+    project_pin(library_dir, article).await
 }
 
 #[cfg(test)]
@@ -1198,4 +1198,17 @@ fn article_from_fm(
         annotations: with_reference(annotations, article_id),
         favicon,
     }
+}
+
+pub(super) async fn project_pin(
+    library_dir: &Path,
+    mut article: Article,
+) -> Result<Article, EntryError> {
+    article.meta.is_pinned = crate::pins::Pins::read(library_dir)
+        .await
+        .map_err(std::io::Error::other)?
+        .contains(&crate::pins::PinTarget::Entry {
+            id: article.meta.id.clone(),
+        });
+    Ok(article)
 }

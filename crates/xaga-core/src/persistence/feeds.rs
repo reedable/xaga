@@ -9,7 +9,7 @@ use thiserror::Error;
 use crate::{
     atom::{
         Atom, AtomEntry, apply_incoming_xml, atom_to_entry, atom_to_feed, atom_to_xml, entry_ids,
-        feed_to_atom, parse_atom, self_link_url, set_pinned, set_title,
+        feed_to_atom, parse_atom, self_link_url, set_title,
     },
     library_writer::{LibraryWriter, Tier as WriteTier, WriteToken},
     types::{Article, Feed},
@@ -163,7 +163,10 @@ pub async fn add_feed(
         };
 
     match commit_via_writer(writer, &id, &atom, new_entries, false).await {
-        Ok(created) => Ok((atom_to_feed(&id, &atom, unread, bookmarked), created)),
+        Ok(created) => Ok((
+            project_pin(library_dir, atom_to_feed(&id, &atom, unread, bookmarked)).await?,
+            created,
+        )),
         Err(e) => {
             commit_via_writer(writer, &id, &empty_atom, Vec::new(), false).await?;
             Err(e)
@@ -213,7 +216,10 @@ async fn refresh_feed(
         fetch_and_merge(client, &mut existing, id, timeout_secs, max_body_bytes).await?;
     let created = commit_via_writer(writer, id, &existing, new_entries, true).await?;
 
-    Ok((atom_to_feed(id, &existing, unread, bookmarked), created))
+    Ok((
+        project_pin(library_dir, atom_to_feed(id, &existing, unread, bookmarked)).await?,
+        created,
+    ))
 }
 
 /// Fetch a feed's live XML from its self-link and merge new entries into `existing` in memory.
@@ -329,7 +335,14 @@ pub async fn refresh_all_feeds(
             let new_entries =
                 fetch_and_merge(client, &mut existing, &id, timeout_secs, max_body_bytes).await?;
             let created = commit_via_writer(writer, &id, &existing, new_entries, true).await?;
-            Ok((atom_to_feed(&id, &existing, unread, bookmarked), created))
+            Ok((
+                project_pin(
+                    library_dir,
+                    atom_to_feed(&id, &existing, unread, bookmarked),
+                )
+                .await?,
+                created,
+            ))
         }
         .await;
         results.push((id, result));
@@ -357,6 +370,15 @@ pub async fn list_feeds(
     .await;
 
     // for_each_atom yields in directory order; sort by id for a stable listing.
+    let pins = crate::pins::Pins::read(library_dir)
+        .await
+        .map_err(std::io::Error::other)?;
+    let pin_targets: std::collections::HashSet<_> = pins.pins.into_iter().collect();
+    for feed in &mut feeds {
+        feed.is_pinned = pin_targets.contains(&crate::pins::PinTarget::Feed {
+            id: feed.id.clone(),
+        });
+    }
     feeds.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(feeds)
 }
@@ -370,27 +392,7 @@ pub(crate) async fn read_feed(
 ) -> Result<Feed> {
     let xml = tokio::fs::read_to_string(crate::library::feed_path(library_dir, id)).await?;
     let feed = parse_atom(&xml).map_err(FeedError::AtomParse)?;
-    Ok(atom_to_feed(id, &feed, unread, bookmarked))
-}
-
-/// Adds (or removes) the app-local `pinned` category on a feed's `.atom`, under
-/// [`TAG_CATEGORY_SCHEME`]. Idempotent. Returns whether the file changed.
-pub(crate) async fn set_feed_pinned(
-    library_dir: &Path,
-    id: &str,
-    pinned: bool,
-    _token: WriteToken,
-) -> Result<bool> {
-    let path = crate::library::feed_path(library_dir, id);
-    let xml = tokio::fs::read_to_string(&path).await?;
-    let mut atom = parse_atom(&xml).map_err(FeedError::AtomParse)?;
-
-    if !set_pinned(&mut atom, pinned) {
-        return Ok(false);
-    }
-
-    write_atom_atomic(library_dir, id, &atom).await?;
-    Ok(true)
+    project_pin(library_dir, atom_to_feed(id, &feed, unread, bookmarked)).await
 }
 
 /// Rename a feed by updating its `<title>` in the stored Atom file.
@@ -410,7 +412,7 @@ pub(crate) async fn rename_feed(
     let mut feed = parse_atom(&xml).map_err(FeedError::AtomParse)?;
     set_title(&mut feed, new_title);
     write_atom_atomic(library_dir, id, &feed).await?;
-    Ok(atom_to_feed(id, &feed, unread, bookmarked))
+    project_pin(library_dir, atom_to_feed(id, &feed, unread, bookmarked)).await
 }
 
 /// Remove a feed (deletes `{id}.atom`).
@@ -684,4 +686,14 @@ mod tests {
             .unwrap();
         assert!(tokio::fs::try_exists(&path).await.unwrap());
     }
+}
+
+async fn project_pin(library_dir: &Path, mut feed: Feed) -> Result<Feed> {
+    feed.is_pinned = crate::pins::Pins::read(library_dir)
+        .await
+        .map_err(std::io::Error::other)?
+        .contains(&crate::pins::PinTarget::Feed {
+            id: feed.id.clone(),
+        });
+    Ok(feed)
 }

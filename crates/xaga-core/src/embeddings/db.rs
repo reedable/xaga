@@ -324,6 +324,7 @@ struct BatchSummaryColumns<'a> {
     summaries: Option<&'a StringArray>,
     tags: Option<&'a ListArray>,
     unread: &'a BooleanArray,
+    pinned: Option<&'a BooleanArray>,
     kinds: Option<&'a StringArray>,
 }
 
@@ -361,6 +362,9 @@ impl<'a> BatchSummaryColumns<'a> {
             summaries: batch
                 .column_by_name("summary")
                 .and_then(|c| c.as_any().downcast_ref::<StringArray>()),
+            pinned: batch
+                .column_by_name("is_pinned")
+                .and_then(|c| c.as_any().downcast_ref::<BooleanArray>()),
             unread: batch
                 .column_by_name("is_unread")?
                 .as_any()
@@ -417,7 +421,7 @@ impl<'a> BatchSummaryColumns<'a> {
             description: opt_str(self.summaries, i),
             is_unread,
             is_bookmarked,
-            is_pinned: crate::tags::is_pinned(&tags),
+            is_pinned: self.pinned.is_some_and(|values| values.value(i)),
             color: None,
         }
     }
@@ -460,6 +464,15 @@ impl EmbeddingsDb {
     pub async fn open_readonly(library_dir: &Path) -> Result<Self, EmbeddingsError> {
         let schema = make_schema();
         let db_path = crate::library::index_path(library_dir);
+        // Connecting to a missing local database may create its directory.
+        // Read-only startup must not initialize a cache for an older library.
+        if !tokio::fs::metadata(&db_path).await?.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "embeddings path is not a directory",
+            )
+            .into());
+        }
         let connection = lancedb::connect(db_path.to_str().ok_or_else(|| {
             EmbeddingsError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -624,8 +637,9 @@ impl EmbeddingsDb {
     }
 
     /// Entry pin identities, also used to detect pin-only drift during recovery.
-    pub(crate) async fn pinned_entry_ids(&self) -> Result<HashSet<String>, EmbeddingsError> {
-        self.state_ids("is_pinned = true").await
+    pub(crate) async fn pinned_ids(&self, kind: Kind) -> Result<HashSet<String>, EmbeddingsError> {
+        self.ids_matching(&format!("kind = '{}' AND is_pinned = true", kind.as_str()))
+            .await
     }
 
     /// Pinned article summaries, without reading vectors.
@@ -651,10 +665,15 @@ impl EmbeddingsDb {
     /// Projects entry-row ids matching a state `predicate` into a set, selecting only the `id`
     /// column so the read never touches the vector.
     async fn state_ids(&self, predicate: &str) -> Result<HashSet<String>, EmbeddingsError> {
+        self.ids_matching(&format!("kind = 'entry' AND {predicate}"))
+            .await
+    }
+
+    async fn ids_matching(&self, predicate: &str) -> Result<HashSet<String>, EmbeddingsError> {
         let batches: Vec<RecordBatch> = self
             .table
             .query()
-            .only_if(format!("kind = 'entry' AND {predicate}"))
+            .only_if(predicate)
             .select(Select::columns(&["id"]))
             .execute()
             .await?
@@ -678,7 +697,7 @@ impl EmbeddingsDb {
 
     /// Columns needed to build an `Entry` — everything except the vector, so these
     /// list reads never touch the large embedding column.
-    const SUMMARY_COLUMNS: [&'static str; 12] = [
+    const SUMMARY_COLUMNS: [&'static str; 13] = [
         "id",
         "kind",
         "source",
@@ -690,6 +709,7 @@ impl EmbeddingsDb {
         "color",
         "summary",
         "is_unread",
+        "is_pinned",
         "tags",
     ];
 
@@ -1771,6 +1791,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         assert!(EmbeddingsDb::open_readonly(dir.path()).await.is_err());
+        assert!(!crate::library::index_path(dir.path()).exists());
 
         let connection = lancedb::connect(
             crate::library::index_path(dir.path())

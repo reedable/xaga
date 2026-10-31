@@ -5,6 +5,8 @@ import { Toolbar } from "./Toolbar";
 
 const mocks = vi.hoisted(() => ({
   readOnly: false,
+  pins: [] as Array<{ type: "entry"; id: string }>,
+  setPin: vi.fn(),
   read: vi.fn(),
   pin: vi.fn(),
   sink: { pushError: vi.fn() },
@@ -69,6 +71,8 @@ const article = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.readOnly = false;
+  mocks.pins = [];
+  mocks.setPin.mockImplementation(async (target, pinned) => { mocks.pins = pinned ? [target] : []; });
   mocks.platform.readArticle.mockResolvedValue(article);
   container = document.createElement("div");
   root = createRoot(container);
@@ -84,22 +88,17 @@ async function render() {
 
 it("pins and unpins through the platform using committed state", async () => {
   await render();
-  mocks.platform.setEntryPinned.mockResolvedValueOnce({
-    ...article,
-    isPinned: true,
-  });
   await act(async () => button("Add to Shortcuts").click());
-  expect(mocks.platform.setEntryPinned).toHaveBeenLastCalledWith(
-    "article",
+  expect(mocks.setPin).toHaveBeenLastCalledWith(
+    { type: "entry", id: "article" },
     true
   );
   expect(button("Remove from Shortcuts").getAttribute("aria-pressed")).toBe(
     "true"
   );
-  mocks.platform.setEntryPinned.mockResolvedValueOnce(article);
   await act(async () => button("Remove from Shortcuts").click());
-  expect(mocks.platform.setEntryPinned).toHaveBeenLastCalledWith(
-    "article",
+  expect(mocks.setPin).toHaveBeenLastCalledWith(
+    { type: "entry", id: "article" },
     false
   );
   expect(button("Add to Shortcuts").getAttribute("aria-pressed")).toBe("false");
@@ -109,17 +108,19 @@ it("disables pinning in read-only mode", async () => {
   await render();
   expect(button("Add to Shortcuts").disabled).toBe(true);
   button("Add to Shortcuts").click();
-  expect(mocks.platform.setEntryPinned).not.toHaveBeenCalled();
+  expect(mocks.setPin).not.toHaveBeenCalled();
 });
 it("reports a refused pin without displaying it as persisted", async () => {
   await render();
   const error = { code: "E_READ_ONLY", message: "Read-only library" };
-  mocks.platform.setEntryPinned.mockRejectedValueOnce(error);
+  mocks.setPin.mockRejectedValueOnce(error);
   await act(async () => button("Add to Shortcuts").click());
   expect(mocks.sink.pushError).toHaveBeenCalledWith(error);
   expect(button("Add to Shortcuts").disabled).toBe(false);
   expect(button("Remove from Shortcuts")).toBeNull();
 });
+
+vi.mock("../../providers/PinsContext", () => ({ usePins: () => ({ pins: mocks.pins, setPin: mocks.setPin }) }));
 
 it("keeps Refresh visible beside Bookmark and focusable while reporting reload progress", async () => {
   const reload = vi.fn();

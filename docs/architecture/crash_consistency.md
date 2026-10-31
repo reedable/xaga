@@ -53,8 +53,8 @@ checksum, so a crash between the authoritative write and cache update heals.
 The CLI performs the explicit 0.9-to-0.10 conversion under the library write lock.
 The disposable CLI owns all legacy-format rules. It converts entries sequentially
 with sibling temporary files, file fsync, atomic rename and directory fsync,
-without using the runtime `LibraryWriter`. No migration-specific API is added
-to core. An existing boolean wins over a conflicting legacy `unread` tag;
+without using the runtime `LibraryWriter`. Core owns the version manifest and its migration-state writes; the legacy
+content conversion rules remain in the CLI. An existing boolean wins over a conflicting legacy `unread` tag;
 otherwise the tag determines state.
 The field update and removal of the legacy marker share one atomic replacement.
 Read state is represented by omission, including normalization of explicit false.
@@ -79,13 +79,31 @@ After the file batches, a final cache pass removes legacy unread markers from
 stale rows as well, without changing their stored boolean state. Normal recovery
 removes rows whose source is gone.
 
-### Article pins
+### Central pin membership
 
-Article pinning changes only the `pinned` tag through the library writer's existing
-entry-tag patch lane, atomically replacing the `.md` before queuing an Interactive
-`SyncState` cache update. The command announces committed pin intent to the UI;
-read-only instances refuse the command through the central write gate. A crash
-between file commit and cache update leaves the source intact. Recovery compares
-the file's article pin state with cached pinned entry identities even when content
-and annotation checksums match, and syncs differing rows without re-embedding
-unchanged content. Fresh recovery derives article pins from the same file parser.
+Pin mutations serialize on one library-writer lane and atomically replace
+`pins.yaml`. A crash leaves either the previous complete membership or the next
+complete membership; entity files are untouched. Committed changes are announced
+to the UI without waiting for embedding work. The cache is derived from the store,
+with pin-only drift detected independently of content checksums during recovery.
+Missing targets never cause removal of a reference.
+
+The explicit CLI conversion holds the library lock and scans legacy Entry, Topic,
+and Feed files. For each marker it commits the typed central reference first,
+then atomically replaces the entity file without the legacy marker. A crash in
+between leaves redundant legacy state, never a lost pin. Retrying merges with
+already-transferred references, including unresolved references, and preserves
+sequence order and unrelated entity data. It reconciles cached pin state from the
+central store even when no markers remain. Runtime parsers never restore pins
+from legacy markers. Conversion and cache errors make the CLI exit nonzero.
+
+### Library version transitions
+
+The core manifest API atomically records the pending target before the CLI opens
+or changes a cache or converts source files. The last completed version is
+retained while conversion is in progress; an initially unversioned library records
+null as that source version. Only successful conversion and cache reconciliation
+allows core to atomically replace the manifest with the completed target version.
+A crash or reported failure leaves the pending marker, and retry resumes the same
+target. Normal app startup opens mismatched, absent, incomplete or unreadable
+metadata read-only and never alters it. See [library version](library_version.md).

@@ -14,6 +14,7 @@ import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
 import { ExpandedListProvider } from "./providers/ExpandedListProvider";
 import { AllItemsCountsProvider } from "./providers/AllItemsCountsProvider";
+import PinsProvider from "./providers/PinsProvider";
 import FeedsProvider from "./providers/FeedsProvider";
 import { TopicsProvider } from "./providers/TopicsProvider";
 import { SitesProvider } from "./providers/SitesProvider";
@@ -50,25 +51,29 @@ export default function App({ entryPoint }: { entryPoint: string }) {
       ) : (
         <BrowserRouter>
           <ExpandedListProvider>
-            <TopicsProvider>
-              <FeedsProvider>
-                <SitesProvider enabled={embeddingStartupState === "available"}>
-                  <Routes>
-                    <Route
-                      path="/"
-                      element={
-                        embeddingStartupState !== "loading" ? (
-                          <AllItemsCountsProvider>
-                            <AppLayout />
-                          </AllItemsCountsProvider>
-                        ) : null
-                      }
-                    />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
-                </SitesProvider>
-              </FeedsProvider>
-            </TopicsProvider>
+            <PinsProvider>
+              <TopicsProvider>
+                <FeedsProvider>
+                  <SitesProvider
+                    enabled={embeddingStartupState === "available"}
+                  >
+                    <Routes>
+                      <Route
+                        path="/"
+                        element={
+                          embeddingStartupState !== "loading" ? (
+                            <AllItemsCountsProvider>
+                              <AppLayout />
+                            </AllItemsCountsProvider>
+                          ) : null
+                        }
+                      />
+                      <Route path="*" element={<Navigate to="/" replace />} />
+                    </Routes>
+                  </SitesProvider>
+                </FeedsProvider>
+              </TopicsProvider>
+            </PinsProvider>
           </ExpandedListProvider>
         </BrowserRouter>
       )}

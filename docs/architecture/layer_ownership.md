@@ -19,3 +19,12 @@ A capability's home is determined by what it is, not by who first needed it:
 ## Boundary tension to weigh at design time
 
 Pulling presentation-interleaved logic (per-file progress, mid-loop exits) up into core would move presentation concerns _into_ the logic crate — a violation in the other direction. Where a shared implementation needs progress callbacks or modes, that cost is weighed explicitly.
+
+## Library version ownership
+
+Core owns `library.yaml`, its schema, parsing, serialization and migration-state
+writes. Before 1.0, the CLI orchestrates library-format conversion through that
+core API. At 1.0, responsibility for executing these migrations will move to core.
+The app supplies its major/minor at runtime and selects read-only mode for a
+library whose completed version does not match or cannot be established. See
+[library version metadata](library_version.md).

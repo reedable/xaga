@@ -110,7 +110,7 @@ pub(crate) fn test_frontmatter_values(
 
 /// Converts .md storage format to Topic domain object
 pub(crate) fn md_to_topic(md: Markdown) -> Topic {
-    let is_pinned = crate::tags::is_pinned(&md.fm.tags);
+    let is_pinned = false;
 
     Topic {
         id: md.id.to_string(),
@@ -170,7 +170,7 @@ pub(crate) fn md_to_entry(md: Markdown) -> Entry {
         description: md.fm.summary,
         is_unread,
         is_bookmarked,
-        is_pinned: crate::tags::is_pinned(&md.fm.tags),
+        is_pinned: false,
         color: None,
     }
 }

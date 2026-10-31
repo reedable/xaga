@@ -650,7 +650,7 @@ pub(crate) async fn apply_state(
         row.is_bookmarked = v;
     }
     if let Some(v) = is_pinned {
-        set_tag(&mut row.tags, crate::tags::PINNED, v);
+        row.tags.retain(|tag| tag != "pinned");
         row.is_pinned = v;
     }
 

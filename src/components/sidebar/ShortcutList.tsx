@@ -19,13 +19,19 @@ import SidebarItem from "./SidebarItem";
 import SidebarSortControl from "./SidebarSortControl";
 import UnreadCount from "./UnreadCount";
 
+import type { PinTarget } from "../../pins";
+import { pinKey } from "../../pins";
+import MissingShortcut from "./MissingShortcut";
+
 type ShortcutListProps = {
+  missing?: PinTarget[];
   isExpanded?: boolean;
   shortcuts: Countable[];
   onClickHeader: () => void;
 };
 
 export default function ShortcutList({
+  missing = [],
   isExpanded = false,
   shortcuts,
   onClickHeader,
@@ -56,7 +62,7 @@ export default function ShortcutList({
   return (
     <ExpandableList
       className={css.ShortcutList}
-      count={shortcuts.length}
+      count={shortcuts.length + missing.length}
       label="Shortcuts"
       isExpanded={isExpanded}
       onClickHeader={onClickHeader}
@@ -83,7 +89,7 @@ export default function ShortcutList({
       {sortedShortcuts.map((shortcut) => (
         <SidebarItem
           collection={shortcut}
-          key={shortcut.id}
+          key={`${isEntry(shortcut) ? "entry" : isFeed(shortcut) ? "feed" : "topic"}:${shortcut.id}`}
           icon={
             isFeed(shortcut)
               ? RssFeed
@@ -112,6 +118,9 @@ export default function ShortcutList({
               : () => <UnreadCount count={shortcut.unreadCount} />
           }
         />
+      ))}
+      {missing.map((target) => (
+        <MissingShortcut key={pinKey(target)} target={target} />
       ))}
     </ExpandableList>
   );

@@ -1,3 +1,4 @@
+import type { PinTarget, PinChange } from "../pins";
 import type { ImageRecovery } from "../text/imageReferences";
 import { isAppError, type AppError as SerializedAppError } from "./errors";
 import { invoke } from "@tauri-apps/api/core";
@@ -1538,6 +1539,26 @@ export class TauriPlatform implements Platform {
     const name = "clear_webview_history";
     const invoker = decorate(invoke).with(logged, { logger, name });
     return invoker<void>(name);
+  }
+
+  async listPins(signal: AbortSignal): Promise<PinTarget[]> {
+    const result = await invoke("list_pins");
+    signal.throwIfAborted();
+    return z
+      .object({
+        pins: z.array(
+          z.object({ type: z.enum(["entry", "feed", "topic"]), id: z.string() })
+        ),
+      })
+      .parse(result).pins;
+  }
+
+  setPin(target: PinTarget, pinned: boolean): Promise<void> {
+    return invoke("set_pin", { target, pinned });
+  }
+
+  onPinChanged(callback: (change: PinChange) => void): Promise<UnlistenFn> {
+    return listen<PinChange>("pin:changed", (event) => callback(event.payload));
   }
 
   setFeedPinned(id: string, pinned: boolean): Promise<void> {

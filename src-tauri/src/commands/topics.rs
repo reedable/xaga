@@ -1,5 +1,5 @@
 use tauri::State;
-use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
+use xaga_core::embeddings::{EntityRef, Job, Tier};
 use xaga_core::library_writer::Tier as WriteTier;
 use xaga_core::persistence::topics;
 use xaga_core::query::items::{self, EmbeddedItemSource};
@@ -90,24 +90,10 @@ fn create_topic_with_member_jobs(topic: &Topic, member_id: String) -> [Job; 2] {
 pub async fn set_topic_pinned(
     id: String,
     pinned: bool,
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let writer = crate::commands::require_writer(&state)?;
-    writer
-        .set_topic_pinned(WriteTier::Interactive, id.clone(), pinned)
-        .await
-        .map_err(AppError::from)?;
-    state.enqueue(
-        Tier::Interactive,
-        Job::SyncState {
-            entity: EntityRef::new(id, Kind::Topic),
-            state: StatePatch {
-                is_pinned: Some(pinned),
-                ..Default::default()
-            },
-        },
-    );
-    Ok(())
+    super::pins::set_pin(xaga_core::pins::PinTarget::Topic { id }, pinned, app, state).await
 }
 
 #[tauri::command]

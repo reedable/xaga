@@ -24,6 +24,26 @@ use tauri_plugin_window_state::StateFlags;
 use xaga_core::embeddings::{Embedder, EmbeddingService, EmbeddingsDb, Job, ShutdownReason, Tier};
 use xaga_core::network_proxy;
 
+/// Library mode is decided independently for each runtime path. Metadata errors
+/// select read-only mode and are returned for the startup UI to report.
+fn library_writer_for_startup(
+    path: &Path,
+    version: xaga_core::library::LibraryVersion,
+) -> (
+    Option<xaga_core::library_writer::LibraryWriter>,
+    Option<xaga_core::library::LibraryFormatError>,
+) {
+    match xaga_core::library::open(path, version) {
+        Ok(lock) => (
+            lock.map(|lock| {
+                xaga_core::library_writer::LibraryWriter::start(path.to_path_buf(), lock)
+            }),
+            None,
+        ),
+        Err(error) => (None, Some(error)),
+    }
+}
+
 /// The app's settings.json path, under xaga-core's data root — the single
 /// shared derivation, deliberately not Tauri's identifier-derived
 /// `app_config_dir()` (which resolves to a different directory, `app.xaga`).
@@ -1005,6 +1025,34 @@ pub fn run() {
                 .clone()
                 .unwrap_or_else(|| "auto".to_string());
             *setup_settings_baseline.write().unwrap() = settings_mtime(&settings_path);
+            let default_library = xaga_core::fs::data_root().ok_or("cannot determine platform data directory")?;
+            let lib_path = settings.library.as_ref().map(PathBuf::from).unwrap_or(default_library);
+            // Acquire the library lock (or learn we are read-only) BEFORE any command can
+            // run, and — if we won it — start the LibraryWriter that takes ownership of the
+            // lock. The writer's presence is the single source of truth for the runtime
+            // mode, and the write-command gate derives from it. Writer/lock lifetime is
+            // process-lifetime — `set_library` restarts the process, and the restart path
+            // drops the writer (releasing the lock) before spawning the successor.
+            let (writer, metadata_error) = library_writer_for_startup(&lib_path,
+                xaga_core::library::LibraryVersion::new(app.package_info().version.major, app.package_info().version.minor));
+            if let Some(error) = metadata_error {
+                log::error!("startup: library metadata could not be read: {error}");
+                use tauri_plugin_dialog::DialogExt;
+                app.dialog().message(format!("{} This library will open in read-only mode.", error.user_message()))
+                    .title("Library opened read-only").kind(tauri_plugin_dialog::MessageDialogKind::Error).blocking_show();
+            }
+            // The EmbeddingService shares the writer's lock for its lifetime.
+            let service_lock = writer.as_ref().map(|w| w.lock());
+            if writer.is_none() {
+                log::warn!(
+                    "startup: opening library in read-only mode"
+                );
+            }
+            *setup_library.write().unwrap() = LibraryHandle {
+                path: lib_path.clone(),
+                writer,
+            };
+
 
             // Build explicitly so the native WebRTC policy precedes even the
             // first document. The config's `create: false` prevents auto-build.
@@ -1020,13 +1068,7 @@ pub fn run() {
             );
             let window = builder.build()?;
             ui_network::retain_for_window(&window, proxy);
-            let default_library =
-                xaga_core::fs::data_root().ok_or("cannot determine platform data directory")?;
             *setup_load_remote_image.write().unwrap() = settings.load_remote_image();
-            let lib_path = settings
-                .library
-                .map(PathBuf::from)
-                .unwrap_or(default_library);
             let refresh = settings.refresh_on_startup.unwrap_or(false);
             let timeout = settings
                 .loader_timeout_secs
@@ -1054,26 +1096,6 @@ pub fn run() {
             let font_size = settings.html_reader_font_size.unwrap_or(16.0);
             let line_height = settings.html_reader_line_height.unwrap_or(1.75);
             let show_sidebar = settings.show_sidebar.unwrap_or(true);
-            // Acquire the library lock (or learn we are read-only) BEFORE any command can
-            // run, and — if we won it — start the LibraryWriter that takes ownership of the
-            // lock. The writer's presence is the single source of truth for the runtime
-            // mode, and the write-command gate derives from it. Writer/lock lifetime is
-            // process-lifetime — `set_library` restarts the process, and the restart path
-            // drops the writer (releasing the lock) before spawning the successor.
-            std::fs::create_dir_all(&lib_path)?;
-            let writer = xaga_core::library::acquire_lock(&lib_path)
-                .map(|lock| xaga_core::library_writer::LibraryWriter::start(lib_path.clone(), lock));
-            // The EmbeddingService shares the writer's lock for its lifetime.
-            let service_lock = writer.as_ref().map(|w| w.lock());
-            if writer.is_none() {
-                log::warn!(
-                    "startup: another instance holds the library lock — this instance is read-only"
-                );
-            }
-            *setup_library.write().unwrap() = LibraryHandle {
-                path: lib_path.clone(),
-                writer,
-            };
             // Announce the mode to any already-loaded frontend; late-loading frontends
             // read it via the `is_library_read_only` command instead. Mode is fixed for
             // the process's lifetime (a library switch restarts the process).
@@ -1150,7 +1172,7 @@ pub fn run() {
                 // Arc of the writer's lock for its lifetime, preserving its invariant of
                 // never running unlocked.
                 let Some(library_lock) = service_lock else {
-                    log::warn!("startup: read-only instance — embedding service not started");
+                    log::warn!("startup: read-only library — embedding service not started");
                     // Non-holders READ ("the library lock was only ever supposed to
                     // protect concurrent write to the database" — owner): open a
                     // standalone read-only handle and query model so embedding
@@ -1458,9 +1480,17 @@ fn install_signal_handler(
 mod library_mode_tests {
     use super::*;
 
+    fn seed_version(dir: &std::path::Path, version: &str) {
+        let lock = xaga_core::library::acquire_lock(dir).unwrap();
+        xaga_core::library::LibraryManifest::begin_upgrade(dir, version.parse().unwrap(), &lock)
+            .unwrap()
+            .unwrap()
+            .complete()
+            .unwrap();
+    }
+
     fn handle_for(dir: &std::path::Path) -> Arc<RwLock<LibraryHandle>> {
-        let writer = xaga_core::library::acquire_lock(dir)
-            .map(|lock| xaga_core::library_writer::LibraryWriter::start(dir.to_path_buf(), lock));
+        let (writer, _) = library_writer_for_startup(dir, "0.10".parse().unwrap());
         Arc::new(RwLock::new(LibraryHandle {
             path: dir.to_path_buf(),
             writer,
@@ -1472,6 +1502,7 @@ mod library_mode_tests {
     #[test]
     fn mode_derives_from_writer_presence() {
         let dir = tempfile::tempdir().unwrap();
+        seed_version(dir.path(), "0.10");
 
         let writer = handle_for(dir.path());
         assert!(
@@ -1488,6 +1519,42 @@ mod library_mode_tests {
         );
     }
 
+    #[test]
+    fn mismatched_and_unversioned_libraries_have_no_writer() {
+        let unversioned = tempfile::tempdir().unwrap();
+        assert!(
+            handle_for(unversioned.path())
+                .read()
+                .unwrap()
+                .writer
+                .is_none()
+        );
+        assert_eq!(std::fs::read_dir(unversioned.path()).unwrap().count(), 0);
+        let older = tempfile::tempdir().unwrap();
+        seed_version(older.path(), "0.9");
+        let before = std::fs::read(older.path().join("library.yaml")).unwrap();
+        assert!(handle_for(older.path()).read().unwrap().writer.is_none());
+        assert_eq!(
+            std::fs::read(older.path().join("library.yaml")).unwrap(),
+            before
+        );
+        assert!(!xaga_core::library::index_path(older.path()).exists());
+    }
+
+    #[test]
+    fn malformed_metadata_opens_readonly_and_is_returned_for_reporting() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("library.yaml"), "format_version: [broken").unwrap();
+        let (writer, error) = library_writer_for_startup(dir.path(), "0.10".parse().unwrap());
+        assert!(writer.is_none());
+        assert!(error.is_some());
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("library.yaml")).unwrap(),
+            "format_version: [broken"
+        );
+        assert!(!dir.path().join("xaga.lock").exists());
+    }
+
     /// The restart-ordering invariant: draining and dropping the writer frees the flock
     /// for a successor process — what the restart path must guarantee before
     /// `restart_process` spawns one. Also covers the service's shared hold: while the
@@ -1495,6 +1562,7 @@ mod library_mode_tests {
     #[tokio::test]
     async fn drain_and_release_frees_the_lock_only_after_every_holder_drops() {
         let dir = tempfile::tempdir().unwrap();
+        seed_version(dir.path(), "0.10");
 
         let library = handle_for(dir.path());
         // The service's clone of the lock (EmbeddingService::start receives one).
