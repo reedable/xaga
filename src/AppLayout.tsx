@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import css from "./AppLayout.module.css";
 import { ItemView } from "./components/content/ItemView";
+import EditSiteDialog from "./components/dialogs/EditSiteDialog";
 import EditFeedDialog from "./components/dialogs/EditFeedDialog";
 import EditTopicDialog from "./components/dialogs/EditTopicDialog";
 import { ItemList } from "./components/list/ItemList";
@@ -27,7 +28,7 @@ import { usePlatform } from "./platform/Platform";
 import { useEmbeddingStartupState } from "./hooks/useEmbeddingStartupState";
 import { useSettings } from "./hooks/useSettings";
 import { useSidebarFilter } from "./hooks/useSidebarFilter";
-import { type Feed, type Topic } from "./types";
+import { type Feed, type Topic, type Site } from "./types";
 
 export function AppLayout() {
   const { selectTopic, selectFeed, search } = useRouter();
@@ -45,6 +46,7 @@ export function AppLayout() {
   const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
   const [isAddingTopic, setIsAddingTopic] = useState(false);
   const [addTopicTitle, setAddTopicTitle] = useState("");
+  const [editingSite, setEditingSite] = useState<Site | null>(null);
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
   const [isAddingFeed, setIsAddingFeed] = useState(false);
 
@@ -214,6 +216,7 @@ export function AppLayout() {
           isSelectableHeader={autoHideSidebar || !showSidebar}
           onEditFeed={setEditingFeed}
           onEditTopic={setEditingTopic}
+          onEditSite={setEditingSite}
         />
 
         <ItemView className={css.ItemView} />
@@ -239,6 +242,8 @@ export function AppLayout() {
         onSave={handleSaveTopic}
         onDelete={handleDeleteTopic}
       />
+
+      <EditSiteDialog site={editingSite} onClose={() => setEditingSite(null)} />
 
       <EditFeedDialog
         open={editingFeed !== null || isAddingFeed}

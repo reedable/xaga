@@ -5,7 +5,7 @@
 //! received on the queue — the object is carried end-to-end, never flattened into an intermediate
 //! and never re-read from a file.
 //!
-//! Reading state is stored only in `is_unread`; `tags` mirrors bookmark and pin state.
+//! Reading state, color markings, and derived pin state have dedicated columns.
 
 use sha2::Digest;
 
@@ -52,10 +52,7 @@ impl EmbeddingEntry {
     /// membership, filled by `sync_annotations` after the annotation rows are written.
     pub(crate) fn from_article(article: &Article, vector: Option<Vec<f32>>) -> EmbeddingEntry {
         let meta = &article.meta;
-        let mut tags = Vec::new();
-        if meta.is_bookmarked {
-            tags.push(crate::tags::BOOKMARK.to_string());
-        }
+        let tags = Vec::new();
         EmbeddingEntry {
             id: meta.id.clone(),
             kind: Kind::Entry,
@@ -66,13 +63,13 @@ impl EmbeddingEntry {
             updated_at: meta.updated_at.clone().unwrap_or_default(),
             checksum: checksum(&meta.title, article_embed_text(article)),
             reference: String::new(),
-            color: String::new(),
+            color: meta.color.clone().unwrap_or_default(),
             summary: meta.description.clone().unwrap_or_default(),
             tags,
             topics: vec![],
             items: vec![],
             is_unread: meta.is_unread,
-            is_bookmarked: meta.is_bookmarked,
+
             is_pinned: meta.is_pinned,
             vector,
         }
@@ -97,7 +94,6 @@ impl EmbeddingEntry {
             topics: vec![],
             items: vec![],
             is_unread: false,
-            is_bookmarked: false,
             is_pinned: feed.is_pinned,
             vector,
         }
@@ -123,7 +119,6 @@ impl EmbeddingEntry {
             topics: vec![],
             items: vec![],
             is_unread: false,
-            is_bookmarked: false,
             is_pinned: topic.is_pinned,
             vector,
         }

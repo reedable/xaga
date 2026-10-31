@@ -6,7 +6,7 @@ use thiserror::Error;
 use crate::{
     library_writer::WriteToken,
     md::parse_frontmatter,
-    md::{Markdown, md_to_entry, parse_document},
+    md::{Markdown, md_to_entry},
     types::{Article, Entry},
     util::{normalize_url, url_hash12},
 };
@@ -27,6 +27,8 @@ pub enum EntryError {
     TooLarge { max_bytes: u64 },
     #[error("a color change is delete/create — use replace_annotation")]
     ColorChangeRequiresReplace,
+    #[error("unknown article color")]
+    InvalidColor,
 }
 
 impl From<crate::fs::ReadMdError> for EntryError {
@@ -43,6 +45,7 @@ impl EntryError {
     /// See `crate::error::DomainError` for the funnel that carries it.
     pub fn code(&self) -> &'static str {
         match self {
+            EntryError::InvalidColor => "entry:invalid-color",
             EntryError::Io(_) => "entry:io",
             EntryError::InvalidUrl(_) => "entry:invalid-url",
             EntryError::InvalidId => "entry:invalid-id",
@@ -57,6 +60,7 @@ impl EntryError {
     /// text stays in `Display`, which the funnel logs as the error's detail.
     pub fn user_message(&self) -> &'static str {
         match self {
+            EntryError::InvalidColor => "Choose a color from the swatch palette.",
             EntryError::Io(_) => "Couldn't read or write this item.",
             EntryError::InvalidUrl(_) => "This item's address is invalid.",
             EntryError::InvalidId => "This item's identifier is invalid.",
@@ -116,12 +120,13 @@ pub(crate) async fn write_entry(
         summary,
         &[],
         true,
+        None,
         _token,
     )
     .await
 }
 
-/// Writes a new Entry to `entries/{hash12}.md` with the supplied initial tags.
+/// Writes a new Entry to `entries/{hash12}.md` with the supplied optional color.
 /// If an Entry already exists at that path it is left untouched. Returns the [`Article`] for the
 /// saved entry so the caller can queue an embed.
 #[allow(clippy::too_many_arguments)]
@@ -133,7 +138,7 @@ pub(crate) async fn write_read_entry(
     published_at: Option<&str>,
     updated_at: Option<&str>,
     summary: Option<&str>,
-    tags: &[String],
+    color: Option<&str>,
     _token: WriteToken,
 ) -> Result<Article, EntryError> {
     write_initial_entry(
@@ -144,8 +149,9 @@ pub(crate) async fn write_read_entry(
         published_at,
         updated_at,
         summary,
-        tags,
+        &[],
         false,
+        color,
         _token,
     )
     .await
@@ -162,8 +168,10 @@ async fn write_initial_entry(
     summary: Option<&str>,
     tags: &[String],
     is_unread: bool,
+    color: Option<&str>,
     _token: WriteToken,
 ) -> Result<Article, EntryError> {
+    validate_color(color)?;
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
     let path = crate::library::entry_path(library_dir, &hash12);
@@ -177,6 +185,7 @@ async fn write_initial_entry(
             ("created", serde_json::json!(created_at)),
             ("tags", serde_json::json!(tags)),
             ("is_unread", serde_json::json!(is_unread)),
+            ("color", serde_json::json!(color)),
         ];
         for (key, value) in [
             ("published", published_at),
@@ -228,6 +237,7 @@ pub async fn read_entry_tags(library_dir: &Path, id: &str) -> Result<Vec<String>
 
 /// Replaces the tags on an entry's frontmatter and writes the file back.
 /// The caller queues the corresponding LanceDB state update.
+#[cfg(test)]
 pub(crate) async fn set_entry_tags(
     library_dir: &Path,
     id: &str,
@@ -238,7 +248,7 @@ pub(crate) async fn set_entry_tags(
         .await
         .ok_or(EntryError::NotFound)?;
     let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, body) = parse_document(&raw)?;
+    let (fm, body) = crate::md::parse_document(&raw)?;
     // Derive the return value from the new tags, but patch only the tags field
     // on disk so all other frontmatter and the exact body survive.
     let article = Article {
@@ -251,12 +261,11 @@ pub(crate) async fn set_entry_tags(
             updated_at: fm.updated_at,
             description: fm.summary,
             is_unread: fm.is_unread.unwrap_or(false),
-            is_bookmarked: crate::tags::is_bookmarked(&tags),
             is_pinned: crate::pins::Pins::read(library_dir)
                 .await
                 .map_err(std::io::Error::other)?
                 .contains(&crate::pins::PinTarget::Entry { id: id.into() }),
-            color: None,
+            color: fm.color,
         },
         content: body,
         annotations: fm.annotations,
@@ -264,6 +273,28 @@ pub(crate) async fn set_entry_tags(
     };
     super::documents::upsert(&path, &[("tags", serde_json::json!(tags))], None, _token).await?;
     Ok(article.meta)
+}
+
+fn validate_color(color: Option<&str>) -> Result<(), EntryError> {
+    if color.is_some_and(|value| !crate::domain::COLOR_NAMES.contains(&value)) {
+        return Err(EntryError::InvalidColor);
+    }
+    Ok(())
+}
+
+/// Assign or remove an article marking inside its serialized entry lane.
+pub(crate) async fn set_entry_color(
+    library_dir: &Path,
+    id: &str,
+    color: Option<String>,
+    token: WriteToken,
+) -> Result<Entry, EntryError> {
+    validate_color(color.as_deref())?;
+    let path = find_entry_path(library_dir, id)
+        .await
+        .ok_or(EntryError::NotFound)?;
+    super::documents::upsert(&path, &[("color", serde_json::json!(color))], None, token).await?;
+    read_entry(library_dir, id).await
 }
 
 /// Reading state is independent of tags. Call inside the entry lane.
@@ -301,18 +332,66 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn colors_roundtrip_remove_and_preserve_unrelated_document_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::library::entry_path(dir.path(), "marked");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let original = "---\nsource: https://example.org/a\nis_unread: true\ntags: [research]\ncustom: {nested: [one, two]}\n---\n\nBody\n\n";
+        std::fs::write(&path, original).unwrap();
+        for color in [
+            Some("red"),
+            Some("orange"),
+            Some("yellow"),
+            Some("green"),
+            Some("blue"),
+            Some("violet"),
+            None,
+        ] {
+            let entry = set_entry_color(
+                dir.path(),
+                "marked",
+                color.map(str::to_owned),
+                WriteToken::for_test(),
+            )
+            .await
+            .unwrap();
+            assert_eq!(entry.color.as_deref(), color);
+            assert!(entry.is_unread);
+            let saved = std::fs::read_to_string(&path).unwrap();
+            let mut expected = crate::md::test_frontmatter_values(original);
+            if let Some(color) = color {
+                expected.insert("color".into(), noyalib::Value::String(color.into()));
+            }
+            assert_eq!(crate::md::test_frontmatter_values(&saved), expected);
+            assert!(saved.ends_with("---\n\nBody\n\n"));
+        }
+        let before = std::fs::read_to_string(&path).unwrap();
+        assert!(matches!(
+            set_entry_color(
+                dir.path(),
+                "marked",
+                Some("invalid".into()),
+                WriteToken::for_test()
+            )
+            .await,
+            Err(EntryError::InvalidColor)
+        ));
+        assert_eq!(std::fs::read_to_string(path).unwrap(), before);
+    }
+
+    #[tokio::test]
     async fn reading_state_writes_preserve_metadata_and_exact_body() {
         let dir = tempfile::tempdir().unwrap();
         let path = crate::library::entry_path(dir.path(), "saved");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let original = "---\nsource: https://example.org/a\ntags: [research, bookmark]\ncreated: yesterday\ncustom: {nested: [one, two]}\nannotations: []\n---\n\nBody\n\n";
+        let original = "---\nsource: https://example.org/a\ntags: [research]\ncolor: blue\ncreated: yesterday\ncustom: {nested: [one, two]}\nannotations: []\n---\n\nBody\n\n";
         std::fs::write(&path, original).unwrap();
         for unread in [true, false, true, false] {
             let entry = set_entry_unread(dir.path(), "saved", unread, WriteToken::for_test())
                 .await
                 .unwrap();
             assert_eq!(entry.is_unread, unread);
-            assert!(entry.is_bookmarked);
+            assert!(entry.color.is_some());
             let saved = std::fs::read_to_string(&path).unwrap();
             let mut expected = crate::md::test_frontmatter_values(original);
             if unread {
@@ -358,7 +437,7 @@ mod tests {
             None,
             None,
             None,
-            &["bookmark".into()],
+            Some("blue"),
             WriteToken::for_test(),
         )
         .await
@@ -368,7 +447,7 @@ mod tests {
             std::fs::read_to_string(crate::library::entry_path(dir.path(), &imported.meta.id))
                 .unwrap();
         assert!(!crate::md::test_frontmatter_values(&raw).contains_key("is_unread"));
-        assert!(imported.meta.is_bookmarked);
+        assert!(imported.meta.color.is_some());
     }
 
     #[tokio::test]
@@ -378,7 +457,7 @@ mod tests {
         let id = url_hash12(url);
         let path = crate::library::entry_path(dir.path(), &id);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let original = "---\nsource: https://example.com/a\ntitle: Saved\nsummary: Saved summary\ntags: [research, bookmark]\ncustom: retained\n---\n\nSaved body\n";
+        let original = "---\nsource: https://example.com/a\ntitle: Saved\nsummary: Saved summary\ntags: [research]\ncolor: blue\ncustom: retained\n---\n\nSaved body\n";
         std::fs::write(&path, original).unwrap();
         let result = write_entry(
             dir.path(),
@@ -402,14 +481,14 @@ mod tests {
             None,
             None,
             None,
-            &[],
+            None,
             WriteToken::for_test(),
         )
         .await
         .unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
         assert_eq!(result.meta.description.as_deref(), Some("Saved summary"));
-        assert!(result.meta.is_bookmarked);
+        assert!(result.meta.color.is_some());
     }
 
     #[tokio::test]
@@ -457,6 +536,6 @@ mod tests {
         .unwrap();
         let saved = read_entry(dir.path(), &article.meta.id).await.unwrap();
         assert_eq!(saved.title, hostile);
-        assert!(!saved.is_bookmarked);
+        assert!(!saved.color.is_some());
     }
 }

@@ -78,6 +78,10 @@ fn render(entries: &[Entry]) -> String {
         let add_date = rfc3339_to_unix(&e.created_at).unwrap_or(0);
         let mut attrs = format!("HREF=\"{}\" ADD_DATE=\"{add_date}\"", escape_html(&e.url));
 
+        if let Some(color) = &e.color {
+            attrs.push_str(&format!(" COLOR=\"{}\"", escape_html(color)));
+        }
+
         if let Some(ts) = e.published_at.as_deref().and_then(rfc3339_to_unix) {
             attrs.push_str(&format!(" PUBLISHED_AT=\"{ts}\""));
         }
@@ -168,9 +172,12 @@ fn parse(html: &str) -> Vec<Entry> {
             updated_at,
             description: summary,
             is_unread: false,
-            is_bookmarked: false,
             is_pinned: false,
-            color: None,
+            color: a
+                .value()
+                .attr("color")
+                .filter(|color| crate::domain::COLOR_NAMES.contains(color))
+                .map(str::to_owned),
         });
     }
     entries
@@ -182,8 +189,8 @@ pub struct BookmarkImportResult {
     /// [`Article`]s for Entries newly created by the import, so the caller can enqueue their
     /// indexing without re-reading the files.
     pub added: Vec<Article>,
-    /// IDs of Entries that already existed and received the "bookmark" tag (a state change).
-    pub updated: Vec<String>,
+    /// Entries that already existed, carrying their committed color for cache updates.
+    pub updated: Vec<Entry>,
     /// URLs that could not be processed.
     pub failed: Vec<String>,
 }
@@ -191,9 +198,8 @@ pub struct BookmarkImportResult {
 /// Parses `html` as a Netscape bookmark file and creates or updates Entries.
 ///
 /// For each URL:
-/// - If an Entry already exists: adds the
-///   "bookmark" tag via `set_entry_tags`.
-/// - Otherwise: creates a new Entry in `read/` with `tags: ["bookmark"]`.
+/// - If an Entry already exists: apply the supplied palette color, otherwise use Blue.
+/// - Otherwise: atomically create a read Entry with its supplied color or Blue.
 ///
 /// Duplicate URLs within the file are skipped after the first occurrence.
 /// The caller is responsible for queuing embed messages for the returned ids.
@@ -204,13 +210,13 @@ pub async fn import_bookmarks(
     let parsed = parse(html);
     let mut seen = std::collections::HashSet::new();
     let mut added: Vec<Article> = Vec::new();
-    let mut updated: Vec<String> = Vec::new();
+    let mut updated: Vec<Entry> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
 
     // Bookmarks are user-authored intent (not re-derivable), so imports write on the
     // Interactive tier — the shutdown drain must not drop them. The existing-vs-new
     // decision lives INSIDE the entry lane (one `bookmark_entry` op), so a concurrent
-    // create of the same URL can never cause the bookmark tag to be silently dropped.
+    // create of the same URL can never cause the bookmark color to be silently dropped.
     for entry in parsed {
         if !seen.insert(entry.url.clone()) {
             continue;
@@ -225,6 +231,7 @@ pub async fn import_bookmarks(
                 entry.published_at,
                 entry.updated_at,
                 entry.description,
+                entry.color,
             )
             .await
         {
@@ -253,8 +260,43 @@ pub async fn export_bookmarks(library_dir: &Path, dest_path: &Path) -> Result<()
     })
     .await;
 
-    entries.retain(|e| e.is_bookmarked);
+    entries.retain(|e| e.color.is_some());
 
     tokio::fs::write(dest_path, render(&entries).as_bytes()).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn imports_fallback_and_export_all_marked_articles() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = crate::library::acquire_lock(dir.path()).unwrap();
+        let writer = LibraryWriter::start(dir.path().to_owned(), lock);
+        let html = "<DL><DT><A HREF='https://example.org/blue'>Blue fallback</A><DT><A HREF='https://example.org/green' COLOR='green'>Green</A></DL>";
+        let result = import_bookmarks(&writer, html).await.unwrap();
+        assert_eq!(result.added.len(), 2);
+        let colors: Vec<_> = result
+            .added
+            .iter()
+            .map(|article| article.meta.color.as_deref().unwrap())
+            .collect();
+        assert_eq!(colors, ["blue", "green"]);
+        let exported = dir.path().join("bookmarks.html");
+        export_bookmarks(dir.path(), &exported).await.unwrap();
+        let html = tokio::fs::read_to_string(exported).await.unwrap();
+        assert_eq!(parse(&html).len(), 2);
+        assert!(html.contains("COLOR=\"green\""));
+        // A colorless import uses the specified Blue fallback for existing Entries too.
+        let result = import_bookmarks(
+            &writer,
+            "<DL><DT><A HREF='https://example.org/green'>Again</A></DL>",
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.updated[0].color.as_deref(), Some("blue"));
+        writer.shutdown().await;
+    }
 }

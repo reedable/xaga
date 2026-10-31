@@ -18,3 +18,27 @@
   height: 100%;
   overflow: hidden;
 }
+
+.ReaderAndInspector {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.InspectorPanel {
+  width: 280px;
+  flex-shrink: 0;
+  min-height: 0;
+}
+
+.InspectorDrawer {
+  width: min(320px, 100vw);
+}
+
+.InspectorHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+}

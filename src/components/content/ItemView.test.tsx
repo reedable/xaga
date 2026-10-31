@@ -22,7 +22,12 @@ vi.mock("../../hooks/useContentLoader", () => ({
     blockedUrl: null,
   }),
 }));
+vi.mock("./ArticleInspector", () => ({ ArticleInspector: () => null }));
+vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} });
 vi.mock("@mui/material", () => ({
+  Drawer: ({ open, children }: { open: boolean; children: React.ReactNode }) => open ? children : null,
+  IconButton: ({ children }: { children: React.ReactNode }) => <button>{children}</button>,
+  Tooltip: ({ children }: { children: React.ReactNode }) => children,
   Typography: ({ children }: { children: React.ReactNode }) => (
     <span>{children}</span>
   ),

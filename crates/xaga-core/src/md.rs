@@ -75,6 +75,9 @@ pub(crate) fn patch_document(
     if fields.get("is_unread") == Some(&noyalib::Value::Bool(false)) {
         fields.remove("is_unread");
     }
+    if fields.get("color") == Some(&noyalib::Value::Null) {
+        fields.remove("color");
+    }
     // Unsupported image-map storage is omitted on every save (crash_consistency.md).
     fields.remove("images");
     // Block scalars in noyalib 0.0.15 do not preserve embedded carriage returns.
@@ -158,7 +161,6 @@ fn with_reference(mut annotations: Vec<Annotation>, article_id: &str) -> Vec<Ann
 /// Converts .md storage format to Entry domain object
 pub(crate) fn md_to_entry(md: Markdown) -> Entry {
     let is_unread = md.fm.is_unread.unwrap_or(false);
-    let is_bookmarked = crate::tags::is_bookmarked(&md.fm.tags);
 
     Entry {
         id: md.id,
@@ -169,9 +171,8 @@ pub(crate) fn md_to_entry(md: Markdown) -> Entry {
         updated_at: md.fm.updated_at,
         description: md.fm.summary,
         is_unread,
-        is_bookmarked,
         is_pinned: false,
-        color: None,
+        color: md.fm.color,
     }
 }
 
@@ -189,6 +190,7 @@ pub struct Frontmatter {
     pub threshold: Option<f32>,
     pub tags: Vec<String>,
     pub is_unread: Option<bool>,
+    pub color: Option<String>,
     pub favicon: Option<String>,
     pub items: Vec<CollectionItem>,
 }
@@ -266,6 +268,8 @@ struct FrontmatterRaw {
     #[serde(default)]
     is_unread: Option<bool>,
     #[serde(default)]
+    color: Option<String>,
+    #[serde(default)]
     favicon: Option<String>,
     #[serde(default)]
     items: Vec<CollectionItem>,
@@ -281,6 +285,16 @@ pub(crate) fn split_document(raw: &str) -> Result<(Frontmatter, String), MdError
     let fm: FrontmatterRaw = noyalib::from_str_with_config(yaml, &FM_PARSER)
         .map_err(|e| MdError::Frontmatter(e.to_string()))?;
 
+    if fm
+        .color
+        .as_deref()
+        .is_some_and(|color| !crate::domain::COLOR_NAMES.contains(&color))
+    {
+        return Err(MdError::Frontmatter(
+            "color must be a palette identifier".into(),
+        ));
+    }
+
     Ok((
         Frontmatter {
             source: fm.source,
@@ -293,6 +307,7 @@ pub(crate) fn split_document(raw: &str) -> Result<(Frontmatter, String), MdError
             threshold: fm.threshold,
             tags: fm.tags,
             is_unread: fm.is_unread,
+            color: fm.color,
             favicon: fm.favicon,
             items: fm.items,
         },

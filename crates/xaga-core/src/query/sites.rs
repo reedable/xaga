@@ -58,9 +58,9 @@ mod tests {
     use crate::embeddings::EmbeddingEntry;
     use crate::types::Kind;
 
-    fn row(id: &str, url: &str, is_unread: bool, is_bookmarked: bool) -> EmbeddingEntry {
+    fn row(id: &str, url: &str, is_unread: bool, marked: bool) -> EmbeddingEntry {
         let mut tags = vec![];
-        if is_bookmarked {
+        if marked {
             tags.push("bookmark".to_string());
         }
         EmbeddingEntry {
@@ -72,11 +72,10 @@ mod tests {
             published_at: String::new(),
             updated_at: String::new(),
             reference: String::new(),
-            color: String::new(),
+            color: if marked { "blue".into() } else { String::new() },
             summary: String::new(),
             tags,
             is_unread,
-            is_bookmarked,
             is_pinned: false,
             topics: vec![],
             items: vec![],

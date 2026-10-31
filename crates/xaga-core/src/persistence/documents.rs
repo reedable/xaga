@@ -39,7 +39,7 @@ pub(crate) async fn upsert(
 #[cfg(test)]
 mod tests {
     use super::*;
-    const ORIGINAL: &str = "---\nsource: https://example.com/a\ntitle: Original\nsummary: Saved summary\ntags: [research, bookmark]\nannotations:\n  - id: note\n    text: [selection]\n    occurrence: [0]\n    color: yellow\n    note: Irreplaceable\n    created_at: '2026-01-01'\ncustom: {nested: [one, two]}\n---\n\nOriginal body\n\n";
+    const ORIGINAL: &str = "---\nsource: https://example.com/a\ntitle: Original\nsummary: Saved summary\ntags: [research]\ncolor: blue\nannotations:\n  - id: note\n    text: [selection]\n    occurrence: [0]\n    color: yellow\n    note: Irreplaceable\n    created_at: '2026-01-01'\ncustom: {nested: [one, two]}\n---\n\nOriginal body\n\n";
 
     #[tokio::test]
     async fn same_field_patch_creates_and_updates_a_document() {
@@ -163,7 +163,7 @@ mod tests {
     async fn malformed_existing_data_is_not_overwritten() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("entry.md");
-        let malformed = ORIGINAL.replace("tags: [research, bookmark]", "tags: [broken");
+        let malformed = ORIGINAL.replace("tags: [research]", "tags: [broken");
         std::fs::write(&path, &malformed).unwrap();
         assert!(
             upsert(&path, &[], None, WriteToken::for_test())

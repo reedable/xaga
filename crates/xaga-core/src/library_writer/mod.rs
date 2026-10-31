@@ -116,37 +116,11 @@ impl WriterError {
 }
 
 /// The result of a [`LibraryWriter::bookmark_entry`]: whether the bookmark created a new
-/// entry (carrying its Article, for indexing) or tagged an existing one (its id). The
-/// Article is boxed so the two variants are similar in size.
+/// entry (carrying its Article, for indexing) or marked an existing one (its Entry). The
+/// loaded Article payload is boxed rather than inlined in every outcome.
 pub enum BookmarkOutcome {
     Added(Box<Article>),
-    Updated(String),
-}
-
-/// A typed tag mutation, applied to the entry's current tags INSIDE its lane as one
-/// serialized read-modify-write. The variant carries the user's
-/// intent end-to-end (docs/principles/carry_intent_end_to_end.md).
-#[derive(Debug, Clone, Copy)]
-pub enum TagPatch {
-    AddBookmark,
-    RemoveBookmark,
-}
-
-impl TagPatch {
-    fn apply(self, mut tags: Vec<String>) -> Vec<String> {
-        match self {
-            TagPatch::AddBookmark => {
-                if !crate::tags::is_bookmarked(&tags) {
-                    tags.push(crate::tags::BOOKMARK.to_string());
-                }
-                tags
-            }
-            TagPatch::RemoveBookmark => {
-                tags.retain(|t| t != crate::tags::BOOKMARK);
-                tags
-            }
-        }
-    }
+    Updated(Entry),
 }
 
 /// One file-scoped write operation (the unit of work is the file; multi-file
@@ -210,16 +184,16 @@ enum Op {
         is_unread: bool,
         resp: oneshot::Sender<Result<Entry, WriterError>>,
     },
-    PatchEntryTags {
+    SetEntryColor {
         id: String,
-        patch: TagPatch,
+        color: Option<String>,
         resp: oneshot::Sender<Result<Entry, WriterError>>,
     },
     /// Bookmark an entry — the bookmark-import path — deciding existing-vs-new INSIDE the
     /// entry lane so a concurrent create (a feed carrying the same URL) cannot slip between
-    /// the check and the write and cause the bookmark tag to be silently dropped. If the
-    /// entry exists, the bookmark tag is ensured; otherwise a read (already-read) entry is
-    /// created carrying the tag.
+    /// the check and the write and cause the bookmark color to be silently dropped. If the
+    /// entry exists, the bookmark color is ensured; otherwise a read (already-read) entry is
+    /// created carrying the color.
     BookmarkEntry {
         url: String,
         title: String,
@@ -227,6 +201,7 @@ enum Op {
         published_at: Option<String>,
         updated_at: Option<String>,
         summary: Option<String>,
+        color: Option<String>,
         resp: oneshot::Sender<Result<BookmarkOutcome, WriterError>>,
     },
     SaveTopic {
@@ -326,7 +301,7 @@ impl Op {
             | Op::ReplaceAnnotation { article_id: id, .. }
             | Op::RemoveAnnotation { article_id: id, .. }
             | Op::SetEntryUnread { id, .. }
-            | Op::PatchEntryTags { id, .. } => format!("entry/{id}"),
+            | Op::SetEntryColor { id, .. } => format!("entry/{id}"),
             Op::SavePdf { url, .. }
             | Op::BookmarkEntry { url, .. }
             | Op::WriteFeedEntry { url, .. } => {
@@ -361,7 +336,7 @@ impl Op {
             Op::ReplaceAnnotation { .. } => "replace_annotation",
             Op::RemoveAnnotation { .. } => "remove_annotation",
             Op::SetEntryUnread { .. } => "set_entry_unread",
-            Op::PatchEntryTags { .. } => "patch_entry_tags",
+            Op::SetEntryColor { .. } => "set_entry_color",
             Op::BookmarkEntry { .. } => "bookmark_entry",
             Op::SaveTopic { .. } => "save_topic",
             Op::CreateTopicWithMember { .. } => "create_topic_with_member",
@@ -390,7 +365,7 @@ impl Op {
             Op::ReplaceAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RemoveAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryUnread { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
-            Op::PatchEntryTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::SetEntryColor { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::BookmarkEntry { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SaveTopic { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::CreateTopicWithMember { resp, .. } => {
@@ -540,14 +515,10 @@ impl Op {
                     .map_err(WriterError::from);
                 let _ = resp.send(result);
             }
-            Op::PatchEntryTags { id, patch, resp } => {
-                // The whole tag read-modify-write runs inside the lane and cannot interleave.
-                let r = async {
-                    let tags = entries::read_entry_tags(library_dir, &id).await?;
-                    entries::set_entry_tags(library_dir, &id, patch.apply(tags), token).await
-                }
-                .await
-                .map_err(WriterError::from);
+            Op::SetEntryColor { id, color, resp } => {
+                let r = entries::set_entry_color(library_dir, &id, color, token)
+                    .await
+                    .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
             Op::BookmarkEntry {
@@ -557,23 +528,19 @@ impl Op {
                 published_at,
                 updated_at,
                 summary,
+                color,
                 resp,
             } => {
                 // Existing-vs-new decided INSIDE the entry lane: a concurrent create of the
                 // same URL (a feed) cannot slip between the check and the write, so the
-                // bookmark tag is never silently dropped.
+                // bookmark color is never silently dropped.
                 let r = async {
                     let id = crate::util::url_hash12(&crate::util::normalize_url(&url)?);
                     let outcome = if entries::find_entry_path(library_dir, &id).await.is_some() {
-                        let tags = entries::read_entry_tags(library_dir, &id).await?;
-                        entries::set_entry_tags(
-                            library_dir,
-                            &id,
-                            TagPatch::AddBookmark.apply(tags),
-                            token,
-                        )
-                        .await?;
-                        BookmarkOutcome::Updated(id)
+                        let color = color.or_else(|| Some("blue".into()));
+                        let entry =
+                            entries::set_entry_color(library_dir, &id, color, token).await?;
+                        BookmarkOutcome::Updated(entry)
                     } else {
                         let article = entries::write_read_entry(
                             library_dir,
@@ -583,7 +550,7 @@ impl Op {
                             published_at.as_deref(),
                             updated_at.as_deref(),
                             summary.as_deref(),
-                            &[crate::tags::BOOKMARK.to_string()],
+                            Some(color.as_deref().unwrap_or("blue")),
                             token,
                         )
                         .await?;
@@ -1049,20 +1016,20 @@ impl LibraryWriter {
         .await
     }
 
-    pub async fn patch_entry_tags(
+    pub async fn set_entry_color(
         &self,
         tier: Tier,
         id: String,
-        patch: TagPatch,
+        color: Option<String>,
     ) -> Result<Entry, WriterError> {
         let (resp, rx) = oneshot::channel();
-        let op = Op::PatchEntryTags { id, patch, resp };
+        let op = Op::SetEntryColor { id, color, resp };
         self.submit(tier, op, rx).await
     }
 
     /// Bookmark an entry (bookmark-import path): ensure it exists as a read entry and
-    /// carries the bookmark tag, deciding existing-vs-new inside the entry lane so a
-    /// concurrent create cannot cause the tag to be dropped.
+    /// carries the bookmark color, deciding existing-vs-new inside the entry lane so a
+    /// concurrent create cannot cause the marking to be dropped.
     #[allow(clippy::too_many_arguments)]
     pub async fn bookmark_entry(
         &self,
@@ -1073,6 +1040,7 @@ impl LibraryWriter {
         published_at: Option<String>,
         updated_at: Option<String>,
         summary: Option<String>,
+        color: Option<String>,
     ) -> Result<BookmarkOutcome, WriterError> {
         let (resp, rx) = oneshot::channel();
         let op = Op::BookmarkEntry {
@@ -1082,6 +1050,7 @@ impl LibraryWriter {
             published_at,
             updated_at,
             summary,
+            color,
             resp,
         };
         self.submit(tier, op, rx).await
@@ -1552,14 +1521,14 @@ mod tests {
         seed_article(&writer, "saved").await;
         let (read, bookmark, annotation) = tokio::join!(
             writer.set_entry_unread(Tier::Interactive, "saved".into(), false),
-            writer.patch_entry_tags(Tier::Interactive, "saved".into(), TagPatch::AddBookmark),
+            writer.set_entry_color(Tier::Interactive, "saved".into(), Some("blue".into())),
             writer.add_annotation(Tier::Interactive, "saved".into(), annotation("note")),
         );
         read.unwrap();
         bookmark.unwrap();
         annotation.unwrap();
         let saved = articles::read_article(dir.path(), "saved").await.unwrap();
-        assert!(!saved.meta.is_unread && saved.meta.is_bookmarked);
+        assert!(!saved.meta.is_unread && saved.meta.color.is_some());
         assert_eq!(saved.annotations[0].id, "note");
         let raw = std::fs::read_to_string(crate::library::entry_path(dir.path(), "saved")).unwrap();
         assert!(!crate::md::test_frontmatter_values(&raw).contains_key("is_unread"));
@@ -1641,7 +1610,7 @@ mod tests {
         w.add_annotation(Tier::Interactive, id.clone(), note)
             .await
             .unwrap();
-        w.patch_entry_tags(Tier::Interactive, id.clone(), TagPatch::AddBookmark)
+        w.set_entry_color(Tier::Interactive, id.clone(), Some("blue".into()))
             .await
             .unwrap();
         // Exactly the regressed download input: new body, omitted feed metadata.
@@ -1662,7 +1631,7 @@ mod tests {
         let saved = articles::read_article(dir.path(), &id).await.unwrap();
         assert_eq!(saved.meta.description.as_deref(), Some("Feed summary"));
         assert_eq!(saved.content, "Downloaded body");
-        assert!(saved.meta.is_bookmarked);
+        assert!(saved.meta.color.is_some());
         assert!(saved.meta.is_unread);
         assert_eq!(saved.annotations.len(), 1);
         assert_eq!(saved.annotations[0].content, "Irreplaceable note");
@@ -1850,12 +1819,12 @@ mod tests {
     }
 
     /// Regression: bookmarking an entry that is created concurrently (a feed carrying the
-    /// same URL) must still end with the bookmark tag present — the existing-vs-new
-    /// decision is inside the entry lane, so the tag is never dropped. Races
+    /// same URL) must still end with the bookmark color present — the existing-vs-new
+    /// decision is inside the entry lane, so the marking is never dropped. Races
     /// `bookmark_entry` against `write_feed_entry` for the same URL; whichever lands first,
     /// the entry ends up bookmarked.
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-    async fn bookmark_racing_feed_create_keeps_the_bookmark_tag() {
+    async fn bookmark_racing_feed_create_keeps_the_color() {
         let dir = tempfile::tempdir().unwrap();
         let w = start_writer(dir.path());
         let url = "https://example.com/in-a-feed-and-bookmarked";
@@ -1874,18 +1843,23 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .await
         });
         feed.await.unwrap().unwrap();
         bookmark.await.unwrap().unwrap();
 
-        // Regardless of ordering, the entry exists AND carries the bookmark tag.
+        // Regardless of ordering, the entry exists AND carries the bookmark color.
         let id = crate::util::url_hash12(&crate::util::normalize_url(url).unwrap());
         let tags = entries::read_entry_tags(dir.path(), &id).await.unwrap();
         assert!(
-            tags.iter().any(|t| t == crate::tags::BOOKMARK),
-            "bookmark tag must survive a concurrent feed create; tags = {tags:?}"
+            entries::read_entry(dir.path(), &id)
+                .await
+                .unwrap()
+                .color
+                .is_some(),
+            "bookmark color must survive a concurrent feed create; tags = {tags:?}"
         );
     }
 

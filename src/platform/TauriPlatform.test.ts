@@ -232,7 +232,6 @@ it("preserves article pins across pin commands, discovery and side-effect-free s
     description: null,
     url: "https://example.org",
     is_unread: true,
-    is_bookmarked: false,
     is_pinned: true,
   };
   const platform = new TauriPlatform();
@@ -259,4 +258,77 @@ it("preserves article pins across pin commands, discovery and side-effect-free s
   expect(invokeMock).toHaveBeenLastCalledWith("read_article_scope", {
     id: "article",
   });
+});
+
+it("carries bookmark colors through commands, list payloads, and events", async () => {
+  const payload = {
+    id: "marked",
+    title: "Marked",
+    created_at: "2026-10-31",
+    updated_at: null,
+    published_at: null,
+    description: null,
+    url: "https://example.org",
+    is_unread: false,
+    color: "violet",
+  };
+  const platform = new TauriPlatform();
+  invokeMock.mockResolvedValueOnce(payload);
+  const updated = await platform.addBookmark(
+    new AbortController().signal,
+    "marked",
+    "violet"
+  );
+  expect(invokeMock).toHaveBeenLastCalledWith("add_bookmark", {
+    id: "marked",
+    color: "violet",
+  });
+  expect(updated.color).toBe("violet");
+  expect(updated).not.toHaveProperty("isBookmarked");
+  invokeMock.mockResolvedValueOnce([payload]);
+  const items = await platform.listAllItems(
+    new AbortController().signal,
+    "saved"
+  );
+  expect(items[0]).toMatchObject({ id: "marked", color: "violet" });
+  const listener = vi.fn();
+  await platform.onBookmarkChanged(listener);
+  const { listen } = await import("@tauri-apps/api/event");
+  const handler = vi
+    .mocked(listen)
+    .mock.calls.findLast(([name]) => name === "bookmark:changed")![1];
+  for (const color of ["blue", "green", null]) {
+    handler({
+      event: "bookmark:changed",
+      id: 0,
+      payload: { ...payload, color },
+    });
+    expect(listener).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: "marked", color: color ?? undefined })
+    );
+  }
+});
+
+it("carries Site pin hostnames through discovery and generic mutation commands", async () => {
+  const platform = new TauriPlatform();
+  const target = { type: "site" as const, hostname: "www.example.com" };
+  invokeMock.mockResolvedValueOnce({
+    pins: [target, { type: "entry", id: "article" }],
+  });
+  expect(await platform.listPins(new AbortController().signal)).toEqual([
+    target,
+    { type: "entry", id: "article" },
+  ]);
+  invokeMock.mockResolvedValueOnce(undefined);
+  await platform.setPin(target, true);
+  expect(invokeMock).toHaveBeenLastCalledWith("set_pin", {
+    target,
+    pinned: true,
+  });
+  invokeMock.mockResolvedValueOnce({
+    pins: [{ type: "site", id: "not-a-hostname-field" }],
+  });
+  await expect(
+    platform.listPins(new AbortController().signal)
+  ).rejects.toThrow();
 });

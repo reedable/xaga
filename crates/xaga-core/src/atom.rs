@@ -297,7 +297,6 @@ pub(crate) fn atom_to_entry(e: &AtomEntry) -> Entry {
         updated_at: Some(updated_at),
         description: summary,
         is_unread: false,
-        is_bookmarked: false,
         is_pinned: false,
         color: None,
     }

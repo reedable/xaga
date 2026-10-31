@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import useRouter from "../../hooks/useRouter";
-import type { Article, ListItem, NavigationState } from "../../types";
+import type { Article, ListItem, NavigationState, Site } from "../../types";
 import { ItemList } from "./ItemList";
 
 const mocks = vi.hoisted(() => {
@@ -35,7 +35,12 @@ const mocks = vi.hoisted(() => {
       markEntryRead: vi.fn(),
     },
     topics: { topics: [], listTopicItems: vi.fn() },
-    sites: { sites: [], listSiteEntries: vi.fn() },
+    sites: {
+      sites: [] as Site[],
+      pinnedSites: [] as Site[],
+      listSiteEntries: vi.fn(),
+    },
+    editSite: vi.fn(),
     feeds: { feeds: [], loading: false, refreshAllFeeds: vi.fn() },
     pins: [] as Article[],
   };
@@ -107,6 +112,7 @@ async function render(
           isSelectableHeader={selectable}
           onEditFeed={edit}
           onEditTopic={edit}
+          onEditSite={mocks.editSite}
         />
       </MemoryRouter>
     );
@@ -120,7 +126,7 @@ beforeEach(() => {
     title: "Pinned article",
     url: "https://example.org/a",
     createdAt: "2026-10-29",
-    isBookmarked: false,
+
     isUnread: true,
     isPinned: true,
     content: "First passage. Last passage.",
@@ -150,6 +156,8 @@ beforeEach(() => {
     ],
   };
   mocks.pins = [article];
+  mocks.sites.sites = [];
+  mocks.sites.pinnedSites = [];
   mocks.read.mockImplementation(async () => structuredClone(article));
   container = document.createElement("div");
   document.body.append(container);
@@ -305,3 +313,56 @@ it("filters article-scope rows without changing the open list target", async () 
 });
 
 vi.mock("../../hooks/useMissingPins", () => ({ useMissingPins: () => [] }));
+
+it("preserves a Site's open Saved list when article color is removed", async () => {
+  mocks.sites.sites = [
+    {
+      id: "example.org",
+      hostname: "example.org",
+      title: "example.org",
+      entryCount: 1,
+      unreadCount: 0,
+    },
+  ] as never;
+  const marked = { ...article, color: "blue" };
+  mocks.sites.listSiteEntries.mockResolvedValue([marked]);
+  await render({ siteHostname: "example.org", filter: "saved" });
+  expect(mocks.sites.listSiteEntries).toHaveBeenCalledOnce();
+  const before = rows().map((row) => row.textContent);
+  await act(async () =>
+    mocks.callbacks.onBookmarkChanged({ ...marked, color: undefined } as never)
+  );
+  expect(rows().map((row) => row.textContent)).toEqual(before);
+  expect(mocks.sites.listSiteEntries).toHaveBeenCalledOnce();
+  expect(route.state.siteHostname).toBe("example.org");
+});
+
+it("keeps an empty Site selected when unpinned and opens its Settings", async () => {
+  const site = {
+    id: "empty.example",
+    hostname: "empty.example",
+    title: "empty.example",
+    entryCount: 0,
+    unreadCount: 0,
+  };
+  mocks.sites.pinnedSites = [site];
+  mocks.sites.listSiteEntries.mockResolvedValue([]);
+  const state = { siteHostname: site.hostname };
+  await render(state);
+  expect(mocks.sites.listSiteEntries).toHaveBeenCalledWith(
+    site.hostname,
+    undefined
+  );
+  const settings =
+    container.querySelector<HTMLButtonElement>('button[aria-label="Edit"]') ??
+    container.querySelector<HTMLButtonElement>('button[title="Edit"]');
+  // MUI Tooltip supplies the accessible name on its child button.
+  expect(settings).not.toBeNull();
+  await act(async () => settings!.click());
+  expect(mocks.editSite).toHaveBeenCalledWith(site);
+  mocks.sites.pinnedSites = [];
+  await render(state);
+  expect(route.state.siteHostname).toBe(site.hostname);
+  expect(container.textContent).toContain(site.hostname);
+  expect(mocks.entries.listAllItems).not.toHaveBeenCalled();
+});

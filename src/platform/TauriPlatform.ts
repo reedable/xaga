@@ -118,7 +118,6 @@ const EntrySchema = ItemSchema.extend({
   published_at: z.string().nullable(),
   description: z.string().nullable(),
   is_unread: z.boolean(),
-  is_bookmarked: z.boolean(),
   is_pinned: z.boolean().optional(),
   color: z.string().nullable().optional(),
 });
@@ -154,7 +153,6 @@ const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
     publishedAt: data.published_at ?? undefined,
     description: data.description ?? undefined,
     isUnread: data.is_unread,
-    isBookmarked: data.is_bookmarked,
     isPinned: data.is_pinned ?? false,
     color: data.color ?? undefined,
   };
@@ -214,7 +212,6 @@ const ListItemSchema = z.object({
   created_at: z.string(),
   url: z.string(),
   is_unread: z.boolean(),
-  is_bookmarked: z.boolean(),
   is_pinned: z.boolean().optional(),
   reference: z.string().optional(),
   color: z.string().optional(),
@@ -239,8 +236,8 @@ const toListItem = (data: z.infer<typeof ListItemSchema>): ListItem =>
         createdAt: data.created_at,
         url: data.url,
         isUnread: data.is_unread,
-        isBookmarked: data.is_bookmarked,
         isPinned: data.is_pinned ?? false,
+        color: data.color || undefined,
       };
 
 const PartialAnnotationSchema = z.object({
@@ -856,7 +853,7 @@ export class TauriPlatform implements Platform {
     signal: AbortSignal,
     article: Omit<
       Article,
-      "id" | "createdAt" | "__kind" | "isBookmarked" | "isPinned"
+      "id" | "createdAt" | "__kind" | "isPinned"
     >,
     imageData: Record<string, string> = {},
     diagnosticId?: string
@@ -1110,12 +1107,12 @@ export class TauriPlatform implements Platform {
 
   // Bookmarks -----------------------------------------------------------------
 
-  async addBookmark(signal: AbortSignal, id: string): Promise<Entry> {
+  async addBookmark(signal: AbortSignal, id: string, color: string): Promise<Entry> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "add_bookmark" });
 
-    const result = await invoker<unknown>("add_bookmark", { id });
+    const result = await invoker<unknown>("add_bookmark", { id, color });
     return EntrySchema.transform(toEntry).parse(result);
   }
 
@@ -1547,7 +1544,13 @@ export class TauriPlatform implements Platform {
     return z
       .object({
         pins: z.array(
-          z.object({ type: z.enum(["entry", "feed", "topic"]), id: z.string() })
+          z.union([
+            z.object({
+              type: z.enum(["entry", "feed", "topic"]),
+              id: z.string(),
+            }),
+            z.object({ type: z.literal("site"), hostname: z.string() }),
+          ])
         ),
       })
       .parse(result).pins;

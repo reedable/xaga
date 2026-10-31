@@ -8,6 +8,8 @@ export type TopicsContextType = {
   pinnedTopicIds: string[];
   setTopics: Dispatch<SetStateAction<Topic[]>>;
   setTopicPinned: (id: string, pinned: boolean) => void;
+  setMembership: (topicId: string, itemId: string, present: boolean) => void;
+  getMemberships: (itemId: string, indexedIds: string[]) => string[];
 };
 
 const TopicsContext = createContext<TopicsContextType | null>(null);

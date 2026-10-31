@@ -36,7 +36,6 @@ import ArticleLoadAttempt from "../../utils/ArticleLoadAttempt";
 import cx from "../../utils/cx";
 import css from "./ArticleReader.module.css";
 import { HtmlReader } from "./HtmlReader";
-import { RelatedItemList } from "./RelatedItemList";
 
 export interface ArticleReaderHandle {
   reload: () => Promise<void>;
@@ -369,11 +368,6 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
             )}
           </div>
 
-          {entryId && (
-            <aside className={css.Aside}>
-              <RelatedItemList itemId={entryId} />
-            </aside>
-          )}
         </div>
 
         <Dialog

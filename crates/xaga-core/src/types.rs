@@ -4,8 +4,8 @@
 use serde::{Deserialize, Serialize};
 
 pub use crate::domain::{
-    Annotation, Article, Colorable, Countable, Document, Entry, Feed, Item, Kind, Note, Pinnable,
-    Reference, Topic, WebResource,
+    Annotation, Article, COLOR_NAMES, Colorable, Countable, Document, Entry, Feed, Item, Kind,
+    Note, Pinnable, Reference, Topic, WebResource,
 };
 
 // ── ItemFilter ────────────────────────────────────────────────────────────────
@@ -18,9 +18,9 @@ pub enum ItemFilter {
     All,
     /// Items with no saved `.md` body.
     Unread,
-    /// Only items whose tags contain "bookmark".
+    /// Only color-marked Entries.
     Bookmarked,
-    /// Items that are bookmarked or have at least one annotation.
+    /// Color-marked Entries and annotation items.
     Saved,
 }
 
@@ -118,7 +118,6 @@ pub struct ListItem {
     pub created_at: String,
     pub url: String,
     pub is_unread: bool,
-    pub is_bookmarked: bool,
     pub is_pinned: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reference: Option<String>,
