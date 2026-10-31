@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   platform: {
     openUrl: vi.fn(),
     readArticle: vi.fn(),
+    readEntryImages: vi.fn(),
     setEntryPinned: vi.fn(),
     onEntryPinChanged: vi.fn().mockResolvedValue(() => {}),
   },
@@ -74,6 +75,7 @@ beforeEach(() => {
   mocks.pins = [];
   mocks.setPin.mockImplementation(async (target, pinned) => { mocks.pins = pinned ? [target] : []; });
   mocks.platform.readArticle.mockResolvedValue(article);
+  mocks.platform.readEntryImages.mockResolvedValue([null]);
   container = document.createElement("div");
   root = createRoot(container);
 });
@@ -109,6 +111,35 @@ it("disables pinning in read-only mode", async () => {
   expect(button("Add to Shortcuts").disabled).toBe(true);
   button("Add to Shortcuts").click();
   expect(mocks.setPin).not.toHaveBeenCalled();
+});
+
+it.each(["../favicons/0123456789ab", "../images/article/0123456789ab"])(
+  "displays cached favicon %s through local IPC in read-only mode",
+  async (reference) => {
+    mocks.readOnly = true;
+    mocks.platform.readArticle.mockResolvedValue({ ...article, favicon: reference });
+    mocks.platform.readEntryImages.mockResolvedValue(["data:image/png;base64,local"]);
+    await render();
+    expect(mocks.platform.readEntryImages).toHaveBeenCalledWith(
+      expect.any(AbortSignal), "article", [reference]
+    );
+    expect(container.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,local");
+    expect(mocks.articles.loadArticleByUrl).not.toHaveBeenCalled();
+  }
+);
+
+it.each([
+  "https://example.org/icon.png",
+  "../favicons/0123456789ab",
+  "../images/foreign/0123456789ab",
+  "../images/article/../../private.png",
+])("never renders an unavailable or edited favicon as a direct URL: %s", async (reference) => {
+  mocks.platform.readArticle.mockResolvedValue({ ...article, favicon: reference });
+  await render();
+  expect(container.querySelector("img")).toBeNull();
+  expect(mocks.articles.loadArticleByUrl).not.toHaveBeenCalled();
+  if (reference.startsWith("https:")) expect(mocks.platform.readEntryImages).not.toHaveBeenCalled();
+  expect(mocks.sink.pushError).toHaveBeenCalled();
 });
 it("reports a refused pin without displaying it as persisted", async () => {
   await render();

@@ -25,6 +25,7 @@ for (const name of [
   "loader_loopback_webview",
   "feed_navigation_webview",
   "loader_lifecycle_webview",
+  "persisted_resources_webview",
 ]) {
   nativeTest(name);
 }

@@ -104,7 +104,9 @@ fn main() {
                     .initialization_script(format!("window.__svgProbe={page};\n{bootstrap}"))
                     .with_webview_configuration(webview_policy::ui_configuration().unwrap())
                     .proxy_url(network_proxy::proxy_url(proxy.port).parse()?)
-                    .visible(false)
+                    // This rendering probe waits for image and timer callbacks;
+                    // hidden views timed out before those milestones on the test host.
+                    .visible(true)
                     .on_document_title_changed(move |_, title| {
                         if let Some(json) = title.strip_prefix("SVG-RESULT:") {
                             let report: serde_json::Value = serde_json::from_str(json).unwrap();
