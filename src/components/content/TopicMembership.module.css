@@ -3,31 +3,24 @@
   margin-right: 8px;
 }
 
-.DrawerContent {
-  display: flex;
-  flex-direction: column;
-  width: 320px;
-  height: 100%;
-}
-
-.DrawerHeader {
+.Header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 8px 8px 16px;
 }
 
-.DrawerHeaderRight {
+.HeaderRight {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.DrawerFilter {
+.Filter {
   padding: 8px 16px;
 }
 
-.DrawerList {
+.List {
   flex: 1;
   overflow-y: auto;
 }
@@ -46,7 +39,7 @@
   gap: 8px;
 }
 
-.EmbeddedContent {
+.Content {
   display: flex;
   flex-direction: column;
   height: 100%;

@@ -292,7 +292,7 @@ it("keeps a reading-state event that arrives while an older article snapshot is 
 it("filters article-scope rows without changing the open list target", async () => {
   await render();
   const input = container.querySelector<HTMLInputElement>(
-    'input[placeholder="Filter…"]'
+    'input[placeholder="Filter items…"]'
   )!;
   const setValue = Object.getOwnPropertyDescriptor(
     HTMLInputElement.prototype,

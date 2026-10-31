@@ -37,3 +37,59 @@
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
+
+/* Preserve the original 24px targets and -10px margins when Remove opens. */
+.SwatchTarget {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.SwatchTarget .SwatchButton {
+  width: 100%;
+  height: 100%;
+}
+
+.Remove {
+  font-size: 14px;
+  padding: 0 4px 0 0;
+  width: auto;
+  white-space: nowrap;
+}
+
+.Remove .RemoveButton {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  transition: none;
+}
+
+.RemovePending .SwatchTarget {
+  margin: 0 -10px 0 0;
+}
+
+.RemovePending .SwatchTarget:first-of-type {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .SwatchTarget {
+    transition: margin 200ms ease-in;
+  }
+
+  .Swatch {
+    transition: transform 0.1s;
+  }
+
+  .SwatchTarget:hover .Swatch {
+    transform: scale(1.25);
+  }
+}
+
+/* Retain context behind the modal drawer and its backdrop. */
+.Inspecting {
+  z-index: 0;
+}

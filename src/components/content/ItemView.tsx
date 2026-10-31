@@ -1,5 +1,11 @@
 import { Close } from "@mui/icons-material";
-import { Drawer, IconButton, Tooltip, Typography } from "@mui/material";
+import {
+  Drawer,
+  IconButton,
+  Tooltip,
+  Typography,
+  useMediaQuery,
+} from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useContentLoader } from "../../hooks/useContentLoader";
@@ -9,7 +15,13 @@ import Logger from "../../utils/Logger";
 import ArticleReader, { type ArticleReaderHandle } from "./ArticleReader";
 import css from "./ItemView.module.css";
 import { PdfReader } from "./PdfReader";
-import { ArticleInspector, type InspectorView } from "./ArticleInspector";
+import {
+  Inspector,
+  type InspectorView,
+  type InspectorTarget,
+} from "./Inspector";
+import { useEvents } from "../../hooks/useEvents";
+import type { Annotation } from "../../types";
 import { Toolbar } from "./Toolbar";
 
 type ItemViewProps = {
@@ -20,14 +32,90 @@ const logger = Logger.getLogger("ItemView");
 
 export function ItemView({ className }: ItemViewProps) {
   const { state } = useRouter();
-  const { entryId, url, mimeType } = state;
+  const { entryId, annotationId, url, mimeType } = state;
+
+  const currentRouteTarget = useRef({ entryId, annotationId });
+  currentRouteTarget.current = { entryId, annotationId };
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inspectorOpener = useRef<HTMLButtonElement>(null);
+  const restoreInspectorFocus = useRef(false);
+  const inspectorReturnFocus = useRef<HTMLElement | null>(null);
   const inspectorPanel = useRef<HTMLElement>(null);
   const [narrow, setNarrow] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const animate = useMediaQuery("(prefers-reduced-motion: no-preference)");
   const [inspectorView, setInspectorView] = useState<InspectorView>("related");
+  const [annotationInspectorView, setAnnotationInspectorView] =
+    useState<InspectorView>("related");
+  const [drawerTarget, setDrawerTarget] = useState<InspectorTarget | null>(
+    entryId ? { entryId, annotationId } : null
+  );
+  const [routeTarget, setRouteTarget] = useState({ entryId, annotationId });
+  if (
+    routeTarget.entryId !== entryId ||
+    routeTarget.annotationId !== annotationId
+  ) {
+    setRouteTarget({ entryId, annotationId });
+    setDrawerTarget(entryId ? { entryId, annotationId } : null);
+  }
+  const { onAnnotationReplaced, onAnnotationRemoved } = useEvents();
+  useEffect(
+    () =>
+      onAnnotationReplaced(({ oldId, item }) => {
+        setDrawerTarget((current) =>
+          current?.annotationId === oldId
+            ? { ...current, annotationId: item.id }
+            : current
+        );
+      }),
+    [onAnnotationReplaced]
+  );
+  useEffect(
+    () =>
+      onAnnotationRemoved((id) => {
+        setDrawerTarget((current) =>
+          current?.annotationId === id ? { entryId: current.entryId } : current
+        );
+      }),
+    [onAnnotationRemoved]
+  );
+
+  useEffect(() => {
+    if (inspectorOpen || !restoreInspectorFocus.current) return;
+    restoreInspectorFocus.current = false;
+    // Restore the tooltip opener when it survives; otherwise use the reader.
+    if (inspectorReturnFocus.current?.isConnected)
+      inspectorReturnFocus.current.focus();
+    else containerRef.current?.querySelector("iframe")?.focus();
+  }, [inspectorOpen]);
+  const closeInspector = () => {
+    if (drawerTarget?.annotationId)
+      setDrawerTarget({ entryId: drawerTarget.entryId });
+    restoreInspectorFocus.current = true;
+    setInspectorOpen(false);
+  };
+  const openAnnotationInspector = useCallback(
+    (
+      annotation: Pick<Annotation, "id" | "reference">,
+      opener?: HTMLElement
+    ) => {
+      if (
+        annotation.reference !== entryId ||
+        currentRouteTarget.current.entryId !== entryId ||
+        currentRouteTarget.current.annotationId !== annotationId
+      )
+        return;
+      inspectorReturnFocus.current =
+        opener ?? containerRef.current?.querySelector("iframe") ?? null;
+      setDrawerTarget({
+        entryId: annotation.reference,
+        annotationId: annotation.id,
+      });
+      setInspectorOpen(true);
+    },
+    [entryId, annotationId]
+  );
   useEffect(() => {
     const element = containerRef.current;
     if (!element) return;
@@ -37,8 +125,9 @@ export function ItemView({ className }: ItemViewProps) {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+  const useInspectorDrawer = narrow || !!drawerTarget?.annotationId;
   useEffect(() => {
-    if (!narrow && inspectorOpen) {
+    if (!useInspectorDrawer && inspectorOpen) {
       setInspectorOpen(false);
       requestAnimationFrame(() =>
         inspectorPanel.current
@@ -46,7 +135,7 @@ export function ItemView({ className }: ItemViewProps) {
           ?.focus()
       );
     }
-  }, [narrow, inspectorOpen]);
+  }, [useInspectorDrawer, inspectorOpen]);
 
   const [abort, abortControllerRef] = useAbortController();
   // Resolves a bare URL (link / URL bar) into a presentation and writes the
@@ -123,7 +212,10 @@ export function ItemView({ className }: ItemViewProps) {
           inspectorOpener={inspectorOpener}
           onOpenInspector={
             narrow && entryId && !isPdf
-              ? () => setInspectorOpen(true)
+              ? () => {
+                  inspectorReturnFocus.current = inspectorOpener.current;
+                  setInspectorOpen(true);
+                }
               : undefined
           }
           inspectorOpen={inspectorOpen}
@@ -142,7 +234,14 @@ export function ItemView({ className }: ItemViewProps) {
           ) : isPdf ? (
             <PdfReader src={pdfBlobUrl} />
           ) : entryId ? (
-            <ArticleReader key={readerRevision} ref={articleReaderRef} />
+            <ArticleReader
+              key={readerRevision}
+              ref={articleReaderRef}
+              onOpenInspector={openAnnotationInspector}
+              inspectedAnnotationId={
+                inspectorOpen ? drawerTarget?.annotationId : undefined
+              }
+            />
           ) : (
             <div className={css.Placeholder}>
               <Typography variant="body2" color="text.disabled">
@@ -156,8 +255,8 @@ export function ItemView({ className }: ItemViewProps) {
               className={css.InspectorPanel}
               aria-label="Article Inspector"
             >
-              <ArticleInspector
-                articleId={entryId}
+              <Inspector
+                target={{ entryId }}
                 view={inspectorView}
                 onViewChange={setInspectorView}
               />
@@ -165,38 +264,52 @@ export function ItemView({ className }: ItemViewProps) {
           )}
         </div>
         <Drawer
+          data-inspector-drawer
+          disableRestoreFocus
           anchor="right"
-          open={narrow && inspectorOpen && !!entryId && !isPdf}
-          onClose={() => setInspectorOpen(false)}
-          transitionDuration={0}
+          open={
+            useInspectorDrawer &&
+            inspectorOpen &&
+            !!entryId &&
+            !isPdf &&
+            !blocked
+          }
+          onClose={closeInspector}
+          transitionDuration={animate ? undefined : 0}
           slotProps={{
             paper: {
               role: "dialog",
               "aria-modal": true,
-              "aria-label": "Article Inspector",
+              "aria-label": `${drawerTarget?.annotationId ? "Annotation" : "Article"} Inspector`,
               className: css.InspectorDrawer,
             },
-            backdrop: { transitionDuration: 0 },
+            backdrop: { transitionDuration: animate ? undefined : 0 },
           }}
         >
           <div className={css.InspectorHeader}>
             <Typography component="h2" variant="subtitle2">
-              Inspector
+              {drawerTarget?.annotationId ? "Annotation" : "Article"} Inspector
             </Typography>
             <Tooltip title="Close Inspector">
-              <IconButton
-                aria-label="Close Inspector"
-                onClick={() => setInspectorOpen(false)}
-              >
+              <IconButton aria-label="Close Inspector" onClick={closeInspector}>
                 <Close />
               </IconButton>
             </Tooltip>
           </div>
-          {entryId && narrow && inspectorOpen && (
-            <ArticleInspector
-              articleId={entryId}
-              view={inspectorView}
-              onViewChange={setInspectorView}
+          {entryId && drawerTarget && useInspectorDrawer && inspectorOpen && (
+            <Inspector
+              target={drawerTarget}
+              showHeading={false}
+              view={
+                drawerTarget.annotationId
+                  ? annotationInspectorView
+                  : inspectorView
+              }
+              onViewChange={
+                drawerTarget.annotationId
+                  ? setAnnotationInspectorView
+                  : setInspectorView
+              }
             />
           )}
         </Drawer>

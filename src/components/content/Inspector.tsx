@@ -2,51 +2,73 @@ import { Tab, Tabs, Typography } from "@mui/material";
 import { useEffect, useId, useState } from "react";
 import { usePlatform } from "../../platform/Platform";
 import { useErrorSink } from "../../hooks/useErrorSink";
-import type { Entry } from "../../types";
+import type { Annotation, Entry } from "../../types";
 import { RelatedItemList } from "./RelatedItemList";
-import { ArticleTopicMembership } from "./TopicMenuButton";
-import css from "./ArticleInspector.module.css";
+import { TopicMembership } from "./TopicMembership";
+import css from "./Inspector.module.css";
 
 export type InspectorView = "related" | "topics";
 
-export function ArticleInspector({
-  articleId,
+export type InspectorTarget = { entryId: string; annotationId?: string };
+
+export function Inspector({
+  target,
   view,
   onViewChange,
+  showHeading = true,
 }: {
-  articleId: string;
+  target: InspectorTarget;
   view: InspectorView;
   onViewChange: (view: InspectorView) => void;
+  showHeading?: boolean;
 }) {
+  const { entryId, annotationId } = target;
+  const itemId = annotationId ?? entryId;
+  const targetKey = JSON.stringify([entryId, annotationId]);
+  const label = annotationId ? "Annotation" : "Article";
   const id = useId();
   const platform = usePlatform();
   const { pushError } = useErrorSink();
   const [lookup, setLookup] = useState<{
-    articleId: string;
-    entry: Entry | null;
+    targetKey: string;
+    item: Entry | Annotation | null;
   } | null>(null);
   useEffect(() => {
     const controller = new AbortController();
     if (view !== "topics") return;
-    void platform
-      .readEntry(controller.signal, articleId)
-      .then((entry) => {
-        if (!controller.signal.aborted) setLookup({ articleId, entry });
+    const read = annotationId
+      ? platform
+          .readArticleScope(controller.signal, entryId)
+          .then(
+            (article) =>
+              article.annotations.find(
+                (annotation) => annotation.id === annotationId
+              ) ?? null
+          )
+      : platform.readEntry(controller.signal, entryId);
+    void read
+      .then((item) => {
+        if (!controller.signal.aborted) setLookup({ targetKey, item });
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
-          setLookup({ articleId, entry: null });
+          setLookup({ targetKey, item: null });
           pushError(error);
         }
       });
     return () => controller.abort();
-  }, [articleId, view, platform, pushError]);
+  }, [entryId, annotationId, targetKey, view, platform, pushError]);
   return (
     <div className={css.Inspector}>
+      {showHeading && (
+        <div className={css.Target}>
+          <Typography variant="subtitle2">{label} Inspector</Typography>
+        </div>
+      )}
       <Tabs
         value={view}
         onChange={(_, value: InspectorView) => onViewChange(value)}
-        aria-label="Article Inspector views"
+        aria-label={`${label} Inspector views`}
         variant="fullWidth"
         selectionFollowsFocus
       >
@@ -88,7 +110,9 @@ export function ArticleInspector({
         tabIndex={0}
         hidden={view !== "related"}
       >
-        {view === "related" && <RelatedItemList itemId={articleId} />}
+        {view === "related" && (
+          <RelatedItemList key={targetKey} itemId={itemId} />
+        )}
       </div>
       <div
         className={css.View}
@@ -98,17 +122,17 @@ export function ArticleInspector({
         tabIndex={0}
         hidden={view !== "topics"}
       >
-        {view !== "topics" ? null : lookup?.articleId === articleId ? (
-          lookup.entry ? (
-            <ArticleTopicMembership article={lookup.entry} />
+        {view !== "topics" ? null : lookup?.targetKey === targetKey ? (
+          lookup.item ? (
+            <TopicMembership key={targetKey} item={lookup.item} />
           ) : (
             <Typography variant="body2">
-              Article topics couldn’t be loaded.
+              {label} topics couldn’t be loaded.
             </Typography>
           )
         ) : (
           <Typography role="status" variant="body2">
-            Loading article topics…
+            Loading {label.toLowerCase()} topics…
           </Typography>
         )}
       </div>

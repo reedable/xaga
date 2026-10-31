@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useAppearance } from "../../hooks/useAppearance";
+import { useErrorSink } from "../../hooks/useErrorSink";
 import { useEvents } from "../../hooks/useEvents";
 import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import {
@@ -18,10 +19,7 @@ import {
 import type { Annotation } from "../../types";
 import cx from "../../utils/cx";
 import Logger from "../../utils/Logger";
-import {
-  AnnotationTooltip,
-  type AnnotationTooltipHandle,
-} from "./AnnotationTooltip";
+import { AnnotationTooltip } from "./AnnotationTooltip";
 import { FindBar } from "./FindBar";
 import css from "./HtmlReader.module.css";
 
@@ -47,6 +45,11 @@ interface HtmlReaderProps {
   entryId?: string;
   html: string;
   annotationId?: string;
+  onOpenInspector?: (
+    annotation: Pick<Annotation, "id" | "reference">,
+    opener?: HTMLElement
+  ) => void;
+  inspectedAnnotationId?: string;
   onClickLink?: (url: string) => void; //outgoing links in the html content
   onSaveAnnotation?: (
     annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">
@@ -66,16 +69,20 @@ export function HtmlReader({
   entryId,
   html,
   annotationId,
+  onOpenInspector,
+  inspectedAnnotationId,
   onClickLink,
   onSaveAnnotation,
   onReplaceAnnotation,
   onRemoveAnnotation,
 }: HtmlReaderProps) {
-  const { onFind } = useEvents();
+  const { onFind, onAnnotationRemoved, onAnnotationReplaced } = useEvents();
+  const { pushError } = useErrorSink();
+  const savingTooltip = useRef(false);
+  const openingInspector = useRef(false);
   const { themeMode } = useAppearance();
   const isLibraryReadOnly = useLibraryReadOnly();
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const tooltipRef = useRef<AnnotationTooltipHandle | null>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
@@ -202,28 +209,98 @@ export function HtmlReader({
     ]
   );
 
-  const handleCloseTooltip = useCallback(async () => {
-    if (!tooltip || !entryId) {
-      // nothing to do (or Entry not ready)
-    } else if (tooltip.color === null) {
-      onRemoveAnnotation?.({ id: tooltip.annotationId, reference: entryId });
-    } else {
-      const annotation = {
-        __kind: "annotation" as const,
-        id: tooltip.annotationId,
-        title: tooltip.text.join(" "),
-        reference: entryId,
-        text: tooltip.text,
-        occurrence: tooltip.occurrence,
-        color: tooltip.color,
-        content: tooltip.note ?? "",
-      };
-      await onSaveAnnotation?.(annotation);
-      await tooltipRef.current?.addAnnotationToTopics(annotation as Annotation);
-    }
+  const saveTooltip = useCallback(
+    async (close: boolean) => {
+      if (savingTooltip.current) return false;
+      savingTooltip.current = true;
+      try {
+        if (tooltip && entryId && !isLibraryReadOnly) {
+          if (tooltip.color === null) {
+            await onRemoveAnnotation?.({
+              id: tooltip.annotationId,
+              reference: entryId,
+            });
+          } else {
+            await onSaveAnnotation?.({
+              id: tooltip.annotationId,
+              title: tooltip.text.join(" "),
+              reference: entryId,
+              text: tooltip.text,
+              occurrence: tooltip.occurrence,
+              color: tooltip.color,
+              content: tooltip.note ?? "",
+            });
+          }
+        }
+        if (close)
+          setTooltip((current) => (current === tooltip ? null : current));
+        return true;
+      } catch (error) {
+        pushError(error);
+        return false;
+      } finally {
+        savingTooltip.current = false;
+      }
+    },
+    [
+      onRemoveAnnotation,
+      onSaveAnnotation,
+      entryId,
+      tooltip,
+      isLibraryReadOnly,
+      pushError,
+    ]
+  );
 
-    setTooltip(null);
-  }, [onRemoveAnnotation, onSaveAnnotation, entryId, tooltip]);
+  const handleCloseTooltip = useCallback(() => {
+    if (
+      openingInspector.current ||
+      (tooltip && inspectedAnnotationId === tooltip.annotationId)
+    )
+      return Promise.resolve(false);
+    return saveTooltip(true);
+  }, [tooltip, inspectedAnnotationId, saveTooltip]);
+
+  const handleOpenInspector = useCallback(
+    async (opener: HTMLButtonElement) => {
+      if (!tooltip || !entryId || !tooltip.color || openingInspector.current)
+        return;
+      const target = { id: tooltip.annotationId, reference: entryId };
+      openingInspector.current = true;
+      try {
+        if (await saveTooltip(false)) onOpenInspector?.(target, opener);
+      } finally {
+        openingInspector.current = false;
+      }
+    },
+    [tooltip, entryId, saveTooltip, onOpenInspector]
+  );
+
+  useEffect(
+    () =>
+      onAnnotationRemoved((id) => {
+        setTooltip((current) =>
+          current?.annotationId === id ? null : current
+        );
+      }),
+    [onAnnotationRemoved]
+  );
+
+  useEffect(
+    () =>
+      onAnnotationReplaced(({ oldId, item }) => {
+        setTooltip((current) =>
+          current?.annotationId === oldId
+            ? {
+                ...current,
+                annotationId: item.id,
+                color: item.color ?? current.color,
+              }
+            : current
+        );
+      }),
+    [onAnnotationReplaced]
+  );
 
   const handleIframeLoad = useCallback(() => {
     if (annotations?.length) {
@@ -391,16 +468,14 @@ export function HtmlReader({
 
       {tooltip && (
         <AnnotationTooltip
-          ref={tooltipRef}
-          annotation={
-            annotations?.find((a) => a.id === tooltip.annotationId) ?? null
-          }
           position={tooltip.position}
           text={tooltip.text}
           color={tooltip.color}
           note={tooltip.note}
           onChange={handleChangeTooltip}
           onClose={handleCloseTooltip}
+          onOpenInspector={handleOpenInspector}
+          inspectorOpen={inspectedAnnotationId === tooltip.annotationId}
         />
       )}
     </div>

@@ -1,10 +1,14 @@
 import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ArticleInspector, type InspectorView } from "./ArticleInspector";
+import { Inspector, type InspectorView } from "./Inspector";
 
-const mocks = vi.hoisted(() => ({ read: vi.fn(), pushError: vi.fn() }));
-const platform = { readEntry: mocks.read };
+const mocks = vi.hoisted(() => ({
+  read: vi.fn(),
+  readArticle: vi.fn(),
+  pushError: vi.fn(),
+}));
+const platform = { readEntry: mocks.read, readArticleScope: mocks.readArticle };
 const sink = { pushError: mocks.pushError };
 vi.mock("../../platform/Platform", () => ({ usePlatform: () => platform }));
 vi.mock("../../hooks/useErrorSink", () => ({ useErrorSink: () => sink }));
@@ -13,9 +17,9 @@ vi.mock("./RelatedItemList", () => ({
     <div>Related to {itemId}</div>
   ),
 }));
-vi.mock("./TopicMenuButton", () => ({
-  ArticleTopicMembership: ({ article }: { article: { id: string } }) => (
-    <div>Topics for {article.id}</div>
+vi.mock("./TopicMembership", () => ({
+  TopicMembership: ({ item }: { item: { id: string } }) => (
+    <div>Topics for {item.id}</div>
   ),
 }));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -24,8 +28,8 @@ let container: HTMLDivElement;
 function Host({ articleId }: { articleId: string }) {
   const [view, setView] = useState<InspectorView>("related");
   return (
-    <ArticleInspector
-      articleId={articleId}
+    <Inspector
+      target={{ entryId: articleId }}
       view={view}
       onViewChange={setView}
     />
@@ -73,13 +77,17 @@ it("discards a late article lookup after navigation", async () => {
   );
   await act(async () =>
     root.render(
-      <ArticleInspector articleId="old" view="topics" onViewChange={() => {}} />
+      <Inspector
+        target={{ entryId: "old" }}
+        view="topics"
+        onViewChange={() => {}}
+      />
     )
   );
   await act(async () =>
     root.render(
-      <ArticleInspector
-        articleId="current"
+      <Inspector
+        target={{ entryId: "current" }}
         view="topics"
         onViewChange={() => {}}
       />
@@ -97,8 +105,8 @@ it("reports a failed article lookup without leaving a loading status indefinitel
   mocks.read.mockRejectedValueOnce(failure);
   await act(async () =>
     root.render(
-      <ArticleInspector
-        articleId="article"
+      <Inspector
+        target={{ entryId: "article" }}
         view="topics"
         onViewChange={() => {}}
       />
@@ -116,4 +124,46 @@ it("keeps Tags disabled with an accessible explanation", async () => {
     tab("Tags").getAttribute("aria-describedby")!
   );
   expect(explanation?.textContent).toBe("Tag assignment isn’t available yet.");
+});
+
+it("reads Annotation Topics from its parent file without substituting Article memberships", async () => {
+  mocks.readArticle.mockResolvedValue({
+    annotations: [{ id: "annotation", reference: "parent" }],
+  });
+  const target = { entryId: "parent", annotationId: "annotation" };
+  await act(async () =>
+    root.render(
+      <Inspector target={target} view="related" onViewChange={() => {}} />
+    )
+  );
+  expect(container.textContent).toContain("Related to annotation");
+  await act(async () =>
+    root.render(
+      <Inspector target={target} view="topics" onViewChange={() => {}} />
+    )
+  );
+  expect(mocks.readArticle).toHaveBeenCalledWith(
+    expect.any(AbortSignal),
+    "parent"
+  );
+  expect(mocks.read).not.toHaveBeenCalled();
+  expect(container.textContent).toContain("Topics for annotation");
+  expect(container.textContent).not.toContain("Topics for parent");
+});
+
+it("does not fall back to Article memberships when an Annotation is missing", async () => {
+  mocks.readArticle.mockResolvedValue({ annotations: [] });
+  await act(async () =>
+    root.render(
+      <Inspector
+        target={{ entryId: "parent", annotationId: "missing" }}
+        view="topics"
+        onViewChange={() => {}}
+      />
+    )
+  );
+  expect(container.textContent).toContain(
+    "Annotation topics couldn’t be loaded."
+  );
+  expect(mocks.read).not.toHaveBeenCalled();
 });

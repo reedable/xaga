@@ -1,49 +1,39 @@
-import { ClickAwayListener, Collapse, Paper, TextField } from "@mui/material";
+import { InfoOutlined } from "@mui/icons-material";
 import {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from "react";
+  ClickAwayListener,
+  Paper,
+  TextField,
+  IconButton,
+  Tooltip,
+} from "@mui/material";
+import { useCallback, useEffect, useState } from "react";
 import colorCss from "../../colors.module.css";
-import type { Annotation, Entry } from "../../types";
 import cx from "../../utils/cx";
 import { ColorSwatches } from "./ColorSwatches";
 import css from "./AnnotationTooltip.module.css";
-import { TopicMenuButton, type TopicMenuButtonHandle } from "./TopicMenuButton";
 
-export interface AnnotationTooltipHandle {
-  addAnnotationToTopics: (annotation: Entry | Annotation) => Promise<void>;
-}
-
-export interface AnnotationTooltipProps {
-  annotation?: Annotation | null;
+interface AnnotationTooltipProps {
   text: string[];
   note?: string | null;
   color: string | null;
   position: { x: number; y: number };
   onChange: (color: string | null, note: string) => void;
   onClose: () => void;
+  onOpenInspector: (opener: HTMLButtonElement) => Promise<void>;
+  inspectorOpen: boolean;
 }
 
-export const AnnotationTooltip = forwardRef<
-  AnnotationTooltipHandle,
-  AnnotationTooltipProps
->(function AnnotationTooltip(
-  { annotation, color, note, position, onChange, onClose },
-  ref
-) {
-  const collectionMenuRef = useRef<TopicMenuButtonHandle | null>(null);
-
+export function AnnotationTooltip({
+  color,
+  note,
+  position,
+  onChange,
+  onClose,
+  onOpenInspector,
+  inspectorOpen,
+}: AnnotationTooltipProps) {
   const initialNote = note ?? "";
   const [noteValue, setNoteValue] = useState(initialNote);
-
-  useImperativeHandle(ref, () => ({
-    addAnnotationToTopics: (item: Entry | Annotation) =>
-      collectionMenuRef.current?.addToTopics(item) ?? Promise.resolve(),
-  }));
 
   const handleNoteKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -62,14 +52,31 @@ export const AnnotationTooltip = forwardRef<
     : undefined;
 
   return (
-    <ClickAwayListener onClickAway={onClose}>
+    <ClickAwayListener
+      onClickAway={(event) => {
+        // The drawer's close click can reach this listener after its state
+        // update. Preserve where that click originated, even after unmount.
+        if (
+          event
+            .composedPath()
+            .some(
+              (node) =>
+                node instanceof Element &&
+                node.hasAttribute("data-inspector-drawer")
+            )
+        )
+          return;
+        onClose();
+      }}
+    >
       <Paper
         elevation={4}
-        className={cx(css.Tooltip, colorClass)}
+        className={cx(css.Tooltip, colorClass, inspectorOpen && css.Inspecting)}
+        inert={inspectorOpen}
         style={{ top: position.y, left: position.x }}
       >
         <div className={css.Body}>
-          <Collapse in={color !== null}>
+          {color !== null && (
             <TextField
               multiline
               minRows={1}
@@ -85,7 +92,7 @@ export const AnnotationTooltip = forwardRef<
               onKeyDown={handleNoteKeyDown}
               className={css.NoteField}
             />
-          </Collapse>
+          )}
 
           <div className={css.ColorRow}>
             <ColorSwatches
@@ -93,17 +100,27 @@ export const AnnotationTooltip = forwardRef<
               onChange={(next) => onChange(next, noteValue)}
             />
 
-            <Collapse in={color !== null} orientation="horizontal">
+            {color !== null && (
               <div className={css.ColorRowAction}>
-                <TopicMenuButton
-                  ref={collectionMenuRef}
-                  item={annotation ?? null}
-                />
+                <Tooltip
+                  title="Open Inspector"
+                  slotProps={{ transition: { timeout: 0 } }}
+                >
+                  <IconButton
+                    size="small"
+                    aria-label="Open Inspector"
+                    onClick={(event) =>
+                      void onOpenInspector(event.currentTarget)
+                    }
+                  >
+                    <InfoOutlined fontSize="small" />
+                  </IconButton>
+                </Tooltip>
               </div>
-            </Collapse>
+            )}
           </div>
         </div>
       </Paper>
     </ClickAwayListener>
   );
-});
+}

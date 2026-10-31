@@ -31,7 +31,7 @@ import {
 import { prepareEntryImages } from "../../text/prepareEntryImages";
 import { imageReferences } from "../../text/imageReferences";
 import { markdownToHtml } from "../../text/markdownPipeline";
-import { isAbortError } from "../../types";
+import { type Annotation, isAbortError } from "../../types";
 import ArticleLoadAttempt from "../../utils/ArticleLoadAttempt";
 import cx from "../../utils/cx";
 import css from "./ArticleReader.module.css";
@@ -41,12 +41,20 @@ export interface ArticleReaderHandle {
   reload: () => Promise<void>;
 }
 
-export interface ArticleReaderProps {
+interface ArticleReaderProps {
   className?: string;
+  onOpenInspector?: (
+    annotation: Pick<Annotation, "id" | "reference">,
+    opener?: HTMLElement
+  ) => void;
+  inspectedAnnotationId?: string;
 }
 
 const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
-  function ArticleReader({ className }, ref) {
+  function ArticleReader(
+    { className, onOpenInspector, inspectedAnnotationId },
+    ref
+  ) {
     const { selectUrl, replaceUrl, state } = useRouter();
     const { entryId, annotationId, url } = state;
 
@@ -361,13 +369,14 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
                 annotations={annotations}
                 annotationId={annotationId}
                 onClickLink={selectUrl}
+                onOpenInspector={onOpenInspector}
+                inspectedAnnotationId={inspectedAnnotationId}
                 onSaveAnnotation={saveAnnotation}
                 onReplaceAnnotation={replaceAnnotation}
                 onRemoveAnnotation={removeAnnotation}
               />
             )}
           </div>
-
         </div>
 
         <Dialog

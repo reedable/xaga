@@ -27,3 +27,10 @@
   outline: 2px solid currentColor;
   outline-offset: -2px;
 }
+
+.Target {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+}
