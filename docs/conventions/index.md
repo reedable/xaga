@@ -11,6 +11,11 @@ Conventions for code and documentation, as distinct from what the system is (arc
 [Rust formatting](rust_formatting.md) — apply `rustfmt` consistently across the
 Cargo workspace and keep `cargo fmt --all --check` passing.
 
+## Motion
+
+[Motion](motion.md) — static base styles, with animation enabled only when
+`prefers-reduced-motion: no-preference` matches.
+
 ## Vocabulary
 
 Naming rules for symbols, in [vocabulary/](vocabulary/):
