@@ -40,7 +40,7 @@ afterEach(async () => {
 it("keeps initial loading as a skeleton and hides target IDs in the compact error row", async () => {
   const container = mount();
   const render = (hasLoaded: boolean) => (
-    <TopicsContext.Provider value={{
+    <TopicsContext.Provider value={{ setMembership: vi.fn(), getMemberships: (_id: string, ids: string[]) => ids,
       topics: [], pinnedTopicIds: ["pending"], hasLoaded,
       setTopics: vi.fn(), setTopicPinned: vi.fn(),
     }}>
@@ -91,7 +91,7 @@ it("refreshes shared Topics on successful retry", async () => {
   mocks.readTopic.mockResolvedValue(results[0]);
   mocks.listTopics.mockResolvedValue(results);
   await act(async () => root.render(
-    <TopicsContext.Provider value={{ topics: [], hasLoaded: true, pinnedTopicIds: [], setTopics, setTopicPinned: vi.fn() }}>
+    <TopicsContext.Provider value={{ setMembership: vi.fn(), getMemberships: (_id: string, ids: string[]) => ids, topics: [], hasLoaded: true, pinnedTopicIds: [], setTopics, setTopicPinned: vi.fn() }}>
       <MissingShortcut target={{ type: "topic", id: "restored" }} />
     </TopicsContext.Provider>
   ));

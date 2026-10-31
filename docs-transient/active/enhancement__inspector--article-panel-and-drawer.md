@@ -2,55 +2,39 @@
 
 ## Summary
 
-Turn the article reader's Related sidebar into an Inspector with switchable
-Related, Topics, and Tags views. Keep it beside the reader on wide layouts and
-open it through an article-toolbar button as a drawer when the panel is hidden.
+Verify native-app presentation and accessibility for the article Inspector panel
+and narrow-layout drawer.
 
 ## Requirements
 
-- Keep the Inspector associated with the current article. Annotation navigation
-  or popup interactions must not change its target to the annotation.
-- Preserve existing Related results and selection behavior in the Related view.
-- Provide article Topic membership controls in the Topics view, reusing existing
-  membership operations and preserving read-only behavior.
-- Provide the Tags view integration surface for the dependent Entry-assignment
-  story; tag creation and assignment are outside this story.
-- Use the same view content in the wide panel and narrow drawer. Opening from
-  the article toolbar establishes article context without requiring a large
-  title/quotation target header.
-- Preserve the selected Inspector view across article navigation, resizing, and
-  drawer reopening within the current app session. Drawer dismissal must not
-  change the article or list scope.
-- Support keyboard view switching, accessible drawer opening/closing, and focus
-  return to the opener. Preserve reader position when opening or closing.
-- Keep annotation Inspector implementation, annotation creation behavior,
-  tagging operations, and storage-model changes outside this story.
+- Follow the article targeting, session state, Topic membership, and responsive
+  behavior in `docs/architecture/article_inspector.md`.
+- Verify native WebKit and assistive-technology behavior directly rather than
+  inferring it from DOM tests.
+- Keep tag creation/assignment, annotation Inspector implementation, and storage
+  changes outside this story. Tags remains disabled with its explanation until
+  the Entry-assignment story supplies that view.
 
 ## Remaining work
 
-- Replace the Related-only aside with the Inspector view container and integrate
-  existing Related and article Topic membership controls.
-- Add responsive panel/drawer presentation and the article-toolbar opener using
-  the reader's existing narrow-layout breakpoint.
-- Add session state for selected view and drawer visibility, keeping view state
-  separate from article navigation identity.
-- Connect the Tags integration surface with Entry assignment when implemented;
-  do not present nonfunctional tag controls as a completed feature.
-- Verify Related navigation, Topic membership, read-only access, article versus
-  annotation targeting, view retention, responsive transitions, reader position,
-  and keyboard/focus behavior.
-- Run frontend type checking, lint, affected tests, and production build; update
-  durable reader/Inspector behavior documentation.
+- Check the wide panel and narrow toolbar-opened drawer in the macOS app,
+  including resizing across the 700px reader-container boundary while open.
+- Check Related selection/navigation and Topic filtering, sorting, assignment,
+  removal, and inline creation. Confirm committed changes stay selected when
+  reopening the Inspector before indexing catches up.
+- Check read-only membership display with mutation controls disabled.
+- Check keyboard tab switching, VoiceOver names/states, drawer focus containment,
+  Escape/Close/backdrop dismissal, and focus return to the opener or wide panel.
+- Check article versus annotation targeting, selected-view retention across
+  navigation and reopening, unchanged list scope on dismissal, and retained
+  reader scroll position while opening, closing, and resizing.
+- Check the disabled Tags explanation and reduced-motion behavior.
 
 ## References
 
-- [Entry Tag Assignment](enhancement__tags--entry-assignment.md) — follows this
-  story for its UI surface; this story does not depend on tag storage.
-- [Annotation Inspector](../ideas/annotation-inspector.md)
-- `src/components/content/ArticleReader.tsx`
-- `src/components/content/ArticleReader.module.css`
-- `src/components/content/RelatedItemList.tsx`
+- `docs/architecture/article_inspector.md`
+- `docs/conventions/motion.md`
+- [Entry Tag Assignment](../available/enhancement__tags--entry-assignment.md)
+- `src/components/content/ArticleInspector.tsx`
+- `src/components/content/ItemView.tsx`
 - `src/components/content/TopicMenuButton.tsx`
-- `src/components/content/Toolbar.tsx`
-- `src/hooks/useRouter.tsx`
-- `src/platform/Platform.ts`

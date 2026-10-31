@@ -12,7 +12,14 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
   const ctx = useContext(TopicsContext);
   if (!ctx) throw new Error("useTopics must be used inside TopicsProvider");
 
-  const { topics, pinnedTopicIds, setTopics, setTopicPinned } = ctx;
+  const {
+    topics,
+    pinnedTopicIds,
+    setTopics,
+    setTopicPinned,
+    setMembership,
+    getMemberships,
+  } = ctx;
 
   const platform = usePlatform();
   const { pushError } = useErrorSink();
@@ -41,6 +48,7 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
           topicInput,
           member
         );
+        setMembership(topic.id, member.id, true);
         setTopics((prev) => [...prev, topic].sort(sortByUnreadCount));
         emitTopicItemAdded({ topicId: topic.id, itemId: member.id });
         return topic;
@@ -48,7 +56,7 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
         pushError(e);
       }
     },
-    [abortControllerRef, platform, pushError, setTopics]
+    [abortControllerRef, platform, pushError, setTopics, setMembership]
   );
 
   const saveTopic = useCallback(
@@ -92,6 +100,7 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
       const signal = abortControllerRef.current.signal;
       try {
         const topic = await platform.addTopicItem(signal, topicId, item);
+        setMembership(topicId, item.id, true);
         setTopics((prev) =>
           prev
             .map((value) => (value.id === topic.id ? topic : value))
@@ -103,7 +112,7 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
         pushError(e);
       }
     },
-    [abortControllerRef, platform, pushError, setTopics]
+    [abortControllerRef, platform, pushError, setTopics, setMembership]
   );
 
   const removeTopicItem = useCallback(
@@ -111,6 +120,7 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
       const signal = abortControllerRef.current.signal;
       try {
         const topic = await platform.removeTopicItem(signal, topicId, itemId);
+        setMembership(topicId, itemId, false);
         setTopics((prev) =>
           prev
             .map((value) => (value.id === topic.id ? topic : value))
@@ -122,19 +132,22 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
         pushError(e);
       }
     },
-    [abortControllerRef, platform, pushError, setTopics]
+    [abortControllerRef, platform, pushError, setTopics, setMembership]
   );
 
   const listEntryTopics = useCallback(
     async (entryId: string) => {
       const signal = abortControllerRef.current.signal;
       try {
-        return await platform.listEntryTopics(signal, entryId);
+        return getMemberships(
+          entryId,
+          await platform.listEntryTopics(signal, entryId)
+        );
       } catch {
         return undefined;
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, platform, getMemberships]
   );
 
   const rankTopicsRelatedToItem = useCallback(

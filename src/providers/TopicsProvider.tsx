@@ -4,6 +4,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
   type ReactNode,
   type SetStateAction,
 } from "react";
@@ -23,6 +24,27 @@ export function TopicsProvider({ children }: { children: ReactNode }) {
     setRawTopics((previous) =>
       typeof update === "function" ? update(previous ?? []) : update
     );
+  }, []);
+  // File-committed membership intent wins over the asynchronous reverse index.
+  // This projection lasts for the library session, including picker remounts.
+  const membershipChanges = useRef(new Map<string, Map<string, boolean>>());
+  const setMembership = useCallback(
+    (topicId: string, itemId: string, present: boolean) => {
+      const changes =
+        membershipChanges.current.get(itemId) ?? new Map<string, boolean>();
+      changes.set(topicId, present);
+      membershipChanges.current.set(itemId, changes);
+    },
+    []
+  );
+  const getMemberships = useCallback((itemId: string, indexedIds: string[]) => {
+    const ids = new Set(indexedIds);
+    for (const [topicId, present] of membershipChanges.current.get(itemId) ??
+      []) {
+      if (present) ids.add(topicId);
+      else ids.delete(topicId);
+    }
+    return [...ids];
   }, []);
   const { pins, setPin } = usePins();
   const topics = useMemo(
@@ -69,8 +91,18 @@ export function TopicsProvider({ children }: { children: ReactNode }) {
       pinnedTopicIds,
       setTopics,
       setTopicPinned,
+      setMembership,
+      getMemberships,
     }),
-    [topics, rawTopics, pinnedTopicIds, setTopics, setTopicPinned]
+    [
+      topics,
+      rawTopics,
+      pinnedTopicIds,
+      setTopics,
+      setTopicPinned,
+      setMembership,
+      getMemberships,
+    ]
   );
 
   return (

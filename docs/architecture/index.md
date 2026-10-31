@@ -26,6 +26,8 @@ Standing architecture rules for this project. Each has its own doc; keep this in
 
 12. [Library version](library_version.md) — per-library major/minor metadata, explicit upgrade state, and runtime read-only selection.
 
+13. [Article Inspector](article_inspector.md) — article-scoped Related and Topic views, responsive panel/drawer presentation, and session membership projection.
+
 ## Security
 
 Architecture of the security-critical paths, in [security/](security/). These describe how a subsystem works and why — design and limits, not findings or status.
