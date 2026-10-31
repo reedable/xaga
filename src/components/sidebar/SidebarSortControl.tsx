@@ -1,4 +1,4 @@
-import { ListSubheader, MenuItem, Select, Typography } from "@mui/material";
+import { ListSubheader, MenuItem, Select } from "@mui/material";
 import type { SidebarSortMode } from "../../hooks/useSidebarSort";
 import css from "./SidebarSortControl.module.css";
 
