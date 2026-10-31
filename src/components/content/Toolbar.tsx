@@ -40,9 +40,10 @@ import { TopicMenuButton } from "./TopicMenuButton";
 
 interface ToolbarProps {
   reload: (() => void) | null;
+  reloading?: boolean;
 }
 
-export function Toolbar({ reload }: ToolbarProps) {
+export function Toolbar({ reload, reloading = false }: ToolbarProps) {
   const platform = usePlatform();
   const isLibraryReadOnly = useLibraryReadOnly();
   const [pinning, setPinning] = useState(false);
@@ -281,18 +282,6 @@ export function Toolbar({ reload }: ToolbarProps) {
 
             <AddressBar url={url ?? null} onNavigate={handleNavigate} />
 
-            <Tooltip title="Refresh">
-              <IconButton
-                size="small"
-                onClick={reload ?? undefined}
-                disabled={!reload}
-                aria-label="Refresh"
-                className={css.RevealOnHover}
-              >
-                <Refresh fontSize="small" />
-              </IconButton>
-            </Tooltip>
-
             <Tooltip title="Open in Browser">
               <IconButton
                 size="small"
@@ -335,6 +324,26 @@ export function Toolbar({ reload }: ToolbarProps) {
                 )}
               </IconButton>
             </Tooltip>
+
+            <Tooltip title={reloading ? "Reload in progress..." : "Refresh"}>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={reloading ? undefined : (reload ?? undefined)}
+                  disabled={!reload}
+                  title={reloading ? "Reload in progress..." : "Refresh"}
+                  aria-label={reloading ? "Reload in progress..." : "Refresh"}
+                >
+                  <Refresh
+                    fontSize="small"
+                    className={reloading ? css.ReloadIconBusy : css.ReloadIcon}
+                  />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <span role="status" className={css.ScreenReaderOnly}>
+              {reloading ? "Reload in progress..." : ""}
+            </span>
 
             <Tooltip
               title={entry?.isBookmarked ? "Remove bookmark" : "Add bookmark"}

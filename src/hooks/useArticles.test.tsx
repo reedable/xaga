@@ -6,7 +6,7 @@ import { useArticles } from "./useArticles";
 const mocks = vi.hoisted(() => ({
   platform: {
     loadArticle: vi.fn(), findArticle: vi.fn(), createArticle: vi.fn(),
-    readArticle: vi.fn(),
+    readArticle: vi.fn(), getArticleDiagnostic: vi.fn(),
   },
   sink: { pushError: vi.fn() },
   processEntry: vi.fn(),
@@ -21,6 +21,7 @@ vi.mock("../utils/ArticleLoadAttempt", () => ({
   }) },
 }));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+let controller: { current: AbortController };
 let root: ReturnType<typeof createRoot>;
 let hook: ReturnType<typeof useArticles>;
 beforeEach(async () => {
@@ -29,7 +30,7 @@ beforeEach(async () => {
   mocks.processEntry.mockResolvedValue({ title: "Title", markdown: "Body", favicon: null, imageData: {} });
   mocks.platform.createArticle.mockImplementation(async (_signal, article) => ({ ...article, id: "entry" }));
   mocks.platform.readArticle.mockResolvedValue({ id: "entry" });
-  const controller = { current: new AbortController() };
+  controller = { current: new AbortController() };
   function Host() {
     const articles = useArticles(controller);
     useEffect(() => { hook = articles; }, [articles]);
@@ -62,4 +63,26 @@ it("returns the saved article from readback after downloading", async () => {
   await act(async () => { result = await hook.loadArticleByUrl("https://example.org/new"); });
   expect(result).toMatchObject({ article: saved });
   expect(mocks.sink.pushError).not.toHaveBeenCalled();
+});
+
+
+it("does not emit recovered warnings when navigation cancels a pending diagnostic lookup", async () => {
+  let finish!: (value: unknown) => void;
+  mocks.platform.getArticleDiagnostic.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const parent = {
+    id: "attempt",
+    runStep: async (_step: string, fn: () => unknown) => fn(),
+    complete: async () => {},
+  } as unknown as NonNullable<Parameters<typeof hook.loadArticleByUrl>[2]>;
+  let result: unknown;
+  let pending!: Promise<unknown>;
+  await act(() => { pending = hook.loadArticleByUrl("https://example.org/article", false, parent).catch(error => { result = error; }); });
+  controller.current.abort();
+  await act(async () => {
+    finish({ events: [{ step: "favicon", outcome: "warning" }] });
+    await pending;
+  });
+  expect(result).toHaveProperty("name", "AbortError");
+  expect(mocks.sink.pushError).not.toHaveBeenCalled();
+  expect(mocks.processEntry).not.toHaveBeenCalled();
 });

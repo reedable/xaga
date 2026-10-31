@@ -120,3 +120,24 @@ it("reports a refused pin without displaying it as persisted", async () => {
   expect(button("Add to Shortcuts").disabled).toBe(false);
   expect(button("Remove from Shortcuts")).toBeNull();
 });
+
+it("keeps Refresh visible beside Bookmark and focusable while reporting reload progress", async () => {
+  const reload = vi.fn();
+  await act(async () => root.render(<Toolbar reload={reload} reloading />));
+  const refresh = button("Reload in progress...");
+  expect(refresh.disabled).toBe(false);
+  expect(refresh.title).toBe("Reload in progress...");
+  expect(refresh.className).not.toContain("RevealOnHover");
+  expect(refresh.parentElement?.nextElementSibling?.getAttribute("role")).toBe(
+    "status"
+  );
+  expect(container.querySelector('[role="status"]')?.textContent).toBe(
+    "Reload in progress..."
+  );
+  await act(() => refresh.click());
+  expect(reload).not.toHaveBeenCalled();
+  await act(async () => root.render(<Toolbar reload={reload} />));
+  expect(container.querySelector('[role="status"]')?.textContent).toBe("");
+  await act(() => button("Refresh").click());
+  expect(reload).toHaveBeenCalledOnce();
+});

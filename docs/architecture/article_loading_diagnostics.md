@@ -6,6 +6,27 @@ opens the recent record; **Copy diagnostics** copies its JSON. Technical detail
 is copied as plain text, never rendered as HTML or substituted into the normal
 user-facing error message.
 
+## Notification lifecycle
+
+The shared error sink queues accepted notifications in arrival order and presents
+one toast at a time. Each notification retains its message, severity, and
+optional diagnostic ID. Later errors and image/favicon warnings do not replace
+the current notification or its Details link. Existing favicon deduplication and
+cancellation suppression apply before enqueueing.
+
+Toasts with diagnostics remain until dismissed. Others expire after six seconds
+of display, rather than six seconds after enqueueing. Closing the current toast
+advances the queue. Opening Details keeps its toast current; closing the dialog
+does not dismiss the toast. Clicking outside a toast does not dismiss it.
+
+Refresh is always visible beside Bookmark. During reload, its title and SR-only
+status report “Reload in progress...”; its icon rotates only when the motion
+preference permits it, following the [motion convention](../conventions/motion.md).
+The button remains enabled and additional activations are ignored until the
+attempt ends. Saved content stays displayed during retrieval and on retrieval
+failure, including unsupported replacement downloads. Navigation cancels the
+frontend attempt; its completion cannot reset another article's reload status.
+
 ## Collection and ownership
 
 `src-tauri/src/article_diagnostics.rs` owns the native history and log sink.

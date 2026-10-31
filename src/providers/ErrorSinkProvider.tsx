@@ -17,7 +17,7 @@ import ErrorSinkContext, {
 } from "./ErrorSinkContext";
 
 /**
- * Shows user-facing error: one MUI Snackbar, latest error wins.
+ * Shows user-facing error: one MUI Snackbar, queued in arrival order.
  * Displays the user-safe `message`; `detail` goes to the console.
  *
  * Errors arrive through:
@@ -32,43 +32,60 @@ export default function ErrorSinkProvider({
   children: ReactNode;
   subscribeErrors?: (callback: (error: unknown) => void) => Promise<() => void>;
 }) {
-  const [diagnosticId, setDiagnosticId] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<
+    {
+      id: number;
+      message: string;
+      severity: "error" | "warning";
+      diagnosticId: string | null;
+    }[]
+  >([]);
   const [detailsId, setDetailsId] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [severity, setSeverity] = useState<"error" | "warning">("error");
+  const nextId = useRef(0);
+  const current = notifications[0];
+  const diagnosticId = current?.diagnosticId;
+  const message = current?.message;
+  const severity = current?.severity;
+  const dismiss = () => {
+    if (detailsId) return;
+    setNotifications((queue) =>
+      queue.filter((item) => item.id !== current?.id)
+    );
+  };
   const reportedIcons = useRef(new Set<string>());
 
   const pushError = useCallback((e: unknown) => {
     // Aborts (navigation/unmount cancelling an in-flight request) are not
     // failures — never surface them. Every catch can forward safely.
     if (isAbortError(e)) return;
-    if (e instanceof FaviconLoadError) {
+    const favicon = e instanceof FaviconLoadError;
+    if (favicon) {
       if (reportedIcons.current.has(e.articleUrl)) return;
       reportedIcons.current.add(e.articleUrl);
-      setDiagnosticId(e.diagnosticId);
-      setSeverity("warning");
-      setMessage(e.message);
-      return;
     }
-    setSeverity("error");
-    setDiagnosticId(
-      e instanceof ArticleLoadError
+    const diagnosticId =
+      e instanceof ArticleLoadError || favicon
         ? e.diagnosticId || null
-        : isAppError(e) ? e.diagnosticId ?? null : null
-    );
-    if (e instanceof ArticleLoadError) {
-      setMessage(
-        `Article loading failed during ${e.step.replaceAll("_", " ")}. ${e.message}`
-      );
-      return;
+        : isAppError(e)
+          ? (e.diagnosticId ?? null)
+          : null;
+    if (!favicon && !(e instanceof ArticleLoadError)) {
+      if (isAppError(e)) console.error(`[${e.code}] ${e.detail}`);
+      else console.error(e);
     }
-    if (isAppError(e)) {
-      // Full technical text to the console/log only — never to the user.
-      console.error(`[${e.code}] ${e.detail}`);
-    } else {
-      console.error(e);
-    }
-    setMessage(errorMessage(e));
+    const message =
+      e instanceof ArticleLoadError
+        ? `Article loading failed during ${e.step.replaceAll("_", " ")}. ${e.message}`
+        : favicon
+          ? e.message
+          : errorMessage(e);
+    const notification = {
+      id: nextId.current++,
+      message,
+      diagnosticId,
+      severity: favicon ? ("warning" as const) : ("error" as const),
+    };
+    setNotifications((queue) => [...queue, notification]);
   }, []);
 
   useEffect(() => {
@@ -77,12 +94,14 @@ export default function ErrorSinkProvider({
     let unlisten: (() => void) | undefined;
     subscribeErrors((error) => {
       if (!disposed) pushError(error);
-    }).then((stop) => {
-      if (disposed) stop();
-      else unlisten = stop;
-    }).catch((error) => {
-      if (!disposed) pushError(error);
-    });
+    })
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      })
+      .catch((error) => {
+        if (!disposed) pushError(error);
+      });
     return () => {
       disposed = true;
       unlisten?.();
@@ -108,16 +127,15 @@ export default function ErrorSinkProvider({
     <ErrorSinkContext.Provider value={value}>
       {children}
       <Snackbar
-        open={message !== null}
+        key={current?.id ?? "empty"}
+        open={!!current}
         autoHideDuration={diagnosticId ? null : 6000}
-        onClose={() => setMessage(null)}
+        onClose={(_, reason) => {
+          if (reason !== "clickaway") dismiss();
+        }}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
-        <Alert
-          severity={severity}
-          variant="filled"
-          onClose={() => setMessage(null)}
-        >
+        <Alert severity={severity} variant="filled" onClose={dismiss}>
           {message}
           {diagnosticId && (
             <Button
