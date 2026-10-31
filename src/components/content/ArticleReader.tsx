@@ -283,8 +283,9 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       return abort;
     }, [abort, requestContent]);
 
-    // An annotation selected from a list carries entryId but no url, which
-    // requestContent needs to read the article. Backfill it onto the route.
+    // ID-only annotation navigation needs a URL lookup. List rows already carry
+    // the parent's URL, and same-article selections retain the resolved URL;
+    // neither should need this backfill or an extra reader load.
     useEffect(() => {
       if (!annotationId) return;
       if (!entryId) return;

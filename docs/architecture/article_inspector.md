@@ -12,7 +12,12 @@ content, not in a separate toolbar or drawer implementation.
 and owns the drawer target as an Entry ID with an optional Annotation ID.
 Article navigation selects the Article. Annotation navigation selects and
 scrolls to the passage without opening the Inspector drawer; the reader and
-Article panel retain the parent Article. Opening Annotation inspection requires
+Article panel retain the parent Article. Selecting an Annotation within the
+already displayed Article preserves its resolved URL and presentation rather
+than clearing and restoring the URL, so passage navigation does not reload the
+reader. Annotation list rows carry their parent Article URL through navigation,
+avoiding a URL-less reader pass followed by URL backfill when changing Articles.
+Opening Annotation inspection requires
 the explicit Inspect action. Navigation may update an already-open drawer's
 target, but does not open a closed drawer. Opening the
 Inspector from the Annotation color tooltip explicitly targets that tooltip's

@@ -153,13 +153,16 @@ export default function useRouter() {
   );
 
   const selectAnnotation = useCallback(
-    (annotation: Pick<Annotation, "id" | "reference">) => {
+    (annotation: Pick<Annotation, "id" | "reference"> & { url?: string }) => {
+      const sameArticle = state.entryId === annotation.reference;
       const next: NavigationState = {
         ...state,
         annotationId: annotation.id,
         entryId: annotation.reference,
-        url: undefined,
-        mimeType: undefined, // article_loader to determine mimeType
+        // Keep the resolved presentation when only the passage changes.
+        // Clearing it makes the reader backfill the URL and render again.
+        url: (sameArticle ? state.url : undefined) || annotation.url,
+        mimeType: sameArticle ? state.mimeType : undefined,
       };
       if (isSameNavigation(state, next)) return;
       return logged_navigate(`/?${searchParams.toString()}`, { state: next });

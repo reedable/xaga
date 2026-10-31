@@ -43,7 +43,7 @@
     "@mui/icons-material": "^9.5.0",
     "@mui/lab": "^9.0.0-beta.10",
     "@mui/material": "^9.5.0",
-    "@reedable/lliwio-css": "https://github.com/reedable/lliwio-css/releases/download/v0.0.3/reedable-lliwio-css-0.0.3.tgz",
+    "@reedable/lliwio-css": "https://github.com/reedable/lliwio-css/releases/download/v0.0.4/reedable-lliwio-css-0.0.4.tgz",
     "@tauri-apps/api": "~2.12.0",
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-opener": "^2.5.3",

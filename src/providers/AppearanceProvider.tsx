@@ -1,4 +1,4 @@
-import { createTheme, CssBaseline, ThemeProvider } from "@mui/material";
+import { createTheme, ThemeProvider } from "@mui/material";
 import {
   useCallback,
   useEffect,
@@ -232,7 +232,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   return (
     <AppearanceContext.Provider value={value}>
       <ThemeProvider theme={muiTheme}>
-        <CssBaseline />
+        {/* <CssBaseline /> */}
         {children}
       </ThemeProvider>
     </AppearanceContext.Provider>

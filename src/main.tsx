@@ -2,6 +2,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { createRoot } from "react-dom/client";
 import ErrorSinkProvider from "./providers/ErrorSinkProvider";
 import App from "./App";
+import "@reedable/lliwio-css/colors.css";
+import "@reedable/lliwio-css/semanticColors.css";
 import "./index.css";
 import { PlatformContext } from "./platform/Platform";
 import { TauriPlatform } from "./platform/TauriPlatform";
