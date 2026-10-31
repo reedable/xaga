@@ -25,7 +25,7 @@ without the field are read; newly fetched Entries explicitly start unread.
 Conversion preserves article content, annotations, unrelated metadata and
 timestamps using sequential atomic file replacement under the library lock. YAML
 formatting and comments are not retained; unsupported `images` frontmatter is removed under the existing
-writer rule. Bookmark and other organizational tags retain their values.
+writer rule. The stored bookmark marker and organizational tags retain their values.
 
 The command reports conversion and cache errors and exits nonzero when work is
 unfinished. Resolve the reported errors and run the same command again. Retries

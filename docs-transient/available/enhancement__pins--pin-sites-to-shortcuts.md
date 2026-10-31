@@ -2,20 +2,16 @@
 
 ## Summary
 
-Let a user pin a derived Site into Shortcuts, with the pinned normalized
-hostnames stored as library-specific metadata.
+Let a user pin a derived Site into Shortcuts using the shared library pin store.
+Implement after central pin storage is available.
 
 ## Requirements
 
-- Store pinned Site identities in one library-level metadata file whose only
-  authority is the set of pinned normalized hostnames.
-- Derive the metadata path once in the core library-layout module and keep the
-  file scoped to its library; pins must not cross library boundaries.
-- Read a missing metadata file as an empty pin set.
+- Store typed Site targets identified by normalized hostname in the shared pin
+  store; do not create a separate Site pin file or persist Site membership.
 - Validate and normalize every hostname at the persistence boundary; never use
   a hostname directly as a path component.
-- Serialize every metadata mutation through the library writer and write the
-  complete file atomically under the existing library write right.
+- Use the shared pin mutation API and its serialized atomic persistence.
 - Refuse pin changes in read-only library mode through the existing command
   gating and error path.
 - Show pinned Sites in Shortcuts with their current total and unread counts and
@@ -30,17 +26,13 @@ hostnames stored as library-specific metadata.
 - Retain a pin when its Site temporarily has no derived Entries, so transient
   cache or out-of-band state does not silently erase user intent; represent the
   empty pinned Site with zero counts.
-- Update the durable source-of-truth and crash-consistency documentation for the
-  new metadata file and its sole write path.
+- Increment the minor release version when introducing the persisted Site target
+  representation; document its compatibility and update the pin-store contract.
 
 ## Remaining work
 
-- Complete `spike__define-tag-collection-bookmark-pin-shortcut-site.md` and apply
-  its definitions and ownership decisions to this story.
-- Define the library metadata schema and core read/write API for pinned Site
-  hostnames.
-- Add a library-writer operation and Tauri commands for pinning and unpinning a
-  Site.
+- Complete the central-pin-storage story first. Extend its typed target schema,
+  resolution, and commands for normalized Site hostnames.
 - Carry Site pin state through the platform boundary, add the Site Settings dialog,
   and integrate pinned Sites into Shortcuts.
 - Test missing and malformed metadata, normalization, atomic replacement,
@@ -50,7 +42,8 @@ hostnames stored as library-specific metadata.
 
 ## References
 
-- `docs-transient/active/spike__define-tag-collection-bookmark-pin-shortcut-site.md`
+- [Centralize Pin Storage](refactor__pins--centralize-storage.md) — prerequisite.
+- [Organization model](../../docs/architecture/organization_model.md)
 - `docs/architecture/sites.md`
 - `crates/xaga-core/src/library.rs`
 - `crates/xaga-core/src/library_writer/mod.rs`
