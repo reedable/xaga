@@ -38,7 +38,7 @@ using the same pin targets and navigation behavior.
 
 - [Pin-store contract](../../docs/architecture/pins.md).
 - [Nested Pin Groups](enhancement__pins--nested-groups.md)
-- [Pin Sites to Shortcuts](enhancement__pins--pin-sites-to-shortcuts.md)
+- [Pin Sites to Shortcuts](../active/enhancement__pins--pin-sites-to-shortcuts.md)
 - `src-tauri/src/lib.rs`
 - `src/hooks/useRouter.tsx`
 - `src/components/sidebar/ShortcutList.tsx`
