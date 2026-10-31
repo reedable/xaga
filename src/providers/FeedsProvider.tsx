@@ -5,6 +5,7 @@ import {
   useMemo,
   useState,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { useBookmarkImportEvents } from "../hooks/useBookmarkImportEvents";
 import { importFailure } from "../utils/importFailure";
@@ -23,11 +24,16 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [loadingSet, setLoadingSet] = useState<Set<string>>(new Set());
-  const [rawFeeds, setFeeds] = useState<Feed[]>([]);
+  const [rawFeeds, setRawFeeds] = useState<Feed[] | undefined>();
+  const setFeeds = useCallback((update: SetStateAction<Feed[]>) => {
+    setRawFeeds((previous) =>
+      typeof update === "function" ? update(previous ?? []) : update
+    );
+  }, []);
   const { pins, setPin } = usePins();
   const feeds = useMemo(
     () =>
-      rawFeeds.map((value) => ({
+      (rawFeeds ?? []).map((value) => ({
         ...value,
         isPinned: pins.some(
           (pin) => pin.type === "feed" && pin.id === value.id
@@ -50,7 +56,7 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
   const refreshFeeds = useCallback(async () => {
     const results = await platform.listFeeds(new AbortController().signal);
     if (results) setFeeds([...results].sort(sortByUnreadCount));
-  }, [platform]);
+  }, [platform, setFeeds]);
 
   useEffect(
     () =>
@@ -63,7 +69,7 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
           );
         })
       ),
-    [platform]
+    [platform, setFeeds]
   );
 
   useEffect(() => {
@@ -124,6 +130,7 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
       loading,
       loadingFeedIds: loadingSet,
       feeds,
+      hasLoaded: rawFeeds !== undefined,
       pinnedFeedIds,
       setError,
       setLoading,
@@ -131,7 +138,16 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
       setFeeds,
       setFeedPinned,
     }),
-    [error, loading, loadingSet, feeds, pinnedFeedIds, setFeedPinned]
+    [
+      error,
+      loading,
+      loadingSet,
+      feeds,
+      rawFeeds,
+      pinnedFeedIds,
+      setFeeds,
+      setFeedPinned,
+    ]
   );
 
   return (

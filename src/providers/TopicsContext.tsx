@@ -3,6 +3,7 @@ import type { Topic } from "../types";
 
 export type TopicsContextType = {
   topics: Topic[];
+  hasLoaded?: boolean;
   /** Derived from `topics` (those with `isPinned`); the shared library pin store owns membership. */
   pinnedTopicIds: string[];
   setTopics: Dispatch<SetStateAction<Topic[]>>;

@@ -5,6 +5,7 @@ import {
   useMemo,
   useState,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { useErrorSink } from "../hooks/useErrorSink";
 import { subscribe } from "../hooks/useEvents";
@@ -17,11 +18,16 @@ import TopicsContext, { type TopicsContextType } from "./TopicsContext";
 export function TopicsProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
   const { pushError } = useErrorSink();
-  const [rawTopics, setTopics] = useState<Topic[]>([]);
+  const [rawTopics, setRawTopics] = useState<Topic[] | undefined>();
+  const setTopics = useCallback((update: SetStateAction<Topic[]>) => {
+    setRawTopics((previous) =>
+      typeof update === "function" ? update(previous ?? []) : update
+    );
+  }, []);
   const { pins, setPin } = usePins();
   const topics = useMemo(
     () =>
-      rawTopics.map((value) => ({
+      (rawTopics ?? []).map((value) => ({
         ...value,
         isPinned: pins.some(
           (pin) => pin.type === "topic" && pin.id === value.id
@@ -44,7 +50,7 @@ export function TopicsProvider({ children }: { children: ReactNode }) {
   const refreshTopics = useCallback(async () => {
     const results = await platform.listTopics(new AbortController().signal);
     if (results) setTopics([...results].sort(sortByUnreadCount));
-  }, [platform]);
+  }, [platform, setTopics]);
 
   useEffect(() => {
     const refresh = debounced(refreshTopics, { wait: 1000 });
@@ -57,8 +63,14 @@ export function TopicsProvider({ children }: { children: ReactNode }) {
   }, [platform, refreshTopics]);
 
   const value = useMemo<TopicsContextType>(
-    () => ({ topics, pinnedTopicIds, setTopics, setTopicPinned }),
-    [topics, pinnedTopicIds, setTopicPinned]
+    () => ({
+      topics,
+      hasLoaded: rawTopics !== undefined,
+      pinnedTopicIds,
+      setTopics,
+      setTopicPinned,
+    }),
+    [topics, rawTopics, pinnedTopicIds, setTopics, setTopicPinned]
   );
 
   return (

@@ -2,6 +2,7 @@ import { createContext, useContext } from "react";
 import type { PinTarget } from "../pins";
 export const PinsContext = createContext<{
   pins: PinTarget[];
+  refreshPins?: () => Promise<void>;
   setPin: (target: PinTarget, pinned: boolean) => Promise<void>;
 } | null>(null);
 export function usePins() {

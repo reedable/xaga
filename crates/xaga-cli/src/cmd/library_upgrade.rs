@@ -1,4 +1,5 @@
-//! One-time 0.9 → 0.10 conversion. All legacy-format knowledge stays in the CLI.
+//! Explicit legacy-library conversion to the running CLI’s major/minor version.
+//! All legacy-format knowledge stays in the CLI.
 //! File writes deliberately duplicate the validated atomic persistence mechanics:
 //! this offline converter holds the whole-library lock and has no concurrent writer.
 use std::{
@@ -8,7 +9,7 @@ use std::{
     path::Path,
 };
 
-use noyalib::{ParserConfig, SerializerConfig, Value, policy::DenyAnchors};
+use noyalib::{ParserConfig, Value, policy::DenyAnchors};
 use xaga_core::{embeddings::EmbeddingsDb, fs::FileLock, library};
 
 // Matches the application boundary; duplicated for this disposable converter.
@@ -29,6 +30,31 @@ pub(super) struct UpgradeReport {
 struct Conversion {
     rendered: Option<String>,
     is_unread: bool,
+}
+
+/// Edit only migration-owned fields. Serializing the entire generic Value tree
+/// would reinterpret plain IDs such as `29688640e516` as overflowing floats.
+/// The CST keeps every unrelated scalar's original bytes, including nested IDs.
+fn patch_migration_fields(
+    yaml: &str,
+    fields: &BTreeMap<String, Value>,
+    keys: &[&str],
+) -> Result<String, Error> {
+    // The frontmatter slice excludes its final newline. Keep one so root
+    // insertions cannot join the previous scalar or block-scalar content.
+    let mut document = noyalib::cst::parse_document(&format!("{yaml}\n"))?;
+    for key in keys {
+        if let Some(value) = fields.get(*key) {
+            // JSON fragments are valid YAML and quote tag strings explicitly.
+            document.insert_entry("", key, &serde_json::to_string(value)?)?;
+        } else if document.get(key).is_some() {
+            document.remove(key)?;
+        }
+    }
+    let rendered = document.to_string();
+    let config = ParserConfig::strict().with_policy(DenyAnchors);
+    let _: BTreeMap<String, Value> = noyalib::from_str_with_config(&rendered, &config)?;
+    Ok(rendered)
 }
 
 /// Existing boolean state wins over the legacy marker; read state is omission.
@@ -78,8 +104,7 @@ fn convert(raw: &str) -> Result<Conversion, Error> {
     }
     // Apply the same unsupported-field removal rule as ordinary Markdown writes.
     fields.remove("images");
-    let yaml =
-        noyalib::to_string_with_config(&fields, &SerializerConfig::new().block_scalars(false))?;
+    let yaml = patch_migration_fields(&rest[..end], &fields, &["tags", "is_unread", "images"])?;
     let rendered = format!(
         "{prefix}---\n{}\n---\n{}",
         yaml.trim_end_matches('\n'),
@@ -178,12 +203,16 @@ async fn convert_pins(dir: &Path, lock: &FileLock) -> Result<(), Error> {
             if !fs::symlink_metadata(&path)?.file_type().is_file() {
                 return Err(format!("{}: expected regular file", path.display()).into());
             }
-            let raw = read_capped(&path)?;
-            let converted = if kind == "feed" {
-                convert_feed_pin(&raw)?
-            } else {
-                convert_markdown_pin(&raw)?
-            };
+            let converted = (|| -> Result<Option<String>, Error> {
+                if kind == "feed" {
+                    // Stored Atom feeds use the same read contract as runtime
+                    // feed persistence; the Markdown cap does not apply to XML.
+                    convert_feed_pin(&fs::read_to_string(&path)?)
+                } else {
+                    convert_markdown_pin(&read_capped(&path)?)
+                }
+            })()
+            .map_err(|error| format!("{}: {error}", path.display()))?;
             if let Some(rendered) = converted {
                 if !pins.contains(&target) {
                     pins.pins.push(target);
@@ -236,8 +265,7 @@ fn convert_markdown_pin(raw: &str) -> Result<Option<String>, Error> {
                 .collect::<Vec<_>>(),
         )?,
     );
-    let yaml =
-        noyalib::to_string_with_config(&fields, &SerializerConfig::new().block_scalars(false))?;
+    let yaml = patch_migration_fields(&rest[..end], &fields, &["tags"])?;
     Ok(Some(format!(
         "{prefix}---\n{}\n---\n{}",
         yaml.trim_end_matches('\n'),
@@ -512,6 +540,48 @@ mod tests {
         assert!(!values(&convert(&unsupported).unwrap().rendered.unwrap()).contains_key("images"));
     }
 
+    #[test]
+    fn migrations_preserve_numeric_looking_ids_and_unrelated_scalar_bytes() {
+        // Real damaged reference, plus finite exponent and leading-zero IDs.
+        // Compare source bytes: generic Value comparisons would already have
+        // lost the original lexical ID before checking the output.
+        let unrelated = r#"items:
+  - type: annotation
+    id: '62eeae91-660b-40d8-8980-1d447491796e'
+    reference: 29688640e516
+  - type: entry
+    id: 12345678e001
+  - type: entry
+    id: 000123456789
+custom:
+  quoted_id: "29688640e516"
+  ratio: 1.234567890123456789
+  flag: true
+  note: |-
+    Keep this text exactly.
+"#;
+        for tags in [
+            "[pinned, research]",
+            "[unread, research]",
+            "[pinned, unread, research]",
+        ] {
+            let raw =
+                format!("---\ntitle: Example\ntags: {tags}\n{unrelated}---\n\nExact body\r\n");
+            let pinned = convert_markdown_pin(&raw).unwrap();
+            let after_pin = pinned.as_deref().unwrap_or(&raw);
+            let reading = convert(after_pin).unwrap();
+            let saved = reading.rendered.as_deref().unwrap_or(after_pin);
+            assert!(
+                saved.contains(unrelated),
+                "unrelated fields changed: {saved}"
+            );
+            assert!(saved.ends_with("---\n\nExact body\r\n"));
+            assert!(!saved.contains(".inf"));
+            assert!(convert_markdown_pin(saved).unwrap().is_none());
+            assert!(convert(saved).unwrap().rendered.is_none());
+        }
+    }
+
     #[tokio::test]
     async fn pin_conversion_retries_preserve_transferred_and_unresolved_references() {
         use xaga_core::pins::{PinTarget, Pins};
@@ -586,6 +656,82 @@ mod tests {
             ]
             .map(|path| fs::read(path).unwrap())
         );
+    }
+
+    #[tokio::test]
+    async fn pin_conversion_reads_large_atom_and_preserves_feed_data() {
+        use xaga_core::pins::{PinTarget, Pins};
+        let dir = tempfile::tempdir().unwrap();
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        let path = library::feed_path(dir.path(), "large");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let content = "a".repeat(MAX_MD_BYTES as usize + 1024);
+        let raw = format!(
+            r#"<feed xmlns="http://www.w3.org/2005/Atom"><id>large</id><title>Large feed</title><updated>2026-01-01T00:00:00Z</updated><link rel="self" href="https://example.org/feed"/><category term="pinned" scheme="https://xaga.app/ns/tag"/><category term="pinned"/><entry><id>entry</id><title>Kept title</title><updated>2026-01-01T00:00:00Z</updated><content type="text">{content}</content></entry></feed>"#
+        );
+        assert!(raw.len() as u64 > MAX_MD_BYTES);
+        fs::write(&path, &raw).unwrap();
+        let mut expected = xaga_core::atom::parse_atom(&raw).unwrap();
+        expected.categories.remove(0); // Only the app-local marker is removed.
+        convert_pins(dir.path(), &lock).await.unwrap();
+        let saved = fs::read_to_string(&path).unwrap();
+        let actual = xaga_core::atom::parse_atom(&saved).unwrap();
+        assert!(
+            actual == expected,
+            "feed metadata, entries and content must survive conversion"
+        );
+        assert!(
+            Pins::read(dir.path())
+                .await
+                .unwrap()
+                .contains(&PinTarget::Feed { id: "large".into() })
+        );
+        convert_pins(dir.path(), &lock).await.unwrap();
+        assert!(
+            fs::read_to_string(&path).unwrap() == saved,
+            "retry must not rewrite the converted feed"
+        );
+    }
+
+    #[tokio::test]
+    async fn pin_conversion_keeps_markdown_limit_and_reports_the_source_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        let path = seed(dir.path(), "oversized", "tags: [pinned]");
+        let mut raw = fs::read_to_string(&path).unwrap();
+        raw.push_str(&"a".repeat(MAX_MD_BYTES as usize));
+        fs::write(&path, &raw).unwrap();
+        let error = convert_pins(dir.path(), &lock)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(path.to_str().unwrap()), "{error}");
+        assert!(error.contains("12 MiB"), "{error}");
+        assert!(
+            fs::read_to_string(&path).unwrap() == raw,
+            "failed conversion must preserve the file"
+        );
+        assert!(!library::pins_path(dir.path()).exists());
+    }
+
+    #[tokio::test]
+    async fn pin_conversion_parse_errors_report_the_source_path() {
+        for (folder, name, raw) in [
+            ("feeds", "bad.atom", "<feed><broken"),
+            ("entries", "bad.md", "missing frontmatter"),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let lock = library::acquire_lock(dir.path()).unwrap();
+            let path = dir.path().join(folder).join(name);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, raw).unwrap();
+            let error = convert_pins(dir.path(), &lock)
+                .await
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains(path.to_str().unwrap()), "{error}");
+            assert_eq!(fs::read_to_string(&path).unwrap(), raw);
+        }
     }
 
     #[test]

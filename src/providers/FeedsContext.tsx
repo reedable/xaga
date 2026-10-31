@@ -6,6 +6,7 @@ export type FeedsContextType = {
   loading: boolean;
   loadingFeedIds: Set<string>;
   feeds: Feed[];
+  hasLoaded?: boolean;
   /** Derived from `feeds` (those with `isPinned`); the shared library pin store owns membership. */
   pinnedFeedIds: Feed["id"][];
   setError: Dispatch<SetStateAction<unknown>>;

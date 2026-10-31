@@ -54,6 +54,9 @@ export default function PinsProvider({ children }: { children: ReactNode }) {
     },
     [platform, refresh]
   );
-  const value = useMemo(() => ({ pins, setPin }), [pins, setPin]);
+  const value = useMemo(
+    () => ({ pins, setPin, refreshPins: refresh }),
+    [pins, setPin, refresh]
+  );
   return <PinsContext.Provider value={value}>{children}</PinsContext.Provider>;
 }

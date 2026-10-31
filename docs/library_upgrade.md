@@ -1,4 +1,10 @@
-# Upgrading a library to 0.10
+# Upgrading a library
+
+Use the CLI matching the application version you intend to run. The current
+0.11.0-dev CLI upgrades libraries to **0.11**, including central pin storage and
+the reading-state conversion below.
+
+## Reading-state format (0.10)
 
 Xaga 0.10 stores Entry reading state in the `is_unread` article frontmatter field,
 separately from tags. This is a library-format compatibility change: 0.9 code
@@ -8,13 +14,13 @@ version metadata, or an incomplete upgrade select read-only mode at startup.
 
 1. Close Xaga and other processes using the library.
 2. Back up the library before changing its format.
-3. Run the 0.10 CLI against that library:
+3. Run the CLI matching your destination app version (currently 0.11.0-dev):
 
    ```sh
    xaga-cli --data-dir /path/to/library library upgrade
    ```
 
-4. After the command reports completion, open the library with Xaga 0.10.
+4. After the command reports completion, open the library with the matching app.
 
 The command requires the exclusive library write lock. It preserves existing
 boolean `is_unread` values; otherwise presence of the legacy `unread` tag means
@@ -24,9 +30,11 @@ on reads and normalized to omission on writes. Manually supplied articles
 without the field are read; newly fetched Entries explicitly start unread.
 
 Conversion preserves article content, annotations, unrelated metadata and
-timestamps using sequential atomic file replacement under the library lock. YAML
-formatting and comments are not retained; unsupported `images` frontmatter is removed under the existing
-writer rule. The stored bookmark marker and organizational tags retain their values.
+timestamps using sequential atomic file replacement under the library lock.
+Only migration-owned frontmatter fields are edited; unrelated scalar text
+(including numeric-looking IDs), unrelated comments, and body bytes are retained. Edited
+fields may change formatting. Unsupported `images` frontmatter is removed under
+the existing writer rule. The stored bookmark marker and organizational tags retain their values.
 
 The command reports conversion and cache errors and exits nonzero when work is
 unfinished. Resolve the reported errors and run the same command again. Retries
@@ -37,13 +45,11 @@ rows are reconciled in batches; missing rows remain for normal recovery to rebui
 Do not reopen a partially converted library with either app version. Finish the
 upgrade, or restore the full backup to return to 0.9.
 
-## Upcoming central pin format
+## Central pin format (0.11)
 
-The next minor format stores all Entry, Feed, and Topic pins in
-[`pins.yaml`](architecture/pins.md), independently of entity content. The corresponding app minor-version
-bump is intentionally pending until the 0.10 release is finalized; the
-committed version has not yet been incremented. Do not distribute this format as a
-0.10-compatible library change.
+Library version **0.11** stores all Entry, Feed, and Topic pins in
+[`pins.yaml`](architecture/pins.md), independently of entity content. The app and
+package versions are now **0.11.0-dev**. This format is not 0.10-compatible.
 
 Using the CLI built with the central-pin implementation, close all library users,
 back up the library, and run the same `xaga-cli --data-dir /path/to/library library
@@ -86,7 +92,5 @@ Startup never rewrites the version to make it match. Read-only opening does not
 perform recovery or initialize an absent cache. Explicit CLI upgrade errors still
 produce a nonzero exit status; close library users before upgrading.
 
-The application version remains unchanged until 0.10 is finalized, as directed.
-The unreleased pin-format change still requires the pending minor-release bump.
-Once that release version changes, new migration targets use its major/minor;
+Migration targets use the running CLI’s major/minor version, currently **0.11**;
 there is no separately assigned library revision number.

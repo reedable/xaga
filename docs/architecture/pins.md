@@ -38,9 +38,15 @@ waiting for cache recovery. The `is_pinned` cache column is a disposable mirror;
 recovery derives it from the central store, never legacy tags or categories.
 
 Unresolved references remain in storage and appear in both sidebar and responsive
-navigation with their type, identity, a cannot-be-found indication, and a manually
-operable unpin action. Restoring a target resolves the same reference on the next
-target refresh. Removing a pin preserves the current list and reading scope.
+navigation as compact “Shortcut unavailable” rows. Opening a row shows its type
+and identity in a details dialog, with Retry and Remove shortcut actions. The
+initial explanation says “We can’t find this topic/feed/article,” describing
+resolution failure without claiming a cause: bulk lists can omit unreadable targets. Retry reports user-safe read errors where available, refreshes
+the corresponding shared list, and remains available in read-only libraries.
+Removal is disabled in read-only libraries and affects only the pin. Initial
+Topic/Feed loading uses skeleton rows instead of unavailable-target errors.
+Restoring a target resolves the same reference on the next target refresh.
+Removing a pin preserves the current list and reading scope.
 Article shortcuts suppress counts and contribute zero to unread sorting; the
 built-in All items target stays first. Alphabetical/unread sorting is presentation
 state and never rewrites the sequence.
@@ -50,10 +56,11 @@ Site support is not accepted by this version of the parser. Future nested groups
 use `type: group`, stable `id`, `title`, and an ordered `children` sequence. Neither
 Site controls nor groups are implemented by the flat-store contract.
 
-This is an upcoming minor library-format transition. The corresponding app
-minor-version bump remains pending until 0.10 is finalized. Existing libraries require the explicit
-[CLI upgrade](../library_upgrade.md#upcoming-central-pin-format); the application
-does not infer legacy membership when the store is missing.
+The central pin format is library version **0.11**, implemented by the
+0.11.0-dev application. Existing libraries require the explicit
+[CLI upgrade](../library_upgrade.md#central-pin-format-011); the application
+does not infer legacy membership when the store is missing. Older application
+versions cannot safely edit this representation.
 
 The recovery walk constructs a membership set once, so its per-entity membership
 lookup does not scan the ordered sequence. Article-shortcut resolution reads one
