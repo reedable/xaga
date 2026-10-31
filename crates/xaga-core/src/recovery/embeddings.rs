@@ -25,7 +25,13 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     db: &EmbeddingsDb,
     sink: &mut S,
 ) -> Result<RepairResidue, EmbeddingsError> {
-    let pinned_ids = db.pinned_entry_ids().await?;
+    let pins = crate::pins::Pins::read(library_dir)
+        .await
+        .map_err(std::io::Error::other)?;
+    let pin_targets: HashSet<_> = pins.pins.into_iter().collect();
+    let pinned_ids = db.pinned_ids(Kind::Entry).await?;
+    let pinned_topics = db.pinned_ids(Kind::Topic).await?;
+    let pinned_feeds = db.pinned_ids(Kind::Feed).await?;
     let db_meta = db.list_entries_meta().await?; // id → (checksum, reference, has_vector, kind, items, is_unread)
 
     // Embedding is needed when the row is absent, its content changed, or its vector is missing.
@@ -70,18 +76,30 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     let mut fs_ids: HashSet<String> = HashSet::new();
 
     // Topics first so they index before articles.
-    let topics_outcome = for_each_md(&library::topics_dir(library_dir), &md_to_topic, |topic| {
-        fs_ids.insert(topic.id.clone());
-        if needs_embedding(&topic.id, &checksum(&topic.title, topic_embed_text(&topic))) {
-            sink.topic(topic);
-        }
-    })
+    let topics_outcome = for_each_md(
+        &library::topics_dir(library_dir),
+        &md_to_topic,
+        |mut topic| {
+            topic.is_pinned = pin_targets.contains(&crate::pins::PinTarget::Topic {
+                id: topic.id.clone(),
+            });
+            fs_ids.insert(topic.id.clone());
+            if needs_embedding(&topic.id, &checksum(&topic.title, topic_embed_text(&topic)))
+                || pinned_topics.contains(&topic.id) != topic.is_pinned
+            {
+                sink.topic(topic);
+            }
+        },
+    )
     .await;
 
     let entries_outcome = for_each_md(
         &library::entries_dir(library_dir),
         &md_to_article,
-        |article| {
+        |mut article| {
+            article.meta.is_pinned = pin_targets.contains(&crate::pins::PinTarget::Entry {
+                id: article.meta.id.clone(),
+            });
             fs_ids.insert(article.meta.id.clone());
             let needs_embed = needs_embedding(
                 &article.meta.id,
@@ -117,7 +135,10 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
 
     let to_embed_feeds: Vec<Feed> = all_feeds
         .into_iter()
-        .filter(|f| needs_embedding(&f.id, &checksum(&f.title, feed_embed_text(f))))
+        .filter(|f| {
+            needs_embedding(&f.id, &checksum(&f.title, feed_embed_text(f)))
+                || pinned_feeds.contains(&f.id) != f.is_pinned
+        })
         .collect();
 
     // A delete is only legitimate when the source was actually read: an id absent from `fs_ids` /
@@ -337,10 +358,11 @@ mod tests {
         );
         for pinned in [true, false] {
             writer
-                .patch_entry_tags(
-                    crate::library_writer::Tier::Interactive,
-                    article.meta.id.clone(),
-                    crate::library_writer::TagPatch::SetPinned(pinned),
+                .set_pin(
+                    crate::pins::PinTarget::Entry {
+                        id: article.meta.id.clone(),
+                    },
+                    pinned,
                 )
                 .await
                 .unwrap();

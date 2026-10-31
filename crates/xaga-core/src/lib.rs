@@ -16,6 +16,7 @@ pub mod library_writer;
 pub mod md;
 pub mod network_proxy;
 pub mod persistence;
+pub mod pins;
 pub mod query;
 pub mod recovery;
 pub(crate) mod site;

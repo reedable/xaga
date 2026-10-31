@@ -28,6 +28,8 @@ import {
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { usePlatform } from "../../platform/Platform";
 import { useErrorSink } from "../../hooks/useErrorSink";
+import { useMissingPins } from "../../hooks/useMissingPins";
+import MissingShortcutsButton from "../sidebar/MissingShortcutsButton";
 import { usePinnedEntries } from "../../hooks/usePinnedEntries";
 import { articleScopeItems } from "../../utils/articleScopeItems";
 import useAbortController from "../../hooks/useAbortController";
@@ -115,6 +117,7 @@ export function ItemList({
     refreshAllFeeds,
   } = useFeeds(abortControllerRef);
 
+  const missingPins = useMissingPins(pinnedEntries, feeds, topics);
   const [loading, setLoading] = useState(false);
   const [refreshSpin, setRefreshSpin] = useState(false);
 
@@ -607,6 +610,7 @@ export function ItemList({
                   </MenuItem>
                 ))}
               </Select>
+              <MissingShortcutsButton targets={missingPins} />
             </div>
           )}
         </div>

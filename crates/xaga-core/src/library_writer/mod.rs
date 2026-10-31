@@ -70,6 +70,8 @@ pub enum Tier {
 /// writer-level cases are the queue refusing or disappearing.
 #[derive(Debug, thiserror::Error)]
 pub enum WriterError {
+    #[error(transparent)]
+    Pins(#[from] crate::pins::PinsError),
     #[error("{0}")]
     Entry(#[from] EntryError),
     #[error("{0}")]
@@ -91,6 +93,7 @@ impl WriterError {
     /// generic writer code. Mirrored in `src/platform/errors.ts`.
     pub fn code(&self) -> &'static str {
         match self {
+            WriterError::Pins(e) => e.code(),
             WriterError::Entry(e) => e.code(),
             WriterError::Topic(e) => e.code(),
             WriterError::Feed(e) => e.code(),
@@ -102,6 +105,7 @@ impl WriterError {
     /// User-safe message. Full detail stays in `Display`.
     pub fn user_message(&self) -> &'static str {
         match self {
+            WriterError::Pins(e) => e.user_message(),
             WriterError::Entry(e) => e.user_message(),
             WriterError::Topic(e) => e.user_message(),
             WriterError::Feed(e) => e.user_message(),
@@ -126,19 +130,11 @@ pub enum BookmarkOutcome {
 pub enum TagPatch {
     AddBookmark,
     RemoveBookmark,
-    SetPinned(bool),
 }
 
 impl TagPatch {
     fn apply(self, mut tags: Vec<String>) -> Vec<String> {
         match self {
-            TagPatch::SetPinned(pinned) => {
-                tags.retain(|t| t != crate::tags::PINNED);
-                if pinned {
-                    tags.push(crate::tags::PINNED.to_string());
-                }
-                tags
-            }
             TagPatch::AddBookmark => {
                 if !crate::tags::is_bookmarked(&tags) {
                     tags.push(crate::tags::BOOKMARK.to_string());
@@ -158,6 +154,11 @@ impl TagPatch {
 /// recovery's concern). Each variant mirrors a persistence write function and carries its
 /// typed responder.
 enum Op {
+    SetPin {
+        target: crate::pins::PinTarget,
+        pinned: bool,
+        resp: oneshot::Sender<Result<crate::pins::Pins, WriterError>>,
+    },
     RecoverImages {
         id: String,
         recovery: crate::persistence::image_recovery::ImageRecovery,
@@ -258,11 +259,6 @@ enum Op {
         id: String,
         resp: oneshot::Sender<Result<(), WriterError>>,
     },
-    SetTopicPinned {
-        id: String,
-        pinned: bool,
-        resp: oneshot::Sender<Result<bool, WriterError>>,
-    },
     AddTopicItem {
         topic_id: String,
         item: CollectionItem,
@@ -278,11 +274,6 @@ enum Op {
         topic_id: String,
         item_id: String,
         resp: oneshot::Sender<Result<Topic, WriterError>>,
-    },
-    SetFeedPinned {
-        id: String,
-        pinned: bool,
-        resp: oneshot::Sender<Result<bool, WriterError>>,
     },
     RenameFeed {
         id: String,
@@ -327,6 +318,7 @@ impl Op {
     /// topic sharing an id string can never collide onto one lane.
     fn lane_key(&self) -> String {
         match self {
+            Op::SetPin { .. } => "pins".into(),
             Op::RecoverImages { id, .. }
             | Op::RepairSummary { id, .. }
             | Op::SaveArticle { id, .. }
@@ -348,12 +340,10 @@ impl Op {
             | Op::CreateTopicWithMember { id, .. }
             | Op::EditTopicMeta { id, .. }
             | Op::DeleteTopic { id, .. }
-            | Op::SetTopicPinned { id, .. }
             | Op::AddTopicItem { topic_id: id, .. }
             | Op::ReplaceTopicItem { topic_id: id, .. }
             | Op::RemoveTopicItem { topic_id: id, .. } => format!("topic/{id}"),
-            Op::SetFeedPinned { id, .. }
-            | Op::RenameFeed { id, .. }
+            Op::RenameFeed { id, .. }
             | Op::RemoveFeed { id, .. }
             | Op::WriteFeedAtom { id, .. } => format!("feed/{id}"),
         }
@@ -362,6 +352,7 @@ impl Op {
     /// Short name for shutdown-drop logging.
     fn label(&self) -> &'static str {
         match self {
+            Op::SetPin { .. } => "set_pin",
             Op::RecoverImages { .. } => "recover_images",
             Op::RepairSummary { .. } => "repair_summary",
             Op::SavePdf { .. } => "save_pdf",
@@ -376,11 +367,9 @@ impl Op {
             Op::CreateTopicWithMember { .. } => "create_topic_with_member",
             Op::EditTopicMeta { .. } => "edit_topic_meta",
             Op::DeleteTopic { .. } => "delete_topic",
-            Op::SetTopicPinned { .. } => "set_topic_pinned",
             Op::AddTopicItem { .. } => "add_topic_item",
             Op::ReplaceTopicItem { .. } => "replace_topic_item",
             Op::RemoveTopicItem { .. } => "remove_topic_item",
-            Op::SetFeedPinned { .. } => "set_feed_pinned",
             Op::RenameFeed { .. } => "rename_feed",
             Op::RemoveFeed { .. } => "remove_feed",
             Op::WriteFeedEntry { .. } => "write_feed_entry",
@@ -391,6 +380,7 @@ impl Op {
     /// Refuse without executing (Regular backlog at shutdown).
     fn refuse(self) {
         match self {
+            Op::SetPin { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RepairSummary { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SavePdf { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RecoverImages { resp, .. } | Op::SaveArticle { resp, .. } => {
@@ -408,11 +398,9 @@ impl Op {
             }
             Op::DeleteTopic { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::EditTopicMeta { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
-            Op::SetTopicPinned { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::AddTopicItem { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::ReplaceTopicItem { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RemoveTopicItem { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
-            Op::SetFeedPinned { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RenameFeed { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RemoveFeed { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::WriteFeedEntry { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -424,6 +412,16 @@ impl Op {
     /// Runs inside the op's lane: nothing else touches this file concurrently.
     async fn execute(self, library_dir: &std::path::Path, token: WriteToken) {
         match self {
+            Op::SetPin {
+                target,
+                pinned,
+                resp,
+            } => {
+                let result = crate::pins::Pins::set(library_dir, target, pinned, token)
+                    .await
+                    .map_err(WriterError::from);
+                let _ = resp.send(result);
+            }
             Op::RepairSummary { id, summary, resp } => {
                 let result = crate::persistence::summary_repair::repair_summary(
                     library_dir,
@@ -689,12 +687,7 @@ impl Op {
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
-            Op::SetTopicPinned { id, pinned, resp } => {
-                let r = topics::set_topic_pinned(library_dir, &id, pinned, token)
-                    .await
-                    .map_err(WriterError::from);
-                let _ = resp.send(r);
-            }
+
             Op::AddTopicItem {
                 topic_id,
                 item,
@@ -726,12 +719,7 @@ impl Op {
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
-            Op::SetFeedPinned { id, pinned, resp } => {
-                let r = feeds::set_feed_pinned(library_dir, &id, pinned, token)
-                    .await
-                    .map_err(WriterError::from);
-                let _ = resp.send(r);
-            }
+
             Op::RenameFeed {
                 id,
                 title,
@@ -1184,15 +1172,22 @@ impl LibraryWriter {
         self.submit(tier, op, rx).await
     }
 
-    pub async fn set_topic_pinned(
+    pub async fn set_pin(
         &self,
-        tier: Tier,
-        id: String,
+        target: crate::pins::PinTarget,
         pinned: bool,
-    ) -> Result<bool, WriterError> {
+    ) -> Result<crate::pins::Pins, WriterError> {
         let (resp, rx) = oneshot::channel();
-        let op = Op::SetTopicPinned { id, pinned, resp };
-        self.submit(tier, op, rx).await
+        self.submit(
+            Tier::Interactive,
+            Op::SetPin {
+                target,
+                pinned,
+                resp,
+            },
+            rx,
+        )
+        .await
     }
 
     pub async fn add_topic_item(
@@ -1239,17 +1234,6 @@ impl LibraryWriter {
             item_id,
             resp,
         };
-        self.submit(tier, op, rx).await
-    }
-
-    pub async fn set_feed_pinned(
-        &self,
-        tier: Tier,
-        id: String,
-        pinned: bool,
-    ) -> Result<bool, WriterError> {
-        let (resp, rx) = oneshot::channel();
-        let op = Op::SetFeedPinned { id, pinned, resp };
         self.submit(tier, op, rx).await
     }
 
@@ -1580,76 +1564,50 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn article_pin_shares_entry_lane_and_preserves_other_state() {
+    async fn concurrent_pins_share_one_lane_and_survive_restart() {
+        use crate::pins::{PinTarget, Pins};
         let dir = tempfile::tempdir().unwrap();
         let w = start_writer(dir.path());
-        let id = "pinned-article";
-        seed_article(&w, id).await;
-        w.add_annotation(Tier::Interactive, id.into(), annotation("kept"))
-            .await
-            .unwrap();
-        let path = crate::library::entry_path(dir.path(), id);
-        let original = std::fs::read_to_string(&path).unwrap();
-        let original = crate::md::patch_document(
-            &original,
-            &[("tags", serde_json::json!(["research", "project/custom"]))],
-            None,
+        let mut tasks = Vec::new();
+        for i in 0..32 {
+            let writer = w.clone();
+            tasks.push(tokio::spawn(async move {
+                writer
+                    .set_pin(
+                        PinTarget::Entry {
+                            id: format!("entry{i}"),
+                        },
+                        true,
+                    )
+                    .await
+                    .unwrap();
+            }));
+        }
+        for task in tasks {
+            task.await.unwrap();
+        }
+        w.set_pin(
+            PinTarget::Entry {
+                id: "entry0".into(),
+            },
+            true,
         )
+        .await
         .unwrap();
-        std::fs::write(
-            &path,
-            original.replacen("---\n", "---\ncustom: retained\n", 1),
+        assert_eq!(Pins::read(dir.path()).await.unwrap().pins.len(), 32);
+        w.set_pin(
+            PinTarget::Entry {
+                id: "entry0".into(),
+            },
+            false,
         )
+        .await
         .unwrap();
-        w.set_entry_unread(Tier::Interactive, id.into(), false)
-            .await
-            .unwrap();
-        let (pin, unread, bookmark) = tokio::join!(
-            w.patch_entry_tags(Tier::Interactive, id.into(), TagPatch::SetPinned(true)),
-            w.set_entry_unread(Tier::Interactive, id.into(), true),
-            w.patch_entry_tags(Tier::Interactive, id.into(), TagPatch::AddBookmark),
-        );
-        pin.unwrap();
-        unread.unwrap();
-        bookmark.unwrap();
-        let saved = articles::read_article(dir.path(), id).await.unwrap();
-        assert!(saved.meta.is_pinned && saved.meta.is_unread && saved.meta.is_bookmarked);
-        let read = w
-            .set_entry_unread(Tier::Interactive, id.into(), false)
-            .await
-            .unwrap();
-        assert!(read.is_pinned && !read.is_unread && read.is_bookmarked);
-        w.set_entry_unread(Tier::Interactive, id.into(), true)
-            .await
-            .unwrap();
-        assert_eq!(saved.annotations[0].id, "kept");
-        assert_eq!(saved.content, "body");
-        let tags = entries::read_entry_tags(dir.path(), id).await.unwrap();
-        assert!(!tags.iter().any(|tag| tag == "unread"));
-        assert!(
-            tags.contains(&"research".to_string()) && tags.contains(&"project/custom".to_string())
-        );
-        assert!(
-            std::fs::read_to_string(&path)
-                .unwrap()
-                .contains("custom: retained")
-        );
         w.shutdown().await;
         drop(w);
-        let w = start_writer(dir.path());
-        assert!(
-            articles::read_article(dir.path(), id)
-                .await
-                .unwrap()
-                .meta
-                .is_pinned
-        );
-        let unpinned = w
-            .patch_entry_tags(Tier::Interactive, id.into(), TagPatch::SetPinned(false))
-            .await
-            .unwrap();
-        assert!(!unpinned.is_pinned && unpinned.is_unread && unpinned.is_bookmarked);
-        w.shutdown().await;
+        assert_eq!(Pins::read(dir.path()).await.unwrap().pins.len(), 31);
+        let other = tempfile::tempdir().unwrap();
+        assert!(Pins::read(other.path()).await.unwrap().pins.is_empty());
     }
 
     #[tokio::test]

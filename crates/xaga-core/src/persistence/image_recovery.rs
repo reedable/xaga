@@ -49,7 +49,7 @@ pub(crate) async fn apply(
     };
     // Do not overwrite a changed field, nor save orphan resources for that stale snapshot.
     if source != recovery.expected {
-        return Ok(article_from_document(id, fm, body));
+        return super::articles::project_pin(library, article_from_document(id, fm, body)).await;
     }
     let mut patches = recovery.patches;
     patches.sort_by_key(|p| p.start);
@@ -94,7 +94,7 @@ pub(crate) async fn apply(
         output.replace_range(p.start..p.end, &replacement);
     }
     if output == source {
-        return Ok(article_from_document(id, fm, body));
+        return super::articles::project_pin(library, article_from_document(id, fm, body)).await;
     }
     // Preserve unrelated frontmatter and the exact body on summary-only updates.
     let saved = if recovery.summary {
@@ -111,7 +111,7 @@ pub(crate) async fn apply(
     let keep = images::referenced_image_hashes(id, &saved);
     images::gc_entry_images(library, id, &keep, token).await;
     let (fm, body) = parse_document(&saved)?;
-    Ok(article_from_document(id, fm, body))
+    super::articles::project_pin(library, article_from_document(id, fm, body)).await
 }
 
 #[cfg(test)]

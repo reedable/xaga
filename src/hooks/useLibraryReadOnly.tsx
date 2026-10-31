@@ -3,8 +3,8 @@ import { usePlatform } from "../platform/Platform";
 import { subscribe } from "./useEvents";
 
 /**
- * Whether this instance is read-only for the open library (another xaga
- * instance holds the library lock). Same name as the Rust accessor, the Tauri
+ * Whether this instance is read-only for the open library (its version does
+ * not match, its upgrade is incomplete, or no library write lock is held). Same name as the Rust accessor, the Tauri
  * command, and the `library:mode-changed` event payload — one concept, one
  * name at every layer.
  *

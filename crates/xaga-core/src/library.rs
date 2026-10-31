@@ -10,6 +10,36 @@ use std::path::{Path, PathBuf};
 
 use crate::fs::FileLock;
 
+mod manifest;
+pub use manifest::{LibraryFormatError, LibraryManifest, LibraryUpgrade, LibraryVersion};
+
+const MANIFEST_NAME: &str = "library.yaml";
+fn manifest_path(library_dir: &Path) -> PathBuf {
+    library_dir.join(MANIFEST_NAME)
+}
+
+/// Select write mode at startup using this library's runtime metadata.
+/// Missing, mismatched and incomplete metadata opens without a writer. No library
+/// directory, metadata or lock file is created for those read-only openings.
+pub fn open(
+    library_dir: &Path,
+    app_version: LibraryVersion,
+) -> Result<Option<FileLock>, LibraryFormatError> {
+    let matches = || -> Result<bool, LibraryFormatError> {
+        Ok(LibraryManifest::read(library_dir)?
+            .is_some_and(|manifest| manifest.matches_version(app_version)))
+    };
+    if !matches()? {
+        return Ok(None);
+    }
+    let lock = acquire_lock(library_dir);
+    // Recheck inside the write right: an upgrade may have raced the first read.
+    if lock.is_some() && !matches()? {
+        return Ok(None);
+    }
+    Ok(lock)
+}
+
 // ── Layout ──────────────────────────────────────────────────────────────────────
 // Subdir/index names live here once; `*_dir` and `*_path` both build from them.
 
@@ -19,6 +49,13 @@ const FEEDS_SUBDIR: &str = "feeds";
 const IMAGES_SUBDIR: &str = "images";
 const FAVICONS_SUBDIR: &str = "favicons";
 const PDFS_SUBDIR: &str = "pdfs";
+const PINS_NAME: &str = "pins.yaml";
+
+/// The library-scoped ordered pin store.
+pub fn pins_path(library_dir: &Path) -> PathBuf {
+    library_dir.join(PINS_NAME)
+}
+
 const INDEX_NAME: &str = "embeddings.lance";
 
 /// The directory holding entry `.md` files.

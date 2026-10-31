@@ -72,7 +72,7 @@ persisted in the shared library YAML pin store.
 
 ## References
 
-- [Centralize Pin Storage](refactor__pins--centralize-storage.md) — prerequisite.
+- [Centralize Pin Storage](../active/refactor__pins--centralize-storage.md) — prerequisite.
 - [macOS Shortcuts Menu](enhancement__pins--macos-menu.md)
 - `src/components/sidebar/ShortcutList.tsx`
 - `src/components/list/ItemList.tsx`

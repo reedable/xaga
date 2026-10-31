@@ -148,3 +148,5 @@ it("keeps every section and the bottom filter visible with zero matches", async 
     true
   );
 });
+
+vi.mock("../../hooks/useMissingPins", () => ({ useMissingPins: () => [] }));

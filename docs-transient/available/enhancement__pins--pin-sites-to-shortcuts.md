@@ -42,7 +42,7 @@ Implement after central pin storage is available.
 
 ## References
 
-- [Centralize Pin Storage](refactor__pins--centralize-storage.md) — prerequisite.
+- [Centralize Pin Storage](../active/refactor__pins--centralize-storage.md) — prerequisite.
 - [Organization model](../../docs/architecture/organization_model.md)
 - `docs/architecture/sites.md`
 - `crates/xaga-core/src/library.rs`

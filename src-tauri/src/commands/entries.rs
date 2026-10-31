@@ -1,6 +1,6 @@
 use tauri::State;
 use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
-use xaga_core::library_writer::{TagPatch, Tier as WriteTier};
+use xaga_core::library_writer::Tier as WriteTier;
 use xaga_core::persistence::entries;
 use xaga_core::query::items;
 use xaga_core::types::{Entry, Kind, ListItem};
@@ -90,7 +90,6 @@ pub async fn list_all_items(
         .map_err(AppError::from)
 }
 
-/// Pin intent is committed in the entry lane before updating the derived cache.
 #[tauri::command]
 pub async fn set_entry_pinned(
     id: String,
@@ -98,25 +97,17 @@ pub async fn set_entry_pinned(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Entry, AppError> {
-    let writer = crate::commands::require_writer(&state)?;
-    let entry = writer
-        .patch_entry_tags(
-            WriteTier::Interactive,
-            id.clone(),
-            TagPatch::SetPinned(pinned),
-        )
-        .await
-        .map_err(AppError::from)?;
-    state.enqueue(
-        Tier::Interactive,
-        Job::SyncState {
-            entity: EntityRef::new(id, Kind::Entry),
-            state: StatePatch {
-                is_pinned: Some(pinned),
-                ..Default::default()
-            },
-        },
-    );
+    // Read before committing so a missing article cannot report a failed mutation
+    // after successfully creating a pin. Generic set_pin also permits unresolved references.
+    let mut entry = entries::read_entry(&state.library_path(), &id).await?;
+    super::pins::set_pin(
+        xaga_core::pins::PinTarget::Entry { id },
+        pinned,
+        app.clone(),
+        state,
+    )
+    .await?;
+    entry.is_pinned = pinned;
     crate::events::emit_domain(
         &app,
         xaga_core::events::DomainEvent::EntryPinChanged(entry.clone()),
@@ -126,12 +117,9 @@ pub async fn set_entry_pinned(
 
 #[tauri::command]
 pub async fn list_pinned_entries(state: State<'_, AppState>) -> Result<Vec<Entry>, AppError> {
-    let db = state.embeddings_read.lock().unwrap().clone();
-    let Some(db) = db else {
-        return Ok(vec![]);
-    };
-    db.reload().await.map_err(AppError::from)?;
-    db.filter_pinned_entries().await.map_err(AppError::from)
+    let dir = state.library_path();
+    let pins = xaga_core::pins::Pins::read(&dir).await?;
+    pins.list_entries(&dir).await.map_err(AppError::from)
 }
 
 /// A source-file read for article scopes; unlike read_article, this does not mark read.

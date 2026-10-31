@@ -4,6 +4,7 @@ pub mod embeddings;
 pub mod entries;
 pub mod feeds;
 pub mod library;
+pub mod pins;
 pub mod settings;
 pub mod sites;
 pub mod topics;
@@ -40,6 +41,7 @@ pub(crate) const WRITE_COMMANDS: &[&str] = &[
     "remove_topic_item",
     "set_topic_pinned",
     "set_entry_pinned",
+    "set_pin",
     "add_bookmark",
     "remove_bookmark",
     "reset_embeddings",

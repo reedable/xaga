@@ -1,16 +1,19 @@
 # Single-Writer Library Lock — the Two Runtime Modes
 
-**A library has at most one writing process at a time, enforced by an exclusive advisory file lock whose scope is the WHOLE library: entity `.md` files and LanceDB alike. Every xaga process runs in one of two modes, set by that lock: read-write (holds the lock) or read-only (does not). Non-holders read but do not write.**
+**A library has at most one writing process at a time, enforced by an exclusive advisory file lock whose scope is the WHOLE library: entity `.md` files and LanceDB alike. The app selects one of two modes from the library version and write lock: read-write (holds the lock) or read-only (does not). Non-holders read but do not write.**
 
 ## The mechanism
 
 - The lock is an exclusive advisory `flock` on `xaga.lock` at the library root (`acquire_lock`, `crates/xaga-core/src/library.rs`).
 - The lock is tied to the open file handle, not the file's contents (`FileLock`, `crates/xaga-core/src/fs.rs`): the OS releases it automatically when the handle drops — including on crashes and hard kills. There are no stale lock files to clean up.
-- **Mode is derived, never stored.** In read-write mode the app holds a `LibraryWriter` (which owns the flock) in the `LibraryHandle` — path and writer guarded as one unit; in read-only mode the writer is `None`. `is_library_read_only()` reads `writer.is_none()` (`src-tauri/src/lib.rs`). There is no mode enum/bool anywhere that could drift; the writer's presence IS the mode (single source of truth). The same name carries the concept at every layer: the Rust accessor, the Tauri command, the `library:mode-changed` event payload, and the frontend hook (`src/hooks/useLibraryReadOnly.tsx`).
+- **Mode is derived, never stored.** A matching completed library version is a
+  prerequisite for attempting the write lock at app startup. Missing, mismatched
+  or incomplete metadata selects read-only mode; unreadable metadata selects
+  read-only mode and reports its error. In read-write mode the app holds a `LibraryWriter` (which owns the flock) in the `LibraryHandle` — path and writer guarded as one unit; in read-only mode the writer is `None`. `is_library_read_only()` reads `writer.is_none()` (`src-tauri/src/lib.rs`). There is no mode enum/bool anywhere that could drift; the writer's presence IS the mode (single source of truth). The same name carries the concept at every layer: the Rust accessor, the Tauri command, the `library:mode-changed` event payload, and the frontend hook (`src/hooks/useLibraryReadOnly.tsx`).
 
 ## Who takes it, and when
 
-- **The app:** at setup, immediately after resolving the library path and before any command can run. Winning = read-write; losing = read-only. A library switch (`set_library`) persists the new path and restarts the process, and the restart path drains and releases the writer before spawning the successor (`drain_and_release_writer`, `src-tauri/src/lib.rs`) so the new process can win the lock.
+- **The app:** at setup, immediately after resolving the library path and before any command can run. A completed matching library version permits taking the write lock; winning = read-write, otherwise read-only. A library switch (`set_library`) persists the new path and restarts the process, and the restart path drains and releases the writer before spawning the successor (`drain_and_release_writer`, `src-tauri/src/lib.rs`) so the new process can win the lock.
 - **The `LibraryWriter`:** owns the flock (`LibraryWriter::start(dir, lock)`, `crates/xaga-core/src/library_writer/mod.rs`) and is the single component through which every `.md` write flows. Dropping it releases the lock; the restart/shutdown paths drain it first (`drain_and_release_writer`, `src-tauri/src/lib.rs`).
 - **The `EmbeddingService`:** receives a shared `Arc` of the writer's lock (`EmbeddingService::start(dir, lock)`, from `writer.lock()`) and holds it for its lifetime, preserving its invariant of never running unlocked. The service (LanceDB writes, recovery, embedding queue) exists only in a read-write instance. The flock releases only once BOTH the writer and the service have dropped their `Arc`.
 - **The CLI:** write commands acquire it via `require_write_lock` (`crates/xaga-cli/src/cmd/embeddings.rs`), failing fast when another process holds it. The writer is whoever wins the flock — app or CLI, first-come.
@@ -20,7 +23,7 @@
 - Every library-writing command is refused centrally at the IPC boundary with a typed `E_READ_ONLY` error — the `WRITE_COMMANDS` registry next to `is_invoke_allowed` (`src-tauri/src/commands/mod.rs`), the same single-choke-point pattern as the window allowlist. New write commands must be added to that registry (it drives the early, uniform read-only rejection and the frontend affordance list; the ultimate enforcement is that a read-only instance has no writer, so `require_writer` errors regardless).
 - Incidental writes hiding in read flows no-op silently: `read_article`'s mark-read is skipped, so reading stays seamless — the entry simply stays unread.
 - The frontend learns the mode (`is_library_read_only` command + `library:mode-changed` event), shows a read-only badge, and disables write affordances.
-- Reads are untouched: `.md` reads, search, and lists. LanceDB readers use
+- For a read-only library, reads remain available: `.md` reads, search, and lists. LanceDB readers use
   `EmbeddingsDb::open_readonly`, which opens an existing table without creating or migrating it.
   LanceDB writers use `EmbeddingsDb::open_writer` only after acquiring the library lock; the
   writer retains that lock across asynchronous mutation work.
@@ -64,3 +67,24 @@ cache reconciliation, runs file conversions sequentially, and commits each file
 with fsync and atomic replacement. All migration-specific rules and direct cache
 updates live in the CLI; no legacy conversion API is built into core. See the
 [upgrade contract](../library_upgrade.md) and [crash ordering](crash_consistency.md#article-reading-state-and-explicit-library-upgrades).
+
+### Central pins
+
+The library writer also owns `pins.yaml`. Every pin mutation, regardless of target
+type, uses the same Interactive lane and atomically replaces the complete store.
+It drains at shutdown. Pinning no longer writes entry tags, Topic tags, or Feed
+categories. Generic `set_pin` and the existing entity pin commands all pass the
+central read-only gate and require a writer. The offline converter holds the
+library lock while committing central membership before stripping legacy markers;
+its migration-specific file writes remain in the CLI.
+
+### Library version manifest
+
+Core owns `library.yaml` and its atomic read/write API. The app compares this
+library's stored major/minor with the running app's major/minor before constructing
+the main webview or starting the writer/service. It never initializes missing
+version metadata on open. The existing read-only command gate and controls apply
+regardless of whether the cause is a version state or lock contention. An absent
+cache is not created by read-only opening. Explicit pre-1.0 CLI migrations hold
+the library lock and call the core manifest API before conversion and after
+successful reconciliation. See [library version](library_version.md).

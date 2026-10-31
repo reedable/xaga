@@ -38,6 +38,12 @@ changes. Every library storage-model change requires a minor-version increment.
 The 0.10 reading-state format requires the [explicit library upgrade](../library_upgrade.md)
 before using a 0.9 library; patch versions do not carry this format transition.
 
+Library versions use the application's `major.minor` convention. Each library
+stores its own completed version in `library.yaml`; it is read at runtime and is
+advanced only by an explicit successful upgrade. Patch and prerelease changes do
+not alter the library version. Changing the app version does not relabel existing
+libraries. See [library version metadata](../architecture/library_version.md).
+
 ## Starting development
 
 After publishing a final release, select the kind of next release and enter development immediately:

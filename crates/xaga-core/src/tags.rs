@@ -6,15 +6,8 @@
 
 /// The `bookmark` state tag.
 pub const BOOKMARK: &str = "bookmark";
-/// The `pinned` state tag.
-pub(crate) const PINNED: &str = "pinned";
 
 /// Whether the `bookmark` tag is present.
 pub fn is_bookmarked(tags: &[String]) -> bool {
     tags.iter().any(|t| t == BOOKMARK)
-}
-
-/// Whether the `pinned` tag is present.
-pub(crate) fn is_pinned(tags: &[String]) -> bool {
-    tags.iter().any(|t| t == PINNED)
 }

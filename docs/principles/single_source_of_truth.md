@@ -11,7 +11,15 @@
   read. Writers omit read state rather than persisting false. Collection unread
   counts aggregate member Entry booleans.
 - **Topic `.md` files** own topic membership — ordered, typed, carrying the annotation `reference`. The membership write path writes only the topic file (`crates/xaga-core/src/persistence/topics.rs`).
-- **Pins** live in the content files: `<category term="pinned">` on a feed `.atom` (`set_feed_pinned`, `crates/xaga-core/src/persistence/feeds.rs`), a `pinned` tag on a topic or article `.md`. Article pin mutations use the library writer’s entry-tag lane; LanceDB’s `is_pinned` and pin tag are derived mirrors.
+- **Pins** are owned by the library's ordered `pins.yaml` store of typed target
+  references. Feed categories, Topic/article tags, and LanceDB rows do not own
+  membership. Displayed pin state resolves central references against current
+  targets; unavailable references remain stored until explicitly unpinned.
+  See the [pin-store contract](../architecture/pins.md).
+- **`library.yaml`** owns each library’s completed major/minor version and any
+  pending migration target. Core owns the file API; an application version is a
+  runtime input for comparison, never a replacement for reading the selected
+  library’s metadata. See [library version](../architecture/library_version.md).
 - **LanceDB** is the queryable read layer that mirrors the above. The durability invariant — every column is reconstructible from the files — is what makes LanceDB a cache, not a second source of truth.
 
 ## The producer rule

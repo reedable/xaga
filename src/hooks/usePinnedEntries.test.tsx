@@ -18,7 +18,8 @@ const mocks = vi.hoisted(() => {
     sink: { pushError: vi.fn() },
     platform: {
       listPinnedEntries: vi.fn(),
-      onEntryPinChanged: register("pin"),
+      onPinChanged: register("pin"),
+      onFaviconChanged: register("favicon"),
       onUnreadChanged: register("unread"),
       onBookmarkChanged: register("bookmark"),
       onEmbeddingsChanged: register("cache"),
@@ -56,19 +57,28 @@ afterEach(async () => {
   await act(async () => root.unmount());
 });
 
-it("keeps committed pin intent ahead of delayed cache and reading-state events", async () => {
+it("reads committed membership from files independently of cache events", async () => {
   await act(async () => root.render(<Probe />));
   expect(entries).toEqual([article]);
-  await act(async () => mocks.callbacks.pin({ ...article, isPinned: false }));
-  expect(entries).toEqual([]);
-  await act(async () => mocks.callbacks.cache());
-  expect(entries).toEqual([]);
   mocks.platform.listPinnedEntries.mockResolvedValue([]);
-  await act(async () => mocks.callbacks.pin(article));
   await act(async () =>
-    mocks.callbacks.unread({ ...article, isPinned: false, isUnread: false })
+    mocks.callbacks.unread({
+      target: { type: "entry", id: article.id },
+      pinned: false,
+    })
   );
+  expect(entries).toEqual([]);
   await act(async () => mocks.callbacks.cache());
+  expect(entries).toEqual([]);
+  mocks.platform.listPinnedEntries.mockResolvedValue([
+    { ...article, isUnread: false },
+  ]);
+  await act(async () =>
+    mocks.callbacks.unread({
+      target: { type: "entry", id: article.id },
+      pinned: true,
+    })
+  );
   expect(entries).toEqual([{ ...article, isUnread: false }]);
 });
 it("does not allow an earlier cache request to overwrite a later refresh", async () => {
@@ -88,11 +98,16 @@ it("does not allow an earlier cache request to overwrite a later refresh", async
 
 it("allows refreshed article metadata to replace the pin command's snapshot", async () => {
   await act(async () => root.render(<Probe />));
-  await act(async () => mocks.callbacks.pin(article));
+  await act(async () => mocks.callbacks.unread(article));
   mocks.platform.listPinnedEntries.mockResolvedValue([
     { ...article, title: "Updated title" },
   ]);
   await act(async () => mocks.callbacks.cache());
   expect(entries[0].title).toBe("Updated title");
   expect(entries[0].isPinned).toBe(true);
+});
+
+vi.mock("../providers/PinsContext", () => {
+  const pins = [{ type: "entry", id: "article" }];
+  return { usePins: () => ({ pins }) };
 });

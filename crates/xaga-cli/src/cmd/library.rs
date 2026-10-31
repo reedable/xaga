@@ -13,12 +13,45 @@ pub struct LibraryArgs {
 
 #[derive(Subcommand)]
 pub enum LibraryCommand {
-    /// Upgrade a 0.9 library to the 0.10 format and reconcile its cache
+    /// Show the stored format and incomplete upgrade state without modifying the library
+    Info,
+    /// Upgrade legacy reading state and pins and reconcile the library cache
     Upgrade,
 }
 
+/// The CLI supplies its application version at runtime; core owns no global
+/// version for the user's libraries.
+pub(super) fn application_version() -> library::LibraryVersion {
+    library::LibraryVersion::new(
+        env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+        env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+    )
+}
+
 pub async fn handle(command: LibraryCommand, data_dir: &Path) {
+    if !data_dir.is_dir() {
+        die("library directory does not exist");
+    }
     match command {
+        LibraryCommand::Info => {
+            let manifest =
+                library::LibraryManifest::read(data_dir).unwrap_or_else(|error| die(error));
+            println!("Library: {}", data_dir.display());
+            match manifest {
+                None => println!("Library version: unversioned; explicit upgrade required"),
+                Some(manifest) => {
+                    let version = manifest
+                        .format_version()
+                        .map(|value| value.to_string())
+                        .unwrap_or_else(|| "unversioned".into());
+                    println!("Library version: {version}");
+                    if let Some(target) = manifest.migration_target() {
+                        println!("Upgrade: incomplete; target version {target}");
+                    }
+                }
+            }
+            println!("Application major.minor: {}", application_version());
+        }
         LibraryCommand::Upgrade => {
             if !data_dir.is_dir() {
                 die("library directory does not exist");

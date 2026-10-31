@@ -19,7 +19,7 @@ import {
   Popover,
   Tooltip,
 } from "@mui/material";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 import useAbortController from "../../hooks/useAbortController";
 import { useArticles } from "../../hooks/useArticles";
@@ -31,6 +31,7 @@ import { useErrorSink } from "../../hooks/useErrorSink";
 import FaviconLoadError from "../../utils/FaviconLoadError";
 import { isLocalFaviconReference } from "../../utils/isLocalFaviconReference";
 import useRouter from "../../hooks/useRouter";
+import { usePins } from "../../providers/PinsContext";
 import { usePlatform } from "../../platform/Platform";
 import { useEmbeddingStartupState } from "../../hooks/useEmbeddingStartupState";
 import { isArticle, type Entry } from "../../types";
@@ -44,6 +45,7 @@ interface ToolbarProps {
 
 export function Toolbar({ reload }: ToolbarProps) {
   const platform = usePlatform();
+  const { pins, setPin } = usePins();
   const isLibraryReadOnly = useLibraryReadOnly();
   const [pinning, setPinning] = useState(false);
   const embeddingStartupState = useEmbeddingStartupState();
@@ -83,7 +85,18 @@ export function Toolbar({ reload }: ToolbarProps) {
     setFavicon(null);
   }
 
-  const entry = latestEntry?.id === entryId ? latestEntry : null;
+  const entry = useMemo(
+    () =>
+      latestEntry && latestEntry.id === entryId
+        ? {
+            ...latestEntry,
+            isPinned: pins.some(
+              (pin) => pin.type === "entry" && pin.id === entryId
+            ),
+          }
+        : null,
+    [latestEntry, entryId, pins]
+  );
 
   // Only persisted local references may supply an icon. Never render a stored
   // remote URL directly: that would fetch from the privileged main window.
@@ -112,16 +125,13 @@ export function Toolbar({ reload }: ToolbarProps) {
     if (!entry || pinning) return;
     setPinning(true);
     try {
-      const updated = await platform.setEntryPinned(entry.id, !entry.isPinned);
-      setLatestEntry((current) =>
-        current?.id === updated.id ? updated : current
-      );
+      await setPin({ type: "entry", id: entry.id }, !entry.isPinned);
     } catch (error) {
       pushError(error);
     } finally {
       setPinning(false);
     }
-  }, [entry, pinning, platform, pushError]);
+  }, [entry, pinning, setPin, pushError]);
 
   useEffect(
     () =>

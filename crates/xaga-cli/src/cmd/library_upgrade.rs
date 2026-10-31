@@ -144,8 +144,122 @@ async fn reconcile(
     Ok(updated)
 }
 
+/// Transfer each reference durably before stripping its legacy marker. This
+/// sequencing remains safe after any individual file or store commit is interrupted.
+async fn convert_pins(dir: &Path, lock: &FileLock) -> Result<(), Error> {
+    use xaga_core::pins::{PinTarget, Pins};
+    let mut pins = Pins::read(dir).await?;
+    for (folder, extension, kind) in [
+        (library::entries_dir(dir), "md", "entry"),
+        (library::topics_dir(dir), "md", "topic"),
+        (library::feeds_dir(dir), "atom", "feed"),
+    ] {
+        let entries = match fs::read_dir(&folder) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        for entry in entries {
+            let path = entry?.path();
+            if path.extension().is_none_or(|ext| ext != extension) {
+                continue;
+            }
+            let id = path
+                .file_stem()
+                .and_then(|id| id.to_str())
+                .ok_or("non-UTF-8 target id")?
+                .to_owned();
+            let target = match kind {
+                "entry" => PinTarget::Entry { id },
+                "topic" => PinTarget::Topic { id },
+                _ => PinTarget::Feed { id },
+            };
+            target.validate()?;
+            if !fs::symlink_metadata(&path)?.file_type().is_file() {
+                return Err(format!("{}: expected regular file", path.display()).into());
+            }
+            let raw = read_capped(&path)?;
+            let converted = if kind == "feed" {
+                convert_feed_pin(&raw)?
+            } else {
+                convert_markdown_pin(&raw)?
+            };
+            if let Some(rendered) = converted {
+                if !pins.contains(&target) {
+                    pins.pins.push(target);
+                    // The ordinary parser validates identities, duplicate membership and encoding.
+                    let yaml = pins.serialize()?;
+                    write_atomic(&library::pins_path(dir), &yaml, lock)?;
+                }
+                write_atomic(&path, &rendered, lock)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn convert_feed_pin(raw: &str) -> Result<Option<String>, Error> {
+    let mut atom = xaga_core::atom::parse_atom(raw)?;
+    let before = atom.categories().len();
+    atom.categories.retain(|category| {
+        !(category.term() == "pinned" && category.scheme() == Some("https://xaga.app/ns/tag"))
+    });
+    if atom.categories().len() == before {
+        return Ok(None);
+    }
+    Ok(Some(String::from_utf8(xaga_core::atom::atom_to_xml(
+        &atom,
+    )?)?))
+}
+
+fn convert_markdown_pin(raw: &str) -> Result<Option<String>, Error> {
+    let trimmed = raw.trim_start();
+    let prefix = &raw[..raw.len() - trimmed.len()];
+    let rest = trimmed.strip_prefix("---\n").ok_or("missing frontmatter")?;
+    let end = rest.find("\n---\n").ok_or("missing closing delimiter")?;
+    let config = ParserConfig::strict().with_policy(DenyAnchors);
+    let mut fields: BTreeMap<String, Value> = noyalib::from_str_with_config(&rest[..end], &config)?;
+    let tags: Vec<String> = fields
+        .get("tags")
+        .map(noyalib::from_value)
+        .transpose()?
+        .unwrap_or_default();
+    if !tags.iter().any(|tag| tag == "pinned") {
+        return Ok(None);
+    }
+    fields.insert(
+        "tags".into(),
+        noyalib::to_value(
+            &tags
+                .into_iter()
+                .filter(|tag| tag != "pinned")
+                .collect::<Vec<_>>(),
+        )?,
+    );
+    let yaml =
+        noyalib::to_string_with_config(&fields, &SerializerConfig::new().block_scalars(false))?;
+    Ok(Some(format!(
+        "{prefix}---\n{}\n---\n{}",
+        yaml.trim_end_matches('\n'),
+        &rest[end + 5..]
+    )))
+}
+
 pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeReport {
     let mut report = UpgradeReport::default();
+    let upgrade = match library::LibraryManifest::begin_upgrade(
+        dir,
+        crate::cmd::library::application_version(),
+        lock,
+    ) {
+        Ok(Some(upgrade)) => upgrade,
+        Ok(None) => return report,
+        Err(error) => {
+            report.errors.push(format!("library format: {error}"));
+            return report;
+        }
+    };
+
     // Use the ordinary writer-open boundary to create an absent cache. Conversion
     // itself uses direct, narrowly-scoped cache updates owned entirely by this CLI.
     let table = async {
@@ -164,6 +278,56 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
             return report;
         }
     };
+    if let Err(error) = convert_pins(dir, lock).await {
+        report
+            .errors
+            .push(format!("pin conversion: {error}; rerun library upgrade"));
+        return report;
+    }
+    let pins = match xaga_core::pins::Pins::read(dir).await {
+        Ok(pins) => pins,
+        Err(error) => {
+            report.errors.push(format!("pin store: {error}"));
+            return report;
+        }
+    };
+    // Clear the disposable legacy projection before deriving the new membership.
+    // No UI pin discovery reads this cache; retries always reconcile from pins.yaml.
+    if let Err(error) = table
+        .update()
+        .only_if("is_pinned = true OR array_contains(tags, 'pinned')")
+        .column("is_pinned", "false")
+        .column("tags", "array_remove(tags, 'pinned')")
+        .execute()
+        .await
+    {
+        report.errors.push(format!("pin cache cleanup: {error}"));
+    }
+    for chunk in pins.pins.chunks(CACHE_BATCH_SIZE) {
+        let targets: Vec<_> = chunk
+            .iter()
+            .map(|target| {
+                use xaga_core::pins::PinTarget;
+                let (kind, id) = match target {
+                    PinTarget::Entry { id } => ("entry", id),
+                    PinTarget::Feed { id } => ("feed", id),
+                    PinTarget::Topic { id } => ("topic", id),
+                };
+                format!("(kind = '{kind}' AND id = '{}')", id.replace('\'', "''"))
+            })
+            .collect();
+        if let Err(error) = table
+            .update()
+            .only_if(targets.join(" OR "))
+            .column("is_pinned", "true")
+            .execute()
+            .await
+        {
+            report
+                .errors
+                .push(format!("pin cache reconciliation: {error}"));
+        }
+    }
     let entries_dir = library::entries_dir(dir);
     let entries = match fs::read_dir(&entries_dir) {
         Ok(entries) => Some(entries),
@@ -225,6 +389,13 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
         report.errors.push(format!(
             "cache legacy-marker cleanup: {error}; rerun library upgrade"
         ));
+    }
+    if report.errors.is_empty() {
+        if let Err(error) = upgrade.complete() {
+            report
+                .errors
+                .push(format!("complete library upgrade: {error}"));
+        }
     }
     report
 }
@@ -341,6 +512,82 @@ mod tests {
         assert!(!values(&convert(&unsupported).unwrap().rendered.unwrap()).contains_key("images"));
     }
 
+    #[tokio::test]
+    async fn pin_conversion_retries_preserve_transferred_and_unresolved_references() {
+        use xaga_core::pins::{PinTarget, Pins};
+        let dir = tempfile::tempdir().unwrap();
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        let article = seed(
+            dir.path(),
+            "article",
+            "tags: [pinned, research, bookmark]\nis_unread: true",
+        );
+        let topic = library::topic_path(dir.path(), "topic");
+        fs::create_dir_all(topic.parent().unwrap()).unwrap();
+        fs::write(&topic, document("tags: [pinned, research]")).unwrap();
+        let feed = library::feed_path(dir.path(), "feed");
+        fs::create_dir_all(feed.parent().unwrap()).unwrap();
+        fs::write(&feed, r#"<feed xmlns="http://www.w3.org/2005/Atom"><id>feed</id><title>Kept title</title><updated>2026-01-01T00:00:00Z</updated><category term="pinned" scheme="https://xaga.app/ns/tag"/><category term="pinned"/><entry><id>entry</id><title>Kept entry</title><updated>2026-01-01T00:00:00Z</updated></entry></feed>"#).unwrap();
+        // Simulates interruption after central membership committed but before marker removal.
+        let initial = Pins {
+            pins: vec![
+                PinTarget::Entry {
+                    id: "unresolved".into(),
+                },
+                PinTarget::Entry {
+                    id: "article".into(),
+                },
+            ],
+        };
+        write_atomic(
+            &library::pins_path(dir.path()),
+            &noyalib::to_string(&initial).unwrap(),
+            &lock,
+        )
+        .unwrap();
+        convert_pins(dir.path(), &lock).await.unwrap();
+        let pins = Pins::read(dir.path()).await.unwrap();
+        assert_eq!(
+            pins.pins,
+            vec![
+                PinTarget::Entry {
+                    id: "unresolved".into()
+                },
+                PinTarget::Entry {
+                    id: "article".into()
+                },
+                PinTarget::Topic { id: "topic".into() },
+                PinTarget::Feed { id: "feed".into() }
+            ]
+        );
+        let saved = fs::read_to_string(&article).unwrap();
+        assert_eq!(
+            values(&saved)["tags"],
+            noyalib::to_value(&vec!["research", "bookmark"]).unwrap()
+        );
+        assert!(saved.ends_with("---\n\nBody\n\n"));
+        assert_eq!(
+            values(&saved)["annotations"],
+            values(&document(""))["annotations"]
+        );
+        let atom = xaga_core::atom::parse_atom(&fs::read_to_string(&feed).unwrap()).unwrap();
+        assert_eq!(atom.title().value, "Kept title");
+        assert_eq!(atom.entries().len(), 1);
+        assert_eq!(atom.categories().len(), 1); // Publisher category survives.
+        let before = [article, topic, feed].map(|path| fs::read(path).unwrap());
+        convert_pins(dir.path(), &lock).await.unwrap();
+        assert_eq!(Pins::read(dir.path()).await.unwrap(), pins);
+        assert_eq!(
+            before,
+            [
+                library::entry_path(dir.path(), "article"),
+                library::topic_path(dir.path(), "topic"),
+                library::feed_path(dir.path(), "feed")
+            ]
+            .map(|path| fs::read(path).unwrap())
+        );
+    }
+
     #[test]
     fn malformed_files_and_anchors_are_refused() {
         for raw in [
@@ -407,14 +654,17 @@ mod tests {
         assert_eq!(report.converted, 0);
         assert_eq!(report.unchanged, 2);
         assert_eq!(report.reconciled, 2);
-        assert_eq!(fs::read_to_string(&path).unwrap(), original);
+        assert_eq!(
+            values(&fs::read_to_string(&path).unwrap())["custom"],
+            values(&original)["custom"]
+        );
         let db = EmbeddingsDb::open_readonly(dir.path()).await.unwrap();
         let row = db.get_entry("entry").await.unwrap().unwrap();
         let read_row = db.get_entry("read-entry").await.unwrap().unwrap();
         assert!(!read_row.is_unread && read_row.is_bookmarked);
         assert_eq!(read_row.tags, vec!["bookmark"]);
         assert!(row.is_unread && row.is_bookmarked && row.is_pinned);
-        assert_eq!(row.tags, vec!["research", "bookmark", "pinned"]);
+        assert_eq!(row.tags, vec!["research", "bookmark"]);
         assert_eq!(db.filter_pinned_entries().await.unwrap()[0].id, "entry");
         assert_eq!(row.topics, vec!["topic"]);
         assert_eq!(row.items, vec!["note"]);
@@ -426,6 +676,12 @@ mod tests {
         let report = upgrade_library(dir.path(), &lock).await;
         assert!(report.errors.is_empty(), "{report:?}");
         assert_eq!(report.reconciled, 0);
+        let manifest = library::LibraryManifest::read(dir.path()).unwrap().unwrap();
+        assert_eq!(
+            manifest.format_version(),
+            Some(crate::cmd::library::application_version())
+        );
+        assert_eq!(manifest.migration_target(), None);
     }
 
     #[tokio::test]
@@ -442,6 +698,14 @@ mod tests {
         let report = upgrade_library(first.path(), &lock).await;
         assert_eq!(report.converted, 1);
         assert_eq!(report.errors.len(), 1, "{report:?}");
+        assert!(
+            library::LibraryManifest::read(first.path())
+                .unwrap()
+                .unwrap()
+                .migration_target()
+                .is_some()
+        );
+
         assert!(report.errors[0].contains("bad.md"));
         assert_eq!(fs::read_to_string(&bad).unwrap(), bad_before);
         assert_eq!(fs::read_to_string(&other).unwrap(), other_before);
@@ -454,6 +718,12 @@ mod tests {
         assert!(report.errors.is_empty(), "{report:?}");
         assert_eq!(report.converted, 1);
         assert_eq!(report.unchanged, 1);
+        assert!(
+            library::LibraryManifest::read(first.path())
+                .unwrap()
+                .unwrap()
+                .matches_version(crate::cmd::library::application_version())
+        );
     }
 
     #[tokio::test]
@@ -466,6 +736,13 @@ mod tests {
         let report = upgrade_library(dir.path(), &lock).await;
         assert!(!report.errors.is_empty());
         assert!(report.errors[0].contains("cache"));
+        let manifest = library::LibraryManifest::read(dir.path()).unwrap().unwrap();
+        assert_eq!(manifest.format_version(), None);
+        assert_eq!(
+            manifest.migration_target(),
+            Some(crate::cmd::library::application_version())
+        );
+
         assert_eq!(fs::read_to_string(&path).unwrap(), original);
     }
 }

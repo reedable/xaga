@@ -147,7 +147,8 @@ round trip; noyalib 0.0.15 block scalar output fails on these summaries. Article
 annotations, and other omitted fields. The unsupported `images` frontmatter field is
 removed on every save, as required by `crash_consistency.md`. Omitted summary, publication dates, and favicon
 values preserve their existing values. Annotation changes edit the annotations
-field; tag and pin changes edit tags. Reading-state changes patch `is_unread`
+field; tag changes edit tags. Pin changes atomically replace the separate
+`pins.yaml` store without changing entity content. Reading-state changes patch `is_unread`
 and leave tags untouched; the serializer omits `is_unread: false`. Metadata-only operations preserve the
 exact Markdown body. Topic edits preserve unrelated frontmatter and body.
 All Markdown persistence operations go through `persistence::documents::upsert`.

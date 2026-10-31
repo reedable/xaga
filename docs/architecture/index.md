@@ -22,6 +22,10 @@ Standing architecture rules for this project. Each has its own doc; keep this in
 
 10. [Organization model](organization_model.md) — target domain definitions for collections, pins, reading state, color bookmarks, and Entry Tags.
 
+11. [Pins](pins.md) — ordered library pin references, shared projection, serialized writes, and unavailable targets.
+
+12. [Library version](library_version.md) — per-library major/minor metadata, explicit upgrade state, and runtime read-only selection.
+
 ## Security
 
 Architecture of the security-critical paths, in [security/](security/). These describe how a subsystem works and why — design and limits, not findings or status.

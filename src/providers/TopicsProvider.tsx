@@ -1,3 +1,4 @@
+import { usePins } from "./PinsContext";
 import {
   useCallback,
   useEffect,
@@ -16,25 +17,28 @@ import TopicsContext, { type TopicsContextType } from "./TopicsContext";
 export function TopicsProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
   const { pushError } = useErrorSink();
-  const [topics, setTopics] = useState<Topic[]>([]);
-
-  // Pinned state lives in each topic's `.md` tags (surfaced as `isPinned`); derive the id-set.
-  const pinnedTopicIds = useMemo(
-    () => topics.filter((t) => t.isPinned).map((t) => t.id),
-    [topics]
+  const [rawTopics, setTopics] = useState<Topic[]>([]);
+  const { pins, setPin } = usePins();
+  const topics = useMemo(
+    () =>
+      rawTopics.map((value) => ({
+        ...value,
+        isPinned: pins.some(
+          (pin) => pin.type === "topic" && pin.id === value.id
+        ),
+      })),
+    [rawTopics, pins]
   );
 
-  // Optimistically flip the topic's `isPinned`, then persist to the `.md` (fire-and-forget).
+  const pinnedTopicIds = useMemo(
+    () => pins.filter((pin) => pin.type === "topic").map((pin) => pin.id),
+    [pins]
+  );
   const setTopicPinned = useCallback(
     (id: string, pinned: boolean) => {
-      setTopics((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, isPinned: pinned } : t))
-      );
-      // Optimistic; a refused persist (e.g. read-only library) surfaces to the
-      // user rather than being swallowed to the console.
-      platform.setTopicPinned(id, pinned).catch(pushError);
+      void setPin({ type: "topic", id }, pinned).catch(pushError);
     },
-    [platform, pushError]
+    [setPin, pushError]
   );
 
   const refreshTopics = useCallback(async () => {

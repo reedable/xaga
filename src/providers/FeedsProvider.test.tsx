@@ -114,3 +114,5 @@ it("reports partial and complete bookmark failures and export failures", async (
   );
   expect(sink.pushError).not.toHaveBeenCalled();
 });
+
+vi.mock("./PinsContext", () => ({ usePins: () => ({ pins: [], setPin: vi.fn() }) }));

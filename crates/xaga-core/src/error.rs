@@ -34,6 +34,8 @@ use crate::query::items::ItemError;
 #[derive(Debug, Error)]
 pub enum DomainError {
     #[error(transparent)]
+    Pins(#[from] crate::pins::PinsError),
+    #[error(transparent)]
     Entry(#[from] EntryError),
     #[error(transparent)]
     Feed(#[from] FeedError),
@@ -56,6 +58,7 @@ impl DomainError {
     /// error so the code names the actual failure.
     pub fn code(&self) -> &'static str {
         match self {
+            DomainError::Pins(e) => e.code(),
             DomainError::Entry(e) => e.code(),
             DomainError::Feed(e) => e.code(),
             DomainError::Embeddings(e) => e.code(),
@@ -70,6 +73,7 @@ impl DomainError {
     /// A user-safe message. Full detail stays in `Display`.
     pub fn user_message(&self) -> &'static str {
         match self {
+            DomainError::Pins(e) => e.user_message(),
             DomainError::Entry(e) => e.user_message(),
             DomainError::Feed(e) => e.user_message(),
             DomainError::Embeddings(e) => e.user_message(),
@@ -90,6 +94,7 @@ mod tests {
     /// wrapped error reuses the inner code by design. A new code is a
     /// deliberate edit here AND in `src/platform/errors.ts`.
     const OWNED_CODES: &[&str] = &[
+        "pins:invalid-store",
         // EntryError
         "entry:io",
         "entry:invalid-url",

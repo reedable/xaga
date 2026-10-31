@@ -22,15 +22,11 @@ use atom_parser::model::Feed as IncomingAtom;
 pub(crate) use atom_persistence::Entry as AtomEntry;
 pub(crate) use atom_persistence::Feed as Atom;
 
-/// Atom `<category>` scheme that namespaces xaga's own app-local categories (e.g. the
-/// `pinned` flag) so they never collide with publisher-supplied categories.
-const TAG_CATEGORY_SCHEME: &str = "https://xaga.app/ns/tag";
-
 // ── raw → Atom (parse) ─────────────────────────────────────────────────────────
 
 /// Parse locally stored Atom XML file into an `Atom`. Returns the parse error message as a `String`
 /// so this layer stays free of the persistence error type; the caller maps it into its own error.
-pub(crate) fn parse_atom(xml: &str) -> Result<Atom, String> {
+pub fn parse_atom(xml: &str) -> Result<Atom, String> {
     let sanitized = fix_bare_ampersands(xml);
     sanitized.parse::<Atom>().map_err(|e| e.to_string())
 }
@@ -136,7 +132,7 @@ fn now_fixed() -> DateTime<FixedOffset> {
 
 /// Serialize an `Atom` to its `.atom` XML bytes in memory. `atom_synidcation::feed::Feed.write_to`
 /// does *not* write anything to the disc. It merely "writes" them in memory.
-pub(crate) fn atom_to_xml(feed: &Atom) -> Result<Vec<u8>, String> {
+pub fn atom_to_xml(feed: &Atom) -> Result<Vec<u8>, String> {
     let mut buf = Vec::new();
     feed.write_to(&mut buf).map_err(|e| e.to_string())?;
     Ok(buf)
@@ -166,35 +162,13 @@ pub(crate) fn feed_to_atom(feed: &Feed) -> Atom {
     if !feed.title.is_empty() {
         set_title(&mut atom, &feed.title);
     }
-    set_pinned(&mut atom, feed.is_pinned);
+
     atom
 }
 
 /// Set the feed's `<title>`.
 pub(crate) fn set_title(feed: &mut Atom, title: &str) {
     feed.set_title(atom_persistence::Text::plain(title));
-}
-
-/// Add or remove the app-local pinned `<category>` (under [`TAG_CATEGORY_SCHEME`]). Idempotent.
-/// Returns whether the feed changed.
-pub(crate) fn set_pinned(feed: &mut Atom, pinned: bool) -> bool {
-    if is_feed_pinned(feed) == pinned {
-        return false;
-    }
-
-    let mut categories = feed.categories().to_vec();
-    if pinned {
-        let mut cat = atom_persistence::Category::default();
-        cat.set_term(crate::tags::PINNED);
-        cat.set_scheme(Some(TAG_CATEGORY_SCHEME.to_string()));
-        categories.push(cat);
-    } else {
-        categories.retain(|c| {
-            !(c.term() == crate::tags::PINNED && c.scheme() == Some(TAG_CATEGORY_SCHEME))
-        });
-    }
-    feed.set_categories(categories);
-    true
 }
 
 /// Apply a freshly-fetched raw feed onto `existing`: parse it (`atom_parser `), take its `<id>` (or
@@ -248,14 +222,6 @@ pub(crate) fn entry_ids(feed: &Atom) -> Vec<String> {
     feed.entries().iter().map(|e| atom_to_entry(e).id).collect()
 }
 
-/// Whether `feed` carries the app-local [`crate::tags::PINNED`] flag, stored as an Atom
-/// `<category term="…">` under [`TAG_CATEGORY_SCHEME`].
-fn is_feed_pinned(feed: &Atom) -> bool {
-    feed.categories()
-        .iter()
-        .any(|c| c.term() == crate::tags::PINNED && c.scheme() == Some(TAG_CATEGORY_SCHEME))
-}
-
 // ── Atom → domain (convert) ────────────────────────────────────────────────────
 
 pub(crate) fn atom_to_feed(
@@ -301,7 +267,7 @@ pub(crate) fn atom_to_feed(
         // created_at reuses `<updated>` for now — tech debt.
         created_at: feed.updated().to_rfc3339(),
         updated_at: Some(feed.updated().to_rfc3339()),
-        is_pinned: is_feed_pinned(feed),
+        is_pinned: false,
         members: vec![],
     }
 }

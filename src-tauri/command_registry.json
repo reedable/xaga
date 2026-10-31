@@ -86,6 +86,8 @@
     "commands::embeddings::reset_embeddings",
     "commands::entries::set_entry_pinned",
     "commands::entries::list_pinned_entries",
-    "commands::entries::read_article_scope"
+    "commands::entries::read_article_scope",
+    "commands::pins::list_pins",
+    "commands::pins::set_pin"
   ]
 }

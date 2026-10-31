@@ -7,6 +7,7 @@ import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import { useSidebar } from "../../hooks/useSidebar";
 import { useTopics } from "../../hooks/useTopics";
 import { useSites } from "../../hooks/useSites";
+import { useMissingPins } from "../../hooks/useMissingPins";
 import { usePinnedEntries } from "../../hooks/usePinnedEntries";
 import cx from "../../utils/cx";
 import sortByUnreadCount from "../../utils/sortByUnreadCount";
@@ -39,6 +40,8 @@ export function Sidebar({
 
   const { loading, feeds, pinnedFeedIds, refreshAllFeeds } =
     useFeeds(abortControllerRef);
+
+  const missingPins = useMissingPins(pinnedEntries, feeds, topics);
 
   const { expandedList, setExpandedList } = useSidebar(abortControllerRef);
   const { sites } = useSites(abortControllerRef);
@@ -117,7 +120,7 @@ export function Sidebar({
     <div className={cx(className, css.Sidebar)}>
       <div className={css.Buttons}>
         {isLibraryReadOnly && (
-          <Tooltip title="Another xaga instance holds this library — this window is read-only">
+          <Tooltip title="This library is open in read-only mode">
             <span className={css.ReadOnlyBadge}>Read-only</span>
           </Tooltip>
         )}
@@ -138,6 +141,11 @@ export function Sidebar({
 
       <ShortcutList
         shortcuts={filteredPinnedCollections}
+        missing={missingPins.filter((pin) =>
+          `${pin.type}: ${pin.id}`
+            .toLocaleLowerCase()
+            .includes(normalizedFilter)
+        )}
         onClickHeader={() => handleExpandedList("SHORTCUTS")}
         isExpanded={expandedList === "SHORTCUTS"}
       />

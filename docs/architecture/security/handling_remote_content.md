@@ -21,7 +21,7 @@ We defend against path traversal by never using remote data as a filename. Feeds
 ### What a hostile feed cannot rewrite
 
 - **Its own fetch URL.** Refresh fetches the stored `.atom`'s `<link rel="self">`, which is seeded from the user-entered URL; `apply_incoming_xml` merges id/title/entries from the fetched document but never overwrites feed-level links. A feed cannot repoint where its next refresh goes.
-- **App-local state.** The `pinned` flag and tags live in Atom `<category>` elements under the app's own scheme (`TAG_CATEGORY_SCHEME = https://xaga.app/ns/tag`), so publisher-supplied categories can never collide with them.
+- **Pin membership.** Pins live in the library’s separate `pins.yaml` store. Runtime Feed parsing does not interpret categories as pin state, so publisher categories cannot create or remove pins.
 
 ### Persistence
 

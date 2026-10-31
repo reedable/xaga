@@ -1,3 +1,4 @@
+import { usePins } from "./PinsContext";
 import {
   useCallback,
   useEffect,
@@ -22,25 +23,28 @@ export default function FeedsProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [loadingSet, setLoadingSet] = useState<Set<string>>(new Set());
-  const [feeds, setFeeds] = useState<Feed[]>([]);
-
-  // Pinned state lives on each feed's `.atom` (surfaced as `isPinned`); derive the id-set.
-  const pinnedFeedIds = useMemo(
-    () => feeds.filter((f) => f.isPinned).map((f) => f.id),
-    [feeds]
+  const [rawFeeds, setFeeds] = useState<Feed[]>([]);
+  const { pins, setPin } = usePins();
+  const feeds = useMemo(
+    () =>
+      rawFeeds.map((value) => ({
+        ...value,
+        isPinned: pins.some(
+          (pin) => pin.type === "feed" && pin.id === value.id
+        ),
+      })),
+    [rawFeeds, pins]
   );
 
-  // Optimistically flip the feed's `isPinned`, then persist to the `.atom` (fire-and-forget).
+  const pinnedFeedIds = useMemo(
+    () => pins.filter((pin) => pin.type === "feed").map((pin) => pin.id),
+    [pins]
+  );
   const setFeedPinned = useCallback(
-    (id: Feed["id"], pinned: boolean) => {
-      setFeeds((prev) =>
-        prev.map((f) => (f.id === id ? { ...f, isPinned: pinned } : f))
-      );
-      // Optimistic; a refused persist (e.g. read-only library) surfaces to the
-      // user rather than being swallowed to the console.
-      platform.setFeedPinned(id, pinned).catch(pushError);
+    (id: string, pinned: boolean) => {
+      void setPin({ type: "feed", id }, pinned).catch(pushError);
     },
-    [platform, pushError]
+    [setPin, pushError]
   );
 
   const refreshFeeds = useCallback(async () => {
