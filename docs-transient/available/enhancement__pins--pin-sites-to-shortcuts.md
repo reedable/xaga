@@ -43,7 +43,7 @@ Implement after central pin storage is available.
 ## References
 
 - [Centralize Pin Storage](refactor__pins--centralize-storage.md) — prerequisite.
-- [Domain definitions](../active/spike__define-tag-collection-bookmark-pin-shortcut-site.md)
+- [Organization model](../../docs/architecture/organization_model.md)
 - `docs/architecture/sites.md`
 - `crates/xaga-core/src/library.rs`
 - `crates/xaga-core/src/library_writer/mod.rs`
