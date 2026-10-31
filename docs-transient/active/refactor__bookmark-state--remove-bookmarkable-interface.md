@@ -28,7 +28,7 @@ changing behavior.
 
 ## References
 
-- [Bookmark Articles with Colors](enhancement__bookmark-state--color-markings.md)
+- [Bookmark Articles with Colors](../available/enhancement__bookmark-state--color-markings.md)
   — independent color-marking feature; either story can be implemented first.
 - `crates/xaga-core/src/domain.rs`
 - `crates/xaga-core/src/types.rs`
