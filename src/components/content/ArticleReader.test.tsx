@@ -98,6 +98,8 @@ let root: ReturnType<typeof createRoot>;
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.html = "";
+  mocks.platform.getLoadRemoteImage.mockResolvedValue(false);
+  mocks.platform.readEntryImages.mockResolvedValue([null]);
   mocks.appearance.htmlReaderView = "summary";
   mocks.article.description =
     '<img src="https://example.org/comic.png" alt="Comic">';
@@ -138,6 +140,18 @@ it("has no external title heading outside the iframe document", async () => {
   await act(() => root.render(<ArticleReader />));
   expect(document.querySelector("h1")).toBeNull();
   expectReaderTitle("Comic");
+});
+
+it("does not invent a remote URL to repair a missing hash-only local image", async () => {
+  mocks.article.description = '![Missing image](../images/entry/0123456789ab)';
+  mocks.platform.getLoadRemoteImage.mockResolvedValue(true);
+  await act(() => root.render(<ArticleReader />));
+  expect(mocks.platform.readEntryImages).toHaveBeenCalledWith(
+    expect.any(AbortSignal), "entry", ["../images/entry/0123456789ab"]
+  );
+  expect(mocks.html).toContain("Missing image");
+  expect(mocks.html).not.toContain('src="../images/');
+  expect(mocks.platform.recoverEntryImages).not.toHaveBeenCalled();
 });
 it("reproduces the empty iframe document when URL ingestion has removed the saved summary", async () => {
   mocks.article.description = undefined;

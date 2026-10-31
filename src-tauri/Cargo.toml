@@ -91,3 +91,7 @@ harness = false
 [[test]]
 name = "loader_lifecycle_webview"
 harness = false
+
+[[test]]
+name = "persisted_resources_webview"
+harness = false

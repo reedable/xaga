@@ -127,6 +127,12 @@ HTML/CSS local resolution, unavailable-image presentation and the preference gat
 Network and sandbox behavior require native/bundled checks; Node tests alone do
 not establish those properties.
 
+The [resource verification guide](../../development/resource_verification.md)
+describes the writer, command, presentation and native-download checks, together
+with the separate bundled macOS Downloads authorization procedure. Missing
+hash-only local references cannot initiate automatic repair: the source URL is
+not retained. Explicit article refresh can reacquire resources found on the page.
+
 ## Preserving frontmatter during writes
 
 Markdown file framing is intentionally assembled by the application: an opening
