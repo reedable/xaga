@@ -27,8 +27,10 @@ fallback. Deleting the Annotation removes its retained tooltip without saving it
 Read-only inspection does not save. Uncolored text selections do not offer the
 Inspector action until a color has been assigned.
 
-The Inspector identifies its target type. The Annotation drawer remains scoped
-to its Annotation, without a control to switch to Article inspection. Recoloring follows
+The drawer has one visible heading identifying its target: Annotation Inspector
+or Article Inspector. The shared content does not repeat that heading inside
+the drawer. The Annotation drawer remains scoped to its Annotation, without a
+control to switch to Article inspection. Recoloring follows
 the committed replacement event's old-to-new Annotation identity; removing the
 inspected Annotation returns inspection to the parent Article. Navigation to a
 different Article or Annotation resets the drawer target to that navigation context.
@@ -91,9 +93,10 @@ the current target's displayed state.
 
 ## Color palette layout
 
-The shared Article/Annotation swatches slightly overlap when the Remove
-confirmation label is shown. The label uses its natural content width so the
+The shared Article/Annotation palette uses the filled trash-can icon for
+Remove marking. Its swatches slightly overlap when the Remove confirmation
+label is shown. The label uses its natural content width so the
 full text remains visible. Compaction is static base layout and works
-independently of motion support. Only the label width and swatch spacing transitions are enabled
-under `prefers-reduced-motion: no-preference`; reduced-motion or unsupported
+independently of motion support. Label expansion, swatch spacing transitions,
+and hover scaling animate only under `prefers-reduced-motion: no-preference`; reduced-motion or unsupported
 media queries retain the same complete layout without transitions.
