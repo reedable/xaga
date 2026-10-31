@@ -347,6 +347,33 @@ checks apply to requests that reach the proxy, subject to the loopback bypass
 described above, and the loader deadline bounds waiting.
 
 
+### Native loader lifecycle verification
+
+Run `cargo test -p xaga --test loader_lifecycle_webview --locked` on a Mac
+with a desktop session, or run it with the other native tests through
+`npm run test:gui`. The harness uses the production loader, capture and
+cancellation commands, download adapter, validators, and native WebKit policy.
+It does not start the application or open a user library.
+
+Controlled local responses cover cancellation before HTML capture, after capture
+while favicon headers are withheld, and during a native favicon download. Each
+cancellation overlaps an independent successful load. Concurrent loads also cover
+a valid favicon, rejected image bytes, a response stalled before headers, and a
+download stalled after its first byte. Both stalls end at the loader deadline.
+The cases verify article attribution, retained HTML and warning diagnostics on
+resource failure, discarded cancelled captures, and harmless cancellation after
+completion. Cleanup assertions check pending requests, native windows, session
+registrations, scoped-proxy ownership and listener closure, and temporary staging
+directories. Held responses are released after cancellation or timeout.
+
+The server uses a random localhost port. The harness grants only that exact
+origin the existing loader callback permission and configures a deny-all proxy
+with that local endpoint exception. Production permissions are unchanged.
+These tests establish lifecycle behavior, not proxy enforcement: WebKit can
+bypass its proxy for loopback destinations. They do not establish bundled UI
+CSP behavior, every possible callback interleaving, or cleanup after a process
+crash. Ordinary adapter tests separately verify rejection of late completion.
+
 ## Direct content-image recovery
 
 The shared loader accepts an explicit native image purpose in addition to the

@@ -61,8 +61,8 @@ jobs:
       - name: Install JavaScript dependencies
         run: npm ci
 
-      - name: Run JavaScript tests
-        run: npm test
+      - name: Run non-GUI tests
+        run: npm run test:headless
 
       - name: Run linter
         run: npm run lint

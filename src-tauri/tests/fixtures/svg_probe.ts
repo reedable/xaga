@@ -51,7 +51,7 @@ window.addEventListener("load", async () => {
     );
     const frame = document.createElement("iframe");
     frame.setAttribute("sandbox", "allow-scripts");
-    const html = buildEntryHtml(`${prepared}<p>SVG probe marker</p>`, {
+    const html = buildEntryHtml(`${prepared}<p>SVG probe marker</p>`, "SVG probe", {
       themeMode: "light",
       fontFamily: "system",
       fontSize: 16,
