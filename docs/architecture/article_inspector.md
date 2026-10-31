@@ -76,6 +76,10 @@ animation. Topic row rearrangement follows the same motion preference, per the
 
 ## Topic membership
 
+Until the shared Topics provider has loaded its first list, the Topics view
+shows Loading Topics… rather than treating an unloaded list as empty or offering
+Create a New Topic. Once loaded, the list remains available during refreshes.
+
 The Topics view reads an Article target as an Entry. For an Annotation target,
 it reads the parent Article through `readArticleScope` (without marking it read)
 and resolves the Annotation by ID. A missing Annotation never falls back to

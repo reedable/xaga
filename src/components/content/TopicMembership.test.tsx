@@ -6,6 +6,7 @@ import { TopicMembership } from "./TopicMembership";
 
 const mocks = vi.hoisted(() => ({
   readOnly: false,
+  hasLoaded: true,
   topics: [] as Topic[],
   createTopicWithMember: vi.fn(),
   setTopicPinned: vi.fn(),
@@ -70,6 +71,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.topics = [];
   mocks.readOnly = false;
+  mocks.hasLoaded = true;
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -225,4 +227,29 @@ it("adds and removes the Annotation itself as a typed Topic member", async () =>
   expect(mocks.addTopicItem).toHaveBeenLastCalledWith("one", annotation);
   await click(container.querySelector('[role="checkbox"]')!);
   expect(mocks.removeTopicItem).toHaveBeenLastCalledWith("one", "annotation");
+});
+
+it("shows loading instead of topic creation until the first list arrives", async () => {
+  mocks.hasLoaded = false;
+  await act(async () => root.render(<TopicMembership item={article} />));
+  expect(container.querySelector('[role="status"]')?.textContent).toBe(
+    "Loading Topics…"
+  );
+  expect(container.textContent).not.toContain("Create a New Topic");
+  mocks.topics = [topic("one", "One")];
+  mocks.hasLoaded = true;
+  await act(async () => root.render(<TopicMembership item={article} />));
+  expect(container.querySelector('[role="status"]')).toBeNull();
+  expect(container.textContent).toContain("One");
+  expect(container.textContent).not.toContain("Create a New Topic");
+});
+
+it("offers creation only once loading confirms an empty library", async () => {
+  mocks.hasLoaded = false;
+  await act(async () => root.render(<TopicMembership item={article} />));
+  expect(container.textContent).not.toContain("Create a New Topic");
+  mocks.hasLoaded = true;
+  await act(async () => root.render(<TopicMembership item={article} />));
+  expect(container.querySelector('[role="status"]')).toBeNull();
+  expect(container.textContent).toContain("Create a New Topic");
 });

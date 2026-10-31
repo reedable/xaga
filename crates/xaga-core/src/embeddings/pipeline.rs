@@ -224,39 +224,30 @@ pub(crate) async fn sync_annotations(
     Ok(())
 }
 
-/// Slow path: computes and stores embedding vectors for this article's annotation rows whose
-/// vector is missing or stale. Also creates any annotation row that does not yet exist as a
-/// safety net — annotation rows are normally created earlier (fresh recovery via `bulk_insert`,
-/// live edits via `sync_annotations`). Runs the embedder.
-async fn embed_annotations(
+/// Completes pending vectors only for annotation rows whose content still matches
+/// this queued snapshot. Row sync/recovery owns creation and metadata; an older
+/// embedding job must not recreate deleted rows or overwrite newer content.
+async fn embed_annotations<F, Fut>(
     article: &Article,
-    embedder: &Arc<Embedder>,
     db: &EmbeddingsDb,
-) -> Result<(), EmbeddingsError> {
+    mut embed: F,
+) -> Result<(), EmbeddingsError>
+where
+    F: FnMut(String, String) -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<f32>, EmbeddingsError>>,
+{
     for annotation in &article.annotations {
-        let checksum = annotation_checksum(annotation);
-        let existing = db.get_entry(&annotation.id).await?;
-        let needs_vector = match &existing {
-            None => true,
-            Some(e) => e.vector.is_none() || e.checksum != checksum,
+        let Some(mut row) = db.get_entry(&annotation.id).await? else {
+            continue;
         };
-        if !needs_vector {
+        if row.checksum != annotation_checksum(annotation) || row.vector.is_some() {
             continue;
         }
 
         log::debug!("embed_annotations: embedding annotation {}", annotation.id);
-        let title = annotation.text.join(" ");
-        let body = annotation.content.clone();
-        let vector = compute_vector(embedder, title, body).await?;
-        // Carry the existing row's topics forward — the topic path owns that column.
-        let topics = existing.map(|e| e.topics).unwrap_or_default();
-        db.upsert(annotation_embedding_entry(
-            article,
-            annotation,
-            topics,
-            Some(vector),
-        ))
-        .await?;
+        let vector = embed(annotation.text.join(" "), annotation.content.clone()).await?;
+        row.vector = Some(vector);
+        db.upsert(row).await?;
     }
 
     Ok(())
@@ -319,15 +310,11 @@ pub async fn sync_entry_row(
         emit_entry_changes(&article.meta, existing.as_ref(), unread_tx, bookmarked_tx);
     }
 
-    // Reconcile annotation rows (embedder-free) only when the recorded membership (the entry row's
-    // `items`) differs from the `.md` — the entry row we just read carries it, so this diff costs no
-    // query. Unchanged membership means the annotation rows already match; skip the reconcile.
-    let recorded: HashSet<&str> = existing
-        .as_ref()
-        .map(|e| e.items.iter().map(|s| s.as_str()).collect())
-        .unwrap_or_default();
-    let current: HashSet<&str> = article.annotations.iter().map(|a| a.id.as_str()).collect();
-    if recorded != current {
+    // Matching membership alone does not prove matching annotation content (e.g.
+    // a note edited outside the app). Reconcile rows before queuing vector work;
+    // vector completion must never own creation or restore an older snapshot.
+    if !article.annotations.is_empty() || existing.as_ref().is_some_and(|row| !row.items.is_empty())
+    {
         sync_annotations(article, db, annotation_tx).await?;
     }
 
@@ -404,9 +391,12 @@ pub async fn embed_entry_vector(
         store_entry_vector(article, vector, existing.as_ref(), db).await?;
     }
 
-    // Fill any pending annotation vectors. Rows (incl. stale-row deletes) were already
-    // reconciled by sync_annotations; this also creates rows the recovery path skipped.
-    embed_annotations(article, embedder, db).await?;
+    // Fill pending annotation vectors only where the row still matches this snapshot.
+    // Reconciliation owns row creation and deletion, including during recovery.
+    embed_annotations(article, db, |title, body| {
+        compute_vector(embedder, title, body)
+    })
+    .await?;
 
     Ok(())
 }
@@ -810,6 +800,107 @@ mod tests {
             assert!(row.is_unread && row.is_pinned);
             assert!(row.vector.is_some());
         }
+    }
+
+    #[tokio::test]
+    async fn queued_annotation_embedding_does_not_recreate_deleted_annotation() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let queued = article(vec![annotation("deleted", "yellow")]);
+        let (tx, _) = flume::unbounded();
+        let (state_tx, _) = flume::unbounded();
+        sync_entry_row(&queued, &db, &state_tx, &state_tx, &tx)
+            .await
+            .unwrap();
+        sync_annotations(&article(vec![]), &db, &tx).await.unwrap();
+
+        embed_annotations(&queued, &db, |_, _| async {
+            panic!("a deleted annotation must not be embedded")
+        })
+        .await
+        .unwrap();
+
+        assert!(db.get_entry("deleted").await.unwrap().is_none());
+        assert!(
+            db.get_entry("article-1")
+                .await
+                .unwrap()
+                .unwrap()
+                .items
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn queued_annotation_embedding_does_not_overwrite_newer_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let queued = article(vec![annotation("edited", "yellow")]);
+        let mut current = queued.clone();
+        current.annotations[0].content = "newer note".into();
+        let (tx, _) = flume::unbounded();
+        sync_annotations(&current, &db, &tx).await.unwrap();
+
+        embed_annotations(&queued, &db, |_, _| async {
+            panic!("a superseded annotation snapshot must not be embedded")
+        })
+        .await
+        .unwrap();
+
+        let row = db.get_entry("edited").await.unwrap().unwrap();
+        assert_eq!(row.checksum, annotation_checksum(&current.annotations[0]));
+        assert!(row.vector.is_none());
+    }
+
+    #[tokio::test]
+    async fn queued_annotation_embedding_preserves_current_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let queued = article(vec![annotation("pending", "yellow")]);
+        let mut current = queued.clone();
+        current.annotations[0].color = "blue".into();
+        db.upsert(annotation_embedding_entry(
+            &current,
+            &current.annotations[0],
+            vec!["topic".into()],
+            None,
+        ))
+        .await
+        .unwrap();
+
+        embed_annotations(&queued, &db, |_, _| async { Ok(vec![0.1; 384]) })
+            .await
+            .unwrap();
+
+        let row = db.get_entry("pending").await.unwrap().unwrap();
+        assert_eq!(row.vector, Some(vec![0.1; 384]));
+        assert_eq!(row.color, "blue");
+        assert_eq!(row.topics, vec!["topic"]);
+    }
+
+    #[tokio::test]
+    async fn row_sync_reconciles_note_changes_when_membership_is_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let mut current = article(vec![annotation("edited", "yellow")]);
+        let (state_tx, _) = flume::unbounded();
+        let (annotation_tx, _) = flume::unbounded();
+        sync_entry_row(&current, &db, &state_tx, &state_tx, &annotation_tx)
+            .await
+            .unwrap();
+        current.annotations[0].content = "a note edited outside the app".into();
+        sync_entry_row(&current, &db, &state_tx, &state_tx, &annotation_tx)
+            .await
+            .unwrap();
+        embed_annotations(&current, &db, |_, body| async move {
+            assert_eq!(body, "a note edited outside the app");
+            Ok(vec![0.1; 384])
+        })
+        .await
+        .unwrap();
+        let row = db.get_entry("edited").await.unwrap().unwrap();
+        assert_eq!(row.checksum, annotation_checksum(&current.annotations[0]));
+        assert_eq!(row.vector, Some(vec![0.1; 384]));
     }
 
     /// A recolor is delete/create under a new id with unchanged text — the deleted row's

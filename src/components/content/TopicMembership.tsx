@@ -89,6 +89,7 @@ export function TopicMembership({ item }: { item: Entry | Annotation }) {
   const embeddingStartupState = useEmbeddingStartupState();
   const {
     topics,
+    hasLoaded,
     createTopicWithMember,
     setTopicPinned,
     listEntryTopics,
@@ -231,6 +232,14 @@ export function TopicMembership({ item }: { item: Entry | Annotation }) {
       return 0;
     });
   }, [sortedTopics, filterText, memberIds, sortBy, similarityMap]);
+
+  if (!hasLoaded) {
+    return (
+      <Typography className={css.Filter} role="status" variant="body2">
+        Loading Topics…
+      </Typography>
+    );
+  }
 
   return (
     <div className={css.Content}>
