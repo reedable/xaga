@@ -34,7 +34,6 @@ import { AddressBar } from "../AddressBar";
 import css from "./Toolbar.module.css";
 import { ColorSwatches } from "./ColorSwatches";
 import colorCss from "../../colors.module.css";
-import { TopicMenuButton } from "./TopicMenuButton";
 
 interface ToolbarProps {
   reload: (() => void) | null;
@@ -404,7 +403,6 @@ export function Toolbar({
               </div>
             </Popover>
 
-            {/* <TopicMenuButton item={entry} disabled={!entry} /> */}
 
             <Tooltip title={entry?.isPinned ? "Remove from Shortcuts" : "Add to Shortcuts"}>
               <span>

@@ -5,15 +5,6 @@
   overflow-y: auto;
 }
 
-.Header {
-  background-color: var(--background-color);
-  flex-shrink: 0;
-  padding: 0.125rem 1rem;
-  position: sticky;
-  text-align: center;
-  top: 0;
-}
-
 .List {
   flex: 1;
 }
@@ -24,6 +15,7 @@
 }
 
 .ListItemButton {
+  content: '';
 }
 
 .Primary {

@@ -33,8 +33,8 @@ readable names in article files and stable IDs in LanceDB.
 ## Remaining work
 
 - Complete tag identity and creation first.
-- Provide the article Inspector's Tags view before connecting the picker; the
-  article Inspector story is a UI prerequisite.
+- Add the Entry tag picker to the shared Inspector and expose its Tags tab when
+  assignment is available.
 - Implement preservation of names through core domain boundaries, assignment
   commands, name-to-ID indexing, events, and frontend state updates.
 - Verify empty/multiple assignments, unrelated metadata preservation, concurrent
@@ -45,11 +45,11 @@ readable names in article files and stable IDs in LanceDB.
 
 - [Organization model](../../docs/architecture/organization_model.md)
 
-- [Article Inspector](../active/enhancement__inspector--article-panel-and-drawer.md) — UI prerequisite.
+- [Inspector](../../docs/architecture/article_inspector.md)
 - [Tag Identity and Creation](enhancement__tags--identity-and-creation.md) — prerequisite.
 - [Annotation Inspector](../ideas/annotation-inspector.md)
 - `crates/xaga-core/src/persistence/entries.rs`
 - `crates/xaga-core/src/library_writer/mod.rs`
 - `crates/xaga-core/src/embeddings/row.rs`
-- `src/components/content/Toolbar.tsx`
+- `src/components/content/Inspector.tsx`
 - `src/platform/Platform.ts`

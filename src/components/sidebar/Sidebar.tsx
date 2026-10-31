@@ -168,8 +168,8 @@ export function Sidebar({
       */}
       <TextField
         className={css.FilterInput}
-        fullWidth
         placeholder="Filter collections…"
+        fullWidth
         size="small"
         value={filter}
         variant="standard"

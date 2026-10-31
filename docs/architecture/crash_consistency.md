@@ -21,6 +21,21 @@ Two failure classes are distinguished, and they are covered by different mechani
 - **Local resources before the entry `.md`** (`save_article`, `crates/xaga-core/src/persistence/articles.rs`, via `persistence::images`). Body-image bytes are written to `<library>/images/<id>/<hash>.<ext>` before Markdown containing `../images/<id>/<hash>` URLs. A successfully acquired favicon atomically replaces `<library>/favicons/<normalized-url-hash>` before the article records that shared reference. Failed favicon acquisition or replacement preserves the article's existing reference and cached bytes. A crash before the Markdown write can leave an unreferenced resource; entry-image GC removes per-entry orphans on the next save, while shared favicon GC is a separate library-wide concern. Reading local content does not initiate acquisition. Remote loading of a new or refreshed article reacquires its favicon; read-only instances may read cached resources but cannot replace them. Entry deletion must delete the `.md` before removing its per-entry image directory.
 - **Out-of-band changes are a recovery concern.** External edits and migrations are not reflected live; recovery reconciles them on its next run. Eventual sync, not live sync.
 
+### Queued Annotation vector completion
+
+Annotation row creation, deletion, and metadata reconciliation precede vector
+completion. A queued embedding snapshot may have been overtaken by a committed
+deletion, replacement, or note edit. Vector completion skips absent rows and
+rows whose checksum differs from its input, and changes only the vector on a
+matching pending row. It must not recreate a deleted Annotation or restore
+older metadata. Entry row sync reconciles Annotation content as well as IDs,
+so same-ID note edits discovered by recovery have current rows before embedding.
+
+Recovery compares cached Annotation IDs against the Annotations actually present
+in the source files. A surviving parent Article does not preserve an orphaned
+Annotation row. The existing complete-source-walk guard still withholds deletes
+when the library cannot be fully read.
+
 ### PDF representation replacement
 
 PDF bytes and their Markdown identity are validated before durable mutation.

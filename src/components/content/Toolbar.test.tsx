@@ -67,7 +67,6 @@ vi.mock("../../hooks/useEvents", async (original) => ({
   ...(await original<typeof import("../../hooks/useEvents")>()),
   useEvents: () => mocks.events,
 }));
-vi.mock("./TopicMenuButton", () => ({ TopicMenuButton: () => null }));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;

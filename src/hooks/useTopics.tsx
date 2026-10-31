@@ -14,6 +14,7 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
 
   const {
     topics,
+    hasLoaded = false,
     pinnedTopicIds,
     setTopics,
     setTopicPinned,
@@ -173,6 +174,7 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
 
   return {
     topics,
+    hasLoaded,
     pinnedTopicIds,
     setTopicPinned,
     requestTopics,

@@ -152,8 +152,8 @@ export function ItemList({
       [
         ...pinnedEntries,
         ...(articleScopeId &&
-        scopedArticle?.id === articleScopeId &&
-        !pinnedEntries.some((entry) => entry.id === articleScopeId)
+          scopedArticle?.id === articleScopeId &&
+          !pinnedEntries.some((entry) => entry.id === articleScopeId)
           ? [scopedArticle]
           : []),
       ].sort(sortByTitle),
@@ -657,8 +657,8 @@ export function ItemList({
                 selected={selectedItemId === item.id}
                 tabIndex={
                   selectedItemId === item.id ||
-                  (!displayItems.some((value) => value.id === selectedItemId) &&
-                    displayItems[0].id === item.id)
+                    (!displayItems.some((value) => value.id === selectedItemId) &&
+                      displayItems[0].id === item.id)
                     ? 0
                     : -1
                 }

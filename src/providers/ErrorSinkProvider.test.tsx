@@ -122,7 +122,8 @@ it.each([false, true])(
     );
     const alert = document.querySelector('[role="alert"]');
     expect(alert?.textContent).toContain("The site icon couldn’t be loaded.");
-    expect(alert?.className).toContain("MuiAlert-filledWarning");
+    expect(alert?.className).toContain("MuiAlert-colorWarning");
+    expect(alert?.className).toContain("MuiAlert-filled");
     expect(alert?.textContent).not.toContain("Article loading failed");
     expect(
       alert?.textContent?.includes(

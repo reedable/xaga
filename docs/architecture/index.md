@@ -26,7 +26,7 @@ Standing architecture rules for this project. Each has its own doc; keep this in
 
 12. [Library version](library_version.md) — per-library major/minor metadata, explicit upgrade state, and runtime read-only selection.
 
-13. [Article Inspector](article_inspector.md) — article-scoped Related and Topic views, responsive panel/drawer presentation, and session membership projection.
+13. [Inspector](article_inspector.md) — shared Related and Topic views, responsive Article presentation, Annotation drawer, and session membership projection.
 
 ## Security
 

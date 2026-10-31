@@ -12,8 +12,17 @@ body,
 
 /* See App.tsx for data-theme attribute */
 html {
+  --background-color: var(--lliw-semanticColor__background-color--primary);
+
+  body {
+    background-color: var(--background-color);
+    font-family: system-ui;
+    margin: 0;
+    padding: 0;
+  }
+
   &[data-theme="light"] {
-    --background-color: #ffffff;
+    /* --background-color: #ffffff; */
     --white: #ffffff;
     --lightest-gray: #ededed;
     --light-gray: #cccccc;
@@ -22,7 +31,7 @@ html {
   }
 
   &[data-theme="dark"] {
-    --background-color: #121212;
+    /* --background-color: #121212; */
     --white: #000000;
     --lightest-gray: #121212;
     --light-gray: #333333;

@@ -127,7 +127,7 @@ export function TopicFormFields({
         <Typography
           variant="caption"
           color="text.secondary"
-          display="block"
+          sx={{ display: "block" }}
           gutterBottom
         >
           Similarity threshold

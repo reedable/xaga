@@ -1,5 +1,12 @@
-import { Close } from "@mui/icons-material";
-import { Button, IconButton, Tooltip } from "@mui/material";
+import { Delete } from "@mui/icons-material";
+import {
+  Button,
+  ButtonBase,
+  Collapse,
+  IconButton,
+  Tooltip,
+  useMediaQuery,
+} from "@mui/material";
 import { useState } from "react";
 import { COLOR_NAMES } from "../../colors";
 import colorCss from "../../colors.module.css";
@@ -19,54 +26,54 @@ export function ColorSwatches({
   autoFocus?: boolean;
 }) {
   const [pendingRemove, setPendingRemove] = useState(false);
+  const animate = useMediaQuery("(prefers-reduced-motion: no-preference)");
+  const remove = () => {
+    onChange(null);
+    setPendingRemove(false);
+  };
   return (
-    <div className={css.ColorRow}>
-      <Tooltip
-        title="Remove marking"
-        slotProps={{ transition: { timeout: 0 } }}
-      >
-        <span>
-          <IconButton
-            disableRipple
-            sx={{ transition: "none" }}
-            size="small"
-            aria-label="Remove marking"
-            disabled={disabled || color === null}
-            onClick={() => {
-              if (pendingRemove) {
-                onChange(null);
-                setPendingRemove(false);
-              } else setPendingRemove(true);
-            }}
-          >
-            <Close fontSize="small" />
-          </IconButton>
-        </span>
-      </Tooltip>
-      {pendingRemove && (
-        <Button
-          disableRipple
-          sx={{ transition: "none" }}
-          disabled={disabled}
-          onClick={() => {
-            onChange(null);
-            setPendingRemove(false);
-          }}
-        >
-          Remove
-        </Button>
-      )}
-      {COLOR_NAMES.map((name, index) => (
+    <div className={cx(css.ColorRow, pendingRemove && css.RemovePending)}>
+      <div className={cx(css.SwatchTarget, css.Remove)}>
         <Tooltip
-          key={name}
-          title={name}
+          title="Remove marking"
           slotProps={{ transition: { timeout: 0 } }}
         >
           <span>
             <IconButton
               disableRipple
-              sx={{ transition: "none" }}
-              size="small"
+              className={css.RemoveButton}
+              aria-label="Remove marking"
+              disabled={disabled || color === null}
+              onClick={() =>
+                pendingRemove ? remove() : setPendingRemove(true)
+              }
+            >
+              <Delete />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Collapse
+          in={pendingRemove}
+          orientation="horizontal"
+          timeout={animate ? undefined : 0}
+        >
+          <Button
+            disableRipple
+            sx={{ transition: "none" }}
+            disabled={disabled || !pendingRemove}
+            tabIndex={pendingRemove ? 0 : -1}
+            onClick={remove}
+          >
+            Remove
+          </Button>
+        </Collapse>
+      </div>
+      {COLOR_NAMES.map((name, index) => (
+        <div key={name} className={css.SwatchTarget}>
+          <Tooltip title={name} slotProps={{ transition: { timeout: 0 } }}>
+            <ButtonBase
+              disableRipple
+              className={css.SwatchButton}
               aria-label={name}
               aria-pressed={color === name}
               autoFocus={
@@ -85,9 +92,9 @@ export function ColorSwatches({
                   name === color && css.Selected
                 )}
               />
-            </IconButton>
-          </span>
-        </Tooltip>
+            </ButtonBase>
+          </Tooltip>
+        </div>
       ))}
     </div>
   );

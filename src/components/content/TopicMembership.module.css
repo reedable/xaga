@@ -1,33 +1,46 @@
+.Content {
+  .Header {
+    .HeaderRight {
+      width: 100%;
+
+      .SortSelect {
+        font-size: 13px;
+        margin: 1rem 0.5rem 0 0;
+        width: 100%;
+      }
+    }
+  }
+
+  .Filter {
+    :global(.MuiInputBase-root.MuiInput-root) {
+      font-size: 13px;
+    }
+  }
+}
+
 .Checkbox {
   padding: 0;
   margin-right: 8px;
 }
 
-.DrawerContent {
-  display: flex;
-  flex-direction: column;
-  width: 320px;
-  height: 100%;
-}
-
-.DrawerHeader {
+.Header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 8px 8px 16px;
 }
 
-.DrawerHeaderRight {
+.HeaderRight {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.DrawerFilter {
+.Filter {
   padding: 8px 16px;
 }
 
-.DrawerList {
+.List {
   flex: 1;
   overflow-y: auto;
 }
@@ -46,7 +59,7 @@
   gap: 8px;
 }
 
-.EmbeddedContent {
+.Content {
   display: flex;
   flex-direction: column;
   height: 100%;

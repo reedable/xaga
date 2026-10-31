@@ -101,6 +101,12 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
                 id: article.meta.id.clone(),
             });
             fs_ids.insert(article.meta.id.clone());
+            fs_ids.extend(
+                article
+                    .annotations
+                    .iter()
+                    .map(|annotation| annotation.id.clone()),
+            );
             let needs_embed = needs_embedding(
                 &article.meta.id,
                 &checksum(&article.meta.title, article_embed_text(&article)),
@@ -155,24 +161,17 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     let source_reliable =
         topics_outcome == WalkOutcome::Enumerated && entries_outcome == WalkOutcome::Enumerated;
 
-    // Build to_delete: in LanceDB but no longer on disk. Item rows: the `.md` is gone (annotation
-    // rows carry a non-empty `reference` to their parent article — check that). Feed rows: the feed
-    // is gone from disk.
+    // Compare each cached identity with source identities, including annotations.
+    // A surviving parent file does not authorize an annotation absent from it.
     let to_delete: Vec<String> = if source_reliable {
         db_meta
             .into_iter()
-            .filter(|(id, (_, reference, _, kind, _, _, _))| {
+            .filter(|(id, (_, _, _, kind, _, _, _))| {
                 if kind == Kind::Feed.as_str() {
-                    return !feed_ids.contains(id);
-                }
-
-                let file_id = if reference.is_empty() {
-                    id.as_str()
+                    !feed_ids.contains(id)
                 } else {
-                    reference.as_str()
-                };
-
-                !fs_ids.contains(file_id)
+                    !fs_ids.contains(id)
+                }
             })
             .map(|(id, _)| id)
             .collect()
@@ -228,6 +227,55 @@ mod tests {
             is_pinned: false,
             vector: Some(vec![0.5f32; 384]),
         }
+    }
+
+    #[tokio::test]
+    async fn recovery_deletes_orphan_annotation_without_deleting_its_parent_or_live_annotation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = library::entry_path(dir.path(), "entry");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            "---\nsource: https://example.org/a\ntitle: Saved\n---\n\nBody\n",
+        )
+        .unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let live = Annotation {
+            id: "live".into(),
+            title: "Passage".into(),
+            reference: "entry".into(),
+            text: vec!["Passage".into()],
+            occurrence: vec![0],
+            color: "blue".into(),
+            content: String::new(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+        };
+        add_annotation(
+            dir.path(),
+            "entry",
+            live.clone(),
+            crate::library_writer::WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        let article = read_article(dir.path(), "entry").await.unwrap();
+        db.upsert(EmbeddingEntry::from_article(&article, Some(vec![0.1; 384])))
+            .await
+            .unwrap();
+        db.upsert(annotation_row(&live, &annotation_checksum(&live)))
+            .await
+            .unwrap();
+        let mut deleted = live.clone();
+        deleted.id = "deleted".into();
+        db.upsert(annotation_row(&deleted, &annotation_checksum(&deleted)))
+            .await
+            .unwrap();
+
+        let mut sink = CollectingSink { articles: vec![] };
+        let residue = repair_item_embeddings(dir.path(), &db, &mut sink)
+            .await
+            .unwrap();
+        assert_eq!(residue.to_delete, vec!["deleted"]);
     }
 
     #[tokio::test]
