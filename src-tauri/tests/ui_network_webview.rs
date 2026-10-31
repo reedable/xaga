@@ -99,8 +99,10 @@ fn main() {
             }));
             let proxy = tauri::async_runtime::block_on(network_proxy::start_scoped(config))?;
             let completed = done.clone();
+            // Hidden fixture views timed out before image/timer completion on
+            // the test host. This probe requires actual foreground rendering.
             let window = WebviewWindowBuilder::new(app, label, WebviewUrl::External("fixture://localhost/test".parse()?))
-                .visible(false)
+                .visible(true)
                 .with_webview_configuration(webview_policy::ui_configuration().unwrap())
                 .proxy_url(network_proxy::proxy_url(proxy.port).parse()?)
                 .on_download(|_, _| false)

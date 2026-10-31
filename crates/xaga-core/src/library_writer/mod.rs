@@ -1473,6 +1473,9 @@ fn purge_regular(
 }
 
 #[cfg(test)]
+mod resource_lifecycle_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
