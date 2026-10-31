@@ -1,4 +1,5 @@
-import { Typography } from "@mui/material";
+import { Close } from "@mui/icons-material";
+import { Drawer, IconButton, Tooltip, Typography } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useContentLoader } from "../../hooks/useContentLoader";
@@ -8,6 +9,7 @@ import Logger from "../../utils/Logger";
 import ArticleReader, { type ArticleReaderHandle } from "./ArticleReader";
 import css from "./ItemView.module.css";
 import { PdfReader } from "./PdfReader";
+import { ArticleInspector, type InspectorView } from "./ArticleInspector";
 import { Toolbar } from "./Toolbar";
 
 type ItemViewProps = {
@@ -19,6 +21,32 @@ const logger = Logger.getLogger("ItemView");
 export function ItemView({ className }: ItemViewProps) {
   const { state } = useRouter();
   const { entryId, url, mimeType } = state;
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inspectorOpener = useRef<HTMLButtonElement>(null);
+  const inspectorPanel = useRef<HTMLElement>(null);
+  const [narrow, setNarrow] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorView, setInspectorView] = useState<InspectorView>("related");
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setNarrow(entry.contentRect.width < 700);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    if (!narrow && inspectorOpen) {
+      setInspectorOpen(false);
+      requestAnimationFrame(() =>
+        inspectorPanel.current
+          ?.querySelector<HTMLElement>('[aria-selected="true"]')
+          ?.focus()
+      );
+    }
+  }, [narrow, inspectorOpen]);
 
   const [abort, abortControllerRef] = useAbortController();
   // Resolves a bare URL (link / URL bar) into a presentation and writes the
@@ -87,33 +115,91 @@ export function ItemView({ className }: ItemViewProps) {
   const isResolving = !!url && resolvedUrl !== url;
 
   return (
-    <div className={cx(className, css.LayoutContainer)}>
+    <div ref={containerRef} className={cx(className, css.LayoutContainer)}>
       <div className={css.Layout}>
         <Toolbar
           reload={entryId || url ? handleReload : null}
           reloading={reloading}
+          inspectorOpener={inspectorOpener}
+          onOpenInspector={
+            narrow && entryId && !isPdf
+              ? () => setInspectorOpen(true)
+              : undefined
+          }
+          inspectorOpen={inspectorOpen}
         />
 
-        {isResolving ? (
-          <div className={css.Placeholder}>Loading…</div>
-        ) : blocked ? (
-          <div className={css.Placeholder}>
-            <Typography variant="body2" color="text.disabled">
-              This download can’t be displayed in the reading pane because its
-              format isn’t supported.
+        <div className={css.ReaderAndInspector}>
+          {isResolving ? (
+            <div className={css.Placeholder}>Loading…</div>
+          ) : blocked ? (
+            <div className={css.Placeholder}>
+              <Typography variant="body2" color="text.disabled">
+                This download can’t be displayed in the reading pane because its
+                format isn’t supported.
+              </Typography>
+            </div>
+          ) : isPdf ? (
+            <PdfReader src={pdfBlobUrl} />
+          ) : entryId ? (
+            <ArticleReader key={readerRevision} ref={articleReaderRef} />
+          ) : (
+            <div className={css.Placeholder}>
+              <Typography variant="body2" color="text.disabled">
+                {isResolving ? "Loading…" : "Select an article"}
+              </Typography>
+            </div>
+          )}
+          {!narrow && entryId && !isPdf && !blocked && (
+            <aside
+              ref={inspectorPanel}
+              className={css.InspectorPanel}
+              aria-label="Article Inspector"
+            >
+              <ArticleInspector
+                articleId={entryId}
+                view={inspectorView}
+                onViewChange={setInspectorView}
+              />
+            </aside>
+          )}
+        </div>
+        <Drawer
+          anchor="right"
+          open={narrow && inspectorOpen && !!entryId && !isPdf}
+          onClose={() => setInspectorOpen(false)}
+          transitionDuration={0}
+          slotProps={{
+            paper: {
+              role: "dialog",
+              "aria-modal": true,
+              "aria-label": "Article Inspector",
+              className: css.InspectorDrawer,
+            },
+            backdrop: { transitionDuration: 0 },
+          }}
+        >
+          <div className={css.InspectorHeader}>
+            <Typography component="h2" variant="subtitle2">
+              Inspector
             </Typography>
+            <Tooltip title="Close Inspector">
+              <IconButton
+                aria-label="Close Inspector"
+                onClick={() => setInspectorOpen(false)}
+              >
+                <Close />
+              </IconButton>
+            </Tooltip>
           </div>
-        ) : isPdf ? (
-          <PdfReader src={pdfBlobUrl} />
-        ) : entryId ? (
-          <ArticleReader key={readerRevision} ref={articleReaderRef} />
-        ) : (
-          <div className={css.Placeholder}>
-            <Typography variant="body2" color="text.disabled">
-              {isResolving ? "Loading…" : "Select an article"}
-            </Typography>
-          </div>
-        )}
+          {entryId && narrow && inspectorOpen && (
+            <ArticleInspector
+              articleId={entryId}
+              view={inspectorView}
+              onViewChange={setInspectorView}
+            />
+          )}
+        </Drawer>
       </div>
     </div>
   );

@@ -1,10 +1,11 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { Topic } from "../../types";
-import { TopicMenuButton } from "./TopicMenuButton";
+import type { Entry, Topic } from "../../types";
+import { ArticleTopicMembership, TopicMenuButton } from "./TopicMenuButton";
 
 const mocks = vi.hoisted(() => ({
+  readOnly: false,
   topics: [] as Topic[],
   createTopic: vi.fn(),
   createTopicWithMember: vi.fn(),
@@ -15,6 +16,9 @@ const mocks = vi.hoisted(() => ({
   rankTopicsRelatedToItem: vi.fn(),
 }));
 
+vi.mock("../../hooks/useLibraryReadOnly", () => ({
+  useLibraryReadOnly: () => mocks.readOnly,
+}));
 vi.mock("../../hooks/useTopics", () => ({
   useTopics: () => mocks,
 }));
@@ -69,18 +73,19 @@ const topic = (id: string, title: string): Topic => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.topics = [];
+  mocks.readOnly = false;
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
 });
 
 afterEach(async () => {
-  await act(() => root.unmount());
+  await act(async () => root.unmount());
   document.body.innerHTML = "";
 });
 
 it("offers inline topic creation when no topics exist", async () => {
-  await act(() => root.render(<TopicMenuButton item={null} />));
+  await act(async () => root.render(<TopicMenuButton item={null} />));
 
   const menuButton = container.querySelector('[aria-label="Add to Topic"]')!;
   expect(menuButton.hasAttribute("disabled")).toBe(false);
@@ -116,7 +121,7 @@ it("offers inline topic creation when no topics exist", async () => {
   expect(mocks.setTopicPinned).toHaveBeenCalledWith("new", true);
 
   mocks.topics = [created];
-  await act(() => root.render(<TopicMenuButton item={null} />));
+  await act(async () => root.render(<TopicMenuButton item={null} />));
   expect(
     (document.body.querySelector('input[type="checkbox"]') as HTMLInputElement)
       .checked
@@ -125,7 +130,7 @@ it("offers inline topic creation when no topics exist", async () => {
 
 it("prefills an inline topic title from a trimmed no-match filter", async () => {
   mocks.topics = [topic("existing", "Existing")];
-  await act(() => root.render(<TopicMenuButton item={null} />));
+  await act(async () => root.render(<TopicMenuButton item={null} />));
   await click(container.querySelector('[aria-label="Add to Topic"]')!);
 
   const filter = document.body.querySelector(
@@ -140,4 +145,82 @@ it("prefills an inline topic title from a trimmed no-match filter", async () => 
   expect(
     (document.body.querySelector("input[required]") as HTMLInputElement).value
   ).toBe("New topic");
+});
+
+const article = {
+  __kind: "entry",
+  id: "parent-article",
+  title: "Article",
+  createdAt: "2026-01-01",
+  url: "https://example.org",
+} as Entry;
+
+it("edits article memberships inline and preserves checked state after a failed mutation", async () => {
+  mocks.topics = [topic("one", "One")];
+  mocks.addTopicItem
+    .mockResolvedValueOnce(undefined)
+    .mockResolvedValueOnce(mocks.topics[0]);
+  mocks.removeTopicItem.mockResolvedValue(mocks.topics[0]);
+  await act(async () =>
+    root.render(<ArticleTopicMembership article={article} />)
+  );
+  const row = () => container.querySelector('[role="checkbox"]')!;
+  expect(row().getAttribute("aria-checked")).toBe("false");
+  await click(row());
+  expect(row().getAttribute("aria-checked")).toBe("false");
+  await click(row());
+  expect(mocks.addTopicItem).toHaveBeenLastCalledWith("one", article);
+  expect(row().getAttribute("aria-checked")).toBe("true");
+  await click(row());
+  expect(mocks.removeTopicItem).toHaveBeenCalledWith("one", "parent-article");
+  expect(row().getAttribute("aria-checked")).toBe("false");
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+});
+
+it("allows read-only membership inspection without enabling assignment or creation", async () => {
+  mocks.readOnly = true;
+  mocks.topics = [topic("one", "One")];
+  mocks.listEntryTopics.mockResolvedValueOnce(["one"]);
+  await act(async () =>
+    root.render(<ArticleTopicMembership article={article} />)
+  );
+  const row = container.querySelector('[role="checkbox"]')!;
+  expect(row.getAttribute("aria-checked")).toBe("true");
+  expect(row.getAttribute("aria-disabled")).toBe("true");
+  await click(row);
+  expect(mocks.removeTopicItem).not.toHaveBeenCalled();
+  mocks.topics = [];
+  await act(async () =>
+    root.render(<ArticleTopicMembership article={article} />)
+  );
+  const create = [...container.querySelectorAll("button")].find(
+    (button) => button.textContent === "Create a New Topic"
+  )!;
+  expect(create.disabled).toBe(true);
+});
+
+it("does not apply a late membership mutation to a different article", async () => {
+  mocks.topics = [topic("one", "One")];
+  let finish!: (value: Topic) => void;
+  mocks.addTopicItem.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  await act(async () =>
+    root.render(<ArticleTopicMembership article={article} />)
+  );
+  await click(container.querySelector('[role="checkbox"]')!);
+  await act(async () =>
+    root.render(
+      <ArticleTopicMembership article={{ ...article, id: "other" }} />
+    )
+  );
+  await act(async () => {
+    finish(mocks.topics[0]);
+  });
+  expect(
+    container.querySelector('[role="checkbox"]')?.getAttribute("aria-checked")
+  ).toBe("false");
 });

@@ -1,4 +1,5 @@
 import {
+  InfoOutlined,
   ArrowBack,
   ArrowForward,
   Bookmark,
@@ -19,7 +20,14 @@ import {
   Popover,
   Tooltip,
 } from "@mui/material";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import QRCode from "react-qr-code";
 import useAbortController from "../../hooks/useAbortController";
 import { useArticles } from "../../hooks/useArticles";
@@ -42,9 +50,18 @@ import { TopicMenuButton } from "./TopicMenuButton";
 interface ToolbarProps {
   reload: (() => void) | null;
   reloading?: boolean;
+  inspectorOpener?: RefObject<HTMLButtonElement | null>;
+  onOpenInspector?: () => void;
+  inspectorOpen?: boolean;
 }
 
-export function Toolbar({ reload, reloading = false }: ToolbarProps) {
+export function Toolbar({
+  reload,
+  reloading = false,
+  inspectorOpener,
+  onOpenInspector,
+  inspectorOpen,
+}: ToolbarProps) {
   const platform = usePlatform();
   const { pins, setPin } = usePins();
   const isLibraryReadOnly = useLibraryReadOnly();
@@ -399,6 +416,20 @@ export function Toolbar({ reload, reloading = false }: ToolbarProps) {
               </span>
             </Tooltip>
             <TopicMenuButton item={entry} disabled={!entry} />
+            {onOpenInspector && (
+              <Tooltip title="Open Inspector">
+                <IconButton
+                  size="small"
+                  ref={inspectorOpener}
+                  aria-label="Open Inspector"
+                  aria-haspopup="dialog"
+                  aria-expanded={!!inspectorOpen}
+                  onClick={onOpenInspector}
+                >
+                  <InfoOutlined fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
           </div>
 
           <Popover
