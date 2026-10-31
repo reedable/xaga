@@ -1,3 +1,23 @@
+.Content {
+  .Header {
+    .HeaderRight {
+      width: 100%;
+
+      .SortSelect {
+        font-size: 13px;
+        margin: 1rem 0.5rem 0 0;
+        width: 100%;
+      }
+    }
+  }
+
+  .Filter {
+    :global(.MuiInputBase-root.MuiInput-root) {
+      font-size: 13px;
+    }
+  }
+}
+
 .Checkbox {
   padding: 0;
   margin-right: 8px;
