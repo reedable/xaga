@@ -35,11 +35,12 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
   const [error, setError] = useState<unknown>(null);
 
   const reportRecoveredTimeout = useCallback(
-    async (attempt: ArticleLoadAttempt, articleUrl: string) => {
+    async (attempt: ArticleLoadAttempt, articleUrl: string, signal: AbortSignal) => {
       if (!attempt.id) return;
       const diagnostic = await platform
         .getArticleDiagnostic(attempt.id)
         .catch(() => null);
+      signal.throwIfAborted();
       if (diagnostic?.events.some((event) =>
         event.step === "favicon" && ["warning", "failed"].includes(event.outcome)
       )) {
@@ -93,7 +94,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           platform.loadArticle(signal, url, keepOpen, attempt.id)
         );
 
-        await reportRecoveredTimeout(attempt, url);
+        await reportRecoveredTimeout(attempt, url, signal);
         if (mimeType === "application/pdf") {
           const pdfBytes = pdfBase64
             ? await attempt.runStep("pdf_decode", () => base64ToBytes(pdfBase64))
@@ -188,7 +189,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         // PDF bytes are already persisted by native ingestion. Never save the
         // empty HTML field over an existing article or remove its stored PDF.
         if (mimeType === "application/pdf") return;
-        await reportRecoveredTimeout(attempt, entry.url);
+        await reportRecoveredTimeout(attempt, entry.url, signal);
         const { title, markdown, favicon, imageData } = await attempt.runStep(
           "extract",
           () =>

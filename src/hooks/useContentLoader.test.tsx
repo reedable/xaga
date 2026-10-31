@@ -117,3 +117,27 @@ it("uses saved Markdown without network loading", async () => {
   expect(mocks.articles.loadArticleByUrl).not.toHaveBeenCalled();
   expect(mocks.router.replaceEntry).toHaveBeenCalledWith(article);
 });
+
+it.each(["failure", "unsupported"])(
+  "retains the displayed PDF after refresh %s",
+  async (outcome) => {
+    mocks.platform.readStoredPdf.mockResolvedValue({ pdfBase64: "JVBERi0=" });
+    await act(() => hook.resolve("https://example.org/paper"));
+    const blob = hook.pdfBlobUrl;
+    if (outcome === "failure")
+      mocks.articles.loadArticleByUrl.mockRejectedValue(new Error("failed"));
+    else
+      mocks.articles.loadArticleByUrl.mockResolvedValue({
+        blockedDownload: true,
+        article: null,
+      });
+    let result: unknown;
+    await act(async () => {
+      result = await hook.resolve("https://example.org/paper", true);
+    });
+    expect(result).toBe(false);
+    expect(hook.pdfBlobUrl).toBe(blob);
+    expect(hook.blockedUrl).toBeNull();
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+  }
+);

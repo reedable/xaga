@@ -74,7 +74,16 @@ npm run ui:build
 npm run ui:preview
 ```
 
-Run the complete script and UI test suite with `npm test`. Run only the Node-based build and release script tests with `npm run test:scripts`, or only the UI tests with `npm run test:ui`.
+Run all tests with `npm test`: script and UI tests, Rust unit and ACL integration
+tests, Rust documentation tests, and the native WebKit suite. The command stops
+on the first failure. The full suite requires macOS with a logged-in desktop
+session; the fingerprint probe opens a local page in Safari. Native download
+tests run every supported scenario, and the SVG wrapper builds its fixture.
+
+Use `npm run test:headless` for the complete non-GUI suite, or
+`npm run test:gui` for native WebKit tests only. Individual suites remain
+available as `npm run test:scripts`, `npm run test:ui`, and `npm run test:rust`.
+Pass Vitest file filters through `npm run test:ui -- <files>`.
 
 The ordinary production build is:
 
@@ -154,7 +163,7 @@ The tag must point to the commit containing both the prepared version and the re
 1. Check out the tagged commit.
 2. Require a final or numbered-RC tag whose version equals `src-tauri/tauri.conf.json`.
 3. Install the Protocol Buffers compiler required by Lance.
-4. Run JavaScript tests and linting.
+4. Run script, UI, and non-GUI Rust tests, followed by linting. Native WebKit tests run separately through `npm test` on a Mac with a desktop session.
 5. Check the Rust workspace with the lockfile.
 6. Build the macOS application for Apple Silicon (`aarch64`). Intel Macs are not currently supported.
 7. Create a draft GitHub Release and upload the build artifacts.

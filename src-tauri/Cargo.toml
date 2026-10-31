@@ -87,3 +87,7 @@ harness = false
 [[test]]
 name = "feed_navigation_webview"
 harness = false
+
+[[test]]
+name = "loader_lifecycle_webview"
+harness = false

@@ -37,8 +37,10 @@ export function useContentLoader(
   const resolve = useCallback(
     async (url: string, refresh = false) => {
       const { signal } = abortControllerRef.current;
-      setPdfBlobUrl(null);
-      setBlockedUrl(null);
+      if (!refresh) {
+        setPdfBlobUrl(null);
+        setBlockedUrl(null);
+      }
 
       const attempt = await ArticleLoadAttempt.create(
         platform,
@@ -70,26 +72,27 @@ export function useContentLoader(
                 ? "application/pdf"
                 : "text/html"
             );
-            return;
+            return true;
           }
           const existing = await findArticleByUrl(url, attempt);
           signal.throwIfAborted();
           if (existing?.content) {
             replaceEntry(existing);
-            return;
+            return true;
           }
         }
 
         const result = await loadArticleByUrl(url, false, attempt);
         signal.throwIfAborted();
-        if (!result) return;
+        if (!result) return false;
 
         // Show a neutral rejection message for this URL.
         if ("blockedDownload" in result) {
           outcome = "failed";
+          if (refresh) return false;
           setBlockedUrl(url);
           replaceMimeType("text/html"); // clear the loading placeholder
-          return;
+          return false;
         }
 
         if (result.mimeType === "application/pdf") {
@@ -109,15 +112,20 @@ export function useContentLoader(
             signal.throwIfAborted();
             replaceMimeType("text/html");
           }
-          return;
+          setBlockedUrl(null);
+          return true;
         }
 
         if (result.article) {
+          setPdfBlobUrl(null);
+          setBlockedUrl(null);
           replaceEntry(result.article);
         }
+        return true;
       } catch (error) {
         outcome = isAbortError(error) ? "cancelled" : "failed";
-        pushError(error);
+        if (!signal.aborted) pushError(error);
+        return false;
       } finally {
         await attempt.complete(outcome);
       }

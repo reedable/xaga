@@ -39,7 +39,7 @@ import { HtmlReader } from "./HtmlReader";
 import { RelatedItemList } from "./RelatedItemList";
 
 export interface ArticleReaderHandle {
-  reload: () => void;
+  reload: () => Promise<void>;
 }
 
 export interface ArticleReaderProps {
@@ -133,8 +133,10 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
       async (reload = false) => {
         if (!url) return;
         const signal = abortControllerRef.current.signal;
-        setSummaryHtml(null);
-        setContentHtml(null);
+        if (!reload) {
+          setSummaryHtml(null);
+          setContentHtml(null);
+        }
 
         const attempt = await ArticleLoadAttempt.create(
           platform,

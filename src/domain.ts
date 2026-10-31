@@ -16,7 +16,6 @@ export type WebResource = Item & { url: string }; // has a URL
 export type Document = Item & { content: string }; // has body content
 export type Countable = Item & { entryCount: number; unreadCount: number }; // authoritative summary stats
 export type Pinnable = Item & { isPinned: boolean };
-export type Bookmarkable = Item & { isBookmarked: boolean };
 export type Colorable = Item & { color?: string }; // Annotation (highlight), bookmarked Entry, Note
 
 // A typed, branded pointer to an item (the brand matches the referenced entity's __kind).
@@ -36,10 +35,10 @@ export type Collection<T extends Item & { __kind: string }> = Countable & {
 // ── Entities (all branded) ──────────────────────────────────────────────────────
 export type Entry = WebResource &
   Pinnable &
-  Bookmarkable &
   Colorable & {
     readonly __kind: "entry";
     isUnread?: boolean;
+    isBookmarked: boolean;
     // description? / publishedAt? from Item; color? (from Colorable) = the bookmark color
   };
 
@@ -70,9 +69,9 @@ export type Article = Entry &
 
 // The content entity with NO web presence — the counterpart to Article.
 export type Note = Document &
-  Bookmarkable &
   Colorable & {
     readonly __kind: "note";
+    isBookmarked: boolean;
   };
 
 export type Annotation = Document &

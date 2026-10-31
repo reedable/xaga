@@ -1,7 +1,7 @@
-import { act, useEffect } from "react";
+import { act, createRef, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import ArticleReader from "./ArticleReader";
+import ArticleReader, { type ArticleReaderHandle } from "./ArticleReader";
 
 // This test follows summary data through React; stylesheet bundling is checked
 // by the application build and rendering by the native WebKit probe.
@@ -46,6 +46,7 @@ const mocks = vi.hoisted(() => ({
     replaceUrl: () => {},
   },
   find: vi.fn(),
+  load: vi.fn(),
   extract: vi.fn(),
   save: vi.fn(),
   read: vi.fn(),
@@ -63,6 +64,7 @@ vi.mock("../../hooks/useArticles", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useArticles")>()),
   useArticles: () => ({
     findArticleByUrl: mocks.find,
+    loadArticle: mocks.load,
     extractArticleFromHtml: mocks.extract,
     saveExtractedArticle: mocks.save,
     readEntry: mocks.read,
@@ -224,4 +226,30 @@ it("does not request recovery when the setting is disabled", async () => {
   await act(() => root.render(<ArticleReader />));
   expect(mocks.platform.recoverEntryImages).not.toHaveBeenCalled();
   expect(mocks.html).toContain("Comic");
+});
+
+it("retains the mounted saved reader while imperative reload is pending or fails", async () => {
+  const ref = createRef<ArticleReaderHandle>();
+  await act(() => root.render(<ArticleReader ref={ref} />));
+  const original = mocks.html;
+  expect(original).not.toBe("");
+  let reject!: (error: Error) => void;
+  mocks.load.mockImplementation(
+    () =>
+      new Promise((_, fail) => {
+        reject = fail;
+      })
+  );
+  let request!: Promise<void>;
+  await act(() => {
+    request = ref.current!.reload();
+  });
+  expect(mocks.html).toBe(original);
+  const error = new Error("retrieval failed");
+  await act(async () => {
+    reject(error);
+    await request;
+  });
+  expect(mocks.html).toBe(original);
+  expect(mocks.sink.pushError).toHaveBeenCalledWith(error);
 });

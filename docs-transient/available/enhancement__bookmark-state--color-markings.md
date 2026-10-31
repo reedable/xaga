@@ -83,8 +83,6 @@ interaction together.
 
 ## References
 
-- [Remove Bookmarkable Interface](refactor__bookmark-state--remove-bookmarkable-interface.md)
-  — independent type cleanup; neither story requires the other.
 - [Article Bookmark Comments](../ideas/article-bookmark-comments.md) — separate idea.
 - `docs/library_upgrade.md`
 - `docs/development/release_cycle.md`

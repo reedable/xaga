@@ -6,6 +6,27 @@ opens the recent record; **Copy diagnostics** copies its JSON. Technical detail
 is copied as plain text, never rendered as HTML or substituted into the normal
 user-facing error message.
 
+## Notification lifecycle
+
+The shared error sink queues accepted notifications in arrival order and presents
+one toast at a time. Each notification retains its message, severity, and
+optional diagnostic ID. Later errors and image/favicon warnings do not replace
+the current notification or its Details link. Existing favicon deduplication and
+cancellation suppression apply before enqueueing.
+
+Toasts with diagnostics remain until dismissed. Others expire after six seconds
+of display, rather than six seconds after enqueueing. Closing the current toast
+advances the queue. Opening Details keeps its toast current; closing the dialog
+does not dismiss the toast. Clicking outside a toast does not dismiss it.
+
+Refresh is always visible beside Bookmark. During reload, its title and SR-only
+status report “Reload in progress...”; its icon rotates only when the motion
+preference permits it, following the [motion convention](../conventions/motion.md).
+The button remains enabled and additional activations are ignored until the
+attempt ends. Saved content stays displayed during retrieval and on retrieval
+failure, including unsupported replacement downloads. Navigation cancels the
+frontend attempt; its completion cannot reset another article's reload status.
+
 ## Collection and ownership
 
 `src-tauri/src/article_diagnostics.rs` owns the native history and log sink.
@@ -122,8 +143,11 @@ not establish successful painting or decoding inside WebKit's built-in PDF
 viewer. Subsequent visible-browser HTML extraction starts a separate attempt;
 page-script milestones are collected only while the initial request is pending.
 Native navigation observations remain associated with that browser's original
-attempt. Frontend cancellation cancels observation of the command result; native
-work still follows its existing timeout/cleanup lifecycle.
+attempt. When a diagnostic ID is present, frontend load and image-recovery
+cancellation also calls `cancel_article_load`: it marks the attempt cancelled,
+removes its pending captures, and destroys the matching loaders. Results already
+delivered are not retracted. Late native validation results require a live
+pending request before they can be delivered.
 
 ## Verification
 
@@ -133,6 +157,12 @@ reporting. Native tests cover retention/redaction and preserving captured HTML
 on favicon timeout. Proxy tests exercise independent observers with real policy
 refusals and scoped-listener/tunnel cleanup. Socket tests need permission to bind
 local test listeners.
+
+The native `loader_lifecycle_webview` harness additionally verifies cancellation
+at three capture/download stages alongside independent loads, concurrent favicon
+success, rejection and timeout, and warning attribution with retained article
+HTML. It checks window, session, pending-request, proxy-listener and staging
+cleanup. See the [native lifecycle coverage and its limits](security/fetching_remote_content.md#native-loader-lifecycle-verification).
 
 Native browser behavior must be smoke-tested in a bundled build, following
 [fetching remote content](security/fetching_remote_content.md): test an invalid
