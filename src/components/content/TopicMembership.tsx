@@ -219,8 +219,8 @@ export function TopicMembership({ item }: { item: Entry | Annotation }) {
   const filteredTopics = useMemo(() => {
     const base = filterText
       ? sortedTopics.filter((t) =>
-          t.title.toLowerCase().includes(filterText.toLowerCase())
-        )
+        t.title.toLowerCase().includes(filterText.toLowerCase())
+      )
       : sortedTopics;
     return [...base].sort((a, b) => {
       const aChecked = memberIds.has(a.id);
@@ -244,10 +244,6 @@ export function TopicMembership({ item }: { item: Entry | Annotation }) {
   return (
     <div className={css.Content}>
       <div className={css.Header}>
-        <Typography component="h2" variant="subtitle2" fontWeight={600}>
-          Add to Topic
-        </Typography>
-
         <div className={css.HeaderRight}>
           <Select
             aria-label="Sort by"
@@ -309,6 +305,7 @@ export function TopicMembership({ item }: { item: Entry | Annotation }) {
           />
         </div>
       )}
+
       {creating ? (
         <InlineTopicForm
           readOnly={readOnly}
@@ -347,17 +344,17 @@ export function TopicMembership({ item }: { item: Entry | Annotation }) {
           ))}
           {(topics.length === 0 ||
             (filterText.trim() && filteredTopics.length === 0)) && (
-            <ListItem>
-              <Button
-                onClick={startCreating}
-                disabled={readOnly}
-                fullWidth
-                variant="outlined"
-              >
-                Create a New Topic
-              </Button>
-            </ListItem>
-          )}
+              <ListItem>
+                <Button
+                  onClick={startCreating}
+                  disabled={readOnly}
+                  fullWidth
+                  variant="outlined"
+                >
+                  Create a New Topic
+                </Button>
+              </ListItem>
+            )}
         </List>
       )}
     </div>

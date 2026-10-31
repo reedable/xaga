@@ -3,7 +3,6 @@ import {
   ListItem,
   ListItemButton,
   ListItemText,
-  Typography,
 } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import { RELATED_THRESHOLD } from "../../consts";
@@ -115,12 +114,6 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
 
   return (
     <div className={cx(className, css.RelatedItemList)}>
-      <div className={css.Header}>
-        <Typography variant="overline" color="text.secondary">
-          Related
-        </Typography>
-      </div>
-
       <List className={css.List}>
         {embeddedItems.map((item) => (
           <ListItem key={item.id} className={css.ListItem} disablePadding>

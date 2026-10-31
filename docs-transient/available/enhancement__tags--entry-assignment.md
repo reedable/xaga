@@ -33,8 +33,8 @@ readable names in article files and stable IDs in LanceDB.
 ## Remaining work
 
 - Complete tag identity and creation first.
-- Connect the Entry tag picker to the existing Inspector's disabled Tags view
-  and enable the tab when assignment is available.
+- Add the Entry tag picker to the shared Inspector and expose its Tags tab when
+  assignment is available.
 - Implement preservation of names through core domain boundaries, assignment
   commands, name-to-ID indexing, events, and frontend state updates.
 - Verify empty/multiple assignments, unrelated metadata preservation, concurrent

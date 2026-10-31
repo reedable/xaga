@@ -61,6 +61,11 @@ it("switches views by keyboard and retains the selection across article navigati
     );
   });
   expect(tab("Topics").getAttribute("aria-selected")).toBe("true");
+  const panel = document.getElementById(
+    tab("Topics").getAttribute("aria-controls")!
+  );
+  expect(panel?.getAttribute("aria-labelledby")).toBe(tab("Topics").id);
+  expect(panel?.hidden).toBe(false);
   expect(container.textContent).toContain("Topics for parent-article");
   await act(async () => root.render(<Host articleId="another-article" />));
   expect(tab("Topics").getAttribute("aria-selected")).toBe("true");
@@ -117,13 +122,9 @@ it("reports a failed article lookup without leaving a loading status indefinitel
   expect(container.querySelector('[role="status"]')).toBeNull();
 });
 
-it("keeps Tags disabled with an accessible explanation", async () => {
+it("does not expose the unfinished Tags view", async () => {
   await act(async () => root.render(<Host articleId="article" />));
-  expect(tab("Tags").disabled).toBe(true);
-  const explanation = document.getElementById(
-    tab("Tags").getAttribute("aria-describedby")!
-  );
-  expect(explanation?.textContent).toBe("Tag assignment isn’t available yet.");
+  expect(tab("Tags")).toBeUndefined();
 });
 
 it("reads Annotation Topics from its parent file without substituting Article memberships", async () => {
@@ -166,4 +167,22 @@ it("does not fall back to Article memberships when an Annotation is missing", as
     "Annotation topics couldn’t be loaded."
   );
   expect(mocks.read).not.toHaveBeenCalled();
+});
+
+it("preserves both tab contents and avoids repeating the target lookup on tab switches", async () => {
+  await act(async () => root.render(<Host articleId="article" />));
+  const panels = [
+    ...container.querySelectorAll<HTMLElement>('[role="tabpanel"]'),
+  ];
+  const relatedContent = panels[0].firstElementChild;
+  const topicContent = panels[1].firstElementChild;
+  expect(relatedContent).not.toBeNull();
+  expect(topicContent).not.toBeNull();
+  expect(mocks.read).toHaveBeenCalledTimes(1);
+  await act(async () => tab("Topics").click());
+  await act(async () => tab("Related").click());
+  await act(async () => tab("Topics").click());
+  expect(panels[0].firstElementChild).toBe(relatedContent);
+  expect(panels[1].firstElementChild).toBe(topicContent);
+  expect(mocks.read).toHaveBeenCalledTimes(1);
 });

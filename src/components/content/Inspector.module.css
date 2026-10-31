@@ -4,33 +4,43 @@
   height: 100%;
   min-height: 0;
   min-width: 0;
-}
 
-.View {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
+  .View {
+    padding: 0;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
 
-.Inspector :global(.MuiTabs-indicator) {
-  transition: none;
-}
+  .Target {
+    margin: 0 0 1rem 0;
+    text-align: center;
+    width: 100%;
+  }
 
-.Notice {
-  padding: 4px 12px;
-}
+  :global(.MuiTabs-root) {
+    min-width: 0;
+    min-height: 24px;
 
-.Inspector :global(.MuiTab-root) {
-  min-width: 0;
-}
-.Inspector :global(.MuiTab-root:focus-visible) {
-  outline: 2px solid currentColor;
-  outline-offset: -2px;
-}
+    :global(.MuiTabs-scroller) {
+      height: 24px;
 
-.Target {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 12px;
+      :global(.MuiTabs-list) {
+        height: 24px;
+
+        :global(.MuiButtonBase-root.MuiTab-root) {
+          font-size: 13px;
+          min-height: 24px;
+          padding: 0 16px;
+
+          &:focus-visible {
+            outline: 2px solid currentColor;
+            outline-offset: -2px;
+          }
+        }
+      }
+    }
+  }
+
+
 }

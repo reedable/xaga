@@ -2,8 +2,8 @@
 
 One shared Inspector implementation provides Related and Topics views for Articles and
 Annotations. It replaces the standalone Add to Topic button and its drawer.
-The Tags tab is disabled with a visible explanation until Entry tag assignment
-is available. Its future picker belongs in this shared Inspector
+The Tags tab is hidden until Entry tag assignment is available.
+Its future picker belongs in this shared Inspector
 content, not in a separate toolbar or drawer implementation.
 
 ## Target and view state
@@ -46,6 +46,11 @@ Annotation drawer's tab does not change the Article panel's selected tab. This
 state is not a library setting and is not persisted. Opening or closing the Inspector does not
 navigate or remount the article reader, preserving its current reading position.
 
+Both tab panels keep their children mounted while the Inspector remains open.
+Switching tabs hides content without resetting its local state or restarting the
+target lookup. The lookup follows target identity, and changing the inspected
+target replaces the child state so it cannot leak between Articles or Annotations.
+
 ## Responsive presentation and keyboard access
 
 For Article inspection, a 280-pixel panel sits beside the reader at
@@ -71,7 +76,9 @@ wide layout closes it and focuses the selected panel tab.
 
 The shared drawer slides in from the right only when
 `prefers-reduced-motion: no-preference` matches. Otherwise it opens without
-animation. Topic row rearrangement follows the same motion preference, per the
+animation. The tab indicator uses the MUI theme's transition when motion is
+permitted and switches without animation otherwise. Topic row rearrangement
+follows the same motion preference, per the
 [motion convention](../conventions/motion.md).
 
 ## Topic membership
