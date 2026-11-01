@@ -7,6 +7,9 @@ readable names in article files and stable IDs in LanceDB.
 
 ## Requirements
 
+- Use the [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md)
+  contract and its shared 0.14 library upgrade; do not introduce a separate
+  storage format for this functionality.
 - Support selecting existing tags and removing assignments without deleting the
   tag definition or changing other article metadata.
 - Own the complete Entry tag picker, including creation of a tag through the
@@ -27,11 +30,10 @@ readable names in article files and stable IDs in LanceDB.
   intent to indexing and UI consumers. Support cache rebuild from files and
   definitions, concurrent article changes, and read-only refusal.
 - Keep Feed, Topic, Site, Note, and annotation tagging outside this story.
-- Increment the minor release version for storage-model changes introduced by
-  this story and document any corresponding CLI upgrade.
 
 ## Remaining work
 
+- Complete the Tag Storage Foundation first.
 - Complete tag identity and creation first.
 - Add the Entry tag picker to the shared Inspector and expose its Tags tab when
   assignment is available.
@@ -43,6 +45,7 @@ readable names in article files and stable IDs in LanceDB.
 
 ## References
 
+- [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md) — prerequisite.
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Inspector](../../docs/architecture/article_inspector.md)

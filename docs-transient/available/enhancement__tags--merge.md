@@ -7,6 +7,9 @@ name, preserving Entry assignments while consolidating tag identity.
 
 ## Requirements
 
+- Use the [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md)
+  contract and its shared 0.14 library upgrade; do not introduce a separate
+  storage format for this functionality.
 - Offer merge confirmation on a rename collision; never merge implicitly.
   Cancellation leaves both tags unchanged. Until this feature is implemented,
   rename collisions remain a hard stop.
@@ -34,11 +37,10 @@ name, preserving Entry assignments while consolidating tag identity.
 - Preserve content, unrelated tags, read/color state, pins, and browsing context.
   Use the library write right, serialized registry changes, and atomic file
   read–modify–writes inside Entry writer lanes. Preserve read-only behavior.
-- Increment the minor release version for merge-transition storage-model changes
-  and document the format and any required CLI upgrade.
 
 ## Remaining work
 
+- Complete the Tag Storage Foundation first.
 - Complete tag identity/creation, Entry assignment, and resumable rename first.
 - Implement collision confirmation, persistent merge state, bounded file/index
   conversion, recovery, and finalization.
@@ -49,6 +51,7 @@ name, preserving Entry assignments while consolidating tag identity.
 
 ## References
 
+- [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md) — prerequisite.
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Tag Identity and Creation](enhancement__tags--identity-and-creation.md)

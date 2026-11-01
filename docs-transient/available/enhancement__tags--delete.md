@@ -7,6 +7,9 @@ safe completion of any library-wide cleanup.
 
 ## Requirements
 
+- Use the [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md)
+  contract and its shared 0.14 library upgrade; do not introduce a separate
+  storage format for this functionality.
 - Allow deletion of assigned tags and remove their assignments in bounded,
   resumable batches; do not require users to clear assignments first.
 - Expose Delete in the same sidebar/responsive tag actions menu as Rename.
@@ -28,11 +31,10 @@ safe completion of any library-wide cleanup.
 - Perform any file/index cleanup in bounded batches with durable progress and
   safe retries, rather than one mass transaction.
 - Use existing library write rights, writer serialization, and read-only gating.
-- Increment the minor release version for deletion-state storage changes and
-  document migration and recovery behavior.
 
 ## Remaining work
 
+- Complete the Tag Storage Foundation first.
 - Complete identity/creation and Entry assignment first. Coordinate with tag
   browsing and rename transitions wherever those stories are implemented.
 - Coordinate deletion with in-progress rename/merge state so each operation's
@@ -45,6 +47,7 @@ safe completion of any library-wide cleanup.
 
 ## References
 
+- [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md) — prerequisite.
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Tag Identity and Creation](enhancement__tags--identity-and-creation.md) — prerequisite.

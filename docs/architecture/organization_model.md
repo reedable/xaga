@@ -70,11 +70,14 @@ across renames. Article frontmatter contains readable names; the indexing
 boundary maps them to IDs stored in LanceDB assignments. Definitions own identity
 and naming; article files own assignments.
 
-Compare names case-insensitively using Unicode-aware comparison after trimming
-surrounding whitespace. Reject only names empty after trimming; punctuation-only
+Compare names by trimming surrounding whitespace and applying Unicode lowercase
+conversion to the comparison values. Do not use case folding or Unicode
+normalization. `Research` and `RESEARCH` match; `straße` and `strasse` remain
+distinct. Preserve the display spelling independently of comparison values.
+Reject only names empty after trimming; punctuation-only
 names such as `---` are valid. Creation spelling determines display casing.
 Later casing variants reuse the definition; explicit case-only renames are
-supported. Atomic lookup/creation enforces one ID per normalized name.
+supported. Atomic lookup/creation enforces one ID per comparison value.
 
 Writable recovery registers unknown labels before indexing their assignments.
 First-discovered spelling supplies the initial display name; read-only access

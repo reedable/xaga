@@ -7,6 +7,9 @@ with normal article reading and stable browsing context.
 
 ## Requirements
 
+- Use the [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md)
+  contract and its shared 0.14 library upgrade; do not introduce a separate
+  storage format for this functionality.
 - Resolve selected tag names through library definitions and query indexed tag
   IDs. Display current names rather than internal IDs.
 - Show directly tagged Entries only; no implicit tagging through collections
@@ -34,6 +37,7 @@ with normal article reading and stable browsing context.
 
 ## Remaining work
 
+- Complete the Tag Storage Foundation first.
 - Complete tag identity/creation and Entry assignment first.
 - Implement query predicates and suitable list-tag indexing; verify query plans
   and performance at the multi-million-entry design target.
@@ -41,10 +45,10 @@ with normal article reading and stable browsing context.
 - Verify matching/nonmatching Entries, empty sets, keyboard/responsive access,
   read-only browsing, tag rename/removal, and current-list stability.
 - Run affected Rust/frontend checks and production build; document the behavior.
-  If implementation changes persisted schema, increment the minor release version.
 
 ## References
 
+- [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md) — prerequisite.
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Tag Identity and Creation](enhancement__tags--identity-and-creation.md) — prerequisite.
