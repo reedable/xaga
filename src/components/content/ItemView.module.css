@@ -27,7 +27,8 @@
 }
 
 .InspectorPanel {
-  width: 280px;
+  overflow: clip;
+  width: 18rem;
   flex-shrink: 0;
   min-height: 0;
 }
@@ -41,4 +42,21 @@
   justify-content: space-between;
   align-items: center;
   padding: 8px 16px;
+}
+
+
+.InspectorPanelHidden {
+  width: 0;
+}
+
+.InspectorPanelContent {
+  width: 18rem;
+  height: 100%;
+  contain: inline-size layout;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .InspectorPanel {
+    transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
 }

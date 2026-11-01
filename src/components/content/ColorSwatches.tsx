@@ -55,7 +55,8 @@ export function ColorSwatches({
         <Collapse
           in={pendingRemove}
           orientation="horizontal"
-          timeout={animate ? undefined : 0}
+          timeout={animate ? 200 : 0}
+          easing="ease-in-out"
         >
           <Button
             disableRipple

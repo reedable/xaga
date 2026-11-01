@@ -6,7 +6,7 @@ import {
   Typography,
   useMediaQuery,
 } from "@mui/material";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useContentLoader } from "../../hooks/useContentLoader";
 import useRouter from "../../hooks/useRouter";
@@ -26,12 +26,14 @@ import { Toolbar } from "./Toolbar";
 
 type ItemViewProps = {
   className?: string;
+  searchPanelRef?: RefObject<HTMLDivElement | null>;
 };
 
 const logger = Logger.getLogger("ItemView");
 
-export function ItemView({ className }: ItemViewProps) {
-  const { state } = useRouter();
+export function ItemView({ className, searchPanelRef }: ItemViewProps) {
+  const { state, search } = useRouter();
+  const searchOpen = search !== undefined;
   const { entryId, annotationId, url, mimeType } = state;
 
   const currentRouteTarget = useRef({ entryId, annotationId });
@@ -120,12 +122,16 @@ export function ItemView({ className }: ItemViewProps) {
     const element = containerRef.current;
     if (!element) return;
     const observer = new ResizeObserver(([entry]) => {
-      setNarrow(entry.contentRect.width < 700);
+      // Include Search’s current width so its animation does not flip
+      // the responsive breakpoint halfway through the transition.
+      const searchWidth = searchPanelRef?.current?.getBoundingClientRect().width ?? 0;
+      setNarrow(entry.contentRect.width + searchWidth < 700);
     });
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
-  const useInspectorDrawer = narrow || !!drawerTarget?.annotationId;
+  }, [searchPanelRef]);
+  const inspectorHidden = narrow || searchOpen;
+  const useInspectorDrawer = inspectorHidden || !!drawerTarget?.annotationId;
   useEffect(() => {
     if (!useInspectorDrawer && inspectorOpen) {
       setInspectorOpen(false);
@@ -211,7 +217,7 @@ export function ItemView({ className }: ItemViewProps) {
           reloading={reloading}
           inspectorOpener={inspectorOpener}
           onOpenInspector={
-            narrow && entryId && !isPdf
+            inspectorHidden && entryId && !isPdf
               ? () => {
                   inspectorReturnFocus.current = inspectorOpener.current;
                   setInspectorOpen(true);
@@ -249,17 +255,21 @@ export function ItemView({ className }: ItemViewProps) {
               </Typography>
             </div>
           )}
-          {!narrow && entryId && !isPdf && !blocked && (
+          {entryId && !isPdf && !blocked && (
             <aside
               ref={inspectorPanel}
-              className={css.InspectorPanel}
+              inert={inspectorHidden}
+              aria-hidden={inspectorHidden}
+              className={cx(css.InspectorPanel, inspectorHidden && css.InspectorPanelHidden)}
               aria-label="Article Inspector"
             >
-              <Inspector
-                target={{ entryId }}
-                view={inspectorView}
-                onViewChange={setInspectorView}
-              />
+              <div className={css.InspectorPanelContent}>
+                <Inspector
+                  target={{ entryId }}
+                  view={inspectorView}
+                  onViewChange={setInspectorView}
+                />
+              </div>
             </aside>
           )}
         </div>

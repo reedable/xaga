@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     url: "https://example.org/article",
     mimeType: undefined,
   },
+  search: undefined as string | undefined,
   resolve: vi.fn(async () => true),
   mounts: vi.fn(),
   openAnnotation: undefined as
@@ -33,7 +34,7 @@ vi.mock("../../hooks/useEvents", () => ({
   }),
 }));
 vi.mock("../../hooks/useRouter", () => ({
-  default: () => ({ state: mocks.state }),
+  default: () => ({ state: mocks.state, search: mocks.search }),
 }));
 vi.mock("../../hooks/useContentLoader", () => ({
   useContentLoader: () => ({
@@ -129,6 +130,7 @@ let root: ReturnType<typeof createRoot>;
 let container: HTMLDivElement;
 beforeEach(async () => {
   vi.clearAllMocks();
+  mocks.search = undefined;
   mocks.state = {
     entryId: "article",
     annotationId: undefined,
@@ -362,4 +364,36 @@ it("does not open the Inspector when initially mounted on an Annotation route", 
   mocks.state = { ...mocks.state, annotationId: "annotation" };
   await act(async () => root.render(<ItemView key="annotation-route" />));
   expect(document.querySelector('[role="dialog"]')).toBeNull();
+});
+
+
+it("keeps the docked Inspector mounted while responsive width hides and shows it", async () => {
+  const panel = container.querySelector("aside")!;
+  const inspector = panel.querySelector("[data-inspector]")!;
+  await resize(699);
+  expect(container.querySelector("aside")).toBe(panel);
+  expect(panel.getAttribute("aria-hidden")).toBe("true");
+  expect(panel.hasAttribute("inert")).toBe(true);
+  expect(panel.querySelector("[data-inspector]")).toBe(inspector);
+  await resize(700);
+  expect(container.querySelector("aside")).toBe(panel);
+  expect(panel.getAttribute("aria-hidden")).toBe("false");
+  expect(panel.querySelector("[data-inspector]")).toBe(inspector);
+});
+
+
+it("clips the mounted Inspector when Search opens and restores it when Search closes", async () => {
+  const panel = container.querySelector("aside")!;
+  const inspector = panel.querySelector("[data-inspector]");
+  mocks.search = "";
+  await act(async () => root.render(<ItemView />));
+  expect(panel.getAttribute("aria-hidden")).toBe("true");
+  expect(panel.hasAttribute("inert")).toBe(true);
+  expect(opener()).toBeDefined();
+  expect(panel.querySelector("[data-inspector]")).toBe(inspector);
+  mocks.search = undefined;
+  await act(async () => root.render(<ItemView />));
+  expect(panel.getAttribute("aria-hidden")).toBe("false");
+  expect(panel.hasAttribute("inert")).toBe(false);
+  expect(panel.querySelector("[data-inspector]")).toBe(inspector);
 });

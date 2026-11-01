@@ -37,16 +37,9 @@
   }
 }
 
-.RevealOnHover {
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s;
-}
-
-.AddressBar:hover .RevealOnHover,
-.AddressBar:focus-within .RevealOnHover {
-  opacity: 1;
-  pointer-events: auto;
+:global(.MuiButtonBase-root.MuiMenuItem-root),
+:global(.MuiButtonBase-root.MuiMenuItem-root) svg {
+  font-size: 13px;
 }
 
 .Favicon {
@@ -86,6 +79,7 @@
       transform: rotate(360deg);
     }
   }
+
   .ReloadIconBusy {
     animation: reload-spin 1s linear infinite;
   }

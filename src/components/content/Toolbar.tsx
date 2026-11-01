@@ -5,6 +5,7 @@ import {
   Circle,
   CircleOutlined,
   InfoOutlined,
+  IosShare,
   Language,
   OpenInNew,
   PushPin,
@@ -13,7 +14,7 @@ import {
   Refresh,
   Search,
 } from "@mui/icons-material";
-import { Collapse, IconButton, LinearProgress, Popover, Tooltip } from "@mui/material";
+import { Collapse, Divider, IconButton, LinearProgress, Menu, MenuItem, Popover, Tooltip } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import QRCode from "react-qr-code";
 import colorCss from "../../colors.module.css";
@@ -115,7 +116,8 @@ export function Toolbar({
   const displayFavicon =
     isLocalFaviconRef && favicon && favicon.reference === storedFavicon ? favicon.data : null;
 
-  const qrButtonRef = useRef<HTMLButtonElement>(null);
+  const shareButtonRef = useRef<HTMLButtonElement>(null);
+  const [shareAnchor, setShareAnchor] = useState<HTMLElement | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
 
   const handleSearchToggle = useCallback(() => {
@@ -190,10 +192,14 @@ export function Toolbar({
 
   const handleOpenInBrowser = useCallback(() => {
     if (!url) return;
+    setShareAnchor(null);
     platform.openUrl(url);
   }, [platform, url]);
 
-  const handleQrOpen = useCallback(() => setQrOpen(true), []);
+  const handleQrOpen = useCallback(() => {
+    setShareAnchor(null);
+    setQrOpen(true);
+  }, []);
   const handleQrClose = useCallback(() => setQrOpen(false), []);
 
   useEffect(() => {
@@ -306,47 +312,6 @@ export function Toolbar({
 
             <AddressBar url={url ?? null} onNavigate={handleNavigate} />
 
-            <Tooltip title="Open in Browser">
-              <IconButton
-                size="small"
-                onClick={handleOpenInBrowser}
-                disabled={!url}
-                aria-label="Open in Browser"
-                className={css.RevealOnHover}
-              >
-                <OpenInNew fontSize="small" />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title="Show QR Code">
-              <IconButton
-                ref={qrButtonRef}
-                size="small"
-                onClick={handleQrOpen}
-                disabled={!url}
-                aria-label="Show QR Code"
-                className={css.RevealOnHover}
-              >
-                <QrCode2 fontSize="small" />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title={entry?.isUnread ? "Mark as read" : "Mark as unread"}>
-              <IconButton
-                size="small"
-                onClick={toggleRead}
-                disabled={!entry}
-                aria-label={entry?.isUnread ? "Mark as read" : "Mark as unread"}
-                className={css.RevealOnHover}
-              >
-                {entry?.isUnread ? (
-                  <Circle fontSize="small" color="primary" />
-                ) : (
-                  <CircleOutlined fontSize="small" />
-                )}
-              </IconButton>
-            </Tooltip>
-
             <Tooltip title={reloading ? "Reload in progress..." : "Refresh"}>
               <span>
                 <IconButton
@@ -366,6 +331,67 @@ export function Toolbar({
             <span role="status" className={css.ScreenReaderOnly}>
               {reloading ? "Reload in progress..." : ""}
             </span>
+
+            <Tooltip title="Share">
+              <IconButton
+                ref={shareButtonRef}
+                size="small"
+                onClick={(event) => setShareAnchor(event.currentTarget)}
+                disabled={!url}
+                aria-label="Share"
+                aria-haspopup="menu"
+                aria-expanded={!!shareAnchor}
+                aria-controls={shareAnchor ? "toolbar-share-menu" : undefined}
+              >
+                <IosShare fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Menu
+              id="toolbar-share-menu"
+              anchorEl={shareAnchor}
+              open={!!shareAnchor}
+              onClose={() => setShareAnchor(null)}
+              transitionDuration={0}
+              slotProps={{ list: { "aria-label": "Share" } }}
+            >
+              <MenuItem onClick={handleOpenInBrowser}>
+                <OpenInNew fontSize="small" sx={{ mr: 1 }} />
+                Open in default browser
+              </MenuItem>
+              <MenuItem onClick={handleQrOpen}>
+                <QrCode2 fontSize="small" sx={{ mr: 1 }} />
+                Show QR code
+              </MenuItem>
+              <Divider />
+              <MenuItem
+                disabled={!entry || isLibraryReadOnly || pinning}
+                onClick={() => {
+                  setShareAnchor(null);
+                  void togglePin();
+                }}
+              >
+                {entry?.isPinned ? (
+                  <PushPin fontSize="small" color="primary" sx={{ mr: 1 }} />
+                ) : (
+                  <PushPinOutlined fontSize="small" sx={{ mr: 1 }} />
+                )}
+                {entry?.isPinned ? "Remove from Shortcuts" : "Add to Shortcuts"}
+              </MenuItem>
+              <MenuItem
+                disabled={!entry}
+                onClick={() => {
+                  setShareAnchor(null);
+                  void toggleRead();
+                }}
+              >
+                {entry?.isUnread ? (
+                  <Circle fontSize="small" color="primary" sx={{ mr: 1 }} />
+                ) : (
+                  <CircleOutlined fontSize="small" sx={{ mr: 1 }} />
+                )}
+                {entry?.isUnread ? "Mark as read" : "Mark as unread"}
+              </MenuItem>
+            </Menu>
 
             <Tooltip title={entry?.color ? "Change bookmark color" : "Add bookmark"}>
               <span>
@@ -403,24 +429,6 @@ export function Toolbar({
               </div>
             </Popover>
 
-            <Tooltip title={entry?.isPinned ? "Remove from Shortcuts" : "Add to Shortcuts"}>
-              <span>
-                <IconButton
-                  size="small"
-                  onClick={togglePin}
-                  disabled={!entry || isLibraryReadOnly || pinning}
-                  aria-label={entry?.isPinned ? "Remove from Shortcuts" : "Add to Shortcuts"}
-                  aria-pressed={!!entry?.isPinned}
-                >
-                  {entry?.isPinned ? (
-                    <PushPin fontSize="small" color="primary" />
-                  ) : (
-                    <PushPinOutlined fontSize="small" />
-                  )}
-                </IconButton>
-              </span>
-            </Tooltip>
-
             {onOpenInspector && (
               <Tooltip title="Open Inspector">
                 <IconButton
@@ -438,8 +446,9 @@ export function Toolbar({
           </div>
 
           <Popover
+            transitionDuration={0}
             open={qrOpen}
-            anchorEl={() => qrButtonRef.current}
+            anchorEl={() => shareButtonRef.current}
             onClose={handleQrClose}
             anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
             transformOrigin={{ vertical: "top", horizontal: "center" }}

@@ -99,32 +99,37 @@ afterEach(async () => {
 });
 const button = (label: string) =>
   container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
+const menuItem = (label: string) =>
+  Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(
+    (item) => item.textContent === label
+  );
 async function render() {
   await act(async () => root.render(<Toolbar reload={null} />));
 }
 
 it("pins and unpins through the platform using committed state", async () => {
   await render();
-  await act(async () => button("Add to Shortcuts").click());
+  await act(async () => button("Share").click());
+  await act(async () => menuItem("Add to Shortcuts")!.click());
   expect(mocks.setPin).toHaveBeenLastCalledWith(
     { type: "entry", id: "article" },
     true
   );
-  expect(button("Remove from Shortcuts").getAttribute("aria-pressed")).toBe(
-    "true"
-  );
-  await act(async () => button("Remove from Shortcuts").click());
+  await act(async () => button("Share").click());
+  expect(menuItem("Remove from Shortcuts")).not.toBeUndefined();
+  await act(async () => menuItem("Remove from Shortcuts")!.click());
   expect(mocks.setPin).toHaveBeenLastCalledWith(
     { type: "entry", id: "article" },
     false
   );
-  expect(button("Add to Shortcuts").getAttribute("aria-pressed")).toBe("false");
+  await act(async () => button("Share").click());
+  expect(menuItem("Add to Shortcuts")).not.toBeUndefined();
 });
 it("disables pinning in read-only mode", async () => {
   mocks.readOnly = true;
   await render();
-  expect(button("Add to Shortcuts").disabled).toBe(true);
-  button("Add to Shortcuts").click();
+  await act(async () => button("Share").click());
+  expect(menuItem("Add to Shortcuts")!.getAttribute("aria-disabled")).toBe("true");
   expect(mocks.setPin).not.toHaveBeenCalled();
 });
 
@@ -160,17 +165,19 @@ it("reports a refused pin without displaying it as persisted", async () => {
   await render();
   const error = { code: "E_READ_ONLY", message: "Read-only library" };
   mocks.setPin.mockRejectedValueOnce(error);
-  await act(async () => button("Add to Shortcuts").click());
+  await act(async () => button("Share").click());
+  await act(async () => menuItem("Add to Shortcuts")!.click());
   expect(mocks.sink.pushError).toHaveBeenCalledWith(error);
-  expect(button("Add to Shortcuts").disabled).toBe(false);
-  expect(button("Remove from Shortcuts")).toBeNull();
+  await act(async () => button("Share").click());
+  expect(menuItem("Add to Shortcuts")!.getAttribute("aria-disabled")).not.toBe("true");
+  expect(menuItem("Remove from Shortcuts")).toBeUndefined();
 });
 
 vi.mock("../../providers/PinsContext", () => ({
   usePins: () => ({ pins: mocks.pins, setPin: mocks.setPin }),
 }));
 
-it("keeps Refresh visible beside Bookmark and focusable while reporting reload progress", async () => {
+it("keeps Refresh visible before Share and focusable while reporting reload progress", async () => {
   const reload = vi.fn();
   await act(async () => root.render(<Toolbar reload={reload} reloading />));
   const refresh = button("Reload in progress...");
@@ -267,4 +274,34 @@ it("dismisses the swatch popup with Escape and restores toolbar focus", async ()
   ).toBeNull();
   expect(document.activeElement).toBe(button("Add bookmark"));
   expect(mocks.bookmarks.addBookmark).not.toHaveBeenCalled();
+});
+
+
+it("keeps Share visible and opens its ordered browser and QR actions", async () => {
+  await render();
+  const share = button("Share");
+  expect(share.className).not.toContain("RevealOnHover");
+  await act(async () => share.click());
+  const items = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+  expect(items.map((item) => item.textContent)).toEqual([
+    "Open in default browser",
+    "Show QR code",
+    "Add to Shortcuts",
+    "Mark as unread",
+  ]);
+  expect(items[1].nextElementSibling?.tagName).toBe("HR");
+  await act(async () => items[0].click());
+  expect(mocks.platform.openUrl).toHaveBeenCalledWith("https://example.org");
+  await act(async () => share.click());
+  await act(async () => document.querySelectorAll<HTMLElement>('[role="menuitem"]')[1].click());
+  expect(document.querySelector('[class*="QrPopover"] svg')).not.toBeNull();
+});
+
+
+it("marks the article unread from Share and closes the menu", async () => {
+  await render();
+  await act(async () => button("Share").click());
+  await act(async () => menuItem("Mark as unread")!.click());
+  expect(mocks.entries.markEntryUnread).toHaveBeenCalledWith("article");
+  expect(button("Share").getAttribute("aria-expanded")).toBe("false");
 });

@@ -68,7 +68,7 @@
 }
 
 .RemovePending .SwatchTarget {
-  margin: 0 -10px 0 0;
+  margin: 0 -13px 0 0;
 }
 
 .RemovePending .SwatchTarget:first-of-type {
@@ -77,7 +77,7 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .SwatchTarget {
-    transition: margin 200ms ease-in;
+    transition: margin 200ms ease-in-out;
   }
 
   .Swatch {

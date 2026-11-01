@@ -33,6 +33,7 @@ import { type Feed, type Topic, type Site } from "./types";
 export function AppLayout() {
   const { selectTopic, selectFeed, search } = useRouter();
   const appRef = useRef<HTMLDivElement>(null);
+  const searchPanelRef = useRef<HTMLDivElement>(null);
   const [autoHideSidebar, setAutoHideSidebar] = useState(false);
   const { showSidebar } = useAppearance();
   const { library } = useSettings();
@@ -219,10 +220,13 @@ export function AppLayout() {
           onEditSite={setEditingSite}
         />
 
-        <ItemView className={css.ItemView} />
+        <ItemView className={css.ItemView} searchPanelRef={searchPanelRef} />
 
         <Collapse
+          ref={searchPanelRef}
           in={search !== undefined}
+          timeout={300}
+          easing="cubic-bezier(0.4, 0, 0.2, 1)"
           unmountOnExit
           orientation="horizontal"
         >
