@@ -48,7 +48,7 @@ safe completion of any library-wide cleanup.
 - [Tag storage](../../docs/architecture/tags.md).
 - [Organization model](../../docs/architecture/organization_model.md)
 
-- [Tag Identity and Creation](enhancement__tags--identity-and-creation.md) — prerequisite.
+- [Tag Identity and Creation](../active/enhancement__tags--identity-and-creation.md) — prerequisite.
 - [Entry Tag Assignment](enhancement__tags--entry-assignment.md) — prerequisite.
 - [Rename Tags](enhancement__tags--rename.md)
 - `crates/xaga-core/src/library_writer/mod.rs`

@@ -46,7 +46,7 @@ readable names in article files and stable IDs in LanceDB.
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Inspector](../../docs/architecture/article_inspector.md)
-- [Tag Identity and Creation](enhancement__tags--identity-and-creation.md) — prerequisite.
+- [Tag Identity and Creation](../active/enhancement__tags--identity-and-creation.md) — prerequisite.
 - [Annotation Inspector](../ideas/annotation-inspector.md)
 - `crates/xaga-core/src/persistence/entries.rs`
 - `crates/xaga-core/src/library_writer/mod.rs`

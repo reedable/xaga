@@ -32,8 +32,8 @@ registry’s stable-identity and name-resolution APIs.
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Pin-store contract](../../docs/architecture/pins.md).
-- [Entry Tag Assignment](enhancement__tags--entry-assignment.md)
-- [Rename Tags](enhancement__tags--rename.md)
+- [Entry Tag Assignment](../available/enhancement__tags--entry-assignment.md)
+- [Rename Tags](../available/enhancement__tags--rename.md)
 - `crates/xaga-core/src/md.rs`
 - `crates/xaga-core/src/embeddings/row.rs`
 - `crates/xaga-core/src/library_writer/mod.rs`
