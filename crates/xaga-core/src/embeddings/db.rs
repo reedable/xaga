@@ -634,6 +634,16 @@ impl EmbeddingsDb {
                 .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
             log::info!("EmbeddingsDb: created Bitmap index on `{col}`");
         }
+        if !indexed.contains("tags") {
+            self.table
+                .create_index(
+                    &["tags"],
+                    lancedb::index::Index::LabelList(Default::default()),
+                )
+                .execute()
+                .await?;
+            log::info!("EmbeddingsDb: created LabelList index on `tags`");
+        }
         Ok(())
     }
 
@@ -787,6 +797,60 @@ impl EmbeddingsDb {
             }
         }
         Ok(items)
+    }
+
+    fn tag_predicate(
+        ids: &[String],
+        filter: crate::types::ItemFilter,
+    ) -> Result<String, EmbeddingsError> {
+        let mut predicate = Kind::Entry.predicate().to_string();
+        let mut labels = Vec::new();
+        for id in ids {
+            let parsed = uuid::Uuid::parse_str(id)
+                .map_err(|_| EmbeddingsError::Parse("invalid tag ID".into()))?;
+            if parsed.get_version_num() != 4 || parsed.to_string() != *id {
+                return Err(EmbeddingsError::Parse("invalid tag ID".into()));
+            }
+            labels.push(format!("'{id}'"));
+        }
+        if !labels.is_empty() {
+            predicate.push_str(&format!(" AND array_has_all(tags, [{}])", labels.join(",")));
+        }
+        match filter {
+            crate::types::ItemFilter::Unread => predicate.push_str(" AND is_unread = true"),
+            crate::types::ItemFilter::Saved | crate::types::ItemFilter::Bookmarked => {
+                predicate.push_str(" AND color != ''")
+            }
+            crate::types::ItemFilter::All => {}
+        }
+        Ok(predicate)
+    }
+
+    /// Direct Entry assignments matching every selected identity; no annotations or collections.
+    pub async fn list_tag_entries(
+        &self,
+        ids: &[String],
+        filter: crate::types::ItemFilter,
+    ) -> Result<Vec<Entry>, EmbeddingsError> {
+        let predicate = Self::tag_predicate(ids, filter)?;
+        let batches: Vec<RecordBatch> = self
+            .table
+            .query()
+            .select(Select::columns(&Self::SUMMARY_COLUMNS))
+            .only_if(predicate)
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+        let mut entries = entries_from_batches(&batches);
+        crate::query::filter::sort_items(&mut entries);
+        Ok(entries)
+    }
+
+    /// Count the intersection once, independently of list/text filters.
+    pub async fn count_tag_unread(&self, ids: &[String]) -> Result<usize, EmbeddingsError> {
+        let predicate = Self::tag_predicate(ids, crate::types::ItemFilter::Unread)?;
+        Ok(self.table.count_rows(Some(predicate)).await?)
     }
 
     /// All entry rows (`kind = 'entry'`).
@@ -1864,6 +1928,171 @@ impl EmbeddingsDb {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TAG_A: &str = "46fa4a27-1ddf-448a-a5e6-95691a29c602";
+    const TAG_B: &str = "46fa4a27-1ddf-448a-a5e6-95691a29c603";
+
+    #[tokio::test]
+    async fn tag_browsing_intersects_direct_assignments_and_counts_each_entry_once() {
+        use crate::types::ItemFilter;
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let mut both = sample("both", "entry", None);
+        both.tags = vec![TAG_A.into(), TAG_B.into(), TAG_A.into()];
+        both.is_unread = true;
+        both.color = "blue".into();
+        let mut one = sample("one", "entry", None);
+        one.tags = vec![TAG_A.into()];
+        one.is_unread = true;
+        one.color.clear();
+        let mut read = sample("read", "entry", None);
+        read.tags = vec![TAG_A.into(), TAG_B.into()];
+        read.is_unread = false;
+        read.color.clear();
+        let mut annotation = sample("annotation", "annotation", None);
+        annotation.tags = vec![TAG_A.into(), TAG_B.into()];
+        annotation.is_unread = true;
+        let mut feed = sample("feed", "feed", None);
+        feed.tags = vec![TAG_A.into(), TAG_B.into()];
+        feed.is_unread = true;
+        let mut empty = sample("empty", "entry", None);
+        empty.tags.clear();
+        empty.is_unread = false;
+        db.add_batch(vec![both, one, read, annotation, feed, empty])
+            .await
+            .unwrap();
+        db.ensure_indexes().await.unwrap();
+        db.ensure_indexes().await.unwrap();
+        let ids = vec![TAG_A.into(), TAG_B.into()];
+        let list = db.list_tag_entries(&ids, ItemFilter::All).await.unwrap();
+        assert_eq!(list.len(), 2);
+        assert!(list.iter().any(|entry| entry.id == "both"));
+        assert_eq!(db.count_tag_unread(&ids).await.unwrap(), 1);
+        assert_eq!(
+            db.list_tag_entries(&ids, ItemFilter::Unread).await.unwrap()[0].id,
+            "both"
+        );
+        assert_eq!(
+            db.list_tag_entries(&ids, ItemFilter::Saved).await.unwrap()[0].id,
+            "both"
+        );
+        assert_eq!(
+            db.list_tag_entries(&[], ItemFilter::All)
+                .await
+                .unwrap()
+                .len(),
+            4
+        );
+        assert_eq!(db.count_tag_unread(&[]).await.unwrap(), 2);
+        assert!(
+            db.list_tag_entries(&[uuid::Uuid::new_v4().to_string()], ItemFilter::All)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            db.list_tag_entries(&["x') OR true --".into()], ItemFilter::All)
+                .await
+                .is_err()
+        );
+        let predicate = EmbeddingsDb::tag_predicate(&ids, ItemFilter::Unread).unwrap();
+        let plan = db
+            .table
+            .query()
+            .only_if(predicate)
+            .explain_plan(false)
+            .await
+            .unwrap();
+        println!("tag intersection plan: {plan}");
+        assert!(plan.contains("ScalarIndex"), "{plan}");
+        assert!(plan.contains("LabelList"), "{plan}");
+        crate::embeddings::pipeline::apply_entry_tag(
+            &db,
+            &crate::tags::EntryTagChange {
+                entry_id: "both".into(),
+                tag_id: TAG_B.into(),
+                assigned: false,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(db.count_tag_unread(&ids).await.unwrap(), 0);
+        assert_eq!(
+            db.list_tag_entries(&ids, ItemFilter::All)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+        let readonly = EmbeddingsDb::open_readonly(dir.path()).await.unwrap();
+        assert_eq!(
+            readonly
+                .list_tag_entries(&[], ItemFilter::All)
+                .await
+                .unwrap()
+                .len(),
+            4
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "explicit bounded tag-query scaling measurement"]
+    async fn tag_browsing_scaling_curve() {
+        use crate::types::ItemFilter;
+        use std::time::Instant;
+        let dir = tempfile::tempdir().unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let mut previous = 0;
+        for total in [2000, 4000, 8000, 16000, 32000, 64000] {
+            let rows = (previous..total)
+                .map(|i| {
+                    let mut row = sample(&format!("scale-{i}"), "entry", None);
+                    row.tags = vec![TAG_A.into()];
+                    if i % 100 == 0 {
+                        row.tags.push(TAG_B.into());
+                    }
+                    row.is_unread = i % 200 == 0;
+                    row
+                })
+                .collect();
+            let build = Instant::now();
+            db.add_batch(rows).await.unwrap();
+            // Rebuild/optimize to compare fully indexed points, rather than tail scans.
+            db.ensure_indexes().await.unwrap();
+            db.table
+                .optimize(lancedb::table::optimize::OptimizeAction::Index(
+                    Default::default(),
+                ))
+                .await
+                .unwrap();
+            let index_ms = build.elapsed().as_millis();
+            let ids = vec![TAG_A.into(), TAG_B.into()];
+            let plan = db
+                .table
+                .query()
+                .only_if(EmbeddingsDb::tag_predicate(&ids, ItemFilter::Unread).unwrap())
+                .explain_plan(false)
+                .await
+                .unwrap();
+            assert!(plan.contains("LabelList"), "{plan}");
+            let start = Instant::now();
+            let count = db.count_tag_unread(&ids).await.unwrap();
+            let count_us = start.elapsed().as_micros();
+            let start = Instant::now();
+            let sparse = db.list_tag_entries(&ids, ItemFilter::All).await.unwrap();
+            let sparse_us = start.elapsed().as_micros();
+            let start = Instant::now();
+            let dense = db.list_tag_entries(&[], ItemFilter::All).await.unwrap();
+            let dense_us = start.elapsed().as_micros();
+            assert_eq!(count, total / 200);
+            assert_eq!(sparse.len(), total / 100);
+            assert_eq!(dense.len(), total);
+            println!(
+                "tag_scale rows={total} build_index_ms={index_ms} count_us={count_us} sparse_us={sparse_us} dense_us={dense_us}"
+            );
+            previous = total;
+        }
+    }
 
     #[tokio::test]
     async fn readonly_open_does_not_create_the_documents_table() {

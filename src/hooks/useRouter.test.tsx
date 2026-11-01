@@ -3,7 +3,8 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, expect, it, vi } from "vitest";
 import useRouter from "./useRouter";
-import type { NavigationState } from "../types";
+import { ALL_ITEMS } from "../Shortcuts";
+import type { Entry, NavigationState } from "../types";
 
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 let root: ReturnType<typeof createRoot> | undefined;
@@ -78,4 +79,18 @@ it("uses the URL already carried by an Annotation row when changing Articles", a
     annotationId: "annotation",
     url: "https://example.org/other",
   });
+});
+
+it("keeps tag selection while reading and filtering, and leaves it on collection navigation", async () => {
+  await render({ tagIds: ["b", "a"], filter: "saved" });
+  await act(async () => router.selectTags(["b", "a", "a"]));
+  expect(router.state.tagIds).toEqual(["a", "b"]);
+  await act(async () => router.selectItem({ __kind: "entry", id: "entry", title: "Entry", url: "https://example.org", createdAt: "now", isPinned: false } as Entry));
+  expect(router.state.tagIds).toEqual(["a", "b"]);
+  await act(async () => router.selectFilter("all"));
+  expect(router.state.tagIds).toEqual(["a", "b"]);
+  await act(async () => router.selectTags([]));
+  expect(router.state).toEqual({ tagIds: [], filter: "all" });
+  await act(async () => router.selectCollection(ALL_ITEMS));
+  expect(router.state.tagIds).toBeUndefined();
 });

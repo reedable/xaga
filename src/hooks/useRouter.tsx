@@ -33,6 +33,7 @@ let maxHistoryIdx = 0;
 // routes differing only in mimeType point at the same content.
 function isSameNavigation(a: NavigationState, b: NavigationState) {
   return (
+    JSON.stringify(a.tagIds) === JSON.stringify(b.tagIds) &&
     a.articleScopeId === b.articleScopeId &&
     a.topicId === b.topicId &&
     a.feedId === b.feedId &&
@@ -70,6 +71,12 @@ export default function useRouter() {
       name: "navigate",
     });
   }, [navigate]);
+
+  const selectTags = useCallback((ids: string[]) => {
+    const next: NavigationState = { tagIds: [...new Set(ids)].sort(), filter: state.filter };
+    if (isSameNavigation(state, next)) return;
+    return logged_navigate(`/?${searchParams.toString()}`, { state: next });
+  }, [logged_navigate, searchParams, state]);
 
   const selectTopic = useCallback(
     (topic: Topic, filter?: Filter) => {
@@ -286,6 +293,7 @@ export default function useRouter() {
     selectSite,
     selectFilter: applyFilter,
     selectTopic,
+    selectTags,
     selectUrl,
   };
 }

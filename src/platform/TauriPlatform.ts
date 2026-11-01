@@ -1557,6 +1557,18 @@ export class TauriPlatform implements Platform {
       (event) => callback(entryTagChangeSchema.parse(event.payload)));
   }
 
+  async listTagEntries(signal: AbortSignal, tagIds: string[], filter: Filter = "unread"): Promise<Entry[]> {
+    const result = await invoke("list_tag_entries", { tagIds, itemFilter: filter });
+    signal.throwIfAborted();
+    return z.array(EntrySchema.transform(toEntry)).parse(result);
+  }
+
+  async countTagUnread(signal: AbortSignal, tagIds: string[]): Promise<number> {
+    const result = await invoke("count_tag_unread", { tagIds });
+    signal.throwIfAborted();
+    return z.number().int().nonnegative().parse(result);
+  }
+
   async listTags(signal: AbortSignal): Promise<Tag[]> {
     const result = await invoke("list_tags");
     signal.throwIfAborted();

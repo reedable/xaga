@@ -27,6 +27,8 @@ const mocks = vi.hoisted(() => {
         "onEmbeddingsChanged",
       ].map((name) => [name, register(name)])
     ),
+    tagEntries: vi.fn(),
+    tagContext: { tags: [{ id: "tag-a", name: "Research" }, { id: "tag-b", name: "Work" }], hasLoaded: true, unreadCount: 1 },
     read: vi.fn(),
     sink: { pushError: vi.fn() },
     entries: {
@@ -46,7 +48,8 @@ const mocks = vi.hoisted(() => {
   };
 });
 vi.mock("../../platform/Platform", () => ({ usePlatform: () => platform }));
-const platform = { readArticleScope: mocks.read };
+const platform = { readArticleScope: mocks.read, listTagEntries: mocks.tagEntries };
+vi.mock("../../providers/TagsContext", () => ({ useTags: () => mocks.tagContext }));
 vi.mock("../../hooks/useErrorSink", () => ({ useErrorSink: () => mocks.sink }));
 vi.mock("../../hooks/useEntries", () => ({ default: () => mocks.entries }));
 vi.mock("../../hooks/useTopics", () => ({ useTopics: () => mocks.topics }));
@@ -155,6 +158,8 @@ beforeEach(() => {
       },
     ],
   };
+  mocks.tagContext.tags = [{ id: "tag-a", name: "Research" }, { id: "tag-b", name: "Work" }];
+  mocks.tagEntries.mockResolvedValue([article]);
   mocks.pins = [article];
   mocks.sites.sites = [];
   mocks.sites.pinnedSites = [];
@@ -365,4 +370,71 @@ it("keeps an empty Site selected when unpinned and opens its Settings", async ()
   expect(route.state.siteHostname).toBe(site.hostname);
   expect(container.textContent).toContain(site.hostname);
   expect(mocks.entries.listAllItems).not.toHaveBeenCalled();
+});
+
+it("browses Entry intersections and retains membership through state and assignment updates", async () => {
+  await render({ tagIds: ["tag-a", "tag-b"], filter: "unread" });
+  expect(mocks.tagEntries).toHaveBeenCalledWith(expect.any(AbortSignal), ["tag-a", "tag-b"], "unread");
+  expect(container.textContent).toContain("Research + Work");
+  expect(container.textContent).toContain("1 unread");
+  await act(async () => rows()[0].click());
+  expect(route.state.tagIds).toEqual(["tag-a", "tag-b"]);
+  await act(async () => {
+    mocks.callbacks.onUnreadChanged({ ...article, isUnread: false } as never);
+    mocks.callbacks.onBookmarkChanged({ ...article, color: undefined } as never);
+    mocks.callbacks.onEmbeddingsChanged(undefined as never);
+    mocks.callbacks.onFeedsRefreshed(undefined as never);
+  });
+  expect(rows()).toHaveLength(1);
+  expect(mocks.tagEntries).toHaveBeenCalledOnce();
+  await act(async () => route.selectFilter("all"));
+  expect(mocks.tagEntries).toHaveBeenCalledTimes(2);
+  expect(mocks.tagEntries).toHaveBeenLastCalledWith(expect.any(AbortSignal), ["tag-a", "tag-b"], "all");
+});
+
+it("shares the tag set with the hidden-sidebar header and immediately intersects each choice", async () => {
+  await render({ tagIds: [], filter: "all" }, true);
+  expect(mocks.tagEntries).toHaveBeenLastCalledWith(expect.any(AbortSignal), [], "all");
+  const combo = container.querySelector<HTMLElement>('[role="combobox"]')!;
+  expect(combo.getAttribute("aria-label")).toBe("Browse collections and tags");
+  await act(async () => combo.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
+  const option = (name: string) => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((item) => item.textContent === name)!;
+  await act(async () => option("Research").click());
+  expect(route.state.tagIds).toEqual(["tag-a"]);
+  await act(async () => option("Work").click());
+  expect(route.state.tagIds).toEqual(["tag-a", "tag-b"]);
+  expect(mocks.tagEntries).toHaveBeenLastCalledWith(expect.any(AbortSignal), ["tag-a", "tag-b"], "all");
+  expect(option("Research").getAttribute("aria-selected")).toBe("true");
+  await act(async () => option("Research").click());
+  expect(route.state.tagIds).toEqual(["tag-b"]);
+  await act(async () => option("Work").click());
+  expect(route.state.tagIds).toEqual([]);
+});
+
+it("updates renamed or missing labels without reloading the active list", async () => {
+  await render({ tagIds: ["tag-a"], filter: "all" });
+  mocks.tagContext.tags = [{ id: "tag-a", name: "Renamed" }];
+  await act(async () => route.selectItem(article));
+  expect(container.textContent).toContain("Renamed");
+  expect(mocks.tagEntries).toHaveBeenCalledOnce();
+  mocks.tagContext.tags = [];
+  await act(async () => route.selectFilter("saved"));
+  expect(container.textContent).toContain("Unavailable tag");
+  expect(route.state.tagIds).toEqual(["tag-a"]);
+});
+
+it("ignores a superseded tag query and refreshes membership when text filtering changes", async () => {
+  let oldResult!: (value: ListItem[]) => void;
+  mocks.tagEntries.mockImplementationOnce(() => new Promise((resolve) => { oldResult = resolve; }));
+  await render({ tagIds: ["tag-a"], filter: "all" });
+  await act(async () => route.selectTags(["tag-b"]));
+  await act(async () => oldResult([{ ...article, id: "old", title: "Old result" }]));
+  expect(rows().map((row) => row.textContent)).toEqual(["Pinned article"]);
+  const input = container.querySelector<HTMLInputElement>('input[placeholder="Filter items…"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Pinned");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect(mocks.tagEntries).toHaveBeenCalledTimes(3);
+  expect(rows().map((row) => row.textContent)).toEqual(["Pinned article"]);
 });

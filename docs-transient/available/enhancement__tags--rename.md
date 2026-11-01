@@ -46,8 +46,9 @@ avoiding mass rewrites of LanceDB assignments.
 
 ## Remaining work
 
-- Coordinate displayed
-  name updates with tag browsing when that story is implemented.
+- Carry committed display-name updates to
+  [tag browsing](../../docs/architecture/list_view.md#tag-browsing) while retaining
+  selected identities and current list membership.
 - Implement the shared rename dialog, sidebar/responsive actions menus, and
   per-tag transition indication.
 - Connect commands to stored rename transitions; implement bounded dispatch,

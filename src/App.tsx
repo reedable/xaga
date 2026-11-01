@@ -17,6 +17,7 @@ import { AllItemsCountsProvider } from "./providers/AllItemsCountsProvider";
 import PinsProvider from "./providers/PinsProvider";
 import FeedsProvider from "./providers/FeedsProvider";
 import { TopicsProvider } from "./providers/TopicsProvider";
+import { TagsProvider } from "./providers/TagsProvider";
 import { SitesProvider } from "./providers/SitesProvider";
 
 export default function App({ entryPoint }: { entryPoint: string }) {
@@ -57,6 +58,7 @@ export default function App({ entryPoint }: { entryPoint: string }) {
                   <SitesProvider
                     enabled={embeddingStartupState === "available"}
                   >
+                    <TagsProvider enabled={embeddingStartupState === "available"}>
                     <Routes>
                       <Route
                         path="/"
@@ -70,6 +72,7 @@ export default function App({ entryPoint }: { entryPoint: string }) {
                       />
                       <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
+                    </TagsProvider>
                   </SitesProvider>
                 </FeedsProvider>
               </TopicsProvider>

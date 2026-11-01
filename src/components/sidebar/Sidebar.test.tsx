@@ -18,6 +18,8 @@ const mocks = vi.hoisted(() => ({
   ],
 }));
 
+vi.mock("../../providers/TagsContext", () => ({ useTags: () => ({ tags: [], hasLoaded: true, unreadCount: 0 }) }));
+vi.mock("./TagList", () => ({ default: () => <div data-section="tags" data-titles="" /> }));
 vi.mock("../../hooks/useAbortController", () => ({
   default: () => [undefined, { current: new AbortController() }],
 }));
@@ -135,7 +137,7 @@ it("keeps every section and the bottom filter visible with zero matches", async 
     );
   });
 
-  expect(container.querySelectorAll("[data-section]")).toHaveLength(4);
+  expect(container.querySelectorAll("[data-section]")).toHaveLength(5);
   expect(
     [...container.querySelectorAll("[data-section]")].every(
       (section) => section.getAttribute("data-titles") === ""

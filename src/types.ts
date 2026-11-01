@@ -168,6 +168,8 @@ export type ExportOutcome = {
 // ── Navigation ───────────────────────────────────────────────────────────────
 
 export type NavigationState = {
+  /** Undefined: another scope; []: all Entries in Tags browsing. */
+  tagIds?: string[];
   topicId?: Topic["id"];
   feedId?: Feed["id"];
   siteHostname?: Site["hostname"];

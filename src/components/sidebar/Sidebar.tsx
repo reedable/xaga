@@ -15,6 +15,8 @@ import FeedList from "./FeedList";
 import ShortcutList from "./ShortcutList";
 import css from "./Sidebar.module.css";
 import TopicList from "./TopicList";
+import TagList from "./TagList";
+import { useTags } from "../../providers/TagsContext";
 import SiteList from "./SiteList";
 
 type SidebarProps = {
@@ -35,6 +37,7 @@ export function Sidebar({
   const [, abortControllerRef] = useAbortController();
   const isLibraryReadOnly = useLibraryReadOnly();
 
+  const { tags } = useTags();
   const pinnedEntries = usePinnedEntries();
   const { topics, pinnedTopicIds } = useTopics(abortControllerRef);
 
@@ -160,6 +163,12 @@ export function Sidebar({
         sites={filteredSites}
         onClickHeader={() => handleExpandedList("SITES")}
         isExpanded={expandedList === "SITES"}
+      />
+
+      <TagList
+        tags={tags.filter((tag) => tag.name.toLowerCase().includes(normalizedFilter))}
+        isExpanded={expandedList === "TAGS"}
+        onClickHeader={() => handleExpandedList("TAGS")}
       />
 
       {/*

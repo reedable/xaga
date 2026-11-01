@@ -92,6 +92,8 @@
     "commands::tags::list_tags",
     "commands::tags::create_tag",
     "commands::tags::read_entry_tags",
-    "commands::tags::set_entry_tag"
+    "commands::tags::set_entry_tag",
+    "commands::tags::list_tag_entries",
+    "commands::tags::count_tag_unread"
   ]
 }

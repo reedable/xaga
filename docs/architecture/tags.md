@@ -81,6 +81,31 @@ closing the Inspector does not cancel an assignment already requested. External
 article edits remain a recovery concern, following the existing reconciliation
 contract. This API uses the existing 0.14 storage format.
 
+## Tag query API
+
+`listTagEntries(signal, tagIds, filter)` and `countTagUnread(signal, tagIds)`
+call native `list_tag_entries` and `count_tag_unread`. Both are read operations.
+Selection resolves through the library's current definitions and aliases before
+querying indexed UUIDs. A missing/deleting selected definition produces an empty
+result and zero count, preserving the caller's selected set. Query construction
+accepts canonical UUID v4 values, not interpolated tag names.
+
+Queries restrict `kind` to Entry and use `array_has_all(tags, selectedIds)`.
+Unread adds `is_unread = true`; Saved adds a nonempty color predicate. Empty
+selection omits the tags predicate. Summary reads omit vectors and article
+content, and use the existing list ordering. The unread count uses a database
+count of the same intersection, without materializing Entries or summing
+individual tag counts.
+
+Core index maintenance creates a LabelList index on `tags`, alongside the existing
+kind/state bitmap indexes. Existing maintenance updates its indexed fragments.
+This changes only a disposable derived index and uses the existing 0.14 format.
+The app's shared navigation provider reads definitions from `tags.yaml`, refreshes
+them on creation and index notifications, and discards stale count requests when
+selection changes. External edits remain visible through the existing recovery
+and registry refresh paths. Navigation/membership rules are documented in
+[ListView behavior](list_view.md#tag-browsing).
+
 ## Mutation and indexing
 
 Runtime registry mutations use one library-writer lane, `tags`, under the library

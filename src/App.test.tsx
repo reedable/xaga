@@ -34,6 +34,7 @@ vi.mock("./providers/FeedsProvider", () => ({
 vi.mock("./providers/TopicsProvider", () => ({
   TopicsProvider: ({ children }: { children: ReactNode }) => children,
 }));
+vi.mock("./providers/TagsProvider", () => ({ TagsProvider: ({ children }: { children: ReactNode }) => children }));
 vi.mock("./providers/SitesProvider", () => ({
   SitesProvider: ({
     children,

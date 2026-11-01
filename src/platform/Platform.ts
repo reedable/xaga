@@ -344,6 +344,8 @@ export interface Platform {
   readEntryTags(signal: AbortSignal, id: string): Promise<string[]>;
   setEntryTag(id: string, tagId: string, assigned: boolean): Promise<EntryTagChange>;
   onEntryTagsChanged(callback: (change: EntryTagChange) => void): Promise<UnlistenFn>;
+  listTagEntries(signal: AbortSignal, tagIds: string[], filter?: Filter): Promise<Entry[]>;
+  countTagUnread(signal: AbortSignal, tagIds: string[]): Promise<number>;
   listTags(signal: AbortSignal): Promise<Tag[]>;
   createTag(name: string): Promise<Tag>;
   onTagCreated(callback: (tag: Tag) => void): Promise<UnlistenFn>;

@@ -2,6 +2,7 @@ import { emptySite } from "../../sites";
 import { Clear, Refresh, Settings } from "@mui/icons-material";
 import {
   Button,
+  Checkbox,
   Collapse,
   IconButton,
   InputAdornment,
@@ -58,6 +59,7 @@ import {
 import { mergeTopicAddition } from "../../utils/mergeTopicAddition";
 import ItemStatus from "../ItemStatus";
 import Quotes from "../Quotes";
+import { useTags } from "../../providers/TagsContext";
 import css from "./ItemList.module.css";
 
 function getEmptyMessage(filter: Filter, filterText: string): string {
@@ -88,7 +90,17 @@ export function ItemList({
     selectAnnotation,
     state,
     selectFilter,
+    selectTags,
   } = useRouter();
+  const tagSelectionKey = JSON.stringify(state.tagIds);
+  const tagIds: string[] | undefined = useMemo(
+    () => tagSelectionKey === undefined ? undefined : JSON.parse(tagSelectionKey), [tagSelectionKey]);
+  const { tags, unreadCount: tagUnreadCount } = useTags();
+  const tagOptions = useMemo(() => [
+    ...tags,
+    ...(tagIds ?? []).filter((id) => !tags.some((tag) => tag.id === id))
+      .map((id) => ({ id, name: "Unavailable tag" })),
+  ].sort((a, b) => a.name.localeCompare(b.name)), [tags, tagIds]);
   const platform = usePlatform();
   const { pushError } = useErrorSink();
   const pinnedEntries = usePinnedEntries();
@@ -96,6 +108,7 @@ export function ItemList({
   const selectedItemId = state.annotationId ?? state.entryId;
   const [scopedArticle, setScopedArticle] = useState<Entry | null>(null);
   const articleRequestRef = useRef(0);
+  const listRequestRef = useRef(0);
   const articleStateRef = useRef<{ version: number; entry?: Entry }>({
     version: 0,
   });
@@ -112,9 +125,13 @@ export function ItemList({
   const missingPins = useMissingPins(pinnedEntries, feeds, topics);
   const [loading, setLoading] = useState(false);
   const [refreshSpin, setRefreshSpin] = useState(false);
+  const [headerOpen, setHeaderOpen] = useState(false);
 
   const selectedCollection = useMemo(
     () =>
+      (tagIds !== undefined && { id: "__TAGS__", title: tagIds.length
+        ? tagIds.map((id) => tagOptions.find((tag) => tag.id === id)?.name ?? "Unavailable tag").join(" + ")
+        : "All Entries", createdAt: new Date(0).toISOString() }) ||
       (articleScopeId &&
         (scopedArticle?.id === articleScopeId
           ? scopedArticle
@@ -127,6 +144,8 @@ export function ItemList({
       (shortcutId && SHORTCUTS.find((s) => s.id === shortcutId)) ||
       ALL_ITEMS,
     [
+      tagIds,
+      tagOptions,
       articleScopeId,
       scopedArticle,
       pinnedEntries,
@@ -192,26 +211,28 @@ export function ItemList({
     return undefined;
   }, [selectedCollection, onEditFeed, onEditTopic, onEditSite]);
 
-  const handleCollectionChange = useCallback(
-    (event: SelectChangeEvent<string>) => {
-      const id = event.target.value;
-      const article = pinnedEntries.find((entry) => `article:${entry.id}` === id);
-      if (article) {
-        selectArticleScope(article);
-        return;
-      }
-      const collection = [...SHORTCUTS, ...topics, ...feeds].find((item) => item.id === id);
-      if (collection) selectItem(collection);
-      const site = siteOptions.find((item) => item.hostname === id);
-      if (site) selectSite(site);
-    },
-    [feeds, selectItem, selectSite, siteOptions, topics, pinnedEntries, selectArticleScope],
-  );
+  const headerValues = tagIds !== undefined
+    ? (tagIds.length ? tagIds.map((id) => `tag:${id}`) : ["tags:all"])
+    : [articleScopeId ? `article:${articleScopeId}` : selectedCollection.id];
+  const handleCollectionChange = (event: SelectChangeEvent<string[]>) => {
+    const values = typeof event.target.value === "string" ? event.target.value.split(",") : event.target.value;
+    const id = values.find((value) => !headerValues.includes(value)) ??
+      headerValues.find((value) => !values.includes(value));
+    if (!id) return;
+    if (id === "tags:all") { selectTags([]); return; }
+    if (id.startsWith("tag:")) {
+      selectTags(values.filter((value) => value.startsWith("tag:")).map((value) => value.slice(4)));
+      return;
+    }
+    setHeaderOpen(false);
+    const article = pinnedEntries.find((entry) => `article:${entry.id}` === id);
+    if (article) { selectArticleScope(article); return; }
+    const collection = [...SHORTCUTS, ...topics, ...feeds].find((item) => item.id === id);
+    if (collection) selectItem(collection);
+    const site = siteOptions.find((item) => item.hostname === id);
+    if (site) selectSite(site);
+  };
 
-  const handleRefresh = useCallback(() => {
-    refreshAllFeeds();
-    setRefreshSpin(true);
-  }, [refreshAllFeeds]);
 
   useEffect(() => {
     if (!loadingFeeds) setRefreshSpin(false);
@@ -294,27 +315,38 @@ export function ItemList({
         await requestArticleScope();
         return;
       }
+      const signal = abortControllerRef.current.signal;
+      const request = ++listRequestRef.current;
+      const commit = (entries: Item[]) => {
+        if (!signal.aborted && request === listRequestRef.current) setItems(entries);
+      };
       setLoading(true);
 
       try {
-        if (isFeed(selectedList)) {
+        if (tagIds !== undefined) {
+          const entries = await platform.listTagEntries(signal, tagIds, filter ?? "unread");
+          commit(entries);
+        } else if (isFeed(selectedList)) {
           const entries = await listEntries(selectedList, filter);
-          if (entries) setItems(entries);
+          if (entries) commit(entries);
         } else if (isTopic(selectedList)) {
           const items = await listTopicItems(selectedList.id, filter ?? "unread", topicSort);
-          if (items) setItems(items);
+          if (items) commit(items);
         } else if (isSite(selectedList)) {
           const entries = await listSiteEntries(selectedList.hostname, filter);
-          if (entries) setItems(entries);
+          if (entries) commit(entries);
         } else {
           const entries = await listAllItems(filter);
-          if (entries) setItems(entries);
+          if (entries) commit(entries);
         }
+      } catch (error) {
+        if (!signal.aborted && request === listRequestRef.current) pushError(error);
       } finally {
-        setLoading(false);
+        if (!signal.aborted && request === listRequestRef.current) setLoading(false);
       }
     },
     [
+      tagIds, platform, abortControllerRef, pushError,
       articleScopeId,
       requestArticleScope,
       filter,
@@ -325,6 +357,12 @@ export function ItemList({
       topicSort,
     ],
   );
+
+  const handleRefresh = useCallback(() => {
+    if (tagIds !== undefined) { void requestItems(selectedCollection); return; }
+    refreshAllFeeds();
+    setRefreshSpin(true);
+  }, [tagIds, requestItems, selectedCollection, refreshAllFeeds]);
 
   const handleFilter = useCallback(
     (_event: MouseEvent<HTMLElement>, value: string) => {
@@ -360,6 +398,7 @@ export function ItemList({
     [topicId, filter, topicSort, listTopicItems],
   );
 
+  const tagTextFilter = tagIds !== undefined ? filterText : undefined;
   useEffect(() => {
     abort();
     (async () => {
@@ -367,7 +406,7 @@ export function ItemList({
     })();
     // Depend on IDs, not objects, so feed/topic identity changes from
     // requestFeeds/requestTopics don't re-trigger a full list reload.
-  }, [articleScopeId, feedId, topicId, siteHostname, shortcutId, requestItems, abort]);
+  }, [tagSelectionKey, tagTextFilter, articleScopeId, feedId, topicId, siteHostname, shortcutId, requestItems, abort]);
 
   useEffect(() => {
     return onEmbeddingsChanged(() => {
@@ -447,8 +486,10 @@ export function ItemList({
   }, [onAnnotationRemoved, articleScopeId, requestArticleScope]);
 
   useEffect(() => {
-    return onFeedsRefreshed(() => requestItems(selectedCollectionRef.current));
-  }, [onFeedsRefreshed, requestItems]);
+    return onFeedsRefreshed(() => {
+      if (tagIds === undefined) return requestItems(selectedCollectionRef.current);
+    });
+  }, [onFeedsRefreshed, requestItems, tagIds]);
 
   useEffect(
     () =>
@@ -499,7 +540,13 @@ export function ItemList({
               <Select
                 className={css.CollectionSelect}
                 size="small"
-                value={articleScopeId ? `article:${articleScopeId}` : selectedCollection.id}
+                multiple
+                open={headerOpen}
+                onOpen={() => setHeaderOpen(true)}
+                onClose={() => setHeaderOpen(false)}
+                value={headerValues}
+                renderValue={() => selectedCollection.title}
+                inputProps={{ "aria-label": "Browse collections and tags" }}
                 onChange={handleCollectionChange}
               >
                 <ListSubheader>Shortcuts</ListSubheader>
@@ -538,6 +585,13 @@ export function ItemList({
                     </Typography>
                   </MenuItem>
                 ))}
+                <ListSubheader>Tags</ListSubheader>
+                <MenuItem value="tags:all">All Entries (Tags)</MenuItem>
+                {tagOptions.map((tag) => <MenuItem key={`tag:${tag.id}`} value={`tag:${tag.id}`}>
+                  <Checkbox checked={tagIds?.includes(tag.id) ?? false} tabIndex={-1}
+                    slotProps={{ input: { "aria-hidden": true } }} />
+                  <Typography component="span" variant="body2">{tag.name}</Typography>
+                </MenuItem>)}
                 {siteOptions.length > 0 && <ListSubheader>Sites</ListSubheader>}
                 {siteOptions.map((site) => (
                   <MenuItem key={site.hostname} value={site.hostname}>
@@ -552,6 +606,9 @@ export function ItemList({
           )}
         </div>
 
+        {tagIds !== undefined && tagUnreadCount !== null && (
+          <Typography variant="caption" aria-live="polite">{tagUnreadCount} unread</Typography>
+        )}
         {!articleScopeId && (
           <ToggleButtonGroup
             aria-label="Filter"

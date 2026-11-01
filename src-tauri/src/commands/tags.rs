@@ -85,6 +85,67 @@ async fn assign_in_library(
     Ok(change)
 }
 
+fn selected_ids(
+    registry: &Tags,
+    ids: &[String],
+) -> Result<Option<Vec<String>>, xaga_core::tags::TagsError> {
+    let resolver = registry.resolver();
+    let mut resolved = Vec::new();
+    for id in ids {
+        let Some(tag) = registry.tags.iter().find(|tag| tag.id == *id) else {
+            return Ok(None);
+        };
+        let targets = resolver.resolve(std::slice::from_ref(&tag.name))?;
+        if targets.is_empty() {
+            return Ok(None);
+        }
+        for target in targets {
+            if !resolved.contains(&target) {
+                resolved.push(target);
+            }
+        }
+    }
+    Ok(Some(resolved))
+}
+
+#[tauri::command]
+pub async fn list_tag_entries(
+    tag_ids: Vec<String>,
+    item_filter: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<xaga_core::types::Entry>, AppError> {
+    let filter = super::parse_item_filter(item_filter)?;
+    let Some(ids) = selected_ids(&Tags::read(&state.library_path()).await?, &tag_ids)? else {
+        return Ok(vec![]);
+    };
+    let db = state
+        .embeddings_read
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or_else(|| AppError::Message("embeddings read handle unavailable".into()))?;
+    db.reload().await?;
+    Ok(db.list_tag_entries(&ids, filter).await?)
+}
+
+#[tauri::command]
+pub async fn count_tag_unread(
+    tag_ids: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<usize, AppError> {
+    let Some(ids) = selected_ids(&Tags::read(&state.library_path()).await?, &tag_ids)? else {
+        return Ok(0);
+    };
+    let db = state
+        .embeddings_read
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or_else(|| AppError::Message("embeddings read handle unavailable".into()))?;
+    db.reload().await?;
+    Ok(db.count_tag_unread(&ids).await?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,6 +154,31 @@ mod tests {
 
     fn writer(dir: &std::path::Path) -> LibraryWriter {
         LibraryWriter::start(dir.into(), xaga_core::library::acquire_lock(dir).unwrap())
+    }
+
+    #[tokio::test]
+    async fn tag_browsing_selection_follows_definitions_without_writing_or_losing_missing_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let writer = writer(dir.path());
+        let tag = writer.create_tag("Research".into()).await.unwrap().tag;
+        writer.shutdown().await;
+        let path = xaga_core::library::tags_path(dir.path());
+        let raw = std::fs::read_to_string(&path)
+            .unwrap()
+            .replace("Research", "Renamed");
+        std::fs::write(&path, &raw).unwrap();
+        let store = Tags::read(dir.path()).await.unwrap();
+        assert_eq!(
+            selected_ids(&store, std::slice::from_ref(&tag.id)).unwrap(),
+            Some(vec![tag.id.clone()])
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
+        std::fs::write(&path, "tags: []\n").unwrap();
+        let store = Tags::read(dir.path()).await.unwrap();
+        assert_eq!(selected_ids(&store, &[tag.id]).unwrap(), None);
+        assert_eq!(selected_ids(&store, &[]).unwrap(), Some(vec![]));
+        assert!(!super::super::is_write_refused("list_tag_entries", true));
+        assert!(!super::super::is_write_refused("count_tag_unread", true));
     }
 
     #[tokio::test]

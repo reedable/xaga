@@ -124,3 +124,48 @@ The separate `tag_registry_snapshot_costs` benchmark used 10,000 definitions
 153 ms; two million name resolutions 2,589 ms. OS maximum RSS was 38,944,768 bytes
 and peak physical footprint 27,067,040 bytes. This measures registry work separately
 from corpus conversion, not a requirement for that many definitions in a library.
+
+## Tag query scaling
+
+Tag browsing uses a LabelList index for `array_has_all(tags, selectedIds)`,
+intersected with the Entry-kind and unread bitmap indexes. An explained unread
+query includes `ScalarIndexQuery` with `tags_idx(LabelList)`, `kind_idx(Bitmap)`,
+and `is_unread_idx(Bitmap)`. The list query projects summaries, excluding vectors
+and content. Counts use `count_rows` directly.
+
+A bounded local debug-build measurement added 2k–64k synthetic Entry rows to one
+cache, optimizing indexes at each point. Every row carried one tag, 1% carried
+both selected tags, and 0.5% were unread. Times are single runs, not latency
+percentiles; the first point includes cold query overhead. `build/index` includes
+that point's added rows and index creation/catch-up. Sparse list reads return the
+1% intersection; dense reads return every Entry with no tags selected.
+
+| Total Entries | Build/index (ms) | Unread count (ms) | Sparse list (ms) | Dense list (ms) |
+| ---: | ---: | ---: | ---: | ---: |
+| 2,000 | 225 | 11.8 | 10.1 | 13.1 |
+| 4,000 | 97 | 4.3 | 7.9 | 20.6 |
+| 8,000 | 146 | 5.0 | 12.2 | 37.7 |
+| 16,000 | 213 | 5.1 | 16.8 | 69.9 |
+| 32,000 | 320 | 5.0 | 25.0 | 133.5 |
+| 64,000 | 600 | 6.5 | 42.4 | 262.5 |
+
+Scaling the 64k per-row list costs linearly gives roughly 0.7–1.3 seconds for a
+1% intersection at 1–2 million Entries, and 4.1–8.2 seconds for returning every
+Entry. These are core-query estimates, excluding IPC serialization and frontend
+allocation/filtering/sorting. Count times showed no comparable linear growth in
+this range; that does not establish a latency bound at two million rows. Tag
+cardinality, result density, real summary sizes, index freshness, and storage
+conditions affect the estimates. This fixture uses two tag values and does not
+measure high-cardinality indexes.
+
+The existing list API returns the entire matching result; virtualization bounds
+rendered rows, not query payload or client memory. Broad or empty tag selections
+at the design target therefore retain that list architecture's output-volume
+cost. The LabelList index avoids scanning all tag lists for selective queries;
+it does not remove the cost of returning millions of matching summaries.
+
+Reproduce the curve without article-file fixtures:
+
+```sh
+cargo test --workspace --lib --bins --locked tag_browsing_scaling_curve -- --ignored --nocapture
+```

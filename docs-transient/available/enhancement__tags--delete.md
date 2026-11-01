@@ -33,8 +33,9 @@ safe completion of any library-wide cleanup.
 
 ## Remaining work
 
-- Coordinate with tag
-  browsing and rename transitions wherever those stories are implemented.
+- Connect the selection updates required above to
+  [tag browsing](../../docs/architecture/list_view.md#tag-browsing), and coordinate
+  with rename transitions.
 - Coordinate deletion with in-progress rename/merge state so each operation's
   assignment and name-resolution guarantees remain intact.
 - Connect delete controls and commands to stored deletion transitions; implement

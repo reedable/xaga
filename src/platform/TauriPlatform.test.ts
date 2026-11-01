@@ -380,3 +380,17 @@ it("carries an Entry assignment delta through commands and notifications", async
   handler({ event: "entry-tags:changed", id: 0, payload: change });
   expect(callback).toHaveBeenCalledWith(change);
 });
+
+it("queries tag intersections and counts over the native read boundary", async () => {
+  const platform = new TauriPlatform();
+  const ids = ["46fa4a27-1ddf-448a-a5e6-95691a29c602", "46fa4a27-1ddf-448a-a5e6-95691a29c603"];
+  invokeMock.mockResolvedValueOnce([]);
+  expect(await platform.listTagEntries(new AbortController().signal, ids, "saved")).toEqual([]);
+  expect(invokeMock).toHaveBeenLastCalledWith("list_tag_entries", { tagIds: ids, itemFilter: "saved" });
+  invokeMock.mockResolvedValueOnce(3);
+  expect(await platform.countTagUnread(new AbortController().signal, ids)).toBe(3);
+  expect(invokeMock).toHaveBeenLastCalledWith("count_tag_unread", { tagIds: ids });
+  const controller = new AbortController(); controller.abort();
+  invokeMock.mockResolvedValueOnce([]);
+  await expect(platform.listTagEntries(controller.signal, [], "all")).rejects.toThrow();
+});
