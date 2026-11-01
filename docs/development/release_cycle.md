@@ -7,7 +7,7 @@ The committed application version describes its lifecycle state:
 | State             | Version                   | Meaning                                                                      |
 | ----------------- | ------------------------- | ---------------------------------------------------------------------------- |
 | Development       | `0.8.5-dev`               | Work toward the next release is in progress.                                 |
-| Local alpha       | `0.8.5-rc.1+alpha.9c62ffc` | An invocation-only version identifies local validation of an unpublished RC. |
+| Local alpha       | `0.8.5-rc.1+alpha.9c62ffc` | An invocation-only version identifies local validation of an RC, whether tagged or untagged. |
 | Release candidate | `0.8.5-rc.1`              | A distributable candidate for the final `0.8.5` release.                     |
 | Final             | `0.8.5`                   | The published release version.                                               |
 
@@ -118,7 +118,7 @@ npm run build:alpha
 
 The alpha build does not edit version files, commit, tag, push, or publish anything. It supplies `x.y.z-rc.N+alpha.<commit>` to Tauri for this invocation and uses the Alpha application icon. It requires a clean working tree and a numbered RC version so that the artifact corresponds exactly to a commit.
 
-The command also refuses an RC when its matching `vX.Y.Z-rc.N` tag already exists locally. A tagged RC is immutable: make further changes under the next RC by running `npm run version:rc`, committing the result, and building a new alpha. Do not delete or move a published RC tag in order to rebuild it.
+Alpha builds are allowed even when the matching `vX.Y.Z-rc.N` tag already exists locally, including when HEAD is the tagged commit. The `+alpha.<commit>` metadata and Alpha application icon distinguish the local artifact from the official RC. Published RC tags remain immutable; an alpha build does not delete or move them.
 
 Commit the version change before tagging a candidate. Do not tag a candidate that has not been committed and validated. A matching `vX.Y.Z-rc.N` tag starts GitHub release automation and creates a draft marked as a prerelease.
 

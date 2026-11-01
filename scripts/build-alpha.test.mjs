@@ -4,7 +4,6 @@ import {
   alphaVersion,
   tauriBuildArgs,
   validateCleanStatus,
-  validateUnpublishedVersion,
 } from "./build-alpha.mjs";
 
 test("adds alpha metadata containing the commit hash", () => {
@@ -62,16 +61,5 @@ test("rejects tracked, staged, or untracked changes", () => {
   assert.throws(
     () => validateCleanStatus("?? local.txt\n"),
     /uncommitted changes/
-  );
-});
-
-test("accepts an unpublished release-candidate version", () => {
-  assert.doesNotThrow(() => validateUnpublishedVersion("0.8.4-rc.2", false));
-});
-
-test("rejects a release candidate that already has a tag", () => {
-  assert.throws(
-    () => validateUnpublishedVersion("0.8.4-rc.2", true),
-    /already been tagged.*npm run version:rc/
   );
 });

@@ -1,4 +1,4 @@
-// Builds an unreleased production artifact identified by the current commit.
+// Builds a local alpha artifact identified by the current commit.
 // The committed app version remains unchanged; build metadata is supplied to
 // Tauri only for this invocation.
 
@@ -34,14 +34,6 @@ export function alphaVersion(version, commitHash) {
   return `${version}+alpha.${commitHash}`;
 }
 
-export function validateUnpublishedVersion(version, tagExists) {
-  if (tagExists) {
-    throw new Error(
-      `Release candidate ${version} has already been tagged and cannot be rebuilt as an alpha. Run npm run version:rc, commit the new RC version, and try again.`
-    );
-  }
-}
-
 export function tauriBuildArgs(version, icons = alphaIcons) {
   return [
     "run",
@@ -72,14 +64,6 @@ function main() {
   }).trim();
   const { version } = JSON.parse(readFileSync(TAURI_CONF, "utf8"));
   const buildVersion = alphaVersion(version, commitHash);
-  const tagExists =
-    spawnSync(
-      "git",
-      ["show-ref", "--verify", "--quiet", `refs/tags/v${version}`],
-      { cwd: ROOT }
-    ).status === 0;
-  validateUnpublishedVersion(version, tagExists);
-
   console.log(`Building Xaga ${buildVersion}`);
   generateAlphaIcons();
   run("npm", ["run", "audit:report"]);
