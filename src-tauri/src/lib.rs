@@ -1043,6 +1043,7 @@ pub fn run() {
             }
             // The EmbeddingService shares the writer's lock for its lifetime.
             let service_lock = writer.as_ref().map(|w| w.lock());
+            let service_writer = writer.clone();
             if writer.is_none() {
                 log::warn!(
                     "startup: opening library in read-only mode"
@@ -1171,7 +1172,7 @@ pub fn run() {
                 // embeddings stay readable, nothing is written. The service holds its own
                 // Arc of the writer's lock for its lifetime, preserving its invariant of
                 // never running unlocked.
-                let Some(library_lock) = service_lock else {
+                let Some(_library_lock) = service_lock else {
                     log::warn!("startup: read-only library — embedding service not started");
                     // Non-holders READ ("the library lock was only ever supposed to
                     // protect concurrent write to the database" — owner): open a
@@ -1204,7 +1205,7 @@ pub fn run() {
                     return;
                 };
 
-                match EmbeddingService::start(lib_path.clone(), library_lock).await {
+                match EmbeddingService::start(lib_path.clone(), service_writer.unwrap()).await {
                     Ok(svc) => {
                         // The read handle shares the service's write handle (same underlying table
                         // state), so command reads see the service's writes — and the synchronous

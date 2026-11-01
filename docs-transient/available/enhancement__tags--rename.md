@@ -7,9 +7,8 @@ avoiding mass rewrites of LanceDB assignments.
 
 ## Requirements
 
-- Use the [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md)
-  contract and its shared 0.14 library upgrade; do not introduce a separate
-  storage format for this functionality.
+- Use the [Tag storage](../../docs/architecture/tags.md)
+  contract and existing 0.14 format.
 - Keep the stable tag ID unchanged and update its displayed name.
 - Expose Rename in a tag-row actions menu in sidebar tag navigation. Show its
   actions button on hover and keyboard focus, with Tab access and Enter/Space
@@ -47,13 +46,12 @@ avoiding mass rewrites of LanceDB assignments.
 
 ## Remaining work
 
-- Complete the Tag Storage Foundation first.
 - Complete identity/creation and Entry assignment first; coordinate displayed
   name updates with tag browsing when that story is implemented.
 - Implement the shared rename dialog, sidebar/responsive actions menus, and
   per-tag transition indication.
-- Implement durable transition state, bounded dispatch, checkpoints, recovery,
-  and safe finalization without losing concurrently added assignments.
+- Connect commands to stored rename transitions; implement bounded dispatch,
+  checkpoint advancement, recovery resumption, and finalization.
 - Define and measure batch/resource limits at design scale.
 - Verify interrupted/repeated execution, mixed names, external edits, concurrency,
   collisions, restart, and unchanged indexed IDs.
@@ -61,7 +59,7 @@ avoiding mass rewrites of LanceDB assignments.
 
 ## References
 
-- [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md) — prerequisite.
+- [Tag storage](../../docs/architecture/tags.md).
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Tag Identity and Creation](enhancement__tags--identity-and-creation.md) — prerequisite.

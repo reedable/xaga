@@ -279,7 +279,14 @@ pub async fn sync_entry_row(
         None
     };
 
-    let mut row = EmbeddingEntry::from_article(article, vector);
+    let tags = match &article.meta.tags {
+        Some(names) => db.resolve_tag_names(names).await?,
+        None => existing
+            .as_ref()
+            .map(|row| row.tags.clone())
+            .unwrap_or_default(),
+    };
+    let mut row = EmbeddingEntry::from_article(article, vector, tags);
 
     // Write only when something the row stores actually changed.
     let changed = match &existing {
@@ -409,12 +416,18 @@ async fn store_entry_vector(
     existing: Option<&EmbeddingEntry>,
     db: &EmbeddingsDb,
 ) -> Result<(), EmbeddingsError> {
-    let mut row = EmbeddingEntry::from_article(article, Some(vector));
+    let tags = match existing {
+        Some(row) => row.tags.clone(),
+        None => {
+            db.resolve_tag_names(article.meta.tags.as_deref().unwrap_or_default())
+                .await?
+        }
+    };
+    let mut row = EmbeddingEntry::from_article(article, Some(vector), tags);
     if let Some(existing) = existing {
         row.color = existing.color.clone();
         row.is_unread = existing.is_unread;
         row.is_pinned = existing.is_pinned;
-        row.tags = existing.tags.clone();
         row.topics = existing.topics.clone();
         row.items = existing.items.clone();
     }
@@ -598,6 +611,7 @@ async fn set_topic_base(
 fn entry_from_row(row: &EmbeddingEntry) -> Entry {
     let opt = |s: &str| (!s.is_empty()).then(|| s.to_string());
     Entry {
+        tags: None,
         id: row.id.clone(),
         url: row.source.clone(),
         title: row.title.clone(),
@@ -641,7 +655,6 @@ pub(crate) async fn apply_state(
         row.color = value.unwrap_or_default();
     }
     if let Some(v) = is_pinned {
-        row.tags.retain(|tag| tag != "pinned");
         row.is_pinned = v;
     }
 
@@ -752,6 +765,7 @@ mod tests {
     fn article(annotations: Vec<Annotation>) -> Article {
         Article {
             meta: Entry {
+                tags: None,
                 id: "article-1".to_string(),
                 url: "https://example.com/a".to_string(),
                 title: "Title".to_string(),
@@ -767,6 +781,64 @@ mod tests {
             annotations,
             favicon: None,
         }
+    }
+
+    #[tokio::test]
+    async fn tag_pending_vector_completion_preserves_newer_assignments() {
+        let dir = tempfile::tempdir().unwrap();
+        let writer = crate::library_writer::LibraryWriter::start(
+            dir.path().into(),
+            crate::library::acquire_lock(dir.path()).unwrap(),
+        );
+        let registry = writer
+            .discover_tags(vec!["Old".into(), "New".into()])
+            .await
+            .unwrap();
+        let db = EmbeddingsDb::open_writer(dir.path(), &writer.lock())
+            .await
+            .unwrap();
+        let mut queued = article(vec![]);
+        queued.meta.tags = Some(vec!["Old".into()]);
+        let (events, _) = flume::unbounded();
+        let (annotations, _) = flume::unbounded();
+        sync_entry_row(&queued, &db, &events, &events, &annotations)
+            .await
+            .unwrap();
+        let mut latest = db.get_entry(&queued.meta.id).await.unwrap().unwrap();
+        latest.tags = registry.resolver().resolve(&["New".into()]).unwrap();
+        db.upsert(latest).await.unwrap();
+        let current = db.get_entry(&queued.meta.id).await.unwrap().unwrap();
+        store_entry_vector(&queued, vec![0.5; 384], Some(&current), &db)
+            .await
+            .unwrap();
+        let completed = db.get_entry(&queued.meta.id).await.unwrap().unwrap();
+        assert_eq!(
+            completed.tags,
+            registry.resolver().resolve(&["New".into()]).unwrap()
+        );
+        assert_eq!(completed.vector, Some(vec![0.5; 384]));
+        let mut summary = queued.clone();
+        summary.meta.tags = None;
+        sync_entry_row(&summary, &db, &events, &events, &annotations)
+            .await
+            .unwrap();
+        assert_eq!(
+            db.get_entry(&queued.meta.id).await.unwrap().unwrap().tags,
+            completed.tags
+        );
+        summary.meta.tags = Some(Vec::new());
+        sync_entry_row(&summary, &db, &events, &events, &annotations)
+            .await
+            .unwrap();
+        assert!(
+            db.get_entry(&queued.meta.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .tags
+                .is_empty()
+        );
+        writer.shutdown().await;
     }
 
     #[tokio::test]

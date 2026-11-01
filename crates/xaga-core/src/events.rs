@@ -84,6 +84,7 @@ mod tests {
 
     fn entry() -> Entry {
         Entry {
+            tags: None,
             id: String::new(),
             url: String::new(),
             title: String::new(),

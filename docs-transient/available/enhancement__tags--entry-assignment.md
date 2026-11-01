@@ -7,9 +7,8 @@ readable names in article files and stable IDs in LanceDB.
 
 ## Requirements
 
-- Use the [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md)
-  contract and its shared 0.14 library upgrade; do not introduce a separate
-  storage format for this functionality.
+- Use the [Tag storage](../../docs/architecture/tags.md)
+  contract and existing 0.14 format.
 - Support selecting existing tags and removing assignments without deleting the
   tag definition or changing other article metadata.
 - Own the complete Entry tag picker, including creation of a tag through the
@@ -33,19 +32,17 @@ readable names in article files and stable IDs in LanceDB.
 
 ## Remaining work
 
-- Complete the Tag Storage Foundation first.
 - Complete tag identity and creation first.
 - Add the Entry tag picker to the shared Inspector and expose its Tags tab when
   assignment is available.
-- Implement preservation of names through core domain boundaries, assignment
-  commands, name-to-ID indexing, events, and frontend state updates.
+- Implement assignment commands, typed index/UI updates, and frontend state.
 - Verify empty/multiple assignments, unrelated metadata preservation, concurrent
   changes, external edits/recovery, library isolation, and restart.
 - Run affected Rust/frontend checks and production build; update durable docs.
 
 ## References
 
-- [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md) — prerequisite.
+- [Tag storage](../../docs/architecture/tags.md).
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Inspector](../../docs/architecture/article_inspector.md)

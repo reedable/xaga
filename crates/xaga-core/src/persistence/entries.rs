@@ -253,6 +253,7 @@ pub(crate) async fn set_entry_tags(
     // on disk so all other frontmatter and the exact body survive.
     let article = Article {
         meta: Entry {
+            tags: Some(tags.clone()),
             id: id.to_string(),
             url: fm.source,
             title: fm.title,

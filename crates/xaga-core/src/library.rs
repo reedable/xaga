@@ -49,6 +49,13 @@ const FEEDS_SUBDIR: &str = "feeds";
 const IMAGES_SUBDIR: &str = "images";
 const FAVICONS_SUBDIR: &str = "favicons";
 const PDFS_SUBDIR: &str = "pdfs";
+const TAGS_NAME: &str = "tags.yaml";
+
+/// The library-scoped tag definitions and transition store.
+pub fn tags_path(library_dir: &Path) -> PathBuf {
+    library_dir.join(TAGS_NAME)
+}
+
 const PINS_NAME: &str = "pins.yaml";
 
 /// The library-scoped ordered pin store.

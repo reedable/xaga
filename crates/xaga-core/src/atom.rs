@@ -289,6 +289,7 @@ pub(crate) fn atom_to_entry(e: &AtomEntry) -> Entry {
     let normalized_url = normalize_url(&url).unwrap_or_else(|_| url.clone());
 
     Entry {
+        tags: None,
         id: url_hash12(&normalized_url),
         url,
         title,

@@ -47,6 +47,7 @@ pub async fn run_full_recovery(
     library_dir: &Path,
     embedder: &Arc<Embedder>,
     db: &EmbeddingsDb,
+    writer: &crate::library_writer::LibraryWriter,
 ) -> RecoveryReport {
     let mut report = RecoveryReport {
         embedded: 0,
@@ -56,7 +57,7 @@ pub async fn run_full_recovery(
 
     let mut sink = InlineSink::default();
 
-    match repair_item_embeddings(library_dir, db, &mut sink).await {
+    match repair_item_embeddings(library_dir, db, &mut sink, Some(writer)).await {
         Ok(residue) => process_inline(sink, residue, embedder, db, &mut report).await,
         Err(e) => report
             .errors

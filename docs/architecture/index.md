@@ -28,6 +28,8 @@ Standing architecture rules for this project. Each has its own doc; keep this in
 
 13. [Inspector](article_inspector.md) — shared Related and Topic views, responsive Article presentation, Annotation drawer, and session membership projection.
 
+14. [Tag storage](tags.md) — library definitions, readable assignments, indexed IDs, transition records, and the 0.14 upgrade.
+
 ## Security
 
 Architecture of the security-critical paths, in [security/](security/). These describe how a subsystem works and why — design and limits, not findings or status.

@@ -32,7 +32,7 @@ pub(crate) struct Markdown {
 }
 
 /// Parses both the header fields and the markdown body from a `---`-delimited document.
-pub(crate) fn parse_document(raw: &str) -> Result<(Frontmatter, String), MdError> {
+pub fn parse_document(raw: &str) -> Result<(Frontmatter, String), MdError> {
     split_document(raw)
 }
 
@@ -173,6 +173,7 @@ pub(crate) fn md_to_entry(md: Markdown) -> Entry {
         is_unread,
         is_pinned: false,
         color: md.fm.color,
+        tags: Some(md.fm.tags),
     }
 }
 

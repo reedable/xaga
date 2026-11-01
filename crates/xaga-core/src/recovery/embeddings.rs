@@ -24,6 +24,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     library_dir: &Path,
     db: &EmbeddingsDb,
     sink: &mut S,
+    writer: Option<&crate::library_writer::LibraryWriter>,
 ) -> Result<RepairResidue, EmbeddingsError> {
     let pins = crate::pins::Pins::read(library_dir)
         .await
@@ -38,7 +39,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     let needs_embedding = |id: &str, cksum: &str| -> bool {
         match db_meta.get(id) {
             None => true,
-            Some((stored, _, has_vector, _, _, _, _)) => stored != cksum || !has_vector,
+            Some((stored, _, has_vector, _, _, _, _, _)) => stored != cksum || !has_vector,
         }
     };
 
@@ -52,7 +53,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
         let membership_differs =
             db_meta
                 .get(&article.meta.id)
-                .is_some_and(|(_, _, _, _, recorded, _, _)| {
+                .is_some_and(|(_, _, _, _, recorded, _, _, _)| {
                     let recorded: HashSet<&str> = recorded.iter().map(|s| s.as_str()).collect();
                     let current: HashSet<&str> =
                         article.annotations.iter().map(|a| a.id.as_str()).collect();
@@ -93,44 +94,89 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     )
     .await;
 
-    let entries_outcome = for_each_md(
-        &library::entries_dir(library_dir),
-        &md_to_article,
-        |mut article| {
-            article.meta.is_pinned = pin_targets.contains(&crate::pins::PinTarget::Entry {
-                id: article.meta.id.clone(),
-            });
-            fs_ids.insert(article.meta.id.clone());
-            fs_ids.extend(
-                article
-                    .annotations
-                    .iter()
-                    .map(|annotation| annotation.id.clone()),
-            );
-            let needs_embed = needs_embedding(
-                &article.meta.id,
-                &checksum(&article.meta.title, article_embed_text(&article)),
-            );
-            // Stream when content, reading state, pin state, or annotations drifted from the `.md`
-            // (membership, content, or a pending vector) — the consumers re-check each and do only
-            // the work required (`sync_entry_row` for rows, `embed_annotations` for vectors).
-            let state_differs =
-                db_meta
-                    .get(&article.meta.id)
-                    .is_some_and(|(_, _, _, _, _, unread, color)| {
-                        *unread != article.meta.is_unread
-                            || color.as_str() != article.meta.color.as_deref().unwrap_or("")
-                    });
-            if needs_embed
-                || state_differs
-                || annotations_differ(&article)
-                || pinned_ids.contains(&article.meta.id) != article.meta.is_pinned
-            {
-                sink.article(article);
+    let mut tags = crate::tags::Tags::read(library_dir)
+        .await
+        .map_err(std::io::Error::other)?;
+    let mut resolver = tags.resolver();
+    let mut observed_transitions = HashSet::new();
+    let mut entries_outcome = WalkOutcome::Enumerated;
+    let mut entries = match tokio::fs::read_dir(library::entries_dir(library_dir)).await {
+        Ok(entries) => Some(entries),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => {
+            entries_outcome = WalkOutcome::Unreadable;
+            None
+        }
+    };
+    while let Some(entries) = &mut entries {
+        let path = match entries.next_entry().await {
+            Ok(Some(entry)) => entry.path(),
+            Ok(None) => break,
+            Err(_) => {
+                entries_outcome = WalkOutcome::Unreadable;
+                break;
             }
-        },
-    )
-    .await;
+        };
+        if path.extension().is_none_or(|ext| ext != "md") {
+            continue;
+        }
+        let raw = match crate::fs::read_md_capped(&path).await {
+            Ok(raw) => raw,
+            Err(_) => {
+                entries_outcome = WalkOutcome::Unreadable;
+                continue;
+            }
+        };
+        let Ok((fm, body)) = crate::md::parse_document(&raw) else {
+            continue;
+        };
+        let mut article = md_to_article(crate::md::Markdown {
+            id: crate::util::item_id(&path),
+            fm,
+            body,
+        });
+        let names = article.meta.tags.as_deref().unwrap_or_default();
+        let observations = tags.observation_ids(names);
+        if resolver.resolve(names).is_err()
+            || observations
+                .iter()
+                .any(|id| !observed_transitions.contains(id))
+        {
+            let writer = writer.ok_or_else(|| {
+                std::io::Error::other("unknown article labels require a library writer")
+            })?;
+            tags = writer
+                .discover_tags(names.to_vec())
+                .await
+                .map_err(std::io::Error::other)?;
+            resolver = tags.resolver();
+            observed_transitions.extend(observations);
+        }
+        let resolved_tags = resolver.resolve(names).map_err(std::io::Error::other)?;
+        article.meta.is_pinned = pin_targets.contains(&crate::pins::PinTarget::Entry {
+            id: article.meta.id.clone(),
+        });
+        fs_ids.insert(article.meta.id.clone());
+        fs_ids.extend(article.annotations.iter().map(|a| a.id.clone()));
+        let needs_embed = needs_embedding(
+            &article.meta.id,
+            &checksum(&article.meta.title, article_embed_text(&article)),
+        );
+        let state_differs = db_meta.get(&article.meta.id).is_some_and(
+            |(_, _, _, _, _, unread, color, stored_tags)| {
+                *unread != article.meta.is_unread
+                    || color.as_str() != article.meta.color.as_deref().unwrap_or("")
+                    || stored_tags != &resolved_tags
+            },
+        );
+        if needs_embed
+            || state_differs
+            || annotations_differ(&article)
+            || pinned_ids.contains(&article.meta.id) != article.meta.is_pinned
+        {
+            sink.article(article);
+        }
+    }
 
     // Feeds: diff like items — re-embed a feed only when its row is absent, its checksum changed,
     // or its vector is pending. A feed row is stale when its feed is gone from disk.
@@ -166,7 +212,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     let to_delete: Vec<String> = if source_reliable {
         db_meta
             .into_iter()
-            .filter(|(id, (_, _, _, kind, _, _, _))| {
+            .filter(|(id, (_, _, _, kind, _, _, _, _))| {
                 if kind == Kind::Feed.as_str() {
                     !feed_ids.contains(id)
                 } else {
@@ -259,9 +305,13 @@ mod tests {
         .await
         .unwrap();
         let article = read_article(dir.path(), "entry").await.unwrap();
-        db.upsert(EmbeddingEntry::from_article(&article, Some(vec![0.1; 384])))
-            .await
-            .unwrap();
+        db.upsert(EmbeddingEntry::from_article(
+            &article,
+            Some(vec![0.1; 384]),
+            Vec::new(),
+        ))
+        .await
+        .unwrap();
         db.upsert(annotation_row(&live, &annotation_checksum(&live)))
             .await
             .unwrap();
@@ -272,7 +322,7 @@ mod tests {
             .unwrap();
 
         let mut sink = CollectingSink { articles: vec![] };
-        let residue = repair_item_embeddings(dir.path(), &db, &mut sink)
+        let residue = repair_item_embeddings(dir.path(), &db, &mut sink, None)
             .await
             .unwrap();
         assert_eq!(residue.to_delete, vec!["deleted"]);
@@ -290,9 +340,13 @@ mod tests {
         .unwrap();
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
         let article = read_article(dir.path(), "entry").await.unwrap();
-        db.upsert(EmbeddingEntry::from_article(&article, Some(vec![0.1; 384])))
-            .await
-            .unwrap();
+        db.upsert(EmbeddingEntry::from_article(
+            &article,
+            Some(vec![0.1; 384]),
+            Vec::new(),
+        ))
+        .await
+        .unwrap();
         let (events, _) = flume::unbounded();
         let (annotations, _) = flume::unbounded();
         for color in [Some("green"), None] {
@@ -302,7 +356,7 @@ mod tests {
                     .unwrap();
             std::fs::write(&path, updated).unwrap();
             let mut sink = CollectingSink { articles: vec![] };
-            repair_item_embeddings(dir.path(), &db, &mut sink)
+            repair_item_embeddings(dir.path(), &db, &mut sink, None)
                 .await
                 .unwrap();
             assert_eq!(sink.articles, ["entry"]);
@@ -311,7 +365,7 @@ mod tests {
                 .await
                 .unwrap();
             let mut sink = CollectingSink { articles: vec![] };
-            repair_item_embeddings(dir.path(), &db, &mut sink)
+            repair_item_embeddings(dir.path(), &db, &mut sink, None)
                 .await
                 .unwrap();
             assert!(sink.articles.is_empty());
@@ -334,11 +388,11 @@ mod tests {
         .unwrap();
         let article = read_article(dir.path(), "entry").await.unwrap();
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
-        let mut row = EmbeddingEntry::from_article(&article, Some(vec![0.1; 384]));
+        let mut row = EmbeddingEntry::from_article(&article, Some(vec![0.1; 384]), Vec::new());
         row.is_unread = false;
         db.upsert(row).await.unwrap();
         let mut sink = CollectingSink { articles: vec![] };
-        repair_item_embeddings(dir.path(), &db, &mut sink)
+        repair_item_embeddings(dir.path(), &db, &mut sink, None)
             .await
             .unwrap();
         assert_eq!(sink.articles, vec!["entry"]);
@@ -348,7 +402,7 @@ mod tests {
             .await
             .unwrap();
         let mut sink = CollectingSink { articles: vec![] };
-        repair_item_embeddings(dir.path(), &db, &mut sink)
+        repair_item_embeddings(dir.path(), &db, &mut sink, None)
             .await
             .unwrap();
         assert!(sink.articles.is_empty());
@@ -399,7 +453,8 @@ mod tests {
 
         let db = EmbeddingsDb::open(lib).await.unwrap();
         // Entry row fully current: correct checksum, vector present, membership recorded.
-        let mut entry_row = EmbeddingEntry::from_article(&article, Some(vec![0.5f32; 384]));
+        let mut entry_row =
+            EmbeddingEntry::from_article(&article, Some(vec![0.5f32; 384]), Vec::new());
         entry_row.items = vec!["a1".to_string()];
         db.upsert(entry_row).await.unwrap();
         // Annotation row: vector present, membership matching — only the checksum is stale.
@@ -408,7 +463,9 @@ mod tests {
             .unwrap();
 
         let mut sink = CollectingSink { articles: vec![] };
-        repair_item_embeddings(lib, &db, &mut sink).await.unwrap();
+        repair_item_embeddings(lib, &db, &mut sink, None)
+            .await
+            .unwrap();
         assert_eq!(sink.articles, vec!["abcdef123456".to_string()]);
 
         // Healed row → clean walk streams nothing.
@@ -419,7 +476,9 @@ mod tests {
         .await
         .unwrap();
         let mut sink = CollectingSink { articles: vec![] };
-        repair_item_embeddings(lib, &db, &mut sink).await.unwrap();
+        repair_item_embeddings(lib, &db, &mut sink, None)
+            .await
+            .unwrap();
         assert_eq!(sink.articles, Vec::<String>::new());
     }
 
@@ -444,9 +503,13 @@ mod tests {
         .unwrap();
         let article = read_article(lib, "abcdef123456").await.unwrap();
         let db = EmbeddingsDb::open(lib).await.unwrap();
-        db.upsert(EmbeddingEntry::from_article(&article, Some(vec![0.5; 384])))
-            .await
-            .unwrap();
+        db.upsert(EmbeddingEntry::from_article(
+            &article,
+            Some(vec![0.5; 384]),
+            Vec::new(),
+        ))
+        .await
+        .unwrap();
         let writer = crate::library_writer::LibraryWriter::start(
             lib.into(),
             crate::library::acquire_lock(lib).unwrap(),
@@ -462,7 +525,9 @@ mod tests {
                 .await
                 .unwrap();
             let mut sink = CollectingSink { articles: vec![] };
-            repair_item_embeddings(lib, &db, &mut sink).await.unwrap();
+            repair_item_embeddings(lib, &db, &mut sink, None)
+                .await
+                .unwrap();
             assert_eq!(sink.articles, vec![article.meta.id.clone()]);
             let current = read_article(lib, &article.meta.id).await.unwrap();
             let (unread, _) = flume::unbounded();
@@ -486,7 +551,9 @@ mod tests {
                 assert!(pins[0].is_pinned);
             }
             let mut sink = CollectingSink { articles: vec![] };
-            repair_item_embeddings(lib, &db, &mut sink).await.unwrap();
+            repair_item_embeddings(lib, &db, &mut sink, None)
+                .await
+                .unwrap();
             assert!(sink.articles.is_empty());
         }
         let other = tempfile::tempdir().unwrap();
@@ -535,6 +602,7 @@ mod tests {
         db.upsert(EmbeddingEntry::from_article(
             &article,
             Some(vec![0.5f32; 384]),
+            Vec::new(),
         ))
         .await
         .unwrap();
@@ -551,7 +619,9 @@ mod tests {
         }
 
         let mut sink = CollectingSink { articles: vec![] };
-        let residue = repair_item_embeddings(lib, &db, &mut sink).await.unwrap();
+        let residue = repair_item_embeddings(lib, &db, &mut sink, None)
+            .await
+            .unwrap();
 
         // Restore before asserting so the tempdir stays cleanable even on failure.
         std::fs::set_permissions(&entries, original).unwrap();
@@ -561,5 +631,120 @@ mod tests {
             "an unreadable library must not authorize deletes, got: {:?}",
             residue.to_delete
         );
+    }
+}
+
+#[cfg(test)]
+mod tag_tests {
+    use super::*;
+    use crate::{
+        embeddings::{EmbeddingEntry, sync_entry_row},
+        library_writer::LibraryWriter,
+    };
+    #[derive(Default)]
+    struct Sink {
+        articles: Vec<Article>,
+    }
+    impl RepairSink for Sink {
+        fn topic(&mut self, _: crate::types::Topic) {}
+        fn article(&mut self, article: Article) {
+            self.articles.push(article);
+        }
+    }
+    #[tokio::test]
+    async fn tag_only_drift_discovers_definitions_and_preserves_vectors_on_rebuild() {
+        let dir = tempfile::tempdir().unwrap();
+        tokio::fs::create_dir(library::entries_dir(dir.path()))
+            .await
+            .unwrap();
+        let path = library::entry_path(dir.path(), "entry");
+        let document = |tags: &str| {
+            format!(
+                "---\nsource: https://example.org/a\ntitle: Article\ntags: [{tags}]\ncustom: preserved\n---\n\nBody\n"
+            )
+        };
+        tokio::fs::write(&path, document("Research")).await.unwrap();
+        let writer = LibraryWriter::start(
+            dir.path().into(),
+            library::acquire_lock(dir.path()).unwrap(),
+        );
+        let mut db = EmbeddingsDb::open_writer(dir.path(), &writer.lock())
+            .await
+            .unwrap();
+        let mut sink = Sink::default();
+        repair_item_embeddings(dir.path(), &db, &mut sink, Some(&writer))
+            .await
+            .unwrap();
+        assert_eq!(sink.articles.len(), 1);
+        assert_eq!(sink.articles[0].meta.tags, Some(vec!["Research".into()]));
+        let mut row =
+            EmbeddingEntry::from_article(&sink.articles[0], Some(vec![0.5; 384]), Vec::new());
+        row.tags = crate::tags::Tags::read(dir.path())
+            .await
+            .unwrap()
+            .resolver()
+            .resolve(&["Research".into()])
+            .unwrap();
+        db.upsert(row).await.unwrap();
+        sink.articles.clear();
+        repair_item_embeddings(dir.path(), &db, &mut sink, Some(&writer))
+            .await
+            .unwrap();
+        assert!(sink.articles.is_empty());
+        tokio::fs::write(&path, document("Other")).await.unwrap();
+        repair_item_embeddings(dir.path(), &db, &mut sink, Some(&writer))
+            .await
+            .unwrap();
+        assert_eq!(sink.articles.len(), 1);
+        let (events, _) = flume::unbounded();
+        let (annotations, _) = flume::unbounded();
+        sync_entry_row(&sink.articles[0], &db, &events, &events, &annotations)
+            .await
+            .unwrap();
+        let row = db.get_entry("entry").await.unwrap().unwrap();
+        let definitions = crate::tags::Tags::read(dir.path()).await.unwrap();
+        assert_eq!(
+            row.tags,
+            definitions.resolver().resolve(&["Other".into()]).unwrap()
+        );
+        assert_eq!(row.vector, Some(vec![0.5; 384]));
+        assert_eq!(
+            tokio::fs::read_to_string(&path).await.unwrap(),
+            document("Other")
+        );
+        db.reset().await.unwrap();
+        sink.articles.clear();
+        repair_item_embeddings(dir.path(), &db, &mut sink, Some(&writer))
+            .await
+            .unwrap();
+        sync_entry_row(&sink.articles[0], &db, &events, &events, &annotations)
+            .await
+            .unwrap();
+        assert_eq!(db.get_entry("entry").await.unwrap().unwrap().tags, row.tags);
+        assert_eq!(
+            crate::tags::Tags::read(dir.path()).await.unwrap(),
+            definitions
+        );
+        writer.shutdown().await;
+    }
+    #[tokio::test]
+    async fn tag_unknown_discovery_requires_writer_and_does_not_write_on_readonly_path() {
+        let dir = tempfile::tempdir().unwrap();
+        tokio::fs::create_dir(library::entries_dir(dir.path()))
+            .await
+            .unwrap();
+        tokio::fs::write(
+            library::entry_path(dir.path(), "entry"),
+            "---\nsource: https://example.org/a\ntags: [Unknown]\n---\nBody",
+        )
+        .await
+        .unwrap();
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        assert!(
+            repair_item_embeddings(dir.path(), &db, &mut Sink::default(), None)
+                .await
+                .is_err()
+        );
+        assert!(!library::tags_path(dir.path()).exists());
     }
 }

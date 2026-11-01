@@ -208,14 +208,14 @@ impl EmbeddingService {
     /// Opens (or creates) the embeddings DB, loads the model, and starts the
     /// background loop.  Fails if the model files are missing.
     ///
-    /// `lock` is the library lock, acquired by the caller at library-open (the app's
-    /// setup, or the CLI's `require_write_lock`): only the lock-holding process may run
-    /// this service. The service keeps its own `Arc` of it for its lifetime, so it never
-    /// runs unlocked regardless of what the caller does with its copy.
+    /// The writer supplies the library write right and serializes definitions
+    /// discovered by recovery. The service retains the writer and a shared lock
+    /// for its lifetime, so it cannot run unlocked.
     pub async fn start(
         library_dir: PathBuf,
-        lock: std::sync::Arc<FileLock>,
+        writer: crate::library_writer::LibraryWriter,
     ) -> Result<Self, EmbeddingsError> {
+        let lock = writer.lock();
         let embedder = load_default_embedder().await?;
         let service_embedder = Arc::clone(&embedder);
 
@@ -272,6 +272,7 @@ impl EmbeddingService {
                         events,
                         embedder,
                         db,
+                        writer,
                     )
                     .await;
 
@@ -383,6 +384,7 @@ async fn run_loop(
     events: Events,
     embedder: Arc<Embedder>,
     mut db: EmbeddingsDb,
+    writer: crate::library_writer::LibraryWriter,
 ) {
     // Compact every this many Regular/Maintenance items processed consecutively.
     const BACKGROUND_COMPACT_INTERVAL: usize = 100;
@@ -426,7 +428,7 @@ async fn run_loop(
             result = control_rx.recv_async() => match result {
                 Ok(Job::StartRecovery { library_dir: dir }) => {
                     log::info!("embedding service: starting recovery for {}", dir.display());
-                    crate::recovery::dispatch::dispatch_recovery(&dir, &db, &embedder, &senders).await;
+                    crate::recovery::dispatch::dispatch_recovery(&dir, &db, &embedder, &senders, &writer).await;
                     log::info!("embedding service: recovery dispatch complete");
                 }
                 Ok(Job::Reset { library_dir: dir }) => {

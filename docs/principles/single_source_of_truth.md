@@ -20,6 +20,9 @@
   pending migration target. Core owns the file API; an application version is a
   runtime input for comparison, never a replacement for reading the selected
   library’s metadata. See [library version](../architecture/library_version.md).
+- **`tags.yaml`** owns library tag identities, names, and pending rename/merge/delete
+  state. Entry files own readable assignments; indexed tag IDs derive from both.
+  See [Tag storage](../architecture/tags.md).
 - **LanceDB** is the queryable read layer that mirrors the above. The durability invariant — every column is reconstructible from the files — is what makes LanceDB a cache, not a second source of truth.
 
 ## The producer rule

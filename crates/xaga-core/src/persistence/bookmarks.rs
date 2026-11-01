@@ -164,6 +164,7 @@ fn parse(html: &str) -> Vec<Entry> {
         })();
 
         entries.push(Entry {
+            tags: None,
             id: url_hash12(&normalized),
             url: normalized,
             title,

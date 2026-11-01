@@ -63,3 +63,12 @@ refresh (feeds typically list only recent items), its `.md` remains a permanent
 orphan — still a valid, readable entry (it appears in index-backed views such as
 all-items and search), just no longer attributed to its feed's membership. This
 is strictly better than losing it, and is accepted.
+
+## Tag identities and assignments
+
+`tags.yaml` owns tag definitions and pending transitions; Entry files own readable
+assignments. Recovery loads those records before scanning article labels, uses the
+library writer to register unknown names, and resolves reserved names through
+active transitions. Tag-ID drift is compared separately from content checksums.
+A cache rebuild reuses registry identities rather than generating new ones. See
+[Tag storage](../../../../docs/architecture/tags.md).

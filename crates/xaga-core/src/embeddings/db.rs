@@ -389,6 +389,7 @@ impl<'a> BatchSummaryColumns<'a> {
         }
         let is_unread = self.unread.value(i);
         Entry {
+            tags: None,
             id: self.ids.value(i).to_string(),
             url: self.sources.value(i).to_string(),
             title: self.titles.value(i).to_string(),
@@ -430,12 +431,40 @@ fn entries_from_batches(batches: &[RecordBatch]) -> Vec<Entry> {
 
 #[derive(Clone)]
 pub struct EmbeddingsDb {
+    tag_resolver: crate::tags::CachedResolver,
     _connection: lancedb::Connection,
     table: lancedb::Table,
     schema: Arc<Schema>,
 }
 
 impl EmbeddingsDb {
+    /// Bulk CLI maintenance uses the same compaction/pruning as the service,
+    /// then catches scalar indexes up with newly written fragments.
+    pub async fn maintain(&self) -> Result<(), EmbeddingsError> {
+        self.reload().await?;
+        if self.count().await? == 0 {
+            return Ok(());
+        }
+        self.compact().await?;
+        self.ensure_indexes().await?;
+        self.table
+            .optimize(lancedb::table::optimize::OptimizeAction::Index(
+                Default::default(),
+            ))
+            .await?;
+        self.reload().await
+    }
+
+    pub(crate) async fn resolve_tag_names(
+        &self,
+        names: &[String],
+    ) -> Result<Vec<String>, EmbeddingsError> {
+        self.tag_resolver
+            .resolve(names)
+            .await
+            .map_err(|e| std::io::Error::other(e).into())
+    }
+
     /// Opens an existing embeddings table without creating or migrating it.
     pub async fn open_readonly(library_dir: &Path) -> Result<Self, EmbeddingsError> {
         let schema = make_schema();
@@ -460,6 +489,7 @@ impl EmbeddingsDb {
         let table = connection.open_table("documents").execute().await?;
 
         Ok(Self {
+            tag_resolver: crate::tags::CachedResolver::new(library_dir),
             _connection: connection,
             table,
             schema,
@@ -522,6 +552,7 @@ impl EmbeddingsDb {
                         .await?;
                 }
                 Ok(EmbeddingsDb {
+                    tag_resolver: crate::tags::CachedResolver::new(library_dir),
                     _connection: connection,
                     table,
                     schema,
@@ -532,6 +563,7 @@ impl EmbeddingsDb {
                 create_empty_documents_table(&connection, &schema).await?;
                 let table = connection.open_table("documents").execute().await?;
                 Ok(EmbeddingsDb {
+                    tag_resolver: crate::tags::CachedResolver::new(library_dir),
                     _connection: connection,
                     table,
                     schema,
@@ -932,7 +964,19 @@ impl EmbeddingsDb {
     pub(crate) async fn list_entries_meta(
         &self,
     ) -> Result<
-        HashMap<String, (String, String, bool, String, Vec<String>, bool, String)>,
+        HashMap<
+            String,
+            (
+                String,
+                String,
+                bool,
+                String,
+                Vec<String>,
+                bool,
+                String,
+                Vec<String>,
+            ),
+        >,
         EmbeddingsError,
     > {
         let batches: Vec<RecordBatch> = self
@@ -973,6 +1017,9 @@ impl EmbeddingsDb {
             let unread = batch
                 .column_by_name("is_unread")
                 .and_then(|c| c.as_any().downcast_ref::<BooleanArray>());
+            let tags = batch
+                .column_by_name("tags")
+                .and_then(|c| c.as_any().downcast_ref::<ListArray>());
             let items = batch
                 .column_by_name("items")
                 .and_then(|c| c.as_any().downcast_ref::<ListArray>());
@@ -1003,6 +1050,18 @@ impl EmbeddingsDb {
                             item_ids,
                             unread.is_some_and(|a| a.value(i)),
                             colors.map_or(String::new(), |a| a.value(i).to_owned()),
+                            tags.filter(|a| !a.is_null(i))
+                                .map(|a| {
+                                    let values = a.value(i);
+                                    values
+                                        .as_any()
+                                        .downcast_ref::<StringArray>()
+                                        .map(|s| {
+                                            (0..s.len()).map(|j| s.value(j).to_owned()).collect()
+                                        })
+                                        .unwrap_or_default()
+                                })
+                                .unwrap_or_default(),
                         ),
                     );
                 }
@@ -2174,8 +2233,11 @@ mod tests {
             annotations: vec![],
             favicon: None,
         };
-        let mut initial =
-            EmbeddingEntry::from_article(&article, Some(vec![0.1; EMBEDDING_DIM as usize]));
+        let mut initial = EmbeddingEntry::from_article(
+            &article,
+            Some(vec![0.1; EMBEDDING_DIM as usize]),
+            Vec::new(),
+        );
         initial.is_unread = false;
         db.upsert(initial).await.unwrap();
         let (unread_tx, unread_rx) = flume::unbounded();
@@ -2315,6 +2377,14 @@ mod tests {
     #[tokio::test]
     async fn color_queries_survive_cache_rebuild_and_index_creation() {
         let dir = tempfile::tempdir().unwrap();
+        let writer = crate::library_writer::LibraryWriter::start(
+            dir.path().into(),
+            crate::library::acquire_lock(dir.path()).unwrap(),
+        );
+        writer
+            .discover_tags(vec!["research".into(), "bookmark".into()])
+            .await
+            .unwrap();
         std::fs::create_dir_all(crate::library::entries_dir(dir.path())).unwrap();
         for color in ["", "red", "orange", "yellow", "green", "blue", "violet"] {
             let id = if color.is_empty() { "unmarked" } else { color };
@@ -2328,7 +2398,7 @@ mod tests {
             } else {
                 ""
             };
-            // A legacy tag alone must not restore marked state in normal recovery.
+            // An organizational label named bookmark must not restore marked state.
             std::fs::write(crate::library::entry_path(dir.path(), id), format!("---\nsource: https://example.org/{id}\ntitle: {id}\ntags: [research, bookmark]\n{marking}{annotation}---\n\nBody\n")).unwrap();
         }
         let mut db = EmbeddingsDb::open(dir.path()).await.unwrap();
@@ -2386,6 +2456,7 @@ mod tests {
                     .is_none()
             );
         }
+        writer.shutdown().await;
     }
 
     /// Explicit scale verification; isolated synthetic cache, no model download.

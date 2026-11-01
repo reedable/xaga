@@ -68,7 +68,8 @@ A library YAML registry has a root `tags` sequence of definitions containing
 `id` and display `name`. IDs are UUID v4 strings, independent of names and stable
 across renames. Article frontmatter contains readable names; the indexing
 boundary maps them to IDs stored in LanceDB assignments. Definitions own identity
-and naming; article files own assignments.
+and naming; article files own assignments. The persisted format and checkpoint
+contract are specified in [Tag storage](tags.md).
 
 Compare names by trimming surrounding whitespace and applying Unicode lowercase
 conversion to the comparison values. Do not use case folding or Unicode

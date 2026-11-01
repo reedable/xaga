@@ -83,6 +83,7 @@ pub(crate) async fn dispatch_recovery(
     db: &EmbeddingsDb,
     embedder: &Arc<Embedder>,
     senders: &Senders,
+    writer: &crate::library_writer::LibraryWriter,
 ) {
     // Compact the DB before queuing any new work to clear version files accumulated during
     // previous sessions. Without this, Lance's auto-cleanup fires mid-upsert and blocks the loop.
@@ -98,7 +99,7 @@ pub(crate) async fn dispatch_recovery(
 
     let mut sink = DispatchSink::new(fresh, senders);
 
-    let residue = match repair_item_embeddings(library_dir, db, &mut sink).await {
+    let residue = match repair_item_embeddings(library_dir, db, &mut sink, Some(writer)).await {
         Ok(residue) => residue,
         Err(e) => {
             log::error!("recovery: repair_item_embeddings failed: {e}");
@@ -169,7 +170,17 @@ async fn bulk_insert_articles(db: &EmbeddingsDb, articles: Vec<Article>, senders
     let mut buf: Vec<EmbeddingEntry> = Vec::with_capacity(BULK_BATCH);
 
     for article in articles {
-        buf.push(EmbeddingEntry::from_article(&article, None));
+        let tags = match db
+            .resolve_tag_names(article.meta.tags.as_deref().unwrap_or_default())
+            .await
+        {
+            Ok(tags) => tags,
+            Err(e) => {
+                log::error!("recovery: resolve tags for {}: {e}", article.meta.id);
+                continue;
+            }
+        };
+        buf.push(EmbeddingEntry::from_article(&article, None, tags));
 
         for annotation in &article.annotations {
             buf.push(annotation_embedding_entry(

@@ -20,5 +20,6 @@ pub mod pins;
 pub mod query;
 pub mod recovery;
 pub(crate) mod site;
+pub mod tags;
 pub mod types;
 pub mod util;

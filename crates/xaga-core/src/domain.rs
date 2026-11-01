@@ -120,6 +120,10 @@ impl From<&Reference> for Kind {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Entry {
+    /// Readable file labels. None means this summary has no assignment snapshot;
+    /// Some(empty) explicitly carries no assignments. Never indexed IDs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
     pub id: String,
     pub url: String,
     pub title: String,

@@ -3,14 +3,13 @@
 ## Summary
 
 Let users create library-scoped tags for Entry organization through the storage
-foundation’s stable-identity and name-resolution APIs.
+registry’s stable-identity and name-resolution APIs.
 
 ## Requirements
 
-- Use the [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md)
-  contract and its shared 0.14 library upgrade; do not introduce a separate
-  storage format for this functionality.
-- Expose library-scoped tag creation using the foundation's atomic lookup/creation
+- Use the [Tag storage](../../docs/architecture/tags.md)
+  contract and existing 0.14 format.
+- Expose library-scoped tag creation using the registry's atomic lookup/creation
   operation. Names with equal comparison values return the existing identity without
   changing display spelling; invalid names report a validation error.
 - Preserve library isolation and refuse creation in read-only mode.
@@ -20,8 +19,7 @@ foundation’s stable-identity and name-resolution APIs.
 
 ## Remaining work
 
-- Complete the Tag Storage Foundation first.
-- Expose foundation lookup/creation through writer operations and the platform
+- Expose registry lookup/creation through writer operations and the platform
   creation API; carry committed changes to consumers. Connect the picker in the
   Entry-assignment story.
 - Verify creation, duplicates, external edits, restart, concurrent writes,
@@ -30,7 +28,7 @@ foundation’s stable-identity and name-resolution APIs.
 
 ## References
 
-- [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md) — prerequisite.
+- [Tag storage](../../docs/architecture/tags.md).
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Pin-store contract](../../docs/architecture/pins.md).

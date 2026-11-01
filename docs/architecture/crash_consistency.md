@@ -144,3 +144,23 @@ files and reconciles their cache state even if no file needs rewriting. It keeps
 one document and at most 1024 identities/colors in memory, groups cache updates by
 palette color, preserves vectors and membership columns, and only completes the
 library version after schema conversion, reconciliation, and index creation.
+
+### Tag definitions and transitions
+
+Tag registry mutations serialize on the library writer's `tags` lane and
+atomically replace `tags.yaml`. Article label changes remain in Entry lanes.
+Recovery discovers definitions before indexing assignments and detects tag-only
+drift independently of content checksums; unchanged vectors survive repair.
+Queued vector completion preserves the row's current tag IDs.
+
+The 0.14 CLI upgrade persists definitions before each batch of cache assignments.
+A crash can leave definitions ahead of the cache; retry resolves the same names
+to the same IDs and reconciles the cache again. It never completes the library
+version before definitions and assignments have been reconciled.
+
+Pending rename/merge/delete records retain reserved identities, names, and
+file/index checkpoints outside the cache. A pending batch precedes its writes;
+its checkpoint follows successful writes. Revision checks refuse stale checkpoint
+or finalization requests. Newly discovered transitional labels invalidate relevant
+completion/cursors. The [tag storage contract](tags.md#checkpoints-and-retirement)
+specifies the records and the evidence required before retirement.

@@ -39,6 +39,8 @@ The 0.10 reading-state format requires the [explicit library upgrade](../library
 before using a 0.9 library; patch versions do not carry this format transition.
 The 0.13 article-color format likewise requires an explicit upgrade and minor
 version increment; it removes the old bookmark boolean and tag representation.
+The 0.14 tag registry and indexed UUID assignments require the matching CLI
+upgrade; rename, merge, and deletion storage is included in that format.
 
 Library versions use the application's `major.minor` convention. Each library
 stores its own completed version in `library.yaml`; it is read at runtime and is

@@ -7,9 +7,8 @@ with normal article reading and stable browsing context.
 
 ## Requirements
 
-- Use the [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md)
-  contract and its shared 0.14 library upgrade; do not introduce a separate
-  storage format for this functionality.
+- Use the [Tag storage](../../docs/architecture/tags.md)
+  contract and existing 0.14 format.
 - Resolve selected tag names through library definitions and query indexed tag
   IDs. Display current names rather than internal IDs.
 - Show directly tagged Entries only; no implicit tagging through collections
@@ -37,7 +36,6 @@ with normal article reading and stable browsing context.
 
 ## Remaining work
 
-- Complete the Tag Storage Foundation first.
 - Complete tag identity/creation and Entry assignment first.
 - Implement query predicates and suitable list-tag indexing; verify query plans
   and performance at the multi-million-entry design target.
@@ -48,7 +46,7 @@ with normal article reading and stable browsing context.
 
 ## References
 
-- [Tag Storage Foundation](../active/enhancement__tags--storage-foundation.md) — prerequisite.
+- [Tag storage](../../docs/architecture/tags.md).
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Tag Identity and Creation](enhancement__tags--identity-and-creation.md) — prerequisite.

@@ -72,6 +72,8 @@ pub enum Tier {
 pub enum WriterError {
     #[error(transparent)]
     Pins(#[from] crate::pins::PinsError),
+    #[error(transparent)]
+    Tags(#[from] crate::tags::TagsError),
     #[error("{0}")]
     Entry(#[from] EntryError),
     #[error("{0}")]
@@ -93,6 +95,7 @@ impl WriterError {
     /// generic writer code. Mirrored in `src/platform/errors.ts`.
     pub fn code(&self) -> &'static str {
         match self {
+            WriterError::Tags(e) => e.code(),
             WriterError::Pins(e) => e.code(),
             WriterError::Entry(e) => e.code(),
             WriterError::Topic(e) => e.code(),
@@ -105,6 +108,7 @@ impl WriterError {
     /// User-safe message. Full detail stays in `Display`.
     pub fn user_message(&self) -> &'static str {
         match self {
+            WriterError::Tags(e) => e.user_message(),
             WriterError::Pins(e) => e.user_message(),
             WriterError::Entry(e) => e.user_message(),
             WriterError::Topic(e) => e.user_message(),
@@ -128,6 +132,14 @@ pub enum BookmarkOutcome {
 /// recovery's concern). Each variant mirrors a persistence write function and carries its
 /// typed responder.
 enum Op {
+    MutateTags {
+        mutation: crate::tags::Mutation,
+        resp: oneshot::Sender<Result<crate::tags::Tags, WriterError>>,
+    },
+    DiscoverTags {
+        names: Vec<String>,
+        resp: oneshot::Sender<Result<crate::tags::Tags, WriterError>>,
+    },
     SetPin {
         target: crate::pins::PinTarget,
         pinned: bool,
@@ -293,6 +305,7 @@ impl Op {
     /// topic sharing an id string can never collide onto one lane.
     fn lane_key(&self) -> String {
         match self {
+            Op::DiscoverTags { .. } | Op::MutateTags { .. } => "tags".into(),
             Op::SetPin { .. } => "pins".into(),
             Op::RecoverImages { id, .. }
             | Op::RepairSummary { id, .. }
@@ -327,6 +340,8 @@ impl Op {
     /// Short name for shutdown-drop logging.
     fn label(&self) -> &'static str {
         match self {
+            Op::MutateTags { .. } => "mutate_tags",
+            Op::DiscoverTags { .. } => "discover_tags",
             Op::SetPin { .. } => "set_pin",
             Op::RecoverImages { .. } => "recover_images",
             Op::RepairSummary { .. } => "repair_summary",
@@ -355,6 +370,8 @@ impl Op {
     /// Refuse without executing (Regular backlog at shutdown).
     fn refuse(self) {
         match self {
+            Op::MutateTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::DiscoverTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetPin { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RepairSummary { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SavePdf { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -387,6 +404,18 @@ impl Op {
     /// Runs inside the op's lane: nothing else touches this file concurrently.
     async fn execute(self, library_dir: &std::path::Path, token: WriteToken) {
         match self {
+            Op::MutateTags { mutation, resp } => {
+                let result = crate::tags::Tags::mutate_write(library_dir, mutation, token)
+                    .await
+                    .map_err(WriterError::from);
+                let _ = resp.send(result);
+            }
+            Op::DiscoverTags { names, resp } => {
+                let result = crate::tags::Tags::discover_write(library_dir, &names, token)
+                    .await
+                    .map_err(WriterError::from);
+                let _ = resp.send(result);
+            }
             Op::SetPin {
                 target,
                 pinned,
@@ -1139,6 +1168,31 @@ impl LibraryWriter {
         let (resp, rx) = oneshot::channel();
         let op = Op::DeleteTopic { id, resp };
         self.submit(tier, op, rx).await
+    }
+
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "0.14 storage foundation; production transition commands are implemented separately"
+        )
+    )]
+    pub(crate) async fn mutate_tags(
+        &self,
+        mutation: crate::tags::Mutation,
+    ) -> Result<crate::tags::Tags, WriterError> {
+        let (resp, rx) = oneshot::channel();
+        self.submit(Tier::Interactive, Op::MutateTags { mutation, resp }, rx)
+            .await
+    }
+
+    pub async fn discover_tags(
+        &self,
+        names: Vec<String>,
+    ) -> Result<crate::tags::Tags, WriterError> {
+        let (resp, rx) = oneshot::channel();
+        self.submit(Tier::Interactive, Op::DiscoverTags { names, resp }, rx)
+            .await
     }
 
     pub async fn set_pin(

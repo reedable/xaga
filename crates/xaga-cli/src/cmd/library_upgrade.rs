@@ -16,6 +16,8 @@ use xaga_core::{embeddings::EmbeddingsDb, fs::FileLock, library};
 const MAX_MD_BYTES: u64 = 12 * 1024 * 1024;
 // Bound SQL expression size and cache commits at the multi-million-entry target.
 const CACHE_BATCH_SIZE: usize = 1024;
+// Match the service's periodic maintenance pattern, counting CLI batch operations.
+const MAINTENANCE_BATCHES: usize = 100;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -31,6 +33,7 @@ struct Conversion {
     rendered: Option<String>,
     is_unread: bool,
     color: Option<String>,
+    tags: Vec<String>,
 }
 
 /// Significant CST tokens with byte ranges. Scalar tokens can include trailing
@@ -164,7 +167,12 @@ fn patch_migration_fields(
 }
 
 /// Existing boolean state wins over the legacy marker; read state is omission.
+#[cfg(test)]
 fn convert(raw: &str) -> Result<Conversion, Error> {
+    convert_legacy(raw, true)
+}
+
+fn convert_legacy(raw: &str, convert_reading_state: bool) -> Result<Conversion, Error> {
     let trimmed = raw.trim_start();
     let prefix = &raw[..raw.len() - trimmed.len()];
     let rest = trimmed
@@ -179,7 +187,7 @@ fn convert(raw: &str) -> Result<Conversion, Error> {
         Some(value) => noyalib::from_value(value)?,
         None => Vec::new(),
     };
-    let legacy_unread = tags.iter().any(|tag| tag == "unread");
+    let legacy_unread = convert_reading_state && tags.iter().any(|tag| tag == "unread");
     let legacy_bookmark = tags.iter().any(|tag| tag == "bookmark");
     let existing_color = match fields.get("color") {
         Some(Value::String(value)) if xaga_core::types::COLOR_NAMES.contains(&value.as_str()) => {
@@ -204,6 +212,7 @@ fn convert(raw: &str) -> Result<Conversion, Error> {
             rendered: None,
             is_unread,
             color,
+            tags,
         });
     }
     if legacy_unread || legacy_bookmark {
@@ -211,8 +220,11 @@ fn convert(raw: &str) -> Result<Conversion, Error> {
             "tags".into(),
             noyalib::to_value(
                 &tags
-                    .into_iter()
-                    .filter(|tag| tag != "unread" && tag != "bookmark")
+                    .iter()
+                    .filter(|tag| {
+                        (!convert_reading_state || tag.as_str() != "unread")
+                            && tag.as_str() != "bookmark"
+                    })
                     .collect::<Vec<_>>(),
             )?,
         );
@@ -247,6 +259,10 @@ fn convert(raw: &str) -> Result<Conversion, Error> {
         rendered: Some(rendered),
         is_unread,
         color,
+        tags: tags
+            .into_iter()
+            .filter(|t| (!convert_reading_state || t != "unread") && t != "bookmark")
+            .collect(),
     })
 }
 
@@ -274,34 +290,79 @@ fn write_atomic(path: &Path, raw: &str, _lock: &FileLock) -> Result<(), Error> {
 
 /// Update only existing cache rows, preserving vectors, memberships and all other
 /// columns. Missing rows remain reconstructible by normal recovery.
+type EntryState = (String, bool, Option<String>, Vec<String>);
+
 async fn reconcile(
     table: &lancedb::Table,
-    states: &[(String, bool, Option<String>)],
+    states: &[EntryState],
+    registry: &xaga_core::tags::Tags,
     _lock: &FileLock,
 ) -> Result<usize, Error> {
-    let mut updated = 0;
-    for unread in [true, false] {
-        for color in ["", "red", "orange", "yellow", "green", "blue", "violet"] {
-            let ids: Vec<_> = states
-                .iter()
-                .filter(|(_, state, marking)| {
-                    *state == unread && marking.as_deref().unwrap_or("") == color
-                })
-                .map(|(id, _, _)| format!("'{}'", id.replace('\'', "''")))
-                .collect();
-            if ids.is_empty() {
-                continue;
-            }
-            let result = table.update()
-                .only_if(format!("kind = 'entry' AND id IN ({}) AND (is_unread != {unread} OR color != '{color}' OR array_contains(tags, 'unread') OR array_contains(tags, 'bookmark'))", ids.join(",")))
-                .column("is_unread", unread.to_string())
-                .column("color", format!("'{color}'"))
-                .column("tags", "array_remove(array_remove(tags, 'unread'), 'bookmark')")
-                .execute().await?;
-            updated += result.rows_updated as usize;
-        }
+    use arrow_array::builder::{ListBuilder, StringBuilder};
+    use arrow_array::{
+        ArrayRef, BooleanArray, RecordBatch, RecordBatchIterator, RecordBatchReader, StringArray,
+    };
+    use arrow_schema::{DataType, Field, Schema};
+    use std::sync::Arc;
+    if states.is_empty() {
+        return Ok(0);
     }
-    Ok(updated)
+    let resolver = registry.resolver();
+    let mut resolved = Vec::with_capacity(states.len());
+    for (id, unread, color, names) in states {
+        if color
+            .as_deref()
+            .is_some_and(|value| !xaga_core::types::COLOR_NAMES.contains(&value))
+        {
+            return Err("color must be an annotation palette identifier".into());
+        }
+        resolved.push((
+            id.as_str(),
+            *unread,
+            color.as_deref().unwrap_or_default(),
+            resolver.resolve(names)?,
+        ));
+    }
+    // Partial-schema merge updates only the supplied columns, with inserts and
+    // deletes disabled. Diverse tag sets still commit once per bounded batch.
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("id", DataType::Utf8, false),
+        Field::new("kind", DataType::Utf8, false),
+        Field::new("is_unread", DataType::Boolean, false),
+        Field::new("color", DataType::Utf8, false),
+        Field::new(
+            "tags",
+            DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
+            false,
+        ),
+    ]));
+    let mut tags = ListBuilder::new(StringBuilder::new());
+    for (_, _, _, ids) in &resolved {
+        for id in ids {
+            tags.values().append_value(id);
+        }
+        tags.append(true);
+    }
+    let columns: Vec<ArrayRef> = vec![
+        Arc::new(StringArray::from(
+            resolved.iter().map(|row| row.0).collect::<Vec<_>>(),
+        )),
+        Arc::new(StringArray::from(vec!["entry"; resolved.len()])),
+        Arc::new(BooleanArray::from(
+            resolved.iter().map(|row| row.1).collect::<Vec<_>>(),
+        )),
+        Arc::new(StringArray::from(
+            resolved.iter().map(|row| row.2).collect::<Vec<_>>(),
+        )),
+        Arc::new(tags.finish()),
+    ];
+    let batch = RecordBatch::try_new(schema.clone(), columns)?;
+    let reader: Box<dyn RecordBatchReader + Send> =
+        Box::new(RecordBatchIterator::new(vec![Ok(batch)], schema));
+    let mut merge = table.merge_insert(&["id", "kind"]);
+    merge.when_matched_update_all(None);
+    let result = merge.execute(reader).await?;
+    Ok(result.num_updated_rows as usize)
 }
 
 /// Transfer each reference durably before stripping its legacy marker. This
@@ -410,6 +471,16 @@ fn convert_markdown_pin(raw: &str) -> Result<Option<String>, Error> {
 
 pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeReport {
     let mut report = UpgradeReport::default();
+    let source_version = match library::LibraryManifest::read(dir) {
+        Ok(manifest) => manifest.and_then(|m| m.format_version()),
+        Err(e) => {
+            report.errors.push(format!("library format: {e}"));
+            return report;
+        }
+    };
+    let legacy = source_version.is_none_or(|v| v < library::LibraryVersion::new(0, 13));
+    let legacy_reading = source_version.is_none_or(|v| v < library::LibraryVersion::new(0, 10));
+    let legacy_pins = source_version.is_none_or(|v| v < library::LibraryVersion::new(0, 11));
     let upgrade = match library::LibraryManifest::begin_upgrade(
         dir,
         crate::cmd::library::application_version(),
@@ -426,16 +497,16 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
     // Use the ordinary writer-open boundary to create an absent cache. Conversion
     // itself uses direct, narrowly-scoped cache updates owned entirely by this CLI.
     let table = async {
-        let _db = EmbeddingsDb::open_writer(dir, lock).await?;
+        let db = EmbeddingsDb::open_writer(dir, lock).await?;
         let path = library::index_path(dir);
         let connection = lancedb::connect(path.to_str().ok_or("non-UTF-8 cache path")?)
             .execute()
             .await?;
-        Ok::<_, Error>(connection.open_table("documents").execute().await?)
+        Ok::<_, Error>((db, connection.open_table("documents").execute().await?))
     }
     .await;
-    let table = match table {
-        Ok(table) => table,
+    let (db, table) = match table {
+        Ok(pair) => pair,
         Err(error) => {
             report.errors.push(format!("open cache: {error}"));
             return report;
@@ -464,7 +535,11 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
             .push(format!("bookmark schema conversion: {error}"));
         return report;
     }
-    if let Err(error) = convert_pins(dir, lock).await {
+    if let Err(error) = if legacy_pins {
+        convert_pins(dir, lock).await
+    } else {
+        Ok(())
+    } {
         report
             .errors
             .push(format!("pin conversion: {error}; rerun library upgrade"));
@@ -481,9 +556,20 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
     // No UI pin discovery reads this cache; retries always reconcile from pins.yaml.
     if let Err(error) = table
         .update()
-        .only_if("is_pinned = true OR array_contains(tags, 'pinned')")
+        .only_if(if legacy_pins {
+            "is_pinned = true OR array_contains(tags, 'pinned')"
+        } else {
+            "is_pinned = true"
+        })
         .column("is_pinned", "false")
-        .column("tags", "array_remove(tags, 'pinned')")
+        .column(
+            "tags",
+            if legacy_pins {
+                "array_remove(tags, 'pinned')"
+            } else {
+                "tags"
+            },
+        )
         .execute()
         .await
     {
@@ -532,6 +618,20 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
             return report;
         }
     };
+    let mut registry = match xaga_core::tags::Tags::read(dir).await {
+        Ok(registry) => registry,
+        Err(e) => {
+            report.errors.push(format!("tag store: {e}"));
+            return report;
+        }
+    };
+    if let Err(error) = maintain_cache(&db, &table).await {
+        report
+            .errors
+            .push(format!("cache maintenance: {error}; rerun library upgrade"));
+        return report;
+    }
+    let mut batches = 0usize;
     let mut states = Vec::with_capacity(CACHE_BATCH_SIZE);
     for entry in entries.into_iter().flatten() {
         let result = (|| -> Result<(), Error> {
@@ -548,14 +648,30 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
                     .file_stem()
                     .and_then(|id| id.to_str())
                     .ok_or("non-UTF-8 entry id")?;
-                let conversion = convert(&read_capped(&path)?)?;
+                let raw = read_capped(&path)?;
+                let conversion = if legacy {
+                    convert_legacy(&raw, legacy_reading)?
+                } else {
+                    let (fm, _) = xaga_core::md::parse_document(&raw)?;
+                    Conversion {
+                        rendered: None,
+                        is_unread: fm.is_unread.unwrap_or(false),
+                        color: fm.color,
+                        tags: fm.tags,
+                    }
+                };
                 if let Some(rendered) = conversion.rendered {
                     write_atomic(&path, &rendered, lock)?;
                     report.converted += 1;
                 } else {
                     report.unchanged += 1;
                 }
-                states.push((id.to_owned(), conversion.is_unread, conversion.color));
+                states.push((
+                    id.to_owned(),
+                    conversion.is_unread,
+                    conversion.color,
+                    conversion.tags,
+                ));
                 Ok(())
             })();
             process.map_err(|error| format!("{}: {error}", path.display()).into())
@@ -566,27 +682,51 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
                 .push(format!("file conversion: {error}; rerun library upgrade"));
         }
         if states.len() >= CACHE_BATCH_SIZE {
-            reconcile_report(&table, &mut states, lock, &mut report).await;
+            reconcile_report(&table, &mut states, &mut registry, dir, lock, &mut report).await;
+            batches += 1;
+            if batches % MAINTENANCE_BATCHES == 0 {
+                if let Err(error) = maintain_cache(&db, &table).await {
+                    report
+                        .errors
+                        .push(format!("cache maintenance: {error}; rerun library upgrade"));
+                    return report;
+                }
+                #[cfg(test)]
+                println!(
+                    "upgrade_batch_checkpoint files={} cached_rows={} batches={batches}",
+                    report.converted + report.unchanged,
+                    report.reconciled
+                );
+            }
         }
     }
-    reconcile_report(&table, &mut states, lock, &mut report).await;
+    reconcile_report(&table, &mut states, &mut registry, dir, lock, &mut report).await;
     // Remove reserved markers even from stale rows awaiting ordinary recovery.
     // This does not infer or change their boolean reading state.
-    if let Err(error) = table
-        .update()
-        .only_if("array_contains(tags, 'unread') OR array_contains(tags, 'bookmark')")
-        .column(
-            "tags",
-            "array_remove(array_remove(tags, 'unread'), 'bookmark')",
-        )
-        .execute()
-        .await
-    {
-        report.errors.push(format!(
-            "cache legacy-marker cleanup: {error}; rerun library upgrade"
-        ));
+    if legacy {
+        if let Err(error) = table
+            .update()
+            .only_if("array_contains(tags, 'unread') OR array_contains(tags, 'bookmark')")
+            .column(
+                "tags",
+                if legacy_reading {
+                    "array_remove(array_remove(tags, 'unread'), 'bookmark')"
+                } else {
+                    "array_remove(tags, 'bookmark')"
+                },
+            )
+            .execute()
+            .await
+        {
+            report.errors.push(format!(
+                "cache legacy-marker cleanup: {error}; rerun library upgrade"
+            ));
+        }
     }
     if report.errors.is_empty() {
+        if let Err(error) = registry.write_upgrade(dir, lock).await {
+            report.errors.push(format!("tag definitions: {error}"));
+        }
         for column in ["color", "kind"] {
             if let Err(error) = table
                 .create_index(&[column], lancedb::index::Index::Bitmap(Default::default()))
@@ -600,6 +740,13 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
         }
     }
     if report.errors.is_empty() {
+        if let Err(error) = maintain_cache(&db, &table).await {
+            report
+                .errors
+                .push(format!("cache maintenance: {error}; rerun library upgrade"));
+        }
+    }
+    if report.errors.is_empty() {
         if let Err(error) = upgrade.complete() {
             report
                 .errors
@@ -609,16 +756,45 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
     report
 }
 
+async fn maintain_cache(db: &EmbeddingsDb, table: &lancedb::Table) -> Result<(), Error> {
+    db.maintain().await?;
+    // The converter's direct table handle must follow versions pruned by core.
+    table.checkout_latest().await?;
+    Ok(())
+}
+
 async fn reconcile_report(
     table: &lancedb::Table,
-    states: &mut Vec<(String, bool, Option<String>)>,
+    states: &mut Vec<EntryState>,
+    registry: &mut xaga_core::tags::Tags,
+    dir: &Path,
     lock: &FileLock,
     report: &mut UpgradeReport,
 ) {
     if states.is_empty() {
         return;
     }
-    match reconcile(table, states, lock).await {
+    let mut resolver = registry.resolver();
+    for (_, _, _, names) in states.iter() {
+        if resolver.resolve(names).is_err() {
+            if let Err(error) = registry.discover(names) {
+                report
+                    .errors
+                    .push(format!("tag discovery: {error}; rerun library upgrade"));
+                states.clear();
+                return;
+            }
+            resolver = registry.resolver();
+        }
+    }
+    if let Err(error) = registry.write_upgrade(dir, lock).await {
+        report
+            .errors
+            .push(format!("tag definitions: {error}; rerun library upgrade"));
+        states.clear();
+        return;
+    }
+    match reconcile(table, states, registry, lock).await {
         Ok(count) => report.reconciled += count,
         Err(error) => report.errors.push(format!(
             "cache reconciliation for batch starting with {}: {error}; rerun library upgrade",
@@ -1047,6 +1223,11 @@ custom:
         );
         let original = fs::read_to_string(&path).unwrap();
         let article = read_article(dir.path(), "entry").await.unwrap();
+        let mut registry = xaga_core::tags::Tags::default();
+        registry
+            .discover(article.meta.tags.as_deref().unwrap_or_default())
+            .unwrap();
+        registry.write_upgrade(dir.path(), &lock).await.unwrap();
         let db = EmbeddingsDb::open_writer(dir.path(), &lock).await.unwrap();
         let (tx, _) = flume::unbounded::<Entry>();
         let (annotation_tx, _) = flume::unbounded::<ListItem>();
@@ -1136,7 +1317,15 @@ custom:
         assert!(!read_row.is_unread && !read_row.color.is_empty());
         assert!(read_row.tags.is_empty());
         assert!(row.is_unread && !row.color.is_empty() && row.is_pinned);
-        assert_eq!(row.tags, vec!["research"]);
+        assert_eq!(
+            row.tags,
+            xaga_core::tags::Tags::read(dir.path())
+                .await
+                .unwrap()
+                .resolver()
+                .resolve(&["research".into()])
+                .unwrap()
+        );
         assert_eq!(db.filter_pinned_entries().await.unwrap()[0].id, "entry");
         assert_eq!(row.topics, vec!["topic"]);
         assert_eq!(row.items, vec!["note"]);
@@ -1216,5 +1405,311 @@ custom:
         );
 
         assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    }
+    #[tokio::test]
+    async fn tag_upgrade_013_preserves_labels_and_retries_without_rekeying() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        library::LibraryManifest::begin_upgrade(
+            dir.path(),
+            library::LibraryVersion::new(0, 13),
+            &lock,
+        )
+        .unwrap()
+        .unwrap()
+        .complete()
+        .unwrap();
+        let path = seed(
+            dir.path(),
+            "entry",
+            "tags: [Research, research, unread, bookmark, pinned, straße, strasse]\nis_unread: true\ncolor: green",
+        );
+        let original = fs::read(&path).unwrap();
+        let mut article = read_article(dir.path(), "entry").await.unwrap();
+        article.meta.tags = None;
+        let db = EmbeddingsDb::open_writer(dir.path(), &lock).await.unwrap();
+        let (events, _) = flume::unbounded();
+        let (annotations, _) = flume::unbounded();
+        xaga_core::embeddings::sync_entry_row(&article, &db, &events, &events, &annotations)
+            .await
+            .unwrap();
+        let cache = table(dir.path(), &lock).await;
+        cache
+            .update()
+            .only_if("id = 'entry'")
+            .column("topics", "['keep-topic']")
+            .column(
+                "vector",
+                format!(
+                    "arrow_cast([{}], 'FixedSizeList(384, Float32)')",
+                    vec!["0.5"; 384].join(",")
+                ),
+            )
+            .execute()
+            .await
+            .unwrap();
+        // A bad file leaves the manifest pending; valid-file work remains durable.
+        let bad = seed(dir.path(), "bad", "tags: invalid");
+        let report = upgrade_library(dir.path(), &lock).await;
+        assert!(!report.errors.is_empty());
+        assert_eq!(fs::read(&path).unwrap(), original);
+        let first = xaga_core::tags::Tags::read(dir.path()).await.unwrap();
+        assert_eq!(first.tags.len(), 6);
+        assert!(
+            library::LibraryManifest::read(dir.path())
+                .unwrap()
+                .unwrap()
+                .migration_target()
+                .is_some()
+        );
+        fs::write(&bad, document("tags: [Research]")).unwrap();
+        let report = upgrade_library(dir.path(), &lock).await;
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(
+            xaga_core::tags::Tags::read(dir.path()).await.unwrap(),
+            first
+        );
+        db.reload().await.unwrap();
+        let row = db.get_entry("entry").await.unwrap().unwrap();
+        assert_eq!(
+            row.tags,
+            first
+                .resolver()
+                .resolve(
+                    &[
+                        "Research", "unread", "bookmark", "pinned", "straße", "strasse"
+                    ]
+                    .map(String::from)
+                )
+                .unwrap()
+        );
+        assert_eq!(row.vector, Some(vec![0.5; 384]));
+        assert_eq!(row.topics, vec!["keep-topic"]);
+        assert_eq!(row.color, "green");
+        assert!(row.is_unread);
+        assert_eq!(fs::read(&path).unwrap(), original);
+        assert!(upgrade_library(dir.path(), &lock).await.errors.is_empty());
+    }
+
+    #[tokio::test]
+    async fn tag_upgrade_012_only_interprets_markers_owned_by_that_format() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        library::LibraryManifest::begin_upgrade(
+            dir.path(),
+            library::LibraryVersion::new(0, 12),
+            &lock,
+        )
+        .unwrap()
+        .unwrap()
+        .complete()
+        .unwrap();
+        let path = seed(dir.path(), "entry", "tags: [unread, pinned, bookmark]");
+        let report = upgrade_library(dir.path(), &lock).await;
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        let (fm, _) = xaga_core::md::parse_document(&fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(fm.tags, vec!["unread", "pinned"]);
+        assert_eq!(fm.color.as_deref(), Some("blue"));
+        assert_ne!(fm.is_unread, Some(true));
+        let registry = xaga_core::tags::Tags::read(dir.path()).await.unwrap();
+        assert_eq!(registry.tags.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn tag_upgrade_crosses_batch_boundary_and_keeps_first_discovered_spelling() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        library::LibraryManifest::begin_upgrade(
+            dir.path(),
+            library::LibraryVersion::new(0, 13),
+            &lock,
+        )
+        .unwrap()
+        .unwrap()
+        .complete()
+        .unwrap();
+        let cache = table(dir.path(), &lock).await;
+        seed_cache_rows(&cache, 0, 1027).await;
+        let initial_version = cache.version().await.unwrap();
+        for i in 0..1027 {
+            seed(
+                dir.path(),
+                &format!("{i:012x}"),
+                &format!("tags: [Research, RESEARCH, tag-{i}]"),
+            );
+        }
+        let report = upgrade_library(dir.path(), &lock).await;
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        let tags = xaga_core::tags::Tags::read(dir.path()).await.unwrap();
+        assert_eq!(tags.tags.len(), 1028);
+        let research = tags.tags.iter().find(|t| t.name == "Research").unwrap();
+        for i in [0, 1023, 1024, 1026] {
+            let db = EmbeddingsDb::open_writer(dir.path(), &lock).await.unwrap();
+            let row = db.get_entry(&format!("{i:012x}")).await.unwrap().unwrap();
+            assert_eq!(
+                row.tags,
+                tags.resolver()
+                    .resolve(&["Research".into(), format!("tag-{i}")])
+                    .unwrap()
+            );
+            assert_eq!(row.tags[0], research.id);
+        }
+        let cache = table(dir.path(), &lock).await;
+        let cache_versions = cache.version().await.unwrap() - initial_version;
+        assert!(
+            cache_versions <= 32,
+            "two batches plus scalar-index maintenance produced {cache_versions} versions; writes must not scale with distinct tag combinations"
+        );
+        assert!(
+            library::LibraryManifest::read(dir.path())
+                .unwrap()
+                .unwrap()
+                .matches_version(crate::cmd::library::application_version())
+        );
+    }
+    async fn seed_cache_rows(cache: &lancedb::Table, start: usize, end: usize) {
+        use arrow_array::builder::{ListBuilder, StringBuilder};
+        use arrow_array::{
+            ArrayRef, BooleanArray, FixedSizeListArray, Float32Array, RecordBatch,
+            RecordBatchIterator, StringArray,
+        };
+        use arrow_schema::DataType;
+        use std::sync::Arc;
+        let schema = cache.schema().await.unwrap();
+        let count = end - start;
+        let columns: Vec<ArrayRef> = schema
+            .fields()
+            .iter()
+            .map(|field| match field.data_type() {
+                DataType::Utf8 => {
+                    let values: Vec<String> = (start..end)
+                        .map(|i| match field.name().as_str() {
+                            "id" => format!("{i:012x}"),
+                            "kind" => "entry".into(),
+                            "source" => "https://example.org/a".into(),
+                            "title" => "Example".into(),
+                            "checksum" => "preserved-checksum".into(),
+                            "color" => "green".into(),
+                            _ => String::new(),
+                        })
+                        .collect();
+                    Arc::new(StringArray::from(values)) as ArrayRef
+                }
+                DataType::Boolean => {
+                    Arc::new(BooleanArray::from(vec![field.name() == "is_unread"; count]))
+                        as ArrayRef
+                }
+                DataType::List(_) => {
+                    let mut values = ListBuilder::new(StringBuilder::new());
+                    for _ in 0..count {
+                        if field.name() == "topics" {
+                            values.values().append_value("preserved-topic");
+                        }
+                        values.append(true);
+                    }
+                    Arc::new(values.finish()) as ArrayRef
+                }
+                DataType::FixedSizeList(item, width) => {
+                    let values =
+                        Float32Array::from_iter_values((0..count * *width as usize).map(|j| {
+                            let n = (start as u32)
+                                .wrapping_mul(*width as u32)
+                                .wrapping_add(j as u32);
+                            n.wrapping_mul(2654435761) as f32 / u32::MAX as f32
+                        }));
+                    Arc::new(FixedSizeListArray::new(
+                        item.clone(),
+                        *width,
+                        Arc::new(values),
+                        None,
+                    )) as ArrayRef
+                }
+                other => arrow_array::new_null_array(other, count),
+            })
+            .collect();
+        let batch = RecordBatch::try_new(schema.clone(), columns).unwrap();
+        cache
+            .add(
+                Box::new(RecordBatchIterator::new(vec![Ok(batch)], schema.clone()))
+                    as Box<dyn arrow_array::RecordBatchReader + Send>,
+            )
+            .execute()
+            .await
+            .unwrap();
+    }
+
+    /// One scaling point. Run in separate processes for independent peak-memory
+    /// measurements; fixture creation is excluded from migration elapsed time.
+    #[tokio::test]
+    #[ignore = "explicit migration scaling measurement; set XAGA_TAG_SCALE_ROWS"]
+    async fn tag_upgrade_scaling_point() {
+        use std::time::Instant;
+        let rows: usize = std::env::var("XAGA_TAG_SCALE_ROWS")
+            .unwrap_or_else(|_| "8192".into())
+            .parse()
+            .unwrap();
+        assert!(rows > 0);
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        let lock = library::acquire_lock(lib).unwrap();
+        library::LibraryManifest::begin_upgrade(lib, library::LibraryVersion::new(0, 13), &lock)
+            .unwrap()
+            .unwrap()
+            .complete()
+            .unwrap();
+        fs::create_dir_all(library::entries_dir(lib)).unwrap();
+        let raw = document("tags: [Research, RESEARCH]\nis_unread: true\ncolor: green");
+        let cache = table(lib, &lock).await;
+        let setup = Instant::now();
+        for start in (0..rows).step_by(32768) {
+            let end = (start + 32768).min(rows);
+            for i in start..end {
+                fs::write(library::entry_path(lib, &format!("{i:012x}")), &raw).unwrap();
+            }
+            seed_cache_rows(&cache, start, end).await;
+        }
+        for column in ["id", "kind"] {
+            cache
+                .create_index(&[column], lancedb::index::Index::BTree(Default::default()))
+                .execute()
+                .await
+                .unwrap();
+        }
+        println!(
+            "tag_curve rows={rows} setup_ms={}",
+            setup.elapsed().as_millis()
+        );
+        let initial_version = cache.version().await.unwrap();
+        let started = Instant::now();
+        let report = upgrade_library(lib, &lock).await;
+        let migration_ms = started.elapsed().as_millis();
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(report.unchanged, rows);
+        assert_eq!(report.reconciled, rows);
+        let registry = xaga_core::tags::Tags::read(lib).await.unwrap();
+        assert_eq!(registry.tags.len(), 1);
+        assert_eq!(registry.tags[0].name, "Research");
+        let cache = table(lib, &lock).await;
+        let commits = cache.version().await.unwrap() - initial_version;
+        assert_eq!(cache.count_rows(Some(format!("kind = 'entry' AND array_contains(tags, '{}') AND array_length(tags) = 1 AND color = 'green' AND is_unread = true AND checksum = 'preserved-checksum' AND array_contains(topics, 'preserved-topic')", registry.tags[0].id))).await.unwrap(), rows);
+        assert_eq!(
+            fs::read_to_string(library::entry_path(lib, "000000000000")).unwrap(),
+            raw
+        );
+        assert!(
+            library::LibraryManifest::read(lib)
+                .unwrap()
+                .unwrap()
+                .matches_version(crate::cmd::library::application_version())
+        );
+        let started = Instant::now();
+        let retry = upgrade_library(lib, &lock).await;
+        assert!(retry.errors.is_empty());
+        assert_eq!(retry.reconciled, 0);
+        assert_eq!(xaga_core::tags::Tags::read(lib).await.unwrap(), registry);
+        println!(
+            "tag_curve rows={rows} migration_ms={migration_ms} cache_commits={commits} completed_retry_ms={}",
+            started.elapsed().as_millis()
+        );
     }
 }

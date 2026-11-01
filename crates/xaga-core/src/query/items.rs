@@ -181,6 +181,7 @@ mod tests {
     fn embedded_entry(id: &str, kind: Kind, similarity: f32) -> EmbeddedEntry {
         EmbeddedEntry {
             entry: Entry {
+                tags: None,
                 id: id.to_string(),
                 url: format!("https://index.example/{id}"),
                 title: format!("Indexed {id}"),

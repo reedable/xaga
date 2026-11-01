@@ -155,7 +155,10 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
             };
 
             let embedder = make_embedder().await;
-            let report = recovery::inline::run_full_recovery(data_dir, &embedder, &db).await;
+            let writer = xaga_core::library_writer::LibraryWriter::start(data_dir.into(), _lock);
+            let report =
+                recovery::inline::run_full_recovery(data_dir, &embedder, &db, &writer).await;
+            writer.shutdown().await;
 
             println!(
                 "recover: {} embedded, {} deleted",
@@ -188,7 +191,10 @@ pub async fn handle(cmd: EmbeddingsCommand, data_dir: &Path) {
             };
 
             let embedder = make_embedder().await;
-            let report = recovery::inline::run_full_recovery(data_dir, &embedder, &db).await;
+            let writer = xaga_core::library_writer::LibraryWriter::start(data_dir.into(), _lock);
+            let report =
+                recovery::inline::run_full_recovery(data_dir, &embedder, &db, &writer).await;
+            writer.shutdown().await;
 
             println!(
                 "reindex: {} embedded, {} deleted",

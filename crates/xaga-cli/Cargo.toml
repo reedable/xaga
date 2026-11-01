@@ -20,5 +20,8 @@ noyalib = "0.0.15"
 lancedb = "0.33"
 tempfile = "3"
 
+arrow-array = "58"
+arrow-schema = "58"
+
 [dev-dependencies]
 flume = "0.11"

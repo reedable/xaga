@@ -1,9 +1,9 @@
 # Upgrading a library
 
 Use the CLI matching the application version you intend to run. The current
-0.13.0-dev CLI upgrades libraries to **0.13**, including color-backed article
-bookmarks, Site pin support, central pin storage, and the reading-state conversion
-below.
+0.14.0-dev CLI upgrades libraries to **0.14**, including tag identities, color-backed
+article bookmarks, Site pin support, central pin storage, and the reading-state
+conversion below.
 
 ## Reading-state format (0.10)
 
@@ -15,7 +15,7 @@ version metadata, or an incomplete upgrade select read-only mode at startup.
 
 1. Close Xaga and other processes using the library.
 2. Back up the library before changing its format.
-3. Run the CLI matching your destination app version (currently 0.13.0-dev):
+3. Run the CLI matching your destination app version (currently 0.14.0-dev):
 
    ```sh
    xaga-cli --data-dir /path/to/library library upgrade
@@ -78,7 +78,7 @@ entity files or cache rows. Cache pin reconciliation applies only to Entry,
 Feed, and Topic targets. Existing Site pins are retained on interrupted retries.
 
 Site pins require library version **0.12** or later. Successful conversion
-advances the manifest to the running CLI’s major/minor version, currently **0.13**.
+advances the manifest to the running CLI’s major/minor version, currently **0.14**.
 Version-mismatched libraries open read-only until explicitly upgraded; the app
 never relabels them automatically. Returning to an older app format requires
 restoring the complete backup.
@@ -135,5 +135,18 @@ Startup never rewrites the version to make it match. Read-only opening does not
 perform recovery or initialize an absent cache. Explicit CLI upgrade errors still
 produce a nonzero exit status; close library users before upgrading.
 
-Migration targets use the running CLI’s major/minor version, currently **0.13**;
+Migration targets use the running CLI’s major/minor version, currently **0.14**;
 there is no separately assigned library revision number.
+
+## Entry tag identities (0.14)
+
+The 0.14 upgrade registers existing article labels in `tags.yaml` and resolves
+LanceDB assignments to stable UUIDs. Existing 0.13 article files retain their
+readable labels and other content. Tags named `unread`, `bookmark`, and `pinned`
+are organizational labels in a 0.13 library and are preserved.
+
+Run the 0.14 CLI's `library upgrade` with the app closed. Definitions are durable
+before cache conversion. An interrupted or failed upgrade retains its pending
+version; rerun the same command to reuse IDs and finish reconciliation. No app
+startup conversion is performed. The storage format includes rename, merge, and
+deletion records for subsequent tag functionality; see [Tag storage](architecture/tags.md).
