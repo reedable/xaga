@@ -1,10 +1,10 @@
 import {
-  InfoOutlined,
   ArrowBack,
   ArrowForward,
   Bookmark,
   Circle,
   CircleOutlined,
+  InfoOutlined,
   Language,
   OpenInNew,
   PushPin,
@@ -16,24 +16,24 @@ import {
 import { Collapse, IconButton, LinearProgress, Popover, Tooltip } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import QRCode from "react-qr-code";
+import colorCss from "../../colors.module.css";
 import useAbortController from "../../hooks/useAbortController";
 import { useArticles } from "../../hooks/useArticles";
 import { useBookmarks } from "../../hooks/useBookmarks";
+import { useEmbeddingStartupState } from "../../hooks/useEmbeddingStartupState";
 import useEntries from "../../hooks/useEntries";
+import { useErrorSink } from "../../hooks/useErrorSink";
 import { subscribe, useEvents } from "../../hooks/useEvents";
 import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
-import { useErrorSink } from "../../hooks/useErrorSink";
+import useRouter from "../../hooks/useRouter";
+import { usePlatform } from "../../platform/Platform";
+import { usePins } from "../../providers/PinsContext";
+import { isArticle, type Entry } from "../../types";
 import FaviconLoadError from "../../utils/FaviconLoadError";
 import { isLocalFaviconReference } from "../../utils/isLocalFaviconReference";
-import useRouter from "../../hooks/useRouter";
-import { usePins } from "../../providers/PinsContext";
-import { usePlatform } from "../../platform/Platform";
-import { useEmbeddingStartupState } from "../../hooks/useEmbeddingStartupState";
-import { isArticle, type Entry } from "../../types";
 import { AddressBar } from "../AddressBar";
-import css from "./Toolbar.module.css";
 import { ColorSwatches } from "./ColorSwatches";
-import colorCss from "../../colors.module.css";
+import css from "./Toolbar.module.css";
 
 interface ToolbarProps {
   reload: (() => void) | null;
@@ -402,7 +402,6 @@ export function Toolbar({
                 />
               </div>
             </Popover>
-
 
             <Tooltip title={entry?.isPinned ? "Remove from Shortcuts" : "Add to Shortcuts"}>
               <span>
