@@ -16,8 +16,7 @@ use crate::types::{Article, Feed, Topic};
 use super::model::{Embedder, load_default_embedder};
 use super::pipeline::{
     add_topic_member, apply_state, embed_entry_vector, embed_feed, embed_topic_vector,
-    reconcile_topic_membership, remove_topic_member, sync_annotations, sync_entry_row,
-    sync_topic_row,
+    reconcile_topic_membership, remove_topic_member, sync_annotations, sync_topic_row,
 };
 use super::{EmbeddingsDb, EmbeddingsError};
 use crate::fs::FileLock;
@@ -54,6 +53,7 @@ pub struct StatePatch {
 /// variant — sets its priority, so the same action may ride different tiers
 /// (e.g. `EmbedEntry` on Regular from a live save, Maintenance from recovery).
 pub enum Job {
+    SetEntryTag(crate::tags::EntryTagChange),
     // ── Non-embedding CRUD & state sync (no ONNX) ──
     /// Write-through state update from a user action. Carries the new value(s);
     /// the consumer applies them and emits the UI change event — no file read.
@@ -410,6 +410,12 @@ async fn run_loop(
     // compact.
     let mut since_interactive_compact: usize = 0;
 
+    // Retain committed deltas over older queued snapshots until the next recovery
+    // takes a fresh source snapshot. At most one value per touched Entry/tag pair.
+    let mut tag_changes: std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, bool>,
+    > = Default::default();
     loop {
         // Queues are defined per *priority*, and the definition and examples of each level of
         // priority are provided below.
@@ -427,6 +433,7 @@ async fn run_loop(
             //      StartRecovery, Reset, Shutdown, etc
             result = control_rx.recv_async() => match result {
                 Ok(Job::StartRecovery { library_dir: dir }) => {
+                    tag_changes.clear();
                     log::info!("embedding service: starting recovery for {}", dir.display());
                     crate::recovery::dispatch::dispatch_recovery(&dir, &db, &embedder, &senders, &writer).await;
                     log::info!("embedding service: recovery dispatch complete");
@@ -454,7 +461,7 @@ async fn run_loop(
                 Ok(job) => {
                     // Interactive has items — mark that a post-drain compact is needed.
                     compacted_after_drain = false;
-                    handle_job(job, Tier::Interactive, &db, &embedder, &senders, &events).await;
+                    handle_job(job, Tier::Interactive, &db, &embedder, &senders, &events, &mut tag_changes).await;
 
                     // Compact on the Interactive path itself: a sustained Interactive stream never
                     // yields to the Regular/Maintenance arms (biased select), so their compaction
@@ -481,7 +488,7 @@ async fn run_loop(
 
             result = regular_rx.recv_async() => match result {
                 Ok(job) => {
-                    handle_job(job, Tier::Regular, &db, &embedder, &senders, &events).await;
+                    handle_job(job, Tier::Regular, &db, &embedder, &senders, &events, &mut tag_changes).await;
                     since_compact += 1;
 
                     if since_compact >= BACKGROUND_COMPACT_INTERVAL {
@@ -520,7 +527,7 @@ async fn run_loop(
                     }
 
                     let resets_interval = matches!(job, Job::Compact | Job::EnsureIndexes);
-                    handle_job(job, Tier::Maintenance, &db, &embedder, &senders, &events).await;
+                    handle_job(job, Tier::Maintenance, &db, &embedder, &senders, &events, &mut tag_changes).await;
 
                     if resets_interval {
                         since_compact = 0;
@@ -558,8 +565,18 @@ async fn handle_job(
     embedder: &Arc<Embedder>,
     senders: &Senders,
     events: &Events,
+    tag_changes: &mut std::collections::HashMap<String, std::collections::HashMap<String, bool>>,
 ) {
     match job {
+        Job::SetEntryTag(change) => {
+            tag_changes
+                .entry(change.entry_id.clone())
+                .or_default()
+                .insert(change.tag_id.clone(), change.assigned);
+            if let Err(e) = super::pipeline::apply_entry_tag(db, &change).await {
+                log::error!("set_entry_tag failed id={}: {e}", change.entry_id);
+            }
+        }
         Job::SyncState { entity, state } => {
             if let Err(e) = apply_state(
                 db,
@@ -576,12 +593,13 @@ async fn handle_job(
             }
         }
         Job::UpsertEntry { article } => {
-            if let Err(e) = sync_entry_row(
+            if let Err(e) = super::pipeline::sync_entry_row_with_tag_changes(
                 &article,
                 db,
                 &events.unread,
                 &events.bookmarked,
                 &events.annotation,
+                tag_changes.get(&article.meta.id),
             )
             .await
             {
@@ -644,11 +662,15 @@ async fn handle_job(
             }
         }
         Job::Delete { entity } => {
+            tag_changes.remove(&entity.id);
             if let Err(e) = db.delete_by_id(&entity.id).await {
                 log::error!("delete failed id={}: {e}", entity.id);
             }
         }
         Job::DeleteBatch { ids } => {
+            for id in &ids {
+                tag_changes.remove(id);
+            }
             log::debug!("delete batch n={}", ids.len());
             if let Err(e) = db.delete_by_ids(&ids).await {
                 log::error!("delete_batch failed: {e}");

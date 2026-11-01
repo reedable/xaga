@@ -235,45 +235,47 @@ pub async fn read_entry_tags(library_dir: &Path, id: &str) -> Result<Vec<String>
     Ok(fm.tags)
 }
 
-/// Replaces the tags on an entry's frontmatter and writes the file back.
-/// The caller queues the corresponding LanceDB state update.
-#[cfg(test)]
+/// Applies one assignment inside the Entry lane, preserving other file metadata.
+pub(crate) async fn set_entry_tag(
+    library_dir: &Path,
+    id: &str,
+    tag_id: &str,
+    assigned: bool,
+    token: WriteToken,
+) -> Result<crate::tags::EntryTagChange, crate::library_writer::WriterError> {
+    let registry = crate::tags::Tags::read(library_dir).await?;
+    let (canonical_id, name) = registry.assignment(tag_id)?;
+    let mut names = read_entry_tags(library_dir, id).await?;
+    let resolver = registry.resolver();
+    names.retain(|label| {
+        resolver
+            .resolve(std::slice::from_ref(label))
+            .map(|ids| !ids.contains(&canonical_id))
+            .unwrap_or(true)
+    });
+    if assigned {
+        names.push(name);
+    }
+    set_entry_tags(library_dir, id, names, token).await?;
+    Ok(crate::tags::EntryTagChange {
+        entry_id: id.into(),
+        tag_id: canonical_id,
+        assigned,
+    })
+}
+
+/// Replaces only readable assignments; all other frontmatter and body bytes survive.
 pub(crate) async fn set_entry_tags(
     library_dir: &Path,
     id: &str,
     tags: Vec<String>,
-    _token: WriteToken,
-) -> Result<Entry, EntryError> {
+    token: WriteToken,
+) -> Result<(), EntryError> {
     let path = find_entry_path(library_dir, id)
         .await
         .ok_or(EntryError::NotFound)?;
-    let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, body) = crate::md::parse_document(&raw)?;
-    // Derive the return value from the new tags, but patch only the tags field
-    // on disk so all other frontmatter and the exact body survive.
-    let article = Article {
-        meta: Entry {
-            tags: Some(tags.clone()),
-            id: id.to_string(),
-            url: fm.source,
-            title: fm.title,
-            created_at: fm.created_at,
-            published_at: fm.published_at,
-            updated_at: fm.updated_at,
-            description: fm.summary,
-            is_unread: fm.is_unread.unwrap_or(false),
-            is_pinned: crate::pins::Pins::read(library_dir)
-                .await
-                .map_err(std::io::Error::other)?
-                .contains(&crate::pins::PinTarget::Entry { id: id.into() }),
-            color: fm.color,
-        },
-        content: body,
-        annotations: fm.annotations,
-        favicon: fm.favicon,
-    };
-    super::documents::upsert(&path, &[("tags", serde_json::json!(tags))], None, _token).await?;
-    Ok(article.meta)
+    super::documents::upsert(&path, &[("tags", serde_json::json!(tags))], None, token).await?;
+    Ok(())
 }
 
 fn validate_color(color: Option<&str>) -> Result<(), EntryError> {
@@ -331,6 +333,95 @@ pub(crate) async fn set_entry_unread(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn tag_assignment_preserves_document_and_serializes_with_other_entry_writes() {
+        use crate::library_writer::{LibraryWriter, Tier};
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::library::entry_path(dir.path(), "saved");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let original = "---\nsource: https://example.org/a\ntitle: Saved\ncustom: retained\ncolor: blue\ntags: [external]\n---\n\nExact **body**\n";
+        std::fs::write(&path, original).unwrap();
+        let writer = LibraryWriter::start(
+            dir.path().into(),
+            crate::library::acquire_lock(dir.path()).unwrap(),
+        );
+        let a = writer.create_tag("Research".into()).await.unwrap().tag;
+        let b = writer.create_tag("Work".into()).await.unwrap().tag;
+        let (add_a, add_b, unread) = tokio::join!(
+            writer.set_entry_tag("saved".into(), a.id.clone(), true),
+            writer.set_entry_tag("saved".into(), b.id.clone(), true),
+            writer.set_entry_unread(Tier::Interactive, "saved".into(), true),
+        );
+        add_a.unwrap();
+        add_b.unwrap();
+        unread.unwrap();
+        let names = read_entry_tags(dir.path(), "saved").await.unwrap();
+        assert!(names.contains(&"external".into()));
+        assert!(names.contains(&a.name));
+        assert!(names.contains(&b.name));
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("custom: retained"));
+        assert!(raw.ends_with("Exact **body**\n"));
+        let entry = read_entry(dir.path(), "saved").await.unwrap();
+        assert!(entry.is_unread);
+        assert_eq!(entry.color.as_deref(), Some("blue"));
+        writer
+            .set_entry_tag("saved".into(), a.id.clone(), true)
+            .await
+            .unwrap();
+        assert_eq!(
+            read_entry_tags(dir.path(), "saved")
+                .await
+                .unwrap()
+                .iter()
+                .filter(|n| *n == &a.name)
+                .count(),
+            1
+        );
+        // External capitalization is removed by identity, preserving other labels.
+        std::fs::write(
+            &path,
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .replace("Research", "RESEARCH"),
+        )
+        .unwrap();
+        writer
+            .set_entry_tag("saved".into(), a.id, false)
+            .await
+            .unwrap();
+        assert_eq!(
+            read_entry_tags(dir.path(), "saved").await.unwrap(),
+            vec!["external", "Work"]
+        );
+        writer
+            .set_entry_tag("saved".into(), b.id, false)
+            .await
+            .unwrap();
+        assert_eq!(
+            crate::tags::Tags::read(dir.path())
+                .await
+                .unwrap()
+                .tags
+                .len(),
+            2
+        );
+        let before = std::fs::read(&path).unwrap();
+        assert!(
+            writer
+                .set_entry_tag("saved".into(), "unknown".into(), true)
+                .await
+                .is_err()
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        writer.shutdown().await;
+        drop(writer);
+        assert_eq!(
+            read_entry_tags(dir.path(), "saved").await.unwrap(),
+            vec!["external"]
+        );
+    }
 
     #[tokio::test]
     async fn colors_roundtrip_remove_and_preserve_unrelated_document_bytes() {

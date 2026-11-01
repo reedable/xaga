@@ -1,10 +1,10 @@
 # Inspector
 
 One shared Inspector implementation provides Related and Topics views for Articles and
-Annotations. It replaces the standalone Add to Topic button and its drawer.
-The Tags tab is hidden until Entry tag assignment is available.
-Its future picker belongs in this shared Inspector
-content, not in a separate toolbar or drawer implementation.
+Annotations, and a Tags view for Articles. It replaces the standalone Add to Topic
+button and its drawer. The Tags view uses searchable selectable chips for
+immediate assignment/removal and creation with assignment, through the
+[Entry assignment API](tags.md#entry-assignment-api).
 
 ## Target and view state
 
@@ -51,7 +51,7 @@ Annotation drawer's tab does not change the Article panel's selected tab. This
 state is not a library setting and is not persisted. Opening or closing the Inspector does not
 navigate or remount the article reader, preserving its current reading position.
 
-Both tab panels keep their children mounted while the Inspector remains open.
+The tab panels keep their children mounted while the Inspector remains open.
 Switching tabs hides content without resetting its local state or restarting the
 target lookup. The lookup follows target identity, and changing the inspected
 target replaces the child state so it cannot leak between Articles or Annotations.

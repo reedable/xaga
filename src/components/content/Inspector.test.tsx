@@ -22,6 +22,7 @@ vi.mock("./TopicMembership", () => ({
     <div>Topics for {item.id}</div>
   ),
 }));
+vi.mock("./EntryTags", () => ({ EntryTags: ({ entryId }: { entryId: string }) => <div>Tags for {entryId}</div> }));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 let root: ReturnType<typeof createRoot>;
 let container: HTMLDivElement;
@@ -122,9 +123,9 @@ it("reports a failed article lookup without leaving a loading status indefinitel
   expect(container.querySelector('[role="status"]')).toBeNull();
 });
 
-it("does not expose the unfinished Tags view", async () => {
+it("exposes the Article Tags view", async () => {
   await act(async () => root.render(<Host articleId="article" />));
-  expect(tab("Tags")).toBeUndefined();
+  expect(tab("Tags")).toBeTruthy();
 });
 
 it("reads Annotation Topics from its parent file without substituting Article memberships", async () => {
@@ -138,6 +139,7 @@ it("reads Annotation Topics from its parent file without substituting Article me
     )
   );
   expect(container.textContent).toContain("Related to annotation");
+  expect(tab("Tags")).toBeUndefined();
   await act(async () =>
     root.render(
       <Inspector target={target} view="topics" onViewChange={() => {}} />

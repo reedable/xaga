@@ -36,7 +36,6 @@ with normal article reading and stable browsing context.
 
 ## Remaining work
 
-- Complete Entry assignment first.
 - Implement query predicates and suitable list-tag indexing; verify query plans
   and performance at the multi-million-entry design target.
 - Connect platform queries, navigation scope, ListView loading, and live updates.
@@ -50,7 +49,7 @@ with normal article reading and stable browsing context.
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Tag creation API](../../docs/architecture/tags.md#app-creation-api).
-- [Entry Tag Assignment](../active/enhancement__tags--entry-assignment.md) — prerequisite.
+- [Entry assignment API](../../docs/architecture/tags.md#entry-assignment-api).
 - `src/components/list/ItemList.tsx`
 - `src/components/sidebar/Sidebar.tsx`
 - `src/hooks/useRouter.tsx`

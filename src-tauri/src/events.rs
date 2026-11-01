@@ -129,6 +129,7 @@ impl AppEvent {
 pub(crate) fn emit_domain<R: Runtime>(target: &impl Emitter<R>, event: DomainEvent) {
     let name = event.name();
     let result = match &event {
+        DomainEvent::EntryTagsChanged(change) => target.emit(name, change),
         DomainEvent::TagCreated(tag) => target.emit(name, tag),
         DomainEvent::UnreadChanged(entry) => target.emit(name, entry),
         DomainEvent::BookmarkChanged(entry) => target.emit(name, entry),
@@ -241,7 +242,8 @@ mod tests {
 
     /// The domain names pinned by xaga-core's `events::tests`; listed here to
     /// assert cross-enum uniqueness without reconstructing domain payloads.
-    const DOMAIN_NAMES: [&str; 14] = [
+    const DOMAIN_NAMES: [&str; 15] = [
+        "entry-tags:changed",
         "tag:created",
         "unread:changed",
         "bookmark:changed",

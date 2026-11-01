@@ -362,3 +362,21 @@ it("delivers committed tag creation payloads and retains listener cleanup", asyn
   expect(listener).toHaveBeenCalledWith(tag);
   expect(result).toBe(cleanup);
 });
+
+it("carries an Entry assignment delta through commands and notifications", async () => {
+  const platform = new TauriPlatform();
+  const tagId = "46fa4a27-1ddf-448a-a5e6-95691a29c602";
+  const change = { entryId: "article", tagId, assigned: true };
+  invokeMock.mockResolvedValueOnce([tagId]);
+  expect(await platform.readEntryTags(new AbortController().signal, "article")).toEqual([tagId]);
+  expect(invokeMock).toHaveBeenLastCalledWith("read_entry_tags", { id: "article" });
+  invokeMock.mockResolvedValueOnce(change);
+  expect(await platform.setEntryTag("article", tagId, true)).toEqual(change);
+  expect(invokeMock).toHaveBeenLastCalledWith("set_entry_tag", { id: "article", tagId, assigned: true });
+  const { listen } = await import("@tauri-apps/api/event");
+  const callback = vi.fn();
+  await platform.onEntryTagsChanged(callback);
+  const handler = vi.mocked(listen).mock.calls.findLast(([name]) => name === "entry-tags:changed")![1];
+  handler({ event: "entry-tags:changed", id: 0, payload: change });
+  expect(callback).toHaveBeenCalledWith(change);
+});

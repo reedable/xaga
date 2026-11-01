@@ -6,9 +6,10 @@ import { useErrorSink } from "../../hooks/useErrorSink";
 import type { Annotation, Entry } from "../../types";
 import { RelatedItemList } from "./RelatedItemList";
 import { TopicMembership } from "./TopicMembership";
+import { EntryTags } from "./EntryTags";
 import css from "./Inspector.module.css";
 
-export type InspectorView = "related" | "topics";
+export type InspectorView = "related" | "topics" | "tags";
 
 export type InspectorTarget = { entryId: string; annotationId?: string };
 
@@ -83,15 +84,12 @@ export function Inspector({
           <Tab disableRipple value="related" label="Related" />
           <Tab disableRipple value="topics" label="Topics" />
 
-          {/* TODO Implement me!
-          <Tab
-            disableRipple
-            value="tags"
-            label="Tags"
-            disabled
-          />
-          */}
+          {!annotationId && <Tab disableRipple value="tags" label="Tags" />}
         </TabList>
+
+        {!annotationId && <TabPanel className={css.View} value="tags" tabIndex={0} keepMounted>
+          <EntryTags key={entryId} entryId={entryId} />
+        </TabPanel>}
 
         <TabPanel className={css.View} value="related" tabIndex={0} keepMounted>
           <RelatedItemList key={targetKey} itemId={itemId} />

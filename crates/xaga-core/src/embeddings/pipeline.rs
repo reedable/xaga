@@ -264,6 +264,18 @@ pub async fn sync_entry_row(
     bookmarked_tx: &flume::Sender<Entry>,
     annotation_tx: &flume::Sender<ListItem>,
 ) -> Result<(), EmbeddingsError> {
+    sync_entry_row_with_tag_changes(article, db, unread_tx, bookmarked_tx, annotation_tx, None)
+        .await
+}
+
+pub(crate) async fn sync_entry_row_with_tag_changes(
+    article: &Article,
+    db: &EmbeddingsDb,
+    unread_tx: &flume::Sender<Entry>,
+    bookmarked_tx: &flume::Sender<Entry>,
+    annotation_tx: &flume::Sender<ListItem>,
+    tag_changes: Option<&std::collections::HashMap<String, bool>>,
+) -> Result<(), EmbeddingsError> {
     let id = article.meta.id.clone();
 
     let existing = db.get_entry(&id).await?;
@@ -287,6 +299,14 @@ pub async fn sync_entry_row(
             .unwrap_or_default(),
     };
     let mut row = EmbeddingEntry::from_article(article, vector, tags);
+    if let Some(changes) = tag_changes {
+        for (id, assigned) in changes {
+            row.tags.retain(|existing| existing != id);
+            if *assigned {
+                row.tags.push(id.clone());
+            }
+        }
+    }
 
     // Write only when something the row stores actually changed.
     let changed = match &existing {
@@ -672,6 +692,21 @@ pub(crate) async fn apply_state(
     Ok(())
 }
 
+/// Apply the carried assignment delta without replacing content or other state.
+pub(crate) async fn apply_entry_tag(
+    db: &EmbeddingsDb,
+    change: &crate::tags::EntryTagChange,
+) -> Result<(), EmbeddingsError> {
+    let Some(mut row) = db.get_entry(&change.entry_id).await? else {
+        return Ok(()); // Recovery reconstructs missing rows from source files.
+    };
+    row.tags.retain(|id| id != &change.tag_id);
+    if change.assigned {
+        row.tags.push(change.tag_id.clone());
+    }
+    db.upsert(row).await
+}
+
 /// Precise single-member reverse-index add: sets `topic_id` on `member_id`'s `topics`
 /// column and advances the topic row's `items` base so a later full reconcile sees no
 /// spurious delta. The O(1) counterpart to [`reconcile_topic_membership`] for a live add.
@@ -781,6 +816,109 @@ mod tests {
             annotations,
             favicon: None,
         }
+    }
+
+    #[tokio::test]
+    async fn tag_assignment_delta_preserves_vectors_state_and_rebuilds_from_source_labels() {
+        let dir = tempfile::tempdir().unwrap();
+        let writer = crate::library_writer::LibraryWriter::start(
+            dir.path().into(),
+            crate::library::acquire_lock(dir.path()).unwrap(),
+        );
+        let registry = writer
+            .discover_tags(vec!["Research".into(), "Work".into()])
+            .await
+            .unwrap();
+        let db = EmbeddingsDb::open_writer(dir.path(), &writer.lock())
+            .await
+            .unwrap();
+        let mut source = article(vec![]);
+        source.meta.tags = Some(vec!["Research".into()]);
+        source.meta.is_unread = true;
+        source.meta.color = Some("blue".into());
+        let (events, _) = flume::unbounded();
+        let (annotations, _) = flume::unbounded();
+        sync_entry_row(&source, &db, &events, &events, &annotations)
+            .await
+            .unwrap();
+        let mut row = db.get_entry(&source.meta.id).await.unwrap().unwrap();
+        row.vector = Some(vec![0.5; 384]);
+        db.upsert(row).await.unwrap();
+        let row = db.get_entry(&source.meta.id).await.unwrap().unwrap();
+        let change = crate::tags::EntryTagChange {
+            entry_id: source.meta.id.clone(),
+            tag_id: registry.tags[1].id.clone(),
+            assigned: true,
+        };
+        apply_entry_tag(&db, &change).await.unwrap();
+        apply_entry_tag(&db, &change).await.unwrap();
+        let after = db.get_entry(&source.meta.id).await.unwrap().unwrap();
+        assert_eq!(
+            after.tags,
+            registry
+                .tags
+                .iter()
+                .map(|t| t.id.clone())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(after.vector, row.vector);
+        assert_eq!(after.checksum, row.checksum);
+        assert_eq!(after.is_unread, row.is_unread);
+        assert_eq!(after.color, row.color);
+        let changes = std::collections::HashMap::from([(change.tag_id.clone(), true)]);
+        sync_entry_row_with_tag_changes(
+            &source,
+            &db,
+            &events,
+            &events,
+            &annotations,
+            Some(&changes),
+        )
+        .await
+        .unwrap();
+        assert!(
+            db.get_entry(&source.meta.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .tags
+                .contains(&change.tag_id)
+        );
+
+        apply_entry_tag(
+            &db,
+            &crate::tags::EntryTagChange {
+                assigned: false,
+                ..change
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            db.get_entry(&source.meta.id).await.unwrap().unwrap().tags,
+            row.tags
+        );
+        source.meta.tags = Some(vec!["Work".into()]);
+        sync_entry_row(&source, &db, &events, &events, &annotations)
+            .await
+            .unwrap();
+        assert_eq!(
+            db.get_entry(&source.meta.id).await.unwrap().unwrap().tags,
+            vec![registry.tags[1].id.clone()]
+        );
+        source.meta.tags = Some(vec![]);
+        sync_entry_row(&source, &db, &events, &events, &annotations)
+            .await
+            .unwrap();
+        assert!(
+            db.get_entry(&source.meta.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .tags
+                .is_empty()
+        );
+        writer.shutdown().await;
     }
 
     #[tokio::test]

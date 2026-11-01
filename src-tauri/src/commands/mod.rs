@@ -23,6 +23,7 @@ pub(crate) use crate::command_policy::is_invoke_allowed;
 /// in-command on a read-only instance so reading stays seamless.
 pub(crate) const WRITE_COMMANDS: &[&str] = &[
     "create_tag",
+    "set_entry_tag",
     "save_article",
     "create_article",
     "add_annotation",

@@ -90,6 +90,8 @@
     "commands::pins::list_pins",
     "commands::pins::set_pin",
     "commands::tags::list_tags",
-    "commands::tags::create_tag"
+    "commands::tags::create_tag",
+    "commands::tags::read_entry_tags",
+    "commands::tags::set_entry_tag"
   ]
 }

@@ -47,6 +47,40 @@ validation failures. Read-only creation uses `library:read-only`.
 The Entry assignment picker consumes these APIs; creation alone does not assign
 a tag to an Entry. These APIs use the existing 0.14 storage format.
 
+## Entry assignment API
+
+The Article Inspector's Tags view provides searchable toggle chips and creation
+with immediate assignment. Assigned chips are filled, carry a check mark, and
+expose `aria-pressed`; unassigned chips are outlined. Chip buttons support keyboard
+activation. There is no Save action. Read-only inspection shows assignments while
+disabling assignment and creation. Annotation inspection does not offer Tags.
+
+`readEntryTags(signal, id)` reads assignments from the Entry file and resolves
+them to registry IDs, independently of index readiness. `setEntryTag(id, tagId,
+assigned)` adds or removes one identity. Native commands are `read_entry_tags`
+and `set_entry_tag`. The writer rereads assignments inside the Entry lane,
+resolves aliases, and patches only readable tag labels. Other assignments,
+frontmatter, annotations, and body bytes survive. Adding uses the registry's
+current assignment name; removing retains the definition. Unknown identities
+and assignment to a deleting identity are refused before writing.
+
+After a successful file write, the command carries `EntryTagChange` (`entryId`,
+`tagId`, `assigned`) to an Interactive indexing job and the typed
+`entry-tags:changed` event. Failed writes emit no assignment event. The index
+applies that delta to the existing row without changing content, vectors,
+reading/color state, or other assignments. Missing rows remain recovery's
+responsibility. The service retains the latest committed delta per touched
+Entry/tag pair over older queued article snapshots, including when such a
+snapshot first creates the row. Starting recovery clears that session projection
+before taking a fresh source snapshot; it is not persisted. Entry deletion also
+discards its retained deltas.
+
+Inspector instances subscribe before loading assignments and apply intervening
+committed deltas over the initial result. Navigation discards old target results;
+closing the Inspector does not cancel an assignment already requested. External
+article edits remain a recovery concern, following the existing reconciliation
+contract. This API uses the existing 0.14 storage format.
+
 ## Mutation and indexing
 
 Runtime registry mutations use one library-writer lane, `tags`, under the library

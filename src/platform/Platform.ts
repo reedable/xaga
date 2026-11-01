@@ -3,6 +3,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import { createContext, useContext } from "react";
 import type {
   Tag,
+  EntryTagChange,
   ArticleDiagnostic,
   ArticleDiagnosticOutcome,
   ArticleDiagnosticStep,
@@ -340,6 +341,9 @@ export interface Platform {
     callback: (view: HtmlReaderView) => void
   ): Promise<UnlistenFn>;
 
+  readEntryTags(signal: AbortSignal, id: string): Promise<string[]>;
+  setEntryTag(id: string, tagId: string, assigned: boolean): Promise<EntryTagChange>;
+  onEntryTagsChanged(callback: (change: EntryTagChange) => void): Promise<UnlistenFn>;
   listTags(signal: AbortSignal): Promise<Tag[]>;
   createTag(name: string): Promise<Tag>;
   onTagCreated(callback: (tag: Tag) => void): Promise<UnlistenFn>;

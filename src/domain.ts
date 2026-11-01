@@ -32,6 +32,9 @@ export type Collection<T extends Item & { __kind: string }> = Countable & {
   members: Reference<T>[];
 };
 
+// Committed assignment intent carried to consumers.
+export type EntryTagChange = { entryId: string; tagId: string; assigned: boolean };
+
 // Library-scoped organizational label; identity is independent of display name.
 export type Tag = { id: string; name: string };
 

@@ -39,6 +39,52 @@ async fn create_in_library(
     Ok(result.tag)
 }
 
+#[tauri::command]
+pub async fn read_entry_tags(
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, AppError> {
+    let dir = state.library_path();
+    let names = xaga_core::persistence::entries::read_entry_tags(&dir, &id).await?;
+    Ok(Tags::read(&dir).await?.resolver().resolve(&names)?)
+}
+
+#[tauri::command]
+pub async fn set_entry_tag(
+    id: String,
+    tag_id: String,
+    assigned: bool,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<xaga_core::tags::EntryTagChange, AppError> {
+    assign_in_library(id, tag_id, assigned, state.writer(), |change| {
+        state.enqueue(
+            xaga_core::embeddings::Tier::Interactive,
+            xaga_core::embeddings::Job::SetEntryTag(change.clone()),
+        );
+        crate::events::emit_domain(
+            &app,
+            xaga_core::events::DomainEvent::EntryTagsChanged(change),
+        );
+    })
+    .await
+}
+
+async fn assign_in_library(
+    id: String,
+    tag_id: String,
+    assigned: bool,
+    writer: Option<LibraryWriter>,
+    on_committed: impl FnOnce(xaga_core::tags::EntryTagChange),
+) -> Result<xaga_core::tags::EntryTagChange, AppError> {
+    let change = writer
+        .ok_or(AppError::ReadOnly)?
+        .set_entry_tag(id, tag_id, assigned)
+        .await?;
+    on_committed(change.clone());
+    Ok(change)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -47,6 +93,58 @@ mod tests {
 
     fn writer(dir: &std::path::Path) -> LibraryWriter {
         LibraryWriter::start(dir.into(), xaga_core::library::acquire_lock(dir).unwrap())
+    }
+
+    #[tokio::test]
+    async fn assignment_notifies_only_after_commit_and_refuses_readonly_or_foreign_tags() {
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        let writer = writer(first.path());
+        let other = self::writer(second.path());
+        let path = xaga_core::library::entry_path(first.path(), "article");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            "---\nsource: https://example.org/a\ntitle: Saved\n---\nBody\n",
+        )
+        .unwrap();
+        let tag = writer.create_tag("Research".into()).await.unwrap().tag;
+        let foreign = other.create_tag("Other".into()).await.unwrap().tag;
+        let notified = Arc::new(Mutex::new(Vec::new()));
+        let change = assign_in_library(
+            "article".into(),
+            tag.id.clone(),
+            true,
+            Some(writer.clone()),
+            |change| {
+                assert!(std::fs::read_to_string(&path).unwrap().contains("Research"));
+                notified.lock().unwrap().push(change);
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(change.tag_id, tag.id);
+        assert!(change.assigned);
+        assert_eq!(notified.lock().unwrap().len(), 1);
+        let before = std::fs::read(&path).unwrap();
+        for (id, tag_id, writer) in [
+            ("article", tag.id.clone(), None),
+            ("article", foreign.id, Some(writer.clone())),
+            ("missing", tag.id.clone(), Some(writer.clone())),
+        ] {
+            assert!(
+                assign_in_library(id.into(), tag_id, false, writer, |_| panic!(
+                    "failed assignment notification"
+                ))
+                .await
+                .is_err()
+            );
+        }
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(super::super::is_write_refused("set_entry_tag", true));
+        assert!(!super::super::is_write_refused("read_entry_tags", true));
+        writer.shutdown().await;
+        other.shutdown().await;
     }
 
     #[tokio::test]

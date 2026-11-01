@@ -74,6 +74,15 @@ pub struct Tags {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) transitions: Vec<Transition>,
 }
+/// A committed single-tag assignment change, shared with indexing and the UI.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryTagChange {
+    pub entry_id: String,
+    pub tag_id: String,
+    pub assigned: bool,
+}
+
 /// The committed lookup/creation result used by the command's notification.
 #[derive(Debug)]
 pub struct TagCreation {
@@ -604,7 +613,7 @@ impl Tags {
         for transition in &self.transitions {
             match transition {
                 Transition::Delete { id: deleting, .. } if deleting == id => {
-                    return Err(invalid("tag is deleting"));
+                    return Err(TagsError::Deleting);
                 }
                 Transition::Merge {
                     source_id,

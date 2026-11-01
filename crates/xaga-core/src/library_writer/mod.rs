@@ -195,6 +195,12 @@ enum Op {
         annotation_id: String,
         resp: oneshot::Sender<Result<Article, WriterError>>,
     },
+    SetEntryTag {
+        id: String,
+        tag_id: String,
+        assigned: bool,
+        resp: oneshot::Sender<Result<crate::tags::EntryTagChange, WriterError>>,
+    },
     SetEntryUnread {
         id: String,
         is_unread: bool,
@@ -317,6 +323,7 @@ impl Op {
             | Op::AddAnnotation { article_id: id, .. }
             | Op::ReplaceAnnotation { article_id: id, .. }
             | Op::RemoveAnnotation { article_id: id, .. }
+            | Op::SetEntryTag { id, .. }
             | Op::SetEntryUnread { id, .. }
             | Op::SetEntryColor { id, .. } => format!("entry/{id}"),
             Op::SavePdf { url, .. }
@@ -355,6 +362,7 @@ impl Op {
             Op::AddAnnotation { .. } => "add_annotation",
             Op::ReplaceAnnotation { .. } => "replace_annotation",
             Op::RemoveAnnotation { .. } => "remove_annotation",
+            Op::SetEntryTag { .. } => "set_entry_tag",
             Op::SetEntryUnread { .. } => "set_entry_unread",
             Op::SetEntryColor { .. } => "set_entry_color",
             Op::BookmarkEntry { .. } => "bookmark_entry",
@@ -387,6 +395,7 @@ impl Op {
             Op::AddAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::ReplaceAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RemoveAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::SetEntryTag { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryUnread { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryColor { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::BookmarkEntry { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -545,6 +554,16 @@ impl Op {
                         .await
                         .map_err(WriterError::from);
                 let _ = resp.send(r);
+            }
+            Op::SetEntryTag {
+                id,
+                tag_id,
+                assigned,
+                resp,
+            } => {
+                let result =
+                    entries::set_entry_tag(library_dir, &id, &tag_id, assigned, token).await;
+                let _ = resp.send(result);
             }
             Op::SetEntryUnread {
                 id,
@@ -1035,6 +1054,26 @@ impl LibraryWriter {
             resp,
         };
         self.submit(tier, op, rx).await
+    }
+
+    pub async fn set_entry_tag(
+        &self,
+        id: String,
+        tag_id: String,
+        assigned: bool,
+    ) -> Result<crate::tags::EntryTagChange, WriterError> {
+        let (resp, rx) = oneshot::channel();
+        self.submit(
+            Tier::Interactive,
+            Op::SetEntryTag {
+                id,
+                tag_id,
+                assigned,
+                resp,
+            },
+            rx,
+        )
+        .await
     }
 
     /// Sets reading state without changing organizational tags.
