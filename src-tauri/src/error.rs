@@ -117,6 +117,7 @@ macro_rules! app_from_domain {
     };
 }
 app_from_domain!(
+    xaga_core::tags::TagsError,
     xaga_core::pins::PinsError,
     EntryError,
     FeedError,

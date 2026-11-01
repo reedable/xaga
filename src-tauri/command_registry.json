@@ -88,6 +88,8 @@
     "commands::entries::list_pinned_entries",
     "commands::entries::read_article_scope",
     "commands::pins::list_pins",
-    "commands::pins::set_pin"
+    "commands::pins::set_pin",
+    "commands::tags::list_tags",
+    "commands::tags::create_tag"
   ]
 }

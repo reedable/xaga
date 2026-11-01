@@ -332,3 +332,33 @@ it("carries Site pin hostnames through discovery and generic mutation commands",
     platform.listPins(new AbortController().signal)
   ).rejects.toThrow();
 });
+
+it("creates and reads tag identities through the native boundary", async () => {
+  const platform = new TauriPlatform();
+  const tag = { id: "46fa4a27-1ddf-448a-a5e6-95691a29c602", name: "Research" };
+  invokeMock.mockResolvedValueOnce(tag);
+  expect(await platform.createTag(" RESEARCH ")).toEqual(tag);
+  expect(invokeMock).toHaveBeenLastCalledWith("create_tag", { name: " RESEARCH " });
+  invokeMock.mockResolvedValueOnce([tag]);
+  expect(await platform.listTags(new AbortController().signal)).toEqual([tag]);
+  expect(invokeMock).toHaveBeenLastCalledWith("list_tags");
+  invokeMock.mockResolvedValueOnce([{ ...tag, id: "research" }]);
+  await expect(platform.listTags(new AbortController().signal)).rejects.toThrow();
+  const controller = new AbortController();
+  controller.abort();
+  invokeMock.mockResolvedValueOnce([tag]);
+  await expect(platform.listTags(controller.signal)).rejects.toThrow();
+});
+
+it("delivers committed tag creation payloads and retains listener cleanup", async () => {
+  const { listen } = await import("@tauri-apps/api/event");
+  const cleanup = vi.fn();
+  vi.mocked(listen).mockResolvedValueOnce(cleanup);
+  const listener = vi.fn();
+  const result = await new TauriPlatform().onTagCreated(listener);
+  const handler = vi.mocked(listen).mock.calls.findLast(([name]) => name === "tag:created")![1];
+  const tag = { id: "46fa4a27-1ddf-448a-a5e6-95691a29c602", name: "Research" };
+  handler({ event: "tag:created", id: 0, payload: tag });
+  expect(listener).toHaveBeenCalledWith(tag);
+  expect(result).toBe(cleanup);
+});

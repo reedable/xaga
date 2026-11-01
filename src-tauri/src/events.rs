@@ -129,6 +129,7 @@ impl AppEvent {
 pub(crate) fn emit_domain<R: Runtime>(target: &impl Emitter<R>, event: DomainEvent) {
     let name = event.name();
     let result = match &event {
+        DomainEvent::TagCreated(tag) => target.emit(name, tag),
         DomainEvent::UnreadChanged(entry) => target.emit(name, entry),
         DomainEvent::BookmarkChanged(entry) => target.emit(name, entry),
         DomainEvent::EntryPinChanged(entry) => target.emit(name, entry),
@@ -240,16 +241,21 @@ mod tests {
 
     /// The domain names pinned by xaga-core's `events::tests`; listed here to
     /// assert cross-enum uniqueness without reconstructing domain payloads.
-    const DOMAIN_NAMES: [&str; 9] = [
+    const DOMAIN_NAMES: [&str; 14] = [
+        "tag:created",
         "unread:changed",
         "bookmark:changed",
+        "entry-pin:changed",
+        "pin:changed",
         "annotation:changed",
         "annotation:replaced",
         "annotation:removed",
+        "favicon:changed",
         "embedding:changed",
         "embedding:shutdown",
         "feed:refreshed",
         "feeds:refreshed",
+        "library:mode-changed",
     ];
 
     /// App names match the expected list exactly (a rename is a deliberate

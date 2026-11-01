@@ -74,8 +74,19 @@ pub struct Tags {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) transitions: Vec<Transition>,
 }
+/// The committed lookup/creation result used by the command's notification.
+#[derive(Debug)]
+pub struct TagCreation {
+    pub tag: Tag,
+    pub created: bool,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum TagsError {
+    #[error("empty tag name")]
+    InvalidName,
+    #[error("tag is being deleted")]
+    Deleting,
     #[error("tag store IO: {0}")]
     Io(#[from] std::io::Error),
     #[error("invalid tag store: {0}")]
@@ -83,10 +94,18 @@ pub enum TagsError {
 }
 impl TagsError {
     pub fn code(&self) -> &'static str {
-        "tags:invalid-store"
+        match self {
+            Self::InvalidName => "tags:invalid-name",
+            Self::Deleting => "tags:deleting",
+            _ => "tags:invalid-store",
+        }
     }
     pub fn user_message(&self) -> &'static str {
-        "Couldn't read or save tags."
+        match self {
+            Self::InvalidName => "Enter a tag name.",
+            Self::Deleting => "This tag is being deleted.",
+            _ => "Couldn't read or save tags.",
+        }
     }
 }
 fn invalid(message: &str) -> TagsError {
@@ -345,6 +364,31 @@ impl Tags {
             .map(|t| t.ids()[0].clone())
             .collect()
     }
+    pub(crate) async fn create_write(
+        dir: &Path,
+        name: &str,
+        _token: crate::library_writer::WriteToken,
+    ) -> Result<TagCreation, TagsError> {
+        valid_name(name).map_err(|_| TagsError::InvalidName)?;
+        let mut store = Self::read(dir).await?;
+        if let Some(existing) = store.resolver().names.get(&key(name)) {
+            let id = existing.as_deref().ok_or(TagsError::Deleting)?;
+            let (id, name) = store.assignment(id)?;
+            return Ok(TagCreation {
+                tag: Tag { id, name },
+                created: false,
+            });
+        }
+        store.discover(&[name.to_owned()])?;
+        let tag = store.tags.last().unwrap().clone();
+        crate::fs::write_atomic_async(
+            crate::library::tags_path(dir),
+            store.serialize()?.into_bytes(),
+        )
+        .await?;
+        Ok(TagCreation { tag, created: true })
+    }
+
     pub(crate) async fn discover_write(
         dir: &Path,
         names: &[String],
@@ -555,13 +599,6 @@ impl Tags {
             .ok_or_else(|| invalid("stale or unknown tag transition"))
     }
     /// Returns the canonical readable name for a new assignment; deletion refuses it.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "0.14 storage foundation; production transition commands are implemented separately"
-        )
-    )]
     pub(crate) fn assignment(&self, id: &str) -> Result<(String, String), TagsError> {
         let tag = self.tag(id)?;
         for transition in &self.transitions {
@@ -732,6 +769,70 @@ mod tests {
             .unwrap();
         (dir, writer, store)
     }
+    #[tokio::test]
+    async fn tag_creation_shares_discovery_identity_and_respects_reserved_names() {
+        let (dir, writer, _) = fixture(&[]).await;
+        let (created, discovered) = tokio::join!(
+            writer.create_tag("Research".into()),
+            writer.discover_tags(vec!["RESEARCH".into()])
+        );
+        let created = created.unwrap();
+        let discovered = discovered.unwrap();
+        assert_eq!(discovered.tags.len(), 1);
+        assert_eq!(created.tag.id, discovered.tags[0].id);
+        let id = created.tag.id;
+        writer
+            .mutate_tags(Mutation::Rename {
+                id: id.clone(),
+                name: "After".into(),
+            })
+            .await
+            .unwrap();
+        let before = tokio::fs::read(library::tags_path(dir.path()))
+            .await
+            .unwrap();
+        let alias = writer.create_tag("Research".into()).await.unwrap();
+        assert!(!alias.created);
+        assert_eq!(
+            alias.tag,
+            Tag {
+                id: id.clone(),
+                name: "After".into()
+            }
+        );
+        assert_eq!(
+            tokio::fs::read(library::tags_path(dir.path()))
+                .await
+                .unwrap(),
+            before
+        );
+        writer
+            .mutate_tags(Mutation::Checkpoint {
+                id: id.clone(),
+                revision: 0,
+                phase: Phase::Files,
+                progress: complete(),
+            })
+            .await
+            .unwrap();
+        writer
+            .mutate_tags(Mutation::Finish {
+                id: id.clone(),
+                revision: 1,
+            })
+            .await
+            .unwrap();
+        writer.mutate_tags(Mutation::Delete { id }).await.unwrap();
+        assert!(matches!(
+            writer.create_tag("After".into()).await,
+            Err(crate::library_writer::WriterError::Tags(
+                TagsError::Deleting
+            ))
+        ));
+        assert_eq!(Tags::read(dir.path()).await.unwrap().tags.len(), 1);
+        writer.shutdown().await;
+    }
+
     #[tokio::test]
     async fn tag_creation_comparison_concurrency_and_restart() {
         let (dir, writer, _) = fixture(&[

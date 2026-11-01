@@ -7,6 +7,7 @@ pub mod library;
 pub mod pins;
 pub mod settings;
 pub mod sites;
+pub mod tags;
 pub mod topics;
 
 #[cfg(test)]
@@ -15,12 +16,13 @@ pub(crate) use crate::command_policy::is_invoke_allowed;
 
 /// Commands that write to the open library (`.md` entity files and/or LanceDB). A
 /// read-only instance — one that did not win the library lock at startup — has these
-/// rejected centrally in the global invoke handler with a typed `E_READ_ONLY` error, the
+/// rejected centrally in the global invoke handler with a typed `library:read-only` error, the
 /// same single-choke-point pattern as [`is_invoke_allowed`]. Account/app-scoped writes
 /// (`set_library`, `settings::set_*`) are NOT library writes and are not listed.
 /// `read_article` is not listed either: its incidental mark-read write is skipped
 /// in-command on a read-only instance so reading stays seamless.
 pub(crate) const WRITE_COMMANDS: &[&str] = &[
+    "create_tag",
     "save_article",
     "create_article",
     "add_annotation",

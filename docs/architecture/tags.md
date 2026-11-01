@@ -25,6 +25,28 @@ the number of article assignments. Malformed YAML, anchors, unknown fields,
 nonregular stores, and invalid records are refused before mutation. Serialization
 does not preserve YAML comments or formatting.
 
+## App creation API
+
+The platform exposes `listTags(signal)`, `createTag(name)`, and `onTagCreated`.
+Native commands are `list_tags` and `create_tag`; both return tag definitions
+with `id` and `name`. Listing reads the current registry, including external
+edits, and is allowed in read-only mode. Creation requires the library writer.
+
+Creation atomically looks up or creates a definition in the registry writer lane.
+A matching name returns the existing identity and display spelling without
+rewriting the store. Active rename/merge aliases return the canonical assignment
+identity and name; deleting names are refused. A new definition emits typed
+`tag:created` with the committed definition after its atomic write succeeds.
+Duplicates and failed writes emit no creation event. Discovery during indexing
+uses the same identity lookup but does not emit this command's creation event.
+
+Errors use `tags:invalid-name` for an empty trimmed name, `tags:deleting` for a
+name reserved by deletion, and `tags:invalid-store` for registry read/write or
+validation failures. Read-only creation uses `library:read-only`.
+
+The Entry assignment picker consumes these APIs; creation alone does not assign
+a tag to an Entry. These APIs use the existing 0.14 storage format.
+
 ## Mutation and indexing
 
 Runtime registry mutations use one library-writer lane, `tags`, under the library

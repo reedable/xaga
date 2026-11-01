@@ -22,6 +22,7 @@ pub struct AnnotationReplacement {
 }
 
 pub enum DomainEvent {
+    TagCreated(crate::tags::Tag),
     /// An entry's unread state changed.
     UnreadChanged(Entry),
     /// An entry's bookmark state (or color) changed.
@@ -37,7 +38,9 @@ pub enum DomainEvent {
     /// An annotation's identity changed while preserving its place in collections.
     AnnotationReplaced(AnnotationReplacement),
     /// An annotation was removed.
-    AnnotationRemoved { id: String },
+    AnnotationRemoved {
+        id: String,
+    },
     /// An article save changed or refreshed its locally persisted favicon.
     FaviconChanged(Article),
     /// The embedding service drained a queue tier; embeddings-backed reads
@@ -53,7 +56,9 @@ pub enum DomainEvent {
     /// library writer: write commands are refused (`E_READ_ONLY`) and the UI
     /// disables write affordances. Mode is fixed for the process's lifetime — a library
     /// switch restarts the process.
-    LibraryModeChanged { is_library_read_only: bool },
+    LibraryModeChanged {
+        is_library_read_only: bool,
+    },
 }
 
 impl DomainEvent {
@@ -61,6 +66,7 @@ impl DomainEvent {
     /// `src/platform/events.ts` (`DOMAIN_EVENT`).
     pub fn name(&self) -> &'static str {
         match self {
+            DomainEvent::TagCreated(_) => "tag:created",
             DomainEvent::UnreadChanged(_) => "unread:changed",
             DomainEvent::BookmarkChanged(_) => "bookmark:changed",
             DomainEvent::EntryPinChanged(_) => "entry-pin:changed",
@@ -100,6 +106,10 @@ mod tests {
 
     fn all_variants() -> Vec<DomainEvent> {
         vec![
+            DomainEvent::TagCreated(crate::tags::Tag {
+                id: String::new(),
+                name: String::new(),
+            }),
             DomainEvent::UnreadChanged(entry()),
             DomainEvent::BookmarkChanged(entry()),
             DomainEvent::EntryPinChanged(entry()),
@@ -152,6 +162,9 @@ mod tests {
                 members: Vec::new(),
             }),
             DomainEvent::FeedsRefreshed,
+            DomainEvent::LibraryModeChanged {
+                is_library_read_only: false,
+            },
         ]
     }
 
@@ -163,6 +176,7 @@ mod tests {
         assert_eq!(
             names,
             [
+                "tag:created",
                 "unread:changed",
                 "bookmark:changed",
                 "entry-pin:changed",
@@ -175,6 +189,7 @@ mod tests {
                 "embedding:shutdown",
                 "feed:refreshed",
                 "feeds:refreshed",
+                "library:mode-changed",
             ]
         );
         let unique: std::collections::HashSet<&str> = names.iter().copied().collect();

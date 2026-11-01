@@ -1,3 +1,4 @@
+import type { Tag } from "../domain";
 import type { PinTarget, PinChange } from "../pins";
 import type { ImageRecovery } from "../text/imageReferences";
 import { isAppError, type AppError as SerializedAppError } from "./errors";
@@ -371,6 +372,8 @@ const toAnyEmbeddedItem = (data: z.infer<typeof AnyEmbeddedItemSchema>) => {
 listen<string>("loader:will-unload" satisfies AppEvent, (e) => {
   console.log("[diagnostic] loader:will-unload", e.payload);
 });
+
+const tagSchema = z.object({ id: z.uuid({ version: "v4" }), name: z.string().min(1) });
 
 export class TauriPlatform implements Platform {
   async onError(
@@ -1536,6 +1539,21 @@ export class TauriPlatform implements Platform {
     const name = "clear_webview_history";
     const invoker = decorate(invoke).with(logged, { logger, name });
     return invoker<void>(name);
+  }
+
+  async listTags(signal: AbortSignal): Promise<Tag[]> {
+    const result = await invoke("list_tags");
+    signal.throwIfAborted();
+    return z.array(tagSchema).parse(result);
+  }
+
+  async createTag(name: string): Promise<Tag> {
+    return tagSchema.parse(await invoke("create_tag", { name }));
+  }
+
+  onTagCreated(callback: (tag: Tag) => void): Promise<UnlistenFn> {
+    const name: DomainEvent = "tag:created";
+    return listen<unknown>(name, (event) => callback(tagSchema.parse(event.payload)));
   }
 
   async listPins(signal: AbortSignal): Promise<PinTarget[]> {

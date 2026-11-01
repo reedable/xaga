@@ -132,6 +132,10 @@ pub enum BookmarkOutcome {
 /// recovery's concern). Each variant mirrors a persistence write function and carries its
 /// typed responder.
 enum Op {
+    CreateTag {
+        name: String,
+        resp: oneshot::Sender<Result<crate::tags::TagCreation, WriterError>>,
+    },
     MutateTags {
         mutation: crate::tags::Mutation,
         resp: oneshot::Sender<Result<crate::tags::Tags, WriterError>>,
@@ -305,7 +309,7 @@ impl Op {
     /// topic sharing an id string can never collide onto one lane.
     fn lane_key(&self) -> String {
         match self {
-            Op::DiscoverTags { .. } | Op::MutateTags { .. } => "tags".into(),
+            Op::CreateTag { .. } | Op::DiscoverTags { .. } | Op::MutateTags { .. } => "tags".into(),
             Op::SetPin { .. } => "pins".into(),
             Op::RecoverImages { id, .. }
             | Op::RepairSummary { id, .. }
@@ -340,6 +344,7 @@ impl Op {
     /// Short name for shutdown-drop logging.
     fn label(&self) -> &'static str {
         match self {
+            Op::CreateTag { .. } => "create_tag",
             Op::MutateTags { .. } => "mutate_tags",
             Op::DiscoverTags { .. } => "discover_tags",
             Op::SetPin { .. } => "set_pin",
@@ -370,6 +375,7 @@ impl Op {
     /// Refuse without executing (Regular backlog at shutdown).
     fn refuse(self) {
         match self {
+            Op::CreateTag { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::MutateTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::DiscoverTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetPin { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -404,6 +410,12 @@ impl Op {
     /// Runs inside the op's lane: nothing else touches this file concurrently.
     async fn execute(self, library_dir: &std::path::Path, token: WriteToken) {
         match self {
+            Op::CreateTag { name, resp } => {
+                let result = crate::tags::Tags::create_write(library_dir, &name, token)
+                    .await
+                    .map_err(WriterError::from);
+                let _ = resp.send(result);
+            }
             Op::MutateTags { mutation, resp } => {
                 let result = crate::tags::Tags::mutate_write(library_dir, mutation, token)
                     .await
@@ -1183,6 +1195,12 @@ impl LibraryWriter {
     ) -> Result<crate::tags::Tags, WriterError> {
         let (resp, rx) = oneshot::channel();
         self.submit(Tier::Interactive, Op::MutateTags { mutation, resp }, rx)
+            .await
+    }
+
+    pub async fn create_tag(&self, name: String) -> Result<crate::tags::TagCreation, WriterError> {
+        let (resp, rx) = oneshot::channel();
+        self.submit(Tier::Interactive, Op::CreateTag { name, resp }, rx)
             .await
     }
 

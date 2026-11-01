@@ -12,7 +12,8 @@ readable names in article files and stable IDs in LanceDB.
 - Support selecting existing tags and removing assignments without deleting the
   tag definition or changing other article metadata.
 - Own the complete Entry tag picker, including creation of a tag through the
-  identity/creation story's API and immediate assignment in the same workflow.
+  [creation API](../../docs/architecture/tags.md#app-creation-api) and immediate
+  assignment in the same workflow.
 - Place the picker in the article Inspector's Tags view. Present a searchable
   set of selectable MUI chips, with clearly distinguishable assigned and
   unassigned states, rather than a checkbox list resembling Topics.
@@ -32,7 +33,6 @@ readable names in article files and stable IDs in LanceDB.
 
 ## Remaining work
 
-- Complete tag identity and creation first.
 - Add the Entry tag picker to the shared Inspector and expose its Tags tab when
   assignment is available.
 - Implement assignment commands, typed index/UI updates, and frontend state.
@@ -46,7 +46,7 @@ readable names in article files and stable IDs in LanceDB.
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Inspector](../../docs/architecture/article_inspector.md)
-- [Tag Identity and Creation](../active/enhancement__tags--identity-and-creation.md) — prerequisite.
+- [Tag creation API](../../docs/architecture/tags.md#app-creation-api).
 - [Annotation Inspector](../ideas/annotation-inspector.md)
 - `crates/xaga-core/src/persistence/entries.rs`
 - `crates/xaga-core/src/library_writer/mod.rs`

@@ -39,7 +39,7 @@ name, preserving Entry assignments while consolidating tag identity.
 
 ## Remaining work
 
-- Complete tag identity/creation, Entry assignment, and resumable rename first.
+- Complete Entry assignment and resumable rename first.
 - Connect collision confirmation and commands to stored merge transitions;
   implement bounded file/index conversion, recovery resumption, and finalization.
 - Verify source-only, destination-only, and dual-tag assignments, cancellation,
@@ -52,7 +52,7 @@ name, preserving Entry assignments while consolidating tag identity.
 - [Tag storage](../../docs/architecture/tags.md).
 - [Organization model](../../docs/architecture/organization_model.md)
 
-- [Tag Identity and Creation](../active/enhancement__tags--identity-and-creation.md)
+- [Tag creation API](../../docs/architecture/tags.md#app-creation-api)
 - [Entry Tag Assignment](enhancement__tags--entry-assignment.md)
 - [Rename Tags](enhancement__tags--rename.md) — prerequisite.
 - [Delete Tags](enhancement__tags--delete.md)

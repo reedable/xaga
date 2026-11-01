@@ -33,7 +33,7 @@ safe completion of any library-wide cleanup.
 
 ## Remaining work
 
-- Complete identity/creation and Entry assignment first. Coordinate with tag
+- Complete Entry assignment first. Coordinate with tag
   browsing and rename transitions wherever those stories are implemented.
 - Coordinate deletion with in-progress rename/merge state so each operation's
   assignment and name-resolution guarantees remain intact.
@@ -48,7 +48,7 @@ safe completion of any library-wide cleanup.
 - [Tag storage](../../docs/architecture/tags.md).
 - [Organization model](../../docs/architecture/organization_model.md)
 
-- [Tag Identity and Creation](../active/enhancement__tags--identity-and-creation.md) — prerequisite.
+- [Tag creation API](../../docs/architecture/tags.md#app-creation-api).
 - [Entry Tag Assignment](enhancement__tags--entry-assignment.md) — prerequisite.
 - [Rename Tags](enhancement__tags--rename.md)
 - `crates/xaga-core/src/library_writer/mod.rs`

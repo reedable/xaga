@@ -36,7 +36,7 @@ with normal article reading and stable browsing context.
 
 ## Remaining work
 
-- Complete tag identity/creation and Entry assignment first.
+- Complete Entry assignment first.
 - Implement query predicates and suitable list-tag indexing; verify query plans
   and performance at the multi-million-entry design target.
 - Connect platform queries, navigation scope, ListView loading, and live updates.
@@ -49,7 +49,7 @@ with normal article reading and stable browsing context.
 - [Tag storage](../../docs/architecture/tags.md).
 - [Organization model](../../docs/architecture/organization_model.md)
 
-- [Tag Identity and Creation](../active/enhancement__tags--identity-and-creation.md) — prerequisite.
+- [Tag creation API](../../docs/architecture/tags.md#app-creation-api).
 - [Entry Tag Assignment](enhancement__tags--entry-assignment.md) — prerequisite.
 - `src/components/list/ItemList.tsx`
 - `src/components/sidebar/Sidebar.tsx`

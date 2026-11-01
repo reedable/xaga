@@ -2,6 +2,7 @@ import type { ImageRecovery } from "../text/imageReferences";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { createContext, useContext } from "react";
 import type {
+  Tag,
   ArticleDiagnostic,
   ArticleDiagnosticOutcome,
   ArticleDiagnosticStep,
@@ -338,6 +339,10 @@ export interface Platform {
   onHtmlReaderViewChangedFromSettings(
     callback: (view: HtmlReaderView) => void
   ): Promise<UnlistenFn>;
+
+  listTags(signal: AbortSignal): Promise<Tag[]>;
+  createTag(name: string): Promise<Tag>;
+  onTagCreated(callback: (tag: Tag) => void): Promise<UnlistenFn>;
 
   // Membership is owned by the library pin store and projected onto targets.
   listPins(signal: AbortSignal): Promise<PinTarget[]>;

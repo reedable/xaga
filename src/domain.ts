@@ -32,6 +32,9 @@ export type Collection<T extends Item & { __kind: string }> = Countable & {
   members: Reference<T>[];
 };
 
+// Library-scoped organizational label; identity is independent of display name.
+export type Tag = { id: string; name: string };
+
 // ── Entities (all branded) ──────────────────────────────────────────────────────
 export type Entry = WebResource &
   Pinnable &

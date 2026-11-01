@@ -11,6 +11,9 @@
 // other fails a test rather than reaching the UI as an unhandled string.
 
 export const ERROR_CODE = [
+  "tags:invalid-store",
+  "tags:invalid-name",
+  "tags:deleting",
   "pins:invalid-store",
   // DomainError — EntryError
   "entry:io",

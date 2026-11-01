@@ -46,7 +46,7 @@ avoiding mass rewrites of LanceDB assignments.
 
 ## Remaining work
 
-- Complete identity/creation and Entry assignment first; coordinate displayed
+- Complete Entry assignment first; coordinate displayed
   name updates with tag browsing when that story is implemented.
 - Implement the shared rename dialog, sidebar/responsive actions menus, and
   per-tag transition indication.
@@ -62,7 +62,7 @@ avoiding mass rewrites of LanceDB assignments.
 - [Tag storage](../../docs/architecture/tags.md).
 - [Organization model](../../docs/architecture/organization_model.md)
 
-- [Tag Identity and Creation](../active/enhancement__tags--identity-and-creation.md) — prerequisite.
+- [Tag creation API](../../docs/architecture/tags.md#app-creation-api).
 - [Entry Tag Assignment](enhancement__tags--entry-assignment.md) — prerequisite.
 - [Merge Tags](enhancement__tags--merge.md) — adds explicit collision merging
   after rename; until then collisions remain a hard stop.
