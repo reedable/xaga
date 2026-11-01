@@ -1,4 +1,11 @@
 li.SortControl {
+
+  /*
+    TODO Sidebar sort control per list is hidden for now. Its proper placement,
+         look & feel, and user interaction is TBD.
+  */
+  display: none;
+
   line-height: inherit;
   margin-bottom: 0.5rem;
   padding-left: 44px;

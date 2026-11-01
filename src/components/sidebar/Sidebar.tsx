@@ -132,6 +132,40 @@ export function Sidebar({
         </Tooltip>
       </div>
 
+      <TextField
+        className={css.FilterInput}
+        placeholder="Filter collections…"
+        fullWidth
+        size="small"
+        value={filter}
+        variant="standard"
+        onChange={(event) => onFilterChange(event.target.value)}
+        slotProps={{
+          htmlInput: { "aria-label": "Filter collections" },
+          input: {
+            endAdornment: filter ? (
+              <InputAdornment position="end">
+                <Tooltip title="Clear filter">
+                  <IconButton
+                    aria-label="Clear collection filter"
+                    edge="end"
+                    size="small"
+                    onClick={() => onFilterChange("")}
+                  >
+                    <Clear fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ) : null,
+          },
+        }}
+        sx={{
+          "& .MuiInputBase-input": {
+            paddingLeft: "0px !important",
+          },
+        }}
+      />
+
       <ShortcutList
         shortcuts={filteredPinnedCollections}
         missing={missingPins.filter((pin) =>
@@ -175,7 +209,7 @@ export function Sidebar({
         TODO Consider placing a filter button next to refresh at the top to
              reveal filter input. More user interaction, but more intuitive.
       */}
-      <TextField
+      {/* <TextField
         className={css.FilterInput}
         placeholder="Filter collections…"
         fullWidth
@@ -207,7 +241,7 @@ export function Sidebar({
             paddingLeft: "0px !important",
           },
         }}
-      />
+      /> */}
     </div>
   );
 }

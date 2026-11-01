@@ -1,5 +1,6 @@
 .ExpandableListHeaderWrapper {
   align-items: center;
+  border-top: 1px solid var(--border-color);
   display: flex;
 
   &:first-of-type {
@@ -50,11 +51,10 @@
 }
 
 .ExpanderContent {
+  /* background-color: var(--lliw-semanticColor__background-color--secondary); */
   flex: 0;
 
   &.Expanded {
-    /* border-bottom: var(--border); */
-    /* border-top: var(--border); */
     flex: 1;
     overflow-y: auto;
   }

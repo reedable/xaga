@@ -94,13 +94,20 @@ export function ItemList({
   } = useRouter();
   const tagSelectionKey = JSON.stringify(state.tagIds);
   const tagIds: string[] | undefined = useMemo(
-    () => tagSelectionKey === undefined ? undefined : JSON.parse(tagSelectionKey), [tagSelectionKey]);
+    () => (tagSelectionKey === undefined ? undefined : JSON.parse(tagSelectionKey)),
+    [tagSelectionKey],
+  );
   const { tags, unreadCount: tagUnreadCount } = useTags();
-  const tagOptions = useMemo(() => [
-    ...tags,
-    ...(tagIds ?? []).filter((id) => !tags.some((tag) => tag.id === id))
-      .map((id) => ({ id, name: "Unavailable tag" })),
-  ].sort((a, b) => a.name.localeCompare(b.name)), [tags, tagIds]);
+  const tagOptions = useMemo(
+    () =>
+      [
+        ...tags,
+        ...(tagIds ?? [])
+          .filter((id) => !tags.some((tag) => tag.id === id))
+          .map((id) => ({ id, name: "Unavailable tag" })),
+      ].sort((a, b) => a.name.localeCompare(b.name)),
+    [tags, tagIds],
+  );
   const platform = usePlatform();
   const { pushError } = useErrorSink();
   const pinnedEntries = usePinnedEntries();
@@ -129,9 +136,15 @@ export function ItemList({
 
   const selectedCollection = useMemo(
     () =>
-      (tagIds !== undefined && { id: "__TAGS__", title: tagIds.length
-        ? tagIds.map((id) => tagOptions.find((tag) => tag.id === id)?.name ?? "Unavailable tag").join(" + ")
-        : "All Entries", createdAt: new Date(0).toISOString() }) ||
+      (tagIds !== undefined && {
+        id: "__TAGS__",
+        title: tagIds.length
+          ? tagIds
+              .map((id) => tagOptions.find((tag) => tag.id === id)?.name ?? "Unavailable tag")
+              .join(" + ")
+          : "All Entries",
+        createdAt: new Date(0).toISOString(),
+      }) ||
       (articleScopeId &&
         (scopedArticle?.id === articleScopeId
           ? scopedArticle
@@ -171,8 +184,8 @@ export function ItemList({
       [
         ...pinnedEntries,
         ...(articleScopeId &&
-          scopedArticle?.id === articleScopeId &&
-          !pinnedEntries.some((entry) => entry.id === articleScopeId)
+        scopedArticle?.id === articleScopeId &&
+        !pinnedEntries.some((entry) => entry.id === articleScopeId)
           ? [scopedArticle]
           : []),
       ].sort(sortByTitle),
@@ -211,28 +224,38 @@ export function ItemList({
     return undefined;
   }, [selectedCollection, onEditFeed, onEditTopic, onEditSite]);
 
-  const headerValues = tagIds !== undefined
-    ? (tagIds.length ? tagIds.map((id) => `tag:${id}`) : ["tags:all"])
-    : [articleScopeId ? `article:${articleScopeId}` : selectedCollection.id];
+  const headerValues =
+    tagIds !== undefined
+      ? tagIds.length
+        ? tagIds.map((id) => `tag:${id}`)
+        : ["tags:all"]
+      : [articleScopeId ? `article:${articleScopeId}` : selectedCollection.id];
   const handleCollectionChange = (event: SelectChangeEvent<string[]>) => {
-    const values = typeof event.target.value === "string" ? event.target.value.split(",") : event.target.value;
-    const id = values.find((value) => !headerValues.includes(value)) ??
+    const values =
+      typeof event.target.value === "string" ? event.target.value.split(",") : event.target.value;
+    const id =
+      values.find((value) => !headerValues.includes(value)) ??
       headerValues.find((value) => !values.includes(value));
     if (!id) return;
-    if (id === "tags:all") { selectTags([]); return; }
+    if (id === "tags:all") {
+      selectTags([]);
+      return;
+    }
     if (id.startsWith("tag:")) {
       selectTags(values.filter((value) => value.startsWith("tag:")).map((value) => value.slice(4)));
       return;
     }
     setHeaderOpen(false);
     const article = pinnedEntries.find((entry) => `article:${entry.id}` === id);
-    if (article) { selectArticleScope(article); return; }
+    if (article) {
+      selectArticleScope(article);
+      return;
+    }
     const collection = [...SHORTCUTS, ...topics, ...feeds].find((item) => item.id === id);
     if (collection) selectItem(collection);
     const site = siteOptions.find((item) => item.hostname === id);
     if (site) selectSite(site);
   };
-
 
   useEffect(() => {
     if (!loadingFeeds) setRefreshSpin(false);
@@ -346,7 +369,10 @@ export function ItemList({
       }
     },
     [
-      tagIds, platform, abortControllerRef, pushError,
+      tagIds,
+      platform,
+      abortControllerRef,
+      pushError,
       articleScopeId,
       requestArticleScope,
       filter,
@@ -359,7 +385,10 @@ export function ItemList({
   );
 
   const handleRefresh = useCallback(() => {
-    if (tagIds !== undefined) { void requestItems(selectedCollection); return; }
+    if (tagIds !== undefined) {
+      void requestItems(selectedCollection);
+      return;
+    }
     refreshAllFeeds();
     setRefreshSpin(true);
   }, [tagIds, requestItems, selectedCollection, refreshAllFeeds]);
@@ -406,7 +435,17 @@ export function ItemList({
     })();
     // Depend on IDs, not objects, so feed/topic identity changes from
     // requestFeeds/requestTopics don't re-trigger a full list reload.
-  }, [tagSelectionKey, tagTextFilter, articleScopeId, feedId, topicId, siteHostname, shortcutId, requestItems, abort]);
+  }, [
+    tagSelectionKey,
+    tagTextFilter,
+    articleScopeId,
+    feedId,
+    topicId,
+    siteHostname,
+    shortcutId,
+    requestItems,
+    abort,
+  ]);
 
   useEffect(() => {
     return onEmbeddingsChanged(() => {
@@ -587,11 +626,18 @@ export function ItemList({
                 ))}
                 <ListSubheader>Tags</ListSubheader>
                 <MenuItem value="tags:all">All Entries (Tags)</MenuItem>
-                {tagOptions.map((tag) => <MenuItem key={`tag:${tag.id}`} value={`tag:${tag.id}`}>
-                  <Checkbox checked={tagIds?.includes(tag.id) ?? false} tabIndex={-1}
-                    slotProps={{ input: { "aria-hidden": true } }} />
-                  <Typography component="span" variant="body2">{tag.name}</Typography>
-                </MenuItem>)}
+                {tagOptions.map((tag) => (
+                  <MenuItem key={`tag:${tag.id}`} value={`tag:${tag.id}`}>
+                    <Checkbox
+                      checked={tagIds?.includes(tag.id) ?? false}
+                      tabIndex={-1}
+                      slotProps={{ input: { "aria-hidden": true } }}
+                    />
+                    <Typography component="span" variant="body2">
+                      {tag.name}
+                    </Typography>
+                  </MenuItem>
+                ))}
                 {siteOptions.length > 0 && <ListSubheader>Sites</ListSubheader>}
                 {siteOptions.map((site) => (
                   <MenuItem key={site.hostname} value={site.hostname}>
@@ -606,9 +652,6 @@ export function ItemList({
           )}
         </div>
 
-        {tagIds !== undefined && tagUnreadCount !== null && (
-          <Typography variant="caption" aria-live="polite">{tagUnreadCount} unread</Typography>
-        )}
         {!articleScopeId && (
           <ToggleButtonGroup
             aria-label="Filter"
@@ -714,8 +757,8 @@ export function ItemList({
                 selected={selectedItemId === item.id}
                 tabIndex={
                   selectedItemId === item.id ||
-                    (!displayItems.some((value) => value.id === selectedItemId) &&
-                      displayItems[0].id === item.id)
+                  (!displayItems.some((value) => value.id === selectedItemId) &&
+                    displayItems[0].id === item.id)
                     ? 0
                     : -1
                 }
