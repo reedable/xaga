@@ -53,7 +53,7 @@ name, preserving Entry assignments while consolidating tag identity.
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Tag creation API](../../docs/architecture/tags.md#app-creation-api)
-- [Entry Tag Assignment](enhancement__tags--entry-assignment.md)
+- [Entry Tag Assignment](../active/enhancement__tags--entry-assignment.md)
 - [Rename Tags](enhancement__tags--rename.md) — prerequisite.
 - [Delete Tags](enhancement__tags--delete.md)
 - `crates/xaga-core/src/library_writer/mod.rs`

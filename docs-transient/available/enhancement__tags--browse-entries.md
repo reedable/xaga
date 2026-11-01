@@ -50,7 +50,7 @@ with normal article reading and stable browsing context.
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Tag creation API](../../docs/architecture/tags.md#app-creation-api).
-- [Entry Tag Assignment](enhancement__tags--entry-assignment.md) — prerequisite.
+- [Entry Tag Assignment](../active/enhancement__tags--entry-assignment.md) — prerequisite.
 - `src/components/list/ItemList.tsx`
 - `src/components/sidebar/Sidebar.tsx`
 - `src/hooks/useRouter.tsx`

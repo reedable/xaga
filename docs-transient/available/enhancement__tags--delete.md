@@ -49,7 +49,7 @@ safe completion of any library-wide cleanup.
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Tag creation API](../../docs/architecture/tags.md#app-creation-api).
-- [Entry Tag Assignment](enhancement__tags--entry-assignment.md) — prerequisite.
+- [Entry Tag Assignment](../active/enhancement__tags--entry-assignment.md) — prerequisite.
 - [Rename Tags](enhancement__tags--rename.md)
 - `crates/xaga-core/src/library_writer/mod.rs`
 - `docs/architecture/crash_consistency.md`

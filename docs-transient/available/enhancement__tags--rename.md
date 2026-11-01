@@ -63,7 +63,7 @@ avoiding mass rewrites of LanceDB assignments.
 - [Organization model](../../docs/architecture/organization_model.md)
 
 - [Tag creation API](../../docs/architecture/tags.md#app-creation-api).
-- [Entry Tag Assignment](enhancement__tags--entry-assignment.md) — prerequisite.
+- [Entry Tag Assignment](../active/enhancement__tags--entry-assignment.md) — prerequisite.
 - [Merge Tags](enhancement__tags--merge.md) — adds explicit collision merging
   after rename; until then collisions remain a hard stop.
 - `crates/xaga-core/src/library_writer/mod.rs`
