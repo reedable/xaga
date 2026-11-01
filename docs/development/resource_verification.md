@@ -36,6 +36,10 @@ that browser policy.
 
 ## Bundled macOS Downloads authorization check
 
+Verification under independently established **undecided** and **denied**
+Downloads access remains unperformed. The automated coverage above does not
+establish behavior under those bundled-app permission states.
+
 This check requires an installed bundle and independently established Downloads
 permission states. Do not infer a state from a successful temporary-file test,
 absence of a prompt, or an unbundled Cargo test. Do not modify the user's TCC
