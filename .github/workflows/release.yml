@@ -15,7 +15,7 @@ concurrency:
 jobs:
   verify:
     name: Verify release
-    runs-on: macos-14
+    runs-on: macos-26
 
     steps:
       - name: Check out source
@@ -80,7 +80,7 @@ jobs:
       matrix:
         include:
           - name: macOS Apple Silicon
-            runner: macos-14
+            runner: macos-26
             target: aarch64-apple-darwin
             rust_targets: aarch64-apple-darwin
 
