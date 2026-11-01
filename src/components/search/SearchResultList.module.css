@@ -16,7 +16,7 @@
   }
 
   .SearchInput {
-    width: calc(var(--width) - 4rem);
+    width: calc(var(--width) - 1rem);
   }
 
   .Header {

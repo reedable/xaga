@@ -127,7 +127,7 @@ export function SearchInput({
             ),
             endAdornment: (
               <InputAdornment position="end">
-                <Tooltip title="Clear">
+                <Tooltip title="Clear Search">
                   <IconButton
                     size="small"
                     onClick={handleClear}
