@@ -61,14 +61,14 @@ export function Inspector({
     <div className={css.Inspector}>
       {showHeading && (
         <Typography className={css.Target} component="h2" color="text.secondary" variant="overline">
-          {label} Inspector
+          {label} details
         </Typography>
       )}
 
       <TabContext value={view}>
         <TabList
           onChange={(_, value: InspectorView) => onViewChange(value)}
-          aria-label={`${label} Inspector views`}
+          aria-label={`${label} details views`}
           variant="fullWidth"
           selectionFollowsFocus
           sx={(theme) => ({

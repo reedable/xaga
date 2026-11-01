@@ -261,7 +261,7 @@ export function ItemView({ className, searchPanelRef }: ItemViewProps) {
               inert={inspectorHidden}
               aria-hidden={inspectorHidden}
               className={cx(css.InspectorPanel, inspectorHidden && css.InspectorPanelHidden)}
-              aria-label="Article Inspector"
+              aria-label="Article details"
             >
               <div className={css.InspectorPanelContent}>
                 <Inspector
@@ -290,7 +290,7 @@ export function ItemView({ className, searchPanelRef }: ItemViewProps) {
             paper: {
               role: "dialog",
               "aria-modal": true,
-              "aria-label": `${drawerTarget?.annotationId ? "Annotation" : "Article"} Inspector`,
+              "aria-label": `${drawerTarget?.annotationId ? "Annotation" : "Article"} details`,
               className: css.InspectorDrawer,
             },
             backdrop: { transitionDuration: animate ? undefined : 0 },
@@ -298,10 +298,10 @@ export function ItemView({ className, searchPanelRef }: ItemViewProps) {
         >
           <div className={css.InspectorHeader}>
             <Typography component="h2" variant="subtitle2">
-              {drawerTarget?.annotationId ? "Annotation" : "Article"} Inspector
+              {drawerTarget?.annotationId ? "Annotation" : "Article"} details
             </Typography>
-            <Tooltip title="Close Inspector">
-              <IconButton aria-label="Close Inspector" onClick={closeInspector}>
+            <Tooltip title="Close details">
+              <IconButton aria-label="Close details" onClick={closeInspector}>
                 <Close />
               </IconButton>
             </Tooltip>

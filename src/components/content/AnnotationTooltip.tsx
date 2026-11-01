@@ -103,12 +103,12 @@ export function AnnotationTooltip({
             {color !== null && (
               <div className={css.ColorRowAction}>
                 <Tooltip
-                  title="Open Inspector"
+                  title="Show annotation details"
                   slotProps={{ transition: { timeout: 0 } }}
                 >
                   <IconButton
                     size="small"
-                    aria-label="Open Inspector"
+                    aria-label="Show annotation details"
                     onClick={(event) =>
                       void onOpenInspector(event.currentTarget)
                     }

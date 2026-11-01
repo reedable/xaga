@@ -100,7 +100,7 @@ vi.mock("./Toolbar", () => ({
   }) =>
     onOpenInspector ? (
       <button ref={inspectorOpener} onClick={onOpenInspector}>
-        Open Inspector
+        Show article details
       </button>
     ) : null,
 }));
@@ -158,7 +158,7 @@ async function resize(width: number) {
 }
 function opener() {
   return [...container.querySelectorAll("button")].find(
-    (button) => button.textContent === "Open Inspector"
+    (button) => button.textContent === "Show article details"
   )!;
 }
 
@@ -181,7 +181,7 @@ it("retains the reader and selected view through panel/drawer transitions and re
   ).toBe(true);
   await act(async () =>
     document
-      .querySelector<HTMLButtonElement>('[aria-label="Close Inspector"]')!
+      .querySelector<HTMLButtonElement>('[aria-label="Close details"]')!
       .click()
   );
   expect(document.activeElement).toBe(opener());
@@ -275,7 +275,7 @@ it("opens the same narrow Inspector from the tooltip and restores reader focus",
   ).toBe("tooltip-annotation");
   await act(async () =>
     document
-      .querySelector<HTMLButtonElement>('[aria-label="Close Inspector"]')!
+      .querySelector<HTMLButtonElement>('[aria-label="Close details"]')!
       .click()
   );
   expect(document.activeElement).toBe(container.querySelector("iframe"));
@@ -311,7 +311,7 @@ it("keeps Annotation inspection in the drawer when resizing from narrow to wide"
   ).toBe("article");
   await act(async () =>
     document
-      .querySelector<HTMLButtonElement>('[aria-label="Close Inspector"]')!
+      .querySelector<HTMLButtonElement>('[aria-label="Close details"]')!
       .click()
   );
   expect(

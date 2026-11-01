@@ -430,11 +430,11 @@ export function Toolbar({
             </Popover>
 
             {onOpenInspector && (
-              <Tooltip title="Open Inspector">
+              <Tooltip title="Show article details">
                 <IconButton
                   size="small"
                   ref={inspectorOpener}
-                  aria-label="Open Inspector"
+                  aria-label="Show article details"
                   aria-haspopup="dialog"
                   aria-expanded={!!inspectorOpen}
                   onClick={onOpenInspector}
