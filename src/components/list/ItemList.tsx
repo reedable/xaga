@@ -1,4 +1,3 @@
-import { emptySite } from "../../sites";
 import { Clear, Refresh, Settings } from "@mui/icons-material";
 import {
   Button,
@@ -21,45 +20,46 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import { usePlatform } from "../../platform/Platform";
-import { useErrorSink } from "../../hooks/useErrorSink";
-import { useMissingPins } from "../../hooks/useMissingPins";
-import MissingShortcutsButton from "../sidebar/MissingShortcutsButton";
-import { usePinnedEntries } from "../../hooks/usePinnedEntries";
-import { articleScopeItems } from "../../utils/articleScopeItems";
+import { onTopicItemAdded } from "../../events/topicMembership";
 import useAbortController from "../../hooks/useAbortController";
 import useEntries from "../../hooks/useEntries";
+import { useErrorSink } from "../../hooks/useErrorSink";
 import { useEvents } from "../../hooks/useEvents";
 import { useFeeds } from "../../hooks/useFeeds";
+import { useMissingPins } from "../../hooks/useMissingPins";
+import { usePinnedEntries } from "../../hooks/usePinnedEntries";
 import useRouter from "../../hooks/useRouter";
 import { useSites } from "../../hooks/useSites";
 import { useTopics } from "../../hooks/useTopics";
-import { onTopicItemAdded } from "../../events/topicMembership";
+import { usePlatform } from "../../platform/Platform";
+import { useTags } from "../../providers/TagsContext";
 import { ALL_ITEMS, SHORTCUTS } from "../../Shortcuts";
+import { emptySite } from "../../sites";
 import {
-  isPartialAnnotation,
   isEntry,
   isFeed,
+  isPartialAnnotation,
+  isSite,
   isTopic,
   type Entry,
   type Feed,
   type Filter,
   type Item,
-  type Topic,
   type Site,
-  isSite,
+  type Topic,
   type TopicSort,
 } from "../../types";
+import { articleScopeItems } from "../../utils/articleScopeItems";
 import cx from "../../utils/cx";
-import sortByTitle from "../../utils/sortByTitle";
 import {
   itemMatchesTextFilter,
   mergeAllItemsAnnotationChange,
 } from "../../utils/mergeAllItemsAnnotationChange";
 import { mergeTopicAddition } from "../../utils/mergeTopicAddition";
+import sortByTitle from "../../utils/sortByTitle";
 import ItemStatus from "../ItemStatus";
 import Quotes from "../Quotes";
-import { useTags } from "../../providers/TagsContext";
+import MissingShortcutsButton from "../sidebar/MissingShortcutsButton";
 import css from "./ItemList.module.css";
 
 function getEmptyMessage(filter: Filter, filterText: string): string {
@@ -97,7 +97,7 @@ export function ItemList({
     () => (tagSelectionKey === undefined ? undefined : JSON.parse(tagSelectionKey)),
     [tagSelectionKey],
   );
-  const { tags, unreadCount: tagUnreadCount } = useTags();
+  const { tags } = useTags();
   const tagOptions = useMemo(
     () =>
       [
