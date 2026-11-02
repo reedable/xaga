@@ -3,6 +3,7 @@ import type { Tag } from "../../domain";
 import useRouter from "../../hooks/useRouter";
 import { useTags } from "../../providers/TagsContext";
 import ExpandableList from "./ExpandableList";
+import css from "./TagList.module.css";
 
 export default function TagList({
   tags,
@@ -14,8 +15,9 @@ export default function TagList({
   onClickHeader: () => void;
 }) {
   const { state, selectTags } = useRouter();
-  const { tags: definitions, unreadCount, hasLoaded } = useTags();
+  const { tags: definitions, hasLoaded } = useTags();
   const selected = state.tagIds ?? [];
+
   const options = [
     ...tags,
     ...selected
@@ -25,6 +27,7 @@ export default function TagList({
 
   return (
     <ExpandableList
+      className={css.TagList}
       label="Tags"
       count={tags.length}
       isExpanded={isExpanded}

@@ -30,22 +30,24 @@ export function Inspector({
   const label = annotationId ? "Annotation" : "Article";
   const platform = usePlatform();
   const { pushError } = useErrorSink();
+
   const [lookup, setLookup] = useState<{
     targetKey: string;
     item: Entry | Annotation | null;
   } | null>(null);
+
   useEffect(() => {
     const controller = new AbortController();
+
     const read = annotationId
       ? platform
-        .readArticleScope(controller.signal, entryId)
-        .then(
-          (article) =>
-            article.annotations.find(
-              (annotation) => annotation.id === annotationId
-            ) ?? null
-        )
+          .readArticleScope(controller.signal, entryId)
+          .then(
+            (article) =>
+              article.annotations.find((annotation) => annotation.id === annotationId) ?? null,
+          )
       : platform.readEntry(controller.signal, entryId);
+
     void read
       .then((item) => {
         if (!controller.signal.aborted) setLookup({ targetKey, item });
@@ -58,6 +60,7 @@ export function Inspector({
       });
     return () => controller.abort();
   }, [entryId, annotationId, targetKey, platform, pushError]);
+
   return (
     <div className={css.Inspector}>
       {showHeading && (
@@ -87,9 +90,11 @@ export function Inspector({
           {!annotationId && <Tab disableRipple value="tags" label="Tags" />}
         </TabList>
 
-        {!annotationId && <TabPanel className={css.View} value="tags" tabIndex={0} keepMounted>
-          <EntryTags key={entryId} entryId={entryId} />
-        </TabPanel>}
+        {!annotationId && (
+          <TabPanel className={css.View} value="tags" tabIndex={0} keepMounted>
+            <EntryTags key={entryId} entryId={entryId} />
+          </TabPanel>
+        )}
 
         <TabPanel className={css.View} value="related" tabIndex={0} keepMounted>
           <RelatedItemList key={targetKey} itemId={itemId} />
@@ -100,9 +105,7 @@ export function Inspector({
             lookup.item ? (
               <TopicMembership key={targetKey} item={lookup.item} />
             ) : (
-              <Typography variant="body2">
-                {label} topics couldn’t be loaded.
-              </Typography>
+              <Typography variant="body2">{label} topics couldn’t be loaded.</Typography>
             )
           ) : (
             <Typography role="status" variant="body2">

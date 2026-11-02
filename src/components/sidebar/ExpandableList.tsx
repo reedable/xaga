@@ -42,16 +42,13 @@ export default function ExpandableList({
         </ToggleButton>
 
         {renderHeaderAction && (
-          <span
-            onClick={(e) => e.stopPropagation()}
-            className={css.ExpandableListHeaderAction}
-          >
+          <span onClick={(e) => e.stopPropagation()} className={css.ExpandableListHeaderAction}>
             {renderHeaderAction()}
           </span>
         )}
       </div>
 
-      <div className={cx(css.ExpanderContent, isExpanded && css.Expanded)}>
+      <div className={cx(className, css.ExpanderContent, isExpanded && css.Expanded)}>
         <Collapse in={isExpanded}>
           <List dense disablePadding>
             {children}

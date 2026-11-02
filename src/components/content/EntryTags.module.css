@@ -1,0 +1,20 @@
+.EntryTags {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 1rem;
+
+  .FilterInput {
+    margin: 1rem 0;
+
+    :global(.MuiInputBase-root.MuiInput-root) {
+      font-size: 13px;
+    }
+  }
+
+  .TagGroup {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+}
