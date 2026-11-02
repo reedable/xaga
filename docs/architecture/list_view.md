@@ -48,11 +48,11 @@ the selected set, Unread/Saved/All, text filter, or explicitly refreshing
 establishes a fresh list. Feed refresh notifications also preserve the active
 Tags list. Superseded query results cannot replace a newer scope's list.
 
-Both presentations show the selected combination's unread count, queried as an
-intersection independently of the reading-state and text filters. It counts
-each matching Entry once, including when its list row remains visible after
-becoming read or losing an assignment. Index-drain and unread events refresh
-the count with debouncing; results from earlier selections are discarded.
+The selected combination's unread count remains available through the query API
+and navigation provider. The sidebar and ListView header do not display it.
+The count uses the intersection independently of reading-state and text filters,
+counting each matching Entry once. Index-drain and unread events refresh it with
+debouncing; results from earlier selections are discarded.
 
 See [Tag query API](tags.md#tag-query-api) and
 [query scaling](design_scale.md#tag-query-scaling).

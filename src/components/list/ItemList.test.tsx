@@ -376,7 +376,6 @@ it("browses Entry intersections and retains membership through state and assignm
   await render({ tagIds: ["tag-a", "tag-b"], filter: "unread" });
   expect(mocks.tagEntries).toHaveBeenCalledWith(expect.any(AbortSignal), ["tag-a", "tag-b"], "unread");
   expect(container.textContent).toContain("Research + Work");
-  expect(container.textContent).toContain("1 unread");
   await act(async () => rows()[0].click());
   expect(route.state.tagIds).toEqual(["tag-a", "tag-b"]);
   await act(async () => {

@@ -19,13 +19,12 @@ function Host() {
   </TagsContext.Provider>;
 }
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
-it("toggles the shared tag intersection by keyboard and displays its actual unread count", async () => {
+it("toggles the shared tag intersection by keyboard", async () => {
   container = document.createElement("div"); document.body.append(container);
   root = createRoot(container);
   await act(async () => root.render(<MemoryRouter initialEntries={[{ pathname: "/", state: { tagIds: ["a"], filter: "saved" } }]}><Host /></MemoryRouter>));
   const choices = () => [...container.querySelectorAll<HTMLElement>('[role="checkbox"]')];
   expect(choices()[0].getAttribute("aria-checked")).toBe("true");
-  expect(container.textContent).toContain("Matching unread: 3");
   await act(async () => {
     choices()[1].focus();
     choices()[1].dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));

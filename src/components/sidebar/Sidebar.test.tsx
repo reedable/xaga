@@ -125,7 +125,7 @@ it("applies one trimmed, case-insensitive filter to every collection section", a
   ).toBe("Alpha Site");
 });
 
-it("keeps every section and the bottom filter visible with zero matches", async () => {
+it("keeps every section and the filter above them visible with zero matches", async () => {
   await act(async () => {
     root.render(
       <Sidebar
@@ -146,9 +146,9 @@ it("keeps every section and the bottom filter visible with zero matches", async 
 
   const input = container.querySelector('[aria-label="Filter collections"]');
   expect(input).not.toBeNull();
-  expect(container.firstElementChild?.lastElementChild?.contains(input)).toBe(
-    true
-  );
+  const firstSection = container.querySelector("[data-section]");
+  expect(firstSection).not.toBeNull();
+  expect(input!.compareDocumentPosition(firstSection!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
 vi.mock("../../hooks/useMissingPins", () => ({ useMissingPins: () => [] }));
