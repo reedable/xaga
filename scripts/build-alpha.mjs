@@ -21,9 +21,9 @@ export function validateCleanStatus(status) {
 }
 
 export function alphaVersion(version, commitHash) {
-  if (!/^\d+\.\d+\.\d+-rc\.\d+$/.test(version)) {
+  if (!/^\d+\.\d+\.\d+(?:-rc\.[1-9]\d*)?$/.test(version)) {
     throw new Error(
-      `Alpha builds require a committed release-candidate version (major.minor.patch-rc.N); got ${JSON.stringify(version)}. Prepare one with npm run version:rc, then commit it.`
+      `Alpha builds require a committed release or numbered release-candidate version (major.minor.patch or major.minor.patch-rc.N); got ${JSON.stringify(version)}. Prepare one with npm run version:rc or npm run version:release, then commit it.`
     );
   }
   if (!/^[0-9a-f]+$/.test(commitHash)) {
@@ -32,6 +32,14 @@ export function alphaVersion(version, commitHash) {
     );
   }
   return `${version}+alpha.${commitHash}`;
+}
+
+export function validateUnpublishedVersion(version, tagExists) {
+  if (tagExists) {
+    throw new Error(
+      `Version ${version} already has release tag v${version}. Alpha builds require an untagged version; prepare and commit a new version first.`
+    );
+  }
 }
 
 export function tauriBuildArgs(version, icons = alphaIcons) {
@@ -64,6 +72,11 @@ function main() {
   }).trim();
   const { version } = JSON.parse(readFileSync(TAURI_CONF, "utf8"));
   const buildVersion = alphaVersion(version, commitHash);
+  const matchingTag = execFileSync("git", ["tag", "--list", `v${version}`], {
+    cwd: ROOT,
+    encoding: "utf8",
+  }).trim();
+  validateUnpublishedVersion(version, matchingTag !== "");
   console.log(`Building Xaga ${buildVersion}`);
   generateAlphaIcons();
   run("npm", ["run", "audit:report"]);

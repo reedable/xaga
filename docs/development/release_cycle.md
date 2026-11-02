@@ -7,7 +7,7 @@ The committed application version describes its lifecycle state:
 | State             | Version                   | Meaning                                                                      |
 | ----------------- | ------------------------- | ---------------------------------------------------------------------------- |
 | Development       | `0.8.5-dev`               | Work toward the next release is in progress.                                 |
-| Local alpha       | `0.8.5-rc.1+alpha.9c62ffc` | An invocation-only version identifies local validation of an RC, whether tagged or untagged. |
+| Local alpha       | `0.8.5-rc.1+alpha.9c62ffc` | An invocation-only version identifies local validation of an untagged RC or final version. |
 | Release candidate | `0.8.5-rc.1`              | A distributable candidate for the final `0.8.5` release.                     |
 | Final             | `0.8.5`                   | The published release version.                                               |
 
@@ -112,15 +112,15 @@ npm run version:rc
 
 This command requires a clean working tree and changes `x.y.z-dev` to `x.y.z-rc.1` in every source version file and in the three corresponding `Cargo.lock` package entries. Repeating it from `x.y.z-rc.N` increments the candidate to `x.y.z-rc.(N+1)`. Review and commit the version files and refreshed lockfile before building or tagging.
 
-After committing the RC, create its local validation build with:
+After committing an untagged RC or final version, create its local validation build with:
 
 ```sh
 npm run build:alpha
 ```
 
-The alpha build does not edit version files, commit, tag, push, or publish anything. It supplies `x.y.z-rc.N+alpha.<commit>` to Tauri for this invocation and uses the Alpha application icon. It requires a clean working tree and a numbered RC version so that the artifact corresponds exactly to a commit.
+The alpha build does not edit version files, commit, tag, push, or publish anything. It supplies `x.y.z-rc.N+alpha.<commit>` or `x.y.z+alpha.<commit>` to Tauri for this invocation and uses the Alpha application icon. It requires a clean working tree and a committed numbered RC or final version so that the artifact corresponds exactly to a commit. Development versions are refused.
 
-Alpha builds are allowed even when the matching `vX.Y.Z-rc.N` tag already exists locally, including when HEAD is the tagged commit. The `+alpha.<commit>` metadata and Alpha application icon distinguish the local artifact from the official RC. Published RC tags remain immutable; an alpha build does not delete or move them.
+Alpha builds require that the matching release tag (`vX.Y.Z-rc.N` or `vX.Y.Z`) does not exist locally, regardless of which commit it points to. An untagged final version is allowed; a final version with its release tag is refused, just like a tagged RC. The check uses local tags and does not fetch remote tags. Published tags remain immutable; an alpha build does not delete or move them.
 
 Commit the version change before tagging a candidate. Do not tag a candidate that has not been committed and validated. A matching `vX.Y.Z-rc.N` tag starts GitHub release automation and creates a draft marked as a prerelease.
 

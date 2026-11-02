@@ -4,6 +4,7 @@ import {
   alphaVersion,
   tauriBuildArgs,
   validateCleanStatus,
+  validateUnpublishedVersion,
 } from "./build-alpha.mjs";
 
 test("adds alpha metadata containing the commit hash", () => {
@@ -13,15 +14,26 @@ test("adds alpha metadata containing the commit hash", () => {
   );
 });
 
-test("requires a numbered release-candidate version", () => {
-  assert.throws(
-    () => alphaVersion("0.8.4", "f62fb2f"),
-    /release-candidate version/
-  );
-  assert.throws(
-    () => alphaVersion("0.8.4-dev", "f62fb2f"),
-    /release-candidate version/
-  );
+test("allows final release versions with alpha metadata", () => {
+  assert.equal(alphaVersion("0.14.0", "f62fb2f"), "0.14.0+alpha.f62fb2f");
+});
+
+test("rejects development and unsupported prerelease versions", () => {
+  for (const version of ["0.8.4-dev", "0.8.4-beta.1", "0.8.4-rc", "0.8.4-rc.0", "0.8.4-rc.01", "0.8.4+alpha.abc"]) {
+    assert.throws(() => alphaVersion(version, "f62fb2f"), /release or numbered release-candidate version/);
+  }
+});
+
+test("accepts untagged RC and final versions", () => {
+  for (const version of ["0.14.0-rc.2", "0.14.0"]) {
+    assert.doesNotThrow(() => validateUnpublishedVersion(version, false));
+  }
+});
+
+test("rejects tagged RC and final versions", () => {
+  for (const version of ["0.14.0-rc.2", "0.14.0"]) {
+    assert.throws(() => validateUnpublishedVersion(version, true), /already has release tag.*untagged version/);
+  }
 });
 
 test("requires a hexadecimal commit hash", () => {
