@@ -91,6 +91,8 @@
     "commands::pins::set_pin",
     "commands::tags::list_tags",
     "commands::tags::create_tag",
+    "commands::tags::read_tag_status",
+    "commands::tags::rename_tag",
     "commands::tags::read_entry_tags",
     "commands::tags::set_entry_tag",
     "commands::tags::list_tag_entries",

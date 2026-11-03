@@ -87,6 +87,7 @@ vi.mock("react-virtuoso", () => ({
     );
   }),
 }));
+vi.mock("../TagActions", () => ({ TagActions: ({ tag }: { tag: { name: string } }) => <button data-tag-action aria-label={`Actions for ${tag.name}`} /> }));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 let route: ReturnType<typeof useRouter>;
 function Observe() {
@@ -374,8 +375,10 @@ it("keeps an empty Site selected when unpinned and opens its Settings", async ()
 
 it("browses Entry intersections and retains membership through state and assignment updates", async () => {
   await render({ tagIds: ["tag-a", "tag-b"], filter: "unread" });
-  expect(mocks.tagEntries).toHaveBeenCalledWith(expect.any(AbortSignal), ["tag-a", "tag-b"], "unread");
+  expect(mocks.tagEntries).toHaveBeenCalledWith(expect.any(AbortSignal), ["tag-a", "tag-b"], "all");
   expect(container.textContent).toContain("Research + Work");
+  expect(container.querySelector('[aria-label="Unread"]')).toBeNull();
+  expect(container.querySelector('[aria-label="All"]')?.getAttribute("aria-pressed")).toBe("true");
   await act(async () => rows()[0].click());
   expect(route.state.tagIds).toEqual(["tag-a", "tag-b"]);
   await act(async () => {
@@ -386,14 +389,15 @@ it("browses Entry intersections and retains membership through state and assignm
   });
   expect(rows()).toHaveLength(1);
   expect(mocks.tagEntries).toHaveBeenCalledOnce();
-  await act(async () => route.selectFilter("all"));
+  await act(async () => route.selectFilter("saved"));
   expect(mocks.tagEntries).toHaveBeenCalledTimes(2);
-  expect(mocks.tagEntries).toHaveBeenLastCalledWith(expect.any(AbortSignal), ["tag-a", "tag-b"], "all");
+  expect(mocks.tagEntries).toHaveBeenLastCalledWith(expect.any(AbortSignal), ["tag-a", "tag-b"], "saved");
 });
 
 it("shares the tag set with the hidden-sidebar header and immediately intersects each choice", async () => {
   await render({ tagIds: [], filter: "all" }, true);
   expect(mocks.tagEntries).toHaveBeenLastCalledWith(expect.any(AbortSignal), [], "all");
+  expect(container.querySelector('[aria-label="Unread"]')).not.toBeNull();
   const combo = container.querySelector<HTMLElement>('[role="combobox"]')!;
   expect(combo.getAttribute("aria-label")).toBe("Browse collections and tags");
   await act(async () => combo.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
@@ -436,4 +440,17 @@ it("ignores a superseded tag query and refreshes membership when text filtering 
   });
   expect(mocks.tagEntries).toHaveBeenCalledTimes(3);
   expect(rows().map((row) => row.textContent)).toEqual(["Pinned article"]);
+});
+
+it("provides Tab access to tag actions inside the responsive selector without selecting the tag", async () => {
+  await render({ tagIds: ["tag-a"], filter: "all" }, true);
+  const combo = container.querySelector<HTMLElement>('[role="combobox"]')!;
+  await act(async () => combo.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((item) => item.textContent === "Research")!;
+  await act(async () => {
+    option.focus();
+    option.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+  });
+  expect(document.activeElement?.getAttribute("aria-label")).toBe("Actions for Research");
+  expect(route.state.tagIds).toEqual(["tag-a"]);
 });

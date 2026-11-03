@@ -53,7 +53,7 @@ pub(crate) async fn import_bookmarks(
     // received a bookmark color, which is a state change → SyncState (Interactive).
     let added_ids: Vec<String> = result.added.iter().map(|a| a.meta.id.clone()).collect();
     for article in result.added {
-        state.enqueue(Tier::Interactive, Job::UpsertEntry { article });
+        state.enqueue_entry(Tier::Interactive, article).await;
     }
     for entry in &result.updated {
         state.enqueue(

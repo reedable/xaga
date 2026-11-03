@@ -23,7 +23,7 @@ struct DispatchSink<'a> {
     senders: &'a Senders,
     /// `Some` on fresh recovery: collected `(topics, articles)` awaiting bulk insert. `None` is
     /// incremental, where each item was already enqueued during the walk.
-    fresh: Option<(Vec<Topic>, Vec<Article>)>,
+    fresh: Option<(Vec<Topic>, Vec<(Article, Vec<String>)>)>,
     topic_count: usize,
     article_count: usize,
 }
@@ -59,13 +59,13 @@ impl RepairSink for DispatchSink<'_> {
         }
     }
 
-    fn article(&mut self, article: Article) {
+    fn article(&mut self, article: Article, tag_ids: Vec<String>) {
         self.article_count += 1;
         match &mut self.fresh {
-            Some((_, articles)) => articles.push(article),
+            Some((_, articles)) => articles.push((article, tag_ids)),
             None => self
                 .senders
-                .enqueue(Tier::Maintenance, Job::UpsertEntry { article }),
+                .enqueue(Tier::Maintenance, Job::UpsertEntry { article, tag_ids }),
         }
     }
 }
@@ -166,20 +166,14 @@ const BULK_BATCH: usize = 1024;
 
 /// Bulk path for fresh recovery (entries): builds each article's row (plus a null-vector row per
 /// annotation) and inserts in batches, then queues the carried `Article` for the embed pass.
-async fn bulk_insert_articles(db: &EmbeddingsDb, articles: Vec<Article>, senders: &Senders) {
+async fn bulk_insert_articles(
+    db: &EmbeddingsDb,
+    articles: Vec<(Article, Vec<String>)>,
+    senders: &Senders,
+) {
     let mut buf: Vec<EmbeddingEntry> = Vec::with_capacity(BULK_BATCH);
 
-    for article in articles {
-        let tags = match db
-            .resolve_tag_names(article.meta.tags.as_deref().unwrap_or_default())
-            .await
-        {
-            Ok(tags) => tags,
-            Err(e) => {
-                log::error!("recovery: resolve tags for {}: {e}", article.meta.id);
-                continue;
-            }
-        };
+    for (article, tags) in articles {
         buf.push(EmbeddingEntry::from_article(&article, None, tags));
 
         for annotation in &article.annotations {

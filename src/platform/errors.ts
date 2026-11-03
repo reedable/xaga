@@ -11,6 +11,9 @@
 // other fails a test rather than reaching the UI as an unhandled string.
 
 export const ERROR_CODE = [
+  "tags:collision",
+  "tags:busy",
+  "tags:stale",
   "tags:invalid-store",
   "tags:invalid-name",
   "tags:deleting",

@@ -13,6 +13,7 @@ export function TagsProvider({ children, enabled = true }: { children: ReactNode
   const { state } = useRouter();
   const selection = JSON.stringify(state.tagIds ?? []);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [renaming, setRenaming] = useState<string[]>([]);
   const [hasLoaded, setLoaded] = useState(false);
   const [count, setCount] = useState<{ selection: string; value: number } | null>(null);
 
@@ -23,9 +24,10 @@ export function TagsProvider({ children, enabled = true }: { children: ReactNode
       if (controller.signal.aborted) return;
       const request = ++revision;
       try {
-        const result = await platform.listTags(controller.signal);
+        const result = await platform.readTagStatus(controller.signal);
         if (!controller.signal.aborted && request === revision) {
-          setTags(result);
+          setTags(result.tags);
+          setRenaming(result.renaming);
           setLoaded(true);
         }
       } catch (error) { if (!controller.signal.aborted) pushError(error); }
@@ -33,6 +35,13 @@ export function TagsProvider({ children, enabled = true }: { children: ReactNode
     void refresh();
     const refreshAfterChange = debounced(refresh, { wait: 400 });
     const stops = [
+      subscribe(() => platform.onTagsChanged((snapshot) => {
+        if (controller.signal.aborted) return;
+        ++revision;
+        setTags(snapshot.tags);
+        setRenaming(snapshot.renaming);
+        setLoaded(true);
+      })),
       subscribe(() => platform.onTagCreated(() => void refresh())),
       subscribe(() => platform.onEmbeddingsChanged(refreshAfterChange)),
     ];
@@ -63,6 +72,6 @@ export function TagsProvider({ children, enabled = true }: { children: ReactNode
   }, [enabled, platform, pushError, selection]);
 
   const unreadCount = enabled && count?.selection === selection ? count.value : null;
-  const value = useMemo(() => ({ tags, hasLoaded, unreadCount }), [tags, hasLoaded, unreadCount]);
+  const value = useMemo(() => ({ tags, hasLoaded, unreadCount, renaming }), [tags, hasLoaded, unreadCount, renaming]);
   return <TagsContext.Provider value={value}>{children}</TagsContext.Provider>;
 }

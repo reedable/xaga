@@ -1,12 +1,12 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-import type { EntryTagChange, Tag } from "../../domain";
+import type { EntryTagChange, Tag, TagSnapshot } from "../../domain";
 import { EntryTags } from "./EntryTags";
 
 const mocks = vi.hoisted(() => ({
   readOnly: false, listTags: vi.fn(), readEntryTags: vi.fn(), createTag: vi.fn(),
-  setEntryTag: vi.fn(), onTagCreated: vi.fn(), onEntryTagsChanged: vi.fn(), pushError: vi.fn(),
+  setEntryTag: vi.fn(), onTagsChanged: vi.fn(), onTagCreated: vi.fn(), onEntryTagsChanged: vi.fn(), pushError: vi.fn(),
 }));
 vi.mock("../../platform/Platform", () => ({ usePlatform: () => mocks }));
 const sink = { pushError: mocks.pushError };
@@ -18,6 +18,7 @@ const work = { id: "work", name: "Work" };
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 let changeListener: (change: EntryTagChange) => void;
+let statusListener: (snapshot: TagSnapshot) => void;
 let createdListener: (tag: Tag) => void;
 let cleanup: ReturnType<typeof vi.fn>;
 beforeEach(() => {
@@ -27,6 +28,7 @@ beforeEach(() => {
   mocks.setEntryTag.mockImplementation(async (entryId, tagId, assigned) => ({ entryId, tagId, assigned }));
   mocks.createTag.mockResolvedValue({ id: "new", name: "New" });
   cleanup = vi.fn();
+  mocks.onTagsChanged.mockImplementation(async (listener) => { statusListener = listener; return cleanup; });
   mocks.onTagCreated.mockImplementation(async (listener) => { createdListener = listener; return cleanup; });
   mocks.onEntryTagsChanged.mockImplementation(async (listener) => { changeListener = listener; return cleanup; });
   container = document.createElement("div"); document.body.append(container);
@@ -93,7 +95,7 @@ it("ignores late results after navigating to another Entry and cleans up listene
   await act(async () => finish(["work"]));
   expect(chip("Research").getAttribute("aria-pressed")).toBe("true");
   expect(chip("Work").getAttribute("aria-pressed")).toBe("false");
-  expect(cleanup).toHaveBeenCalledTimes(2);
+  expect(cleanup).toHaveBeenCalledTimes(3);
 });
 it("preserves a committed event that arrives during initial loading", async () => {
   let finish!: (ids: string[]) => void;
@@ -117,4 +119,17 @@ it("matches registry lowercase semantics without equating distinct spellings", a
   await search("οσ");
   expect(chip("ΟΣ")).toBeTruthy();
   expect(container.textContent).not.toContain("Create “");
+});
+
+it("retains a committed rename over an older definition load", async () => {
+  let finish!: (tags: Tag[]) => void;
+  mocks.listTags.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  await render();
+  await act(async () => {
+    statusListener({ tags: [{ ...research, name: "Renamed" }], renaming: [research.id] });
+    finish([research, work]);
+  });
+  expect(chip("Renamed")).toBeTruthy();
+  expect(chip("Research")).toBeUndefined();
+  expect(chip("Renamed").getAttribute("aria-pressed")).toBe("true");
 });

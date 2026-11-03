@@ -37,6 +37,7 @@ export function EntryTags({ entryId }: { entryId: string }) {
     const controller = new AbortController();
     const initialChanges = new Map<string, EntryTagChange>();
     let loading = true;
+    let receivedSnapshot = false;
     const cleanups: (() => void)[] = [];
 
     const retain = (cleanup: () => void) => {
@@ -52,6 +53,9 @@ export function EntryTags({ entryId }: { entryId: string }) {
     void (async () => {
       try {
         retain(await platform.onTagCreated(addDefinition));
+        retain(await platform.onTagsChanged((snapshot) => {
+          if (!controller.signal.aborted) { receivedSnapshot = true; setTags(snapshot.tags); }
+        }));
 
         retain(
           await platform.onEntryTagsChanged((change) => {
@@ -68,7 +72,7 @@ export function EntryTags({ entryId }: { entryId: string }) {
 
         if (controller.signal.aborted) return;
 
-        setTags((current) => [
+        if (!receivedSnapshot) setTags((current) => [
           ...definitions,
           ...current.filter((tag) => !definitions.some((item) => item.id === tag.id)),
         ]);

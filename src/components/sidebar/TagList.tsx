@@ -3,6 +3,7 @@ import type { Tag } from "../../domain";
 import useRouter from "../../hooks/useRouter";
 import { useTags } from "../../providers/TagsContext";
 import ExpandableList from "./ExpandableList";
+import { TagActions } from "../TagActions";
 import css from "./TagList.module.css";
 
 export default function TagList({
@@ -15,7 +16,7 @@ export default function TagList({
   onClickHeader: () => void;
 }) {
   const { state, selectTags } = useRouter();
-  const { tags: definitions, hasLoaded } = useTags();
+  const { tags: definitions, hasLoaded, renaming = [] } = useTags();
   const selected = state.tagIds ?? [];
 
   const options = [
@@ -23,7 +24,7 @@ export default function TagList({
     ...selected
       .filter((id) => !definitions.some((tag) => tag.id === id))
       .map((id) => ({ id, name: "Unavailable tag" })),
-  ];
+  ].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
 
   return (
     <ExpandableList
@@ -36,8 +37,8 @@ export default function TagList({
       {!hasLoaded && <Typography role="status">Loading tags…</Typography>}
 
       {options.map((tag) => (
+        <div key={tag.id} className="TagActionRow" style={{ display: "flex", alignItems: "center" }}>
         <ListItemButton
-          key={tag.id}
           role="checkbox"
           aria-checked={selected.includes(tag.id)}
           selected={selected.includes(tag.id)}
@@ -55,8 +56,10 @@ export default function TagList({
             disableRipple
             slotProps={{ input: { "aria-hidden": true } }}
           />
-          <ListItemText primary={tag.name} />
+          <ListItemText primary={tag.name} secondary={renaming.includes(tag.id) ? "Renaming…" : undefined} />
         </ListItemButton>
+        {definitions.some((item) => item.id === tag.id) && <TagActions tag={tag} />}
+        </div>
       ))}
     </ExpandableList>
   );

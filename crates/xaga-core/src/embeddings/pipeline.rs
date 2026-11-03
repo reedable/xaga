@@ -264,8 +264,16 @@ pub async fn sync_entry_row(
     bookmarked_tx: &flume::Sender<Entry>,
     annotation_tx: &flume::Sender<ListItem>,
 ) -> Result<(), EmbeddingsError> {
-    sync_entry_row_with_tag_changes(article, db, unread_tx, bookmarked_tx, annotation_tx, None)
-        .await
+    sync_entry_row_with_tag_changes(
+        article,
+        db,
+        unread_tx,
+        bookmarked_tx,
+        annotation_tx,
+        None,
+        None,
+    )
+    .await
 }
 
 pub(crate) async fn sync_entry_row_with_tag_changes(
@@ -275,6 +283,7 @@ pub(crate) async fn sync_entry_row_with_tag_changes(
     bookmarked_tx: &flume::Sender<Entry>,
     annotation_tx: &flume::Sender<ListItem>,
     tag_changes: Option<&std::collections::HashMap<String, bool>>,
+    resolved_tags: Option<&[String]>,
 ) -> Result<(), EmbeddingsError> {
     let id = article.meta.id.clone();
 
@@ -291,12 +300,16 @@ pub(crate) async fn sync_entry_row_with_tag_changes(
         None
     };
 
-    let tags = match &article.meta.tags {
-        Some(names) => db.resolve_tag_names(names).await?,
-        None => existing
-            .as_ref()
-            .map(|row| row.tags.clone())
-            .unwrap_or_default(),
+    let tags = if let Some(ids) = resolved_tags {
+        ids.to_vec()
+    } else {
+        match &article.meta.tags {
+            Some(names) => db.resolve_tag_names(names).await?,
+            None => existing
+                .as_ref()
+                .map(|row| row.tags.clone())
+                .unwrap_or_default(),
+        }
     };
     let mut row = EmbeddingEntry::from_article(article, vector, tags);
     if let Some(changes) = tag_changes {
@@ -873,6 +886,7 @@ mod tests {
             &events,
             &annotations,
             Some(&changes),
+            None,
         )
         .await
         .unwrap();

@@ -217,6 +217,17 @@ pub(crate) fn self_link_url(feed: &Atom) -> Option<String> {
         .map(|l| l.href().to_string())
 }
 
+/// Replace the fetch address when re-adding an existing feed under the same ID.
+pub(crate) fn set_self_link_url(feed: &mut Atom, url: &str) {
+    let mut links = feed.links().to_vec();
+    links.retain(|link| link.rel() != "self");
+    let mut link = atom_persistence::Link::default();
+    link.set_rel("self");
+    link.set_href(xml_attr_encode(url));
+    links.push(link);
+    feed.set_links(links);
+}
+
 /// The membership entry-ids of a feed (one id per `<entry>`), in document order.
 pub(crate) fn entry_ids(feed: &Atom) -> Vec<String> {
     feed.entries().iter().map(|e| atom_to_entry(e).id).collect()

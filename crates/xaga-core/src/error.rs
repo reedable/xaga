@@ -98,6 +98,9 @@ mod tests {
     /// wrapped error reuses the inner code by design. A new code is a
     /// deliberate edit here AND in `src/platform/errors.ts`.
     const OWNED_CODES: &[&str] = &[
+        "tags:collision",
+        "tags:busy",
+        "tags:stale",
         "tags:invalid-store",
         "tags:invalid-name",
         "tags:deleting",

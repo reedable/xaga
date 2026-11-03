@@ -4,6 +4,7 @@ import type { Tag } from "../domain";
 type TagsContextValue = {
   tags: Tag[];
   hasLoaded: boolean;
+  renaming?: string[];
   unreadCount: number | null;
 };
 

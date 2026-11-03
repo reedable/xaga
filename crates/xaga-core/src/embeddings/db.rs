@@ -847,6 +847,48 @@ impl EmbeddingsDb {
         Ok(entries)
     }
 
+    /// Bounded ordered candidate IDs for resumable rename; assignments keep their IDs.
+    pub(crate) async fn tag_entry_id_batch(
+        &self,
+        tag_id: &str,
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<String>, EmbeddingsError> {
+        self.reload().await?;
+        let mut predicate = Self::tag_predicate(&[tag_id.into()], crate::types::ItemFilter::All)?;
+        if let Some(after) = after {
+            predicate.push_str(&format!(" AND id > '{}'", after.replace('\'', "''")));
+        }
+        let batches: Vec<RecordBatch> = self
+            .table
+            .query()
+            .select(Select::columns(&["id"]))
+            .only_if(predicate)
+            .order_by(Some(vec![lancedb::query::ColumnOrdering {
+                column_name: "id".into(),
+                ascending: true,
+                nulls_first: false,
+            }]))
+            .limit(limit)
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+        let mut ids = Vec::new();
+        for batch in batches {
+            let column = batch
+                .column_by_name("id")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            for index in 0..column.len() {
+                ids.push(column.value(index).to_owned());
+            }
+        }
+        Ok(ids)
+    }
+
     /// Count the intersection once, independently of list/text filters.
     pub async fn count_tag_unread(&self, ids: &[String]) -> Result<usize, EmbeddingsError> {
         let predicate = Self::tag_predicate(ids, crate::types::ItemFilter::Unread)?;

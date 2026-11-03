@@ -39,7 +39,6 @@ name, preserving Entry assignments while consolidating tag identity.
 
 ## Remaining work
 
-- Complete resumable rename first.
 - Connect collision confirmation and commands to stored merge transitions;
   implement bounded file/index conversion, recovery resumption, and finalization.
 - Verify source-only, destination-only, and dual-tag assignments, cancellation,
@@ -54,7 +53,7 @@ name, preserving Entry assignments while consolidating tag identity.
 
 - [Tag creation API](../../docs/architecture/tags.md#app-creation-api)
 - [Entry assignment API](../../docs/architecture/tags.md#entry-assignment-api)
-- [Rename Tags](../active/enhancement__tags--rename.md) — prerequisite.
+- [Runtime rename](../../docs/architecture/tags.md#runtime-rename).
 - [Delete Tags](enhancement__tags--delete.md)
 - `crates/xaga-core/src/library_writer/mod.rs`
 - `crates/xaga-core/src/recovery/`

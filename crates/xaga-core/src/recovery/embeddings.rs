@@ -94,6 +94,12 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     )
     .await;
 
+    if let Some(writer) = writer {
+        writer
+            .wait_for_indexed_renames()
+            .await
+            .map_err(std::io::Error::other)?;
+    }
     let mut tags = crate::tags::Tags::read(library_dir)
         .await
         .map_err(std::io::Error::other)?;
@@ -137,7 +143,8 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
         });
         let names = article.meta.tags.as_deref().unwrap_or_default();
         let observations = tags.observation_ids(names);
-        if resolver.resolve(names).is_err()
+        let mut resolved_tags = resolver.resolve(names).ok();
+        if resolved_tags.is_none()
             || observations
                 .iter()
                 .any(|id| !observed_transitions.contains(id))
@@ -145,14 +152,16 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
             let writer = writer.ok_or_else(|| {
                 std::io::Error::other("unknown article labels require a library writer")
             })?;
-            tags = writer
-                .discover_tags(names.to_vec())
+            let (current_store, current_ids) = writer
+                .resolve_entry_tags(article.meta.id.clone())
                 .await
                 .map_err(std::io::Error::other)?;
+            tags = current_store;
+            resolved_tags = Some(current_ids);
             resolver = tags.resolver();
             observed_transitions.extend(observations);
         }
-        let resolved_tags = resolver.resolve(names).map_err(std::io::Error::other)?;
+        let resolved_tags = resolved_tags.expect("resolved above or through the writer");
         article.meta.is_pinned = pin_targets.contains(&crate::pins::PinTarget::Entry {
             id: article.meta.id.clone(),
         });
@@ -174,7 +183,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
             || annotations_differ(&article)
             || pinned_ids.contains(&article.meta.id) != article.meta.is_pinned
         {
-            sink.article(article);
+            sink.article(article, resolved_tags);
         }
     }
 
@@ -248,7 +257,7 @@ mod tests {
     }
     impl RepairSink for CollectingSink {
         fn topic(&mut self, _topic: Topic) {}
-        fn article(&mut self, article: Article) {
+        fn article(&mut self, article: Article, _tag_ids: Vec<String>) {
             self.articles.push(article.meta.id.clone());
         }
     }
@@ -647,7 +656,7 @@ mod tag_tests {
     }
     impl RepairSink for Sink {
         fn topic(&mut self, _: crate::types::Topic) {}
-        fn article(&mut self, article: Article) {
+        fn article(&mut self, article: Article, _tag_ids: Vec<String>) {
             self.articles.push(article);
         }
     }

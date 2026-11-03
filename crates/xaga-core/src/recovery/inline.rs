@@ -33,7 +33,7 @@ impl RepairSink for InlineSink {
         self.topics.push(topic);
     }
 
-    fn article(&mut self, article: Article) {
+    fn article(&mut self, article: Article, _tag_ids: Vec<String>) {
         self.articles.push(article);
     }
 }

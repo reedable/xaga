@@ -1,4 +1,4 @@
-import type { EntryTagChange, Tag } from "../domain";
+import type { EntryTagChange, Tag, TagSnapshot } from "../domain";
 import type { PinTarget, PinChange } from "../pins";
 import type { ImageRecovery } from "../text/imageReferences";
 import { isAppError, type AppError as SerializedAppError } from "./errors";
@@ -375,6 +375,7 @@ listen<string>("loader:will-unload" satisfies AppEvent, (e) => {
 
 const entryTagChangeSchema = z.object({ entryId: z.string(), tagId: z.uuid({ version: "v4" }), assigned: z.boolean() });
 const tagSchema = z.object({ id: z.uuid({ version: "v4" }), name: z.string().min(1) });
+const tagSnapshotSchema = z.object({ tags: z.array(tagSchema), renaming: z.array(z.uuid({ version: "v4" })) });
 
 export class TauriPlatform implements Platform {
   async onError(
@@ -1567,6 +1568,20 @@ export class TauriPlatform implements Platform {
     const result = await invoke("count_tag_unread", { tagIds });
     signal.throwIfAborted();
     return z.number().int().nonnegative().parse(result);
+  }
+
+  async readTagStatus(signal: AbortSignal): Promise<TagSnapshot> {
+    const result = await invoke("read_tag_status");
+    signal.throwIfAborted();
+    return tagSnapshotSchema.parse(result);
+  }
+
+  async renameTag(id: string, name: string): Promise<TagSnapshot> {
+    return tagSnapshotSchema.parse(await invoke("rename_tag", { id, name }));
+  }
+
+  onTagsChanged(callback: (snapshot: TagSnapshot) => void): Promise<UnlistenFn> {
+    return listen<unknown>("tags:changed" satisfies DomainEvent, (event) => callback(tagSnapshotSchema.parse(event.payload)));
   }
 
   async listTags(signal: AbortSignal): Promise<Tag[]> {

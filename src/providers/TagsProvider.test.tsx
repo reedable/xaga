@@ -7,12 +7,12 @@ import { useTags } from "./TagsContext";
 import useRouter from "../hooks/useRouter";
 
 const mocks = vi.hoisted(() => {
-  const callbacks: Record<string, () => void> = {};
+  const callbacks: Record<string, (value?: unknown) => void> = {};
   const register = (name: string) => vi.fn(async (callback: () => void) => {
     callbacks[name] = callback; return () => { delete callbacks[name]; };
   });
-  return { callbacks, listTags: vi.fn(), countTagUnread: vi.fn(),
-    onTagCreated: register("created"), onUnreadChanged: register("unread"),
+  return { callbacks, readTagStatus: vi.fn(), countTagUnread: vi.fn(),
+    onTagCreated: register("created"), onTagsChanged: register("changed"), onUnreadChanged: register("unread"),
     onEmbeddingsChanged: register("embeddings"), pushError: vi.fn() };
 });
 vi.mock("../platform/Platform", () => ({ usePlatform: () => mocks }));
@@ -29,7 +29,7 @@ function Host() {
 }
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
 it("reads definitions from the registry and discards old intersection counts after navigation", async () => {
-  mocks.listTags.mockResolvedValue([{ id: "a", name: "Research" }]);
+  mocks.readTagStatus.mockResolvedValue({ tags: [{ id: "a", name: "Research" }], renaming: [] });
   let oldCount!: (count: number) => void;
   mocks.countTagUnread.mockImplementationOnce(() => new Promise((resolve) => { oldCount = resolve; }));
   mocks.countTagUnread.mockResolvedValue(2);
@@ -41,9 +41,10 @@ it("reads definitions from the registry and discards old intersection counts aft
   expect(mocks.countTagUnread).toHaveBeenLastCalledWith(expect.any(AbortSignal), ["a", "b"]);
   await act(async () => oldCount(100));
   expect(container.textContent).toBe("Research:2");
-  mocks.listTags.mockResolvedValue([{ id: "a", name: "Renamed" }]);
+  mocks.readTagStatus.mockResolvedValue({ tags: [{ id: "a", name: "Renamed" }], renaming: [] });
   // Both registry and count subscriptions receive the same native embedding event.
   await act(async () => mocks.callbacks.created());
   expect(container.textContent).toBe("Renamed:2");
+  await act(async () => mocks.callbacks.changed({ tags: [{ id: "a", name: "Renamed" }], renaming: ["a"] }));
   expect(router.state.tagIds).toEqual(["a", "b"]);
 });

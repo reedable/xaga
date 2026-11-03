@@ -1,0 +1,11 @@
+.Trigger {
+  opacity: 0;
+}
+:global(.TagActionRow):hover .Trigger,
+:global(.TagActionRow):focus-within .Trigger,
+.Trigger:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .Trigger { opacity: 1; }
+}

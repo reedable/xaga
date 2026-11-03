@@ -11,7 +11,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use serde::Serialize;
-use xaga_core::embeddings::{Job, Tier};
+use xaga_core::embeddings::Tier;
 use xaga_core::persistence::feeds;
 use xaga_core::types::Feed;
 
@@ -84,7 +84,7 @@ pub(crate) async fn import_feeds(
             &client,
             &library,
             &writer,
-            &normalized,
+            &raw,
             &unread,
             &bookmarked,
             timeout_secs,
@@ -97,7 +97,7 @@ pub(crate) async fn import_feeds(
                 // rides Interactive (T1); its embedding follows to Regular via `embed_follow`,
                 // per the priority definitions in the service's `run_loop`.
                 for article in created {
-                    state.enqueue(Tier::Interactive, Job::UpsertEntry { article });
+                    state.enqueue_entry(Tier::Interactive, article).await;
                 }
                 added.push(feed);
             }

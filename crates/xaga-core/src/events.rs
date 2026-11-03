@@ -22,6 +22,7 @@ pub struct AnnotationReplacement {
 }
 
 pub enum DomainEvent {
+    TagsChanged(crate::tags::TagSnapshot),
     EntryTagsChanged(crate::tags::EntryTagChange),
     TagCreated(crate::tags::Tag),
     /// An entry's unread state changed.
@@ -68,6 +69,7 @@ impl DomainEvent {
     pub fn name(&self) -> &'static str {
         match self {
             DomainEvent::EntryTagsChanged(_) => "entry-tags:changed",
+            DomainEvent::TagsChanged(_) => "tags:changed",
             DomainEvent::TagCreated(_) => "tag:created",
             DomainEvent::UnreadChanged(_) => "unread:changed",
             DomainEvent::BookmarkChanged(_) => "bookmark:changed",
@@ -108,6 +110,7 @@ mod tests {
 
     fn all_variants() -> Vec<DomainEvent> {
         vec![
+            DomainEvent::TagsChanged(crate::tags::Tags::default().snapshot()),
             DomainEvent::EntryTagsChanged(crate::tags::EntryTagChange {
                 entry_id: String::new(),
                 tag_id: String::new(),
@@ -183,6 +186,7 @@ mod tests {
         assert_eq!(
             names,
             [
+                "tags:changed",
                 "entry-tags:changed",
                 "tag:created",
                 "unread:changed",

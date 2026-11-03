@@ -51,7 +51,7 @@ safe completion of any library-wide cleanup.
 
 - [Tag creation API](../../docs/architecture/tags.md#app-creation-api).
 - [Entry assignment API](../../docs/architecture/tags.md#entry-assignment-api).
-- [Rename Tags](../active/enhancement__tags--rename.md)
+- [Runtime rename](../../docs/architecture/tags.md#runtime-rename)
 - `crates/xaga-core/src/library_writer/mod.rs`
 - `docs/architecture/crash_consistency.md`
 - `docs/architecture/design_scale.md`

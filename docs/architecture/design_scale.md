@@ -169,3 +169,42 @@ Reproduce the curve without article-file fixtures:
 ```sh
 cargo test --workspace --lib --bins --locked tag_browsing_scaling_curve -- --ignored --nocapture
 ```
+
+## Tag rename scaling
+
+Rename queries indexed tag UUID assignments and fetches only candidate Entry IDs,
+ordered by ID, in batches of at most 1,024. It opens only those files during the
+prompt phase. The persisted pending list precedes writes; the existing `after`
+field advances only after that batch succeeds. Four tag workers may submit up to
+eight file rewrites each, within the writer's global eight-lane execution cap.
+Registry and Markdown inputs retain their 12 MiB limits; parsing and patching
+allocate additional copies. No corpus-wide file/ID list is retained.
+
+A local debug-build regression curve used four affected files in each library,
+10,002 definitions, small Markdown files, and fully indexed Entry summaries.
+Timing includes opening the read table, querying candidates, checkpoints, four
+file rewrites, completion checkpointing, and alias retirement. Fixture/index creation and
+the initial registry rename request are excluded. Native notification delivery
+and UI rendering are also excluded.
+
+| Library Entries | Affected files | Rename completion (seconds) |
+| ---: | ---: | ---: |
+| 2,000 | 4 | 1.261 |
+| 4,000 | 4 | 1.265 |
+| 8,000 | 4 | 1.259 |
+
+The prompt cost in this fixture stayed flat as unrelated files increased. This
+replaces the earlier full-library rename scan and its corpus-linear timing
+estimates. These are bounded-fixture measurements, not a latency guarantee at
+two million rows; index freshness, registry size, cache/storage conditions, and
+candidate count affect cost. Popular tags still require rewriting all affected
+files, in bounded batches.
+
+Rename finishes after its indexed batches commit. It does not add a source scan
+to verify completeness. Files missing from the index retain their old spelling;
+later recovery/discovery may register that name as a separate tag. There is no
+post-rename cleanup status or restart requirement for another rename.
+
+```sh
+cargo test --workspace --lib --bins --locked tag_rename_scaling_curve -- --ignored --nocapture
+```

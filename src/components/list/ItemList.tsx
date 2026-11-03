@@ -60,6 +60,7 @@ import sortByTitle from "../../utils/sortByTitle";
 import ItemStatus from "../ItemStatus";
 import Quotes from "../Quotes";
 import MissingShortcutsButton from "../sidebar/MissingShortcutsButton";
+import { TagActions } from "../TagActions";
 import css from "./ItemList.module.css";
 
 function getEmptyMessage(filter: Filter, filterText: string): string {
@@ -83,7 +84,7 @@ export function ItemList({
   onEditSite,
 }: ItemListProps) {
   const {
-    filter,
+    filter: navigationFilter,
     selectItem,
     selectSite,
     selectArticleScope,
@@ -97,7 +98,10 @@ export function ItemList({
     () => (tagSelectionKey === undefined ? undefined : JSON.parse(tagSelectionKey)),
     [tagSelectionKey],
   );
-  const { tags } = useTags();
+  const hasSelectedTags = !!tagIds?.length;
+  const filter = hasSelectedTags && (!navigationFilter || navigationFilter === "unread")
+    ? "all" : navigationFilter;
+  const { tags, renaming = [] } = useTags();
   const tagOptions = useMemo(
     () =>
       [
@@ -579,6 +583,15 @@ export function ItemList({
               <Select
                 className={css.CollectionSelect}
                 size="small"
+                MenuProps={{ onKeyDownCapture: (event) => {
+                  if (event.key !== "Tab" || !event.currentTarget.contains(event.target as Node)) return;
+                  const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[data-tag-action]")];
+                  const target = event.target as HTMLElement;
+                  const current = buttons.indexOf(target as HTMLButtonElement);
+                  const rowButton = target.closest(".TagActionRow")?.querySelector<HTMLButtonElement>("[data-tag-action]");
+                  const next = current >= 0 ? buttons[current + (event.shiftKey ? -1 : 1)] : (event.shiftKey ? undefined : rowButton);
+                  if (next) { event.preventDefault(); event.stopPropagation(); next.focus(); }
+                } }}
                 multiple
                 open={headerOpen}
                 onOpen={() => setHeaderOpen(true)}
@@ -627,15 +640,16 @@ export function ItemList({
                 <ListSubheader>Tags</ListSubheader>
                 <MenuItem value="tags:all">All Entries (Tags)</MenuItem>
                 {tagOptions.map((tag) => (
-                  <MenuItem key={`tag:${tag.id}`} value={`tag:${tag.id}`}>
+                  <MenuItem className="TagActionRow" key={`tag:${tag.id}`} value={`tag:${tag.id}`}>
                     <Checkbox
                       checked={tagIds?.includes(tag.id) ?? false}
                       tabIndex={-1}
                       slotProps={{ input: { "aria-hidden": true } }}
                     />
-                    <Typography component="span" variant="body2">
-                      {tag.name}
+                    <Typography component="span" variant="body2" sx={{ flexGrow: 1 }}>
+                      {tag.name}{renaming.includes(tag.id) ? " — Renaming…" : ""}
                     </Typography>
+                    {tags.some((item) => item.id === tag.id) && <TagActions tag={tag} />}
                   </MenuItem>
                 ))}
                 {siteOptions.length > 0 && <ListSubheader>Sites</ListSubheader>}
@@ -660,9 +674,11 @@ export function ItemList({
             value={filter}
             onChange={handleFilter}
           >
-            <ToggleButton size="small" value="unread" aria-label="Unread">
-              Unread
-            </ToggleButton>
+            {!hasSelectedTags && (
+              <ToggleButton size="small" value="unread" aria-label="Unread">
+                Unread
+              </ToggleButton>
+            )}
             <ToggleButton size="small" value="saved" aria-label="Saved">
               Saved
             </ToggleButton>

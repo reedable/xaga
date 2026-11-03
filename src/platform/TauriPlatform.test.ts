@@ -394,3 +394,19 @@ it("queries tag intersections and counts over the native read boundary", async (
   invokeMock.mockResolvedValueOnce([]);
   await expect(platform.listTagEntries(controller.signal, [], "all")).rejects.toThrow();
 });
+
+it("carries tag rename status and typed definition notifications", async () => {
+  const platform = new TauriPlatform();
+  const id = "46fa4a27-1ddf-448a-a5e6-95691a29c602";
+  const snapshot = { tags: [{ id, name: "Changed" }], renaming: [id] };
+  invokeMock.mockResolvedValueOnce(snapshot);
+  expect(await platform.renameTag(id, "Changed")).toEqual(snapshot);
+  expect(invokeMock).toHaveBeenLastCalledWith("rename_tag", { id, name: "Changed" });
+  invokeMock.mockResolvedValueOnce(snapshot);
+  expect(await platform.readTagStatus(new AbortController().signal)).toEqual(snapshot);
+  const { listen } = await import("@tauri-apps/api/event");
+  const callback = vi.fn(); await platform.onTagsChanged(callback);
+  const handler = vi.mocked(listen).mock.calls.findLast(([name]) => name === "tags:changed")![1];
+  handler({ event: "tags:changed", id: 0, payload: snapshot });
+  expect(callback).toHaveBeenCalledWith(snapshot);
+});

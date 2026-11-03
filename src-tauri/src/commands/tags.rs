@@ -10,6 +10,22 @@ pub async fn list_tags(state: State<'_, AppState>) -> Result<Vec<Tag>, AppError>
     list_in_library(&state.library_path()).await
 }
 
+#[tauri::command]
+pub async fn read_tag_status(
+    state: State<'_, AppState>,
+) -> Result<xaga_core::tags::TagSnapshot, AppError> {
+    Ok(Tags::read(&state.library_path()).await?.snapshot())
+}
+
+#[tauri::command]
+pub async fn rename_tag(
+    id: String,
+    name: String,
+    state: State<'_, AppState>,
+) -> Result<xaga_core::tags::TagSnapshot, AppError> {
+    Ok(super::require_writer(&state)?.rename_tag(id, name).await?)
+}
+
 async fn list_in_library(dir: &std::path::Path) -> Result<Vec<Tag>, AppError> {
     Ok(Tags::read(dir).await?.tags)
 }

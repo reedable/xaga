@@ -1,5 +1,8 @@
 # Tagging Beyond Entries
 
+The more specific [tag filters and annotation tagging idea](tag-filters-and-annotation-tagging.md)
+explores filtering within existing browsing views and directly tagging Annotations.
+
 Tags can theoretically organize Feeds, Topics, Sites, Notes, and annotations as
 well as Entries. Initial implementation covers Entries/Articles only.
 

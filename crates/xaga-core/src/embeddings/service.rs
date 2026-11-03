@@ -66,6 +66,7 @@ pub enum Job {
     /// The producer holds the domain object; the consumer never reads the file.
     UpsertEntry {
         article: Article,
+        tag_ids: Vec<String>,
     },
     /// Topic created/edited: sync the row from the carried `Topic`, then defer an `EmbedTopic`.
     UpsertTopic {
@@ -592,7 +593,7 @@ async fn handle_job(
                 log::error!("sync_state failed id={}: {e}", entity.id);
             }
         }
-        Job::UpsertEntry { article } => {
+        Job::UpsertEntry { article, tag_ids } => {
             if let Err(e) = super::pipeline::sync_entry_row_with_tag_changes(
                 &article,
                 db,
@@ -600,6 +601,7 @@ async fn handle_job(
                 &events.bookmarked,
                 &events.annotation,
                 tag_changes.get(&article.meta.id),
+                Some(&tag_ids),
             )
             .await
             {

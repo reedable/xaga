@@ -724,12 +724,9 @@ pub async fn save_article(
             )
             .await
             .map_err(AppError::from)?;
-        state.enqueue(
-            Tier::Interactive,
-            Job::UpsertEntry {
-                article: article.clone(),
-            },
-        );
+        state
+            .enqueue_entry(Tier::Interactive, article.clone())
+            .await;
         crate::events::emit_domain(
             &app,
             xaga_core::events::DomainEvent::FaviconChanged(article.clone()),
@@ -780,12 +777,9 @@ pub async fn create_article(
             )
             .await
             .map_err(AppError::from)?;
-        state.enqueue(
-            Tier::Interactive,
-            Job::UpsertEntry {
-                article: article.clone(),
-            },
-        );
+        state
+            .enqueue_entry(Tier::Interactive, article.clone())
+            .await;
         crate::events::emit_domain(
             &app,
             xaga_core::events::DomainEvent::FaviconChanged(article.clone()),
@@ -1352,11 +1346,8 @@ pub async fn recover_entry_images(
         .recover_images(id, recovery, data)
         .await
         .map_err(AppError::from)?;
-    state.enqueue(
-        Tier::Interactive,
-        Job::UpsertEntry {
-            article: article.clone(),
-        },
-    );
+    state
+        .enqueue_entry(Tier::Interactive, article.clone())
+        .await;
     Ok(article)
 }

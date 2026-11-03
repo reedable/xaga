@@ -18,7 +18,7 @@ use crate::types::{Article, Feed, Topic};
 /// Sync by necessity — the walk's visitor cannot await (see `fs::for_each_file`).
 pub(crate) trait RepairSink {
     fn topic(&mut self, topic: Topic);
-    fn article(&mut self, article: Article);
+    fn article(&mut self, article: Article, tag_ids: Vec<String>);
 }
 
 /// The post-walk residue of a repair scan: the parts that can only be known once every file has been

@@ -52,7 +52,7 @@ pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, A
     // entry upsert rides Interactive (T1). Its entry embedding then follows to Regular via
     // `embed_follow`, per the priority definitions in the embedding service's `run_loop`.
     for article in created {
-        state.enqueue(Tier::Interactive, Job::UpsertEntry { article });
+        state.enqueue_entry(Tier::Interactive, article).await;
     }
     Ok(feed)
 }
@@ -95,7 +95,7 @@ pub async fn refresh_all_feeds(
                 // upsert rides Interactive (T1); its embedding follows to Regular via
                 // `embed_follow`, per the priority definitions in the service's `run_loop`.
                 for article in created {
-                    state.enqueue(Tier::Interactive, Job::UpsertEntry { article });
+                    state.enqueue_entry(Tier::Interactive, article).await;
                 }
 
                 crate::events::emit_domain(

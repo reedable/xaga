@@ -6,6 +6,8 @@ use std::{
     path::Path,
 };
 
+pub(crate) mod rename;
+
 const MAX_STORE_BYTES: usize = 12 * 1024 * 1024;
 
 fn parser() -> ParserConfig {
@@ -74,6 +76,32 @@ pub struct Tags {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) transitions: Vec<Transition>,
 }
+/// Current definitions and the identities with unfinished rename work.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TagSnapshot {
+    pub tags: Vec<Tag>,
+    pub renaming: Vec<String>,
+}
+impl Tags {
+    pub fn snapshot(&self) -> TagSnapshot {
+        TagSnapshot {
+            tags: self.tags.clone(),
+            renaming: self
+                .transitions
+                .iter()
+                .filter_map(|t| {
+                    if let Transition::Rename { id, .. } = t {
+                        Some(id.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+        }
+    }
+}
+
 /// A committed single-tag assignment change, shared with indexing and the UI.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -92,6 +120,12 @@ pub struct TagCreation {
 
 #[derive(Debug, thiserror::Error)]
 pub enum TagsError {
+    #[error("tag name already exists")]
+    Collision,
+    #[error("tag has an active transition")]
+    Busy,
+    #[error("stale tag transition checkpoint")]
+    Stale,
     #[error("empty tag name")]
     InvalidName,
     #[error("tag is being deleted")]
@@ -104,6 +138,9 @@ pub enum TagsError {
 impl TagsError {
     pub fn code(&self) -> &'static str {
         match self {
+            Self::Collision => "tags:collision",
+            Self::Busy => "tags:busy",
+            Self::Stale => "tags:stale",
             Self::InvalidName => "tags:invalid-name",
             Self::Deleting => "tags:deleting",
             _ => "tags:invalid-store",
@@ -111,6 +148,9 @@ impl TagsError {
     }
     pub fn user_message(&self) -> &'static str {
         match self {
+            Self::Collision => "A tag already uses this name.",
+            Self::Busy => "This tag has an unfinished operation.",
+            Self::Stale => "Tag progress changed; retry the operation.",
             Self::InvalidName => "Enter a tag name.",
             Self::Deleting => "This tag is being deleted.",
             _ => "Couldn't read or save tags.",
@@ -514,24 +554,25 @@ impl CachedResolver {
 /// Storage operations used by transition dispatchers. No file/index work is
 /// performed here: checkpoints follow that work in the producing command.
 #[derive(Debug, Clone)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "0.14 storage foundation; production transition commands are implemented separately"
-    )
-)]
 pub(crate) enum Mutation {
     Rename {
         id: String,
         name: String,
     },
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "merge command is a separate story")
+    )]
     Merge {
         source: String,
         destination: String,
         source_count: u64,
         destination_count: u64,
     },
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "delete command is a separate story")
+    )]
     Delete {
         id: String,
     },
@@ -547,15 +588,12 @@ pub(crate) enum Mutation {
     },
 }
 #[derive(Debug, Clone, Copy)]
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "0.14 storage foundation; production transition commands are implemented separately"
-    )
-)]
 pub(crate) enum Phase {
     Files,
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "merge/delete index work is a separate story")
+    )]
     Index,
 }
 impl Transition {
@@ -597,7 +635,7 @@ impl Tags {
             .iter()
             .any(|t| t.ids().iter().any(|v| v.as_str() == id))
         {
-            return Err(invalid("tag has an active transition"));
+            return Err(TagsError::Busy);
         }
         Ok(())
     }
@@ -605,7 +643,7 @@ impl Tags {
         self.transitions
             .iter_mut()
             .find(|t| t.ids().iter().any(|v| v.as_str() == id) && t.revision() == revision)
-            .ok_or_else(|| invalid("stale or unknown tag transition"))
+            .ok_or(TagsError::Stale)
     }
     /// Returns the canonical readable name for a new assignment; deletion refuses it.
     pub(crate) fn assignment(&self, id: &str) -> Result<(String, String), TagsError> {
@@ -633,14 +671,14 @@ impl Tags {
         match mutation {
             Mutation::Rename { id, name } => {
                 self.idle(&id)?;
-                valid_name(&name)?;
+                valid_name(&name).map_err(|_| TagsError::InvalidName)?;
                 if self
                     .resolver()
                     .names
                     .get(&key(&name))
                     .is_some_and(|owner| owner.as_deref() != Some(id.as_str()))
                 {
-                    return Err(invalid("tag name is reserved"));
+                    return Err(TagsError::Collision);
                 }
                 let tag = self.tags.iter_mut().find(|t| t.id == id).unwrap();
                 let old_name = std::mem::replace(&mut tag.name, name.trim().into());

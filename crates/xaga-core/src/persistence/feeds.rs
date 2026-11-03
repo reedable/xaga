@@ -116,13 +116,9 @@ pub async fn add_feed(
     timeout_secs: u64,
     max_body_bytes: u64,
 ) -> Result<(Feed, Vec<Article>)> {
-    let url = if url.trim_start().starts_with("http://") {
-        format!("https://{}", url.trim_start()[7..].trim_start())
-    } else {
-        url.to_string()
-    };
-
-    let url = normalize_url(&url).map_err(FeedError::InvalidUrl)?;
+    // Normalization defines identity, but www and trailing slashes can change
+    // the server response. Keep the supplied address for network requests.
+    let url = fetch_url(url)?;
     let id = url_to_feed_id(&url)?;
 
     tokio::fs::create_dir_all(crate::library::feeds_dir(library_dir)).await?;
@@ -135,6 +131,7 @@ pub async fn add_feed(
             library_dir,
             writer,
             &id,
+            &url,
             unread,
             bookmarked,
             timeout_secs,
@@ -174,6 +171,15 @@ pub async fn add_feed(
     }
 }
 
+fn fetch_url(raw: &str) -> Result<String> {
+    let mut url = url::Url::parse(raw.trim())?;
+    if url.scheme() == "http" {
+        let _ = url.set_scheme("https");
+    }
+    url.set_fragment(None);
+    Ok(url.to_string())
+}
+
 fn seed_atom(id: String, url: String) -> Atom {
     feed_to_atom(&Feed {
         id,
@@ -198,6 +204,7 @@ async fn refresh_feed(
     library_dir: &Path,
     writer: &LibraryWriter,
     id: &str,
+    url: &str,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
     timeout_secs: u64,
@@ -211,6 +218,7 @@ async fn refresh_feed(
 
     let mut existing =
         parse_atom(&tokio::fs::read_to_string(&path).await?).map_err(FeedError::AtomParse)?;
+    crate::atom::set_self_link_url(&mut existing, url);
 
     let new_entries =
         fetch_and_merge(client, &mut existing, id, timeout_secs, max_body_bytes).await?;
@@ -531,6 +539,24 @@ mod tests {
     use super::*;
     use std::io::{Read as _, Write as _};
     use std::net::TcpListener;
+
+    #[test]
+    fn fetch_address_preserves_host_and_path_without_changing_identity() {
+        let supplied = "https://www.smithsonianmag.com/rss/air-space-magazine/";
+        let canonical = "https://smithsonianmag.com/rss/air-space-magazine";
+        assert_eq!(fetch_url(supplied).unwrap(), supplied);
+        let id = url_to_feed_id(supplied).unwrap();
+        assert_eq!(id, url_to_feed_id(canonical).unwrap());
+        let mut atom = seed_atom(id, canonical.to_string());
+        crate::atom::set_self_link_url(&mut atom, supplied);
+        let xml = String::from_utf8(atom_to_xml(&atom).unwrap()).unwrap();
+        let stored = parse_atom(&xml).unwrap();
+        assert_eq!(self_link_url(&stored).as_deref(), Some(supplied));
+        assert_eq!(
+            fetch_url(" http://www.example.com/rss/?a=1&b=2#fragment ").unwrap(),
+            "https://www.example.com/rss/?a=1&b=2"
+        );
+    }
 
     /// Serves one canned HTTP response on a random loopback port and hands
     /// back the request head it received. Plain client, no network proxy — the

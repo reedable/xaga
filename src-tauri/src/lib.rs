@@ -148,6 +148,23 @@ impl AppState {
         }
     }
 
+    /// Carry source-resolved assignments with content before a rename can retire its aliases.
+    pub(crate) async fn enqueue_entry(&self, tier: Tier, article: xaga_core::types::Article) {
+        if self.embedding_service.lock().unwrap().is_none() {
+            return;
+        }
+        let Some(writer) = self.writer() else {
+            return;
+        };
+        match writer.resolve_entry_tags(article.meta.id.clone()).await {
+            Ok((_, tag_ids)) => self.enqueue(tier, Job::UpsertEntry { article, tag_ids }),
+            Err(error) => log::error!(
+                "resolve entry tags before indexing {}: {error}",
+                article.meta.id
+            ),
+        }
+    }
+
     /// The open library's path.
     pub(crate) fn library_path(&self) -> PathBuf {
         self.library.read().unwrap().path.clone()
@@ -1044,6 +1061,22 @@ pub fn run() {
             // The EmbeddingService shares the writer's lock for its lifetime.
             let service_lock = writer.as_ref().map(|w| w.lock());
             let service_writer = writer.clone();
+            if let Some(rename_writer) = writer.clone() {
+                let updates = rename_writer.subscribe_to_tag_updates();
+                let rename_app = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = rename_writer.resume_tag_renames().await {
+                        events::emit_error(&rename_app, "main", crate::error::AppError::from(error).serialized());
+                    }
+                    drop(rename_writer);
+                    while let Ok(update) = updates.recv_async().await {
+                        match update {
+                            Ok(snapshot) => events::emit_domain(&rename_app, xaga_core::events::DomainEvent::TagsChanged(snapshot)),
+                            Err(error) => events::emit_error(&rename_app, "main", crate::error::AppError::from(error).serialized()),
+                        }
+                    }
+                });
+            }
             if writer.is_none() {
                 log::warn!(
                     "startup: opening library in read-only mode"

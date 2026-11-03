@@ -133,8 +133,8 @@ for readable labels; article inspection reads the source-file labels.
 ## Transition records
 
 An optional root `transitions` sequence reserves identities and names while
-bounded file/index work is incomplete. Storage supports these records; commands
-and dispatchers starting and executing transitions are separate functionality.
+bounded file/index work is incomplete. Rename has a runtime command and dispatcher;
+merge and deletion dispatchers remain separate functionality.
 The user-visible operation rules are in the [organization model](organization_model.md#tags).
 
 A rename updates the definition's `name` and records its old name:
@@ -151,6 +151,78 @@ transitions:
 
 Both names resolve to the unchanged ID. A case-only rename uses the same record.
 A rename has no index-conversion checkpoint because assignments retain their IDs.
+
+### Runtime rename
+
+`renameTag(id, name)` invokes native `rename_tag`, requiring the library writer.
+The serialized registry operation checks names and transition ownership, commits
+the new name and alias, and starts bounded file work. It returns the committed
+`TagSnapshot` (`tags`, `renaming`). `readTagStatus(signal)` / `read_tag_status`
+read that same shape without initializing a store. `tags:changed` carries typed
+snapshots after rename acceptance and completion; checkpoints do not emit
+unchanged definition snapshots. `tags:collision`, `tags:invalid-name`, and
+`tags:busy` support inline dialog errors. Stale checkpoint revisions retry
+internally; they cannot advance or retire newer progress.
+
+Sidebar tag rows and responsive header options share one actions menu and
+prefilled rename dialog. Actions appear on hover/focus and remain available on
+touch devices. Sidebar controls and the responsive menu provide Tab access to
+actions. Enter/form submission renames; Cancel/Escape dismiss without mutation.
+Dismissal restores focus to the invoking control. Read-only mode disables Rename;
+indexed file work shows Renaming…. An unfinished transition blocks another
+rename on that identity.
+Inspector chips remain assignment controls. Definition events refresh names in
+navigation and chips without changing selected IDs or the current list.
+
+Queued Entry upserts carry resolved UUID assignments alongside their Article
+snapshot. Native producers obtain those IDs through the registry writer lane,
+which reads current source assignments before discovery/resolution. Recovery
+carries its resolved IDs to both incremental jobs and fresh-cache bulk inserts;
+when discovery is needed, it also uses that source-aware writer operation. This
+prevents a stale source snapshot from recreating an old definition after alias
+retirement, and lets queued index jobs finish without depending on retired names.
+
+The dispatcher allows four active tag workers. Each queries the existing LanceDB
+read table for Entry IDs carrying the tag UUID, ordered by ID in batches of at
+most 1,024. It reads and rewrites only those candidate files. Index false positives
+are harmless: each Entry lane rereads current labels and changes only the old
+spelling. Missing/deleted Entries are skipped. Other labels, metadata,
+annotations, and body bytes are preserved; rename does not rewrite indexed IDs.
+
+Before file writes, the batch is persisted as `files.pending` with the prior
+`files.after` cursor. After success, the cursor advances to the batch's last ID.
+Restart replays pending IDs idempotently and resumes the indexed scan. Discovery
+of old names invalidates the revision/cursor as before. No directory position is
+used as an ordered cursor. If no cache exists, source cleanup remains recovery's
+responsibility.
+
+When indexed candidates are exhausted and all pending writes are committed, the
+worker checkpoints completion and retires the old-name alias immediately. The
+Renaming… status clears and another rename is available in the same session.
+There is no subsequent verification or cleanup phase for rename.
+
+The index is a candidate source, not an assignment authority. If it missed an
+article, that file retains its old spelling. After retirement, ordinary recovery
+or discovery handles that spelling as a newly encountered name under the usual
+case-insensitive comparison rules. It can create a separate tag identity instead
+of attaching the article to the renamed tag. Case-only spellings still resolve
+to the existing identity. This is an accepted stale-index consequence; there is
+no implicit merge or retained chain of old names. The separate Merge Tags feature
+can later provide explicit consolidation.
+
+Recovery resumes unfinished indexed batches before discovering article labels.
+It does not perform rename-specific full-file rewriting or alias verification.
+Missing caches provide no indexed candidates beyond any persisted pending batch;
+remaining old labels follow the same discovery rule. Repeated renames retain the
+same tag UUID, and pending batches remain crash-safe until indexed work finishes.
+
+Startup resumes indexed work under the existing library write right. Shutdown
+stops submissions, drains in-flight writes, waits for workers, and leaves
+unfinished checkpoints durable. Background failures use the main window's
+existing error sink. Bounds and measurements are in
+[index-first rename scaling](design_scale.md#tag-rename-scaling).
+
+### Merge and deletion records
 
 A merge records `type: merge`, `source_id`, `destination_id`, `survivor_id`,
 `destination_name`, `revision`, `files`, and `index`. Both definitions remain
@@ -189,9 +261,9 @@ from retiring a name past newly discovered work.
 File read–modify–writes belong inside the existing Entry writer lane and use
 validated atomic frontmatter patches. Registry replacement alone does not
 serialize article changes. File work precedes its checkpoint; cache conversion
-precedes its index checkpoint. A final successful source scan must account for
-newly discovered labels before declaring completion. Read or write errors cannot
-be treated as scan completion.
+precedes its index checkpoint. Rename file completion covers its indexed candidate batches. Merge and deletion
+retain their full-source cleanup requirements. Read or write failures in an
+indexed rename batch retain the transition and pending work for retry.
 
 Rename finalization requires file completion. Merge and deletion require both
 file and index completion. The caller supplies completion evidence through those

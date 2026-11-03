@@ -24,7 +24,9 @@ The Tags sidebar section and the Tags options in the existing selectable header
 share the route's selected tag IDs. Multiple selections intersect: each Entry
 must directly carry every selected identity. An empty selection in Tags browsing
 shows all Entries, rather than the mixed Entry/Annotation All items shortcut.
-Unread/Saved/All and text filtering remain available. Selecting a row uses normal
+With tags selected, Saved/All and text filtering remain available. The Unread
+button is hidden, and a retained/default Unread filter is treated as All in that
+view. Clearing tag selection restores the Unread control and the retained filter. Selecting a row uses normal
 Article navigation and retains the selected tag set. Back/forward navigation
 restores that set; it is not a library setting.
 

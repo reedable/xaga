@@ -6,6 +6,7 @@
 // the other fails a test rather than becoming an event nobody listens for.
 
 export const DOMAIN_EVENT = [
+  "tags:changed", // payload: TagSnapshot; committed definitions and rename status
   "entry-tags:changed", // payload: EntryTagChange; committed assignment delta
   "tag:created", // payload: Tag; emitted only for a newly committed definition
   "unread:changed", // payload: Entry (schema-minted)

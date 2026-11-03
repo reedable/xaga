@@ -138,7 +138,13 @@ enum Op {
     },
     MutateTags {
         mutation: crate::tags::Mutation,
+        generations: Arc<std::sync::Mutex<HashMap<String, u64>>>,
+        updates: flume::Sender<Result<crate::tags::TagSnapshot, WriterError>>,
         resp: oneshot::Sender<Result<crate::tags::Tags, WriterError>>,
+    },
+    ResolveEntryTags {
+        id: String,
+        resp: oneshot::Sender<Result<(crate::tags::Tags, Vec<String>), WriterError>>,
     },
     DiscoverTags {
         names: Vec<String>,
@@ -194,6 +200,12 @@ enum Op {
         article_id: String,
         annotation_id: String,
         resp: oneshot::Sender<Result<Article, WriterError>>,
+    },
+    RewriteTagName {
+        id: String,
+        old_name: String,
+        new_name: String,
+        resp: oneshot::Sender<Result<(), WriterError>>,
     },
     SetEntryTag {
         id: String,
@@ -315,7 +327,10 @@ impl Op {
     /// topic sharing an id string can never collide onto one lane.
     fn lane_key(&self) -> String {
         match self {
-            Op::CreateTag { .. } | Op::DiscoverTags { .. } | Op::MutateTags { .. } => "tags".into(),
+            Op::ResolveEntryTags { .. }
+            | Op::CreateTag { .. }
+            | Op::DiscoverTags { .. }
+            | Op::MutateTags { .. } => "tags".into(),
             Op::SetPin { .. } => "pins".into(),
             Op::RecoverImages { id, .. }
             | Op::RepairSummary { id, .. }
@@ -323,6 +338,7 @@ impl Op {
             | Op::AddAnnotation { article_id: id, .. }
             | Op::ReplaceAnnotation { article_id: id, .. }
             | Op::RemoveAnnotation { article_id: id, .. }
+            | Op::RewriteTagName { id, .. }
             | Op::SetEntryTag { id, .. }
             | Op::SetEntryUnread { id, .. }
             | Op::SetEntryColor { id, .. } => format!("entry/{id}"),
@@ -353,6 +369,7 @@ impl Op {
         match self {
             Op::CreateTag { .. } => "create_tag",
             Op::MutateTags { .. } => "mutate_tags",
+            Op::ResolveEntryTags { .. } => "resolve_entry_tags",
             Op::DiscoverTags { .. } => "discover_tags",
             Op::SetPin { .. } => "set_pin",
             Op::RecoverImages { .. } => "recover_images",
@@ -362,6 +379,7 @@ impl Op {
             Op::AddAnnotation { .. } => "add_annotation",
             Op::ReplaceAnnotation { .. } => "replace_annotation",
             Op::RemoveAnnotation { .. } => "remove_annotation",
+            Op::RewriteTagName { .. } => "rewrite_tag_name",
             Op::SetEntryTag { .. } => "set_entry_tag",
             Op::SetEntryUnread { .. } => "set_entry_unread",
             Op::SetEntryColor { .. } => "set_entry_color",
@@ -385,6 +403,7 @@ impl Op {
         match self {
             Op::CreateTag { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::MutateTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::ResolveEntryTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::DiscoverTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetPin { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RepairSummary { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -395,6 +414,7 @@ impl Op {
             Op::AddAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::ReplaceAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RemoveAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::RewriteTagName { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryTag { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryUnread { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryColor { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -425,10 +445,43 @@ impl Op {
                     .map_err(WriterError::from);
                 let _ = resp.send(result);
             }
-            Op::MutateTags { mutation, resp } => {
+            Op::MutateTags {
+                mutation,
+                resp,
+                updates,
+                generations,
+            } => {
+                let notify = matches!(
+                    mutation,
+                    crate::tags::Mutation::Rename { .. } | crate::tags::Mutation::Finish { .. }
+                );
+                let started = if let crate::tags::Mutation::Rename { id, .. } = &mutation {
+                    Some(id.clone())
+                } else {
+                    None
+                };
                 let result = crate::tags::Tags::mutate_write(library_dir, mutation, token)
                     .await
                     .map_err(WriterError::from);
+                if let Ok(store) = &result {
+                    if let Some(id) = started {
+                        *generations.lock().unwrap().entry(id).or_default() += 1;
+                    }
+                    if notify {
+                        let _ = updates.send(Ok(store.snapshot()));
+                    }
+                }
+                let _ = resp.send(result);
+            }
+            Op::ResolveEntryTags { id, resp } => {
+                let result = async {
+                    let names = entries::read_entry_tags(library_dir, &id).await?;
+                    let store =
+                        crate::tags::Tags::discover_write(library_dir, &names, token).await?;
+                    let ids = store.resolver().resolve(&names)?;
+                    Ok((store, ids))
+                }
+                .await;
                 let _ = resp.send(result);
             }
             Op::DiscoverTags { names, resp } => {
@@ -554,6 +607,22 @@ impl Op {
                         .await
                         .map_err(WriterError::from);
                 let _ = resp.send(r);
+            }
+            Op::RewriteTagName {
+                id,
+                old_name,
+                new_name,
+                resp,
+            } => {
+                let result = crate::tags::rename::rewrite_file(
+                    library_dir,
+                    &id,
+                    &old_name,
+                    &new_name,
+                    token,
+                )
+                .await;
+                let _ = resp.send(result);
             }
             Op::SetEntryTag {
                 id,
@@ -827,6 +896,12 @@ enum Msg {
 #[derive(Clone)]
 pub struct LibraryWriter {
     tx: flume::Sender<Msg>,
+    // A new rename may start while the previous worker is still returning from Finish.
+    pub(crate) rename_generations: Arc<std::sync::Mutex<HashMap<String, u64>>>,
+    pub(crate) rename_permits: Arc<tokio::sync::Semaphore>,
+    pub(crate) rename_tasks: Arc<std::sync::Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>,
+    pub(crate) tag_updates: flume::Sender<Result<crate::tags::TagSnapshot, WriterError>>,
+    tag_updates_rx: flume::Receiver<Result<crate::tags::TagSnapshot, WriterError>>,
     lock: Arc<FileLock>,
     library_dir: PathBuf,
     /// Set once `shutdown()` begins; makes `submit` refuse new work synchronously so
@@ -860,7 +935,13 @@ impl LibraryWriter {
             })
             .expect("failed to spawn library writer thread");
 
+        let (tag_updates, tag_updates_rx) = flume::unbounded();
         Self {
+            rename_generations: Default::default(),
+            rename_permits: Arc::new(tokio::sync::Semaphore::new(4)),
+            rename_tasks: Default::default(),
+            tag_updates,
+            tag_updates_rx,
             tx,
             lock,
             library_dir,
@@ -889,6 +970,10 @@ impl LibraryWriter {
         let (ack_tx, ack_rx) = oneshot::channel();
         if self.tx.send(Msg::Shutdown(ack_tx)).is_ok() {
             let _ = ack_rx.await;
+        }
+        let tasks = std::mem::take(&mut *self.rename_tasks.lock().unwrap());
+        for (_, task) in tasks {
+            let _ = task.await;
         }
     }
 
@@ -1221,19 +1306,96 @@ impl LibraryWriter {
         self.submit(tier, op, rx).await
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "0.14 storage foundation; production transition commands are implemented separately"
-        )
-    )]
     pub(crate) async fn mutate_tags(
         &self,
         mutation: crate::tags::Mutation,
     ) -> Result<crate::tags::Tags, WriterError> {
         let (resp, rx) = oneshot::channel();
-        self.submit(Tier::Interactive, Op::MutateTags { mutation, resp }, rx)
+        self.submit(
+            Tier::Interactive,
+            Op::MutateTags {
+                mutation,
+                resp,
+                updates: self.tag_updates.clone(),
+                generations: self.rename_generations.clone(),
+            },
+            rx,
+        )
+        .await
+    }
+
+    pub(crate) async fn wait_for_indexed_renames(&self) -> Result<(), WriterError> {
+        self.resume_tag_renames().await?;
+        loop {
+            if self.is_shutting_down() {
+                return Err(WriterError::ShuttingDown);
+            }
+            if self
+                .rename_tasks
+                .lock()
+                .unwrap()
+                .values()
+                .all(|task| task.is_finished())
+            {
+                return Ok(());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+
+    pub fn subscribe_to_tag_updates(
+        &self,
+    ) -> flume::Receiver<Result<crate::tags::TagSnapshot, WriterError>> {
+        self.tag_updates_rx.clone()
+    }
+
+    pub(crate) fn is_shutting_down(&self) -> bool {
+        self.shutting_down.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    pub async fn rename_tag(
+        &self,
+        id: String,
+        name: String,
+    ) -> Result<crate::tags::TagSnapshot, WriterError> {
+        let store = self
+            .mutate_tags(crate::tags::Mutation::Rename { id, name })
+            .await?;
+        self.resume_tag_renames().await?;
+        Ok(store.snapshot())
+    }
+
+    pub async fn resume_tag_renames(&self) -> Result<(), WriterError> {
+        crate::tags::rename::resume(self).await
+    }
+
+    pub(crate) async fn rewrite_tag_name(
+        &self,
+        id: String,
+        old_name: String,
+        new_name: String,
+    ) -> Result<(), WriterError> {
+        let (resp, rx) = oneshot::channel();
+        self.submit(
+            Tier::Interactive,
+            Op::RewriteTagName {
+                id,
+                old_name,
+                new_name,
+                resp,
+            },
+            rx,
+        )
+        .await
+    }
+
+    /// Resolve current source assignments in the registry lane before enqueuing an index job.
+    pub async fn resolve_entry_tags(
+        &self,
+        id: String,
+    ) -> Result<(crate::tags::Tags, Vec<String>), WriterError> {
+        let (resp, rx) = oneshot::channel();
+        self.submit(Tier::Interactive, Op::ResolveEntryTags { id, resp }, rx)
             .await
     }
 

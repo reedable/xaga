@@ -103,11 +103,18 @@ navigation/filter changes refresh membership.
 
 ### Rename
 
-Rename retains identity and changes readable names in bounded file batches,
-without rewriting unchanged indexed assignments. Persist progress and resolve
-both names to the same ID until completion. Recovery loads transitions before
-tag discovery, queues old-name files for rewriting, and retires the old mapping
-only after completion. Subsequent old-name discovery can create a new identity.
+Rename retains identity and rewrites the readable names of indexed Entry
+assignments in bounded file batches, without changing indexed UUIDs. Both names
+resolve to the same ID while that work runs. Once indexed batches are committed,
+retire the old-name mapping and permit another rename immediately. Pending batches
+and the ordered ID cursor survive crashes; restart resumes unfinished work before
+recovery discovers names.
+
+If the index missed an article, its file can retain the old spelling. Subsequent
+recovery/discovery may recreate that name as a separate tag identity under the
+normal comparison rules. This stale-index consequence is accepted. Rename does
+not wait for a full-file verification scan or maintain old-name chains across
+repeated renames. Consolidation is an explicit merge operation when supported.
 
 Sequence transitions of the same tag; unrelated renames may proceed concurrently.
 Serialize each entire file read–modify–write in the Entry writer lane and replace
