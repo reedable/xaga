@@ -208,3 +208,30 @@ post-rename cleanup status or restart requirement for another rename.
 ```sh
 cargo test --workspace --lib --bins --locked tag_rename_scaling_curve -- --ignored --nocapture
 ```
+
+
+## Tag deletion scaling
+
+Deletion uses the same bounded indexed candidate query as rename, with at most
+1,024 Entry IDs per batch and eight concurrent source-file patches. It then
+removes the UUID with one partial-column cache update for that batch. Source
+reads are limited to indexed candidates, persisted pending IDs, and queued
+article/assignment work that encounters an active deleting identity. Unrelated
+source files are not scanned to prove completion.
+
+For a tag assigned to every Entry in a two-million-Entry library, an uninterrupted
+indexed pass requires 1,954 batches, plus completion. Application-held candidate
+and checkpoint lists remain bounded independently of that population; registry
+parsing, Markdown copies, and the query engine have additional memory costs.
+Each batch performs four serialized registry checkpoints, file work, and one
+cache update. Live continuations yield between service turns; recovery maintains
+the cache every 100 batches. Sparse tags avoid corpus-wide source reads, but query
+and cache-update costs still depend on index/storage conditions. No deletion
+latency or whole-process memory bound at two million Entries has been measured.
+
+The bounded regression fixture uses 1,032 indexed candidates, including missing
+files and an unrelated-label false positive. The first step removes exactly
+1,024 cached assignments; the next pass handles the remaining eight. Separate
+fixtures cover pending-file replay after a cache reset, failed batches, and
+post-retirement discovery of missed labels. These establish batch and recovery
+behavior, rather than a production-scale timing claim.

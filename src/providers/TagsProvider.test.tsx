@@ -29,7 +29,7 @@ function Host() {
 }
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
 it("reads definitions from the registry and discards old intersection counts after navigation", async () => {
-  mocks.readTagStatus.mockResolvedValue({ tags: [{ id: "a", name: "Research" }], renaming: [] });
+  mocks.readTagStatus.mockResolvedValue({ tags: [{ id: "a", name: "Research" }], renaming: [], deleting: [] });
   let oldCount!: (count: number) => void;
   mocks.countTagUnread.mockImplementationOnce(() => new Promise((resolve) => { oldCount = resolve; }));
   mocks.countTagUnread.mockResolvedValue(2);
@@ -41,10 +41,25 @@ it("reads definitions from the registry and discards old intersection counts aft
   expect(mocks.countTagUnread).toHaveBeenLastCalledWith(expect.any(AbortSignal), ["a", "b"]);
   await act(async () => oldCount(100));
   expect(container.textContent).toBe("Research:2");
-  mocks.readTagStatus.mockResolvedValue({ tags: [{ id: "a", name: "Renamed" }], renaming: [] });
+  mocks.readTagStatus.mockResolvedValue({ tags: [{ id: "a", name: "Renamed" }], renaming: [], deleting: [] });
   // Both registry and count subscriptions receive the same native embedding event.
   await act(async () => mocks.callbacks.created());
   expect(container.textContent).toBe("Renamed:2");
-  await act(async () => mocks.callbacks.changed({ tags: [{ id: "a", name: "Renamed" }], renaming: ["a"] }));
+  await act(async () => mocks.callbacks.changed({ tags: [{ id: "a", name: "Renamed" }], renaming: ["a"], deleting: [] }));
   expect(router.state.tagIds).toEqual(["a", "b"]);
+});
+
+it("retains deletion selection updates even when completion arrives before rendering", async () => {
+  mocks.readTagStatus.mockResolvedValue({ tags: [{ id: "a", name: "Research" }], renaming: [], deleting: [] });
+  mocks.countTagUnread.mockResolvedValue(0);
+  container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+  await act(async () => root.render(<MemoryRouter initialEntries={[{ pathname: "/", state: { tagIds: ["a", "b"], entryId: "article" } }]}>
+    <TagsProvider><Host /></TagsProvider>
+  </MemoryRouter>));
+  await act(async () => {
+    mocks.callbacks.changed({ tags: [{ id: "a", name: "Research" }], renaming: [], deleting: ["a"] });
+    mocks.callbacks.changed({ tags: [], renaming: [], deleting: [] });
+  });
+  expect(router.state.tagIds).toEqual(["b"]);
+  expect(router.state.entryId).toBe("article");
 });

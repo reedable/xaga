@@ -454,3 +454,32 @@ it("provides Tab access to tag actions inside the responsive selector without se
   expect(document.activeElement?.getAttribute("aria-label")).toBe("Actions for Research");
   expect(route.state.tagIds).toEqual(["tag-a"]);
 });
+
+it("removes deleted selections without refreshing membership until explicit navigation", async () => {
+  await render({ tagIds: ["tag-a", "tag-b"], filter: "unread", entryId: article.id });
+  expect(rows()).toHaveLength(1);
+  await act(async () => route.removeDeletedTags(["tag-a"]));
+  expect(route.state.tagIds).toEqual(["tag-b"]);
+  expect(route.state.entryId).toBe(article.id);
+  expect(mocks.tagEntries).toHaveBeenCalledOnce();
+  await act(async () => route.removeDeletedTags(["tag-b"]));
+  expect(route.state.tagIds).toEqual([]);
+  expect(rows()).toHaveLength(1);
+  expect(mocks.tagEntries).toHaveBeenCalledOnce();
+  await act(async () => route.selectFilter("saved"));
+  expect(mocks.tagEntries).toHaveBeenCalledTimes(2);
+  expect(mocks.tagEntries).toHaveBeenLastCalledWith(expect.any(AbortSignal), [], "saved");
+});
+
+it("discards a pending membership result when deletion changes selection", async () => {
+  let oldResult!: (value: ListItem[]) => void;
+  mocks.tagEntries.mockImplementationOnce(() => new Promise((resolve) => { oldResult = resolve; }));
+  await render({ tagIds: ["tag-a"], filter: "all" });
+  await act(async () => route.removeDeletedTags(["tag-a"]));
+  await act(async () => oldResult([{ ...article, id: "old", title: "Old result" }]));
+  expect(rows()).toHaveLength(0);
+  expect(mocks.tagEntries).toHaveBeenCalledOnce();
+  await act(async () => route.selectTags([]));
+  // Explicitly selecting the already selected empty set must still refresh a retained list.
+  expect(mocks.tagEntries).toHaveBeenCalledTimes(2);
+});

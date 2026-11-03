@@ -45,7 +45,10 @@ selected definition that is absent from a registry refresh displays “Unavailab
 deselectable; it is never displayed as an internal ID or silently converted to
 an empty selection. A new query with an unavailable selection returns no rows.
 Definition snapshots are session UI state, not a persisted name cache. The
-explicit Delete action follows the [deletion selection
+explicit Delete action removes the selected ID while retaining the current list
+and reader selection. A pending old-scope query is discarded. The next explicit
+navigation, filter change, or refresh queries the remaining set, or all Entries
+under the existing filters when it is empty. See the [deletion selection
 contract](organization_model.md#delete).
 
 Reading/color events update existing rows without removing them. Assignment

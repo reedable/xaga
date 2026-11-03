@@ -24,6 +24,7 @@ export function EntryTags({ entryId }: { entryId: string }) {
   const { pushError } = useErrorSink();
   const readOnly = useLibraryReadOnly();
   const [tags, setTags] = useState<Tag[]>([]);
+  const [deleting, setDeleting] = useState<string[]>([]);
   const [assigned, setAssigned] = useState<Set<string>>(new Set());
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -54,7 +55,7 @@ export function EntryTags({ entryId }: { entryId: string }) {
       try {
         retain(await platform.onTagCreated(addDefinition));
         retain(await platform.onTagsChanged((snapshot) => {
-          if (!controller.signal.aborted) { receivedSnapshot = true; setTags(snapshot.tags); }
+          if (!controller.signal.aborted) { receivedSnapshot = true; setTags(snapshot.tags); setDeleting(snapshot.deleting); }
         }));
 
         retain(
@@ -66,16 +67,16 @@ export function EntryTags({ entryId }: { entryId: string }) {
         );
 
         const [definitions, ids] = await Promise.all([
-          platform.listTags(controller.signal),
+          platform.readTagStatus(controller.signal),
           platform.readEntryTags(controller.signal, entryId),
         ]);
 
         if (controller.signal.aborted) return;
 
-        if (!receivedSnapshot) setTags((current) => [
-          ...definitions,
-          ...current.filter((tag) => !definitions.some((item) => item.id === tag.id)),
-        ]);
+        if (!receivedSnapshot) { setDeleting(definitions.deleting); setTags((current) => [
+          ...definitions.tags,
+          ...current.filter((tag) => !definitions.tags.some((item) => item.id === tag.id)),
+        ]); }
 
         setAssigned([...initialChanges.values()].reduce(applyChange, new Set(ids)));
         loading = false;
@@ -168,7 +169,7 @@ export function EntryTags({ entryId }: { entryId: string }) {
             color={assigned.has(tag.id) ? "primary" : "default"}
             variant={assigned.has(tag.id) ? "filled" : "outlined"}
             icon={assigned.has(tag.id) ? <Check /> : undefined}
-            disabled={readOnly || busy}
+            disabled={readOnly || busy || deleting.includes(tag.id)}
             onClick={() => void mutate(tag)}
           />
         ))}

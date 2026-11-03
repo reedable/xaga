@@ -1,10 +1,6 @@
 //! Bounded, restartable readable-name conversion. Registry checkpoints never own article data.
-use super::{Mutation, Phase, Progress, Tags, TagsError, Transition, key};
-use crate::{
-    library_writer::{LibraryWriter, WriteToken, WriterError},
-    persistence::entries,
-};
-use std::path::Path;
+use super::{Mutation, Phase, Progress, Tags, TagsError, Transition};
+use crate::library_writer::{LibraryWriter, WriterError};
 
 const BATCH_SIZE: usize = 1024;
 const FILE_CONCURRENCY: usize = 8;
@@ -104,7 +100,7 @@ async fn batch(
     )
     .await?;
     futures::stream::iter(pending)
-        .map(|entry| writer.rewrite_tag_name(entry, old.into(), new.into()))
+        .map(|entry| writer.patch_tag_name(entry, old.into(), Some(new.into())))
         .buffer_unordered(FILE_CONCURRENCY)
         .try_collect::<Vec<_>>()
         .await?;
@@ -205,40 +201,12 @@ async fn run(writer: &LibraryWriter, id: &str) -> Result<(), WriterError> {
     }
 }
 
-/// Runs entirely inside the Entry lane, so other tag or metadata writes cannot be overwritten.
-pub(crate) async fn rewrite_file(
-    dir: &Path,
-    id: &str,
-    old: &str,
-    new: &str,
-    token: WriteToken,
-) -> Result<(), WriterError> {
-    let mut names = match entries::read_entry_tags(dir, id).await {
-        Ok(names) => names,
-        Err(entries::EntryError::NotFound) => return Ok(()),
-        Err(entries::EntryError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(());
-        }
-        Err(error) => return Err(error.into()),
-    };
-    let mut changed = false;
-    for name in &mut names {
-        if key(name) == key(old) && name != new {
-            *name = new.into();
-            changed = true;
-        }
-    }
-    if changed {
-        entries::set_entry_tags(dir, id, names, token).await?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::library_writer::Tier;
-    use std::time::Instant;
+    use crate::persistence::entries;
+    use std::{path::Path, time::Instant};
 
     fn entry(dir: &Path, id: &str, names: &str) {
         let path = crate::library::entry_path(dir, id);

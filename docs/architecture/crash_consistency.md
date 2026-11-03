@@ -164,3 +164,13 @@ its checkpoint follows successful writes. Revision checks refuse stale checkpoin
 or finalization requests. Newly discovered transitional labels invalidate relevant
 completion/cursors. The [tag storage contract](tags.md#checkpoints-and-retirement)
 specifies the records and the evidence required before retirement.
+
+
+Tag deletion commits its reservation before submitting indexed cleanup. Each batch
+persists both pending lists, removes file labels, then removes cached IDs before
+advancing progress. A failure retains the batch for replay; recovery resumes it
+before label discovery, including pending files when the cache has been rebuilt.
+Completion releases the name without a source verification pass. Missed source
+labels can then create a new identity; an active deletion reservation prevents
+that recreation. Queued snapshots discard retired IDs and clean active deleting
+labels before removing their cache candidacy. See [runtime deletion](tags.md#runtime-deletion).

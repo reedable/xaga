@@ -26,6 +26,33 @@ pub async fn rename_tag(
     Ok(super::require_writer(&state)?.rename_tag(id, name).await?)
 }
 
+#[tauri::command]
+pub async fn delete_tag(
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<xaga_core::tags::TagSnapshot, AppError> {
+    delete_in_library(id, state.writer(), |id| {
+        state.enqueue(
+            xaga_core::embeddings::Tier::Interactive,
+            xaga_core::embeddings::Job::DeleteTag { id },
+        );
+    })
+    .await
+}
+
+async fn delete_in_library(
+    id: String,
+    writer: Option<LibraryWriter>,
+    on_committed: impl FnOnce(String),
+) -> Result<xaga_core::tags::TagSnapshot, AppError> {
+    let snapshot = writer
+        .ok_or(AppError::ReadOnly)?
+        .delete_tag(id.clone())
+        .await?;
+    on_committed(id);
+    Ok(snapshot)
+}
+
 async fn list_in_library(dir: &std::path::Path) -> Result<Vec<Tag>, AppError> {
     Ok(Tags::read(dir).await?.tags)
 }
@@ -170,6 +197,34 @@ mod tests {
 
     fn writer(dir: &std::path::Path) -> LibraryWriter {
         LibraryWriter::start(dir.into(), xaga_core::library::acquire_lock(dir).unwrap())
+    }
+
+    #[tokio::test]
+    async fn deletion_requires_write_right_and_enqueues_only_committed_reservations() {
+        let dir = tempfile::tempdir().unwrap();
+        let writer = writer(dir.path());
+        let tag = writer.create_tag("Research".into()).await.unwrap().tag;
+        let refused = delete_in_library(tag.id.clone(), None, |_| panic!("read-only enqueue"))
+            .await
+            .unwrap_err();
+        assert_eq!(refused.code(), "library:read-only");
+        assert!(super::super::is_write_refused("delete_tag", true));
+        let snapshot = delete_in_library(tag.id.clone(), Some(writer.clone()), |id| {
+            let raw = std::fs::read_to_string(xaga_core::library::tags_path(dir.path())).unwrap();
+            assert!(raw.contains("type: delete"));
+            assert_eq!(id, tag.id);
+        })
+        .await
+        .unwrap();
+        assert_eq!(snapshot.deleting, vec![tag.id.clone()]);
+        assert!(
+            delete_in_library(tag.id, Some(writer.clone()), |_| panic!(
+                "conflicting enqueue"
+            ))
+            .await
+            .is_err()
+        );
+        writer.shutdown().await;
     }
 
     #[tokio::test]

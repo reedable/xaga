@@ -149,9 +149,13 @@ be reused for a new identity.
 
 Delete is available in the same actions menu and confirms removal of the tag
 and its assignments without deleting articles. Assigned tags are deletable;
-cleanup is bounded, checkpointed, and resumable. Block new assignments and
+cleanup uses indexed Entry candidates and persisted pending work in bounded,
+checkpointed, resumable batches. Block new assignments and
 rename/merge involving a deleting tag. External occurrences join pending cleanup
-until completion, after which the name may create a new identity.
+until completion. Recovery resumes interrupted deletion before discovering labels.
+Completion retires the name reservation without a full-source verification pass.
+A label in a file missed by the index can subsequently create a new identity
+during recovery/discovery; no tombstone prevents this accepted consequence.
 
 Remove a deleted tag from active selection without clearing the current list.
 The next explicit navigation/filter change refreshes membership. Removing an

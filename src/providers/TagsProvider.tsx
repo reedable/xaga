@@ -10,10 +10,12 @@ import { TagsContext } from "./TagsContext";
 export function TagsProvider({ children, enabled = true }: { children: ReactNode; enabled?: boolean }) {
   const platform = usePlatform();
   const { pushError } = useErrorSink();
-  const { state } = useRouter();
+  const { state, removeDeletedTags } = useRouter();
   const selection = JSON.stringify(state.tagIds ?? []);
   const [tags, setTags] = useState<Tag[]>([]);
   const [renaming, setRenaming] = useState<string[]>([]);
+  const [deleting, setDeleting] = useState<string[]>([]);
+  const [deletedIds, setDeletedIds] = useState<string[]>([]);
   const [hasLoaded, setLoaded] = useState(false);
   const [count, setCount] = useState<{ selection: string; value: number } | null>(null);
 
@@ -28,6 +30,8 @@ export function TagsProvider({ children, enabled = true }: { children: ReactNode
         if (!controller.signal.aborted && request === revision) {
           setTags(result.tags);
           setRenaming(result.renaming);
+          setDeleting(result.deleting);
+          setDeletedIds((ids) => [...new Set([...ids, ...result.deleting])]);
           setLoaded(true);
         }
       } catch (error) { if (!controller.signal.aborted) pushError(error); }
@@ -40,6 +44,8 @@ export function TagsProvider({ children, enabled = true }: { children: ReactNode
         ++revision;
         setTags(snapshot.tags);
         setRenaming(snapshot.renaming);
+        setDeleting(snapshot.deleting);
+        setDeletedIds((ids) => [...new Set([...ids, ...snapshot.deleting])]);
         setLoaded(true);
       })),
       subscribe(() => platform.onTagCreated(() => void refresh())),
@@ -71,7 +77,11 @@ export function TagsProvider({ children, enabled = true }: { children: ReactNode
     return () => { controller.abort(); stops.forEach((stop) => stop()); };
   }, [enabled, platform, pushError, selection]);
 
+  useEffect(() => {
+    if (deletedIds.some((id) => state.tagIds?.includes(id))) void removeDeletedTags(deletedIds);
+  }, [deletedIds, state.tagIds, removeDeletedTags]);
+
   const unreadCount = enabled && count?.selection === selection ? count.value : null;
-  const value = useMemo(() => ({ tags, hasLoaded, unreadCount, renaming }), [tags, hasLoaded, unreadCount, renaming]);
+  const value = useMemo(() => ({ tags, hasLoaded, unreadCount, renaming, deleting }), [tags, hasLoaded, unreadCount, renaming, deleting]);
   return <TagsContext.Provider value={value}>{children}</TagsContext.Provider>;
 }

@@ -5,7 +5,7 @@ import type { EntryTagChange, Tag, TagSnapshot } from "../../domain";
 import { EntryTags } from "./EntryTags";
 
 const mocks = vi.hoisted(() => ({
-  readOnly: false, listTags: vi.fn(), readEntryTags: vi.fn(), createTag: vi.fn(),
+  readOnly: false, readTagStatus: vi.fn(), readEntryTags: vi.fn(), createTag: vi.fn(),
   setEntryTag: vi.fn(), onTagsChanged: vi.fn(), onTagCreated: vi.fn(), onEntryTagsChanged: vi.fn(), pushError: vi.fn(),
 }));
 vi.mock("../../platform/Platform", () => ({ usePlatform: () => mocks }));
@@ -23,7 +23,7 @@ let createdListener: (tag: Tag) => void;
 let cleanup: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.clearAllMocks(); mocks.readOnly = false;
-  mocks.listTags.mockResolvedValue([research, work]);
+  mocks.readTagStatus.mockResolvedValue({ tags: [research, work], renaming: [], deleting: [] });
   mocks.readEntryTags.mockResolvedValue([research.id]);
   mocks.setEntryTag.mockImplementation(async (entryId, tagId, assigned) => ({ entryId, tagId, assigned }));
   mocks.createTag.mockResolvedValue({ id: "new", name: "New" });
@@ -109,9 +109,9 @@ it("preserves a committed event that arrives during initial loading", async () =
 });
 
 it("matches registry lowercase semantics without equating distinct spellings", async () => {
-  mocks.listTags.mockResolvedValue([
+  mocks.readTagStatus.mockResolvedValue({ tags: [
     { id: "german", name: "straße" }, { id: "greek", name: "ΟΣ" },
-  ]);
+  ], renaming: [], deleting: [] });
   mocks.readEntryTags.mockResolvedValue([]);
   await render();
   await search("strasse");
@@ -122,14 +122,27 @@ it("matches registry lowercase semantics without equating distinct spellings", a
 });
 
 it("retains a committed rename over an older definition load", async () => {
-  let finish!: (tags: Tag[]) => void;
-  mocks.listTags.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  let finish!: (snapshot: TagSnapshot) => void;
+  mocks.readTagStatus.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
   await render();
   await act(async () => {
-    statusListener({ tags: [{ ...research, name: "Renamed" }], renaming: [research.id] });
-    finish([research, work]);
+    statusListener({ tags: [{ ...research, name: "Renamed" }], renaming: [research.id], deleting: [] });
+    finish({ tags: [research, work], renaming: [], deleting: [] });
   });
   expect(chip("Renamed")).toBeTruthy();
   expect(chip("Research")).toBeUndefined();
   expect(chip("Renamed").getAttribute("aria-pressed")).toBe("true");
+});
+
+it("blocks assignment to deleting tags from initial status and live updates", async () => {
+  mocks.readTagStatus.mockResolvedValueOnce({ tags: [research, work], renaming: [], deleting: [research.id] });
+  await render();
+  expect(chip("Research").disabled).toBe(true);
+  expect(chip("Work").disabled).toBe(false);
+  await act(async () => statusListener({ tags: [research, work], renaming: [], deleting: [work.id] }));
+  expect(chip("Work").disabled).toBe(true);
+  await act(async () => chip("Work").click());
+  expect(mocks.setEntryTag).not.toHaveBeenCalled();
+  await act(async () => statusListener({ tags: [research], renaming: [], deleting: [] }));
+  expect(chip("Work")).toBeUndefined();
 });

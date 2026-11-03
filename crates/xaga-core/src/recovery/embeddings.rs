@@ -26,6 +26,11 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     sink: &mut S,
     writer: Option<&crate::library_writer::LibraryWriter>,
 ) -> Result<RepairResidue, EmbeddingsError> {
+    if let Some(writer) = writer {
+        crate::tags::delete::resume(writer, db)
+            .await
+            .map_err(std::io::Error::other)?;
+    }
     let pins = crate::pins::Pins::read(library_dir)
         .await
         .map_err(std::io::Error::other)?;

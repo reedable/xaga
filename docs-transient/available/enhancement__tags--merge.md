@@ -54,7 +54,7 @@ name, preserving Entry assignments while consolidating tag identity.
 - [Tag creation API](../../docs/architecture/tags.md#app-creation-api)
 - [Entry assignment API](../../docs/architecture/tags.md#entry-assignment-api)
 - [Runtime rename](../../docs/architecture/tags.md#runtime-rename).
-- [Delete Tags](../active/enhancement__tags--delete.md)
+- [Runtime deletion](../../docs/architecture/tags.md#runtime-deletion)
 - `crates/xaga-core/src/library_writer/mod.rs`
 - `crates/xaga-core/src/recovery/`
 - `docs/architecture/crash_consistency.md`

@@ -74,8 +74,18 @@ export default function useRouter() {
 
   const selectTags = useCallback((ids: string[]) => {
     const next: NavigationState = { tagIds: [...new Set(ids)].sort(), filter: state.filter };
-    if (isSameNavigation(state, next)) return;
+    if (isSameNavigation(state, next) && state.tagDeletionRevision === undefined) return;
     return logged_navigate(`/?${searchParams.toString()}`, { state: next });
+  }, [logged_navigate, searchParams, state]);
+
+  // Explicit deletion updates selection while retaining the current list and reader.
+  const removeDeletedTags = useCallback((ids: string[]) => {
+    if (!state.tagIds?.some((id) => ids.includes(id))) return;
+    return logged_navigate(`/?${searchParams.toString()}`, {
+      replace: true,
+      state: { ...state, tagIds: state.tagIds.filter((id) => !ids.includes(id)),
+        tagDeletionRevision: (state.tagDeletionRevision ?? 0) + 1 },
+    });
   }, [logged_navigate, searchParams, state]);
 
   const selectTopic = useCallback(
@@ -294,6 +304,7 @@ export default function useRouter() {
     selectFilter: applyFilter,
     selectTopic,
     selectTags,
+    removeDeletedTags,
     selectUrl,
   };
 }

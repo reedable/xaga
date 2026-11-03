@@ -54,6 +54,10 @@ pub struct StatePatch {
 /// (e.g. `EmbedEntry` on Regular from a live save, Maintenance from recovery).
 pub enum Job {
     SetEntryTag(crate::tags::EntryTagChange),
+    /// Continue a committed deletion, one durable file/index batch per turn.
+    DeleteTag {
+        id: String,
+    },
     // ── Non-embedding CRUD & state sync (no ONNX) ──
     /// Write-through state update from a user action. Carries the new value(s);
     /// the consumer applies them and emits the UI change event — no file read.
@@ -462,7 +466,7 @@ async fn run_loop(
                 Ok(job) => {
                     // Interactive has items — mark that a post-drain compact is needed.
                     compacted_after_drain = false;
-                    handle_job(job, Tier::Interactive, &db, &embedder, &senders, &events, &mut tag_changes).await;
+                    handle_job(job, Tier::Interactive, &db, &embedder, &senders, &events, &mut tag_changes, &writer).await;
 
                     // Compact on the Interactive path itself: a sustained Interactive stream never
                     // yields to the Regular/Maintenance arms (biased select), so their compaction
@@ -489,7 +493,7 @@ async fn run_loop(
 
             result = regular_rx.recv_async() => match result {
                 Ok(job) => {
-                    handle_job(job, Tier::Regular, &db, &embedder, &senders, &events, &mut tag_changes).await;
+                    handle_job(job, Tier::Regular, &db, &embedder, &senders, &events, &mut tag_changes, &writer).await;
                     since_compact += 1;
 
                     if since_compact >= BACKGROUND_COMPACT_INTERVAL {
@@ -528,7 +532,7 @@ async fn run_loop(
                     }
 
                     let resets_interval = matches!(job, Job::Compact | Job::EnsureIndexes);
-                    handle_job(job, Tier::Maintenance, &db, &embedder, &senders, &events, &mut tag_changes).await;
+                    handle_job(job, Tier::Maintenance, &db, &embedder, &senders, &events, &mut tag_changes, &writer).await;
 
                     if resets_interval {
                         since_compact = 0;
@@ -554,10 +558,29 @@ async fn run_loop(
     }
 }
 
+/// Before stripping an active deleting identity from a queued snapshot, remove
+/// its current source label. Otherwise the cache would cease being a candidate
+/// before deletion reached that file. Retirement is serialized on this same loop.
+async fn project_entry_tags(
+    writer: &crate::library_writer::LibraryWriter,
+    db: &EmbeddingsDb,
+    entry: &str,
+    ids: &mut Vec<String>,
+) -> Result<(), crate::library_writer::WriterError> {
+    let deleting = db
+        .retain_current_tag_ids(ids)
+        .await
+        .map_err(|error| crate::tags::TagsError::Invalid(error.to_string()))?;
+    for name in deleting {
+        writer.patch_tag_name(entry.into(), name, None).await?;
+    }
+    Ok(())
+}
+
 /// Executes a single work `Job`. The control-flow variants (Shutdown / Reset /
 /// StartRecovery) are handled by the loop's control arm, not here. `arrival` is the tier
-/// the job was dequeued from; it only affects where a deferred `EmbedEntry` follow-up is
-/// enqueued.
+/// the job was dequeued from; deferred embeddings follow the existing tier policy,
+/// while deletion continuations retain their arriving priority.
 #[allow(clippy::too_many_arguments)]
 async fn handle_job(
     job: Job,
@@ -567,9 +590,27 @@ async fn handle_job(
     senders: &Senders,
     events: &Events,
     tag_changes: &mut std::collections::HashMap<String, std::collections::HashMap<String, bool>>,
+    writer: &crate::library_writer::LibraryWriter,
 ) {
     match job {
-        Job::SetEntryTag(change) => {
+        Job::DeleteTag { id } => match crate::tags::delete::step(writer, db, &id).await {
+            Ok(true)
+            | Err(crate::library_writer::WriterError::Tags(crate::tags::TagsError::Stale)) => {
+                senders.enqueue(arrival, Job::DeleteTag { id })
+            }
+            Ok(false) => {}
+            Err(error) => writer.report_tag_error(error),
+        },
+        Job::SetEntryTag(mut change) => {
+            if change.assigned {
+                let mut ids = vec![change.tag_id.clone()];
+                if let Err(error) = project_entry_tags(writer, db, &change.entry_id, &mut ids).await
+                {
+                    writer.report_tag_error(error);
+                    return;
+                }
+                change.assigned = !ids.is_empty();
+            }
             tag_changes
                 .entry(change.entry_id.clone())
                 .or_default()
@@ -593,14 +634,30 @@ async fn handle_job(
                 log::error!("sync_state failed id={}: {e}", entity.id);
             }
         }
-        Job::UpsertEntry { article, tag_ids } => {
+        Job::UpsertEntry {
+            article,
+            mut tag_ids,
+        } => {
+            if let Some(changes) = tag_changes.get(&article.meta.id) {
+                for (id, assigned) in changes {
+                    tag_ids.retain(|existing| existing != id);
+                    if *assigned {
+                        tag_ids.push(id.clone());
+                    }
+                }
+            }
+            if let Err(error) = project_entry_tags(writer, db, &article.meta.id, &mut tag_ids).await
+            {
+                writer.report_tag_error(error);
+                return;
+            }
             if let Err(e) = super::pipeline::sync_entry_row_with_tag_changes(
                 &article,
                 db,
                 &events.unread,
                 &events.bookmarked,
                 &events.annotation,
-                tag_changes.get(&article.meta.id),
+                None,
                 Some(&tag_ids),
             )
             .await
@@ -693,5 +750,51 @@ async fn handle_job(
         Job::Shutdown | Job::Reset { .. } | Job::StartRecovery { .. } => {
             log::warn!("handle_job: control job reached work dispatcher (ignored)");
         }
+    }
+}
+
+#[cfg(test)]
+mod tag_deletion_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn tag_delete_queued_projection_cleans_source_before_removing_candidate_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::library::entry_path(dir.path(), "a");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            "---\nsource: https://example.org/a\ntitle: A\ntags: [Research, Other]\n---\nBody\n",
+        )
+        .unwrap();
+        let writer = crate::library_writer::LibraryWriter::start(
+            dir.path().into(),
+            crate::library::acquire_lock(dir.path()).unwrap(),
+        );
+        let (store, mut ids) = writer.resolve_entry_tags("a".into()).await.unwrap();
+        let deleted = store.tags[0].id.clone();
+        let other = store.tags[1].id.clone();
+        let db = EmbeddingsDb::open_writer(dir.path(), &writer.lock())
+            .await
+            .unwrap();
+        writer.delete_tag(deleted.clone()).await.unwrap();
+        project_entry_tags(&writer, &db, "a", &mut ids)
+            .await
+            .unwrap();
+        assert_eq!(ids, vec![other.clone()]);
+        assert_eq!(
+            crate::persistence::entries::read_entry_tags(dir.path(), "a")
+                .await
+                .unwrap(),
+            vec!["Other"]
+        );
+        crate::tags::delete::resume(&writer, &db).await.unwrap();
+        let recreated = writer.create_tag("Research".into()).await.unwrap().tag;
+        let mut stale = vec![deleted, other.clone(), recreated.id.clone()];
+        project_entry_tags(&writer, &db, "a", &mut stale)
+            .await
+            .unwrap();
+        assert_eq!(stale, vec![other, recreated.id]);
+        writer.shutdown().await;
     }
 }

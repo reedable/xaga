@@ -201,10 +201,10 @@ enum Op {
         annotation_id: String,
         resp: oneshot::Sender<Result<Article, WriterError>>,
     },
-    RewriteTagName {
+    PatchTagName {
         id: String,
         old_name: String,
-        new_name: String,
+        new_name: Option<String>,
         resp: oneshot::Sender<Result<(), WriterError>>,
     },
     SetEntryTag {
@@ -338,7 +338,7 @@ impl Op {
             | Op::AddAnnotation { article_id: id, .. }
             | Op::ReplaceAnnotation { article_id: id, .. }
             | Op::RemoveAnnotation { article_id: id, .. }
-            | Op::RewriteTagName { id, .. }
+            | Op::PatchTagName { id, .. }
             | Op::SetEntryTag { id, .. }
             | Op::SetEntryUnread { id, .. }
             | Op::SetEntryColor { id, .. } => format!("entry/{id}"),
@@ -379,7 +379,7 @@ impl Op {
             Op::AddAnnotation { .. } => "add_annotation",
             Op::ReplaceAnnotation { .. } => "replace_annotation",
             Op::RemoveAnnotation { .. } => "remove_annotation",
-            Op::RewriteTagName { .. } => "rewrite_tag_name",
+            Op::PatchTagName { .. } => "patch_tag_name",
             Op::SetEntryTag { .. } => "set_entry_tag",
             Op::SetEntryUnread { .. } => "set_entry_unread",
             Op::SetEntryColor { .. } => "set_entry_color",
@@ -414,7 +414,7 @@ impl Op {
             Op::AddAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::ReplaceAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RemoveAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
-            Op::RewriteTagName { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::PatchTagName { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryTag { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryUnread { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryColor { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -453,7 +453,9 @@ impl Op {
             } => {
                 let notify = matches!(
                     mutation,
-                    crate::tags::Mutation::Rename { .. } | crate::tags::Mutation::Finish { .. }
+                    crate::tags::Mutation::Rename { .. }
+                        | crate::tags::Mutation::Delete { .. }
+                        | crate::tags::Mutation::Finish { .. }
                 );
                 let started = if let crate::tags::Mutation::Rename { id, .. } = &mutation {
                     Some(id.clone())
@@ -477,7 +479,8 @@ impl Op {
                 let result = async {
                     let names = entries::read_entry_tags(library_dir, &id).await?;
                     let store =
-                        crate::tags::Tags::discover_write(library_dir, &names, token).await?;
+                        crate::tags::Tags::discover_entry_write(library_dir, &id, &names, token)
+                            .await?;
                     let ids = store.resolver().resolve(&names)?;
                     Ok((store, ids))
                 }
@@ -608,17 +611,17 @@ impl Op {
                         .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
-            Op::RewriteTagName {
+            Op::PatchTagName {
                 id,
                 old_name,
                 new_name,
                 resp,
             } => {
-                let result = crate::tags::rename::rewrite_file(
+                let result = crate::tags::patch_file(
                     library_dir,
                     &id,
                     &old_name,
-                    &new_name,
+                    new_name.as_deref(),
                     token,
                 )
                 .await;
@@ -1353,6 +1356,18 @@ impl LibraryWriter {
         self.shutting_down.load(std::sync::atomic::Ordering::SeqCst)
     }
 
+    /// Commit the reservation; the command then enqueues typed indexed cleanup.
+    pub async fn delete_tag(&self, id: String) -> Result<crate::tags::TagSnapshot, WriterError> {
+        Ok(self
+            .mutate_tags(crate::tags::Mutation::Delete { id })
+            .await?
+            .snapshot())
+    }
+
+    pub(crate) fn report_tag_error(&self, error: WriterError) {
+        let _ = self.tag_updates.send(Err(error));
+    }
+
     pub async fn rename_tag(
         &self,
         id: String,
@@ -1369,16 +1384,16 @@ impl LibraryWriter {
         crate::tags::rename::resume(self).await
     }
 
-    pub(crate) async fn rewrite_tag_name(
+    pub(crate) async fn patch_tag_name(
         &self,
         id: String,
         old_name: String,
-        new_name: String,
+        new_name: Option<String>,
     ) -> Result<(), WriterError> {
         let (resp, rx) = oneshot::channel();
         self.submit(
             Tier::Interactive,
-            Op::RewriteTagName {
+            Op::PatchTagName {
                 id,
                 old_name,
                 new_name,

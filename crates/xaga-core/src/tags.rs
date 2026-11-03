@@ -6,6 +6,7 @@ use std::{
     path::Path,
 };
 
+pub(crate) mod delete;
 pub(crate) mod rename;
 
 const MAX_STORE_BYTES: usize = 12 * 1024 * 1024;
@@ -76,17 +77,27 @@ pub struct Tags {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) transitions: Vec<Transition>,
 }
-/// Current definitions and the identities with unfinished rename work.
+/// Current definitions and identities with unfinished transition work.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TagSnapshot {
     pub tags: Vec<Tag>,
     pub renaming: Vec<String>,
+    #[serde(default)]
+    pub deleting: Vec<String>,
 }
 impl Tags {
     pub fn snapshot(&self) -> TagSnapshot {
         TagSnapshot {
             tags: self.tags.clone(),
+            deleting: self
+                .transitions
+                .iter()
+                .filter_map(|t| match t {
+                    Transition::Delete { id, .. } => Some(id.clone()),
+                    _ => None,
+                })
+                .collect(),
             renaming: self
                 .transitions
                 .iter()
@@ -334,7 +345,20 @@ impl Tags {
                 }
             }
         }
-        TagResolver { names }
+        TagResolver {
+            deleting_names: self
+                .transitions
+                .iter()
+                .filter_map(|t| match t {
+                    Transition::Delete { id, .. } => {
+                        Some((id.clone(), self.tag(id).ok()?.name.clone()))
+                    }
+                    _ => None,
+                })
+                .collect(),
+            ids: names.values().flatten().cloned().collect(),
+            names,
+        }
     }
     /// Offline conversion holds the library lock for its entire scan.
     pub async fn write_upgrade(
@@ -438,13 +462,47 @@ impl Tags {
         Ok(TagCreation { tag, created: true })
     }
 
+    /// Source-aware discovery retains deleting labels as bounded pending file work.
+    pub(crate) async fn discover_entry_write(
+        dir: &Path,
+        entry: &str,
+        names: &[String],
+        token: crate::library_writer::WriteToken,
+    ) -> Result<Self, TagsError> {
+        Self::discover_write_inner(dir, Some(entry), names, token).await
+    }
+
     pub(crate) async fn discover_write(
         dir: &Path,
+        names: &[String],
+        token: crate::library_writer::WriteToken,
+    ) -> Result<Self, TagsError> {
+        Self::discover_write_inner(dir, None, names, token).await
+    }
+
+    async fn discover_write_inner(
+        dir: &Path,
+        entry: Option<&str>,
         names: &[String],
         _token: crate::library_writer::WriteToken,
     ) -> Result<Self, TagsError> {
         let mut store = Self::read(dir).await?;
-        if store.discover(names)? {
+        let observed = store.observation_ids(names);
+        let mut changed = store.discover(names)?;
+        if let Some(entry) = entry {
+            for transition in &mut store.transitions {
+                if let Transition::Delete { id, files, .. } = transition {
+                    if observed.contains(id) && !files.pending.iter().any(|id| id == entry) {
+                        if files.pending.len() == 1024 {
+                            return Err(TagsError::Busy);
+                        }
+                        files.pending.push(entry.into());
+                        changed = true;
+                    }
+                }
+            }
+        }
+        if changed {
             crate::fs::write_atomic_async(
                 crate::library::tags_path(dir),
                 store.serialize()?.into_bytes(),
@@ -469,6 +527,8 @@ impl Transition {
 #[derive(Debug, Clone, Default)]
 pub struct TagResolver {
     names: HashMap<String, Option<String>>,
+    ids: HashSet<String>,
+    deleting_names: HashMap<String, String>,
 }
 impl TagResolver {
     pub fn resolve(&self, names: &[String]) -> Result<Vec<String>, TagsError> {
@@ -514,6 +574,26 @@ impl CachedResolver {
         if names.is_empty() {
             return Ok(Vec::new());
         }
+        self.project(|resolver| resolver.resolve(names)).await
+    }
+    pub(crate) async fn retain_ids(&self, ids: &mut Vec<String>) -> Result<Vec<String>, TagsError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.project(|resolver| {
+            let deleting = ids
+                .iter()
+                .filter_map(|id| resolver.deleting_names.get(id).cloned())
+                .collect();
+            ids.retain(|id| resolver.ids.contains(id));
+            Ok(deleting)
+        })
+        .await
+    }
+    async fn project<T>(
+        &self,
+        apply: impl FnOnce(&TagResolver) -> Result<T, TagsError>,
+    ) -> Result<T, TagsError> {
         let mut state = self.state.lock().await;
         let identity = match tokio::fs::symlink_metadata(crate::library::tags_path(&self.dir)).await
         {
@@ -536,7 +616,7 @@ impl CachedResolver {
         match identity {
             None => {
                 *state = None;
-                TagResolver::default().resolve(names)
+                apply(&TagResolver::default())
             }
             Some(identity) => {
                 if state
@@ -545,10 +625,47 @@ impl CachedResolver {
                 {
                     *state = Some((identity, Tags::read(&self.dir).await?.resolver()));
                 }
-                state.as_ref().unwrap().1.resolve(names)
+                apply(&state.as_ref().unwrap().1)
             }
         }
     }
+}
+
+/// Runs entirely inside the Entry lane, so other tag or metadata writes cannot be overwritten.
+pub(crate) async fn patch_file(
+    dir: &Path,
+    id: &str,
+    old: &str,
+    new: Option<&str>,
+    token: crate::library_writer::WriteToken,
+) -> Result<(), crate::library_writer::WriterError> {
+    let mut names = match crate::persistence::entries::read_entry_tags(dir, id).await {
+        Ok(names) => names,
+        Err(crate::persistence::entries::EntryError::NotFound) => return Ok(()),
+        Err(crate::persistence::entries::EntryError::Io(error))
+            if error.kind() == std::io::ErrorKind::NotFound =>
+        {
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    };
+    let before = names.clone();
+    names.retain_mut(|name| {
+        if key(name) != key(old) {
+            return true;
+        }
+        match new {
+            Some(new) => {
+                *name = new.into();
+                true
+            }
+            None => false,
+        }
+    });
+    if names != before {
+        crate::persistence::entries::set_entry_tags(dir, id, names, token).await?;
+    }
+    Ok(())
 }
 
 /// Storage operations used by transition dispatchers. No file/index work is
@@ -569,10 +686,6 @@ pub(crate) enum Mutation {
         source_count: u64,
         destination_count: u64,
     },
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "delete command is a separate story")
-    )]
     Delete {
         id: String,
     },
@@ -590,10 +703,6 @@ pub(crate) enum Mutation {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Phase {
     Files,
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "merge/delete index work is a separate story")
-    )]
     Index,
 }
 impl Transition {

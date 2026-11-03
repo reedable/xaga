@@ -16,7 +16,7 @@ export default function TagList({
   onClickHeader: () => void;
 }) {
   const { state, selectTags } = useRouter();
-  const { tags: definitions, hasLoaded, renaming = [] } = useTags();
+  const { tags: definitions, hasLoaded, renaming = [], deleting = [] } = useTags();
   const selected = state.tagIds ?? [];
 
   const options = [
@@ -56,7 +56,7 @@ export default function TagList({
             disableRipple
             slotProps={{ input: { "aria-hidden": true } }}
           />
-          <ListItemText primary={tag.name} secondary={renaming.includes(tag.id) ? "Renaming…" : undefined} />
+          <ListItemText primary={tag.name} secondary={deleting.includes(tag.id) ? "Deleting…" : renaming.includes(tag.id) ? "Renaming…" : undefined} />
         </ListItemButton>
         {definitions.some((item) => item.id === tag.id) && <TagActions tag={tag} />}
         </div>

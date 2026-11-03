@@ -133,8 +133,8 @@ for readable labels; article inspection reads the source-file labels.
 ## Transition records
 
 An optional root `transitions` sequence reserves identities and names while
-bounded file/index work is incomplete. Rename has a runtime command and dispatcher;
-merge and deletion dispatchers remain separate functionality.
+bounded file/index work is incomplete. Rename and deletion have runtime commands and dispatchers;
+merge remains separate functionality.
 The user-visible operation rules are in the [organization model](organization_model.md#tags).
 
 A rename updates the definition's `name` and records its old name:
@@ -157,7 +157,7 @@ A rename has no index-conversion checkpoint because assignments retain their IDs
 `renameTag(id, name)` invokes native `rename_tag`, requiring the library writer.
 The serialized registry operation checks names and transition ownership, commits
 the new name and alias, and starts bounded file work. It returns the committed
-`TagSnapshot` (`tags`, `renaming`). `readTagStatus(signal)` / `read_tag_status`
+`TagSnapshot` (`tags`, `renaming`, `deleting`). `readTagStatus(signal)` / `read_tag_status`
 read that same shape without initializing a store. `tags:changed` carries typed
 snapshots after rename acceptance and completion; checkpoints do not emit
 unchanged definition snapshots. `tags:collision`, `tags:invalid-name`, and
@@ -222,6 +222,66 @@ unfinished checkpoints durable. Background failures use the main window's
 existing error sink. Bounds and measurements are in
 [index-first rename scaling](design_scale.md#tag-rename-scaling).
 
+### Runtime deletion
+
+`deleteTag(id)` invokes native `delete_tag`, requiring the library writer. It
+commits a deletion reservation and returns `TagSnapshot`; `deleting` lists the
+reserved identities. Acceptance and retirement emit typed `tags:changed`
+snapshots through the same notification path as rename. Checkpoints do not emit
+unchanged snapshots. Rename and deletion refuse participants in any unfinished
+transition. Unknown IDs are refused; read-only deletion uses `library:read-only`.
+
+Delete appears beside Rename in both tag actions menus. Both action labels include
+the current tag name, including while renaming or deleting. One confirmation names
+the tag and says its article assignments will be removed while articles remain
+intact. Cancel/Escape performs no mutation. Read-only mode disables Delete;
+Deleting… identifies unfinished work and both actions are disabled for that tag.
+Inspector chips disable assignments involving deleting tags; removing an ordinary
+chip assignment still retains its definition.
+
+After committing the reservation, the command enqueues typed `DeleteTag` work at
+Interactive priority. Each service turn processes at most 1,024 indexed Entry IDs,
+ordered by ID, plus persisted pending work. Both file and index pending batches
+are durable before mutation. Up to eight Entry-lane file patches remove matching
+labels without replacing other metadata or body bytes. Missing files are skipped;
+index false positives do not remove unrelated labels. A single partial-column
+cache update removes the UUID from that Entry batch, preserving other assignments,
+vectors, content, state, and pins. Only then do both checkpoints advance. Further
+batches retain the arriving priority and yield between service turns. Shutdown
+may leave work unfinished; the durable transition bounds the retry.
+
+Source-aware discovery of a deleting label records its Entry ID as pending file
+work and invalidates progress, including when the cache missed that file. The
+pending list retains the 1,024-ID bound; if full, discovery refuses the operation
+with `tags:busy` rather than dropping cleanup work or overflowing the checkpoint.
+Retries and recovery can resolve the source after the batch drains. Older queued
+article/assignment jobs also patch a currently deleting source label before
+removing its cached ID, so they cannot hide a file from indexed cleanup. The
+file-identity-checked registry resolver filters retired IDs from queued snapshots
+and assignment deltas; it does not map them to a new identity with the same name.
+
+Recovery completes unfinished deletion batches before discovering article labels,
+using the same cleanup routine and cache writer. Pending files are replayed even
+when the cache is empty or rebuilt. Failures preserve reservations and pending
+work, surface through the existing error sink, and prevent recovery from proceeding
+past unfinished cleanup.
+
+Deletion finishes when indexed candidates and pending work are exhausted and both
+checkpoints are complete. It retires the definition and name reservation immediately;
+there is no full-source scan, verification pass, or retained tombstone. A file
+missed by the index may keep its label. After retirement, recovery or ordinary
+discovery can create a new identity from that label, as with missed rename labels.
+This accepted stale-index consequence differs from interrupted deletion, whose
+active reservation prevents recreation and whose work resumes during recovery.
+
+Deleting a selected tag removes its ID from the current navigation selection
+without replacing the displayed list or reader selection. Definition events are
+retained even if acceptance and completion arrive before a UI render. The next
+explicit navigation, filter change, or refresh queries the remaining selection;
+an empty selection queries all Entries under the existing filters. Bounds and
+scale assumptions are in [deletion scaling](design_scale.md#tag-deletion-scaling). An in-flight
+query for the superseded selection cannot replace the retained list.
+
 ### Merge and deletion records
 
 A merge records `type: merge`, `source_id`, `destination_id`, `survivor_id`,
@@ -261,8 +321,8 @@ from retiring a name past newly discovered work.
 File read–modify–writes belong inside the existing Entry writer lane and use
 validated atomic frontmatter patches. Registry replacement alone does not
 serialize article changes. File work precedes its checkpoint; cache conversion
-precedes its index checkpoint. Rename file completion covers its indexed candidate batches. Merge and deletion
-retain their full-source cleanup requirements. Read or write failures in an
+precedes its index checkpoint. Rename file completion covers its indexed candidate batches. Deletion file completion covers indexed candidates and persisted pending work.
+Merge retains its full-source cleanup requirement. Read or write failures in an
 indexed rename batch retain the transition and pending work for retry.
 
 Rename finalization requires file completion. Merge and deletion require both

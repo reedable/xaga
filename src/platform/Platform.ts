@@ -349,6 +349,7 @@ export interface Platform {
   countTagUnread(signal: AbortSignal, tagIds: string[]): Promise<number>;
   readTagStatus(signal: AbortSignal): Promise<TagSnapshot>;
   renameTag(id: string, name: string): Promise<TagSnapshot>;
+  deleteTag(id: string): Promise<TagSnapshot>;
   onTagsChanged(callback: (snapshot: TagSnapshot) => void): Promise<UnlistenFn>;
   listTags(signal: AbortSignal): Promise<Tag[]>;
   createTag(name: string): Promise<Tag>;

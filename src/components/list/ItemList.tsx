@@ -101,7 +101,7 @@ export function ItemList({
   const hasSelectedTags = !!tagIds?.length;
   const filter = hasSelectedTags && (!navigationFilter || navigationFilter === "unread")
     ? "all" : navigationFilter;
-  const { tags, renaming = [] } = useTags();
+  const { tags, renaming = [], deleting = [] } = useTags();
   const tagOptions = useMemo(
     () =>
       [
@@ -432,8 +432,14 @@ export function ItemList({
   );
 
   const tagTextFilter = tagIds !== undefined ? filterText : undefined;
+  const deletionRevision = useRef(state.tagDeletionRevision);
   useEffect(() => {
     abort();
+    if (deletionRevision.current !== state.tagDeletionRevision) {
+      const deletion = state.tagDeletionRevision !== undefined;
+      deletionRevision.current = state.tagDeletionRevision;
+      if (deletion) { ++listRequestRef.current; setLoading(false); return; }
+    }
     (async () => {
       requestItems(selectedCollectionRef.current);
     })();
@@ -441,6 +447,7 @@ export function ItemList({
     // requestFeeds/requestTopics don't re-trigger a full list reload.
   }, [
     tagSelectionKey,
+    state.tagDeletionRevision,
     tagTextFilter,
     articleScopeId,
     feedId,
@@ -647,7 +654,7 @@ export function ItemList({
                       slotProps={{ input: { "aria-hidden": true } }}
                     />
                     <Typography component="span" variant="body2" sx={{ flexGrow: 1 }}>
-                      {tag.name}{renaming.includes(tag.id) ? " — Renaming…" : ""}
+                      {tag.name}{deleting.includes(tag.id) ? " — Deleting…" : renaming.includes(tag.id) ? " — Renaming…" : ""}
                     </Typography>
                     {tags.some((item) => item.id === tag.id) && <TagActions tag={tag} />}
                   </MenuItem>

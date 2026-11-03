@@ -5,6 +5,7 @@ type TagsContextValue = {
   tags: Tag[];
   hasLoaded: boolean;
   renaming?: string[];
+  deleting?: string[];
   unreadCount: number | null;
 };
 

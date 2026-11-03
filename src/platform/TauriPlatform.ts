@@ -375,7 +375,7 @@ listen<string>("loader:will-unload" satisfies AppEvent, (e) => {
 
 const entryTagChangeSchema = z.object({ entryId: z.string(), tagId: z.uuid({ version: "v4" }), assigned: z.boolean() });
 const tagSchema = z.object({ id: z.uuid({ version: "v4" }), name: z.string().min(1) });
-const tagSnapshotSchema = z.object({ tags: z.array(tagSchema), renaming: z.array(z.uuid({ version: "v4" })) });
+const tagSnapshotSchema = z.object({ tags: z.array(tagSchema), renaming: z.array(z.uuid({ version: "v4" })), deleting: z.array(z.uuid({ version: "v4" })) });
 
 export class TauriPlatform implements Platform {
   async onError(
@@ -1578,6 +1578,10 @@ export class TauriPlatform implements Platform {
 
   async renameTag(id: string, name: string): Promise<TagSnapshot> {
     return tagSnapshotSchema.parse(await invoke("rename_tag", { id, name }));
+  }
+
+  async deleteTag(id: string): Promise<TagSnapshot> {
+    return tagSnapshotSchema.parse(await invoke("delete_tag", { id }));
   }
 
   onTagsChanged(callback: (snapshot: TagSnapshot) => void): Promise<UnlistenFn> {

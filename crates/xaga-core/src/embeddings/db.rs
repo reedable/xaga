@@ -465,6 +465,17 @@ impl EmbeddingsDb {
             .map_err(|e| std::io::Error::other(e).into())
     }
 
+    /// Queued snapshots may carry identities retired since their producer resolved them.
+    pub(crate) async fn retain_current_tag_ids(
+        &self,
+        ids: &mut Vec<String>,
+    ) -> Result<Vec<String>, EmbeddingsError> {
+        self.tag_resolver
+            .retain_ids(ids)
+            .await
+            .map_err(|e| std::io::Error::other(e).into())
+    }
+
     /// Opens an existing embeddings table without creating or migrating it.
     pub async fn open_readonly(library_dir: &Path) -> Result<Self, EmbeddingsError> {
         let schema = make_schema();
@@ -887,6 +898,33 @@ impl EmbeddingsDb {
             }
         }
         Ok(ids)
+    }
+
+    /// Remove one identity from a bounded Entry batch, preserving every other column.
+    pub(crate) async fn remove_tag_batch(
+        &self,
+        tag_id: &str,
+        ids: &[String],
+    ) -> Result<(), EmbeddingsError> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        if ids.len() > 1024 {
+            return Err(std::io::Error::other("tag batch exceeds 1024 Entries").into());
+        }
+        let predicate = Self::tag_predicate(&[tag_id.into()], crate::types::ItemFilter::All)?;
+        let ids = ids
+            .iter()
+            .map(|id| format!("'{}'", id.replace('\'', "''")))
+            .collect::<Vec<_>>()
+            .join(",");
+        self.table
+            .update()
+            .only_if(format!("{predicate} AND id IN ({ids})"))
+            .column("tags", format!("array_remove(tags, '{tag_id}')"))
+            .execute()
+            .await?;
+        Ok(())
     }
 
     /// Count the intersection once, independently of list/text filters.
