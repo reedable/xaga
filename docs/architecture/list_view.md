@@ -26,9 +26,13 @@ must directly carry every selected identity. An empty selection in Tags browsing
 shows all Entries, rather than the mixed Entry/Annotation All items shortcut.
 With tags selected, Saved/All and text filtering remain available. The Unread
 button is hidden, and a retained/default Unread filter is treated as All in that
-view. Clearing tag selection restores the Unread control and the retained filter. Selecting a row uses normal
-Article navigation and retains the selected tag set. Back/forward navigation
+view. Clearing tag selection restores the Unread control and the retained filter.
+Selecting a row uses normal Article navigation and retains the selected tag set. Back/forward navigation
 restores that set; it is not a library setting.
+
+Sidebar tags sort alphanumerically by their current display names, ignoring case
+and ordering numbers naturally (Tag 2 before Tag 10). Sorting is a view projection
+and does not reorder the registry.
 
 The header menu remains open while toggling Tags, applying each choice
 immediately. Choosing another collection closes it and leaves Tags browsing.
@@ -46,7 +50,7 @@ contract](organization_model.md#delete).
 
 Reading/color events update existing rows without removing them. Assignment
 changes and index notifications do not reload Tags list membership. Changing
-the selected set, Unread/Saved/All, text filter, or explicitly refreshing
+the selected set, an available reading-state filter, text filter, or explicitly refreshing
 establishes a fresh list. Feed refresh notifications also preserve the active
 Tags list. Superseded query results cannot replace a newer scope's list.
 

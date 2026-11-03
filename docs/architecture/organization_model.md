@@ -96,6 +96,9 @@ assignment remains Article-only.
 
 A Tags sidebar multi-select list browses Entries carrying every selected tag.
 No selection means all Entries under existing text and Unread/Saved/All filters.
+With tags selected, the Unread button is hidden and a retained/default Unread
+filter is treated as All; Saved and All remain available. Presentation and sorting
+are specified in [ListView behavior](list_view.md#tag-browsing).
 Responsive access extends the existing selectable ListView header. The combined
 unread count counts unread Entries in the intersection once, not the sum of tag
 counts. State or assignment changes preserve the current list until explicit
