@@ -3,14 +3,16 @@
 ## Summary
 
 Let users delete a tag with defined treatment of existing Entry assignments and
-safe completion of any library-wide cleanup.
+bounded, resumable cleanup of indexed assignments.
 
 ## Requirements
 
 - Use the [Tag storage](../../docs/architecture/tags.md)
-  contract and existing 0.14 format.
-- Allow deletion of assigned tags and remove their assignments in bounded,
-  resumable batches; do not require users to clear assignments first.
+  contract and existing 0.14 format, with indexed cleanup replacing that
+  document's current full-source deletion cleanup requirement.
+- Allow deletion of assigned tags; do not require users to clear assignments
+  first. Use indexed Entry IDs as file-cleanup candidates, plus persisted pending
+  work. Do not require a full-source scan or verification pass.
 - Expose Delete in the same sidebar/responsive tag actions menu as Rename.
   Confirm once that the tag and its article assignments will be removed while
   articles remain intact. Cancel leaves the tag unchanged.
@@ -21,12 +23,18 @@ safe completion of any library-wide cleanup.
   or filter change; if no tags remain selected, show all Entries under the
   existing filters on that refresh.
 - During deletion, externally encountered labels for the deleting tag join
-  pending cleanup rather than recreating its definition. After completion,
-  reintroduced labels can create a new identity.
+  pending cleanup rather than recreating its definition. Interrupted deletion
+  retains its transition and name reservation; recovery resumes unfinished work
+  before discovering article labels.
+- Complete deletion after indexed file/index batches and persisted pending work
+  finish, then retire the definition and name reservation. A file missed by the
+  index may retain its label; subsequent recovery or discovery can create a new
+  tag identity from that label. Accept this stale-index consequence, as with
+  rename; do not retain a tombstone or require proof that no source labels remain.
 - Removing an assignment through Inspector chips does not delete the definition.
 - Preserve article content, unrelated labels, reading/color state, and pins.
 - Keep definitions, readable file assignments, and indexed IDs coherent during
-  deletion; do not silently reinterpret stale assignments as a newly created tag.
+  deletion; do not reinterpret labels reserved by an active deletion as a new tag.
 - Perform any file/index cleanup in bounded batches with durable progress and
   safe retries, rather than one mass transaction.
 - Use existing library write rights, writer serialization, and read-only gating.
@@ -42,7 +50,11 @@ safe completion of any library-wide cleanup.
   bounded file/index cleanup, checkpoint advancement, and recovery resumption.
 - Verify assigned/unassigned deletion, interrupted/repeated execution, concurrent
   mutations, external edits, read-only refusal, and preservation of other data.
-- Run affected checks and update durable domain and storage documentation.
+  Cover recovery resumption while the transition is active and new-identity
+  discovery from missed labels after retirement, including missing/stale caches.
+- Run affected checks and update durable domain and storage documentation to
+  replace the full-source deletion guarantee with the indexed completion and
+  post-retirement discovery rules above.
 
 ## References
 
