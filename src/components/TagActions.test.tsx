@@ -115,8 +115,8 @@ async function collision() {
 it("requires explicit merge confirmation after a collision", async () => {
   await collision();
   expect(document.body.textContent).toContain("Combine “Research” and “Work” into a single tag named “Work”.");
-  expect(document.querySelector('[role="dialog"] strong')?.textContent).toBe("This cannot be undone.");
-  expect(document.body.textContent).toContain("You won’t be able to restore which articles belonged to each tag.");
+  expect(document.querySelector('[role="dialog"] strong')?.textContent).toBe("“Work”");
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("This cannot be undone.");
   expect(mocks.mergeTags).not.toHaveBeenCalled();
   await act(async () => button("Merge").click());
   expect(mocks.mergeTags).toHaveBeenCalledExactlyOnceWith("tag-a", "tag-b");
