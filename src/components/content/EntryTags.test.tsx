@@ -23,7 +23,7 @@ let createdListener: (tag: Tag) => void;
 let cleanup: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.clearAllMocks(); mocks.readOnly = false;
-  mocks.readTagStatus.mockResolvedValue({ tags: [research, work], renaming: [], deleting: [] });
+  mocks.readTagStatus.mockResolvedValue({ tags: [research, work], renaming: [], deleting: [], merging: [] });
   mocks.readEntryTags.mockResolvedValue([research.id]);
   mocks.setEntryTag.mockImplementation(async (entryId, tagId, assigned) => ({ entryId, tagId, assigned }));
   mocks.createTag.mockResolvedValue({ id: "new", name: "New" });
@@ -111,7 +111,7 @@ it("preserves a committed event that arrives during initial loading", async () =
 it("matches registry lowercase semantics without equating distinct spellings", async () => {
   mocks.readTagStatus.mockResolvedValue({ tags: [
     { id: "german", name: "straße" }, { id: "greek", name: "ΟΣ" },
-  ], renaming: [], deleting: [] });
+  ], renaming: [], deleting: [], merging: [] });
   mocks.readEntryTags.mockResolvedValue([]);
   await render();
   await search("strasse");
@@ -126,8 +126,8 @@ it("retains a committed rename over an older definition load", async () => {
   mocks.readTagStatus.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
   await render();
   await act(async () => {
-    statusListener({ tags: [{ ...research, name: "Renamed" }], renaming: [research.id], deleting: [] });
-    finish({ tags: [research, work], renaming: [], deleting: [] });
+    statusListener({ tags: [{ ...research, name: "Renamed" }], renaming: [research.id], deleting: [], merging: [] });
+    finish({ tags: [research, work], renaming: [], deleting: [], merging: [] });
   });
   expect(chip("Renamed")).toBeTruthy();
   expect(chip("Research")).toBeUndefined();
@@ -135,14 +135,26 @@ it("retains a committed rename over an older definition load", async () => {
 });
 
 it("blocks assignment to deleting tags from initial status and live updates", async () => {
-  mocks.readTagStatus.mockResolvedValueOnce({ tags: [research, work], renaming: [], deleting: [research.id] });
+  mocks.readTagStatus.mockResolvedValueOnce({ tags: [research, work], renaming: [], deleting: [research.id], merging: [] });
   await render();
   expect(chip("Research").disabled).toBe(true);
   expect(chip("Work").disabled).toBe(false);
-  await act(async () => statusListener({ tags: [research, work], renaming: [], deleting: [work.id] }));
+  await act(async () => statusListener({ tags: [research, work], renaming: [], deleting: [work.id], merging: [] }));
   expect(chip("Work").disabled).toBe(true);
   await act(async () => chip("Work").click());
   expect(mocks.setEntryTag).not.toHaveBeenCalled();
-  await act(async () => statusListener({ tags: [research], renaming: [], deleting: [] }));
+  await act(async () => statusListener({ tags: [research], renaming: [], deleting: [], merging: [] }));
   expect(chip("Work")).toBeUndefined();
+});
+
+it("redirects merged assignments and reconciles late losing-ID events from current source", async () => {
+  await render();
+  mocks.readEntryTags.mockResolvedValue([work.id]);
+  await act(async () => statusListener({ tags: [work], renaming: [], deleting: [], merging: [{ sourceId: research.id, destinationId: work.id, survivorId: work.id, destinationName: work.name }] }));
+  expect(chip("Research")).toBeUndefined();
+  expect(chip("Work").getAttribute("aria-pressed")).toBe("true");
+  await act(async () => statusListener({ tags: [work], renaming: [], deleting: [], merging: [] }));
+  mocks.readEntryTags.mockResolvedValue([]);
+  await act(async () => changeListener({ entryId: "article", tagId: research.id, assigned: true }));
+  expect(chip("Work").getAttribute("aria-pressed")).toBe("false");
 });

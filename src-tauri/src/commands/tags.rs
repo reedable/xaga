@@ -27,6 +27,36 @@ pub async fn rename_tag(
 }
 
 #[tauri::command]
+pub async fn merge_tags(
+    source_id: String,
+    destination_id: String,
+    state: State<'_, AppState>,
+) -> Result<xaga_core::tags::TagSnapshot, AppError> {
+    merge_in_library(source_id, destination_id, state.writer(), |job| {
+        state.enqueue(xaga_core::embeddings::Tier::Interactive, job);
+    })
+    .await
+}
+
+async fn merge_in_library(
+    source: String,
+    destination: String,
+    writer: Option<LibraryWriter>,
+    enqueue: impl FnOnce(xaga_core::embeddings::Job),
+) -> Result<xaga_core::tags::TagSnapshot, AppError> {
+    let _writer = writer.ok_or(AppError::ReadOnly)?;
+    let (response, receiver) = tokio::sync::oneshot::channel();
+    enqueue(xaga_core::embeddings::Job::BeginTagMerge {
+        source,
+        destination,
+        response,
+    });
+    Ok(receiver
+        .await
+        .map_err(|_| xaga_core::library_writer::WriterError::Closed)??)
+}
+
+#[tauri::command]
 pub async fn delete_tag(
     id: String,
     state: State<'_, AppState>,
@@ -54,7 +84,7 @@ async fn delete_in_library(
 }
 
 async fn list_in_library(dir: &std::path::Path) -> Result<Vec<Tag>, AppError> {
-    Ok(Tags::read(dir).await?.tags)
+    Ok(Tags::read(dir).await?.snapshot().tags)
 }
 
 #[tauri::command]
@@ -151,6 +181,24 @@ fn selected_ids(
     Ok(Some(resolved))
 }
 
+fn selected_groups(
+    registry: &Tags,
+    ids: &[String],
+) -> Result<Option<Vec<Vec<String>>>, xaga_core::tags::TagsError> {
+    let merges = registry.snapshot().merging;
+    Ok(selected_ids(registry, ids)?.map(|ids| {
+        ids.into_iter()
+            .map(|id| {
+                merges
+                    .iter()
+                    .find(|merge| merge.survivor_id == id)
+                    .map(|merge| vec![merge.source_id.clone(), merge.destination_id.clone()])
+                    .unwrap_or_else(|| vec![id])
+            })
+            .collect()
+    }))
+}
+
 #[tauri::command]
 pub async fn list_tag_entries(
     tag_ids: Vec<String>,
@@ -158,7 +206,7 @@ pub async fn list_tag_entries(
     state: State<'_, AppState>,
 ) -> Result<Vec<xaga_core::types::Entry>, AppError> {
     let filter = super::parse_item_filter(item_filter)?;
-    let Some(ids) = selected_ids(&Tags::read(&state.library_path()).await?, &tag_ids)? else {
+    let Some(ids) = selected_groups(&Tags::read(&state.library_path()).await?, &tag_ids)? else {
         return Ok(vec![]);
     };
     let db = state
@@ -168,7 +216,7 @@ pub async fn list_tag_entries(
         .clone()
         .ok_or_else(|| AppError::Message("embeddings read handle unavailable".into()))?;
     db.reload().await?;
-    Ok(db.list_tag_entries(&ids, filter).await?)
+    Ok(db.list_tag_entry_groups(&ids, filter).await?)
 }
 
 #[tauri::command]
@@ -176,7 +224,7 @@ pub async fn count_tag_unread(
     tag_ids: Vec<String>,
     state: State<'_, AppState>,
 ) -> Result<usize, AppError> {
-    let Some(ids) = selected_ids(&Tags::read(&state.library_path()).await?, &tag_ids)? else {
+    let Some(ids) = selected_groups(&Tags::read(&state.library_path()).await?, &tag_ids)? else {
         return Ok(0);
     };
     let db = state
@@ -186,7 +234,7 @@ pub async fn count_tag_unread(
         .clone()
         .ok_or_else(|| AppError::Message("embeddings read handle unavailable".into()))?;
     db.reload().await?;
-    Ok(db.count_tag_unread(&ids).await?)
+    Ok(db.count_tag_group_unread(&ids).await?)
 }
 
 #[cfg(test)]
@@ -197,6 +245,32 @@ mod tests {
 
     fn writer(dir: &std::path::Path) -> LibraryWriter {
         LibraryWriter::start(dir.into(), xaga_core::library::acquire_lock(dir).unwrap())
+    }
+
+    #[tokio::test]
+    async fn merge_requires_write_right_and_an_available_index_service() {
+        let dir = tempfile::tempdir().unwrap();
+        let writer = writer(dir.path());
+        let source = writer.create_tag("Research".into()).await.unwrap().tag;
+        let destination = writer.create_tag("Work".into()).await.unwrap().tag;
+        let before = std::fs::read(xaga_core::library::tags_path(dir.path())).unwrap();
+        let refused = merge_in_library(source.id.clone(), destination.id.clone(), None, |_| {
+            panic!("read-only enqueue")
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(refused.code(), "library:read-only");
+        assert!(super::super::is_write_refused("merge_tags", true));
+        assert!(
+            merge_in_library(source.id, destination.id, Some(writer.clone()), drop)
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            std::fs::read(xaga_core::library::tags_path(dir.path())).unwrap(),
+            before
+        );
+        writer.shutdown().await;
     }
 
     #[tokio::test]

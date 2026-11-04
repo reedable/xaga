@@ -235,3 +235,47 @@ files and an unrelated-label false positive. The first step removes exactly
 fixtures cover pending-file replay after a cache reset, failed batches, and
 post-retirement discovery of missed labels. These establish batch and recovery
 behavior, rather than a production-scale timing claim.
+
+
+## Tag merge scaling
+
+Merge selects the union of both participating IDs, projecting only Entry IDs in
+ordered batches of at most 1,024. It persists both phase checkpoints, patches up
+to eight source files concurrently, and updates only losing-ID cache assignments.
+Two idempotent partial-column updates handle rows with and without an existing
+survivor assignment. Candidate/checkpoint lists stay bounded; query-engine memory,
+registry parsing, and Markdown copies add separate costs. Live batches retain
+Interactive priority and yield between service turns; existing service compaction
+intervals apply. Recovery maintains the cache every 100 batches.
+
+On 2026-11-03, `tag_merge_at_design_scale` passed on macOS ARM64 with LanceDB
+0.33.0 / Lance 9.0.0 in a debug build. The temporary synthetic cache held two
+million Entries: one million source-only, 500,000 destination-only, and 500,000
+carrying both. Vectors were null. Only the first 3,072 Entries had small Markdown
+source fixtures; the test measured three real 1,024-file batches, not full-corpus
+completion. Cache construction and index maintenance took 118.191 seconds.
+
+| Operation | Elapsed |
+| --- | ---: |
+| Count populations and persist acceptance | 39 ms |
+| First 1,024-Entry batch | 7,277 ms |
+| Second 1,024-Entry batch | 8,744 ms |
+| Third 1,024-Entry batch | 7,640 ms |
+
+The source ID survived its larger population while all rewritten labels became
+the destination name. Each batch removed exactly 512 losing-ID assignments,
+including dual-tag rows, and retained the survivor assignment. The test also
+checked rewritten source-only and dual-tag files. Timings include query,
+checkpoints, source patches, and cache updates; they exclude native event delivery
+and rendering. Other build/test processes ran concurrently. These are single-run
+observations, not latency percentiles, whole-process memory bounds, or a measured
+completion time for two million source files. Larger Markdown documents, registry
+size, index freshness, and storage conditions affect cost. A live batch occupies
+the indexing consumer until it yields, so the measured seconds per batch also
+identify a possible wait for subsequent queued cache work.
+
+Reproduce in an isolated temporary library:
+
+```sh
+cargo test -p xaga-core --lib tag_merge_at_design_scale --locked -- --ignored --nocapture
+```

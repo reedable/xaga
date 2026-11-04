@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { TagActions } from "./TagActions";
 
-const mocks = vi.hoisted(() => ({ renameTag: vi.fn(), deleteTag: vi.fn(), deleting: [] as string[], pushError: vi.fn(), readOnly: false, renaming: [] as string[] }));
+const mocks = vi.hoisted(() => ({ readTagStatus: vi.fn(), mergeTags: vi.fn(), renameTag: vi.fn(), deleteTag: vi.fn(), deleting: [] as string[], pushError: vi.fn(), readOnly: false, renaming: [] as string[] }));
 vi.mock("../platform/Platform", () => ({ usePlatform: () => mocks }));
 vi.mock("../hooks/useLibraryReadOnly", () => ({ useLibraryReadOnly: () => mocks.readOnly }));
 vi.mock("../providers/TagsContext", () => ({ useTags: () => ({ renaming: mocks.renaming, deleting: mocks.deleting }) }));
@@ -16,6 +16,8 @@ const tag = { id: "tag-a", name: "Research" };
 const button = (text: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].find((item) => item.textContent === text)!;
 beforeEach(() => {
   vi.clearAllMocks(); mocks.readOnly = false; mocks.renaming = []; mocks.deleting = [];
+  mocks.readTagStatus.mockResolvedValue({ tags: [tag], renaming: [], deleting: [], merging: [] });
+  mocks.mergeTags.mockResolvedValue({ tags: [], renaming: [], deleting: [], merging: [] });
   mocks.deleteTag.mockResolvedValue({ tags: [tag], renaming: [], deleting: [tag.id] });
   mocks.renameTag.mockResolvedValue({ tags: [{ ...tag, name: "Changed" }], renaming: [tag.id] });
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
@@ -102,4 +104,37 @@ it("disables conflicting actions while deleting and refuses read-only deletion",
   await act(async () => items[1].click());
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   expect(mocks.deleteTag).not.toHaveBeenCalled();
+});
+
+async function collision() {
+  mocks.readTagStatus.mockResolvedValue({ tags: [tag, { id: "tag-b", name: "Work" }], renaming: [], deleting: [], merging: [] });
+  mocks.renameTag.mockRejectedValueOnce({ code: "tags:collision", message: "A tag already uses this name.", detail: "" });
+  await dialog(); await name("Work");
+  await act(async () => button("Rename").click());
+}
+it("requires explicit merge confirmation after a collision", async () => {
+  await collision();
+  expect(document.body.textContent).toContain("Combine “Research” and “Work” into a single tag named “Work”.");
+  expect(document.querySelector('[role="dialog"] strong')?.textContent).toBe("This cannot be undone.");
+  expect(document.body.textContent).toContain("You won’t be able to restore which articles belonged to each tag.");
+  expect(mocks.mergeTags).not.toHaveBeenCalled();
+  await act(async () => button("Merge").click());
+  expect(mocks.mergeTags).toHaveBeenCalledExactlyOnceWith("tag-a", "tag-b");
+});
+it("cancels a proposed merge without mutation", async () => {
+  await collision();
+  await act(async () => button("Cancel").click());
+  expect(mocks.mergeTags).not.toHaveBeenCalled();
+});
+it("waits for a destination transition and keeps a racing busy response inline", async () => {
+  await collision();
+  mocks.renaming = ["tag-b"];
+  await act(async () => root.render(<TagActions tag={tag} />));
+  expect(button("Merge").disabled).toBe(true);
+  mocks.renaming = [];
+  await act(async () => root.render(<TagActions tag={tag} />));
+  mocks.mergeTags.mockRejectedValueOnce({ code: "tags:busy", message: "Tag changes are still running.", detail: "" });
+  await act(async () => button("Merge").click());
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("Tag changes are still running.");
+  expect(mocks.pushError).not.toHaveBeenCalled();
 });

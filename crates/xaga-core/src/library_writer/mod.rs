@@ -201,9 +201,9 @@ enum Op {
         annotation_id: String,
         resp: oneshot::Sender<Result<Article, WriterError>>,
     },
-    PatchTagName {
+    PatchTagLabels {
         id: String,
-        old_name: String,
+        old_names: Vec<String>,
         new_name: Option<String>,
         resp: oneshot::Sender<Result<(), WriterError>>,
     },
@@ -338,7 +338,7 @@ impl Op {
             | Op::AddAnnotation { article_id: id, .. }
             | Op::ReplaceAnnotation { article_id: id, .. }
             | Op::RemoveAnnotation { article_id: id, .. }
-            | Op::PatchTagName { id, .. }
+            | Op::PatchTagLabels { id, .. }
             | Op::SetEntryTag { id, .. }
             | Op::SetEntryUnread { id, .. }
             | Op::SetEntryColor { id, .. } => format!("entry/{id}"),
@@ -379,7 +379,7 @@ impl Op {
             Op::AddAnnotation { .. } => "add_annotation",
             Op::ReplaceAnnotation { .. } => "replace_annotation",
             Op::RemoveAnnotation { .. } => "remove_annotation",
-            Op::PatchTagName { .. } => "patch_tag_name",
+            Op::PatchTagLabels { .. } => "patch_tag_labels",
             Op::SetEntryTag { .. } => "set_entry_tag",
             Op::SetEntryUnread { .. } => "set_entry_unread",
             Op::SetEntryColor { .. } => "set_entry_color",
@@ -414,7 +414,7 @@ impl Op {
             Op::AddAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::ReplaceAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RemoveAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
-            Op::PatchTagName { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::PatchTagLabels { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryTag { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryUnread { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryColor { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -455,6 +455,7 @@ impl Op {
                     mutation,
                     crate::tags::Mutation::Rename { .. }
                         | crate::tags::Mutation::Delete { .. }
+                        | crate::tags::Mutation::Merge { .. }
                         | crate::tags::Mutation::Finish { .. }
                 );
                 let started = if let crate::tags::Mutation::Rename { id, .. } = &mutation {
@@ -611,16 +612,16 @@ impl Op {
                         .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
-            Op::PatchTagName {
+            Op::PatchTagLabels {
                 id,
-                old_name,
+                old_names,
                 new_name,
                 resp,
             } => {
                 let result = crate::tags::patch_file(
                     library_dir,
                     &id,
-                    &old_name,
+                    &old_names,
                     new_name.as_deref(),
                     token,
                 )
@@ -1390,12 +1391,21 @@ impl LibraryWriter {
         old_name: String,
         new_name: Option<String>,
     ) -> Result<(), WriterError> {
+        self.patch_tag_labels(id, vec![old_name], new_name).await
+    }
+
+    pub(crate) async fn patch_tag_labels(
+        &self,
+        id: String,
+        old_names: Vec<String>,
+        new_name: Option<String>,
+    ) -> Result<(), WriterError> {
         let (resp, rx) = oneshot::channel();
         self.submit(
             Tier::Interactive,
-            Op::PatchTagName {
+            Op::PatchTagLabels {
                 id,
-                old_name,
+                old_names,
                 new_name,
                 resp,
             },

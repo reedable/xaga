@@ -74,17 +74,17 @@ export default function useRouter() {
 
   const selectTags = useCallback((ids: string[]) => {
     const next: NavigationState = { tagIds: [...new Set(ids)].sort(), filter: state.filter };
-    if (isSameNavigation(state, next) && state.tagDeletionRevision === undefined) return;
+    if (isSameNavigation(state, next) && state.tagSelectionRevision === undefined) return;
     return logged_navigate(`/?${searchParams.toString()}`, { state: next });
   }, [logged_navigate, searchParams, state]);
 
-  // Explicit deletion updates selection while retaining the current list and reader.
-  const removeDeletedTags = useCallback((ids: string[]) => {
-    if (!state.tagIds?.some((id) => ids.includes(id))) return;
+  // Committed tag identity changes preserve the current list and reader.
+  const replaceTagSelection = useCallback((ids: string[]) => {
+    const tagIds = [...new Set(ids)].sort();
+    if (!state.tagIds || JSON.stringify([...state.tagIds].sort()) === JSON.stringify(tagIds)) return;
     return logged_navigate(`/?${searchParams.toString()}`, {
       replace: true,
-      state: { ...state, tagIds: state.tagIds.filter((id) => !ids.includes(id)),
-        tagDeletionRevision: (state.tagDeletionRevision ?? 0) + 1 },
+      state: { ...state, tagIds, tagSelectionRevision: (state.tagSelectionRevision ?? 0) + 1 },
     });
   }, [logged_navigate, searchParams, state]);
 
@@ -304,7 +304,7 @@ export default function useRouter() {
     selectFilter: applyFilter,
     selectTopic,
     selectTags,
-    removeDeletedTags,
+    replaceTagSelection,
     selectUrl,
   };
 }

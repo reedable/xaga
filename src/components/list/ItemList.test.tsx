@@ -458,11 +458,11 @@ it("provides Tab access to tag actions inside the responsive selector without se
 it("removes deleted selections without refreshing membership until explicit navigation", async () => {
   await render({ tagIds: ["tag-a", "tag-b"], filter: "unread", entryId: article.id });
   expect(rows()).toHaveLength(1);
-  await act(async () => route.removeDeletedTags(["tag-a"]));
+  await act(async () => route.replaceTagSelection(route.state.tagIds!.filter((id) => id !== "tag-a")));
   expect(route.state.tagIds).toEqual(["tag-b"]);
   expect(route.state.entryId).toBe(article.id);
   expect(mocks.tagEntries).toHaveBeenCalledOnce();
-  await act(async () => route.removeDeletedTags(["tag-b"]));
+  await act(async () => route.replaceTagSelection(route.state.tagIds!.filter((id) => id !== "tag-b")));
   expect(route.state.tagIds).toEqual([]);
   expect(rows()).toHaveLength(1);
   expect(mocks.tagEntries).toHaveBeenCalledOnce();
@@ -475,11 +475,22 @@ it("discards a pending membership result when deletion changes selection", async
   let oldResult!: (value: ListItem[]) => void;
   mocks.tagEntries.mockImplementationOnce(() => new Promise((resolve) => { oldResult = resolve; }));
   await render({ tagIds: ["tag-a"], filter: "all" });
-  await act(async () => route.removeDeletedTags(["tag-a"]));
+  await act(async () => route.replaceTagSelection(route.state.tagIds!.filter((id) => id !== "tag-a")));
   await act(async () => oldResult([{ ...article, id: "old", title: "Old result" }]));
   expect(rows()).toHaveLength(0);
   expect(mocks.tagEntries).toHaveBeenCalledOnce();
   await act(async () => route.selectTags([]));
   // Explicitly selecting the already selected empty set must still refresh a retained list.
   expect(mocks.tagEntries).toHaveBeenCalledTimes(2);
+});
+
+it("retains the list and reader when merged selections collapse to the survivor", async () => {
+  await render({ tagIds: ["tag-a", "tag-b"], filter: "all", entryId: article.id });
+  await act(async () => route.replaceTagSelection(["tag-b"]));
+  expect(rows()).toHaveLength(1);
+  expect(route.state.entryId).toBe(article.id);
+  expect(mocks.tagEntries).toHaveBeenCalledOnce();
+  await act(async () => route.selectTags(["tag-b"]));
+  expect(mocks.tagEntries).toHaveBeenCalledTimes(2);
+  expect(mocks.tagEntries).toHaveBeenLastCalledWith(expect.any(AbortSignal), ["tag-b"], "all");
 });

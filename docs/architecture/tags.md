@@ -71,8 +71,9 @@ applies that delta to the existing row without changing content, vectors,
 reading/color state, or other assignments. Missing rows remain recovery's
 responsibility. The service retains the latest committed delta per touched
 Entry/tag pair over older queued article snapshots, including when such a
-snapshot first creates the row. Starting recovery clears that session projection
-before taking a fresh source snapshot; it is not persisted. Entry deletion also
+snapshot first creates the row. Starting recovery clears ordinary session projections before taking a fresh
+source snapshot; merge-affected Entries retain their markers so older queued
+identities still trigger source reconciliation. This bookkeeping is not persisted. Entry deletion also
 discards its retained deltas.
 
 Inspector instances subscribe before loading assignments and apply intervening
@@ -90,7 +91,10 @@ querying indexed UUIDs. A missing/deleting selected definition produces an empty
 result and zero count, preserving the caller's selected set. Query construction
 accepts canonical UUID v4 values, not interpolated tag names.
 
-Queries restrict `kind` to Entry and use `array_has_all(tags, selectedIds)`.
+Queries restrict `kind` to Entry and intersect the selected identities. During an
+active merge, either participant in the cache satisfies the surviving selection;
+each selected group ORs its participant IDs, and groups are ANDed. Ordinary
+single-ID selections use `array_has_all(tags, [id])`.
 Unread adds `is_unread = true`; Saved adds a nonempty color predicate. Empty
 selection omits the tags predicate. Summary reads omit vectors and article
 content, and use the existing list ordering. The unread count uses a database
@@ -133,8 +137,8 @@ for readable labels; article inspection reads the source-file labels.
 ## Transition records
 
 An optional root `transitions` sequence reserves identities and names while
-bounded file/index work is incomplete. Rename and deletion have runtime commands and dispatchers;
-merge remains separate functionality.
+bounded file/index work is incomplete. Rename, deletion, and merge have runtime
+commands and resumable dispatchers.
 The user-visible operation rules are in the [organization model](organization_model.md#tags).
 
 A rename updates the definition's `name` and records its old name:
@@ -157,7 +161,7 @@ A rename has no index-conversion checkpoint because assignments retain their IDs
 `renameTag(id, name)` invokes native `rename_tag`, requiring the library writer.
 The serialized registry operation checks names and transition ownership, commits
 the new name and alias, and starts bounded file work. It returns the committed
-`TagSnapshot` (`tags`, `renaming`, `deleting`). `readTagStatus(signal)` / `read_tag_status`
+`TagSnapshot` (`tags`, `renaming`, `deleting`, `merging`). `readTagStatus(signal)` / `read_tag_status`
 read that same shape without initializing a store. `tags:changed` carries typed
 snapshots after rename acceptance and completion; checkpoints do not emit
 unchanged definition snapshots. `tags:collision`, `tags:invalid-name`, and
@@ -207,8 +211,7 @@ or discovery handles that spelling as a newly encountered name under the usual
 case-insensitive comparison rules. It can create a separate tag identity instead
 of attaching the article to the renamed tag. Case-only spellings still resolve
 to the existing identity. This is an accepted stale-index consequence; there is
-no implicit merge or retained chain of old names. The separate Merge Tags feature
-can later provide explicit consolidation.
+no implicit merge or retained chain of old names. Merge confirmation provides explicit consolidation.
 
 Recovery resumes unfinished indexed batches before discovering article labels.
 It does not perform rename-specific full-file rewriting or alias verification.
@@ -281,6 +284,47 @@ explicit navigation, filter change, or refresh queries the remaining selection;
 an empty selection queries all Entries under the existing filters. Bounds and
 scale assumptions are in [deletion scaling](design_scale.md#tag-deletion-scaling). An in-flight
 query for the superseded selection cannot replace the retained list.
+
+### Runtime merge
+
+A rename collision offers a second, explicit confirmation naming both tags.
+Cancel leaves both definitions and assignments unchanged. `mergeTags(sourceId,
+destinationId)` invokes trusted native `merge_tags`, requiring the library write
+right. Confirmation is disabled while either participant has an active transition;
+the registry also rejects racing conflicts with `tags:busy`.
+
+The command submits typed merge intent to the Interactive indexing queue. That
+single consumer counts both indexed Entry populations and persists the survivor
+choice before another cache job runs. It returns the committed snapshot and queues
+bounded conversion at the same priority. A missing service refuses acceptance.
+`merging` contains source/destination IDs, survivor ID, and destination name.
+Snapshot `tags` exposes only the survivor under the destination name, while both
+original definitions remain reserved in storage. Acceptance and retirement emit
+`tags:changed`; checkpoints do not emit redundant snapshots.
+
+Merge and deletion share `tags/conversion.rs`. Each step selects up to 1,024
+candidate IDs, persists pending work, and runs up to eight atomic Entry-lane
+patches. Merge patches either participant label to the destination name and
+collapses duplicate participant labels. It then changes only the cache's `tags`
+column on rows carrying the losing ID. Rows already carrying the survivor remove
+the loser; remaining rows replace it with the survivor in a second idempotent
+update. Unrelated labels, body, metadata, vectors, read/color state, and pins are
+preserved. Independently persisted file/index pending lists are replayed without
+dropping newly discovered file work, including after a cache reset.
+
+The indexing session remembers participating IDs so delayed pre-merge Entry
+snapshots or assignment deltas re-read that Entry's current source assignments.
+This prevents an obsolete losing-ID assignment from overriding a later removal
+of the survivor. This is session bookkeeping, not a persisted name alias or
+tombstone. Recovery remembers active participants before resuming conversion and
+then discovers source labels under the resulting registry.
+
+Sidebar/header status shows Merging… on the surviving tag. Selection IDs follow
+committed merges, deduplicate, and retain the reader and current article list.
+Subsequent explicit navigation or refresh reads the union using the current
+selection. Inspector assignments follow the survivor and refresh from source on
+merge events and subsequent assignment events, avoiding late losing-ID deltas.
+Bounds and measured batch costs are in [merge scaling](design_scale.md#tag-merge-scaling).
 
 ### Merge and deletion records
 

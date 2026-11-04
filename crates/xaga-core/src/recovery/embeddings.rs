@@ -1,7 +1,7 @@
 //! The diff stage: walk the filesystem, compare against the index, and drive the repair. Each item
 //! that needs embedding is streamed to the caller's `RepairSink`; the post-walk residue (feed embeds
-//! + deletes) is returned. Pure computation — the reads are delegated to persistence
-//! (`for_each_md`/`parse_document`) and embeddings (`list_entries_meta`); the *apply* is the sink's.
+//! + deletes) is returned. Writable recovery first resumes durable tag conversions, then
+//! delegates source reads to persistence and streams ordinary repairs through the sink.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -27,7 +27,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     writer: Option<&crate::library_writer::LibraryWriter>,
 ) -> Result<RepairResidue, EmbeddingsError> {
     if let Some(writer) = writer {
-        crate::tags::delete::resume(writer, db)
+        crate::tags::conversion::resume(writer, db)
             .await
             .map_err(std::io::Error::other)?;
     }

@@ -1,11 +1,12 @@
 import { createContext, useContext } from "react";
-import type { Tag } from "../domain";
+import type { Tag, TagMerge } from "../domain";
 
 type TagsContextValue = {
   tags: Tag[];
   hasLoaded: boolean;
   renaming?: string[];
   deleting?: string[];
+  merging?: TagMerge[];
   unreadCount: number | null;
 };
 

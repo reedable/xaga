@@ -843,7 +843,20 @@ impl EmbeddingsDb {
         ids: &[String],
         filter: crate::types::ItemFilter,
     ) -> Result<Vec<Entry>, EmbeddingsError> {
-        let predicate = Self::tag_predicate(ids, filter)?;
+        self.list_tag_entry_groups(
+            &ids.iter().map(|id| vec![id.clone()]).collect::<Vec<_>>(),
+            filter,
+        )
+        .await
+    }
+
+    /// Intersect selections, accepting either identity of an active merge per group.
+    pub async fn list_tag_entry_groups(
+        &self,
+        groups: &[Vec<String>],
+        filter: crate::types::ItemFilter,
+    ) -> Result<Vec<Entry>, EmbeddingsError> {
+        let predicate = Self::tag_group_predicate(groups, filter)?;
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -865,8 +878,25 @@ impl EmbeddingsDb {
         after: Option<&str>,
         limit: usize,
     ) -> Result<Vec<String>, EmbeddingsError> {
+        self.tag_entry_id_batch_any(&[tag_id.into()], after, limit)
+            .await
+    }
+
+    pub(crate) async fn tag_entry_id_batch_any(
+        &self,
+        tag_ids: &[String],
+        after: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<String>, EmbeddingsError> {
         self.reload().await?;
-        let mut predicate = Self::tag_predicate(&[tag_id.into()], crate::types::ItemFilter::All)?;
+        let predicates = tag_ids
+            .iter()
+            .map(|id| Self::tag_predicate(std::slice::from_ref(id), crate::types::ItemFilter::All))
+            .collect::<Result<Vec<_>, _>>()?;
+        if predicates.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut predicate = format!("(({}))", predicates.join(") OR ("));
         if let Some(after) = after {
             predicate.push_str(&format!(" AND id > '{}'", after.replace('\'', "''")));
         }
@@ -901,9 +931,10 @@ impl EmbeddingsDb {
     }
 
     /// Remove one identity from a bounded Entry batch, preserving every other column.
-    pub(crate) async fn remove_tag_batch(
+    pub(crate) async fn patch_tag_batch(
         &self,
         tag_id: &str,
+        replacement: Option<&str>,
         ids: &[String],
     ) -> Result<(), EmbeddingsError> {
         if ids.is_empty() {
@@ -918,13 +949,103 @@ impl EmbeddingsDb {
             .map(|id| format!("'{}'", id.replace('\'', "''")))
             .collect::<Vec<_>>()
             .join(",");
+        let removed = format!("array_remove(tags, '{tag_id}')");
+        let selected = format!("{predicate} AND id IN ({ids})");
+        if let Some(replacement) = replacement {
+            Self::tag_predicate(&[replacement.into()], crate::types::ItemFilter::All)?;
+            // Two idempotent subsets avoid unsupported CASE expressions. A crash between
+            // updates leaves the remaining losing IDs eligible for the persisted replay.
+            let has_survivor = format!("array_has_all(tags, ['{replacement}'])");
+            self.table
+                .update()
+                .only_if(format!("{selected} AND {has_survivor}"))
+                .column("tags", removed.clone())
+                .execute()
+                .await?;
+            self.table
+                .update()
+                .only_if(format!("{selected} AND NOT {has_survivor}"))
+                .column("tags", format!("array_append({removed}, '{replacement}')"))
+                .execute()
+                .await?;
+        } else {
+            self.table
+                .update()
+                .only_if(selected)
+                .column("tags", removed)
+                .execute()
+                .await?;
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn count_tag_entries(&self, id: &str) -> Result<u64, EmbeddingsError> {
+        let predicate = Self::tag_predicate(&[id.into()], crate::types::ItemFilter::All)?;
+        Ok(self.table.count_rows(Some(predicate)).await? as u64)
+    }
+
+    /// A merge can invalidate the identity carried by an older assignment delta.
+    /// This reconciles that Entry's current source assignments without replacing other columns.
+    pub(crate) async fn set_entry_tag_ids(
+        &self,
+        entry: &str,
+        tags: &[String],
+    ) -> Result<(), EmbeddingsError> {
+        Self::tag_predicate(tags, crate::types::ItemFilter::All)?;
+        let value = if tags.is_empty() {
+            "arrow_cast([], 'List(Utf8)')".to_owned()
+        } else {
+            format!(
+                "[{}]",
+                tags.iter()
+                    .map(|id| format!("'{id}'"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        };
         self.table
             .update()
-            .only_if(format!("{predicate} AND id IN ({ids})"))
-            .column("tags", format!("array_remove(tags, '{tag_id}')"))
+            .only_if(format!(
+                "kind = 'entry' AND id = '{}'",
+                entry.replace('\'', "''")
+            ))
+            .column("tags", value)
             .execute()
             .await?;
         Ok(())
+    }
+
+    fn tag_group_predicate(
+        groups: &[Vec<String>],
+        filter: crate::types::ItemFilter,
+    ) -> Result<String, EmbeddingsError> {
+        let mut predicate = Self::tag_predicate(&[], filter)?;
+        for group in groups {
+            if group.is_empty() {
+                return Err(EmbeddingsError::Parse("empty tag identity group".into()));
+            }
+            let alternatives = group
+                .iter()
+                .map(|id| {
+                    Self::tag_predicate(std::slice::from_ref(id), crate::types::ItemFilter::All)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            predicate.push_str(&format!(" AND (({}))", alternatives.join(") OR (")));
+        }
+        Ok(predicate)
+    }
+
+    pub async fn count_tag_group_unread(
+        &self,
+        groups: &[Vec<String>],
+    ) -> Result<usize, EmbeddingsError> {
+        Ok(self
+            .table
+            .count_rows(Some(Self::tag_group_predicate(
+                groups,
+                crate::types::ItemFilter::Unread,
+            )?))
+            .await?)
     }
 
     /// Count the intersection once, independently of list/text filters.

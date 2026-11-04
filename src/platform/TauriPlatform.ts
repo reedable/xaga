@@ -375,7 +375,7 @@ listen<string>("loader:will-unload" satisfies AppEvent, (e) => {
 
 const entryTagChangeSchema = z.object({ entryId: z.string(), tagId: z.uuid({ version: "v4" }), assigned: z.boolean() });
 const tagSchema = z.object({ id: z.uuid({ version: "v4" }), name: z.string().min(1) });
-const tagSnapshotSchema = z.object({ tags: z.array(tagSchema), renaming: z.array(z.uuid({ version: "v4" })), deleting: z.array(z.uuid({ version: "v4" })) });
+const tagSnapshotSchema = z.object({ tags: z.array(tagSchema), renaming: z.array(z.uuid({ version: "v4" })), deleting: z.array(z.uuid({ version: "v4" })), merging: z.array(z.object({ sourceId: z.uuid({ version: "v4" }), destinationId: z.uuid({ version: "v4" }), survivorId: z.uuid({ version: "v4" }), destinationName: z.string() })) });
 
 export class TauriPlatform implements Platform {
   async onError(
@@ -1582,6 +1582,10 @@ export class TauriPlatform implements Platform {
 
   async deleteTag(id: string): Promise<TagSnapshot> {
     return tagSnapshotSchema.parse(await invoke("delete_tag", { id }));
+  }
+
+  async mergeTags(sourceId: string, destinationId: string): Promise<TagSnapshot> {
+    return tagSnapshotSchema.parse(await invoke("merge_tags", { sourceId, destinationId }));
   }
 
   onTagsChanged(callback: (snapshot: TagSnapshot) => void): Promise<UnlistenFn> {

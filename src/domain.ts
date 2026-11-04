@@ -37,7 +37,8 @@ export type EntryTagChange = { entryId: string; tagId: string; assigned: boolean
 
 // Library-scoped organizational label; identity is independent of display name.
 export type Tag = { id: string; name: string };
-export type TagSnapshot = { tags: Tag[]; renaming: string[]; deleting: string[] };
+export type TagMerge = { sourceId: string; destinationId: string; survivorId: string; destinationName: string };
+export type TagSnapshot = { tags: Tag[]; renaming: string[]; deleting: string[]; merging: TagMerge[] };
 
 // ── Entities (all branded) ──────────────────────────────────────────────────────
 export type Entry = WebResource &

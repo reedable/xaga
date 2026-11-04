@@ -117,7 +117,7 @@ If the index missed an article, its file can retain the old spelling. Subsequent
 recovery/discovery may recreate that name as a separate tag identity under the
 normal comparison rules. This stale-index consequence is accepted. Rename does
 not wait for a full-file verification scan or maintain old-name chains across
-repeated renames. Consolidation is an explicit merge operation when supported.
+repeated renames. Consolidation requires explicit merge confirmation.
 
 Sequence transitions of the same tag; unrelated renames may proceed concurrently.
 Serialize each entire file read–modify–write in the Entry writer lane and replace
@@ -125,14 +125,17 @@ atomically. Atomic replacement alone does not prevent lost updates.
 
 Rename is available through hover/focus actions menus in sidebar and responsive
 tag navigation. A prefilled dialog submits with Enter/Rename and cancels with
-Escape/Cancel. Collisions are inline errors until explicit merging is available.
+Escape/Cancel. A collision offers a separate explicit merge confirmation.
 Show Renaming… and disable another rename for the affected tag during rewriting.
 
 ### Merge
 
-A rename collision may offer explicit merge confirmation; cancellation changes
-nothing. Use the destination name, but retain the ID with more indexed Entry
-assignments; ties retain the destination ID. Persist that choice for retries.
+A rename collision offers explicit merge confirmation; cancellation changes
+nothing. The confirmation names both tags and the resulting single tag, and
+prominently states that merging cannot be undone: the original article assignments
+to the two tags cannot be restored. Use the destination name, but retain the ID
+with more indexed Entry assignments; ties retain the destination ID. Persist that
+choice for retries.
 Only losing-ID assignments change in LanceDB. Files whose names differ from the
 destination still require rewriting, regardless of which ID survives. Deduplicate
 articles carrying both tags.

@@ -170,8 +170,8 @@ export type ExportOutcome = {
 export type NavigationState = {
   /** Undefined: another scope; []: all Entries in Tags browsing. */
   tagIds?: string[];
-  /** Selection-only deletion update; list membership refresh waits for explicit navigation. */
-  tagDeletionRevision?: number;
+  /** Selection-only identity update; list membership refresh waits for explicit navigation. */
+  tagSelectionRevision?: number;
   topicId?: Topic["id"];
   feedId?: Feed["id"];
   siteHostname?: Site["hostname"];

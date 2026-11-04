@@ -1,16 +1,12 @@
 import { Box, Button, Chip, TextField, Typography } from "@mui/material";
 import { Check } from "@mui/icons-material";
 import { useEffect, useRef, useState } from "react";
-import type { EntryTagChange, Tag } from "../../domain";
+import type { EntryTagChange, Tag, TagMerge } from "../../domain";
 import { usePlatform } from "../../platform/Platform";
 import { useErrorSink } from "../../hooks/useErrorSink";
 import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
+import { tagNameComparison, resolveMergedTagIds, retainTagMerges } from "../../utils/tags";
 import css from "./EntryTags.module.css";
-
-// Match Rust's per-character Unicode lowercase conversion for tag identity.
-function comparisonValue(name: string) {
-  return Array.from(name.trim(), (character) => character.toLowerCase()).join("");
-}
 
 function applyChange(ids: Set<string>, change: EntryTagChange) {
   const next = new Set(ids);
@@ -30,6 +26,8 @@ export function EntryTags({ entryId }: { entryId: string }) {
   const [failed, setFailed] = useState(false);
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
+  const mergeHistory = useRef<TagMerge[]>([]);
+  const assignmentRequest = useRef(0);
   const pending = useRef(false);
   const live = useRef(false);
 
@@ -39,6 +37,18 @@ export function EntryTags({ entryId }: { entryId: string }) {
     const initialChanges = new Map<string, EntryTagChange>();
     let loading = true;
     let receivedSnapshot = false;
+    let assignmentsRefreshed = false;
+    mergeHistory.current = [];
+    const refreshAssignments = async () => {
+      const request = ++assignmentRequest.current;
+      try {
+        const ids = await platform.readEntryTags(controller.signal, entryId);
+        if (!controller.signal.aborted && request === assignmentRequest.current) {
+          assignmentsRefreshed = true;
+          setAssigned(new Set(resolveMergedTagIds(ids, mergeHistory.current)));
+        }
+      } catch (error) { if (!controller.signal.aborted) pushError(error); }
+    };
     const cleanups: (() => void)[] = [];
 
     const retain = (cleanup: () => void) => {
@@ -55,12 +65,18 @@ export function EntryTags({ entryId }: { entryId: string }) {
       try {
         retain(await platform.onTagCreated(addDefinition));
         retain(await platform.onTagsChanged((snapshot) => {
-          if (!controller.signal.aborted) { receivedSnapshot = true; setTags(snapshot.tags); setDeleting(snapshot.deleting); }
+          if (!controller.signal.aborted) {
+            receivedSnapshot = true; setTags(snapshot.tags); setDeleting(snapshot.deleting);
+            mergeHistory.current = retainTagMerges(mergeHistory.current, snapshot.merging);
+            setAssigned((ids) => new Set(resolveMergedTagIds(ids, mergeHistory.current)));
+            if (mergeHistory.current.length) void refreshAssignments();
+          }
         }));
 
         retain(
           await platform.onEntryTagsChanged((change) => {
             if (change.entryId !== entryId || controller.signal.aborted) return;
+            if (mergeHistory.current.length) { void refreshAssignments(); return; }
             if (loading) initialChanges.set(change.tagId, change);
             setAssigned((current) => applyChange(current, change));
           }),
@@ -78,7 +94,8 @@ export function EntryTags({ entryId }: { entryId: string }) {
           ...current.filter((tag) => !definitions.tags.some((item) => item.id === tag.id)),
         ]); }
 
-        setAssigned([...initialChanges.values()].reduce(applyChange, new Set(ids)));
+        mergeHistory.current = retainTagMerges(mergeHistory.current, definitions.merging);
+        if (!assignmentsRefreshed) setAssigned(new Set(resolveMergedTagIds([...initialChanges.values()].reduce(applyChange, new Set(ids)), mergeHistory.current)));
         loading = false;
         initialChanges.clear();
         setLoaded(true);
@@ -112,8 +129,14 @@ export function EntryTags({ entryId }: { entryId: string }) {
       );
 
       if (!live.current) return;
-      setTags((current) => [...current.filter((item) => item.id !== chosen.id), chosen]);
-      setAssigned((current) => applyChange(current, change));
+      if (!mergeHistory.current.some((merge) => [merge.sourceId, merge.destinationId].includes(chosen.id))) {
+        setTags((current) => [...current.filter((item) => item.id !== chosen.id), chosen]);
+      }
+      if (mergeHistory.current.length) {
+        const request = ++assignmentRequest.current;
+        const ids = await platform.readEntryTags(new AbortController().signal, entryId);
+        if (live.current && request === assignmentRequest.current) setAssigned(new Set(resolveMergedTagIds(ids, mergeHistory.current)));
+      } else setAssigned((current) => applyChange(current, change));
       if (!tag) setQuery("");
     } catch (error) {
       pushError(error);
@@ -123,13 +146,13 @@ export function EntryTags({ entryId }: { entryId: string }) {
     }
   };
 
-  const comparison = comparisonValue(query);
+  const comparison = tagNameComparison(query);
 
   const matches = tags
-    .filter((tag) => comparisonValue(tag.name).includes(comparison))
+    .filter((tag) => tagNameComparison(tag.name).includes(comparison))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const canCreate = comparison && !tags.some((tag) => comparisonValue(tag.name) === comparison);
+  const canCreate = comparison && !tags.some((tag) => tagNameComparison(tag.name) === comparison);
 
   if (failed)
     return (

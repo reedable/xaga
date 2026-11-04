@@ -398,18 +398,25 @@ it("queries tag intersections and counts over the native read boundary", async (
 it("carries tag rename status and typed definition notifications", async () => {
   const platform = new TauriPlatform();
   const id = "46fa4a27-1ddf-448a-a5e6-95691a29c602";
-  const snapshot = { tags: [{ id, name: "Changed" }], renaming: [id], deleting: [] };
+  const snapshot = { tags: [{ id, name: "Changed" }], renaming: [id], deleting: [], merging: [] };
   invokeMock.mockResolvedValueOnce(snapshot);
   expect(await platform.renameTag(id, "Changed")).toEqual(snapshot);
   expect(invokeMock).toHaveBeenLastCalledWith("rename_tag", { id, name: "Changed" });
   invokeMock.mockResolvedValueOnce(snapshot);
   expect(await platform.readTagStatus(new AbortController().signal)).toEqual(snapshot);
-  invokeMock.mockResolvedValueOnce({ ...snapshot, deleting: [id] });
-  expect(await platform.deleteTag(id)).toEqual({ ...snapshot, deleting: [id] });
+  invokeMock.mockResolvedValueOnce({ ...snapshot, deleting: [id], merging: [] });
+  expect(await platform.deleteTag(id)).toEqual({ ...snapshot, deleting: [id], merging: [] });
   expect(invokeMock).toHaveBeenLastCalledWith("delete_tag", { id });
   const { listen } = await import("@tauri-apps/api/event");
   const callback = vi.fn(); await platform.onTagsChanged(callback);
   const handler = vi.mocked(listen).mock.calls.findLast(([name]) => name === "tags:changed")![1];
   handler({ event: "tags:changed", id: 0, payload: snapshot });
   expect(callback).toHaveBeenCalledWith(snapshot);
+});
+
+it("sends explicit merge intent and validates the surviving identity snapshot", async () => {
+  const snapshot = { tags: [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Work" }], renaming: [], deleting: [], merging: [{ sourceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", destinationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", survivorId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", destinationName: "Work" }] };
+  invokeMock.mockResolvedValueOnce(snapshot);
+  await expect(new TauriPlatform().mergeTags("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")).resolves.toEqual(snapshot);
+  expect(invokeMock).toHaveBeenLastCalledWith("merge_tags", { sourceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", destinationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" });
 });

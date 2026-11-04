@@ -6,7 +6,8 @@ use std::{
     path::Path,
 };
 
-pub(crate) mod delete;
+pub(crate) mod conversion;
+pub(crate) mod merge;
 pub(crate) mod rename;
 
 const MAX_STORE_BYTES: usize = 12 * 1024 * 1024;
@@ -77,7 +78,26 @@ pub struct Tags {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) transitions: Vec<Transition>,
 }
-/// Current definitions and identities with unfinished transition work.
+/// Committed merge identity mapping, also used to preserve UI selection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TagMerge {
+    pub source_id: String,
+    pub destination_id: String,
+    pub survivor_id: String,
+    pub destination_name: String,
+}
+impl TagMerge {
+    pub(crate) fn losing_id(&self) -> &str {
+        if self.source_id == self.survivor_id {
+            &self.destination_id
+        } else {
+            &self.source_id
+        }
+    }
+}
+
+/// Current visible definitions and identities with unfinished transition work.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TagSnapshot {
@@ -85,11 +105,47 @@ pub struct TagSnapshot {
     pub renaming: Vec<String>,
     #[serde(default)]
     pub deleting: Vec<String>,
+    #[serde(default)]
+    pub merging: Vec<TagMerge>,
 }
 impl Tags {
     pub fn snapshot(&self) -> TagSnapshot {
+        let merging: Vec<_> = self
+            .transitions
+            .iter()
+            .filter_map(|t| match t {
+                Transition::Merge {
+                    source_id,
+                    destination_id,
+                    survivor_id,
+                    destination_name,
+                    ..
+                } => Some(TagMerge {
+                    source_id: source_id.clone(),
+                    destination_id: destination_id.clone(),
+                    survivor_id: survivor_id.clone(),
+                    destination_name: destination_name.clone(),
+                }),
+                _ => None,
+            })
+            .collect();
+        let tags = self
+            .tags
+            .iter()
+            .filter_map(|tag| {
+                if merging.iter().any(|merge| merge.losing_id() == tag.id) {
+                    return None;
+                }
+                let mut tag = tag.clone();
+                if let Some(merge) = merging.iter().find(|merge| merge.survivor_id == tag.id) {
+                    tag.name = merge.destination_name.clone();
+                }
+                Some(tag)
+            })
+            .collect();
         TagSnapshot {
-            tags: self.tags.clone(),
+            tags,
+            merging,
             deleting: self
                 .transitions
                 .iter()
@@ -462,7 +518,7 @@ impl Tags {
         Ok(TagCreation { tag, created: true })
     }
 
-    /// Source-aware discovery retains deleting labels as bounded pending file work.
+    /// Source-aware discovery retains deleting/non-destination labels as pending file work.
     pub(crate) async fn discover_entry_write(
         dir: &Path,
         entry: &str,
@@ -491,7 +547,13 @@ impl Tags {
         let mut changed = store.discover(names)?;
         if let Some(entry) = entry {
             for transition in &mut store.transitions {
-                if let Transition::Delete { id, files, .. } = transition {
+                if let Transition::Delete { id, files, .. }
+                | Transition::Merge {
+                    source_id: id,
+                    files,
+                    ..
+                } = transition
+                {
                     if observed.contains(id) && !files.pending.iter().any(|id| id == entry) {
                         if files.pending.len() == 1024 {
                             return Err(TagsError::Busy);
@@ -635,7 +697,7 @@ impl CachedResolver {
 pub(crate) async fn patch_file(
     dir: &Path,
     id: &str,
-    old: &str,
+    old: &[String],
     new: Option<&str>,
     token: crate::library_writer::WriteToken,
 ) -> Result<(), crate::library_writer::WriterError> {
@@ -650,16 +712,20 @@ pub(crate) async fn patch_file(
         Err(error) => return Err(error.into()),
     };
     let before = names.clone();
+    let old: HashSet<_> = old.iter().map(|name| key(name)).collect();
+    let deduplicate = old.len() > 1;
+    let mut replaced = false;
     names.retain_mut(|name| {
-        if key(name) != key(old) {
+        if !old.contains(&key(name)) {
             return true;
         }
         match new {
-            Some(new) => {
+            Some(new) if !replaced || !deduplicate => {
                 *name = new.into();
+                replaced = true;
                 true
             }
-            None => false,
+            _ => false,
         }
     });
     if names != before {
@@ -676,10 +742,6 @@ pub(crate) enum Mutation {
         id: String,
         name: String,
     },
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "merge command is a separate story")
-    )]
     Merge {
         source: String,
         destination: String,

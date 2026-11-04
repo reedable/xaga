@@ -54,6 +54,17 @@ pub struct StatePatch {
 /// (e.g. `EmbedEntry` on Regular from a live save, Maintenance from recovery).
 pub enum Job {
     SetEntryTag(crate::tags::EntryTagChange),
+    /// Count populations and reserve the explicit merge in the cache write order.
+    BeginTagMerge {
+        source: String,
+        destination: String,
+        response: tokio::sync::oneshot::Sender<
+            Result<crate::tags::TagSnapshot, crate::library_writer::WriterError>,
+        >,
+    },
+    ContinueTagConversion {
+        id: String,
+    },
     /// Continue a committed deletion, one durable file/index batch per turn.
     DeleteTag {
         id: String,
@@ -67,7 +78,8 @@ pub enum Job {
     },
     /// Entry created/edited: sync the row from the carried `Article`, then defer an
     /// `EmbedEntry` follow-up (carrying the same object) if the checksum changed.
-    /// The producer holds the domain object; the consumer never reads the file.
+    /// The producer holds the domain object; merged tag identities may require
+    /// a fresh source assignment read before indexing.
     UpsertEntry {
         article: Article,
         tag_ids: Vec<String>,
@@ -421,6 +433,8 @@ async fn run_loop(
         String,
         std::collections::HashMap<String, bool>,
     > = Default::default();
+    // Identity participants remain known after retirement while old jobs can still arrive.
+    let mut merged_tags = std::collections::HashSet::new();
     loop {
         // Queues are defined per *priority*, and the definition and examples of each level of
         // priority are provided below.
@@ -438,7 +452,11 @@ async fn run_loop(
             //      StartRecovery, Reset, Shutdown, etc
             result = control_rx.recv_async() => match result {
                 Ok(Job::StartRecovery { library_dir: dir }) => {
-                    tag_changes.clear();
+                    match crate::tags::Tags::read(&dir).await {
+                        Ok(store) => remember_merges(&mut merged_tags, &store.snapshot()),
+                        Err(error) => { writer.report_tag_error(error.into()); continue; }
+                    }
+                    tag_changes.retain(|_, changes| changes.keys().any(|id| merged_tags.contains(id)));
                     log::info!("embedding service: starting recovery for {}", dir.display());
                     crate::recovery::dispatch::dispatch_recovery(&dir, &db, &embedder, &senders, &writer).await;
                     log::info!("embedding service: recovery dispatch complete");
@@ -466,7 +484,7 @@ async fn run_loop(
                 Ok(job) => {
                     // Interactive has items — mark that a post-drain compact is needed.
                     compacted_after_drain = false;
-                    handle_job(job, Tier::Interactive, &db, &embedder, &senders, &events, &mut tag_changes, &writer).await;
+                    handle_job(job, Tier::Interactive, &db, &embedder, &senders, &events, &mut tag_changes, &mut merged_tags, &writer).await;
 
                     // Compact on the Interactive path itself: a sustained Interactive stream never
                     // yields to the Regular/Maintenance arms (biased select), so their compaction
@@ -493,7 +511,7 @@ async fn run_loop(
 
             result = regular_rx.recv_async() => match result {
                 Ok(job) => {
-                    handle_job(job, Tier::Regular, &db, &embedder, &senders, &events, &mut tag_changes, &writer).await;
+                    handle_job(job, Tier::Regular, &db, &embedder, &senders, &events, &mut tag_changes, &mut merged_tags, &writer).await;
                     since_compact += 1;
 
                     if since_compact >= BACKGROUND_COMPACT_INTERVAL {
@@ -532,7 +550,7 @@ async fn run_loop(
                     }
 
                     let resets_interval = matches!(job, Job::Compact | Job::EnsureIndexes);
-                    handle_job(job, Tier::Maintenance, &db, &embedder, &senders, &events, &mut tag_changes, &writer).await;
+                    handle_job(job, Tier::Maintenance, &db, &embedder, &senders, &events, &mut tag_changes, &mut merged_tags, &writer).await;
 
                     if resets_interval {
                         since_compact = 0;
@@ -558,6 +576,16 @@ async fn run_loop(
     }
 }
 
+fn remember_merges(
+    ids: &mut std::collections::HashSet<String>,
+    snapshot: &crate::tags::TagSnapshot,
+) {
+    for merge in &snapshot.merging {
+        ids.insert(merge.source_id.clone());
+        ids.insert(merge.destination_id.clone());
+    }
+}
+
 /// Before stripping an active deleting identity from a queued snapshot, remove
 /// its current source label. Otherwise the cache would cease being a candidate
 /// before deletion reached that file. Retirement is serialized on this same loop.
@@ -577,10 +605,40 @@ async fn project_entry_tags(
     Ok(())
 }
 
+/// Queued pre-merge identities and deltas cannot express a later canonical removal.
+/// Re-read just that Entry when its queued work intersects a committed merge.
+async fn prepare_entry_tags(
+    writer: &crate::library_writer::LibraryWriter,
+    db: &EmbeddingsDb,
+    entry: &str,
+    ids: &mut Vec<String>,
+    changes: Option<&std::collections::HashMap<String, bool>>,
+    merged_tags: &std::collections::HashSet<String>,
+) -> Result<(), crate::library_writer::WriterError> {
+    let merged = ids
+        .iter()
+        .chain(changes.into_iter().flat_map(|changes| changes.keys()))
+        .any(|id| merged_tags.contains(id));
+    if merged {
+        *ids = writer.resolve_entry_tags(entry.into()).await?.1;
+    } else {
+        if let Some(changes) = changes {
+            for (id, assigned) in changes {
+                ids.retain(|existing| existing != id);
+                if *assigned {
+                    ids.push(id.clone());
+                }
+            }
+        }
+        project_entry_tags(writer, db, entry, ids).await?;
+    }
+    Ok(())
+}
+
 /// Executes a single work `Job`. The control-flow variants (Shutdown / Reset /
 /// StartRecovery) are handled by the loop's control arm, not here. `arrival` is the tier
 /// the job was dequeued from; deferred embeddings follow the existing tier policy,
-/// while deletion continuations retain their arriving priority.
+/// while tag conversion continuations retain their arriving priority.
 #[allow(clippy::too_many_arguments)]
 async fn handle_job(
     job: Job,
@@ -590,18 +648,51 @@ async fn handle_job(
     senders: &Senders,
     events: &Events,
     tag_changes: &mut std::collections::HashMap<String, std::collections::HashMap<String, bool>>,
+    merged_tags: &mut std::collections::HashSet<String>,
     writer: &crate::library_writer::LibraryWriter,
 ) {
     match job {
-        Job::DeleteTag { id } => match crate::tags::delete::step(writer, db, &id).await {
-            Ok(true)
-            | Err(crate::library_writer::WriterError::Tags(crate::tags::TagsError::Stale)) => {
-                senders.enqueue(arrival, Job::DeleteTag { id })
+        Job::BeginTagMerge {
+            source,
+            destination,
+            response,
+        } => {
+            let result = crate::tags::merge::begin(writer, db, source.clone(), destination).await;
+            if let Ok(snapshot) = &result {
+                remember_merges(merged_tags, snapshot);
+                senders.enqueue(arrival, Job::ContinueTagConversion { id: source });
             }
-            Ok(false) => {}
-            Err(error) => writer.report_tag_error(error),
-        },
+            let _ = response.send(result);
+        }
+        Job::ContinueTagConversion { id } | Job::DeleteTag { id } => {
+            match crate::tags::conversion::step(writer, db, &id).await {
+                Ok(true)
+                | Err(crate::library_writer::WriterError::Tags(crate::tags::TagsError::Stale)) => {
+                    senders.enqueue(arrival, Job::ContinueTagConversion { id })
+                }
+                Ok(false) => {}
+                Err(error) => writer.report_tag_error(error),
+            }
+        }
         Job::SetEntryTag(mut change) => {
+            if merged_tags.contains(&change.tag_id) {
+                tag_changes
+                    .entry(change.entry_id.clone())
+                    .or_default()
+                    .insert(change.tag_id.clone(), change.assigned);
+                let result = async {
+                    let (_, ids) = writer.resolve_entry_tags(change.entry_id.clone()).await?;
+                    db.set_entry_tag_ids(&change.entry_id, &ids)
+                        .await
+                        .map_err(|error| crate::tags::TagsError::Invalid(error.to_string()))?;
+                    Ok::<_, crate::library_writer::WriterError>(())
+                }
+                .await;
+                if let Err(error) = result {
+                    writer.report_tag_error(error);
+                }
+                return;
+            }
             if change.assigned {
                 let mut ids = vec![change.tag_id.clone()];
                 if let Err(error) = project_entry_tags(writer, db, &change.entry_id, &mut ids).await
@@ -638,15 +729,16 @@ async fn handle_job(
             article,
             mut tag_ids,
         } => {
-            if let Some(changes) = tag_changes.get(&article.meta.id) {
-                for (id, assigned) in changes {
-                    tag_ids.retain(|existing| existing != id);
-                    if *assigned {
-                        tag_ids.push(id.clone());
-                    }
-                }
-            }
-            if let Err(error) = project_entry_tags(writer, db, &article.meta.id, &mut tag_ids).await
+            let changes = tag_changes.get(&article.meta.id);
+            if let Err(error) = prepare_entry_tags(
+                writer,
+                db,
+                &article.meta.id,
+                &mut tag_ids,
+                changes,
+                merged_tags,
+            )
+            .await
             {
                 writer.report_tag_error(error);
                 return;
@@ -758,6 +850,63 @@ mod tag_deletion_tests {
     use super::*;
 
     #[tokio::test]
+    async fn tag_merge_queued_assignments_follow_current_source_after_retirement() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::library::entry_path(dir.path(), "a");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            "---\nsource: https://example.org/a\ntitle: A\ntags: [Research]\n---\nBody\n",
+        )
+        .unwrap();
+        let writer = crate::library_writer::LibraryWriter::start(
+            dir.path().into(),
+            crate::library::acquire_lock(dir.path()).unwrap(),
+        );
+        let (_, old_ids) = writer.resolve_entry_tags("a".into()).await.unwrap();
+        let source = old_ids[0].clone();
+        let destination = writer.create_tag("Work".into()).await.unwrap().tag.id;
+        let db = EmbeddingsDb::open_writer(dir.path(), &writer.lock())
+            .await
+            .unwrap();
+        let article = crate::persistence::articles::read_article(dir.path(), "a")
+            .await
+            .unwrap();
+        db.add_batch(vec![super::super::EmbeddingEntry::from_article(
+            &article,
+            None,
+            old_ids.clone(),
+        )])
+        .await
+        .unwrap();
+        let snapshot = crate::tags::merge::begin(&writer, &db, source.clone(), destination.clone())
+            .await
+            .unwrap();
+        let survivor = snapshot.merging[0].survivor_id.clone();
+        let mut merged = std::collections::HashSet::new();
+        remember_merges(&mut merged, &snapshot);
+        crate::tags::conversion::resume(&writer, &db).await.unwrap();
+        let mut queued = old_ids.clone();
+        prepare_entry_tags(&writer, &db, "a", &mut queued, None, &merged)
+            .await
+            .unwrap();
+        assert_eq!(queued, vec![survivor.clone()]);
+        db.set_entry_tag_ids("a", &queued).await.unwrap();
+        writer
+            .set_entry_tag("a".into(), survivor, false)
+            .await
+            .unwrap();
+        let changes = std::collections::HashMap::from([(destination, true)]);
+        prepare_entry_tags(&writer, &db, "a", &mut queued, Some(&changes), &merged)
+            .await
+            .unwrap();
+        assert!(queued.is_empty());
+        db.set_entry_tag_ids("a", &queued).await.unwrap();
+        assert!(db.get_entry("a").await.unwrap().unwrap().tags.is_empty());
+        writer.shutdown().await;
+    }
+
+    #[tokio::test]
     async fn tag_delete_queued_projection_cleans_source_before_removing_candidate_identity() {
         let dir = tempfile::tempdir().unwrap();
         let path = crate::library::entry_path(dir.path(), "a");
@@ -788,7 +937,7 @@ mod tag_deletion_tests {
                 .unwrap(),
             vec!["Other"]
         );
-        crate::tags::delete::resume(&writer, &db).await.unwrap();
+        crate::tags::conversion::resume(&writer, &db).await.unwrap();
         let recreated = writer.create_tag("Research".into()).await.unwrap().tag;
         let mut stale = vec![deleted, other.clone(), recreated.id.clone()];
         project_entry_tags(&writer, &db, "a", &mut stale)

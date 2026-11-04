@@ -24,6 +24,7 @@ pub(crate) use crate::command_policy::is_invoke_allowed;
 pub(crate) const WRITE_COMMANDS: &[&str] = &[
     "create_tag",
     "rename_tag",
+    "merge_tags",
     "delete_tag",
     "set_entry_tag",
     "save_article",

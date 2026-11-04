@@ -1,4 +1,4 @@
-//! Indexed deletion steps, driven by the command queue or recovery's index writer.
+//! Indexed merge/deletion steps, driven by the command queue or recovery's index writer.
 use super::{Mutation, Phase, Progress, Tags, TagsError, Transition};
 use crate::{
     embeddings::EmbeddingsDb,
@@ -36,29 +36,63 @@ pub(crate) async fn step(
         return Err(WriterError::ShuttingDown);
     }
     let store = Tags::read(writer.library_dir()).await?;
-    let Some((mut revision, name, files, index)) = store.transitions.iter().find_map(|t| match t {
-        Transition::Delete {
-            id: target,
-            revision,
-            files,
-            index,
-        } if target == id => Some((
-            *revision,
-            store.tags.iter().find(|tag| tag.id == id)?.name.clone(),
-            files.clone(),
-            index.clone(),
-        )),
-        _ => None,
-    }) else {
+    let Some((mut revision, names, replacement_name, candidates, losing, survivor, files, index)) =
+        store.transitions.iter().find_map(|t| match t {
+            Transition::Delete {
+                id: target,
+                revision,
+                files,
+                index,
+            } if target == id => Some((
+                *revision,
+                vec![store.tag(id).ok()?.name.clone()],
+                None,
+                vec![id.to_owned()],
+                id.to_owned(),
+                None,
+                files.clone(),
+                index.clone(),
+            )),
+            Transition::Merge {
+                source_id,
+                destination_id,
+                survivor_id,
+                destination_name,
+                revision,
+                files,
+                index,
+            } if source_id == id => {
+                let losing = if survivor_id == source_id {
+                    destination_id
+                } else {
+                    source_id
+                };
+                Some((
+                    *revision,
+                    vec![
+                        store.tag(source_id).ok()?.name.clone(),
+                        store.tag(destination_id).ok()?.name.clone(),
+                    ],
+                    Some(destination_name.clone()),
+                    vec![source_id.clone(), destination_id.clone()],
+                    losing.clone(),
+                    Some(survivor_id.clone()),
+                    files.clone(),
+                    index.clone(),
+                ))
+            }
+            _ => None,
+        })
+    else {
         return Ok(false);
     };
     let replay = !files.pending.is_empty() || !index.pending.is_empty();
-    let pending = if !files.pending.is_empty() {
-        files.pending.clone()
-    } else if !index.pending.is_empty() {
+    let pending = if !index.pending.is_empty() {
         index.pending.clone()
+    } else if !files.pending.is_empty() {
+        files.pending.clone()
     } else {
-        db.tag_entry_id_batch(id, files.after.as_deref(), BATCH_SIZE)
+        db.tag_entry_id_batch_any(&candidates, files.after.as_deref(), BATCH_SIZE)
             .await
             .map_err(index_error)?
     };
@@ -98,27 +132,60 @@ pub(crate) async fn step(
     } else {
         pending.last().cloned()
     };
-    let progress = Progress {
-        after: files.after,
-        pending: pending.clone(),
+    // Discovery can append file work after a previous batch's file checkpoint.
+    // Keep that work intact while replaying the independently persisted index batch.
+    let remaining_files: Vec<_> = files
+        .pending
+        .iter()
+        .filter(|entry| !pending.contains(entry))
+        .cloned()
+        .collect();
+    let file_progress = Progress {
+        after: files.after.clone(),
+        pending: if replay && !index.pending.is_empty() {
+            files.pending.clone()
+        } else {
+            pending.clone()
+        },
         complete: false,
     };
-    revision = checkpoint(writer, id, revision, Phase::Files, progress.clone()).await?;
-    revision = checkpoint(writer, id, revision, Phase::Index, progress).await?;
+    revision = checkpoint(writer, id, revision, Phase::Files, file_progress).await?;
+    revision = checkpoint(
+        writer,
+        id,
+        revision,
+        Phase::Index,
+        Progress {
+            after: files.after,
+            pending: pending.clone(),
+            complete: false,
+        },
+    )
+    .await?;
     use futures::{StreamExt, TryStreamExt};
     futures::stream::iter(pending.iter().cloned())
-        .map(|entry| writer.patch_tag_name(entry, name.clone(), None))
+        .map(|entry| writer.patch_tag_labels(entry, names.clone(), replacement_name.clone()))
         .buffer_unordered(8)
         .try_collect::<Vec<_>>()
         .await?;
-    db.remove_tag_batch(id, &pending)
+    db.patch_tag_batch(&losing, survivor.as_deref(), &pending)
         .await
         .map_err(index_error)?;
     let progress = Progress {
         after: next,
         ..Default::default()
     };
-    revision = checkpoint(writer, id, revision, Phase::Files, progress.clone()).await?;
+    revision = checkpoint(
+        writer,
+        id,
+        revision,
+        Phase::Files,
+        Progress {
+            pending: remaining_files,
+            ..progress.clone()
+        },
+    )
+    .await?;
     checkpoint(writer, id, revision, Phase::Index, progress).await?;
     Ok(true)
 }
@@ -128,7 +195,12 @@ fn index_error(error: crate::embeddings::EmbeddingsError) -> WriterError {
 }
 
 pub(crate) async fn resume(writer: &LibraryWriter, db: &EmbeddingsDb) -> Result<(), WriterError> {
-    for id in Tags::read(writer.library_dir()).await?.snapshot().deleting {
+    let snapshot = Tags::read(writer.library_dir()).await?.snapshot();
+    let ids = snapshot
+        .deleting
+        .into_iter()
+        .chain(snapshot.merging.into_iter().map(|merge| merge.source_id));
+    for id in ids {
         let mut batches = 0;
         loop {
             match step(writer, db, &id).await {
