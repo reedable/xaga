@@ -21,8 +21,13 @@ name, preserving Entry assignments while consolidating tag identity.
   the surviving ID in the index. ID survival does not eliminate file renames.
   Unlike rename, merge changes indexed identity and therefore requires bounded
   index updates as well as file writes.
+- Use indexed Entry assignments for either participating ID as file-cleanup
+  candidates, plus persisted pending work. Do not require a full-source scan or
+  verification pass.
 - Persist progress and resume safely after interruption; resolve transitional
-  names coherently until all assignment conversion and index work is complete.
+  names coherently until indexed conversion and pending work complete. Recovery
+  resumes unfinished merge batches before discovering article labels, retaining
+  both name reservations and the persisted survivor choice during interruption.
 - Reserve both names during merging and resolve them to the surviving ID,
   including during recovery. Externally encountered non-destination labels join
   pending file rewriting rather than creating another definition. New assignments
@@ -30,9 +35,12 @@ name, preserving Entry assignments while consolidating tag identity.
 - Wait for existing transitions on either participating tag to finish before
   accepting the merge. During merging, block rename, deletion, and another merge
   involving either tag; unrelated tag operations may continue.
-- Retire the losing definition and transitional name mapping only after file and
-  index conversion complete. Afterward, the non-destination name may create a
-  new tag identity when encountered again.
+- Retire the losing definition and transitional name mapping after indexed file
+  and index conversion and persisted pending work complete. A file missed by the
+  index may retain its non-destination label; subsequent recovery or discovery
+  can create a new tag identity from it. Accept this stale-index consequence, as
+  with rename and deletion; do not retain a tombstone or require proof that no
+  non-destination source labels remain.
 - Preserve content, unrelated tags, read/color state, pins, and browsing context.
   Use the library write right, serialized registry changes, and atomic file
   read–modify–writes inside Entry writer lanes. Preserve read-only behavior.
@@ -43,7 +51,9 @@ name, preserving Entry assignments while consolidating tag identity.
   implement bounded file/index conversion, recovery resumption, and finalization.
 - Verify source-only, destination-only, and dual-tag assignments, cancellation,
   concurrent writes, external edits, interruption/retry, cache rebuild, and
-  read-only behavior. Measure batch behavior at design scale.
+  read-only behavior. Cover interrupted merge resumption while reservations are
+  active and new-identity discovery from missed labels after retirement,
+  including missing/stale caches. Measure batch behavior at design scale.
 - Run affected Rust/frontend checks and update durable domain/storage docs.
 
 ## References

@@ -292,6 +292,15 @@ from indexed assignment populations: larger population wins; ties retain the
 destination ID. Retries use that persisted selection. Finalization removes the
 losing definition and sets the survivor's display name to `destination_name`.
 
+Merge cleanup uses indexed Entry assignments for either participating ID and
+persisted pending work. Recovery resumes unfinished batches before discovering
+article labels, retaining both name reservations and the persisted survivor
+choice. Completion retires the losing definition and transitional name mapping
+without a full-source scan, verification pass, or retained tombstone. A missed
+file may retain its non-destination label; after retirement, recovery or discovery
+can create a new tag identity from it. This accepted stale-index consequence
+differs from interruption, whose active reservations prevent recreation.
+
 A deletion records `type: delete`, `id`, `revision`, `files`, and `index`.
 Assignment by that identity is refused. File-label discovery recognizes the
 reserved name without creating another definition; index reconstruction omits
@@ -321,8 +330,9 @@ from retiring a name past newly discovered work.
 File read–modify–writes belong inside the existing Entry writer lane and use
 validated atomic frontmatter patches. Registry replacement alone does not
 serialize article changes. File work precedes its checkpoint; cache conversion
-precedes its index checkpoint. Rename file completion covers its indexed candidate batches. Deletion file completion covers indexed candidates and persisted pending work.
-Merge retains its full-source cleanup requirement. Read or write failures in an
+precedes its index checkpoint. Rename file completion covers its indexed candidate
+batches. Merge and deletion file completion cover indexed candidates and persisted
+pending work; merge candidates include either participating ID. Read or write failures in an
 indexed rename batch retain the transition and pending work for retry.
 
 Rename finalization requires file completion. Merge and deletion require both

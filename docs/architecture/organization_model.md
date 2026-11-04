@@ -142,8 +142,12 @@ index conversion runs. New assignments use the destination name. External
 non-destination labels join pending rewriting. Wait for active transitions on
 participants before merging, then block conflicting rename/delete/merge work on
 them while allowing unrelated operations. Retire the losing definition and old
-mapping only after both conversions complete. The non-destination name may then
-be reused for a new identity.
+mapping after indexed conversion for either participating ID and persisted pending
+work complete. Recovery resumes interrupted merge batches before discovering
+labels, retaining both reservations and the survivor choice. Completion requires
+no full-source scan or verification pass. A missed file may retain its
+non-destination label and subsequently create a new identity during recovery or
+discovery; this stale-index consequence is accepted, as with rename and deletion.
 
 ### Delete
 
