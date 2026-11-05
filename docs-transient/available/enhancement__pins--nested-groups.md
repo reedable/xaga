@@ -73,7 +73,7 @@ persisted in the shared library YAML pin store.
 ## References
 
 - [Pin-store contract](../../docs/architecture/pins.md).
-- [macOS Shortcuts Menu](enhancement__pins--macos-menu.md)
+- [macOS Shortcuts Menu](../active/enhancement__pins--macos-menu.md)
 - `src/components/sidebar/ShortcutList.tsx`
 - `src/components/list/EntityList.tsx`
 - `crates/xaga-core/src/library_writer/mod.rs`
