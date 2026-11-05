@@ -1,6 +1,7 @@
 const element = (id) => document.getElementById(id);
 const storageKey = "xaga-training-v1";
 const levels = ["Introduction", "Applied", "Advanced"];
+const lessonMinutes = { min: 5, max: 8 };
 let progress = {};
 let active;
 let sourceRequest;
@@ -37,9 +38,7 @@ function updateProgress() {
     document.querySelector(`[data-track="${trackId}"] .track-status`).textContent = `${done} / ${track.lessons.length} lessons completed →`;
   }
   if (!active) return;
-  const { trackId, lesson, track } = active;
-  const count = progress[`${trackId}/${lesson.id}`]?.length || 0;
-  element("completion").textContent = isComplete(trackId, lesson) ? "Lesson completed ✓" : `${count} / ${lesson.questions.length} checks completed`;
+  const { trackId, track } = active;
   element("track-progress").textContent = `${track.lessons.filter((item) => isComplete(trackId, item)).length} / ${track.lessons.length} lessons completed`;
   document.querySelectorAll("[data-lesson-status]").forEach((node) => {
     const item = track.lessons.find((candidate) => candidate.id === node.dataset.lessonStatus);
@@ -53,7 +52,9 @@ function paragraph(text) {
 }
 function renderCurriculum() {
   const { trackId, track, lesson } = active;
-  element("curriculum").replaceChildren(...levels.map((level) => {
+  const duration = paragraph(`About ${track.lessons.length * lessonMinutes.min}–${track.lessons.length * lessonMinutes.max} minutes total`);
+  duration.className = "track-duration";
+  element("curriculum").replaceChildren(duration, ...levels.map((level) => {
     const section = document.createElement("div");
     const heading = document.createElement("h3");
     heading.textContent = level;
@@ -68,7 +69,10 @@ function renderCurriculum() {
       const status = document.createElement("span");
       status.className = "lesson-status";
       status.dataset.lessonStatus = item.id;
-      link.append(status);
+      const time = document.createElement("span");
+      time.className = "lesson-duration";
+      time.textContent = `${lessonMinutes.min}–${lessonMinutes.max} min`;
+      link.append(time, status);
       row.append(link);
       list.append(row);
     }
@@ -98,36 +102,37 @@ function renderQuestion(question, questionIndex) {
     label.append(input, document.createTextNode(answer.text));
     fieldset.append(label);
   }
-  const submit = document.createElement("button");
-  submit.type = "submit";
-  submit.textContent = "Check answer";
   const feedback = document.createElement("div");
   feedback.className = "feedback";
   feedback.setAttribute("role", "status");
   feedback.setAttribute("aria-live", "polite");
   feedback.setAttribute("aria-atomic", "true");
-  if (progress[key]?.includes(questionIndex)) {
-    feedback.dataset.correct = "true";
-    feedback.textContent = "Previously completed. Try again to revisit your reasoning.";
+  function showFeedback(correct, message) {
+    feedback.dataset.correct = String(correct);
+    const icon = document.createElement("span");
+    icon.className = "feedback-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = correct ? "✓" : "✕";
+    const text = document.createElement("span");
+    text.textContent = message;
+    feedback.replaceChildren(icon, text);
   }
+  if (progress[key]?.includes(questionIndex)) {
+    showFeedback(true, "Previously completed. Try again to revisit your reasoning.");
+  }
+  form.addEventListener("submit", (event) => event.preventDefault());
   form.addEventListener("change", () => {
-    feedback.textContent = "";
-    delete feedback.dataset.correct;
-  });
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
     const selected = new FormData(form).get("answer");
     if (selected === null) return;
     const answer = options[Number(selected)];
-    feedback.dataset.correct = String(answer.correct);
-    feedback.textContent = `${answer.correct ? "Correct. " : "Try again. "}${answer.feedback}`;
+    showFeedback(answer.correct, `${answer.correct ? "Correct. " : "Incorrect. Try again. "}${answer.feedback}`);
     if (answer.correct) {
       progress[key] = [...new Set([...(progress[key] || []), questionIndex])];
       saveProgress();
       updateProgress();
     }
   });
-  form.append(fieldset, submit, feedback);
+  form.append(fieldset, feedback);
   return form;
 }
 function sourceLink(reference) {
@@ -200,7 +205,6 @@ function navigate(focus = true) {
   active = { trackId, track, lesson, index };
   document.title = `${lesson.title} · Xaga Training`;
   element("course-title").textContent = track.title;
-  element("lesson-meta").textContent = `${lesson.level} / Lesson ${index + 1} of ${track.lessons.length} · About 5–8 minutes`;
   element("lesson-title").textContent = lesson.title;
   element("objective").textContent = lesson.objective;
   element("explanation").replaceChildren(...lesson.paragraphs.map(paragraph));

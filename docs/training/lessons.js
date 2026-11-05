@@ -208,30 +208,30 @@ const TRAINING = {
         "id": "context",
         "level": "Applied",
         "title": "Preserve the reading context",
-        "objective": "Predict which actions establish a new list and which update existing rows.",
+        "objective": "Recognize when the list changes and when only an article’s details change.",
         "paragraphs": [
-          "Xaga preserves the current browsing context while a reader works. Marking an Entry read updates its row without removing it from the current list, even if the list was opened with the Unread filter. Bookmark changes follow the same principle, including Saved lists.",
+          "Xaga preserves the current browsing context while a reader works. Marking an article as read changes how it appears without removing it from the list, even when you are looking at unread articles. Bookmark changes follow the same principle, including Saved lists.",
           "Explicit navigation or a filter change establishes a new list. This separates updating a visible item from reevaluating which items belong in the current view. It prevents an action on the current article from making that article disappear unexpectedly.",
           "Unpinning removes a navigation shortcut while preserving the open list and reader. Deleting the underlying content is a different action; the list-context rule does not define deletion behavior."
         ],
-        "example": "Open an Unread list, read its first article, then unpin the collection. The row and reading context remain. Reopening the Unread scope can produce a fresh membership list.",
+        "example": "Open an Unread list, read its first article, then unpin the collection. The article stays in the list, and you can keep reading. Reopening the Unread scope can produce a fresh membership list.",
         "questions": [
           {
-            "prompt": "An article is marked read in an already-open Unread list. What should happen?",
+            "prompt": "You’re looking at your unread articles and open one to read it. Xaga marks it as read. Should it disappear from the list, or stay visible?",
             "answers": [
               {
-                "text": "Update its state and keep its row in the current list.",
+                "text": "Keep the article in the list, but show that it has been read.",
                 "feedback": "The current list is preserved until an explicit membership refresh or navigation.",
                 "correct": true
               },
               {
-                "text": "Remove the row immediately.",
+                "text": "Remove the article from the list immediately.",
                 "feedback": "That would violate the documented context-preservation behavior.",
                 "correct": false
               },
               {
                 "text": "Ignore the state change until restart.",
-                "feedback": "State updates still reach existing rows.",
+                "feedback": "The article should show that it has been read.",
                 "correct": false
               }
             ]
@@ -548,7 +548,7 @@ const TRAINING = {
         "paragraphs": [
           "Xaga’s expected intake is roughly 240–360 thousand Entries per year, and its design target is around four times expected intake: a multi-million-Entry corpus. A demonstration with a small library is useful for interaction review but does not establish behavior at that target.",
           "The design-scale document separates measured fixtures, modeled extrapolations, and unmeasured costs. Its query timings can exclude rendering, IPC, mapping, and sorting. An index can accelerate selection while returning hundreds of thousands of summaries still takes substantial time and memory.",
-          "Virtualization limits rendered rows, not the size of the query result or client allocation. Product acceptance criteria should name the workflow, population, result density, and measured boundary. Record unsupported assumptions as facts with locations rather than silently deciding they are acceptable."
+          "Virtualization limits visible list items, not the size of the query result or client allocation. Product acceptance criteria should name the workflow, population, result density, and measured boundary. Record unsupported assumptions as facts with locations rather than silently deciding they are acceptable."
         ],
         "example": "A selective tag query performs well at 64 thousand rows. That does not establish the latency of an empty-selection list returning two million summaries in the UI.",
         "questions": [
@@ -556,13 +556,13 @@ const TRAINING = {
             "prompt": "What does list virtualization establish?",
             "answers": [
               {
-                "text": "A bound on rendered rows, not on query payload or total client memory.",
+                "text": "A bound on visible list items, not on query payload or total client memory.",
                 "feedback": "The current API can still return the entire matching result.",
                 "correct": true
               },
               {
                 "text": "A guarantee of constant memory for every library size.",
-                "feedback": "The full result can be allocated independently of rendered rows.",
+                "feedback": "The full result can be allocated independently of visible list items.",
                 "correct": false
               },
               {
@@ -629,7 +629,7 @@ const TRAINING = {
                 "correct": true
               },
               {
-                "text": "Implement it because fewer rows always means simpler UX.",
+                "text": "Implement it because fewer items in the list always means simpler UX.",
                 "feedback": "Visual reduction does not override the documented contracts.",
                 "correct": false
               },
@@ -893,11 +893,11 @@ const TRAINING = {
       {
         "id": "routing",
         "level": "Applied",
-        "title": "Separate list scope from row selection",
+        "title": "Separate the list you are browsing from the article you select",
         "objective": "Preserve navigation intent through updates and async results.",
         "paragraphs": [
           "The router carries the browsing scope separately from the selected Entry or Annotation. An article shortcut establishes articleScopeId, while entryId and annotationId identify what the reader is showing. Selecting an annotation should not redefine the originating list.",
-          "Reading-state and color events update current rows without recomputing membership. Unpinning a target does not clear an open list. Explicit scope or filter changes establish a fresh query. These rules are easy to break by placing every event in a generic reload handler.",
+          "Reading-state and color events update the articles already shown without changing which articles are in the list. Unpinning a target does not clear an open list. Explicit scope or filter changes establish a fresh query. These rules are easy to break by placing every event in a generic reload handler.",
           "Async results must be associated with the scope that requested them. A superseded Tags query cannot replace a newer scope’s list. Route state also preserves selected tag IDs through back and forward navigation; those IDs are not persisted library settings."
         ],
         "example": "Open a pinned article’s annotation list, then select an annotation. The reader navigates to the parent article and passage; the list still belongs to the pinned article scope.",
@@ -907,7 +907,7 @@ const TRAINING = {
             "answers": [
               {
                 "text": "A bookmark color change on a visible Entry.",
-                "feedback": "It updates row state without establishing a new list.",
+                "feedback": "The article’s bookmark changes, but the same articles stay in the list.",
                 "correct": true
               },
               {

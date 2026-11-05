@@ -22,7 +22,7 @@ function choose(p, form, text) {
   const label = [...form.querySelectorAll('label')].find((node) => node.textContent === text);
   assert.ok(label, text);
   label.querySelector('input').checked = true;
-  form.dispatchEvent(new p.w.Event('submit', {cancelable: true}));
+  label.querySelector('input').dispatchEvent(new p.w.Event('change', {bubbles: true}));
   return form.querySelector('.feedback');
 }
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -64,29 +64,38 @@ test('all 180 answer paths explain the answer and all 30 lessons can complete', 
       for (const lesson of track.lessons) {
         route(p, `${id}/${lesson.id}`);
         assert.equal(p.get('lesson-title').textContent, lesson.title);
+        assert.equal(p.get('lesson-meta'), null);
+        assert.equal(p.get('curriculum').querySelector('.track-duration').textContent, 'About 50–80 minutes total');
+        assert.equal(p.get('curriculum').querySelectorAll('.lesson-duration').length, 10);
         assert.equal(p.w.document.querySelectorAll('#curriculum [aria-current="step"]').length, 1);
         const forms = [...p.get('quizzes').querySelectorAll('form')];
         lesson.questions.forEach((question, i) => question.answers.forEach(answer => {
           const result = choose(p, forms[i], answer.text);
           assert.equal(result.dataset.correct, String(answer.correct));
+          assert.equal(result.querySelector('.feedback-icon').textContent, answer.correct ? '✓' : '✕');
+          assert.equal(result.querySelector('.feedback-icon').getAttribute('aria-hidden'), 'true');
           assert.ok(result.textContent.includes(answer.feedback));
         }));
-        assert.equal(p.get('completion').textContent, 'Lesson completed ✓');
+        assert.equal(p.w.document.querySelector('#curriculum [aria-current=step] .lesson-status').textContent, 'Completed');
       }
       assert.equal(p.get('track-progress').textContent, '10 / 10 lessons completed');
     }
   } finally { p.close(); }
 });
 
-test('wrong answers do not complete checks and changing selection clears feedback', () => {
+test('selection immediately updates feedback without a submit button', () => {
   const p = page();
   try {
     route(p, 'product/purpose');
     const form = p.get('quizzes').querySelector('form');
     choose(p, form, p.tracks.product.lessons[0].questions[0].answers[1].text);
-    assert.equal(p.get('completion').textContent, '0 / 2 checks completed');
-    form.dispatchEvent(new p.w.Event('change'));
-    assert.equal(form.querySelector('.feedback').textContent, '');
+    assert.equal(p.w.document.querySelector('#curriculum [aria-current=step] .lesson-status').textContent, '');
+    assert.equal(form.querySelector('button[type=submit]'), null);
+    const correct = p.tracks.product.lessons[0].questions[0].answers[0];
+    const feedback = choose(p, form, correct.text);
+    assert.ok(feedback.textContent.includes(correct.feedback));
+    assert.equal(feedback.dataset.correct, 'true');
+    assert.equal(p.w.document.querySelectorAll('.feedback[data-correct=true]').length, 1);
   } finally { p.close(); }
 });
 
@@ -99,10 +108,10 @@ test('saved progress survives reload and reset leaves unrelated storage alone', 
   } finally { p.close(); }
   const r = page({url: 'http://localhost/docs/training/#product/purpose', stored: saved});
   try {
-    assert.equal(r.get('completion').textContent, 'Lesson completed ✓');
+    assert.equal(r.w.document.querySelector('#curriculum [aria-current=step] .lesson-status').textContent, 'Completed');
     r.w.localStorage.setItem('unrelated', 'keep');
     r.get('reset-progress').click();
-    assert.equal(r.get('completion').textContent, '0 / 2 checks completed');
+    assert.equal(r.w.document.querySelector('#curriculum [aria-current=step] .lesson-status').textContent, '');
     assert.equal(r.w.localStorage.getItem('unrelated'), 'keep');
     assert.equal(r.w.localStorage.getItem(key), '{}');
   } finally { r.close(); }
@@ -113,7 +122,8 @@ test('invalid storage and routes are handled safely', () => {
     const p = page({stored});
     try {
       route(p, 'product/purpose');
-      assert.ok(p.get('completion').textContent);
+      assert.equal(p.get('course').hidden, false);
+      assert.equal(p.get('completion'), null);
       for (const hash of ['missing', '__proto__', 'constructor', 'product/missing']) {
         route(p, hash);
         assert.equal(p.get('course').hidden, true);
@@ -170,6 +180,6 @@ test('file opening supports lessons without storage or source fetch', () => {
     p.get('close-source').click();
     const lesson = p.tracks.interface.lessons.find(l => l.id === 'motion');
     choose(p, p.get('quizzes').querySelector('form'), lesson.questions[0].answers[0].text);
-    assert.equal(p.get('completion').textContent, '1 / 2 checks completed');
+    assert.equal(p.w.document.querySelectorAll('.feedback[data-correct=true]').length, 1);
   } finally { p.close(); }
 });
