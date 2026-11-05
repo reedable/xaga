@@ -4,7 +4,7 @@ _A quiet tool for a noisy age._
 
 News readers are built around FOMO. They optimize for speed and volume, selling the anxiety of missing out under the banner of "be the first to know." Xaga rejects that premise. Being first is not the goal. Understanding is.
 
-**Turn your discovery to insight.**
+**Turn your discovery into insight.**
 
 Xaga is a Personal Knowledge Management (PKM) tool.
 
@@ -20,7 +20,7 @@ Reading the open web means reaching servers you did not write and cannot trust. 
 
 ### Accessibility
 
-Software should be usable by everyone, regardless of how they see, hear, or move. Xaga is built to that standard: keyboard navigation, screen reader support, and legible contrast are requirements, not enhancements. An interface that only some people can use is a defect.
+Software should be usable by everyone, regardless of how they see, hear, or move. Xaga is built to that standard: keyboard navigation, screen reader support, and legible contrast are requirements, not enhancements.
 
 ## You bring
 
@@ -36,5 +36,8 @@ Xaga cannot sort this for you. No tool can.
 
 This document is the why.
 
+Choose your next step:
+
 - **Using Xaga?** Start with [installation](docs/installation.md), then visit the [user guide](docs/user_guide.md).
 - **Developing Xaga?** Start with the [developer documentation](docs/index.md) for its principles, architecture, conventions, and development cycle.
+- **Learning Xaga’s foundations?** Explore the [interactive training](docs/training/index.html): product, interface, and engineering tracks with introductory through advanced lessons, quizzes, and links to docs and code. See the [local viewing instructions](docs/training/README.md) to get started.

@@ -3,39 +3,45 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
     <title>Xaga · Training</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="lessons.js" defer></script>
     <script src="training.js" defer></script>
   </head>
   <body>
-    <header><a href="../index.md">Xaga / Docs</a><span>Training preview</span></header>
+    <a class="skip-link" href="#welcome">Skip to content</a>
+    <header><a href="../index.md">Xaga / Docs</a><a href="#">Training</a></header>
     <main>
       <section aria-labelledby="welcome">
-        <h1 id="welcome">Understanding Xaga.</h1>
+        <h1 id="welcome" tabindex="-1">Understanding Xaga.</h1>
         <p class="intro">Explore the decisions behind the product, its interface, and its architecture. Choose a starting point; the boundaries between tracks are intentionally open.</p>
         <nav class="tracks" aria-label="Choose your training track">
-          <a href="#product" data-track="product"><span class="eyebrow">01 / Product</span><h2>Product owner /<br>UX designer</h2><p>Connect product decisions to Xaga’s domain and purpose.</p><span class="track-status">1 introductory lesson →</span></a>
-          <a href="#interface" data-track="interface"><span class="eyebrow">02 / Interface</span><h2>UX designer /<br>UI developer</h2><p>Translate Xaga’s conventions into interface behavior.</p><span class="track-status">1 introductory lesson →</span></a>
-          <a href="#engineering" data-track="engineering"><span class="eyebrow">03 / Engineering</span><h2>Architect /<br>Backend engineer</h2><p>Follow intent across the system’s ownership boundaries.</p><span class="track-status">1 introductory lesson →</span></a>
+          <a href="#product" data-track="product"><span class="eyebrow">01 / Product</span><h2>Product owner /<br>UX designer</h2><p>Connect product decisions to Xaga’s domain and purpose.</p><span class="track-status">10 lessons · Introduction to advanced →</span></a>
+          <a href="#interface" data-track="interface"><span class="eyebrow">02 / Interface</span><h2>UX designer /<br>UI developer</h2><p>Translate Xaga’s conventions into interface behavior.</p><span class="track-status">10 lessons · Introduction to advanced →</span></a>
+          <a href="#engineering" data-track="engineering"><span class="eyebrow">03 / Engineering</span><h2>Architect /<br>Backend engineer</h2><p>Follow intent across the system’s ownership boundaries.</p><span class="track-status">10 lessons · Introduction to advanced →</span></a>
         </nav>
       </section>
-      <section id="lesson" hidden aria-labelledby="lesson-title">
-        <div class="lesson-heading"><p id="lesson-meta" class="eyebrow"></p><span id="completion"></span></div>
-        <h2 id="lesson-title" tabindex="-1"></h2>
-        <div class="lesson-grid">
-          <div>
+      <section id="course" hidden aria-labelledby="course-title">
+        <div class="course-heading"><h2 id="course-title"></h2><span id="track-progress"></span></div>
+        <div class="course-layout">
+          <nav id="curriculum" aria-label="Lessons in this track"></nav>
+          <section id="lesson" aria-labelledby="lesson-title">
+            <div class="lesson-heading"><p id="lesson-meta" class="eyebrow"></p><span id="completion"></span></div>
+            <h2 id="lesson-title" tabindex="-1"></h2>
+            <p id="objective" class="objective"></p>
             <article id="explanation"></article>
-            <form id="quiz">
-              <fieldset><legend id="question"></legend><div id="answers"></div></fieldset>
-              <button type="submit">Check answer</button>
-            </form>
-            <div id="feedback" role="status" aria-live="polite" aria-atomic="true"></div>
-          </div>
-          <aside aria-labelledby="references-title"><h3 id="references-title">Go to the source</h3><p>Docs and code open in a new tab. Your lesson stays here.</p><ul id="references"></ul><p class="note">Markdown and source files use your browser’s file handling; some browsers may download them.</p></aside>
+            <aside class="example" aria-labelledby="example-title"><h3 id="example-title">In Xaga</h3><p id="example"></p></aside>
+            <aside class="sources" aria-labelledby="references-title"><h3 id="references-title">Go to the source</h3><p>Read the relevant docs and code alongside this lesson.</p><ul id="references"></ul></aside>
+            <section class="knowledge-check" aria-labelledby="check-title"><h3 id="check-title">Check your understanding</h3><p>Choose an answer, then check your reasoning. You can retry any question or revisit the sources.</p><div id="quizzes"></div></section>
+            <nav class="lesson-navigation" aria-label="Move between lessons"><a id="previous"></a><a id="next"></a></nav>
+          </section>
         </div>
       </section>
-      <noscript><p>Enable JavaScript to open the sample lessons and quizzes.</p></noscript>
+      <p id="route-message" role="status"></p>
+      <noscript><p>Enable JavaScript to open the lessons and quizzes. The <a href="../index.md">documentation index</a> remains available without it.</p></noscript>
     </main>
-    <footer>Learn → apply → check your reasoning. <span>Preview progress lasts for this page visit.</span></footer>
+    <footer><div><p>Learn → apply → check your reasoning.</p><p id="storage-note">Progress is saved in this browser when local storage is available.</p><p id="progress-message" role="status"></p></div><button id="reset-progress" class="secondary" type="button">Reset progress</button></footer>
+    <dialog id="source-dialog" aria-labelledby="source-title"><div class="source-toolbar"><h2 id="source-title"></h2><button id="close-source" class="secondary" type="button">Close</button></div><p><a id="source-original" target="_blank" rel="noopener">Open source in a new tab</a></p><p id="source-status" role="status"></p><pre id="source-content" tabindex="0" aria-label="Source text"></pre></dialog>
   </body>
 </html>

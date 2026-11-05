@@ -4,7 +4,7 @@ The map of `docs/`.
 
 ## Training
 
-[Interactive training preview](training/index.html) — introductory lessons for product, interface, and engineering roles
+[Interactive training](training/index.html) — three tracks from introductory concepts to advanced Xaga scenarios, with quizzes and linked docs/code
 
 ## Using Xaga
 
