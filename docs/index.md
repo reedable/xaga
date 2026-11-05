@@ -2,6 +2,10 @@
 
 The map of `docs/`.
 
+## Training
+
+[Interactive training preview](training/index.html) — introductory lessons for product, interface, and engineering roles
+
 ## Using Xaga
 
 1. [Installation](installation.md) — download, install, and open Xaga on macOS
