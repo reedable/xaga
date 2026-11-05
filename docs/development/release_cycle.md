@@ -7,7 +7,8 @@ The committed application version describes its lifecycle state:
 | State             | Version                   | Meaning                                                                      |
 | ----------------- | ------------------------- | ---------------------------------------------------------------------------- |
 | Development       | `0.8.5-dev`               | Work toward the next release is in progress.                                 |
-| Local alpha       | `0.8.5-rc.1+alpha.9c62ffc` | An invocation-only version identifies local validation of an untagged RC or final version. |
+| Local alpha       | `0.8.5-dev+alpha`          | An invocation-only version identifies an ordinary local build, including work in progress. |
+| Local beta       | `0.8.5-rc.1+beta.9c62ffc` | An invocation-only version identifies local validation of an untagged RC or final version. |
 | Release candidate | `0.8.5-rc.1`              | A distributable candidate for the final `0.8.5` release.                     |
 | Final             | `0.8.5`                   | The published release version.                                               |
 
@@ -17,13 +18,13 @@ The normal ordering is:
 0.8.4
 0.8.5-dev
 0.8.5-rc.1
-0.8.5-rc.1+alpha.<commit>
+0.8.5-rc.1+beta.<commit>
 0.8.5-rc.2
 0.8.5
 0.8.6-dev
 ```
 
-`-dev` and `-rc.N` are SemVer prerelease identifiers. `+alpha.<commit>` is build metadata: it identifies local validation of an RC without creating another release stage. Alpha versions are local-only and must not be Git tags or GitHub Releases.
+`-dev` and `-rc.N` are SemVer prerelease identifiers. `+alpha` and `+beta.<commit>` are build metadata. The alpha suffix identifies an ordinary local build; the beta suffix identifies local validation of an RC without creating another release stage. Alpha and beta versions are local-only and must not be Git tags or GitHub Releases.
 
 `src-tauri/tauri.conf.json` is the application-version source of truth. `scripts/bump-version.mjs` keeps it synchronized with `package.json` and the `[package]` versions in:
 
@@ -95,7 +96,15 @@ The ordinary production build is:
 npm run build
 ```
 
-It runs the advisory Rust dependency audit and then the Tauri build. The audit report does not stop the build; compilation or bundling failures do.
+It runs the advisory Rust dependency audit and then `npm run build:alpha`. The audit report does not stop the build; compilation or bundling failures do.
+
+Alpha builds add exactly `+alpha` to the configured application version for this invocation, such as `0.14.3-dev+alpha`, `0.14.3-rc.1+alpha`, or `0.14.3+alpha`. They allow a dirty working tree and tagged versions, require no Git commit ID, and do not edit version files or lockfiles. Running `build:alpha` directly skips the advisory audit.
+
+Both alpha and beta builds use the Alpha application icon, as does `npm run dev`. Automated releases retain the standard icon. Additional Tauri build flags remain available, for example:
+
+```sh
+npm run build:alpha -- --no-bundle
+```
 
 Rust compilation requires the Protocol Buffers compiler because Lance generates
 code during its build. On macOS, install it with `brew install protobuf` and
@@ -115,12 +124,12 @@ This command requires a clean working tree and changes `x.y.z-dev` to `x.y.z-rc.
 After committing an untagged RC or final version, create its local validation build with:
 
 ```sh
-npm run build:alpha
+npm run build:beta
 ```
 
-The alpha build does not edit version files, commit, tag, push, or publish anything. It supplies `x.y.z-rc.N+alpha.<commit>` or `x.y.z+alpha.<commit>` to Tauri for this invocation and uses the Alpha application icon. It requires a clean working tree and a committed numbered RC or final version so that the artifact corresponds exactly to a commit. Development versions are refused.
+The beta build does not edit version files, commit, tag, push, or publish anything. It supplies `x.y.z-rc.N+beta.<commit>` or `x.y.z+beta.<commit>` to Tauri for this invocation and uses the Alpha application icon. It requires a clean working tree and a committed numbered RC or final version so that the artifact corresponds exactly to a commit. Development versions are refused.
 
-Alpha builds require that the matching release tag (`vX.Y.Z-rc.N` or `vX.Y.Z`) does not exist locally, regardless of which commit it points to. An untagged final version is allowed; a final version with its release tag is refused, just like a tagged RC. The check uses local tags and does not fetch remote tags. Published tags remain immutable; an alpha build does not delete or move them.
+Beta builds require that the matching release tag (`vX.Y.Z-rc.N` or `vX.Y.Z`) does not exist locally, regardless of which commit it points to. An untagged final version is allowed; a final version with its release tag is refused, just like a tagged RC. The check uses local tags and does not fetch remote tags. Published tags remain immutable; a beta build does not delete or move them.
 
 Commit the version change before tagging a candidate. Do not tag a candidate that has not been committed and validated. A matching `vX.Y.Z-rc.N` tag starts GitHub release automation and creates a draft marked as a prerelease.
 
@@ -139,7 +148,7 @@ This command requires a clean working tree, removes the prerelease identifier, a
 Version preparation never commits, tags, pushes, or performs the distributable build. After preparing an RC:
 
 1. Review and commit the synchronized version changes, including the automatically refreshed `Cargo.lock`.
-2. Run `npm run build:alpha` to validate the committed RC locally.
+2. Run `npm run build:beta` to validate the committed RC locally.
 3. Run `npm run release:tag` from the clean committed tree.
 4. Push the commit and tag to GitHub.
 

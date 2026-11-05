@@ -19,6 +19,12 @@ Rename the current `build:dev` command to `build:alpha` and add invocation-only
 - Rename `build:dev` to `build:alpha`. Retain its ordinary Tauri build behavior
   and allow local work in progress without introducing beta's clean-tree,
   committed-version, or untagged-version restrictions.
+- Preserve forwarding of additional Tauri build arguments for ordinary builds.
+  For example, `npm run build:alpha -- --no-bundle` must pass `--no-bundle`
+  to Tauri alongside the invocation-only configuration override.
+- Use the existing Alpha application icon for both `build:alpha` and
+  `build:beta`. Keep `npm run dev` using that same Alpha icon and leave the
+  automated release icon unchanged.
 - Add exactly `+alpha` to the configured application version for an alpha build,
   without a commit hash or other ID. For example, `0.14.3-dev` builds as
   `0.14.3-dev+alpha`; a final or RC version likewise retains its existing
@@ -40,12 +46,13 @@ Rename the current `build:dev` command to `build:alpha` and add invocation-only
 
 - Update the package commands and build helpers, preserving invocation-only
   version overrides.
-- Review the existing Alpha icon override during the channel rename and align
-  helper naming and documentation with the intended channel presentation.
+- Reuse the existing Alpha icon helper for both build channels; keep its Alpha
+  naming and document that both channels intentionally share the icon.
 - Verify beta's accepted/rejected versions, clean-tree and local-tag checks,
   commit metadata, and Tauri configuration override.
 - Verify alpha's exact ID-free suffix, development/RC/final inputs, support for
-  a dirty working tree, and unchanged source version files.
+  a dirty working tree, additional Tauri build arguments, and unchanged source
+  version files. Verify that both channels supply the Alpha icon override.
 - Run the affected script tests and update
   `docs/development/release_cycle.md`, including examples and release-validation
   instructions.
