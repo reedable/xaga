@@ -43,8 +43,8 @@ pub(crate) const WRITE_COMMANDS: &[&str] = &[
     "create_topic_with_member",
     "save_topic",
     "delete_topic",
-    "add_topic_item",
-    "remove_topic_item",
+    "add_topic_entity",
+    "remove_topic_entity",
     "set_topic_pinned",
     "set_entry_pinned",
     "set_pin",
@@ -68,20 +68,22 @@ pub(crate) fn require_writer(
     state.writer().ok_or(crate::error::AppError::ReadOnly)
 }
 
-pub(crate) fn parse_item_filter(
-    item_filter: Option<String>,
-) -> Result<xaga_core::types::ItemFilter, String> {
-    item_filter
+pub(crate) fn parse_entity_filter(
+    entity_filter: Option<String>,
+) -> Result<xaga_core::types::EntityFilter, String> {
+    entity_filter
         .as_deref()
-        .map(|s| s.parse::<xaga_core::types::ItemFilter>())
+        .map(|s| s.parse::<xaga_core::types::EntityFilter>())
         .transpose()
         .map_err(|e| e)?
         .map_or(Ok(Default::default()), Ok)
 }
 
-pub(crate) fn parse_item_sort(sort: Option<String>) -> Result<xaga_core::types::ItemSort, String> {
+pub(crate) fn parse_entity_sort(
+    sort: Option<String>,
+) -> Result<xaga_core::types::EntitySort, String> {
     sort.as_deref()
-        .map(|s| s.parse::<xaga_core::types::ItemSort>())
+        .map(|s| s.parse::<xaga_core::types::EntitySort>())
         .transpose()
         .map_err(|e| e)?
         .map_or(Ok(Default::default()), Ok)

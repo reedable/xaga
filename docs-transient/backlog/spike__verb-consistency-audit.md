@@ -2,7 +2,7 @@
 
 ## Summary
 
-Indexing and recovery use `sync`, `reconcile`, `repair`, `recover`, `embed`, and `upsert` without defined boundaries. `sync_entry_row`, `sync_topic_row`, and `sync_annotations` update derived rows; `reconcile_topic_membership` applies a full membership diff; `repair_item_embeddings` scans for drift; recovery orchestrates the repairs; and CLI prose describes recovery as reconciliation. `embed_entry_vector` and `embed_topic_vector` also differ from `embed_feed`, while the `UpsertEntry` and `UpsertTopic` jobs perform more than a database upsert.
+Indexing and recovery use `sync`, `reconcile`, `repair`, `recover`, `embed`, and `upsert` without defined boundaries. `sync_entry_row`, `sync_topic_row`, and `sync_annotations` update derived rows; `reconcile_topic_membership` applies a full membership diff; `repair_entity_embeddings` scans for drift; recovery orchestrates the repairs; and CLI prose describes recovery as reconciliation. `embed_entry_vector` and `embed_topic_vector` also differ from `embed_feed`, while the `UpsertEntry` and `UpsertTopic` jobs perform more than a database upsert.
 
 ## Requirements
 

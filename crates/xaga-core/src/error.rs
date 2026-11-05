@@ -29,7 +29,7 @@ use crate::persistence::bookmarks::BookmarksError;
 use crate::persistence::entries::EntryError;
 use crate::persistence::feeds::FeedError;
 use crate::persistence::topics::TopicsError;
-use crate::query::items::ItemError;
+use crate::query::entities::EntityError;
 
 #[derive(Debug, Error)]
 pub enum DomainError {
@@ -48,7 +48,7 @@ pub enum DomainError {
     #[error(transparent)]
     Bookmarks(#[from] BookmarksError),
     #[error(transparent)]
-    Item(#[from] ItemError),
+    Entity(#[from] EntityError),
     #[error(transparent)]
     Writer(#[from] WriterError),
     #[error(transparent)]
@@ -67,7 +67,7 @@ impl DomainError {
             DomainError::Embeddings(e) => e.code(),
             DomainError::Topics(e) => e.code(),
             DomainError::Bookmarks(e) => e.code(),
-            DomainError::Item(e) => e.code(),
+            DomainError::Entity(e) => e.code(),
             DomainError::Writer(e) => e.code(),
             DomainError::Proxy(e) => e.code(),
         }
@@ -83,7 +83,7 @@ impl DomainError {
             DomainError::Embeddings(e) => e.user_message(),
             DomainError::Topics(e) => e.user_message(),
             DomainError::Bookmarks(e) => e.user_message(),
-            DomainError::Item(e) => e.user_message(),
+            DomainError::Entity(e) => e.user_message(),
             DomainError::Writer(e) => e.user_message(),
             DomainError::Proxy(e) => e.user_message(),
         }
@@ -94,7 +94,7 @@ impl DomainError {
 mod tests {
     /// Every distinct code owned across the subsystem error enums, mirrored in
     /// `src/platform/errors.ts` (`ERROR_CODE`). Delegating wrappers
-    /// (`WriterError`, `ItemError`, `DomainError`) introduce no new codes — a
+    /// (`WriterError`, `EntityError`, `DomainError`) introduce no new codes — a
     /// wrapped error reuses the inner code by design. A new code is a
     /// deliberate edit here AND in `src/platform/errors.ts`.
     const OWNED_CODES: &[&str] = &[
@@ -141,8 +141,8 @@ mod tests {
         // BookmarksError
         "bookmark:io",
         "bookmark:invalid-url",
-        // ItemError (own)
-        "item:io",
+        // EntityError (own)
+        "entity:io",
         // WriterError (own)
         "writer:shutting-down",
         "writer:closed",

@@ -1,4 +1,4 @@
-import { isEntry, type Item } from "../types";
+import { isEntry, type ManagedEntity } from "../types";
 
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 
@@ -7,8 +7,8 @@ export const MINUTE = 60 * SECOND;
 export const HOUR = 60 * MINUTE;
 export const DAY = 24 * HOUR;
 
-export default function formatDate(item: Item): string {
-  const date = getItemDate(item);
+export default function formatDate(entity: ManagedEntity): string {
+  const date = getEntityDate(entity);
   return formatDateString(date);
 }
 
@@ -37,11 +37,11 @@ function formatDateString(date: Date | null): string {
   });
 }
 
-export function getItemDate(item: Item) {
-  if (isEntry(item)) {
-    return stringToDate(item.updatedAt, item.publishedAt, item.createdAt);
+export function getEntityDate(entity: ManagedEntity) {
+  if (isEntry(entity)) {
+    return stringToDate(entity.updatedAt, entity.publishedAt, entity.createdAt);
   }
-  return stringToDate(item.updatedAt, item.createdAt);
+  return stringToDate(entity.updatedAt, entity.createdAt);
 }
 
 // Returns the first dateString that is value and not UNIX epoch

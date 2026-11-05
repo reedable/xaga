@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 /// and strips any trailing slash.
 ///
 /// The output feeds `url_hash12`, which names entry/feed/bookmark files on
-/// disk. Changing these rules re-keys persisted items and requires a data migration.
+/// disk. Changing these rules re-keys persisted entities and requires a data migration.
 pub fn normalize_url(raw: &str) -> Result<String, url::ParseError> {
     let mut parsed = url::Url::parse(raw)?;
     parsed.set_fragment(None);
@@ -48,8 +48,8 @@ pub(crate) fn feed_entry_id(atom_id: &str, link_href: &str) -> String {
         .unwrap_or_else(|_| url_hash12(link_href))
 }
 
-/// Returns the canonical ID for any library item: the file stem.
-pub(crate) fn item_id(path: &std::path::Path) -> String {
+/// Returns the canonical ID for any library entity: the file stem.
+pub(crate) fn entity_id(path: &std::path::Path) -> String {
     path.file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("")

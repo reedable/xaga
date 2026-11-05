@@ -7,24 +7,24 @@ import {
 } from "react";
 import { subscribe } from "../hooks/useEvents";
 import { usePlatform } from "../platform/Platform";
-import type { AllItemsCounts } from "../types";
+import type { AllEntitiesCounts } from "../types";
 import { debounced } from "../utils/Decorator";
-import AllItemsCountsContext from "./AllItemsCountsContext";
+import AllEntitiesCountsContext from "./AllEntitiesCountsContext";
 
-export function AllItemsCountsProvider({ children }: { children: ReactNode }) {
+export function AllEntitiesCountsProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
-  const [counts, setCounts] = useState<AllItemsCounts | null>(null);
+  const [counts, setCounts] = useState<AllEntitiesCounts | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      setCounts(await platform.getAllItemsCounts());
+      setCounts(await platform.getAllEntitiesCounts());
     } catch {
       setCounts(null);
     }
   }, [platform]);
 
   useEffect(() => {
-    void platform.getAllItemsCounts().then(setCounts, () => setCounts(null));
+    void platform.getAllEntitiesCounts().then(setCounts, () => setCounts(null));
     const refreshAfterChange = debounced(refresh, { wait: 400 });
     const stopUnread = subscribe(() =>
       platform.onUnreadChanged(refreshAfterChange)
@@ -40,8 +40,8 @@ export function AllItemsCountsProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(() => counts, [counts]);
   return (
-    <AllItemsCountsContext.Provider value={value}>
+    <AllEntitiesCountsContext.Provider value={value}>
       {children}
-    </AllItemsCountsContext.Provider>
+    </AllEntitiesCountsContext.Provider>
   );
 }

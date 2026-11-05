@@ -1,37 +1,37 @@
 use tauri::State;
-use xaga_core::query::items::{self, EmbeddedItemSource};
-use xaga_core::types::{EmbeddedEntry, EmbeddedItem};
+use xaga_core::query::entities::{self, EmbeddedEntitySource};
+use xaga_core::types::{EmbeddedEntity, EmbeddedEntry};
 
-use super::parse_item_filter;
+use super::parse_entity_filter;
 use crate::error::AppError;
 use crate::{AppState, get_bookmarked_ids, get_unread_ids};
 
 #[tauri::command]
-pub async fn search_by_item(
+pub async fn search_by_entity(
     id: String,
-    item_filter: Option<String>,
+    entity_filter: Option<String>,
     min_similarity: Option<f32>,
     max_similarity: Option<f32>,
     limit: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<Vec<EmbeddedEntry>, AppError> {
     let library = state.library_path();
-    let item_filter = parse_item_filter(item_filter)?;
-    let result = items::list_embedded_items(
+    let entity_filter = parse_entity_filter(entity_filter)?;
+    let result = entities::list_embedded_entities(
         &library,
-        EmbeddedItemSource::RelatedTo {
+        EmbeddedEntitySource::RelatedTo {
             id,
             limit,
             min_similarity,
             max_similarity,
         },
-        item_filter,
+        entity_filter,
     )
     .await
     .map_err(AppError::from);
     match &result {
-        Ok(entries) => log::debug!("search_by_item: ok ({} entries)", entries.len()),
-        Err(e) => log::debug!("search_by_item: err — {e}"),
+        Ok(entries) => log::debug!("search_by_entity: ok ({} entries)", entries.len()),
+        Err(e) => log::debug!("search_by_entity: err — {e}"),
     }
     result
 }
@@ -39,14 +39,14 @@ pub async fn search_by_item(
 #[tauri::command]
 pub async fn search_by_text(
     text: String,
-    item_filter: Option<String>,
+    entity_filter: Option<String>,
     min_similarity: Option<f32>,
     max_similarity: Option<f32>,
     limit: Option<usize>,
     state: State<'_, AppState>,
-) -> Result<Vec<EmbeddedItem>, AppError> {
+) -> Result<Vec<EmbeddedEntity>, AppError> {
     let library = state.library_path();
-    let item_filter = parse_item_filter(item_filter)?;
+    let entity_filter = parse_entity_filter(entity_filter)?;
 
     let embedder = {
         let guard = state.embedding_query_model.lock().unwrap();
@@ -62,21 +62,21 @@ pub async fn search_by_text(
         .map_err(|e| e.to_string())?
         .map_err(AppError::from)?;
 
-    let entries = items::list_embedded_items(
+    let entries = entities::list_embedded_entities(
         &library,
-        EmbeddedItemSource::RelatedToVector {
+        EmbeddedEntitySource::RelatedToVector {
             vector,
             limit,
             min_similarity,
             max_similarity,
         },
-        item_filter,
+        entity_filter,
     )
     .await
     .map_err(AppError::from)?;
 
     let (unread, bookmarked) = tokio::join!(get_unread_ids(&state), get_bookmarked_ids(&state));
-    let result = items::enrich_embedded(&library, entries, &unread, &bookmarked).await;
+    let result = entities::enrich_embedded(&library, entries, &unread, &bookmarked).await;
     log::debug!("search_by_text: ok ({} entries)", result.len());
     Ok(result)
 }

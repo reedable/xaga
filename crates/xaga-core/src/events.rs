@@ -12,13 +12,13 @@
 //! not here: their payload types and semantics belong to src-tauri (see
 //! `AppEvent` there and docs/architecture/layer_ownership.md).
 
-use crate::types::{Article, Entry, Feed, ListItem};
+use crate::types::{Article, Entry, Feed, ListEntity};
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AnnotationReplacement {
     pub old_id: String,
-    pub item: ListItem,
+    pub entity: ListEntity,
 }
 
 pub enum DomainEvent {
@@ -36,7 +36,7 @@ pub enum DomainEvent {
         pinned: bool,
     },
     /// An annotation was created or updated.
-    AnnotationChanged(ListItem),
+    AnnotationChanged(ListEntity),
     /// An annotation's identity changed while preserving its place in collections.
     AnnotationReplaced(AnnotationReplacement),
     /// An annotation was removed.
@@ -127,7 +127,7 @@ mod tests {
                 target: crate::pins::PinTarget::Entry { id: "entry".into() },
                 pinned: true,
             },
-            DomainEvent::AnnotationChanged(ListItem {
+            DomainEvent::AnnotationChanged(ListEntity {
                 id: String::new(),
                 title: String::new(),
                 created_at: String::new(),
@@ -139,7 +139,7 @@ mod tests {
             }),
             DomainEvent::AnnotationReplaced(AnnotationReplacement {
                 old_id: String::new(),
-                item: ListItem {
+                entity: ListEntity {
                     id: String::new(),
                     title: String::new(),
                     created_at: String::new(),

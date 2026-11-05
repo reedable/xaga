@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { type Item } from "../types";
+import { type ManagedEntity } from "../types";
 import cx from "../utils/cx";
 import formatByline from "../utils/formatByline";
-import { DAY, getItemDate, HOUR, MINUTE } from "../utils/formatDate";
+import { DAY, getEntityDate, HOUR, MINUTE } from "../utils/formatDate";
 import css from "./Byline.module.css";
 
 interface BylineProps {
   className?: string;
-  item: Item;
+  entity: ManagedEntity;
 }
 
 function getDelay(ageMs: number) {
@@ -17,12 +17,12 @@ function getDelay(ageMs: number) {
   return null; // no tick needed
 }
 
-export function Byline({ className, item }: BylineProps) {
+export function Byline({ className, entity }: BylineProps) {
   const [, setTick] = useState(0);
 
   useEffect(() => {
     function schedule(): ReturnType<typeof setTimeout> | undefined {
-      const date = getItemDate(item);
+      const date = getEntityDate(entity);
       if (!date) return;
 
       const ageMs = Date.now() - date.getTime();
@@ -40,9 +40,9 @@ export function Byline({ className, item }: BylineProps) {
     return () => {
       if (typeof tid === "number") clearTimeout(tid!);
     };
-  }, [item]);
+  }, [entity]);
 
   return (
-    <span className={cx(className, css.Byline)}>{formatByline(item)}</span>
+    <span className={cx(className, css.Byline)}>{formatByline(entity)}</span>
   );
 }

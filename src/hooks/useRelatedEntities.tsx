@@ -2,16 +2,16 @@ import { useCallback, useState, type RefObject } from "react";
 import { usePlatform } from "../platform/Platform";
 import type { Filter } from "../types";
 
-export default function useRelatedItems(
+export default function useRelatedEntities(
   abortControllerRef: RefObject<AbortController>
 ) {
   const platform = usePlatform();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
-  const queryByItem = useCallback(
+  const queryByEntity = useCallback(
     async (
-      itemId: string,
+      entityId: string,
       filter: Filter = "all",
       minSimilarity: number = 0.5,
       maxSimilarity?: number | null,
@@ -22,9 +22,9 @@ export default function useRelatedItems(
       setLoading(true);
 
       try {
-        return await platform.queryByItem(
+        return await platform.queryByEntity(
           signal,
-          itemId,
+          entityId,
           filter,
           minSimilarity,
           maxSimilarity ?? null,
@@ -39,5 +39,5 @@ export default function useRelatedItems(
     [abortControllerRef, platform]
   );
 
-  return { loading, error, queryByItem };
+  return { loading, error, queryByEntity };
 }

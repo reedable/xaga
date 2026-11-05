@@ -4,7 +4,7 @@ use xaga_core::library_writer::Tier as WriteTier;
 use xaga_core::persistence::feeds;
 use xaga_core::types::{Entry, Feed};
 
-use super::parse_item_filter;
+use super::parse_entity_filter;
 use crate::error::AppError;
 use crate::{AppState, get_bookmarked_ids, get_unread_ids};
 
@@ -171,11 +171,11 @@ pub async fn remove_feed(url: String, state: State<'_, AppState>) -> Result<Stri
 #[tauri::command]
 pub async fn list_entries(
     url: Option<String>,
-    item_filter: Option<String>,
+    entity_filter: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<Entry>, AppError> {
     let library = state.library_path();
-    let item_filter = parse_item_filter(item_filter)?;
+    let entity_filter = parse_entity_filter(entity_filter)?;
 
     // The .atom is the source of truth for feed membership (the id-set); LanceDB
     // returns those entries with their state. Reload the read handle so state reflects the
@@ -192,9 +192,9 @@ pub async fn list_entries(
     };
 
     let entries = db.list_entries_by_ids(&ids).await.map_err(AppError::from)?;
-    let mut items = xaga_core::query::filter::filter_items(entries, &item_filter)
+    let mut entities = xaga_core::query::filter::filter_entities(entries, &entity_filter)
         .await
         .map_err(|e| e.to_string())?;
-    xaga_core::query::filter::sort_items(&mut items);
-    Ok(items)
+    xaga_core::query::filter::sort_entities(&mut entities);
+    Ok(entities)
 }

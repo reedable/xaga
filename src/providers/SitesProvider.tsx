@@ -59,7 +59,7 @@ export function SitesProvider({
       pins.flatMap((pin) => {
         if (pin.type !== "site" || !hasLoaded) return [];
         return [
-          sites.find((site) => site.hostname === pin.hostname) ??
+          sites.find((site) => site.id === pin.hostname) ??
             emptySite(pin.hostname),
         ];
       }),

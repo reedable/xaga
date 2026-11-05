@@ -1,10 +1,10 @@
 use chrono::{DateTime, Utc};
 
-use crate::types::{EmbeddedEntry, Entry, Item, ItemFilter};
+use crate::types::{EmbeddedEntry, EntityFilter, Entry, ManagedEntity};
 
 /// The read/bookmark/reference state the list filters need. Implemented by the URL-bearing,
-/// stateful item types (`Entry` and its embedded form) — these are query-layer accessors, not
-/// part of the domain `Item` contract.
+/// stateful entity types (`Entry` and its embedded form) — these are query-layer accessors, not
+/// part of the domain `ManagedEntity` contract.
 pub trait Filterable {
     fn is_unread(&self) -> bool;
     fn color(&self) -> Option<&str>;
@@ -44,39 +44,39 @@ impl Filterable for EmbeddedEntry {
     }
 }
 
-/// Filter `items` according to `item_filter` — predicate only, no sorting.
-pub async fn filter_items<T: Filterable>(
-    mut items: Vec<T>,
-    item_filter: &ItemFilter,
+/// Filter `entities` according to `entity_filter` — predicate only, no sorting.
+pub async fn filter_entities<T: Filterable>(
+    mut entities: Vec<T>,
+    entity_filter: &EntityFilter,
 ) -> std::io::Result<Vec<T>> {
-    match item_filter {
-        ItemFilter::All => {}
+    match entity_filter {
+        EntityFilter::All => {}
 
-        ItemFilter::Unread => {
-            items.retain(|i| i.url().is_some() && i.is_unread());
+        EntityFilter::Unread => {
+            entities.retain(|i| i.url().is_some() && i.is_unread());
         }
 
-        ItemFilter::Bookmarked => {
-            items.retain(|i| i.color().is_some());
+        EntityFilter::Bookmarked => {
+            entities.retain(|i| i.color().is_some());
         }
 
-        ItemFilter::Saved => {
-            items.retain(|i| i.color().is_some() || !i.reference().is_empty());
+        EntityFilter::Saved => {
+            entities.retain(|i| i.color().is_some() || !i.reference().is_empty());
         }
     }
 
-    Ok(items)
+    Ok(entities)
 }
 
-/// Sort `items` by most-recent timestamp, descending.
-pub fn sort_items<T: Item>(items: &mut Vec<T>) {
-    items.sort_by(|a, b| timestamp(b).cmp(&timestamp(a)));
+/// Sort `entities` by most-recent timestamp, descending.
+pub fn sort_entities<T: ManagedEntity>(entities: &mut Vec<T>) {
+    entities.sort_by(|a, b| timestamp(b).cmp(&timestamp(a)));
 }
 
-fn timestamp<T: Item>(item: &T) -> DateTime<Utc> {
-    parse_ts(item.updated_at())
-        .or_else(|| parse_ts(item.published_at()))
-        .or_else(|| parse_ts(Some(item.created_at())))
+fn timestamp<T: ManagedEntity>(entity: &T) -> DateTime<Utc> {
+    parse_ts(entity.updated_at())
+        .or_else(|| parse_ts(entity.published_at()))
+        .or_else(|| parse_ts(Some(entity.created_at())))
         .unwrap_or(DateTime::UNIX_EPOCH)
 }
 

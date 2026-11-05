@@ -33,5 +33,5 @@ data and on the list and reader currently open.
 - `docs/architecture/crash_consistency.md`
 - `crates/xaga-core/src/persistence/articles.rs`
 - `crates/xaga-core/src/library_writer/mod.rs`
-- `src/components/list/ItemList.tsx`
+- `src/components/list/EntityList.tsx`
 - `src/hooks/useRouter.tsx`

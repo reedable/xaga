@@ -8,15 +8,29 @@ This document records the standing rule.
 
 - **Intrinsic types** (what a thing _is_ — e.g. Annotation, Topic) are identified by their structure; no discriminator is needed, and where a brand exists anyway it is cross-validated against shape at the boundary.
 - **Extrinsic roles** (what part a thing plays — e.g. feed vs entry, which share the `WebResource` shape) are the one legitimate use of a brand: the shared shape cannot resolve the role, so `__kind` layers on top.
-- **Identity is shape AND brand together — never either alone.** The target guards (`src/types.ts`):
-  - `isEntry(item) = isWebResource(item) && item.__kind === "entry"`
-  - `isFeed(item)  = isWebResource(item) && item.__kind === "feed"`
+- **Identity is shape AND brand together — never either alone.** The domain guards (`src/domain.ts`):
+  - `isEntry(entity) = isManagedEntity(entity) && entity.__kind === "entry" && typeof entity.url === "string"`
+  - `isFeed(entity) = isManagedEntity(entity) && entity.__kind === "feed" && Array.isArray(entity.members)`
 
-  The shape check (`isWebResource`) is the structural foundation and is never removed; the brand resolves the role. Posing brand-only versus shape-only as a fork misstates the rule — the two are conjoined, not alternatives.
+  The structural checks are the foundation; the brand resolves the role. Posing brand-only versus shape-only as a fork misstates the rule — the two are conjoined, not alternatives.
 
-- **Brands are minted at the wire boundary** (`toEntry`/`toFeed`/`toAnyEmbeddedItem`), from the source of truth, at the moment the object enters the typed world. A brand is never invented downstream and never used to overrule what the structure says.
-- **Composite/view types are not branded.**
+- **Brands are minted at the wire boundary** (`toEntry`/`toFeed`/`toAnyEmbeddedEntity`), from the source of truth, at the moment the object enters the typed world. A brand is never invented downstream and never used to overrule what the structure says.
+- **Capability intersections and generic result wrappers do not introduce brands.**
+  Countable adds counts; Ranked adds similarity. A derived domain collection such
+  as Site retains its own kind so that collection navigation can identify it.
 
-## Current state
+## Entity and collection guards
 
-`Entry`/`Feed` are branded and minted at the wire boundary; `SavedItem` rows (`toSavedItem`, `src/platform/TauriPlatform.ts`) are not yet branded, so the guards in `src/types.ts` run an interim brand-first / shape-fallback until `toSavedItem` mints `__kind` — at which point the guards switch to the brand-and-shape form above.
+The base guards are structural: `isEntity` requires string `id` and `title`,
+and `isManagedEntity` additionally requires a string `createdAt`. They describe
+shared contracts rather than a concrete domain kind.
+
+`isSite` requires Entity shape, the Site brand, and numeric summary counts. It
+does not require managed lifecycle fields. `isManagedCollection` requires Feed
+or Topic shape and numeric summary counts; `isCollection` accepts either a
+managed collection or a Site. Count-bearing entries and built-in shortcuts do
+not become collections merely by having counts.
+
+The platform adapter mints Entry, Feed, Topic, Annotation, and Site brands from
+validated native payloads. See [Collections and identity](organization_model.md#collections-and-identity)
+for the Entity, ManagedEntity, and collection hierarchy.

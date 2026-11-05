@@ -4,7 +4,7 @@ use crate::{
     embeddings::{EmbeddingsDb, EmbeddingsError},
     query::filter,
     site::normalize_site_hostname,
-    types::{Entry, ItemFilter, SiteSummary},
+    types::{EntityFilter, Entry, SiteSummary},
 };
 
 /// Returns every Site represented by an Entry URL, grouped from one index read.
@@ -33,7 +33,7 @@ pub async fn list_sites(db: &EmbeddingsDb) -> Result<Vec<SiteSummary>, Embedding
 pub async fn list_site_entries(
     db: &EmbeddingsDb,
     hostname: &str,
-    item_filter: ItemFilter,
+    entity_filter: EntityFilter,
 ) -> Result<Vec<Entry>, EmbeddingsError> {
     db.reload().await?;
     let entries = db
@@ -45,10 +45,10 @@ pub async fn list_site_entries(
                 .is_some_and(|candidate| candidate.as_str() == hostname)
         })
         .collect();
-    let mut entries = filter::filter_items(entries, &item_filter)
+    let mut entries = filter::filter_entities(entries, &entity_filter)
         .await
         .expect("filtering Entries is infallible");
-    filter::sort_items(&mut entries);
+    filter::sort_entities(&mut entries);
     Ok(entries)
 }
 
@@ -78,7 +78,7 @@ mod tests {
             is_unread,
             is_pinned: false,
             topics: vec![],
-            items: vec![],
+            entities: vec![],
             checksum: String::new(),
             vector: None,
         }
@@ -113,7 +113,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            list_site_entries(&db, "example.com", ItemFilter::Saved)
+            list_site_entries(&db, "example.com", EntityFilter::Saved)
                 .await
                 .unwrap()
                 .into_iter()
@@ -122,7 +122,7 @@ mod tests {
             vec!["b"]
         );
         assert_eq!(
-            list_site_entries(&db, "example.com", ItemFilter::Unread)
+            list_site_entries(&db, "example.com", EntityFilter::Unread)
                 .await
                 .unwrap()
                 .into_iter()
@@ -131,7 +131,7 @@ mod tests {
             vec!["a"]
         );
         assert_eq!(
-            list_site_entries(&db, "example.com", ItemFilter::All)
+            list_site_entries(&db, "example.com", EntityFilter::All)
                 .await
                 .unwrap()
                 .len(),

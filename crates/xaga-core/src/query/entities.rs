@@ -5,28 +5,30 @@ use thiserror::Error;
 use crate::{
     embeddings::EmbeddingsDb,
     query::filter,
-    types::{EmbeddedEntry, EmbeddedFeed, EmbeddedItem, EmbeddedTopic, ItemFilter, Kind, ListItem},
+    types::{
+        EmbeddedEntity, EmbeddedEntry, EmbeddedFeed, EmbeddedTopic, EntityFilter, Kind, ListEntity,
+    },
 };
 
-// ── EmbeddedItemSource ──────────────────────────────────────────────────────────
+// ── EmbeddedEntitySource ──────────────────────────────────────────────────────────
 
 /// Describes the source for an embedding similarity query.
-pub enum EmbeddedItemSource {
-    /// Items related to a given item, ranked by embedding similarity.
+pub enum EmbeddedEntitySource {
+    /// Entities related to a given entity, ranked by embedding similarity.
     RelatedTo {
         id: String,
         limit: Option<usize>,
         min_similarity: Option<f32>,
         max_similarity: Option<f32>,
     },
-    /// Items related to an arbitrary pre-computed query vector (e.g. from embedded search text).
+    /// Entities related to an arbitrary pre-computed query vector (e.g. from embedded search text).
     RelatedToVector {
         vector: Vec<f32>,
         limit: Option<usize>,
         min_similarity: Option<f32>,
         max_similarity: Option<f32>,
     },
-    /// Topics ranked by similarity to a given item.
+    /// Topics ranked by similarity to a given entity.
     TopicsRelatedTo {
         id: String,
         limit: Option<usize>,
@@ -37,45 +39,45 @@ pub enum EmbeddedItemSource {
 // ── Error ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
-pub enum ItemError {
+pub enum EntityError {
     #[error(transparent)]
     Embeddings(#[from] crate::embeddings::EmbeddingsError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
 
-impl ItemError {
+impl EntityError {
     /// Stable code the UI matches on. Embeddings failures delegate to the inner
     /// code. Mirrored in `src/platform/errors.ts`.
     pub fn code(&self) -> &'static str {
         match self {
-            ItemError::Embeddings(e) => e.code(),
-            ItemError::Io(_) => "item:io",
+            EntityError::Embeddings(e) => e.code(),
+            EntityError::Io(_) => "entity:io",
         }
     }
 
     /// User-safe message. Full detail stays in `Display`.
     pub fn user_message(&self) -> &'static str {
         match self {
-            ItemError::Embeddings(e) => e.user_message(),
-            ItemError::Io(_) => "Couldn't read this item.",
+            EntityError::Embeddings(e) => e.user_message(),
+            EntityError::Io(_) => "Couldn't read this item.",
         }
     }
 }
 
-pub(crate) type Result<T> = std::result::Result<T, ItemError>;
+pub(crate) type Result<T> = std::result::Result<T, EntityError>;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/// Fetch embedded items from `source`, preserving similarity rank, then filter.
+/// Fetch embedded entities from `source`, preserving similarity rank, then filter.
 /// Reading state and color are projected directly from LanceDB.
-pub async fn list_embedded_items(
+pub async fn list_embedded_entities(
     library_dir: &Path,
-    source: EmbeddedItemSource,
-    item_filter: ItemFilter,
+    source: EmbeddedEntitySource,
+    entity_filter: EntityFilter,
 ) -> Result<Vec<EmbeddedEntry>> {
     match source {
-        EmbeddedItemSource::RelatedTo {
+        EmbeddedEntitySource::RelatedTo {
             id,
             limit,
             min_similarity,
@@ -85,11 +87,11 @@ pub async fn list_embedded_items(
             let entries = db
                 .search_related(&id, limit, min_similarity, max_similarity, None)
                 .await?;
-            filter::filter_items(entries, &item_filter)
+            filter::filter_entities(entries, &entity_filter)
                 .await
-                .map_err(ItemError::Io)
+                .map_err(EntityError::Io)
         }
-        EmbeddedItemSource::RelatedToVector {
+        EmbeddedEntitySource::RelatedToVector {
             vector,
             limit,
             min_similarity,
@@ -99,11 +101,11 @@ pub async fn list_embedded_items(
             let entries = db
                 .search_by_vector(vector, limit, min_similarity, max_similarity)
                 .await?;
-            filter::filter_items(entries, &item_filter)
+            filter::filter_entities(entries, &entity_filter)
                 .await
-                .map_err(ItemError::Io)
+                .map_err(EntityError::Io)
         }
-        EmbeddedItemSource::TopicsRelatedTo {
+        EmbeddedEntitySource::TopicsRelatedTo {
             id,
             limit,
             min_similarity,
@@ -111,21 +113,24 @@ pub async fn list_embedded_items(
             let db = EmbeddingsDb::open_readonly(library_dir).await?;
             db.search_related(&id, limit, min_similarity, None, Some(Kind::Topic))
                 .await
-                .map_err(ItemError::Embeddings)
+                .map_err(EntityError::Embeddings)
         }
     }
 }
 
-/// Lists every item in the library — entry rows and annotation rows — read entirely from
-/// LanceDB, filtered by `item_filter` and sorted by `created_at` descending. Returns the flat
-/// `ListItem` the items list renders (annotations carry `reference`/`color`).
-pub async fn list_all_items(library_dir: &Path, item_filter: ItemFilter) -> Result<Vec<ListItem>> {
+/// Lists every entity in the library — entry rows and annotation rows — read entirely from
+/// LanceDB, filtered by `entity_filter` and sorted by `created_at` descending. Returns the flat
+/// `ListEntity` the entities list renders (annotations carry `reference`/`color`).
+pub async fn list_all_entities(
+    library_dir: &Path,
+    entity_filter: EntityFilter,
+) -> Result<Vec<ListEntity>> {
     let db = EmbeddingsDb::open_readonly(library_dir).await?;
 
-    let mut items = db.filter_items(item_filter).await?;
+    let mut entities = db.filter_entities(entity_filter).await?;
 
-    items.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-    Ok(items)
+    entities.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    Ok(entities)
 }
 
 /// Enriches raw LanceDB results from their authoritative files while preserving rank.
@@ -136,7 +141,7 @@ pub async fn enrich_embedded(
     entries: Vec<EmbeddedEntry>,
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
-) -> Vec<EmbeddedItem> {
+) -> Vec<EmbeddedEntity> {
     let mut result = Vec::with_capacity(entries.len());
     for entry in entries {
         if entry.kind == Kind::Feed {
@@ -148,7 +153,7 @@ pub async fn enrich_embedded(
             )
             .await
             {
-                result.push(EmbeddedItem::Feed(EmbeddedFeed {
+                result.push(EmbeddedEntity::Feed(EmbeddedFeed {
                     feed,
                     kind: entry.kind,
                     similarity: entry.similarity,
@@ -160,7 +165,7 @@ pub async fn enrich_embedded(
             if let Ok(topic) =
                 crate::persistence::topics::read_topic(library_dir, &entry.entry.id).await
             {
-                result.push(EmbeddedItem::Topic(EmbeddedTopic {
+                result.push(EmbeddedEntity::Topic(EmbeddedTopic {
                     topic,
                     kind: Kind::Topic,
                     similarity: entry.similarity,
@@ -168,7 +173,7 @@ pub async fn enrich_embedded(
                 continue;
             }
         }
-        result.push(EmbeddedItem::Entry(entry));
+        result.push(EmbeddedEntity::Entry(entry));
     }
     result
 }
@@ -252,10 +257,10 @@ mod tests {
         assert_eq!(enriched.len(), 3);
         assert!(matches!(
             &enriched[0],
-            EmbeddedItem::Entry(entry) if entry.entry.id == "first" && entry.similarity == 0.9
+            EmbeddedEntity::Entry(entry) if entry.entry.id == "first" && entry.similarity == 0.9
         ));
         match &enriched[1] {
-            EmbeddedItem::Feed(feed) => {
+            EmbeddedEntity::Feed(feed) => {
                 assert_eq!(feed.feed.id, "feed");
                 assert_eq!(feed.feed.title, "Authoritative feed");
                 assert_eq!(feed.feed.url, "https://example.com/feed.xml");
@@ -268,7 +273,7 @@ mod tests {
         }
         assert!(matches!(
             &enriched[2],
-            EmbeddedItem::Entry(entry) if entry.entry.id == "last" && entry.similarity == 0.6
+            EmbeddedEntity::Entry(entry) if entry.entry.id == "last" && entry.similarity == 0.6
         ));
     }
 }

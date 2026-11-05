@@ -4,7 +4,7 @@
 //! (similarity lookups, filters, topic item lists). They are the read-side counterpart to the
 //! write-side separation; nothing here is on the indexing write path.
 
+pub mod entities;
 pub mod filter;
-pub mod items;
 pub mod sites;
 pub mod topics;

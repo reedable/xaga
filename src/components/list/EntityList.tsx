@@ -20,7 +20,7 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import { onTopicItemAdded } from "../../events/topicMembership";
+import { onTopicEntityAdded } from "../../events/topicMembership";
 import useAbortController from "../../hooks/useAbortController";
 import useEntries from "../../hooks/useEntries";
 import { useErrorSink } from "../../hooks/useErrorSink";
@@ -33,42 +33,43 @@ import { useSites } from "../../hooks/useSites";
 import { useTopics } from "../../hooks/useTopics";
 import { usePlatform } from "../../platform/Platform";
 import { useTags } from "../../providers/TagsContext";
-import { ALL_ITEMS, SHORTCUTS } from "../../Shortcuts";
+import { ALL_ENTITIES, SHORTCUTS } from "../../Shortcuts";
 import { emptySite } from "../../sites";
 import {
   isEntry,
   isFeed,
+  isManagedCollection,
   isPartialAnnotation,
   isSite,
   isTopic,
   type Entry,
   type Feed,
   type Filter,
-  type Item,
+  type ManagedEntity,
   type Site,
   type Topic,
   type TopicSort,
 } from "../../types";
-import { articleScopeItems } from "../../utils/articleScopeItems";
+import { articleScopeEntities } from "../../utils/articleScopeEntities";
 import cx from "../../utils/cx";
 import {
-  itemMatchesTextFilter,
-  mergeAllItemsAnnotationChange,
-} from "../../utils/mergeAllItemsAnnotationChange";
+  entityMatchesTextFilter,
+  mergeAllEntitiesAnnotationChange,
+} from "../../utils/mergeAllEntitiesAnnotationChange";
 import { mergeTopicAddition } from "../../utils/mergeTopicAddition";
 import sortByTitle from "../../utils/sortByTitle";
-import ItemStatus from "../ItemStatus";
+import EntityStatus from "../EntityStatus";
 import Quotes from "../Quotes";
 import MissingShortcutsButton from "../sidebar/MissingShortcutsButton";
 import { TagActions } from "../TagActions";
-import css from "./ItemList.module.css";
+import css from "./EntityList.module.css";
 
 function getEmptyMessage(filter: Filter, filterText: string): string {
   const label = filter === "all" ? "items" : `${filter} items`;
   return filterText ? `No ${label} match "${filterText}"` : `No ${label}`;
 }
 
-type ItemListProps = {
+type EntityListProps = {
   className?: string;
   isSelectableHeader: boolean;
   onEditFeed: (feed: Feed) => void;
@@ -76,17 +77,18 @@ type ItemListProps = {
   onEditSite?: (site: Site) => void;
 };
 
-export function ItemList({
+export function EntityList({
   className,
   isSelectableHeader,
   onEditFeed,
   onEditTopic,
   onEditSite,
-}: ItemListProps) {
+}: EntityListProps) {
   const {
     filter: navigationFilter,
-    selectItem,
-    selectSite,
+    selectEntity,
+    selectCollection,
+    selectShortcut,
     selectArticleScope,
     selectAnnotation,
     state,
@@ -116,7 +118,7 @@ export function ItemList({
   const { pushError } = useErrorSink();
   const pinnedEntries = usePinnedEntries();
   const { articleScopeId } = state;
-  const selectedItemId = state.annotationId ?? state.entryId;
+  const selectedEntityId = state.annotationId ?? state.entryId;
   const [scopedArticle, setScopedArticle] = useState<Entry | null>(null);
   const articleRequestRef = useRef(0);
   const listRequestRef = useRef(0);
@@ -128,7 +130,7 @@ export function ItemList({
   const { feedId, topicId, shortcutId } = state;
   const { siteHostname } = state;
   const [abort, abortControllerRef] = useAbortController();
-  const { topics, listTopicItems } = useTopics(abortControllerRef);
+  const { topics, listTopicEntities } = useTopics(abortControllerRef);
   const { sites, pinnedSites = [], listSiteEntries } = useSites(abortControllerRef);
 
   const { feeds, loading: loadingFeeds, refreshAllFeeds } = useFeeds(abortControllerRef);
@@ -138,7 +140,7 @@ export function ItemList({
   const [refreshSpin, setRefreshSpin] = useState(false);
   const [headerOpen, setHeaderOpen] = useState(false);
 
-  const selectedCollection = useMemo(
+  const selectedScope = useMemo(
     () =>
       (tagIds !== undefined && {
         id: "__TAGS__",
@@ -156,10 +158,10 @@ export function ItemList({
       (feedId && feeds.find((f) => f.id === feedId)) ||
       (topicId && topics.find((t) => t.id === topicId)) ||
       (siteHostname &&
-        ([...sites, ...pinnedSites].find((site) => site.hostname === siteHostname) ??
+        ([...sites, ...pinnedSites].find((site) => site.id === siteHostname) ??
           emptySite(siteHostname))) ||
       (shortcutId && SHORTCUTS.find((s) => s.id === shortcutId)) ||
-      ALL_ITEMS,
+      ALL_ENTITIES,
     [
       tagIds,
       tagOptions,
@@ -178,10 +180,10 @@ export function ItemList({
   );
 
   const siteOptions = useMemo(() => {
-    const options = new Map([...sites, ...pinnedSites].map((site) => [site.hostname, site]));
-    if (isSite(selectedCollection)) options.set(selectedCollection.hostname, selectedCollection);
+    const options = new Map([...sites, ...pinnedSites].map((site) => [site.id, site]));
+    if (isSite(selectedScope)) options.set(selectedScope.id, selectedScope);
     return [...options.values()];
-  }, [sites, pinnedSites, selectedCollection]);
+  }, [sites, pinnedSites, selectedScope]);
 
   const articleOptions = useMemo(
     () =>
@@ -196,7 +198,7 @@ export function ItemList({
     [pinnedEntries, articleScopeId, scopedArticle],
   );
 
-  const { listEntries, listAllItems, markEntryRead } = useEntries(abortControllerRef);
+  const { listEntries, listAllEntities, markEntryRead } = useEntries(abortControllerRef);
 
   const {
     onFeedsRefreshed,
@@ -208,32 +210,33 @@ export function ItemList({
     onEmbeddingsChanged,
   } = useEvents();
 
-  const [items, setItems] = useState<Item[]>([]);
+  const [entities, setEntities] = useState<ManagedEntity[]>([]);
   const [filterText, setFilterText] = useState("");
   const [topicSort, setTopicSort] = useState<TopicSort>("relevance");
-  const allItemsMergeRef = useRef({ shortcutId, filter, filterText });
-  allItemsMergeRef.current = { shortcutId, filter, filterText };
+  const allEntitiesMergeRef = useRef({ shortcutId, filter, filterText });
+  allEntitiesMergeRef.current = { shortcutId, filter, filterText };
 
   // Virtuoso only renders on-screen rows, so moving the selection off-screen
   // requires an imperative scroll to bring the target row into view before it
   // can receive DOM focus. itemRefs holds the focusable node of each rendered
-  // row, keyed by item id.
+  // row, keyed by entity id.
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const itemRefs = useRef(new Map<string, HTMLDivElement>());
 
   const handleEdit = useMemo(() => {
-    if (isSite(selectedCollection)) return () => onEditSite?.(selectedCollection);
-    if (isFeed(selectedCollection)) return () => onEditFeed(selectedCollection);
-    if (isTopic(selectedCollection)) return () => onEditTopic(selectedCollection);
+    if (isSite(selectedScope)) return () => onEditSite?.(selectedScope);
+    if (!isManagedCollection(selectedScope)) return undefined;
+    if (isFeed(selectedScope)) return () => onEditFeed(selectedScope);
+    if (isTopic(selectedScope)) return () => onEditTopic(selectedScope);
     return undefined;
-  }, [selectedCollection, onEditFeed, onEditTopic, onEditSite]);
+  }, [selectedScope, onEditFeed, onEditTopic, onEditSite]);
 
   const headerValues =
     tagIds !== undefined
       ? tagIds.length
         ? tagIds.map((id) => `tag:${id}`)
         : ["tags:all"]
-      : [articleScopeId ? `article:${articleScopeId}` : selectedCollection.id];
+      : [articleScopeId ? `article:${articleScopeId}` : selectedScope.id];
   const handleCollectionChange = (event: SelectChangeEvent<string[]>) => {
     const values =
       typeof event.target.value === "string" ? event.target.value.split(",") : event.target.value;
@@ -255,48 +258,51 @@ export function ItemList({
       selectArticleScope(article);
       return;
     }
-    const collection = [...SHORTCUTS, ...topics, ...feeds].find((item) => item.id === id);
-    if (collection) selectItem(collection);
-    const site = siteOptions.find((item) => item.hostname === id);
-    if (site) selectSite(site);
+    const shortcut = SHORTCUTS.find((entity) => entity.id === id);
+    if (shortcut) {
+      selectShortcut(shortcut);
+      return;
+    }
+    const collection = [...topics, ...feeds, ...siteOptions].find((entity) => entity.id === id);
+    if (collection) selectCollection(collection);
   };
 
   useEffect(() => {
     if (!loadingFeeds) setRefreshSpin(false);
   }, [loadingFeeds]);
 
-  const displayItems = useMemo(() => {
-    return items.filter((item) => itemMatchesTextFilter(item, filterText));
-  }, [items, filterText]);
+  const displayEntities = useMemo(() => {
+    return entities.filter((entity) => entityMatchesTextFilter(entity, filterText));
+  }, [entities, filterText]);
 
-  // Up/Down move the selection to the adjacent visible item, clamped at both
-  // ends (no wrap). Selecting reuses selectItem, so it loads the item's content
+  // Up/Down move the selection to the adjacent visible entity, clamped at both
+  // ends (no wrap). Selecting reuses selectEntity, so it loads the entity's content
   // and pushes history exactly like a click; the newly selected row is then
   // scrolled into view and given DOM focus so keyboard operation can continue
   // from there (WCAG 2.1.1).
-  const handleItemKeyDown = useCallback(
+  const handleEntityKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
 
-      const currentIndex = displayItems.findIndex(
+      const currentIndex = displayEntities.findIndex(
         (i) => itemRefs.current.get(i.id) === e.currentTarget,
       );
       if (currentIndex === -1) return;
 
       const nextIndex = currentIndex + (e.key === "ArrowDown" ? 1 : -1);
-      if (nextIndex < 0 || nextIndex >= displayItems.length) return;
+      if (nextIndex < 0 || nextIndex >= displayEntities.length) return;
 
       e.preventDefault();
-      const next = displayItems[nextIndex];
-      selectItem(next);
+      const next = displayEntities[nextIndex];
+      selectEntity(next);
       virtuosoRef.current?.scrollIntoView({
         index: nextIndex,
         behavior: "auto",
         done: () => itemRefs.current.get(next.id)?.focus(),
       });
     },
-    [displayItems, selectItem],
+    [displayEntities, selectEntity],
   );
 
   const requestArticleScope = useCallback(async () => {
@@ -307,7 +313,7 @@ export function ItemList({
     setLoading(true);
     try {
       const article = await platform.readArticleScope(signal, articleScopeId);
-      const next = await articleScopeItems(article, (id, refs) =>
+      const next = await articleScopeEntities(article, (id, refs) =>
         platform.readEntryImages(signal, id, refs),
       );
       if (
@@ -323,7 +329,7 @@ export function ItemList({
         article.color = latest.entry.color;
       }
       setScopedArticle(article);
-      setItems(next);
+      setEntities(next);
     } catch (error) {
       if (!signal.aborted && articleScopeRef.current === articleScopeId) pushError(error);
     } finally {
@@ -336,16 +342,16 @@ export function ItemList({
     }
   }, [articleScopeId, abortControllerRef, platform, pushError]);
 
-  const requestItems = useCallback(
-    async (selectedList: Item | Site) => {
+  const requestEntities = useCallback(
+    async (selectedList: ManagedEntity | Site) => {
       if (articleScopeId) {
         await requestArticleScope();
         return;
       }
       const signal = abortControllerRef.current.signal;
       const request = ++listRequestRef.current;
-      const commit = (entries: Item[]) => {
-        if (!signal.aborted && request === listRequestRef.current) setItems(entries);
+      const commit = (entries: ManagedEntity[]) => {
+        if (!signal.aborted && request === listRequestRef.current) setEntities(entries);
       };
       setLoading(true);
 
@@ -357,13 +363,13 @@ export function ItemList({
           const entries = await listEntries(selectedList, filter);
           if (entries) commit(entries);
         } else if (isTopic(selectedList)) {
-          const items = await listTopicItems(selectedList.id, filter ?? "unread", topicSort);
-          if (items) commit(items);
+          const entities = await listTopicEntities(selectedList.id, filter ?? "unread", topicSort);
+          if (entities) commit(entities);
         } else if (isSite(selectedList)) {
-          const entries = await listSiteEntries(selectedList.hostname, filter);
+          const entries = await listSiteEntries(selectedList.id, filter);
           if (entries) commit(entries);
         } else {
-          const entries = await listAllItems(filter);
+          const entries = await listAllEntities(filter);
           if (entries) commit(entries);
         }
       } catch (error) {
@@ -381,21 +387,21 @@ export function ItemList({
       requestArticleScope,
       filter,
       listEntries,
-      listTopicItems,
+      listTopicEntities,
       listSiteEntries,
-      listAllItems,
+      listAllEntities,
       topicSort,
     ],
   );
 
   const handleRefresh = useCallback(() => {
     if (tagIds !== undefined) {
-      void requestItems(selectedCollection);
+      void requestEntities(selectedScope);
       return;
     }
     refreshAllFeeds();
     setRefreshSpin(true);
-  }, [tagIds, requestItems, selectedCollection, refreshAllFeeds]);
+  }, [tagIds, requestEntities, selectedScope, refreshAllFeeds]);
 
   const handleFilter = useCallback(
     (_event: MouseEvent<HTMLElement>, value: string) => {
@@ -406,29 +412,29 @@ export function ItemList({
 
   const handleMarkEntriesRead = useCallback(async () => {
     await Promise.all(
-      displayItems
+      displayEntities
         .filter(isEntry)
         .map((entry) => entry.id)
         .map(markEntryRead),
     );
-  }, [displayItems, markEntryRead]);
+  }, [displayEntities, markEntryRead]);
 
-  const selectedCollectionRef = useRef(selectedCollection);
-  selectedCollectionRef.current = selectedCollection;
+  const selectedScopeRef = useRef(selectedScope);
+  selectedScopeRef.current = selectedScope;
 
-  const mergeAddedTopicItem = useCallback(
-    async (changedTopicId: string, itemId: string) => {
+  const mergeAddedTopicEntity = useCallback(
+    async (changedTopicId: string, entityId: string) => {
       if (changedTopicId !== topicId) return;
-      const authoritative = await listTopicItems(changedTopicId, filter ?? "unread", topicSort);
+      const authoritative = await listTopicEntities(changedTopicId, filter ?? "unread", topicSort);
       if (
         !authoritative ||
-        !isTopic(selectedCollectionRef.current) ||
-        selectedCollectionRef.current.id !== changedTopicId
+        !isTopic(selectedScopeRef.current) ||
+        selectedScopeRef.current.id !== changedTopicId
       )
         return;
-      setItems((current) => mergeTopicAddition(current, authoritative, itemId));
+      setEntities((current) => mergeTopicAddition(current, authoritative, entityId));
     },
-    [topicId, filter, topicSort, listTopicItems],
+    [topicId, filter, topicSort, listTopicEntities],
   );
 
   const tagTextFilter = tagIds !== undefined ? filterText : undefined;
@@ -441,7 +447,7 @@ export function ItemList({
       if (replaced) { ++listRequestRef.current; setLoading(false); return; }
     }
     (async () => {
-      requestItems(selectedCollectionRef.current);
+      requestEntities(selectedScopeRef.current);
     })();
     // Depend on IDs, not objects, so feed/topic identity changes from
     // requestFeeds/requestTopics don't re-trigger a full list reload.
@@ -454,15 +460,15 @@ export function ItemList({
     topicId,
     siteHostname,
     shortcutId,
-    requestItems,
+    requestEntities,
     abort,
   ]);
 
   useEffect(() => {
     return onEmbeddingsChanged(() => {
-      if (siteHostname) void requestItems(selectedCollectionRef.current);
+      if (siteHostname) void requestEntities(selectedScopeRef.current);
     });
-  }, [onEmbeddingsChanged, requestItems, siteHostname]);
+  }, [onEmbeddingsChanged, requestEntities, siteHostname]);
 
   useEffect(() => {
     return onUnreadChanged((entry) => {
@@ -472,7 +478,7 @@ export function ItemList({
           entry,
         };
       }
-      setItems((prev) => prev.map((p) => (p.id === entry.id ? entry : p)));
+      setEntities((prev) => prev.map((p) => (p.id === entry.id ? entry : p)));
     });
   }, [onUnreadChanged]);
 
@@ -484,38 +490,38 @@ export function ItemList({
           entry,
         };
       }
-      setItems((prev) => prev.map((p) => (p.id === entry.id ? entry : p)));
+      setEntities((prev) => prev.map((p) => (p.id === entry.id ? entry : p)));
     });
   }, [onBookmarkChanged]);
 
   useEffect(() => {
-    return onAnnotationChanged((item) => {
-      if (articleScopeId && "reference" in item && item.reference === articleScopeId) {
+    return onAnnotationChanged((entity) => {
+      if (articleScopeId && "reference" in entity && entity.reference === articleScopeId) {
         void requestArticleScope();
         return;
       }
-      const active = allItemsMergeRef.current;
-      setItems((current) =>
-        mergeAllItemsAnnotationChange(
+      const active = allEntitiesMergeRef.current;
+      setEntities((current) =>
+        mergeAllEntitiesAnnotationChange(
           current,
-          item,
-          active.shortcutId === ALL_ITEMS.id,
+          entity,
+          active.shortcutId === ALL_ENTITIES.id,
           active.filter,
           active.filterText,
         ),
       );
-      if (topicId) void mergeAddedTopicItem(topicId, item.id);
+      if (topicId) void mergeAddedTopicEntity(topicId, entity.id);
     });
-  }, [onAnnotationChanged, topicId, mergeAddedTopicItem, articleScopeId, requestArticleScope]);
+  }, [onAnnotationChanged, topicId, mergeAddedTopicEntity, articleScopeId, requestArticleScope]);
 
   useEffect(() => {
-    return onAnnotationReplaced(({ oldId, item }) => {
-      if (articleScopeId && "reference" in item && item.reference === articleScopeId) {
-        if (state.annotationId === oldId && isPartialAnnotation(item)) selectAnnotation(item);
+    return onAnnotationReplaced(({ oldId, entity }) => {
+      if (articleScopeId && "reference" in entity && entity.reference === articleScopeId) {
+        if (state.annotationId === oldId && isPartialAnnotation(entity)) selectAnnotation(entity);
         void requestArticleScope();
         return;
       }
-      setItems((prev) => prev.map((value) => (value.id === oldId ? item : value)));
+      setEntities((prev) => prev.map((value) => (value.id === oldId ? entity : value)));
     });
   }, [
     onAnnotationReplaced,
@@ -531,26 +537,26 @@ export function ItemList({
         void requestArticleScope();
         return;
       }
-      setItems((prev) => prev.filter((p) => p.id !== id));
+      setEntities((prev) => prev.filter((p) => p.id !== id));
     });
   }, [onAnnotationRemoved, articleScopeId, requestArticleScope]);
 
   useEffect(() => {
     return onFeedsRefreshed(() => {
-      if (tagIds === undefined) return requestItems(selectedCollectionRef.current);
+      if (tagIds === undefined) return requestEntities(selectedScopeRef.current);
     });
-  }, [onFeedsRefreshed, requestItems, tagIds]);
+  }, [onFeedsRefreshed, requestEntities, tagIds]);
 
   useEffect(
     () =>
-      onTopicItemAdded(async ({ topicId: changedTopicId, itemId }) => {
-        await mergeAddedTopicItem(changedTopicId, itemId);
+      onTopicEntityAdded(async ({ topicId: changedTopicId, entityId }) => {
+        await mergeAddedTopicEntity(changedTopicId, entityId);
       }),
-    [mergeAddedTopicItem],
+    [mergeAddedTopicEntity],
   );
 
   return (
-    <div className={cx(className, css.ItemList)}>
+    <div className={cx(className, css.EntityList)}>
       <div className={css.Header}>
         <div className={cx(css.HeadingWrapper)}>
           {!isSelectableHeader && (
@@ -562,7 +568,7 @@ export function ItemList({
                 variant="overline"
                 sx={{ userSelect: "none" }}
               >
-                {selectedCollection?.title ?? "All items"}
+                {selectedScope?.title ?? "All items"}
               </Typography>
 
               {handleEdit && (
@@ -604,7 +610,7 @@ export function ItemList({
                 onOpen={() => setHeaderOpen(true)}
                 onClose={() => setHeaderOpen(false)}
                 value={headerValues}
-                renderValue={() => selectedCollection.title}
+                renderValue={() => selectedScope.title}
                 inputProps={{ "aria-label": "Browse collections and tags" }}
                 onChange={handleCollectionChange}
               >
@@ -656,12 +662,12 @@ export function ItemList({
                     <Typography component="span" variant="body2" sx={{ flexGrow: 1 }}>
                       {tag.name}{deleting.includes(tag.id) ? " — Deleting…" : merging.some((merge) => merge.survivorId === tag.id) ? " — Merging…" : renaming.includes(tag.id) ? " — Renaming…" : ""}
                     </Typography>
-                    {tags.some((item) => item.id === tag.id) && <TagActions tag={tag} />}
+                    {tags.some((entity) => entity.id === tag.id) && <TagActions tag={tag} />}
                   </MenuItem>
                 ))}
                 {siteOptions.length > 0 && <ListSubheader>Sites</ListSubheader>}
                 {siteOptions.map((site) => (
-                  <MenuItem key={site.hostname} value={site.hostname}>
+                  <MenuItem key={site.id} value={site.id}>
                     <Typography component="span" variant="body2">
                       {site.title}
                     </Typography>
@@ -695,7 +701,7 @@ export function ItemList({
           </ToggleButtonGroup>
         )}
 
-        {isTopic(selectedCollection) && (
+        {isTopic(selectedScope) && (
           <Select
             className={css.SortSelect}
             size="small"
@@ -748,7 +754,7 @@ export function ItemList({
         </Collapse>
       </div>
 
-      {!loading && items.length === 0 && (
+      {!loading && entities.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography component="div" variant="body2" color="text.disabled">
             {getEmptyMessage(articleScopeId ? "all" : (filter ?? "unread"), "")}
@@ -756,7 +762,7 @@ export function ItemList({
         </div>
       )}
 
-      {items.length > 0 && displayItems.length === 0 && (
+      {entities.length > 0 && displayEntities.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography component="div" variant="body2" color="text.disabled">
             {getEmptyMessage(articleScopeId ? "all" : (filter ?? "unread"), filterText)}
@@ -764,40 +770,40 @@ export function ItemList({
         </div>
       )}
 
-      {displayItems.length > 0 && (
+      {displayEntities.length > 0 && (
         <Virtuoso
           ref={virtuosoRef}
           className={css.List}
-          data={displayItems}
-          itemContent={(_index, item) => (
-            <div key={item.id} className={css.ListItem}>
+          data={displayEntities}
+          itemContent={(_index, entity) => (
+            <div key={entity.id} className={css.ListEntity}>
               <ListItemButton
                 ref={(node: HTMLDivElement | null) => {
-                  if (node) itemRefs.current.set(item.id, node);
-                  else itemRefs.current.delete(item.id);
+                  if (node) itemRefs.current.set(entity.id, node);
+                  else itemRefs.current.delete(entity.id);
                 }}
                 className={css.ListItemButton}
-                selected={selectedItemId === item.id}
+                selected={selectedEntityId === entity.id}
                 tabIndex={
-                  selectedItemId === item.id ||
-                  (!displayItems.some((value) => value.id === selectedItemId) &&
-                    displayItems[0].id === item.id)
+                  selectedEntityId === entity.id ||
+                  (!displayEntities.some((value) => value.id === selectedEntityId) &&
+                    displayEntities[0].id === entity.id)
                     ? 0
                     : -1
                 }
-                onKeyDown={handleItemKeyDown}
-                onClick={() => selectItem(item)}
+                onKeyDown={handleEntityKeyDown}
+                onClick={() => selectEntity(entity)}
               >
                 <ListItemText
                   primary={
                     <Quotes
-                      quoted={isPartialAnnotation(item)}
-                      color={isPartialAnnotation(item) ? item.color : undefined}
+                      quoted={isPartialAnnotation(entity)}
+                      color={isPartialAnnotation(entity) ? entity.color : undefined}
                     >
-                      {item.title}
+                      {entity.title}
                     </Quotes>
                   }
-                  secondary={<ItemStatus item={item} />}
+                  secondary={<EntityStatus entity={entity} />}
                   slotProps={{
                     primary: { className: css.Primary },
                     secondary: { className: css.Secondary },
@@ -809,7 +815,7 @@ export function ItemList({
         />
       )}
 
-      {loading && items.length === 0 && (
+      {loading && entities.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography component="div" variant="body2" color="text.disabled">
             Loading...

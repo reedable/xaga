@@ -55,8 +55,8 @@ export const ERROR_CODE = [
   // DomainError — BookmarksError
   "bookmark:io",
   "bookmark:invalid-url",
-  // DomainError — ItemError (own)
-  "item:io",
+  // DomainError — EntityError (own)
+  "entity:io",
   // DomainError — WriterError (own)
   "writer:shutting-down",
   "writer:closed",

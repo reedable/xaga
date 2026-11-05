@@ -12,14 +12,14 @@ const platform = { readEntry: mocks.read, readArticleScope: mocks.readArticle };
 const sink = { pushError: mocks.pushError };
 vi.mock("../../platform/Platform", () => ({ usePlatform: () => platform }));
 vi.mock("../../hooks/useErrorSink", () => ({ useErrorSink: () => sink }));
-vi.mock("./RelatedItemList", () => ({
-  RelatedItemList: ({ itemId }: { itemId: string }) => (
-    <div>Related to {itemId}</div>
+vi.mock("./RelatedEntityList", () => ({
+  RelatedEntityList: ({ entityId }: { entityId: string }) => (
+    <div>Related to {entityId}</div>
   ),
 }));
 vi.mock("./TopicMembership", () => ({
-  TopicMembership: ({ item }: { item: { id: string } }) => (
-    <div>Topics for {item.id}</div>
+  TopicMembership: ({ entity }: { entity: { id: string } }) => (
+    <div>Topics for {entity.id}</div>
   ),
 }));
 vi.mock("./EntryTags", () => ({ EntryTags: ({ entryId }: { entryId: string }) => <div>Tags for {entryId}</div> }));

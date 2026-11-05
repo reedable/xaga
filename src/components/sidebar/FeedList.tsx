@@ -9,7 +9,7 @@ import { type Feed } from "../../types";
 import sortSidebarCollections from "../../utils/sortSidebarCollections";
 import ExpandableList from "./ExpandableList";
 import css from "./FeedList.module.css";
-import SidebarItem from "./SidebarItem";
+import SidebarEntity from "./SidebarEntity";
 import SidebarSortControl from "./SidebarSortControl";
 import UnreadCount from "./UnreadCount";
 
@@ -76,7 +76,7 @@ export default function FeedList({
       )}
 
       {sortedFeeds.map((feed) => (
-        <SidebarItem
+        <SidebarEntity
           collection={feed}
           key={feed.id}
           icon={RssFeed}

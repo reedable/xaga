@@ -22,7 +22,7 @@ import SitesContext from "../../providers/SitesContext";
 import TopicsContext from "../../providers/TopicsContext";
 import FeedsContext from "../../providers/FeedsContext";
 import css from "./ShortcutList.module.css";
-import itemCss from "./SidebarItem.module.css";
+import itemCss from "./SidebarEntity.module.css";
 
 export default function MissingShortcut({ target }: { target: PinTarget }) {
   const { setPin, refreshPins } = usePins();

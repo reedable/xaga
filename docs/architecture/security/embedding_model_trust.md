@@ -47,7 +47,7 @@ Embedding startup has three states shared with the frontend: `loading`,
 `available`, and `unavailable`. The main application waits only while startup is
 `loading`. A model-verification or embeddings-database failure moves startup to
 `unavailable`: the diagnostic cause is logged, the application shell opens, and
-ordinary library workflows remain usable. Semantic search, related-item lookup,
+ordinary library workflows remain usable. Semantic search, related-entity lookup,
 and relevance ranking are withheld and the UI explains that embedding features
 are unavailable without exposing technical details.
 

@@ -48,7 +48,7 @@ export function Sidebar({
   const { expandedList, setExpandedList } = useSidebar(abortControllerRef);
   const { sites, pinnedSites = [] } = useSites(abortControllerRef);
 
-  const pinnedCollections = useMemo(
+  const pinnedTargets = useMemo(
     () =>
       [
         ...pinnedSites,
@@ -68,9 +68,9 @@ export function Sidebar({
     ({ title }: { title: string }) => title.toLocaleLowerCase().includes(normalizedFilter),
     [normalizedFilter],
   );
-  const filteredPinnedCollections = useMemo(
-    () => pinnedCollections.filter(matchesFilter),
-    [matchesFilter, pinnedCollections],
+  const filteredPinnedTargets = useMemo(
+    () => pinnedTargets.filter(matchesFilter),
+    [matchesFilter, pinnedTargets],
   );
   const filteredTopics = useMemo(() => topics.filter(matchesFilter), [matchesFilter, topics]);
   const filteredFeeds = useMemo(() => feeds.filter(matchesFilter), [feeds, matchesFilter]);
@@ -167,7 +167,7 @@ export function Sidebar({
       />
 
       <ShortcutList
-        shortcuts={filteredPinnedCollections}
+        shortcuts={filteredPinnedTargets}
         missing={missingPins.filter((pin) =>
           `${pin.type}: ${pin.type === "site" ? pin.hostname : pin.id}`
             .toLocaleLowerCase()

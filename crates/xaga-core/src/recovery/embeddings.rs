@@ -1,4 +1,4 @@
-//! The diff stage: walk the filesystem, compare against the index, and drive the repair. Each item
+//! The diff stage: walk the filesystem, compare against the index, and drive the repair. Each entity
 //! that needs embedding is streamed to the caller's `RepairSink`; the post-walk residue (feed embeds
 //! + deletes) is returned. Writable recovery first resumes durable tag conversions, then
 //! delegates source reads to persistence and streams ordinary repairs through the sink.
@@ -18,9 +18,9 @@ use crate::types::{Article, Feed, Kind};
 use super::{RepairResidue, RepairSink};
 
 /// Walks `{library_dir}/topics/` and `{library_dir}/entries/`, comparing each against LanceDB and
-/// streaming the items that need embedding to `sink` (topics before articles, so they index first).
+/// streaming the entities that need embedding to `sink` (topics before articles, so they index first).
 /// Returns the residue that can only be computed after the full walk: feed embeds and deletes.
-pub(crate) async fn repair_item_embeddings<S: RepairSink>(
+pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
     library_dir: &Path,
     db: &EmbeddingsDb,
     sink: &mut S,
@@ -38,7 +38,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     let pinned_ids = db.pinned_ids(Kind::Entry).await?;
     let pinned_topics = db.pinned_ids(Kind::Topic).await?;
     let pinned_feeds = db.pinned_ids(Kind::Feed).await?;
-    let db_meta = db.list_entries_meta().await?; // id → (checksum, reference, has_vector, kind, items, is_unread)
+    let db_meta = db.list_entries_meta().await?; // id → (checksum, reference, has_vector, kind, entities, is_unread)
 
     // Embedding is needed when the row is absent, its content changed, or its vector is missing.
     let needs_embedding = |id: &str, cksum: &str| -> bool {
@@ -77,7 +77,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
     };
 
     // Reconcile as we walk: record every on-disk id (for `to_delete` below) and stream only the
-    // items that need embedding straight to the sink. Nothing is accumulated here — an object that
+    // entities that need embedding straight to the sink. Nothing is accumulated here — an object that
     // doesn't need work is dropped the moment the walk moves past it, freeing its content.
     let mut fs_ids: HashSet<String> = HashSet::new();
 
@@ -142,7 +142,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
             continue;
         };
         let mut article = md_to_article(crate::md::Markdown {
-            id: crate::util::item_id(&path),
+            id: crate::util::entity_id(&path),
             fm,
             body,
         });
@@ -192,7 +192,7 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
         }
     }
 
-    // Feeds: diff like items — re-embed a feed only when its row is absent, its checksum changed,
+    // Feeds: diff like entities — re-embed a feed only when its row is absent, its checksum changed,
     // or its vector is pending. A feed row is stale when its feed is gone from disk.
 
     let empty = HashSet::new();
@@ -213,9 +213,9 @@ pub(crate) async fn repair_item_embeddings<S: RepairSink>(
 
     // A delete is only legitimate when the source was actually read: an id absent from `fs_ids` /
     // `feed_ids` means "gone from disk" only if the walk that built those sets was complete. If
-    // either item walk could not be fully observed (permission/IO failure — e.g. macOS TCC denying
+    // either entity walk could not be fully observed (permission/IO failure — e.g. macOS TCC denying
     // a bundled app access to the library), withhold *all* deletes rather than prune the mirror on
-    // a false "empty." The item walks proxy whole-library readability: entries/topics/feeds share
+    // a false "empty." The entity walks proxy whole-library readability: entries/topics/feeds share
     // one library root, so an access denial hits them together. Embeds/upserts for whatever *was*
     // read still proceed, and deletes self-heal on the next recovery once the source is readable.
     let source_reliable =
@@ -282,7 +282,7 @@ mod tests {
             summary: String::new(),
             tags: vec![],
             topics: vec![],
-            items: vec![],
+            entities: vec![],
             is_unread: false,
             is_pinned: false,
             vector: Some(vec![0.5f32; 384]),
@@ -336,7 +336,7 @@ mod tests {
             .unwrap();
 
         let mut sink = CollectingSink { articles: vec![] };
-        let residue = repair_item_embeddings(dir.path(), &db, &mut sink, None)
+        let residue = repair_entity_embeddings(dir.path(), &db, &mut sink, None)
             .await
             .unwrap();
         assert_eq!(residue.to_delete, vec!["deleted"]);
@@ -370,7 +370,7 @@ mod tests {
                     .unwrap();
             std::fs::write(&path, updated).unwrap();
             let mut sink = CollectingSink { articles: vec![] };
-            repair_item_embeddings(dir.path(), &db, &mut sink, None)
+            repair_entity_embeddings(dir.path(), &db, &mut sink, None)
                 .await
                 .unwrap();
             assert_eq!(sink.articles, ["entry"]);
@@ -379,7 +379,7 @@ mod tests {
                 .await
                 .unwrap();
             let mut sink = CollectingSink { articles: vec![] };
-            repair_item_embeddings(dir.path(), &db, &mut sink, None)
+            repair_entity_embeddings(dir.path(), &db, &mut sink, None)
                 .await
                 .unwrap();
             assert!(sink.articles.is_empty());
@@ -406,7 +406,7 @@ mod tests {
         row.is_unread = false;
         db.upsert(row).await.unwrap();
         let mut sink = CollectingSink { articles: vec![] };
-        repair_item_embeddings(dir.path(), &db, &mut sink, None)
+        repair_entity_embeddings(dir.path(), &db, &mut sink, None)
             .await
             .unwrap();
         assert_eq!(sink.articles, vec!["entry"]);
@@ -416,7 +416,7 @@ mod tests {
             .await
             .unwrap();
         let mut sink = CollectingSink { articles: vec![] };
-        repair_item_embeddings(dir.path(), &db, &mut sink, None)
+        repair_entity_embeddings(dir.path(), &db, &mut sink, None)
             .await
             .unwrap();
         assert!(sink.articles.is_empty());
@@ -469,7 +469,7 @@ mod tests {
         // Entry row fully current: correct checksum, vector present, membership recorded.
         let mut entry_row =
             EmbeddingEntry::from_article(&article, Some(vec![0.5f32; 384]), Vec::new());
-        entry_row.items = vec!["a1".to_string()];
+        entry_row.entities = vec!["a1".to_string()];
         db.upsert(entry_row).await.unwrap();
         // Annotation row: vector present, membership matching — only the checksum is stale.
         db.upsert(annotation_row(&article.annotations[0], "stale"))
@@ -477,7 +477,7 @@ mod tests {
             .unwrap();
 
         let mut sink = CollectingSink { articles: vec![] };
-        repair_item_embeddings(lib, &db, &mut sink, None)
+        repair_entity_embeddings(lib, &db, &mut sink, None)
             .await
             .unwrap();
         assert_eq!(sink.articles, vec!["abcdef123456".to_string()]);
@@ -490,7 +490,7 @@ mod tests {
         .await
         .unwrap();
         let mut sink = CollectingSink { articles: vec![] };
-        repair_item_embeddings(lib, &db, &mut sink, None)
+        repair_entity_embeddings(lib, &db, &mut sink, None)
             .await
             .unwrap();
         assert_eq!(sink.articles, Vec::<String>::new());
@@ -539,7 +539,7 @@ mod tests {
                 .await
                 .unwrap();
             let mut sink = CollectingSink { articles: vec![] };
-            repair_item_embeddings(lib, &db, &mut sink, None)
+            repair_entity_embeddings(lib, &db, &mut sink, None)
                 .await
                 .unwrap();
             assert_eq!(sink.articles, vec![article.meta.id.clone()]);
@@ -565,7 +565,7 @@ mod tests {
                 assert!(pins[0].is_pinned);
             }
             let mut sink = CollectingSink { articles: vec![] };
-            repair_item_embeddings(lib, &db, &mut sink, None)
+            repair_entity_embeddings(lib, &db, &mut sink, None)
                 .await
                 .unwrap();
             assert!(sink.articles.is_empty());
@@ -633,7 +633,7 @@ mod tests {
         }
 
         let mut sink = CollectingSink { articles: vec![] };
-        let residue = repair_item_embeddings(lib, &db, &mut sink, None)
+        let residue = repair_entity_embeddings(lib, &db, &mut sink, None)
             .await
             .unwrap();
 
@@ -686,7 +686,7 @@ mod tag_tests {
             .await
             .unwrap();
         let mut sink = Sink::default();
-        repair_item_embeddings(dir.path(), &db, &mut sink, Some(&writer))
+        repair_entity_embeddings(dir.path(), &db, &mut sink, Some(&writer))
             .await
             .unwrap();
         assert_eq!(sink.articles.len(), 1);
@@ -701,12 +701,12 @@ mod tag_tests {
             .unwrap();
         db.upsert(row).await.unwrap();
         sink.articles.clear();
-        repair_item_embeddings(dir.path(), &db, &mut sink, Some(&writer))
+        repair_entity_embeddings(dir.path(), &db, &mut sink, Some(&writer))
             .await
             .unwrap();
         assert!(sink.articles.is_empty());
         tokio::fs::write(&path, document("Other")).await.unwrap();
-        repair_item_embeddings(dir.path(), &db, &mut sink, Some(&writer))
+        repair_entity_embeddings(dir.path(), &db, &mut sink, Some(&writer))
             .await
             .unwrap();
         assert_eq!(sink.articles.len(), 1);
@@ -728,7 +728,7 @@ mod tag_tests {
         );
         db.reset().await.unwrap();
         sink.articles.clear();
-        repair_item_embeddings(dir.path(), &db, &mut sink, Some(&writer))
+        repair_entity_embeddings(dir.path(), &db, &mut sink, Some(&writer))
             .await
             .unwrap();
         sync_entry_row(&sink.articles[0], &db, &events, &events, &annotations)
@@ -755,7 +755,7 @@ mod tag_tests {
         .unwrap();
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
         assert!(
-            repair_item_embeddings(dir.path(), &db, &mut Sink::default(), None)
+            repair_entity_embeddings(dir.path(), &db, &mut Sink::default(), None)
                 .await
                 .is_err()
         );

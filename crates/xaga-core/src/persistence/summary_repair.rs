@@ -59,7 +59,7 @@ pub async fn repair_summaries(writer: &LibraryWriter, dry_run: bool) -> RepairRe
                     md::patch_document(&raw, &[("summary", serde_json::json!(summary))], None)?;
                     report.would_repair += 1;
                 } else {
-                    candidates.push((util::item_id(&path), summary.clone()));
+                    candidates.push((util::entity_id(&path), summary.clone()));
                 }
             } else {
                 report.unavailable += 1;

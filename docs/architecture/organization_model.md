@@ -18,6 +18,47 @@ explained by a code comment and the platform mapping, without a duplicate UI
 hostname field. Backend hostname naming remains unchanged. Do not fabricate
 creation timestamps or loaded member lists to make Site satisfy a common type.
 
+In `src/domain.ts`, Entity exposes identity and title. ManagedEntity adds an
+independent managed lifecycle, including creation time and optional descriptive
+metadata. Countable supplies summary counts without requiring a managed record.
+Collection combines Entity and Countable with the Feed/Topic/Site kind.
+`ManagedCollection<T>` combines Collection and ManagedEntity and adds
+typed member references for Feed and Topic. Loaded references may differ from
+authoritative counts. Guards require the appropriate kind and structural shape;
+an article carrying shortcut sorting counts does not become a Collection.
+
+Common collection selection dispatches to Feed, Topic, or Site scope and retains
+the active filter. Managed editing remains specific to Feed and Topic; Site
+Settings controls its pin. Built-in filter shortcuts and article reading scopes
+use their own navigation operations. Rust represents managed membership through
+Feed/Topic fields and derived Site summaries through `SiteSummary`, without a
+shared collection trait or any additional persisted representation. Its Entity
+trait supplies identity and title; ManagedEntity extends Entity with lifecycle
+accessors. Countable is independent of either trait.
+
+Derived domain types and APIs use the Entity vocabulary: ListEntity,
+RankedEntity, EmbeddedEntity, EntityFilter, and EntitySort. The list projection
+is `Entry | PartialAnnotation` in TypeScript and a flat ListEntity record in
+Rust. Code uses `selectEntity`, `listAllEntities`, and `list_all_entities` for
+the corresponding operations.
+
+Storage boundaries retain the existing topic frontmatter `items:` key and
+LanceDB `items` column, mapped to `entities` fields in Rust. Product labels
+such as All items and external component names such as Material UI's ListItem
+retain their existing spelling.
+
+Reference identifies a member entity without carrying that entity's descriptive
+data or managed lifecycle. It identifies the member, rather than the collection
+containing it; the collection's membership list establishes that relationship.
+
+Rust uses one Reference definition for collection members and saved topic
+membership. An annotation reference includes an optional `article_id` locating
+its containing Article; legacy references can omit that location. Markdown
+boundary adapters preserve the stored `type` and annotation `reference` fields.
+Native payloads use `__kind` and optional `articleId`, retained by the frontend
+reference model. Topic membership storage continues to support Entries and
+Annotations; the domain Reference also represents Notes.
+
 ## Pins and Shortcuts
 
 Pinning gives a navigation target access through Shortcuts. Library-scoped YAML
@@ -51,7 +92,7 @@ are `red`, `orange`, `yellow`, `green`, `blue`, and `violet`. Article marking
 commands carry optional color through the writer and cache; `bookmark:changed`
 announces assignment, removal, and recoloring even when membership stays marked.
 
-Every color-marked article is a bookmarked item eligible for bookmark export,
+Every color-marked article is a bookmarked Entry eligible for bookmark export,
 including formats unable to carry color. Saved includes marked articles and
 annotations. Article marking uses swatch interaction without comment input;
 whole-article comments remain a separate idea. Annotation color retains its

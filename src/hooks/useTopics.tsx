@@ -4,7 +4,7 @@ import type { CreateTopicInput } from "../platform/Platform";
 import TopicsContext from "../providers/TopicsContext";
 import type { Annotation, Entry, Filter, Topic, TopicSort } from "../types";
 import sortByUnreadCount from "../utils/sortByUnreadCount";
-import { emitTopicItemAdded } from "../events/topicMembership";
+import { emitTopicEntityAdded } from "../events/topicMembership";
 import { useErrorSink } from "./useErrorSink";
 import { useSidebar } from "./useSidebar";
 
@@ -51,7 +51,7 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
         );
         setMembership(topic.id, member.id, true);
         setTopics((prev) => [...prev, topic].sort(sortByUnreadCount));
-        emitTopicItemAdded({ topicId: topic.id, itemId: member.id });
+        emitTopicEntityAdded({ topicId: topic.id, entityId: member.id });
         return topic;
       } catch (e) {
         pushError(e);
@@ -84,11 +84,11 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     [abortControllerRef, platform, pushError]
   );
 
-  const listTopicItems = useCallback(
+  const listTopicEntities = useCallback(
     async (id: string, filter: Filter, sort: TopicSort) => {
       const signal = abortControllerRef.current.signal;
       try {
-        return await platform.listTopicItems(signal, id, filter, sort);
+        return await platform.listTopicEntities(signal, id, filter, sort);
       } catch {
         return undefined;
       }
@@ -96,18 +96,18 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     [abortControllerRef, platform]
   );
 
-  const addTopicItem = useCallback(
-    async (topicId: string, item: Entry | Annotation) => {
+  const addTopicEntity = useCallback(
+    async (topicId: string, entity: Entry | Annotation) => {
       const signal = abortControllerRef.current.signal;
       try {
-        const topic = await platform.addTopicItem(signal, topicId, item);
-        setMembership(topicId, item.id, true);
+        const topic = await platform.addTopicEntity(signal, topicId, entity);
+        setMembership(topicId, entity.id, true);
         setTopics((prev) =>
           prev
             .map((value) => (value.id === topic.id ? topic : value))
             .sort(sortByUnreadCount)
         );
-        emitTopicItemAdded({ topicId, itemId: item.id });
+        emitTopicEntityAdded({ topicId, entityId: entity.id });
         return topic;
       } catch (e) {
         pushError(e);
@@ -116,12 +116,12 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     [abortControllerRef, platform, pushError, setTopics, setMembership]
   );
 
-  const removeTopicItem = useCallback(
-    async (topicId: string, itemId: string) => {
+  const removeTopicEntity = useCallback(
+    async (topicId: string, entityId: string) => {
       const signal = abortControllerRef.current.signal;
       try {
-        const topic = await platform.removeTopicItem(signal, topicId, itemId);
-        setMembership(topicId, itemId, false);
+        const topic = await platform.removeTopicEntity(signal, topicId, entityId);
+        setMembership(topicId, entityId, false);
         setTopics((prev) =>
           prev
             .map((value) => (value.id === topic.id ? topic : value))
@@ -151,13 +151,13 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     [abortControllerRef, platform, getMemberships]
   );
 
-  const rankTopicsRelatedToItem = useCallback(
-    async (itemId: string, minSimilarity?: number) => {
+  const rankTopicsRelatedToEntity = useCallback(
+    async (entityId: string, minSimilarity?: number) => {
       const signal = abortControllerRef.current.signal;
       try {
-        return await platform.rankTopicsRelatedToItem(
+        return await platform.rankTopicsRelatedToEntity(
           signal,
-          itemId,
+          entityId,
           minSimilarity
         );
       } catch {
@@ -182,10 +182,10 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     createTopicWithMember,
     saveTopic,
     deleteTopic,
-    listTopicItems,
-    addTopicItem,
-    removeTopicItem,
+    listTopicEntities,
+    addTopicEntity,
+    removeTopicEntity,
     listEntryTopics,
-    rankTopicsRelatedToItem,
+    rankTopicsRelatedToEntity,
   };
 }

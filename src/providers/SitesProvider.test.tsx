@@ -40,7 +40,7 @@ beforeEach(async () => {
     {
       id: "example.com",
       title: "example.com",
-      hostname: "example.com",
+      __kind: "site" as const,
       entryCount: 1,
       unreadCount: 1,
     },
@@ -90,7 +90,7 @@ it("retains empty pinned Sites, updates counts, and removes only the pin project
   );
   expect(
     pinnedSites.map((site) => [
-      site.hostname,
+      site.id,
       site.entryCount,
       site.unreadCount,
     ])

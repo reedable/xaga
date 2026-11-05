@@ -11,11 +11,11 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
 import css from "./AppLayout.module.css";
-import { ItemView } from "./components/content/ItemView";
+import { EntityView } from "./components/content/EntityView";
 import EditSiteDialog from "./components/dialogs/EditSiteDialog";
 import EditFeedDialog from "./components/dialogs/EditFeedDialog";
 import EditTopicDialog from "./components/dialogs/EditTopicDialog";
-import { ItemList } from "./components/list/ItemList";
+import { EntityList } from "./components/list/EntityList";
 import { SearchResultList } from "./components/search/SearchResultList";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { TitleBar } from "./components/titlebar/TitleBar";
@@ -212,15 +212,15 @@ export function AppLayout() {
           />
         </Collapse>
 
-        <ItemList
-          className={css.ItemList}
+        <EntityList
+          className={css.EntityList}
           isSelectableHeader={autoHideSidebar || !showSidebar}
           onEditFeed={setEditingFeed}
           onEditTopic={setEditingTopic}
           onEditSite={setEditingSite}
         />
 
-        <ItemView className={css.ItemView} searchPanelRef={searchPanelRef} />
+        <EntityView className={css.EntityView} searchPanelRef={searchPanelRef} />
 
         <Collapse
           ref={searchPanelRef}

@@ -25,8 +25,8 @@ vi.mock("./AppLayout", () => ({
 vi.mock("./providers/ExpandedListProvider", () => ({
   ExpandedListProvider: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock("./providers/AllItemsCountsProvider", () => ({
-  AllItemsCountsProvider: ({ children }: { children: ReactNode }) => children,
+vi.mock("./providers/AllEntitiesCountsProvider", () => ({
+  AllEntitiesCountsProvider: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock("./providers/FeedsProvider", () => ({
   default: ({ children }: { children: ReactNode }) => children,

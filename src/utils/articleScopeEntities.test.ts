@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
 import type { Annotation, Article } from "../types";
-import { articleScopeItems as loadScopeItems } from "./articleScopeItems";
-const articleScopeItems = (article: Article) =>
-  loadScopeItems(article, async () => []);
+import { articleScopeEntities as loadScopeEntities } from "./articleScopeEntities";
+const articleScopeEntities = (article: Article) =>
+  loadScopeEntities(article, async () => []);
 
 function annotation(
   id: string,
@@ -39,7 +39,7 @@ function article(
 }
 
 it("places the article first, resolves rendered text and repeated passages, and puts unresolved anchors last", async () => {
-  const result = await articleScopeItems(
+  const result = await articleScopeEntities(
     article([
       annotation("missing", ["absent"]),
       annotation("second-repeat", ["Repeated"], [1]),
@@ -59,7 +59,7 @@ it("places the article first, resolves rendered text and repeated passages, and 
 });
 
 it("orders multi-segment annotations by their earliest resolved segment even when another segment is missing", async () => {
-  const result = await articleScopeItems(
+  const result = await articleScopeEntities(
     article([
       annotation("later", ["Last"]),
       annotation("partial", ["absent", "First", "Last"]),
@@ -75,7 +75,7 @@ it("orders multi-segment annotations by their earliest resolved segment even whe
 });
 
 it("matches occurrences within text nodes, omits hidden text, and rejects invalid anchors without hanging", async () => {
-  const result = await articleScopeItems(
+  const result = await articleScopeEntities(
     article(
       [
         annotation("cross-node", ["one two"]),
@@ -92,7 +92,7 @@ it("matches occurrences within text nodes, omits hidden text, and rejects invali
 });
 
 it("counts the same unavailable-image fallback text as the reader", async () => {
-  const result = await articleScopeItems(
+  const result = await articleScopeEntities(
     article(
       [
         annotation("paragraph", ["Repeated"], [1]),
@@ -114,13 +114,13 @@ it("uses the full body even when a summary-only anchor resolves, and falls back 
     annotation("body", ["Last"]),
   ]);
   value.description = "Summary passage.";
-  expect((await articleScopeItems(value)).map((item) => item.id)).toEqual([
+  expect((await articleScopeEntities(value)).map((item) => item.id)).toEqual([
     "article",
     "body",
     "summary",
   ]);
   value.content = "";
-  expect((await articleScopeItems(value)).map((item) => item.id)).toEqual([
+  expect((await articleScopeEntities(value)).map((item) => item.id)).toEqual([
     "article",
     "summary",
     "body",

@@ -202,10 +202,10 @@ fn selected_groups(
 #[tauri::command]
 pub async fn list_tag_entries(
     tag_ids: Vec<String>,
-    item_filter: Option<String>,
+    entity_filter: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<xaga_core::types::Entry>, AppError> {
-    let filter = super::parse_item_filter(item_filter)?;
+    let filter = super::parse_entity_filter(entity_filter)?;
     let Some(ids) = selected_groups(&Tags::read(&state.library_path()).await?, &tag_ids)? else {
         return Ok(vec![]);
     };

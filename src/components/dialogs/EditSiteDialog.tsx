@@ -30,7 +30,7 @@ export default function EditSiteDialog({
     setPinned(
       !!site &&
         pins.some(
-          (pin) => pin.type === "site" && pin.hostname === site.hostname
+          (pin) => pin.type === "site" && pin.hostname === site.id
         )
     );
   }, [site, pins]);
@@ -39,7 +39,7 @@ export default function EditSiteDialog({
     if (!site || readOnly || saving) return;
     setSaving(true);
     try {
-      await setPin({ type: "site", hostname: site.hostname }, pinned);
+      await setPin({ type: "site", hostname: site.id }, pinned);
       onClose();
     } catch (error) {
       pushError(error);
@@ -68,7 +68,7 @@ export default function EditSiteDialog({
         >
           <TextField
             label="Hostname"
-            value={site?.hostname ?? ""}
+            value={site?.id ?? ""}
             fullWidth
             slotProps={{ input: { readOnly: true } }}
           />

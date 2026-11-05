@@ -144,8 +144,8 @@ async fn verify(app: tauri::AppHandle) {
             path: &std::path::Path,
             files: &mut BTreeMap<PathBuf, Vec<u8>>,
         ) {
-            for item in std::fs::read_dir(path).unwrap() {
-                let path = item.unwrap().path();
+            for entity in std::fs::read_dir(path).unwrap() {
+                let path = entity.unwrap().path();
                 if path.is_dir() {
                     walk(root, &path, files);
                 } else {

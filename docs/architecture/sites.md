@@ -1,7 +1,9 @@
 # Sites
 
-A Site is a derived grouping of Entries by normalized hostname. It is a browsing
-projection, not a persisted entity, publisher identity, or ownership claim.
+A Site is a Collection with membership derived from Entries by normalized hostname.
+It has no independently managed lifecycle or membership record. Feed and Topic
+are ManagedCollections; Site is a browsing projection, not a persisted entity,
+publisher identity, or ownership claim. See [Collections and identity](organization_model.md#collections-and-identity).
 
 ## Identity
 
@@ -14,6 +16,12 @@ The URL parser performs hostname case and international-domain normalization.
 After parsing, normalization removes one terminal dot and then treats one leading
 `www.` as equivalent to its absence. No other subdomain is collapsed. The resulting
 hostname is both the stable identity and displayed title.
+
+The UI domain represents this identity as `Site.id`, with `__kind: "site"` and
+summary counts. The platform maps the native `SiteSummary.hostname` field to
+`id` and `title`; there is no separate UI `Site.hostname`. Native commands and
+stored Site pin references retain their `hostname` fields. Navigation carries
+`Site.id` in `siteHostname`, passing it to backend hostname parameters.
 
 ## Membership and counts
 

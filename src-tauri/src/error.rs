@@ -21,7 +21,7 @@ use xaga_core::persistence::bookmarks::BookmarksError;
 use xaga_core::persistence::entries::EntryError;
 use xaga_core::persistence::feeds::FeedError;
 use xaga_core::persistence::topics::TopicsError;
-use xaga_core::query::items::ItemError;
+use xaga_core::query::entities::EntityError;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum AppError {
@@ -124,7 +124,7 @@ app_from_domain!(
     EmbeddingsError,
     TopicsError,
     BookmarksError,
-    ItemError,
+    EntityError,
     WriterError,
     ProxyError,
 );

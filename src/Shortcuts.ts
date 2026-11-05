@@ -1,6 +1,6 @@
 import type { Shortcut } from "./types";
 
-export const ALL_ITEMS: Shortcut = {
+export const ALL_ENTITIES: Shortcut = {
   id: "__ALL__",
   title: "All items",
   createdAt: new Date(0).toISOString(),
@@ -9,4 +9,4 @@ export const ALL_ITEMS: Shortcut = {
   filter: "unread",
 };
 
-export const SHORTCUTS: Shortcut[] = [ALL_ITEMS];
+export const SHORTCUTS: Shortcut[] = [ALL_ENTITIES];

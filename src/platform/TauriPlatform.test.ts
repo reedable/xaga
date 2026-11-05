@@ -31,7 +31,7 @@ it("creates a topic with an existing member through one native command", async (
     entry_count: 1,
     unread_count: 1,
     is_pinned: false,
-    members: [{ __kind: "annotation", id: "annotation-1" }],
+    members: [{ __kind: "annotation", id: "annotation-1", articleId: "entry-1" }],
   });
   const member = {
     __kind: "annotation" as const,
@@ -53,13 +53,13 @@ it("creates a topic with an existing member through one native command", async (
 
   expect(result.id).toBe("topic-1");
   expect(result.members).toEqual([
-    { __kind: "annotation", id: "annotation-1" },
+    { __kind: "annotation", id: "annotation-1", articleId: "entry-1" },
   ]);
   expect(invokeMock).toHaveBeenLastCalledWith("create_topic_with_member", {
     title: "Reading",
     description: "Worth revisiting",
     threshold: 0.75,
-    item: { type: "annotation", id: "annotation-1", reference: "entry-1" },
+    entity: { __kind: "annotation", id: "annotation-1", articleId: "entry-1" },
   });
 });
 
@@ -71,13 +71,13 @@ it("reads the embedding startup state from the native boundary", async () => {
   expect(invokeMock).toHaveBeenLastCalledWith("embedding_startup_state");
 });
 
-it("maps All Items counts from the native boundary", async () => {
+it("maps All Entities counts from the native boundary", async () => {
   invokeMock.mockResolvedValueOnce({ entry_count: 12, unread_count: 4 });
-  await expect(new TauriPlatform().getAllItemsCounts()).resolves.toEqual({
+  await expect(new TauriPlatform().getAllEntitiesCounts()).resolves.toEqual({
     entryCount: 12,
     unreadCount: 4,
   });
-  expect(invokeMock).toHaveBeenLastCalledWith("get_all_items_counts");
+  expect(invokeMock).toHaveBeenLastCalledWith("get_all_entities_counts");
 });
 
 it("maps Site summaries and sends Site filters through the native boundary", async () => {
@@ -91,7 +91,7 @@ it("maps Site summaries and sends Site filters through the native boundary", asy
     {
       id: "example.com",
       title: "example.com",
-      hostname: "example.com",
+      __kind: "site",
       entryCount: 2,
       unreadCount: 1,
     },
@@ -105,13 +105,13 @@ it("maps Site summaries and sends Site filters through the native boundary", asy
   );
   expect(invokeMock).toHaveBeenLastCalledWith("list_site_entries", {
     hostname: "example.com",
-    itemFilter: "saved",
+    entityFilter: "saved",
   });
 });
 
-it("keeps All Items counts unavailable when the cache is unavailable", async () => {
+it("keeps All Entities counts unavailable when the cache is unavailable", async () => {
   invokeMock.mockResolvedValueOnce(null);
-  await expect(new TauriPlatform().getAllItemsCounts()).resolves.toBeNull();
+  await expect(new TauriPlatform().getAllEntitiesCounts()).resolves.toBeNull();
 });
 
 it("preserves native download evidence when reading diagnostics", async () => {
@@ -286,11 +286,11 @@ it("carries bookmark colors through commands, list payloads, and events", async 
   expect(updated.color).toBe("violet");
   expect(updated).not.toHaveProperty("isBookmarked");
   invokeMock.mockResolvedValueOnce([payload]);
-  const items = await platform.listAllItems(
+  const entities = await platform.listAllEntities(
     new AbortController().signal,
     "saved"
   );
-  expect(items[0]).toMatchObject({ id: "marked", color: "violet" });
+  expect(entities[0]).toMatchObject({ id: "marked", color: "violet" });
   const listener = vi.fn();
   await platform.onBookmarkChanged(listener);
   const { listen } = await import("@tauri-apps/api/event");
@@ -386,7 +386,7 @@ it("queries tag intersections and counts over the native read boundary", async (
   const ids = ["46fa4a27-1ddf-448a-a5e6-95691a29c602", "46fa4a27-1ddf-448a-a5e6-95691a29c603"];
   invokeMock.mockResolvedValueOnce([]);
   expect(await platform.listTagEntries(new AbortController().signal, ids, "saved")).toEqual([]);
-  expect(invokeMock).toHaveBeenLastCalledWith("list_tag_entries", { tagIds: ids, itemFilter: "saved" });
+  expect(invokeMock).toHaveBeenLastCalledWith("list_tag_entries", { tagIds: ids, entityFilter: "saved" });
   invokeMock.mockResolvedValueOnce(3);
   expect(await platform.countTagUnread(new AbortController().signal, ids)).toBe(3);
   expect(invokeMock).toHaveBeenLastCalledWith("count_tag_unread", { tagIds: ids });

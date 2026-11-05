@@ -84,7 +84,7 @@ vi.mock("../../utils/ArticleLoadAttempt", () => ({
     }),
   },
 }));
-vi.mock("./RelatedItemList", () => ({ RelatedItemList: () => null }));
+vi.mock("./RelatedEntityList", () => ({ RelatedEntityList: () => null }));
 vi.mock("./HtmlReader", () => ({
   HtmlReader: ({ html }: { html: string }) => {
     useEffect(() => {

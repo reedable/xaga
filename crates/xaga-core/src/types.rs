@@ -1,30 +1,30 @@
 //! Derived types: query shapes + UI filter/sort + on-disk storage shapes. The domain model
 //! lives in `crate::domain`; this module re-exports it and adds the shapes built around it.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 pub use crate::domain::{
-    Annotation, Article, COLOR_NAMES, Colorable, Countable, Document, Entry, Feed, Item, Kind,
-    Note, Pinnable, Reference, Topic, WebResource,
+    Annotation, Article, COLOR_NAMES, Colorable, Countable, Document, Entity, Entry, Feed, Kind,
+    ManagedEntity, Note, Pinnable, Reference, Topic, WebResource,
 };
 
-// ── ItemFilter ────────────────────────────────────────────────────────────────
+// ── EntityFilter ────────────────────────────────────────────────────────────────
 
-/// Mirrors the TypeScript `ItemFilter` type.
+/// Mirrors the shared variants of the TypeScript `Filter` type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ItemFilter {
-    /// All items. Default.
+pub enum EntityFilter {
+    /// All entities. Default.
     #[default]
     All,
-    /// Items with no saved `.md` body.
+    /// Entities with no saved `.md` body.
     Unread,
     /// Only color-marked Entries.
     Bookmarked,
-    /// Color-marked Entries and annotation items.
+    /// Color-marked Entries and annotation entities.
     Saved,
 }
 
-impl std::str::FromStr for ItemFilter {
+impl std::str::FromStr for EntityFilter {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -32,16 +32,16 @@ impl std::str::FromStr for ItemFilter {
             "unread" => Ok(Self::Unread),
             "bookmarked" => Ok(Self::Bookmarked),
             "saved" => Ok(Self::Saved),
-            other => Err(format!("unknown item filter: {other}")),
+            other => Err(format!("unknown entity filter: {other}")),
         }
     }
 }
 
-// ── ItemSort ──────────────────────────────────────────────────────────────────
+// ── EntitySort ──────────────────────────────────────────────────────────────────
 
-/// Ordering for a topic's item list. Mirrors the TypeScript sort options.
+/// Ordering for a topic's entity list. Mirrors the TypeScript sort options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ItemSort {
+pub enum EntitySort {
     /// Unified similarity ranking, descending. Default.
     #[default]
     Relevance,
@@ -49,70 +49,24 @@ pub enum ItemSort {
     Timestamp,
 }
 
-impl std::str::FromStr for ItemSort {
+impl std::str::FromStr for EntitySort {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "relevance" => Ok(Self::Relevance),
             "timestamp" => Ok(Self::Timestamp),
-            other => Err(format!("unknown item sort: {other}")),
+            other => Err(format!("unknown entity sort: {other}")),
         }
     }
 }
 
-// ── CollectionItem (on-disk storage shape) ──────────────────────────────────────
+// ── ListEntity (flat record for `list_all_entities`) ────────────────────────────────
 
-/// A member of a topic's `.md` `items:` list, in insertion order. This is the on-disk storage
-/// shape (serde tag `type`); the persistence layer maps it to the domain `Reference`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum CollectionItem {
-    Entry {
-        id: String,
-    },
-    /// `reference` is the parent article's ID, stored so the annotation can be looked up from the
-    /// article file without scanning the library. Older entries deserialize with `reference = ""`.
-    Annotation {
-        id: String,
-        #[serde(default)]
-        reference: String,
-    },
-}
-
-impl CollectionItem {
-    pub fn id(&self) -> &str {
-        match self {
-            Self::Entry { id } | Self::Annotation { id, .. } => id,
-        }
-    }
-}
-
-impl From<&CollectionItem> for Kind {
-    fn from(item: &CollectionItem) -> Self {
-        match item {
-            CollectionItem::Entry { .. } => Kind::Entry,
-            CollectionItem::Annotation { .. } => Kind::Annotation,
-        }
-    }
-}
-
-/// Maps the on-disk membership shape to the domain `Reference` (storage → domain at the boundary).
-impl From<&CollectionItem> for Reference {
-    fn from(item: &CollectionItem) -> Self {
-        match item {
-            CollectionItem::Entry { id } => Reference::Entry { id: id.clone() },
-            CollectionItem::Annotation { id, .. } => Reference::Annotation { id: id.clone() },
-        }
-    }
-}
-
-// ── ListItem (flat record for `list_all_items`) ────────────────────────────────
-
-/// A flat record in the items list returned by `list_all_items`: an entry (any state) or an
+/// A flat record in the entities list returned by `list_all_entities`: an entry (any state) or an
 /// annotation row. The TS adapter splits it into the domain `Entry | PartialAnnotation` union
 /// (annotations set reference/color).
 #[derive(Debug, Serialize)]
-pub struct ListItem {
+pub struct ListEntity {
     pub id: String,
     pub title: String,
     pub created_at: String,
@@ -127,6 +81,8 @@ pub struct ListItem {
 
 // ── SiteSummary (derived from Entry URLs) ────────────────────────────────────
 
+/// Summary of a derived Collection, without a managed entity record or member list.
+/// The frontend maps `hostname` to `Site.id`; the native payload retains hostname naming.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SiteSummary {
     pub hostname: String,
@@ -134,13 +90,15 @@ pub struct SiteSummary {
     pub unread_count: usize,
 }
 
-impl Item for ListItem {
+impl Entity for ListEntity {
     fn id(&self) -> &str {
         &self.id
     }
     fn title(&self) -> &str {
         &self.title
     }
+}
+impl ManagedEntity for ListEntity {
     fn created_at(&self) -> &str {
         &self.created_at
     }
@@ -166,11 +124,11 @@ pub struct PartialAnnotation {
     pub url: String,
 }
 
-// ── RankedItem ──────────────────────────────────────────────────────────────────
+// ── RankedEntity ──────────────────────────────────────────────────────────────────
 
-/// A minimal similarity result: an item ID and its cosine similarity score.
+/// A minimal similarity result: an entity ID and its cosine similarity score.
 #[derive(Debug, Serialize)]
-pub struct RankedItem {
+pub struct RankedEntity {
     pub id: String,
     pub similarity: f32,
 }
@@ -191,13 +149,15 @@ pub struct EmbeddedEntry {
     pub reference: String,
 }
 
-impl Item for EmbeddedEntry {
+impl Entity for EmbeddedEntry {
     fn id(&self) -> &str {
         self.entry.id()
     }
     fn title(&self) -> &str {
         self.entry.title()
     }
+}
+impl ManagedEntity for EmbeddedEntry {
     fn created_at(&self) -> &str {
         self.entry.created_at()
     }
@@ -246,7 +206,7 @@ pub struct EmbeddedFeed {
 /// Untagged union of all embedded search result shapes.
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
-pub enum EmbeddedItem {
+pub enum EmbeddedEntity {
     Topic(EmbeddedTopic),
     Feed(EmbeddedFeed),
     Entry(EmbeddedEntry),

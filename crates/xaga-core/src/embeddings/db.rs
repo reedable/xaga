@@ -37,7 +37,7 @@ pub struct KindStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-pub struct AllItemsCounts {
+pub struct AllEntitiesCounts {
     pub entry_count: usize,
     pub unread_count: usize,
 }
@@ -50,8 +50,8 @@ const DEFAULT_MAX_COSINE_DISTANCE: f32 = 0.5;
 /// Converts `min_similarity` / `max_similarity` into a `(lower, upper)` cosine
 /// distance range for use with `distance_range(lower, upper)`.
 ///
-/// - `min_similarity` → upper bound on distance (items must be *at most* this far)
-/// - `max_similarity` → lower bound on distance (items must be *at least* this far)
+/// - `min_similarity` → upper bound on distance (entities must be *at most* this far)
+/// - `max_similarity` → lower bound on distance (entities must be *at least* this far)
 ///
 /// When both are `None`, the default threshold is applied as the upper bound.
 fn similarity_bounds(
@@ -83,8 +83,8 @@ pub struct EmbeddingEntry {
     pub summary: String,
     pub tags: Vec<String>,
     pub topics: Vec<String>,
-    /// The ids of the Item entities that belong to this row — a single membership meaning, agnostic
-    /// to the item kind (Topic/Entry/Annotation/…). Which relation it denormalizes depends only on
+    /// The ids of the managed entities that belong to this row — a single membership meaning, agnostic
+    /// to the entity kind (Topic/Entry/Annotation/…). Which relation it denormalizes depends only on
     /// the owning row:
     /// - **topic rows**: the topic's members — the prior-membership base for the reverse-index delta,
     ///   mirroring the topic `.md` `items:` field (the SoT).
@@ -94,7 +94,7 @@ pub struct EmbeddingEntry {
     ///   present and this stale — a harmless re-reconcile on the next pass.
     ///
     /// Empty for annotation/feed rows. Nullable in storage; reads back empty when absent/null.
-    pub items: Vec<String>,
+    pub entities: Vec<String>,
     pub is_unread: bool,
     pub is_pinned: bool,
     /// `None` until the embedding is computed (row may be inserted before embedding).
@@ -179,7 +179,7 @@ fn entries_to_batch(
 
     let mut tags_builder = ListBuilder::new(StringBuilder::new());
     let mut topics_builder = ListBuilder::new(StringBuilder::new());
-    let mut items_builder = ListBuilder::new(StringBuilder::new());
+    let mut entities_builder = ListBuilder::new(StringBuilder::new());
 
     let mut vec_values: Vec<f32> = Vec::with_capacity(n * dim);
     let mut vec_validity: Vec<bool> = Vec::with_capacity(n);
@@ -209,10 +209,10 @@ fn entries_to_batch(
         }
         topics_builder.append(true);
 
-        for item in &entry.items {
-            items_builder.values().append_value(item);
+        for entity in &entry.entities {
+            entities_builder.values().append_value(entity);
         }
-        items_builder.append(true);
+        entities_builder.append(true);
 
         match entry.vector {
             Some(v) => {
@@ -250,7 +250,7 @@ fn entries_to_batch(
             Arc::new(StringArray::from(summaries)),
             Arc::new(tags_builder.finish()),
             Arc::new(topics_builder.finish()),
-            Arc::new(items_builder.finish()),
+            Arc::new(entities_builder.finish()),
             Arc::new(BooleanArray::from(unread)),
             Arc::new(BooleanArray::from(pinned)),
             Arc::new(vector_array),
@@ -270,7 +270,7 @@ async fn create_empty_documents_table(
     )?;
     let empty_tags = ListBuilder::new(StringBuilder::new()).finish();
     let empty_topics = ListBuilder::new(StringBuilder::new()).finish();
-    let empty_items = ListBuilder::new(StringBuilder::new()).finish();
+    let empty_entities = ListBuilder::new(StringBuilder::new()).finish();
     let empty_batch = RecordBatch::try_new(
         schema.clone(),
         vec![
@@ -287,7 +287,7 @@ async fn create_empty_documents_table(
             Arc::new(StringArray::from(Vec::<&str>::new())), // summary
             Arc::new(empty_tags),                            // tags
             Arc::new(empty_topics),                          // topics
-            Arc::new(empty_items),                           // items
+            Arc::new(empty_entities),                        // items
             Arc::new(BooleanArray::from(Vec::<bool>::new())), // is_unread
             Arc::new(BooleanArray::from(Vec::<bool>::new())), // is_pinned
             Arc::new(empty_vector),
@@ -550,14 +550,14 @@ impl EmbeddingsDb {
                     log::info!(
                         "EmbeddingsDb: adding 'items' column to existing table (metadata-only)"
                     );
-                    let items_schema = Arc::new(Schema::new(vec![Field::new(
+                    let entities_schema = Arc::new(Schema::new(vec![Field::new(
                         "items",
                         DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
                         true,
                     )]));
                     table
                         .add_columns(
-                            lancedb::table::NewColumnTransform::AllNulls(items_schema),
+                            lancedb::table::NewColumnTransform::AllNulls(entities_schema),
                             None,
                         )
                         .await?;
@@ -768,16 +768,16 @@ impl EmbeddingsDb {
     }
 
     /// Mixed list membership is evaluated by indexed kind/color predicates in LanceDB.
-    pub(crate) async fn filter_items(
+    pub(crate) async fn filter_entities(
         &self,
-        filter: crate::types::ItemFilter,
-    ) -> Result<Vec<crate::types::ListItem>, EmbeddingsError> {
-        use crate::types::{ItemFilter, ListItem};
+        filter: crate::types::EntityFilter,
+    ) -> Result<Vec<crate::types::ListEntity>, EmbeddingsError> {
+        use crate::types::{EntityFilter, ListEntity};
         let predicate = match filter {
-            ItemFilter::All => "kind IN ('entry', 'annotation')",
-            ItemFilter::Unread => "kind = 'entry' AND is_unread = true",
-            ItemFilter::Bookmarked => "kind = 'entry' AND color != ''",
-            ItemFilter::Saved => "(kind = 'entry' AND color != '') OR kind = 'annotation'",
+            EntityFilter::All => "kind IN ('entry', 'annotation')",
+            EntityFilter::Unread => "kind = 'entry' AND is_unread = true",
+            EntityFilter::Bookmarked => "kind = 'entry' AND color != ''",
+            EntityFilter::Saved => "(kind = 'entry' AND color != '') OR kind = 'annotation'",
         };
         let batches: Vec<RecordBatch> = self
             .table
@@ -788,12 +788,12 @@ impl EmbeddingsDb {
             .await?
             .try_collect()
             .await?;
-        let mut items = Vec::new();
+        let mut entities = Vec::new();
         for batch in &batches {
             if let Some(cols) = BatchSummaryColumns::from_batch(batch) {
                 for i in 0..batch.num_rows() {
                     let entry = cols.summary_at(i);
-                    items.push(ListItem {
+                    entities.push(ListEntity {
                         id: entry.id,
                         title: entry.title,
                         created_at: entry.created_at,
@@ -807,12 +807,12 @@ impl EmbeddingsDb {
                 }
             }
         }
-        Ok(items)
+        Ok(entities)
     }
 
     fn tag_predicate(
         ids: &[String],
-        filter: crate::types::ItemFilter,
+        filter: crate::types::EntityFilter,
     ) -> Result<String, EmbeddingsError> {
         let mut predicate = Kind::Entry.predicate().to_string();
         let mut labels = Vec::new();
@@ -828,11 +828,11 @@ impl EmbeddingsDb {
             predicate.push_str(&format!(" AND array_has_all(tags, [{}])", labels.join(",")));
         }
         match filter {
-            crate::types::ItemFilter::Unread => predicate.push_str(" AND is_unread = true"),
-            crate::types::ItemFilter::Saved | crate::types::ItemFilter::Bookmarked => {
+            crate::types::EntityFilter::Unread => predicate.push_str(" AND is_unread = true"),
+            crate::types::EntityFilter::Saved | crate::types::EntityFilter::Bookmarked => {
                 predicate.push_str(" AND color != ''")
             }
-            crate::types::ItemFilter::All => {}
+            crate::types::EntityFilter::All => {}
         }
         Ok(predicate)
     }
@@ -841,7 +841,7 @@ impl EmbeddingsDb {
     pub async fn list_tag_entries(
         &self,
         ids: &[String],
-        filter: crate::types::ItemFilter,
+        filter: crate::types::EntityFilter,
     ) -> Result<Vec<Entry>, EmbeddingsError> {
         self.list_tag_entry_groups(
             &ids.iter().map(|id| vec![id.clone()]).collect::<Vec<_>>(),
@@ -854,7 +854,7 @@ impl EmbeddingsDb {
     pub async fn list_tag_entry_groups(
         &self,
         groups: &[Vec<String>],
-        filter: crate::types::ItemFilter,
+        filter: crate::types::EntityFilter,
     ) -> Result<Vec<Entry>, EmbeddingsError> {
         let predicate = Self::tag_group_predicate(groups, filter)?;
         let batches: Vec<RecordBatch> = self
@@ -867,7 +867,7 @@ impl EmbeddingsDb {
             .try_collect()
             .await?;
         let mut entries = entries_from_batches(&batches);
-        crate::query::filter::sort_items(&mut entries);
+        crate::query::filter::sort_entities(&mut entries);
         Ok(entries)
     }
 
@@ -891,7 +891,9 @@ impl EmbeddingsDb {
         self.reload().await?;
         let predicates = tag_ids
             .iter()
-            .map(|id| Self::tag_predicate(std::slice::from_ref(id), crate::types::ItemFilter::All))
+            .map(|id| {
+                Self::tag_predicate(std::slice::from_ref(id), crate::types::EntityFilter::All)
+            })
             .collect::<Result<Vec<_>, _>>()?;
         if predicates.is_empty() {
             return Ok(Vec::new());
@@ -943,7 +945,7 @@ impl EmbeddingsDb {
         if ids.len() > 1024 {
             return Err(std::io::Error::other("tag batch exceeds 1024 Entries").into());
         }
-        let predicate = Self::tag_predicate(&[tag_id.into()], crate::types::ItemFilter::All)?;
+        let predicate = Self::tag_predicate(&[tag_id.into()], crate::types::EntityFilter::All)?;
         let ids = ids
             .iter()
             .map(|id| format!("'{}'", id.replace('\'', "''")))
@@ -952,7 +954,7 @@ impl EmbeddingsDb {
         let removed = format!("array_remove(tags, '{tag_id}')");
         let selected = format!("{predicate} AND id IN ({ids})");
         if let Some(replacement) = replacement {
-            Self::tag_predicate(&[replacement.into()], crate::types::ItemFilter::All)?;
+            Self::tag_predicate(&[replacement.into()], crate::types::EntityFilter::All)?;
             // Two idempotent subsets avoid unsupported CASE expressions. A crash between
             // updates leaves the remaining losing IDs eligible for the persisted replay.
             let has_survivor = format!("array_has_all(tags, ['{replacement}'])");
@@ -980,7 +982,7 @@ impl EmbeddingsDb {
     }
 
     pub(crate) async fn count_tag_entries(&self, id: &str) -> Result<u64, EmbeddingsError> {
-        let predicate = Self::tag_predicate(&[id.into()], crate::types::ItemFilter::All)?;
+        let predicate = Self::tag_predicate(&[id.into()], crate::types::EntityFilter::All)?;
         Ok(self.table.count_rows(Some(predicate)).await? as u64)
     }
 
@@ -991,7 +993,7 @@ impl EmbeddingsDb {
         entry: &str,
         tags: &[String],
     ) -> Result<(), EmbeddingsError> {
-        Self::tag_predicate(tags, crate::types::ItemFilter::All)?;
+        Self::tag_predicate(tags, crate::types::EntityFilter::All)?;
         let value = if tags.is_empty() {
             "arrow_cast([], 'List(Utf8)')".to_owned()
         } else {
@@ -1017,7 +1019,7 @@ impl EmbeddingsDb {
 
     fn tag_group_predicate(
         groups: &[Vec<String>],
-        filter: crate::types::ItemFilter,
+        filter: crate::types::EntityFilter,
     ) -> Result<String, EmbeddingsError> {
         let mut predicate = Self::tag_predicate(&[], filter)?;
         for group in groups {
@@ -1027,7 +1029,7 @@ impl EmbeddingsDb {
             let alternatives = group
                 .iter()
                 .map(|id| {
-                    Self::tag_predicate(std::slice::from_ref(id), crate::types::ItemFilter::All)
+                    Self::tag_predicate(std::slice::from_ref(id), crate::types::EntityFilter::All)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             predicate.push_str(&format!(" AND (({}))", alternatives.join(") OR (")));
@@ -1043,14 +1045,14 @@ impl EmbeddingsDb {
             .table
             .count_rows(Some(Self::tag_group_predicate(
                 groups,
-                crate::types::ItemFilter::Unread,
+                crate::types::EntityFilter::Unread,
             )?))
             .await?)
     }
 
     /// Count the intersection once, independently of list/text filters.
     pub async fn count_tag_unread(&self, ids: &[String]) -> Result<usize, EmbeddingsError> {
-        let predicate = Self::tag_predicate(ids, crate::types::ItemFilter::Unread)?;
+        let predicate = Self::tag_predicate(ids, crate::types::EntityFilter::Unread)?;
         Ok(self.table.count_rows(Some(predicate)).await?)
     }
 
@@ -1202,9 +1204,9 @@ impl EmbeddingsDb {
         Ok(n)
     }
 
-    /// Counts the rows shown by All Items and the unread entry subset without
+    /// Counts the rows shown by All Entities and the unread entry subset without
     /// materializing rows or vectors.
-    pub async fn all_items_counts(&self) -> Result<AllItemsCounts, EmbeddingsError> {
+    pub async fn all_entities_counts(&self) -> Result<AllEntitiesCounts, EmbeddingsError> {
         let (entry_count, unread_count) = tokio::try_join!(
             self.table
                 .count_rows(Some("kind = 'entry' OR kind = 'annotation'".to_string())),
@@ -1212,7 +1214,7 @@ impl EmbeddingsDb {
         )
         .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
-        Ok(AllItemsCounts {
+        Ok(AllEntitiesCounts {
             entry_count,
             unread_count,
         })
@@ -1223,8 +1225,8 @@ impl EmbeddingsDb {
     /// `has_vector` is false for rows inserted before their embedding was computed.
     /// `kind` is the row-kind discriminator ("entry" | "annotation" | "topic" | "feed").
     /// Used by recovery to determine which files need (re-)embedding.
-    /// Returns `id → (checksum, reference, has_vector, kind, items, is_unread)` for every row, in one full scan.
-    /// `items` is the row's membership list — for entry rows, the recorded annotation membership that
+    /// Returns `id → (checksum, reference, has_vector, kind, entities, is_unread)` for every row, in one full scan.
+    /// `entities` is the row's membership list — for entry rows, the recorded annotation membership that
     /// recovery diffs against the `.md` to gate the annotation reconcile without a per-entry query.
     pub(crate) async fn list_entries_meta(
         &self,
@@ -1285,7 +1287,7 @@ impl EmbeddingsDb {
             let tags = batch
                 .column_by_name("tags")
                 .and_then(|c| c.as_any().downcast_ref::<ListArray>());
-            let items = batch
+            let entities = batch
                 .column_by_name("items")
                 .and_then(|c| c.as_any().downcast_ref::<ListArray>());
 
@@ -1294,7 +1296,7 @@ impl EmbeddingsDb {
                     let reference = references.map_or(String::new(), |a| a.value(i).to_string());
                     let has_vector = vectors.map_or(false, |v| !v.is_null(i));
                     let kind = kinds.map_or(String::new(), |a| a.value(i).to_string());
-                    let item_ids = items
+                    let entity_ids = entities
                         .filter(|a| !a.is_null(i))
                         .map(|a| {
                             let row = a.value(i);
@@ -1312,7 +1314,7 @@ impl EmbeddingsDb {
                             reference,
                             has_vector,
                             kind,
-                            item_ids,
+                            entity_ids,
                             unread.is_some_and(|a| a.value(i)),
                             colors.map_or(String::new(), |a| a.value(i).to_owned()),
                             tags.filter(|a| !a.is_null(i))
@@ -1417,8 +1419,9 @@ impl EmbeddingsDb {
                     .column_by_name(name)
                     .and_then(|c| c.as_any().downcast_ref::<ListArray>())
                     .map(|arr| {
-                        let item = arr.value(0);
-                        item.as_any()
+                        let entity = arr.value(0);
+                        entity
+                            .as_any()
                             .downcast_ref::<StringArray>()
                             .map(|s| (0..s.len()).map(|j| s.value(j).to_string()).collect())
                             .unwrap_or_default()
@@ -1463,7 +1466,7 @@ impl EmbeddingsDb {
                 summary: get_str("summary"),
                 tags: read_list("tags"),
                 topics: read_list("topics"),
-                items: read_list("items"),
+                entities: read_list("items"),
                 is_unread: get_bool("is_unread"),
                 is_pinned: get_bool("is_pinned"),
                 vector,
@@ -1473,16 +1476,16 @@ impl EmbeddingsDb {
         Ok(None)
     }
 
-    /// Finds the topic ids recorded on an item row without reading its embedding vector.
-    pub async fn find_topic_ids_by_item_id(
+    /// Finds the topic ids recorded on an entity row without reading its embedding vector.
+    pub async fn find_topic_ids_by_entity_id(
         &self,
-        item_id: &str,
+        entity_id: &str,
     ) -> Result<Option<Vec<String>>, EmbeddingsError> {
-        self.find_string_list_by_id(item_id, "topics").await
+        self.find_string_list_by_id(entity_id, "topics").await
     }
 
-    /// Finds the item ids recorded on a topic row without reading its embedding vector.
-    pub(crate) async fn find_item_ids_by_topic_id(
+    /// Finds the entity ids recorded on a topic row without reading its embedding vector.
+    pub(crate) async fn find_entity_ids_by_topic_id(
         &self,
         topic_id: &str,
     ) -> Result<Option<Vec<String>>, EmbeddingsError> {
@@ -1668,7 +1671,7 @@ impl EmbeddingsDb {
 
     /// Full-scan similarity search returning scores alongside entries.
     ///
-    /// ANN (`nearest_to`) cannot efficiently find items at distance ≥ N because
+    /// ANN (`nearest_to`) cannot efficiently find entities at distance ≥ N because
     /// it optimizes for the *closest* neighbors. When `max_similarity` is set we
     /// fall back to a full table scan, compute cosine similarities in Rust, and
     /// filter/sort manually. For typical corpus sizes (tens of thousands of
@@ -1811,9 +1814,9 @@ impl EmbeddingsDb {
             .collect())
     }
 
-    /// Samples up to `sample_size` items from the corpus and returns every
-    /// pairwise cosine similarity ≥ `min_similarity` between each sample item
-    /// and all other items in the database.
+    /// Samples up to `sample_size` entities from the corpus and returns every
+    /// pairwise cosine similarity ≥ `min_similarity` between each sample entity
+    /// and all other entities in the database.
     ///
     /// Uses a single full table scan for efficiency: O(sample_size × n) dot
     /// products rather than O(sample_size) full scans.
@@ -1834,7 +1837,7 @@ impl EmbeddingsDb {
             .await
             .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
 
-        let mut all_items: Vec<Vec<f32>> = Vec::new();
+        let mut all_entities: Vec<Vec<f32>> = Vec::new();
 
         for batch in &batches {
             let Some(vec_col) = batch
@@ -1859,11 +1862,11 @@ impl EmbeddingsDb {
                     continue;
                 };
 
-                all_items.push(vec_values);
+                all_entities.push(vec_values);
             }
         }
 
-        let n = all_items.len();
+        let n = all_entities.len();
 
         if n < 2 {
             return Ok(vec![]);
@@ -1878,7 +1881,7 @@ impl EmbeddingsDb {
         };
 
         // Pre-compute norms once.
-        let norms: Vec<f32> = all_items
+        let norms: Vec<f32> = all_entities
             .iter()
             .map(|v| v.iter().map(|x| x * x).sum::<f32>().sqrt())
             .collect();
@@ -1892,7 +1895,7 @@ impl EmbeddingsDb {
                 continue;
             }
 
-            let qv = &all_items[si];
+            let qv = &all_entities[si];
 
             for j in 0..n {
                 if j == si {
@@ -1905,7 +1908,7 @@ impl EmbeddingsDb {
                     continue;
                 }
 
-                let tv = &all_items[j];
+                let tv = &all_entities[j];
                 let dot: f32 = qv.iter().zip(tv.iter()).map(|(a, b)| a * b).sum();
                 let sim = dot / (query_norm * vec_norm);
 
@@ -1918,8 +1921,8 @@ impl EmbeddingsDb {
         Ok(scores)
     }
 
-    /// Returns items whose vectors are most similar to the item identified by
-    /// `id`, excluding that item itself.
+    /// Returns entities whose vectors are most similar to the entity identified by
+    /// `id`, excluding that entity itself.
     ///
     /// - `limit`: cap on results; `None` returns all matches above the threshold.
     /// - `min_similarity`: cosine similarity floor in [0, 1]; `None` uses
@@ -1967,7 +1970,7 @@ impl EmbeddingsDb {
             })
             .ok_or_else(|| EmbeddingsError::LanceDb(format!("id not found: {id}")))?;
 
-        // 2. Search, excluding the item itself.
+        // 2. Search, excluding the entity itself.
         if max_similarity.is_some() {
             let exclude = HashSet::from([id.to_string()]);
 
@@ -2045,7 +2048,7 @@ impl EmbeddingsDb {
         Ok(results)
     }
 
-    /// Returns items whose vectors are most similar to the given query vector.
+    /// Returns entities whose vectors are most similar to the given query vector.
     /// Unlike `search_related`, no ID lookup is performed and nothing is excluded.
     pub(crate) async fn search_by_vector(
         &self,
@@ -2135,7 +2138,7 @@ mod tests {
 
     #[tokio::test]
     async fn tag_browsing_intersects_direct_assignments_and_counts_each_entry_once() {
-        use crate::types::ItemFilter;
+        use crate::types::EntityFilter;
         let dir = tempfile::tempdir().unwrap();
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
         let mut both = sample("both", "entry", None);
@@ -2165,20 +2168,26 @@ mod tests {
         db.ensure_indexes().await.unwrap();
         db.ensure_indexes().await.unwrap();
         let ids = vec![TAG_A.into(), TAG_B.into()];
-        let list = db.list_tag_entries(&ids, ItemFilter::All).await.unwrap();
+        let list = db.list_tag_entries(&ids, EntityFilter::All).await.unwrap();
         assert_eq!(list.len(), 2);
         assert!(list.iter().any(|entry| entry.id == "both"));
         assert_eq!(db.count_tag_unread(&ids).await.unwrap(), 1);
         assert_eq!(
-            db.list_tag_entries(&ids, ItemFilter::Unread).await.unwrap()[0].id,
+            db.list_tag_entries(&ids, EntityFilter::Unread)
+                .await
+                .unwrap()[0]
+                .id,
             "both"
         );
         assert_eq!(
-            db.list_tag_entries(&ids, ItemFilter::Saved).await.unwrap()[0].id,
+            db.list_tag_entries(&ids, EntityFilter::Saved)
+                .await
+                .unwrap()[0]
+                .id,
             "both"
         );
         assert_eq!(
-            db.list_tag_entries(&[], ItemFilter::All)
+            db.list_tag_entries(&[], EntityFilter::All)
                 .await
                 .unwrap()
                 .len(),
@@ -2186,17 +2195,17 @@ mod tests {
         );
         assert_eq!(db.count_tag_unread(&[]).await.unwrap(), 2);
         assert!(
-            db.list_tag_entries(&[uuid::Uuid::new_v4().to_string()], ItemFilter::All)
+            db.list_tag_entries(&[uuid::Uuid::new_v4().to_string()], EntityFilter::All)
                 .await
                 .unwrap()
                 .is_empty()
         );
         assert!(
-            db.list_tag_entries(&["x') OR true --".into()], ItemFilter::All)
+            db.list_tag_entries(&["x') OR true --".into()], EntityFilter::All)
                 .await
                 .is_err()
         );
-        let predicate = EmbeddingsDb::tag_predicate(&ids, ItemFilter::Unread).unwrap();
+        let predicate = EmbeddingsDb::tag_predicate(&ids, EntityFilter::Unread).unwrap();
         let plan = db
             .table
             .query()
@@ -2219,7 +2228,7 @@ mod tests {
         .unwrap();
         assert_eq!(db.count_tag_unread(&ids).await.unwrap(), 0);
         assert_eq!(
-            db.list_tag_entries(&ids, ItemFilter::All)
+            db.list_tag_entries(&ids, EntityFilter::All)
                 .await
                 .unwrap()
                 .len(),
@@ -2228,7 +2237,7 @@ mod tests {
         let readonly = EmbeddingsDb::open_readonly(dir.path()).await.unwrap();
         assert_eq!(
             readonly
-                .list_tag_entries(&[], ItemFilter::All)
+                .list_tag_entries(&[], EntityFilter::All)
                 .await
                 .unwrap()
                 .len(),
@@ -2239,7 +2248,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "explicit bounded tag-query scaling measurement"]
     async fn tag_browsing_scaling_curve() {
-        use crate::types::ItemFilter;
+        use crate::types::EntityFilter;
         use std::time::Instant;
         let dir = tempfile::tempdir().unwrap();
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
@@ -2271,7 +2280,7 @@ mod tests {
             let plan = db
                 .table
                 .query()
-                .only_if(EmbeddingsDb::tag_predicate(&ids, ItemFilter::Unread).unwrap())
+                .only_if(EmbeddingsDb::tag_predicate(&ids, EntityFilter::Unread).unwrap())
                 .explain_plan(false)
                 .await
                 .unwrap();
@@ -2280,10 +2289,10 @@ mod tests {
             let count = db.count_tag_unread(&ids).await.unwrap();
             let count_us = start.elapsed().as_micros();
             let start = Instant::now();
-            let sparse = db.list_tag_entries(&ids, ItemFilter::All).await.unwrap();
+            let sparse = db.list_tag_entries(&ids, EntityFilter::All).await.unwrap();
             let sparse_us = start.elapsed().as_micros();
             let start = Instant::now();
-            let dense = db.list_tag_entries(&[], ItemFilter::All).await.unwrap();
+            let dense = db.list_tag_entries(&[], EntityFilter::All).await.unwrap();
             let dense_us = start.elapsed().as_micros();
             assert_eq!(count, total / 200);
             assert_eq!(sparse.len(), total / 100);
@@ -2335,7 +2344,7 @@ mod tests {
             summary: "a summary".to_string(),
             tags: vec![],
             topics: vec!["topic-1".to_string(), "topic-2".to_string()],
-            items: vec![],
+            entities: vec![],
             is_unread: true,
             is_pinned: true,
             vector,
@@ -2406,18 +2415,21 @@ mod tests {
             "topic",
             Some(vec![0.5f32; EMBEDDING_DIM as usize]),
         );
-        row.items = vec!["entry-1".to_string(), "annotation-1".to_string()];
+        row.entities = vec!["entry-1".to_string(), "annotation-1".to_string()];
         db.upsert(row).await.unwrap();
 
         assert_eq!(
-            db.find_topic_ids_by_item_id("topic-x").await.unwrap(),
+            db.find_topic_ids_by_entity_id("topic-x").await.unwrap(),
             Some(vec!["topic-1".to_string(), "topic-2".to_string()])
         );
         assert_eq!(
-            db.find_item_ids_by_topic_id("topic-x").await.unwrap(),
+            db.find_entity_ids_by_topic_id("topic-x").await.unwrap(),
             Some(vec!["entry-1".to_string(), "annotation-1".to_string()])
         );
-        assert_eq!(db.find_topic_ids_by_item_id("missing").await.unwrap(), None);
+        assert_eq!(
+            db.find_topic_ids_by_entity_id("missing").await.unwrap(),
+            None
+        );
 
         for column in ["topics", "items"] {
             let batch = db
@@ -2432,7 +2444,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn all_items_counts_entries_annotations_and_unread_entries() {
+    async fn all_entities_counts_entries_annotations_and_unread_entries() {
         let dir = tempfile::tempdir().unwrap();
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
 
@@ -2449,8 +2461,8 @@ mod tests {
         }
 
         assert_eq!(
-            db.all_items_counts().await.unwrap(),
-            AllItemsCounts {
+            db.all_entities_counts().await.unwrap(),
+            AllEntitiesCounts {
                 entry_count: 3,
                 unread_count: 1,
             }
@@ -2460,13 +2472,13 @@ mod tests {
     /// The `items` column (the topic-membership reverse-index base) round-trips, and an
     /// empty `items` reads back empty — guards the new column's Arrow building and ordering.
     #[tokio::test]
-    async fn items_column_round_trips() {
+    async fn entities_column_round_trips() {
         let dir = tempfile::tempdir().unwrap();
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
 
         let mut topic = sample("topic-x", "topic", None);
 
-        topic.items = vec!["m1".to_string(), "m2".to_string(), "m3".to_string()];
+        topic.entities = vec!["m1".to_string(), "m2".to_string(), "m3".to_string()];
         db.upsert(topic).await.unwrap();
         db.upsert(sample("entry-x", "entry", None)).await.unwrap();
 
@@ -2477,7 +2489,7 @@ mod tests {
             .expect("topic row present");
 
         assert_eq!(
-            got.items,
+            got.entities,
             vec!["m1".to_string(), "m2".to_string(), "m3".to_string()]
         );
 
@@ -2488,7 +2500,7 @@ mod tests {
             .expect("entry row present");
 
         assert!(
-            entry.items.is_empty(),
+            entry.entities.is_empty(),
             "an entry with no members/annotations reads back empty"
         );
     }
@@ -2540,7 +2552,7 @@ mod tests {
         );
 
         assert_eq!(
-            db.get_entry("topic-1").await.unwrap().unwrap().items,
+            db.get_entry("topic-1").await.unwrap().unwrap().entities,
             vec!["entry-1".to_string(), "entry-2".to_string()],
             "base tracks the propagated members"
         );
@@ -2574,7 +2586,7 @@ mod tests {
         );
 
         assert_eq!(
-            db.get_entry("topic-1").await.unwrap().unwrap().items,
+            db.get_entry("topic-1").await.unwrap().unwrap().entities,
             vec!["entry-1".to_string()]
         );
     }
@@ -2589,7 +2601,7 @@ mod tests {
         let mut topic = sample("topic-1", "topic", None);
 
         topic.topics = vec![];
-        topic.items = vec![];
+        topic.entities = vec![];
         db.upsert(topic).await.unwrap();
 
         let mut e = sample("entry-1", "entry", None);
@@ -2611,7 +2623,7 @@ mod tests {
         );
 
         assert_eq!(
-            db.get_entry("topic-1").await.unwrap().unwrap().items,
+            db.get_entry("topic-1").await.unwrap().unwrap().entities,
             vec!["entry-1".to_string()]
         );
 
@@ -2621,7 +2633,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            db.get_entry("topic-1").await.unwrap().unwrap().items,
+            db.get_entry("topic-1").await.unwrap().unwrap().entities,
             vec!["entry-1".to_string()]
         );
 
@@ -2643,7 +2655,7 @@ mod tests {
                 .await
                 .unwrap()
                 .unwrap()
-                .items
+                .entities
                 .is_empty()
         );
     }
@@ -2685,7 +2697,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(unread_rx.len(), 1);
-        assert_eq!(db.all_items_counts().await.unwrap().unread_count, 1);
+        assert_eq!(db.all_entities_counts().await.unwrap().unread_count, 1);
         assert!(db.unread_ids().await.unwrap().contains("entry-1"));
     }
 
@@ -2850,31 +2862,30 @@ mod tests {
             }
             db.ensure_indexes().await.unwrap();
             assert_eq!(
-                db.filter_items(crate::types::ItemFilter::All)
+                db.filter_entities(crate::types::EntityFilter::All)
                     .await
                     .unwrap()
                     .len(),
                 8
             );
             let marked = db
-                .filter_items(crate::types::ItemFilter::Bookmarked)
+                .filter_entities(crate::types::EntityFilter::Bookmarked)
                 .await
                 .unwrap();
             assert_eq!(marked.len(), 6);
             assert!(
                 marked
                     .iter()
-                    .all(|item| item.color.is_some() && item.reference.is_none())
+                    .all(|entity| entity.color.is_some() && entity.reference.is_none())
             );
             assert_eq!(db.get_bookmarked_ids().await.unwrap().len(), 6);
             let saved = db
-                .filter_items(crate::types::ItemFilter::Saved)
+                .filter_entities(crate::types::EntityFilter::Saved)
                 .await
                 .unwrap();
             assert_eq!(saved.len(), 7);
-            assert!(saved.iter().any(
-                |item| item.id == "highlight" && item.reference.as_deref() == Some("unmarked")
-            ));
+            assert!(saved.iter().any(|entity| entity.id == "highlight"
+                && entity.reference.as_deref() == Some("unmarked")));
             assert!(
                 db.list_entries()
                     .await
@@ -3066,7 +3077,7 @@ mod tests {
             );
         }
 
-        let mut base = db.get_entry("topic-1").await.unwrap().unwrap().items;
+        let mut base = db.get_entry("topic-1").await.unwrap().unwrap().entities;
         base.sort();
         assert_eq!(base, members, "base = all members after multi-chunk add");
 
@@ -3096,7 +3107,7 @@ mod tests {
                 "{id} untagged after multi-chunk remove"
             );
         }
-        let mut base = db.get_entry("topic-1").await.unwrap().unwrap().items;
+        let mut base = db.get_entry("topic-1").await.unwrap().unwrap().entities;
         base.sort();
         assert_eq!(base, keep, "base = kept members after multi-chunk remove");
     }
@@ -3123,7 +3134,7 @@ mod tests {
         // Base advanced for only entry-0 (crash between entry-1's add and its base checkpoint).
         let mut topic = sample("topic-1", "topic", None);
         topic.topics = vec![];
-        topic.items = vec!["entry-0".to_string()];
+        topic.entities = vec!["entry-0".to_string()];
         db.upsert(topic).await.unwrap();
 
         // Re-run with the full membership, chunk size 2.
@@ -3141,7 +3152,7 @@ mod tests {
                 "{id} ends tagged exactly once (no duplicate from the re-run)"
             );
         }
-        let mut base = db.get_entry("topic-1").await.unwrap().unwrap().items;
+        let mut base = db.get_entry("topic-1").await.unwrap().unwrap().entities;
         base.sort();
         assert_eq!(base, members, "base converges to the full membership");
     }

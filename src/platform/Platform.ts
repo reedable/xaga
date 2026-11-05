@@ -12,7 +12,7 @@ import type {
   PartialAnnotation,
   Article,
   Ranked,
-  RankedItem,
+  RankedEntity,
   Entry,
   Feed,
   Filter,
@@ -20,9 +20,9 @@ import type {
   ImportOutcome,
   BookmarkImportOutcome,
   ExportOutcome,
-  Item,
-  ListItem,
-  AllItemsCounts,
+  ManagedEntity,
+  ListEntity,
+  AllEntitiesCounts,
   Site,
   Topic,
   TopicSort,
@@ -89,8 +89,8 @@ export interface Platform {
     feedUrl: string,
     filter: Filter
   ): Promise<Entry[]>;
-  listAllItems(signal: AbortSignal, filter: Filter): Promise<ListItem[]>;
-  getAllItemsCounts(): Promise<AllItemsCounts | null>;
+  listAllEntities(signal: AbortSignal, filter: Filter): Promise<ListEntity[]>;
+  getAllEntitiesCounts(): Promise<AllEntitiesCounts | null>;
   markEntryRead(signal: AbortSignal, id: string): Promise<Entry>;
   markEntryUnread(signal: AbortSignal, id: string): Promise<Entry>;
 
@@ -201,42 +201,42 @@ export interface Platform {
   deleteTopic(signal: AbortSignal, id: string): Promise<void>;
   listTopics(signal: AbortSignal): Promise<Topic[]>;
   readTopic(signal: AbortSignal, id: string): Promise<Topic>;
-  listTopicItems(
+  listTopicEntities(
     signal: AbortSignal,
     id: string,
     filter: Filter,
     sort: TopicSort
-  ): Promise<ListItem[]>;
-  addTopicItem(
+  ): Promise<ListEntity[]>;
+  addTopicEntity(
     signal: AbortSignal,
     topicId: string,
-    item: Entry | Annotation
+    entity: Entry | Annotation
   ): Promise<Topic>;
-  removeTopicItem(
+  removeTopicEntity(
     signal: AbortSignal,
     topicId: string,
-    itemId: string
+    entityId: string
   ): Promise<Topic>;
   listEntryTopics(signal: AbortSignal, entryId: string): Promise<string[]>;
-  rankTopicsRelatedToItem(
+  rankTopicsRelatedToEntity(
     signal: AbortSignal,
-    itemId: string,
+    entityId: string,
     minSimilarity?: number
-  ): Promise<RankedItem[]>;
+  ): Promise<RankedEntity[]>;
 
   // Bookmarks
   addBookmark(signal: AbortSignal, id: string, color: string): Promise<Entry>;
   removeBookmark(signal: AbortSignal, id: string): Promise<Entry>;
 
   // Embedding queries
-  queryByItem(
+  queryByEntity(
     signal: AbortSignal,
     id: string,
     filter?: Filter,
     minSimilarity?: number | null,
     maxSimilarity?: number | null,
     limit?: number | null
-  ): Promise<Ranked<Item>[]>;
+  ): Promise<Ranked<ManagedEntity>[]>;
 
   queryByText(
     signal: AbortSignal,
@@ -245,7 +245,7 @@ export interface Platform {
     minSimilarity?: number | null,
     maxSimilarity?: number | null,
     limit?: number | null
-  ): Promise<Ranked<Item>[]>;
+  ): Promise<Ranked<ManagedEntity>[]>;
 
   // Theme
   getTheme(): Promise<string>;
@@ -290,9 +290,9 @@ export interface Platform {
   ): Promise<UnlistenFn>;
   onUnreadChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
   onBookmarkChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
-  onAnnotationChanged(callback: (item: ListItem) => void): Promise<UnlistenFn>;
+  onAnnotationChanged(callback: (entity: ListEntity) => void): Promise<UnlistenFn>;
   onAnnotationReplaced(
-    callback: (replacement: { oldId: string; item: ListItem }) => void
+    callback: (replacement: { oldId: string; entity: ListEntity }) => void
   ): Promise<UnlistenFn>;
   onAnnotationRemoved(callback: (id: string) => void): Promise<UnlistenFn>;
   onFaviconChanged(callback: (article: Article) => void): Promise<UnlistenFn>;

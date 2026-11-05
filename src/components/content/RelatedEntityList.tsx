@@ -8,28 +8,28 @@ import { useCallback, useEffect, useState } from "react";
 import { RELATED_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
 import { useEvents } from "../../hooks/useEvents";
-import useRelatedItems from "../../hooks/useRelatedItems";
+import useRelatedEntities from "../../hooks/useRelatedEntities";
 import useRouter from "../../hooks/useRouter";
 import { useEmbeddingStartupState } from "../../hooks/useEmbeddingStartupState";
-import { isPartialAnnotation, type Ranked, type Item } from "../../types";
+import { isPartialAnnotation, type Ranked, type ManagedEntity } from "../../types";
 import cx from "../../utils/cx";
 import { abortable, decorate, retriable } from "../../utils/Decorator";
 import Logger from "../../utils/Logger";
-import ItemStatus from "../ItemStatus";
+import EntityStatus from "../EntityStatus";
 import Quotes from "../Quotes";
-import css from "./RelatedItemList.module.css";
+import css from "./RelatedEntityList.module.css";
 
-interface RelatedItemListProps {
+interface RelatedEntityListProps {
   className?: string;
-  itemId: Item["id"];
+  entityId: ManagedEntity["id"];
 }
 
-export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
+export function RelatedEntityList({ className, entityId }: RelatedEntityListProps) {
   const embeddingStartupState = useEmbeddingStartupState();
-  const { selectItem } = useRouter();
+  const { selectEntity } = useRouter();
   const [abort, abortControllerRef] = useAbortController();
-  const { queryByItem } = useRelatedItems(abortControllerRef);
-  const [embeddedItems, setEmbeddedItems] = useState<Ranked<Item>[]>([]);
+  const { queryByEntity } = useRelatedEntities(abortControllerRef);
+  const [embeddedEntities, setEmbeddedEntities] = useState<Ranked<ManagedEntity>[]>([]);
   const {
     onUnreadChanged,
     onBookmarkChanged,
@@ -37,31 +37,31 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
     onAnnotationReplaced,
   } = useEvents();
 
-  const requestRelatedItems = useCallback(
+  const requestRelatedEntities = useCallback(
     async (id: string) => {
-      setEmbeddedItems([]);
+      setEmbeddedEntities([]);
 
-      const retriable_queryByItem = decorate(async () => {
-        const results = await queryByItem(id, "all", RELATED_THRESHOLD, 1, 12);
+      const retriable_queryByEntity = decorate(async () => {
+        const results = await queryByEntity(id, "all", RELATED_THRESHOLD, 1, 12);
         if (!results) throw new Error("query failed");
         return results;
       })
         .with(retriable, {
           delay: 400,
           attempts: 6,
-          logger: Logger.getLogger("retriable_queryByItem"),
+          logger: Logger.getLogger("retriable_queryByEntity"),
         })
         .with(abortable, { signal: abortControllerRef.current.signal });
 
-      const results = await retriable_queryByItem();
-      if (results) setEmbeddedItems(results);
+      const results = await retriable_queryByEntity();
+      if (results) setEmbeddedEntities(results);
     },
-    [abortControllerRef, queryByItem]
+    [abortControllerRef, queryByEntity]
   );
 
-  const handleSelectItem = useCallback(
-    (item: Item) => selectItem(item),
-    [selectItem]
+  const handleSelectEntity = useCallback(
+    (entity: ManagedEntity) => selectEntity(entity),
+    [selectEntity]
   );
 
   useEffect(() => {
@@ -69,15 +69,15 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
     abort();
 
     (async () => {
-      await requestRelatedItems(itemId);
+      await requestRelatedEntities(entityId);
     })();
 
     return abort;
-  }, [abort, requestRelatedItems, itemId, embeddingStartupState]);
+  }, [abort, requestRelatedEntities, entityId, embeddingStartupState]);
 
   useEffect(() => {
     return onUnreadChanged((entry) => {
-      setEmbeddedItems((prev) =>
+      setEmbeddedEntities((prev) =>
         prev.map((p) => (p.id === entry.id ? { ...p, ...entry } : p))
       );
     });
@@ -85,52 +85,52 @@ export function RelatedItemList({ className, itemId }: RelatedItemListProps) {
 
   useEffect(() => {
     return onBookmarkChanged((entry) => {
-      setEmbeddedItems((prev) =>
+      setEmbeddedEntities((prev) =>
         prev.map((p) => (p.id === entry.id ? { ...p, ...entry } : p))
       );
     });
   }, [onBookmarkChanged]);
 
   useEffect(() => {
-    return onAnnotationChanged((item) => {
-      setEmbeddedItems((prev) =>
-        prev.map((p) => (p.id === item.id ? { ...p, color: item.color } : p))
+    return onAnnotationChanged((entity) => {
+      setEmbeddedEntities((prev) =>
+        prev.map((p) => (p.id === entity.id ? { ...p, color: entity.color } : p))
       );
     });
   }, [onAnnotationChanged]);
 
   useEffect(() => {
-    return onAnnotationReplaced(({ oldId, item }) => {
-      setEmbeddedItems((prev) =>
+    return onAnnotationReplaced(({ oldId, entity }) => {
+      setEmbeddedEntities((prev) =>
         prev.map((value) =>
-          value.id === oldId ? { ...value, ...item } : value
+          value.id === oldId ? { ...value, ...entity } : value
         )
       );
     });
   }, [onAnnotationReplaced]);
 
-  if (embeddingStartupState !== "available" || embeddedItems.length === 0)
+  if (embeddingStartupState !== "available" || embeddedEntities.length === 0)
     return null;
 
   return (
-    <div className={cx(className, css.RelatedItemList)}>
+    <div className={cx(className, css.RelatedEntityList)}>
       <List className={css.List}>
-        {embeddedItems.map((item) => (
-          <ListItem key={item.id} className={css.ListItem} disablePadding>
+        {embeddedEntities.map((entity) => (
+          <ListItem key={entity.id} className={css.ListEntity} disablePadding>
             <ListItemButton
               className={css.ListItemButton}
-              onClick={() => handleSelectItem(item)}
+              onClick={() => handleSelectEntity(entity)}
             >
               <ListItemText
                 primary={
                   <Quotes
-                    quoted={isPartialAnnotation(item)}
-                    color={isPartialAnnotation(item) ? item.color : undefined}
+                    quoted={isPartialAnnotation(entity)}
+                    color={isPartialAnnotation(entity) ? entity.color : undefined}
                   >
-                    {item.title}
+                    {entity.title}
                   </Quotes>
                 }
-                secondary={<ItemStatus item={item} />}
+                secondary={<EntityStatus entity={entity} />}
                 slotProps={{
                   primary: { className: css.Primary },
                   secondary: { className: css.Secondary },

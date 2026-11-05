@@ -8,9 +8,9 @@ use crate::embeddings::pipeline::{
     embed_entry_vector, embed_feed, embed_topic_vector, sync_entry_row, sync_topic_row,
 };
 use crate::embeddings::{Embedder, EmbeddingsDb};
-use crate::types::{Article, Entry, ListItem, Topic};
+use crate::types::{Article, Entry, ListEntity, Topic};
 
-use super::embeddings::repair_item_embeddings;
+use super::embeddings::repair_entity_embeddings;
 use super::{RepairResidue, RepairSink};
 
 /// Summary of a completed recovery run.
@@ -57,11 +57,11 @@ pub async fn run_full_recovery(
 
     let mut sink = InlineSink::default();
 
-    match repair_item_embeddings(library_dir, db, &mut sink, Some(writer)).await {
+    match repair_entity_embeddings(library_dir, db, &mut sink, Some(writer)).await {
         Ok(residue) => process_inline(sink, residue, embedder, db, &mut report).await,
         Err(e) => report
             .errors
-            .push(format!("repair_item_embeddings failed: {e}")),
+            .push(format!("repair_entity_embeddings failed: {e}")),
     }
 
     report
@@ -86,7 +86,7 @@ async fn process_inline(
     // Recovery runs at startup; suppress change events to avoid flooding the UI.
     let (noop_unread_tx, _) = flume::unbounded::<Entry>();
     let (noop_bookmarked_tx, _) = flume::unbounded::<Entry>();
-    let (noop_annotation_tx, _) = flume::unbounded::<ListItem>();
+    let (noop_annotation_tx, _) = flume::unbounded::<ListEntity>();
 
     // The domain object carries everything sync/embed need; no file is re-read here.
     for topic in &sink.topics {

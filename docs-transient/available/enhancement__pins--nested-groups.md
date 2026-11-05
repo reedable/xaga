@@ -75,7 +75,7 @@ persisted in the shared library YAML pin store.
 - [Pin-store contract](../../docs/architecture/pins.md).
 - [macOS Shortcuts Menu](enhancement__pins--macos-menu.md)
 - `src/components/sidebar/ShortcutList.tsx`
-- `src/components/list/ItemList.tsx`
+- `src/components/list/EntityList.tsx`
 - `crates/xaga-core/src/library_writer/mod.rs`
 - `docs/architecture/list_view.md`
 - `docs/development/release_cycle.md`

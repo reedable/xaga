@@ -23,5 +23,5 @@ Entries support an optional bookmark color, but the intended controls and presen
 
 - `src/domain.ts`
 - `src/components/content/Toolbar.tsx`
-- `src/components/list/ItemList.tsx`
+- `src/components/list/EntityList.tsx`
 - `crates/xaga-core/src/domain.rs`

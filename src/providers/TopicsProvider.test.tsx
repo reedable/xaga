@@ -8,8 +8,8 @@ import type { Entry } from "../types";
 const mocks = vi.hoisted(() => ({
   platform: {
     listEntryTopics: vi.fn(async () => [] as string[]),
-    addTopicItem: vi.fn(),
-    removeTopicItem: vi.fn(),
+    addTopicEntity: vi.fn(),
+    removeTopicEntity: vi.fn(),
     createTopicWithMember: vi.fn(),
     onUnreadChanged: vi.fn(async () => () => {}),
     onEmbeddingsChanged: vi.fn(async () => () => {}),
@@ -45,8 +45,8 @@ it("retains committed additions and removals over stale index results across pic
     unreadCount: 0,
     members: [],
   };
-  mocks.platform.addTopicItem.mockResolvedValue(topic);
-  mocks.platform.removeTopicItem.mockResolvedValue(topic);
+  mocks.platform.addTopicEntity.mockResolvedValue(topic);
+  mocks.platform.removeTopicEntity.mockResolvedValue(topic);
   const article = { id: "article" } as Entry;
   root = createRoot(document.createElement("div"));
   await act(() =>
@@ -56,7 +56,7 @@ it("retains committed additions and removals over stale index results across pic
       </TopicsProvider>
     )
   );
-  await act(() => hook.addTopicItem("topic", article));
+  await act(() => hook.addTopicEntity("topic", article));
   expect(await hook.listEntryTopics("article")).toEqual(["topic"]);
   await act(() => root.render(<TopicsProvider>{null}</TopicsProvider>));
   await act(() =>
@@ -68,7 +68,7 @@ it("retains committed additions and removals over stale index results across pic
   );
   expect(await hook.listEntryTopics("article")).toEqual(["topic"]);
   mocks.platform.listEntryTopics.mockResolvedValue(["topic"]);
-  await act(() => hook.removeTopicItem("topic", "article"));
+  await act(() => hook.removeTopicEntity("topic", "article"));
   expect(await hook.listEntryTopics("article")).toEqual([]);
   // Another article's indexed memberships are untouched.
   expect(await hook.listEntryTopics("other")).toEqual(["topic"]);

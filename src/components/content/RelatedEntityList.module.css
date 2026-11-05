@@ -1,4 +1,4 @@
-.RelatedItemList {
+.RelatedEntityList {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -9,7 +9,7 @@
   flex: 1;
 }
 
-.ListItem {
+.ListEntity {
   margin: 0;
   padding: 0;
 }

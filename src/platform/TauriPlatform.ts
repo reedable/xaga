@@ -18,7 +18,7 @@ import type {
   PartialAnnotation,
   Article,
   Ranked,
-  RankedItem,
+  RankedEntity,
   Entry,
   Feed,
   Filter,
@@ -26,9 +26,9 @@ import type {
   ImportOutcome,
   BookmarkImportOutcome,
   ExportOutcome,
-  Item,
-  ListItem,
-  AllItemsCounts,
+  ManagedEntity,
+  ListEntity,
+  AllEntitiesCounts,
   Site,
   Topic,
   TopicSort,
@@ -76,21 +76,21 @@ const ArticleDiagnosticSchema: z.ZodType<ArticleDiagnostic> = z.object({
   droppedEvents: z.number(),
 });
 
-const ItemSchema = z.object({
+const ManagedEntitySchema = z.object({
   id: z.string(),
   title: z.string(),
   created_at: z.string(),
   updated_at: z.string().nullable(),
 });
 
-const toItem = (data: z.infer<typeof ItemSchema>): Item => ({
+const toManagedEntity = (data: z.infer<typeof ManagedEntitySchema>): ManagedEntity => ({
   id: data.id,
   title: data.title,
   createdAt: data.created_at,
   updatedAt: data.updated_at ?? undefined,
 });
 
-const FeedSchema = ItemSchema.extend({
+const FeedSchema = ManagedEntitySchema.extend({
   url: z.string(),
   entry_count: z.number(),
   unread_count: z.number(),
@@ -100,11 +100,12 @@ const FeedSchema = ItemSchema.extend({
 const ReferenceSchema = z.object({
   __kind: z.enum(["entry", "annotation", "note"]),
   id: z.string(),
+  articleId: z.string().optional(),
 });
 
 const toFeed = (data: z.infer<typeof FeedSchema>): Feed => {
   return {
-    ...toItem(data),
+    ...toManagedEntity(data),
     __kind: "feed",
     url: data.url,
     entryCount: data.entry_count,
@@ -114,7 +115,7 @@ const toFeed = (data: z.infer<typeof FeedSchema>): Feed => {
   };
 };
 
-const EntrySchema = ItemSchema.extend({
+const EntrySchema = ManagedEntitySchema.extend({
   url: z.string(),
   published_at: z.string().nullable(),
   description: z.string().nullable(),
@@ -127,7 +128,7 @@ const EntrySchema = ItemSchema.extend({
 // a resolved `data:` URI, or null where the reference did not resolve.
 const ReadEntryImagesSchema = z.array(z.string().nullable());
 
-const AllItemsCountsSchema = z.object({
+const AllEntitiesCountsSchema = z.object({
   entry_count: z.number(),
   unread_count: z.number(),
 });
@@ -139,16 +140,16 @@ const SiteSchema = z.object({
 });
 
 const toSite = (data: z.infer<typeof SiteSchema>): Site => ({
+  __kind: "site",
   id: data.hostname,
   title: data.hostname,
-  hostname: data.hostname,
   entryCount: data.entry_count,
   unreadCount: data.unread_count,
 });
 
 const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
   return {
-    ...toItem(data),
+    ...toManagedEntity(data),
     __kind: "entry",
     url: data.url,
     publishedAt: data.published_at ?? undefined,
@@ -159,7 +160,7 @@ const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
   };
 };
 
-const TopicSchema = ItemSchema.extend({
+const TopicSchema = ManagedEntitySchema.extend({
   description: z.string().nullable().optional(),
   threshold: z.number().nullable().optional(),
   entry_count: z.number(),
@@ -169,7 +170,7 @@ const TopicSchema = ItemSchema.extend({
 });
 
 const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
-  ...toItem(data),
+  ...toManagedEntity(data),
   __kind: "topic",
   description: data.description ?? undefined,
   threshold: data.threshold ?? undefined,
@@ -179,10 +180,10 @@ const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
   members: data.members ?? [],
 });
 
-const toTopicItem = (item: Entry | Annotation) =>
-  item.__kind === "annotation"
-    ? { type: "annotation", id: item.id, reference: item.reference }
-    : { type: "entry", id: item.id };
+const toTopicEntity = (entity: Entry | Annotation) =>
+  entity.__kind === "annotation"
+    ? { __kind: "annotation", id: entity.id, articleId: entity.reference }
+    : { __kind: "entry", id: entity.id };
 
 const AnnotationSchema = z.object({
   id: z.string(),
@@ -207,7 +208,7 @@ const toAnnotation = (data: z.infer<typeof AnnotationSchema>): Annotation => ({
   createdAt: data.created_at,
 });
 
-const ListItemSchema = z.object({
+const ListEntitySchema = z.object({
   id: z.string(),
   title: z.string(),
   created_at: z.string(),
@@ -218,7 +219,7 @@ const ListItemSchema = z.object({
   color: z.string().optional(),
 });
 
-const toListItem = (data: z.infer<typeof ListItemSchema>): ListItem =>
+const toListEntity = (data: z.infer<typeof ListEntitySchema>): ListEntity =>
   data.reference !== undefined
     ? // annotation row -> PartialAnnotation
       {
@@ -324,22 +325,22 @@ const EmbeddedFeedSchema = FeedSchema.extend(EmbeddedSchema.shape).extend({
 const EmbeddedTopicSchema = TopicSchema.extend(EmbeddedSchema.shape).extend({
   kind: z.string(),
 });
-const EmbeddedItemSchema = ItemSchema.extend(EmbeddedSchema.shape);
+const EmbeddedEntitySchema = ManagedEntitySchema.extend(EmbeddedSchema.shape);
 // Detection order (each branch identified by brand AND shape together):
 // 1. Annotation: `kind === "annotation"`; shape guaranteed by the schema's required `reference`
 //    (entries/feeds/topics never serialize it, so coloring an entry can't collide here)
 // 2. Feed: `kind === "feed"` (feed/entry share shape — only the brand separates them)
 // 3. Topic: `kind === "topic"` (a Topic has no url/is_unread/content — only the brand is reliable)
 // 4. Entry: has `is_unread` (topics don't — they have no url/is_unread fields)
-// 5. Generic Item: fallback
-const AnyEmbeddedItemSchema = EmbeddedAnnotationResultSchema.or(
+// 5. Generic ManagedEntity: fallback
+const AnyEmbeddedEntitySchema = EmbeddedAnnotationResultSchema.or(
   EmbeddedFeedSchema
 )
   .or(EmbeddedEntrySchema)
   .or(EmbeddedTopicSchema)
-  .or(EmbeddedItemSchema);
+  .or(EmbeddedEntitySchema);
 
-const toAnyEmbeddedItem = (data: z.infer<typeof AnyEmbeddedItemSchema>) => {
+const toAnyEmbeddedEntity = (data: z.infer<typeof AnyEmbeddedEntitySchema>) => {
   if ("kind" in data && data.kind === "annotation") {
     return toEmbeddedAnnotationResult(
       data as z.infer<typeof EmbeddedAnnotationResultSchema>
@@ -364,7 +365,7 @@ const toAnyEmbeddedItem = (data: z.infer<typeof AnyEmbeddedItemSchema>) => {
     };
   }
   return {
-    ...toItem(data as z.infer<typeof EmbeddedItemSchema>),
+    ...toManagedEntity(data as z.infer<typeof EmbeddedEntitySchema>),
     ...toEmbedded(data as z.infer<typeof EmbeddedSchema>),
   };
 };
@@ -501,7 +502,7 @@ export class TauriPlatform implements Platform {
     const results = await invoker<unknown[]>("list_feeds");
     return results
       .map((e) => FeedSchema.transform(toFeed).safeParse(e))
-      .filter((e) => !e.error) // FIXME Silently dropping invalid items
+      .filter((e) => !e.error) // FIXME Silently dropping invalid entities
       .map((e) => e.data);
   }
 
@@ -555,14 +556,14 @@ export class TauriPlatform implements Platform {
   async listSiteEntries(
     signal: AbortSignal,
     hostname: string,
-    itemFilter: Filter = "unread"
+    entityFilter: Filter = "unread"
   ): Promise<Entry[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "list_site_entries" });
     const results = await invoker<unknown[]>("list_site_entries", {
       hostname,
-      itemFilter,
+      entityFilter,
     });
     return results.map((entry) => EntrySchema.transform(toEntry).parse(entry));
   }
@@ -580,37 +581,37 @@ export class TauriPlatform implements Platform {
 
     const results = await invoker<unknown[]>("list_entries", {
       url: feedUrl,
-      itemFilter: filter,
+      entityFilter: filter,
     });
 
     return results
       .map((e) => EntrySchema.transform(toEntry).safeParse(e))
-      .filter((e) => !e.error) // FIXME silently dropping invalid items
+      .filter((e) => !e.error) // FIXME silently dropping invalid entities
       .map((e) => e.data);
   }
 
-  async listAllItems(
+  async listAllEntities(
     signal: AbortSignal,
-    itemFilter: Filter = "unread"
-  ): Promise<ListItem[]> {
+    entityFilter: Filter = "unread"
+  ): Promise<ListEntity[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "list_all_items" });
+      .with(logged, { logger, name: "list_all_entities" });
 
-    const results = await invoker<unknown[]>("list_all_items", { itemFilter });
+    const results = await invoker<unknown[]>("list_all_entities", { entityFilter });
 
     return results
-      .map((e) => ListItemSchema.transform(toListItem).safeParse(e))
-      .filter((e) => !e.error) // FIXME silently dropping invalid items
+      .map((e) => ListEntitySchema.transform(toListEntity).safeParse(e))
+      .filter((e) => !e.error) // FIXME silently dropping invalid entities
       .map((e) => e.data);
   }
 
-  async getAllItemsCounts(): Promise<AllItemsCounts | null> {
-    const name = "get_all_items_counts";
+  async getAllEntitiesCounts(): Promise<AllEntitiesCounts | null> {
+    const name = "get_all_entities_counts";
     const invoker = decorate(invoke).with(logged, { logger, name });
     const result = await invoker<unknown>(name);
     if (result === null) return null;
-    const counts = AllItemsCountsSchema.parse(result);
+    const counts = AllEntitiesCountsSchema.parse(result);
     return {
       entryCount: counts.entry_count,
       unreadCount: counts.unread_count,
@@ -986,7 +987,7 @@ export class TauriPlatform implements Platform {
       title: topic.title,
       description: topic.description ?? null,
       threshold: topic.threshold ?? null,
-      item: toTopicItem(member),
+      entity: toTopicEntity(member),
     });
     return TopicSchema.transform(toTopic).parse(result);
   }
@@ -1036,52 +1037,52 @@ export class TauriPlatform implements Platform {
     return TopicSchema.transform(toTopic).parse(result);
   }
 
-  async listTopicItems(
+  async listTopicEntities(
     signal: AbortSignal,
     id: string,
     filter: Filter,
     sort: TopicSort = "relevance"
-  ): Promise<ListItem[]> {
+  ): Promise<ListEntity[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "list_topic_items" });
-    const results = await invoker<unknown[]>("list_topic_items", {
+      .with(logged, { logger, name: "list_topic_entities" });
+    const results = await invoker<unknown[]>("list_topic_entities", {
       id,
-      itemFilter: filter,
+      entityFilter: filter,
       sort,
     });
     return results
-      .map((e) => ListItemSchema.transform(toListItem).safeParse(e))
+      .map((e) => ListEntitySchema.transform(toListEntity).safeParse(e))
       .filter((e) => !e.error)
       .map((e) => e.data);
   }
 
-  async addTopicItem(
+  async addTopicEntity(
     signal: AbortSignal,
     topicId: string,
-    item: Entry | Annotation
+    entity: Entry | Annotation
   ): Promise<Topic> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "add_topic_item" });
-    const result = await invoker<unknown>("add_topic_item", {
+      .with(logged, { logger, name: "add_topic_entity" });
+    const result = await invoker<unknown>("add_topic_entity", {
       topicId,
-      item: toTopicItem(item),
+      entity: toTopicEntity(entity),
     });
     return TopicSchema.transform(toTopic).parse(result);
   }
 
-  async removeTopicItem(
+  async removeTopicEntity(
     signal: AbortSignal,
     topicId: string,
-    itemId: string
+    entityId: string
   ): Promise<Topic> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "remove_topic_item" });
-    const result = await invoker<unknown>("remove_topic_item", {
+      .with(logged, { logger, name: "remove_topic_entity" });
+    const result = await invoker<unknown>("remove_topic_entity", {
       topicId,
-      itemId,
+      entityId,
     });
     return TopicSchema.transform(toTopic).parse(result);
   }
@@ -1096,16 +1097,16 @@ export class TauriPlatform implements Platform {
     return invoker<string[]>("list_entry_topics", { entryId });
   }
 
-  async rankTopicsRelatedToItem(
+  async rankTopicsRelatedToEntity(
     signal: AbortSignal,
-    itemId: string,
+    entityId: string,
     minSimilarity?: number
-  ): Promise<RankedItem[]> {
+  ): Promise<RankedEntity[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "rank_topics_by_item" });
-    return invoker<RankedItem[]>("rank_topics_by_item", {
-      itemId,
+      .with(logged, { logger, name: "rank_topics_by_entity" });
+    return invoker<RankedEntity[]>("rank_topics_by_entity", {
+      entityId,
       minSimilarity: minSimilarity ?? null,
     });
   }
@@ -1132,42 +1133,42 @@ export class TauriPlatform implements Platform {
 
   // Embedding queries ---------------------------------------------------------
 
-  async queryByItem(
+  async queryByEntity(
     signal: AbortSignal,
     id: string,
-    itemFilter: Filter = "all",
+    entityFilter: Filter = "all",
     minSimilarity: number | null = null,
     maxSimilarity: number | null = null,
     limit: number | null = null
-  ): Promise<Ranked<Item>[]> {
+  ): Promise<Ranked<ManagedEntity>[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
-      .with(logged, { logger, name: "search_by_item" });
+      .with(logged, { logger, name: "search_by_entity" });
 
-    const results = await invoker<unknown[]>("search_by_item", {
+    const results = await invoker<unknown[]>("search_by_entity", {
       id,
       limit,
       minSimilarity,
       maxSimilarity,
-      itemFilter,
+      entityFilter,
     });
 
     return results
       .map((e) =>
-        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e)
+        AnyEmbeddedEntitySchema.transform(toAnyEmbeddedEntity).safeParse(e)
       )
-      .filter((e) => !e.error) // FIXME Dropping failed items silently!
+      .filter((e) => !e.error) // FIXME Dropping failed entities silently!
       .map((e) => e.data);
   }
 
   async queryByText(
     signal: AbortSignal,
     text: string,
-    itemFilter?: Filter,
+    entityFilter?: Filter,
     minSimilarity?: number | null,
     maxSimilarity?: number | null,
     limit?: number | null
-  ): Promise<Ranked<Item>[]> {
+  ): Promise<Ranked<ManagedEntity>[]> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "search_by_text" });
@@ -1177,14 +1178,14 @@ export class TauriPlatform implements Platform {
       limit,
       minSimilarity,
       maxSimilarity,
-      itemFilter,
+      entityFilter,
     });
 
     return results
       .map((e) =>
-        AnyEmbeddedItemSchema.transform(toAnyEmbeddedItem).safeParse(e)
+        AnyEmbeddedEntitySchema.transform(toAnyEmbeddedEntity).safeParse(e)
       )
-      .filter((e) => !e.error) // FIXME Dropping failed items silently!
+      .filter((e) => !e.error) // FIXME Dropping failed entities silently!
       .map((e) => e.data);
   }
 
@@ -1284,10 +1285,10 @@ export class TauriPlatform implements Platform {
     return listen<unknown>(name, listener);
   }
 
-  onAnnotationChanged(callback: (item: ListItem) => void): Promise<UnlistenFn> {
+  onAnnotationChanged(callback: (entity: ListEntity) => void): Promise<UnlistenFn> {
     const name: DomainEvent = "annotation:changed";
     const listener = decorate((e) => {
-      const result = ListItemSchema.transform(toListItem).safeParse(e.payload);
+      const result = ListEntitySchema.transform(toListEntity).safeParse(e.payload);
       if (result.success) callback(result.data);
     }).with(logged, { logger, name });
 
@@ -1295,14 +1296,14 @@ export class TauriPlatform implements Platform {
   }
 
   onAnnotationReplaced(
-    callback: (replacement: { oldId: string; item: ListItem }) => void
+    callback: (replacement: { oldId: string; entity: ListEntity }) => void
   ): Promise<UnlistenFn> {
     const name: DomainEvent = "annotation:replaced";
     const listener = decorate((e) => {
       const payload = z
         .object({
           oldId: z.string(),
-          item: ListItemSchema.transform(toListItem),
+          entity: ListEntitySchema.transform(toListEntity),
         })
         .safeParse(e.payload);
       if (payload.success) callback(payload.data);
@@ -1559,7 +1560,7 @@ export class TauriPlatform implements Platform {
   }
 
   async listTagEntries(signal: AbortSignal, tagIds: string[], filter: Filter = "unread"): Promise<Entry[]> {
-    const result = await invoke("list_tag_entries", { tagIds, itemFilter: filter });
+    const result = await invoke("list_tag_entries", { tagIds, entityFilter: filter });
     signal.throwIfAborted();
     return z.array(EntrySchema.transform(toEntry)).parse(result);
   }

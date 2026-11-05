@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { usePlatform } from "../../platform/Platform";
 import { useErrorSink } from "../../hooks/useErrorSink";
 import type { Annotation, Entry } from "../../types";
-import { RelatedItemList } from "./RelatedItemList";
+import { RelatedEntityList } from "./RelatedEntityList";
 import { TopicMembership } from "./TopicMembership";
 import { EntryTags } from "./EntryTags";
 import css from "./Inspector.module.css";
@@ -25,7 +25,7 @@ export function Inspector({
   showHeading?: boolean;
 }) {
   const { entryId, annotationId } = target;
-  const itemId = annotationId ?? entryId;
+  const entityId = annotationId ?? entryId;
   const targetKey = JSON.stringify([entryId, annotationId]);
   const label = annotationId ? "Annotation" : "Article";
   const platform = usePlatform();
@@ -33,7 +33,7 @@ export function Inspector({
 
   const [lookup, setLookup] = useState<{
     targetKey: string;
-    item: Entry | Annotation | null;
+    entity: Entry | Annotation | null;
   } | null>(null);
 
   useEffect(() => {
@@ -49,12 +49,12 @@ export function Inspector({
       : platform.readEntry(controller.signal, entryId);
 
     void read
-      .then((item) => {
-        if (!controller.signal.aborted) setLookup({ targetKey, item });
+      .then((entity) => {
+        if (!controller.signal.aborted) setLookup({ targetKey, entity });
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
-          setLookup({ targetKey, item: null });
+          setLookup({ targetKey, entity: null });
           pushError(error);
         }
       });
@@ -97,13 +97,13 @@ export function Inspector({
         )}
 
         <TabPanel className={css.View} value="related" tabIndex={0} keepMounted>
-          <RelatedItemList key={targetKey} itemId={itemId} />
+          <RelatedEntityList key={targetKey} entityId={entityId} />
         </TabPanel>
 
         <TabPanel className={css.View} value="topics" tabIndex={0} keepMounted>
           {lookup?.targetKey === targetKey ? (
-            lookup.item ? (
-              <TopicMembership key={targetKey} item={lookup.item} />
+            lookup.entity ? (
+              <TopicMembership key={targetKey} entity={lookup.entity} />
             ) : (
               <Typography variant="body2">{label} topics couldn’t be loaded.</Typography>
             )

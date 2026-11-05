@@ -24,7 +24,7 @@ where
     crate::fs::for_each_file(dir, "md", |path, raw| {
         if let Ok((fm, body)) = parse_document(&raw) {
             visit(parse(Markdown {
-                id: crate::util::item_id(&path),
+                id: crate::util::entity_id(&path),
                 fm,
                 body,
             }));

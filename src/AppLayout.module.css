@@ -18,11 +18,11 @@
     content: "";
   }
 
-  .ItemList {
+  .EntityList {
     border-left: var(--border);
   }
 
-  .ItemView {
+  .EntityView {
     border-left: var(--border);
   }
 

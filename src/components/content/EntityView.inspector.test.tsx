@@ -1,7 +1,7 @@
 import { act, useEffect, type RefObject } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ItemView } from "./ItemView";
+import { EntityView } from "./EntityView";
 
 const mocks = vi.hoisted(() => ({
   state: {
@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
     | ((annotation: { id: string; reference: string }) => void),
   replaced: undefined as
     | undefined
-    | ((event: { oldId: string; item: { id: string } }) => void),
+    | ((event: { oldId: string; entity: { id: string } }) => void),
   removed: undefined as undefined | ((id: string) => void),
 }));
 vi.mock("../../hooks/useEvents", () => ({
@@ -140,7 +140,7 @@ beforeEach(async () => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  await act(async () => root.render(<ItemView />));
+  await act(async () => root.render(<EntityView />));
 });
 afterEach(async () => {
   await act(async () => root.unmount());
@@ -211,7 +211,7 @@ it("targets the selected annotation without changing navigation on Escape dismis
     opener().click();
   });
   mocks.state = { ...mocks.state, annotationId: "annotation" };
-  await act(async () => root.render(<ItemView />));
+  await act(async () => root.render(<EntityView />));
   expect(
     document
       .querySelector('[role="dialog"] [data-inspector]')
@@ -252,7 +252,7 @@ it("opens the shared drawer at wide widths and follows replacement/removal", asy
   ).toBe("article");
   expect(mocks.state.annotationId).toBeUndefined();
   await act(async () =>
-    mocks.replaced!({ oldId: "tooltip-annotation", item: { id: "recolored" } })
+    mocks.replaced!({ oldId: "tooltip-annotation", entity: { id: "recolored" } })
   );
   expect(target()).toBe("recolored");
   await act(async () => mocks.removed!("recolored"));
@@ -285,7 +285,7 @@ it("opens the same narrow Inspector from the tooltip and restores reader focus",
 it("ignores a tooltip handoff completed after navigating to another Annotation", async () => {
   const oldHandoff = mocks.openAnnotation!;
   mocks.state = { ...mocks.state, annotationId: "new-selection" };
-  await act(async () => root.render(<ItemView />));
+  await act(async () => root.render(<EntityView />));
   await act(async () =>
     oldHandoff({ id: "old-tooltip", reference: "article" })
   );
@@ -346,7 +346,7 @@ it.each([600, 900])(
   async (width) => {
     await resize(width);
     mocks.state = { ...mocks.state, annotationId: "selected-annotation" };
-    await act(async () => root.render(<ItemView />));
+    await act(async () => root.render(<EntityView />));
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(mocks.state.annotationId).toBe("selected-annotation");
     await act(async () =>
@@ -362,7 +362,7 @@ it.each([600, 900])(
 
 it("does not open the Inspector when initially mounted on an Annotation route", async () => {
   mocks.state = { ...mocks.state, annotationId: "annotation" };
-  await act(async () => root.render(<ItemView key="annotation-route" />));
+  await act(async () => root.render(<EntityView key="annotation-route" />));
   expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
 
@@ -386,13 +386,13 @@ it("clips the mounted Inspector when Search opens and restores it when Search cl
   const panel = container.querySelector("aside")!;
   const inspector = panel.querySelector("[data-inspector]");
   mocks.search = "";
-  await act(async () => root.render(<ItemView />));
+  await act(async () => root.render(<EntityView />));
   expect(panel.getAttribute("aria-hidden")).toBe("true");
   expect(panel.hasAttribute("inert")).toBe(true);
   expect(opener()).toBeDefined();
   expect(panel.querySelector("[data-inspector]")).toBe(inspector);
   mocks.search = undefined;
-  await act(async () => root.render(<ItemView />));
+  await act(async () => root.render(<EntityView />));
   expect(panel.getAttribute("aria-hidden")).toBe("false");
   expect(panel.hasAttribute("inert")).toBe(false);
   expect(panel.querySelector("[data-inspector]")).toBe(inspector);

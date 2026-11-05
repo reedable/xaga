@@ -139,7 +139,7 @@ pub(crate) fn emit_domain<R: Runtime>(target: &impl Emitter<R>, event: DomainEve
             target: pin,
             pinned,
         } => target.emit(name, serde_json::json!({ "target": pin, "pinned": pinned })),
-        DomainEvent::AnnotationChanged(item) => target.emit(name, item),
+        DomainEvent::AnnotationChanged(entity) => target.emit(name, entity),
         DomainEvent::AnnotationReplaced(replacement) => target.emit(name, replacement),
         DomainEvent::AnnotationRemoved { id } => target.emit(name, id),
         DomainEvent::FaviconChanged(article) => target.emit(name, article),

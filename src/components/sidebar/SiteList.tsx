@@ -6,7 +6,7 @@ import type { Site } from "../../types";
 import sortSidebarCollections from "../../utils/sortSidebarCollections";
 import ExpandableList from "./ExpandableList";
 import css from "./SiteList.module.css";
-import SidebarItem from "./SidebarItem";
+import SidebarEntity from "./SidebarEntity";
 import SidebarSortControl from "./SidebarSortControl";
 import UnreadCount from "./UnreadCount";
 
@@ -50,11 +50,11 @@ export default function SiteList({
       )}
 
       {sortedSites.map((site) => (
-        <SidebarItem
+        <SidebarEntity
           collection={site}
-          key={site.hostname}
+          key={site.id}
           icon={Language}
-          selected={siteHostname === site.hostname}
+          selected={siteHostname === site.id}
           onSelectCollection={handleSelectSite}
           renderSecondaryAction={() => <UnreadCount count={site.unreadCount} />}
         />

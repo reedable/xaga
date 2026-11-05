@@ -13,7 +13,7 @@ import { useEmbeddingStartupState } from "./hooks/useEmbeddingStartupState";
 import { useSettings } from "./hooks/useSettings";
 import { usePlatform } from "./platform/Platform";
 import { ExpandedListProvider } from "./providers/ExpandedListProvider";
-import { AllItemsCountsProvider } from "./providers/AllItemsCountsProvider";
+import { AllEntitiesCountsProvider } from "./providers/AllEntitiesCountsProvider";
 import PinsProvider from "./providers/PinsProvider";
 import FeedsProvider from "./providers/FeedsProvider";
 import { TopicsProvider } from "./providers/TopicsProvider";
@@ -64,9 +64,9 @@ export default function App({ entryPoint }: { entryPoint: string }) {
                         path="/"
                         element={
                           embeddingStartupState !== "loading" ? (
-                            <AllItemsCountsProvider>
+                            <AllEntitiesCountsProvider>
                               <AppLayout />
-                            </AllItemsCountsProvider>
+                            </AllEntitiesCountsProvider>
                           ) : null
                         }
                       />

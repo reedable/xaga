@@ -8,7 +8,7 @@
   }
 }
 
-.ItemList {
+.EntityList {
   --width: 20rem;
 
   display: flex;
@@ -114,7 +114,7 @@
   .List {
     flex: 1;
 
-    .ListItem {
+    .ListEntity {
       border-bottom: var(--border);
 
       .ListItemButton {

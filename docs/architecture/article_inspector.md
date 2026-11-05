@@ -8,7 +8,7 @@ immediate assignment/removal and creation with assignment, through the
 
 ## Target and view state
 
-`ItemView` derives the Article panel target from the reader route's Entry ID
+`EntityView` derives the Article panel target from the reader route's Entry ID
 and owns the drawer target as an Entry ID with an optional Annotation ID.
 Article navigation selects the Article. Annotation navigation selects and
 scrolls to the passage without opening the Inspector drawer; the reader and
@@ -42,9 +42,9 @@ the committed replacement event's old-to-new Annotation identity; removing the
 inspected Annotation returns inspection to the parent Article. Navigation to a
 different Article or Annotation resets the drawer target to that navigation context.
 `articleScopeId` does not independently determine the target. Related uses the
-inspected item's ID and retains its ranking and item-selection navigation.
+inspected entity's ID and retains its ranking and entity-selection navigation.
 
-`ItemView` owns Article and Annotation view selections and drawer visibility
+`EntityView` owns Article and Annotation view selections and drawer visibility
 independently of reader reload revisions. Each view selection lasts for the
 app session across navigation, drawer reopening, and resizing. Changing the
 Annotation drawer's tab does not change the Article panel's selected tab. This

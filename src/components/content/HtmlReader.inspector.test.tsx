@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   removed: undefined as undefined | ((id: string) => void),
   replaced: undefined as
     | undefined
-    | ((event: { oldId: string; item: { id: string; color: string } }) => void),
+    | ((event: { oldId: string; entity: { id: string; color: string } }) => void),
 }));
 const events = {
   onAnnotationReplaced: (callback: typeof mocks.replaced) => {
@@ -209,7 +209,7 @@ it("follows replacement identity in the retained tooltip", async () => {
   await act(async () =>
     mocks.replaced!({
       oldId: "annotation",
-      item: { id: "recolored", color: "red" },
+      entity: { id: "recolored", color: "red" },
     })
   );
   await act(async () => button("Show annotation details").click());

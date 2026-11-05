@@ -3,8 +3,10 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import useRouter from "../../hooks/useRouter";
-import type { Article, ListItem, NavigationState, Site } from "../../types";
-import { ItemList } from "./ItemList";
+import type { Article, Feed, Topic, ListEntity, NavigationState, Site } from "../../types";
+import { ALL_ENTITIES } from "../../Shortcuts";
+import { emptySite } from "../../sites";
+import { EntityList } from "./EntityList";
 
 const mocks = vi.hoisted(() => {
   const callbacks: Record<string, (value: never) => void> = {};
@@ -33,17 +35,19 @@ const mocks = vi.hoisted(() => {
     sink: { pushError: vi.fn() },
     entries: {
       listEntries: vi.fn(),
-      listAllItems: vi.fn(),
+      listAllEntities: vi.fn(),
       markEntryRead: vi.fn(),
     },
-    topics: { topics: [], listTopicItems: vi.fn() },
+    topics: { topics: [] as Topic[], listTopicEntities: vi.fn() },
     sites: {
       sites: [] as Site[],
       pinnedSites: [] as Site[],
       listSiteEntries: vi.fn(),
     },
     editSite: vi.fn(),
-    feeds: { feeds: [], loading: false, refreshAllFeeds: vi.fn() },
+    editFeed: vi.fn(),
+    editTopic: vi.fn(),
+    feeds: { feeds: [] as Feed[], loading: false, refreshAllFeeds: vi.fn() },
     pins: [] as Article[],
   };
 });
@@ -59,9 +63,9 @@ vi.mock("../../hooks/usePinnedEntries", () => ({
   usePinnedEntries: () => mocks.pins,
 }));
 vi.mock("../../hooks/useEvents", () => ({ useEvents: () => mocks.events }));
-vi.mock("../ItemStatus", () => ({
-  default: ({ item }: { item: { id: string; isUnread?: boolean } }) => (
-    <span data-status-id={item.id} data-unread={item.isUnread} />
+vi.mock("../EntityStatus", () => ({
+  default: ({ entity }: { entity: { id: string; isUnread?: boolean } }) => (
+    <span data-status-id={entity.id} data-unread={entity.isUnread} />
   ),
 }));
 vi.mock("react-virtuoso", () => ({
@@ -70,8 +74,8 @@ vi.mock("react-virtuoso", () => ({
       data,
       itemContent,
     }: {
-      data: ListItem[];
-      itemContent: (index: number, item: ListItem) => React.ReactNode;
+      data: ListEntity[];
+      itemContent: (index: number, entity: ListEntity) => React.ReactNode;
     },
     ref
   ) {
@@ -80,8 +84,8 @@ vi.mock("react-virtuoso", () => ({
     }));
     return (
       <div>
-        {data.map((item, index) => (
-          <div key={item.id}>{itemContent(index, item)}</div>
+        {data.map((entity, index) => (
+          <div key={entity.id}>{itemContent(index, entity)}</div>
         ))}
       </div>
     );
@@ -97,7 +101,6 @@ function Observe() {
   }, [current]);
   return null;
 }
-const edit = () => {};
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 let article: Article;
@@ -112,10 +115,10 @@ async function render(
     root.render(
       <MemoryRouter initialEntries={[{ pathname: "/", state }]}>
         <Observe />
-        <ItemList
+        <EntityList
           isSelectableHeader={selectable}
-          onEditFeed={edit}
-          onEditTopic={edit}
+          onEditFeed={mocks.editFeed}
+          onEditTopic={mocks.editTopic}
           onEditSite={mocks.editSite}
         />
       </MemoryRouter>
@@ -162,8 +165,11 @@ beforeEach(() => {
   mocks.tagContext.tags = [{ id: "tag-a", name: "Research" }, { id: "tag-b", name: "Work" }];
   mocks.tagEntries.mockResolvedValue([article]);
   mocks.pins = [article];
+  mocks.feeds.feeds = [];
+  mocks.topics.topics = [];
   mocks.sites.sites = [];
   mocks.sites.pinnedSites = [];
+  mocks.entries.listAllEntities.mockResolvedValue([]);
   mocks.read.mockImplementation(async () => structuredClone(article));
   container = document.createElement("div");
   document.body.append(container);
@@ -258,7 +264,7 @@ it("reflects annotation additions, reordered edits, replacements and removals fr
   await act(async () =>
     mocks.callbacks.onAnnotationReplaced({
       oldId,
-      item: { ...article.annotations[1], url: article.url },
+      entity: { ...article.annotations[1], url: article.url },
     } as never)
   );
   expect(route.state.annotationId).toBe("replacement");
@@ -324,7 +330,7 @@ it("preserves a Site's open Saved list when article color is removed", async () 
   mocks.sites.sites = [
     {
       id: "example.org",
-      hostname: "example.org",
+      __kind: "site" as const,
       title: "example.org",
       entryCount: 1,
       unreadCount: 0,
@@ -346,17 +352,17 @@ it("preserves a Site's open Saved list when article color is removed", async () 
 it("keeps an empty Site selected when unpinned and opens its Settings", async () => {
   const site = {
     id: "empty.example",
-    hostname: "empty.example",
+    __kind: "site" as const,
     title: "empty.example",
     entryCount: 0,
     unreadCount: 0,
   };
   mocks.sites.pinnedSites = [site];
   mocks.sites.listSiteEntries.mockResolvedValue([]);
-  const state = { siteHostname: site.hostname };
+  const state = { siteHostname: site.id };
   await render(state);
   expect(mocks.sites.listSiteEntries).toHaveBeenCalledWith(
-    site.hostname,
+    site.id,
     undefined
   );
   const settings =
@@ -368,9 +374,53 @@ it("keeps an empty Site selected when unpinned and opens its Settings", async ()
   expect(mocks.editSite).toHaveBeenCalledWith(site);
   mocks.sites.pinnedSites = [];
   await render(state);
-  expect(route.state.siteHostname).toBe(site.hostname);
-  expect(container.textContent).toContain(site.hostname);
-  expect(mocks.entries.listAllItems).not.toHaveBeenCalled();
+  expect(route.state.siteHostname).toBe(site.id);
+  expect(container.textContent).toContain(site.id);
+  expect(mocks.entries.listAllEntities).not.toHaveBeenCalled();
+});
+
+it.each(["feed", "topic", "site"] as const)("selects a %s from the responsive header, loads its members, and opens only its own editor", async (kind) => {
+  const feed: Feed = {
+    __kind: "feed", id: "feed", title: "Feed", createdAt: "2026-01-01",
+    url: "https://example.org/feed", members: [], isPinned: false, entryCount: 1, unreadCount: 0,
+  };
+  const topic: Topic = { ...feed, __kind: "topic", id: "topic", title: "Topic" };
+  const site = emptySite("example.org");
+  mocks.feeds.feeds = [feed];
+  mocks.topics.topics = [topic];
+  mocks.sites.sites = [site];
+  mocks.entries.listEntries.mockResolvedValue([article]);
+  mocks.topics.listTopicEntities.mockResolvedValue([article]);
+  mocks.sites.listSiteEntries.mockResolvedValue([article]);
+  const collection = { feed, topic, site }[kind];
+  const scope = { feed: { feedId: feed.id }, topic: { topicId: topic.id }, site: { siteHostname: site.id } }[kind];
+
+  await render({ shortcutId: ALL_ENTITIES.id, filter: "saved" }, true);
+  const openHeader = async () => {
+    const combo = container.querySelector<HTMLElement>('[aria-label="Browse collections and tags"]')!;
+    await act(async () => combo.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
+  };
+  const option = (title: string) => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((entity) => entity.textContent === title)!;
+  await openHeader();
+  await act(async () => option(collection.title).click());
+  expect(route.state).toEqual({ ...scope, filter: "saved" });
+  expect(rows().map((row) => row.textContent)).toEqual([article.title]);
+  if (kind === "feed") expect(mocks.entries.listEntries).toHaveBeenCalledWith(feed, "saved");
+  if (kind === "topic") expect(mocks.topics.listTopicEntities).toHaveBeenCalledWith(topic.id, "saved", "relevance");
+  if (kind === "site") expect(mocks.sites.listSiteEntries).toHaveBeenCalledWith(site.id, "saved");
+
+  await render(route.state);
+  await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Edit"]')!.click());
+  for (const [editorKind, editor] of Object.entries({ feed: mocks.editFeed, topic: mocks.editTopic, site: mocks.editSite })) {
+    if (editorKind === kind) expect(editor).toHaveBeenCalledExactlyOnceWith(collection);
+    else expect(editor).not.toHaveBeenCalled();
+  }
+
+  await render(route.state, true);
+  await openHeader();
+  await act(async () => option("All items").click());
+  expect(route.state).toEqual({ shortcutId: ALL_ENTITIES.id, filter: "saved" });
+  expect(mocks.entries.listAllEntities).toHaveBeenLastCalledWith("saved");
 });
 
 it("browses Entry intersections and retains membership through state and assignment updates", async () => {
@@ -401,7 +451,7 @@ it("shares the tag set with the hidden-sidebar header and immediately intersects
   const combo = container.querySelector<HTMLElement>('[role="combobox"]')!;
   expect(combo.getAttribute("aria-label")).toBe("Browse collections and tags");
   await act(async () => combo.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
-  const option = (name: string) => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((item) => item.textContent === name)!;
+  const option = (name: string) => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((entity) => entity.textContent === name)!;
   await act(async () => option("Research").click());
   expect(route.state.tagIds).toEqual(["tag-a"]);
   await act(async () => option("Work").click());
@@ -417,7 +467,7 @@ it("shares the tag set with the hidden-sidebar header and immediately intersects
 it("updates renamed or missing labels without reloading the active list", async () => {
   await render({ tagIds: ["tag-a"], filter: "all" });
   mocks.tagContext.tags = [{ id: "tag-a", name: "Renamed" }];
-  await act(async () => route.selectItem(article));
+  await act(async () => route.selectEntity(article));
   expect(container.textContent).toContain("Renamed");
   expect(mocks.tagEntries).toHaveBeenCalledOnce();
   mocks.tagContext.tags = [];
@@ -427,7 +477,7 @@ it("updates renamed or missing labels without reloading the active list", async 
 });
 
 it("ignores a superseded tag query and refreshes membership when text filtering changes", async () => {
-  let oldResult!: (value: ListItem[]) => void;
+  let oldResult!: (value: ListEntity[]) => void;
   mocks.tagEntries.mockImplementationOnce(() => new Promise((resolve) => { oldResult = resolve; }));
   await render({ tagIds: ["tag-a"], filter: "all" });
   await act(async () => route.selectTags(["tag-b"]));
@@ -446,7 +496,7 @@ it("provides Tab access to tag actions inside the responsive selector without se
   await render({ tagIds: ["tag-a"], filter: "all" }, true);
   const combo = container.querySelector<HTMLElement>('[role="combobox"]')!;
   await act(async () => combo.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
-  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((item) => item.textContent === "Research")!;
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((entity) => entity.textContent === "Research")!;
   await act(async () => {
     option.focus();
     option.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
@@ -472,7 +522,7 @@ it("removes deleted selections without refreshing membership until explicit navi
 });
 
 it("discards a pending membership result when deletion changes selection", async () => {
-  let oldResult!: (value: ListItem[]) => void;
+  let oldResult!: (value: ListEntity[]) => void;
   mocks.tagEntries.mockImplementationOnce(() => new Promise((resolve) => { oldResult = resolve; }));
   await render({ tagIds: ["tag-a"], filter: "all" });
   await act(async () => route.replaceTagSelection(route.state.tagIds!.filter((id) => id !== "tag-a")));

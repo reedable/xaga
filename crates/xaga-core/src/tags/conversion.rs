@@ -257,7 +257,7 @@ mod tests {
         fn article(&mut self, _: crate::types::Article, _: Vec<String>) {}
     }
     async fn recover(writer: &LibraryWriter, db: &EmbeddingsDb) {
-        crate::recovery::embeddings::repair_item_embeddings(
+        crate::recovery::embeddings::repair_entity_embeddings(
             writer.library_dir(),
             db,
             &mut Sink,

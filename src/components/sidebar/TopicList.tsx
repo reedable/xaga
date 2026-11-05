@@ -8,7 +8,7 @@ import useRouter from "../../hooks/useRouter";
 import { type Topic } from "../../types";
 import sortSidebarCollections from "../../utils/sortSidebarCollections";
 import ExpandableList from "./ExpandableList";
-import SidebarItem from "./SidebarItem";
+import SidebarEntity from "./SidebarEntity";
 import SidebarSortControl from "./SidebarSortControl";
 import css from "./TopicList.module.css";
 import UnreadCount from "./UnreadCount";
@@ -76,7 +76,7 @@ export default function TopicList({
       )}
 
       {sortedTopics.map((topic) => (
-        <SidebarItem
+        <SidebarEntity
           collection={topic}
           key={topic.id}
           icon={FeedIcon}

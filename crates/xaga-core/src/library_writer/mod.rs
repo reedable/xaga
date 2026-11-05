@@ -22,7 +22,7 @@ use crate::persistence::entries::EntryError;
 use crate::persistence::feeds::FeedError;
 use crate::persistence::topics::TopicsError;
 use crate::persistence::{articles, entries, feeds, topics};
-use crate::types::{Annotation, Article, CollectionItem, Entry, Feed, Topic};
+use crate::types::{Annotation, Article, Entry, Feed, Reference, Topic};
 
 /// Proof of the write right: a zero-sized capability that every `pub(crate)` persistence
 /// write requires. Its field is private to this module, so it can be constructed ONLY here
@@ -243,7 +243,7 @@ enum Op {
         title: String,
         description: String,
         threshold: Option<f32>,
-        items: Vec<CollectionItem>,
+        entities: Vec<Reference>,
         resp: oneshot::Sender<Result<Topic, WriterError>>,
     },
     CreateTopicWithMember {
@@ -251,10 +251,10 @@ enum Op {
         title: String,
         description: String,
         threshold: Option<f32>,
-        item: CollectionItem,
+        entity: Reference,
         resp: oneshot::Sender<Result<Topic, WriterError>>,
     },
-    /// Edits a topic's metadata without touching its item list. The existing
+    /// Edits a topic's metadata without touching its member references. The existing
     /// items are re-read and written back inside the topic's lane, so a
     /// concurrent item add/remove cannot be lost.
     EditTopicMeta {
@@ -268,20 +268,20 @@ enum Op {
         id: String,
         resp: oneshot::Sender<Result<(), WriterError>>,
     },
-    AddTopicItem {
+    AddTopicEntity {
         topic_id: String,
-        item: CollectionItem,
+        entity: Reference,
         resp: oneshot::Sender<Result<Topic, WriterError>>,
     },
-    ReplaceTopicItem {
+    ReplaceTopicEntity {
         topic_id: String,
         old_id: String,
-        item: CollectionItem,
+        entity: Reference,
         resp: oneshot::Sender<Result<Topic, WriterError>>,
     },
-    RemoveTopicItem {
+    RemoveTopicEntity {
         topic_id: String,
-        item_id: String,
+        entity_id: String,
         resp: oneshot::Sender<Result<Topic, WriterError>>,
     },
     RenameFeed {
@@ -355,9 +355,9 @@ impl Op {
             | Op::CreateTopicWithMember { id, .. }
             | Op::EditTopicMeta { id, .. }
             | Op::DeleteTopic { id, .. }
-            | Op::AddTopicItem { topic_id: id, .. }
-            | Op::ReplaceTopicItem { topic_id: id, .. }
-            | Op::RemoveTopicItem { topic_id: id, .. } => format!("topic/{id}"),
+            | Op::AddTopicEntity { topic_id: id, .. }
+            | Op::ReplaceTopicEntity { topic_id: id, .. }
+            | Op::RemoveTopicEntity { topic_id: id, .. } => format!("topic/{id}"),
             Op::RenameFeed { id, .. }
             | Op::RemoveFeed { id, .. }
             | Op::WriteFeedAtom { id, .. } => format!("feed/{id}"),
@@ -388,9 +388,9 @@ impl Op {
             Op::CreateTopicWithMember { .. } => "create_topic_with_member",
             Op::EditTopicMeta { .. } => "edit_topic_meta",
             Op::DeleteTopic { .. } => "delete_topic",
-            Op::AddTopicItem { .. } => "add_topic_item",
-            Op::ReplaceTopicItem { .. } => "replace_topic_item",
-            Op::RemoveTopicItem { .. } => "remove_topic_item",
+            Op::AddTopicEntity { .. } => "add_topic_entity",
+            Op::ReplaceTopicEntity { .. } => "replace_topic_entity",
+            Op::RemoveTopicEntity { .. } => "remove_topic_entity",
             Op::RenameFeed { .. } => "rename_feed",
             Op::RemoveFeed { .. } => "remove_feed",
             Op::WriteFeedEntry { .. } => "write_feed_entry",
@@ -425,9 +425,9 @@ impl Op {
             }
             Op::DeleteTopic { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::EditTopicMeta { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
-            Op::AddTopicItem { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
-            Op::ReplaceTopicItem { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
-            Op::RemoveTopicItem { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::AddTopicEntity { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::ReplaceTopicEntity { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::RemoveTopicEntity { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RenameFeed { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RemoveFeed { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::WriteFeedEntry { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -700,7 +700,7 @@ impl Op {
                 title,
                 description,
                 threshold,
-                items,
+                entities,
                 resp,
             } => {
                 let r = topics::save_topic(
@@ -709,7 +709,7 @@ impl Op {
                     &title,
                     &description,
                     threshold,
-                    items,
+                    entities,
                     token,
                 )
                 .await
@@ -721,16 +721,22 @@ impl Op {
                 title,
                 description,
                 threshold,
-                item,
+                entity,
                 resp,
             } => {
                 let r = async {
-                    let article_id = match &item {
-                        CollectionItem::Entry { id } => id,
-                        CollectionItem::Annotation { reference, .. } => reference,
+                    let article_id = match &entity {
+                        Reference::Entry { id } => id,
+                        Reference::Annotation {
+                            article_id: Some(article_id),
+                            ..
+                        } if !article_id.is_empty() => article_id,
+                        Reference::Annotation { .. } | Reference::Note { .. } => {
+                            return Err(WriterError::Entry(EntryError::NotFound));
+                        }
                     };
                     let article = articles::read_article(library_dir, article_id).await?;
-                    if let CollectionItem::Annotation { id, .. } = &item
+                    if let Reference::Annotation { id, .. } = &entity
                         && !article
                             .annotations
                             .iter()
@@ -744,7 +750,7 @@ impl Op {
                         &title,
                         &description,
                         threshold,
-                        vec![item],
+                        vec![entity],
                         token,
                     )
                     .await
@@ -763,7 +769,7 @@ impl Op {
                 // Read the current items and rewrite with the edited metadata, all inside
                 // the lane — no item change made concurrently can be lost.
                 let r = async {
-                    let items = topics::read_topic_items(library_dir, &id)
+                    let entities = topics::read_topic_entities(library_dir, &id)
                         .await
                         .unwrap_or_default();
                     topics::save_topic(
@@ -772,7 +778,7 @@ impl Op {
                         &title,
                         &description,
                         threshold,
-                        items,
+                        entities,
                         token,
                     )
                     .await
@@ -788,33 +794,34 @@ impl Op {
                 let _ = resp.send(r);
             }
 
-            Op::AddTopicItem {
+            Op::AddTopicEntity {
                 topic_id,
-                item,
+                entity,
                 resp,
             } => {
-                let r = topics::add_topic_item(library_dir, &topic_id, item, token)
+                let r = topics::add_topic_entity(library_dir, &topic_id, entity, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
-            Op::ReplaceTopicItem {
+            Op::ReplaceTopicEntity {
                 topic_id,
                 old_id,
-                item,
+                entity,
                 resp,
             } => {
-                let r = topics::replace_topic_item(library_dir, &topic_id, &old_id, item, token)
-                    .await
-                    .map_err(WriterError::from);
+                let r =
+                    topics::replace_topic_entity(library_dir, &topic_id, &old_id, entity, token)
+                        .await
+                        .map_err(WriterError::from);
                 let _ = resp.send(r);
             }
-            Op::RemoveTopicItem {
+            Op::RemoveTopicEntity {
                 topic_id,
-                item_id,
+                entity_id,
                 resp,
             } => {
-                let r = topics::remove_topic_item(library_dir, &topic_id, &item_id, token)
+                let r = topics::remove_topic_entity(library_dir, &topic_id, &entity_id, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(r);
@@ -1232,7 +1239,7 @@ impl LibraryWriter {
         title: String,
         description: String,
         threshold: Option<f32>,
-        items: Vec<CollectionItem>,
+        entities: Vec<Reference>,
     ) -> Result<Topic, WriterError> {
         let (resp, rx) = oneshot::channel();
         let op = Op::SaveTopic {
@@ -1240,7 +1247,7 @@ impl LibraryWriter {
             title,
             description,
             threshold,
-            items,
+            entities,
             resp,
         };
         self.submit(tier, op, rx).await
@@ -1248,7 +1255,7 @@ impl LibraryWriter {
 
     /// Edit a topic's metadata, preserving its current items (read + write inside the
     /// lane). Use this for UI topic edits; use `save_topic` only when setting an explicit
-    /// item list.
+    /// member references.
     pub async fn edit_topic_meta(
         &self,
         tier: Tier,
@@ -1289,7 +1296,7 @@ impl LibraryWriter {
         title: String,
         description: String,
         threshold: Option<f32>,
-        item: CollectionItem,
+        entity: Reference,
     ) -> Result<Topic, WriterError> {
         let id = uuid::Uuid::new_v4().to_string();
         let (resp, rx) = oneshot::channel();
@@ -1298,7 +1305,7 @@ impl LibraryWriter {
             title,
             description,
             threshold,
-            item,
+            entity,
             resp,
         };
         self.submit(tier, op, rx).await
@@ -1457,48 +1464,48 @@ impl LibraryWriter {
         .await
     }
 
-    pub async fn add_topic_item(
+    pub async fn add_topic_entity(
         &self,
         tier: Tier,
         topic_id: String,
-        item: CollectionItem,
+        entity: Reference,
     ) -> Result<Topic, WriterError> {
         let (resp, rx) = oneshot::channel();
-        let op = Op::AddTopicItem {
+        let op = Op::AddTopicEntity {
             topic_id,
-            item,
+            entity,
             resp,
         };
         self.submit(tier, op, rx).await
     }
 
-    pub async fn replace_topic_item(
+    pub async fn replace_topic_entity(
         &self,
         tier: Tier,
         topic_id: String,
         old_id: String,
-        item: CollectionItem,
+        entity: Reference,
     ) -> Result<Topic, WriterError> {
         let (resp, rx) = oneshot::channel();
-        let op = Op::ReplaceTopicItem {
+        let op = Op::ReplaceTopicEntity {
             topic_id,
             old_id,
-            item,
+            entity,
             resp,
         };
         self.submit(tier, op, rx).await
     }
 
-    pub async fn remove_topic_item(
+    pub async fn remove_topic_entity(
         &self,
         tier: Tier,
         topic_id: String,
-        item_id: String,
+        entity_id: String,
     ) -> Result<Topic, WriterError> {
         let (resp, rx) = oneshot::channel();
-        let op = Op::RemoveTopicItem {
+        let op = Op::RemoveTopicEntity {
             topic_id,
-            item_id,
+            entity_id,
             resp,
         };
         self.submit(tier, op, rx).await
@@ -2256,7 +2263,7 @@ mod tests {
                 "Entry topic".into(),
                 "Description".into(),
                 Some(0.7),
-                CollectionItem::Entry {
+                Reference::Entry {
                     id: "abcdef123456".into(),
                 },
             )
@@ -2267,7 +2274,7 @@ mod tests {
             [crate::types::Reference::Entry { id }] if id == "abcdef123456"
         ));
         assert_eq!(
-            topics::read_topic_items(dir.path(), &entry_topic.id)
+            topics::read_topic_entities(dir.path(), &entry_topic.id)
                 .await
                 .unwrap()
                 .len(),
@@ -2287,16 +2294,17 @@ mod tests {
                 "Annotation topic".into(),
                 String::new(),
                 None,
-                CollectionItem::Annotation {
+                Reference::Annotation {
                     id: "annotation-1".into(),
-                    reference: "abcdef123456".into(),
+                    article_id: Some("abcdef123456".into()),
                 },
             )
             .await
             .unwrap();
         assert!(matches!(
             annotation_topic.members.as_slice(),
-            [crate::types::Reference::Annotation { id }] if id == "annotation-1"
+            [Reference::Annotation { id, article_id: Some(article_id) }]
+                if id == "annotation-1" && article_id == "abcdef123456"
         ));
         w.shutdown().await;
     }
@@ -2312,7 +2320,7 @@ mod tests {
                 "Orphan".into(),
                 String::new(),
                 None,
-                CollectionItem::Entry {
+                Reference::Entry {
                     id: "missing".into(),
                 },
             )
@@ -2323,6 +2331,33 @@ mod tests {
         ));
         assert!(topics::list_topics(dir.path()).await.unwrap().is_empty());
 
+        for unresolved in [
+            Reference::Annotation {
+                id: "annotation".into(),
+                article_id: None,
+            },
+            Reference::Annotation {
+                id: "annotation".into(),
+                article_id: Some(String::new()),
+            },
+            Reference::Note { id: "note".into() },
+        ] {
+            let result = w
+                .create_topic_with_member(
+                    Tier::Interactive,
+                    "Unresolved".into(),
+                    String::new(),
+                    None,
+                    unresolved,
+                )
+                .await;
+            assert!(matches!(
+                result,
+                Err(WriterError::Entry(EntryError::NotFound))
+            ));
+            assert!(topics::list_topics(dir.path()).await.unwrap().is_empty());
+        }
+
         seed_article(&w, "abcdef123456").await;
         let result = w
             .create_topic_with_member(
@@ -2330,9 +2365,9 @@ mod tests {
                 "Orphan annotation".into(),
                 String::new(),
                 None,
-                CollectionItem::Annotation {
+                Reference::Annotation {
                     id: "missing-annotation".into(),
-                    reference: "abcdef123456".into(),
+                    article_id: Some("abcdef123456".into()),
                 },
             )
             .await;

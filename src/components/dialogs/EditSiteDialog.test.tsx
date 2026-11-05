@@ -24,7 +24,7 @@ afterEach(async () => {
 });
 const site = {
   id: "example.com",
-  hostname: "example.com",
+  __kind: "site" as const,
   title: "example.com",
   entryCount: 0,
   unreadCount: 0,
@@ -35,7 +35,7 @@ it("restores persisted membership on reopen, saves the typed Site reference, and
   const render = (open: boolean) => (
     <EditSiteDialog site={open ? site : null} onClose={onClose} />
   );
-  mocks.pins = [{ type: "site", hostname: site.hostname }];
+  mocks.pins = [{ type: "site", hostname: site.id }];
   await act(async () => root.render(render(true)));
   const checkbox = () =>
     document.querySelector<HTMLInputElement>('input[type="checkbox"]')!;

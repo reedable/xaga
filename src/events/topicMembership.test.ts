@@ -1,14 +1,14 @@
 import { expect, it, vi } from "vitest";
-import { emitTopicItemAdded, onTopicItemAdded } from "./topicMembership";
+import { emitTopicEntityAdded, onTopicEntityAdded } from "./topicMembership";
 
 it("notifies current subscribers only", () => {
   const listener = vi.fn();
-  const unsubscribe = onTopicItemAdded(listener);
-  const event = { topicId: "topic", itemId: "entry" };
+  const unsubscribe = onTopicEntityAdded(listener);
+  const event = { topicId: "topic", entityId: "entry" };
 
-  emitTopicItemAdded(event);
+  emitTopicEntityAdded(event);
   unsubscribe();
-  emitTopicItemAdded(event);
+  emitTopicEntityAdded(event);
 
   expect(listener).toHaveBeenCalledOnce();
   expect(listener).toHaveBeenCalledWith(event);

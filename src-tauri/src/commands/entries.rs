@@ -2,10 +2,10 @@ use tauri::State;
 use xaga_core::embeddings::{EntityRef, Job, StatePatch, Tier};
 use xaga_core::library_writer::Tier as WriteTier;
 use xaga_core::persistence::entries;
-use xaga_core::query::items;
-use xaga_core::types::{Entry, Kind, ListItem};
+use xaga_core::query::entities;
+use xaga_core::types::{Entry, Kind, ListEntity};
 
-use super::parse_item_filter;
+use super::parse_entity_filter;
 use crate::error::AppError;
 use crate::{AppState, EmbeddingStartupState};
 
@@ -63,29 +63,29 @@ pub fn embedding_startup_state(state: State<'_, AppState>) -> EmbeddingStartupSt
 }
 
 #[tauri::command]
-pub async fn get_all_items_counts(
+pub async fn get_all_entities_counts(
     state: State<'_, AppState>,
-) -> Result<Option<xaga_core::embeddings::AllItemsCounts>, AppError> {
+) -> Result<Option<xaga_core::embeddings::AllEntitiesCounts>, AppError> {
     let db = state.embeddings_read.lock().unwrap().clone();
     let Some(db) = db else {
         return Ok(None);
     };
     db.reload().await.map_err(AppError::from)?;
-    db.all_items_counts()
+    db.all_entities_counts()
         .await
         .map(Some)
         .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn list_all_items(
-    item_filter: Option<String>,
+pub async fn list_all_entities(
+    entity_filter: Option<String>,
     state: State<'_, AppState>,
-) -> Result<Vec<ListItem>, AppError> {
+) -> Result<Vec<ListEntity>, AppError> {
     let data_dir = state.library_path();
-    let item_filter = parse_item_filter(item_filter)?;
+    let entity_filter = parse_entity_filter(entity_filter)?;
 
-    items::list_all_items(&data_dir, item_filter)
+    entities::list_all_entities(&data_dir, entity_filter)
         .await
         .map_err(AppError::from)
 }

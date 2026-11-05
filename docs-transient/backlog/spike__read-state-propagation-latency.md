@@ -2,7 +2,7 @@
 
 ## Summary
 
-Marking an entry read persists the file before an Interactive `SyncState` updates LanceDB and emits state events. Item state and aggregate unread counts can therefore become visible at different times. The dominant latency and intended read-after-write contract are undefined.
+Marking an entry read persists the file before an Interactive `SyncState` updates LanceDB and emits state events. Entity state and aggregate unread counts can therefore become visible at different times. The dominant latency and intended read-after-write contract are undefined.
 
 ## Requirements
 
@@ -25,4 +25,4 @@ Marking an entry read persists the file before an Interactive `SyncState` update
 - `crates/xaga-core/src/embeddings/service.rs`
 - `crates/xaga-core/src/embeddings/pipeline.rs`
 - `src/platform/TauriPlatform.ts`
-- `src/components/list/ItemList.tsx`
+- `src/components/list/EntityList.tsx`

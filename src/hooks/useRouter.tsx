@@ -1,22 +1,22 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { ALL_ITEMS } from "../Shortcuts";
+import { ALL_ENTITIES } from "../Shortcuts";
 import {
   isAnnotation,
   isCollection,
   isEntry,
-  isFeed,
   isFilter,
   isPartialAnnotation,
-  isTopic,
+  isShortcut,
   type Annotation,
-  type Countable,
+  type Collection,
   type Entry,
   type Feed,
   type Filter,
-  type Item,
+  type ManagedEntity,
   type NavigationState,
   type Site,
+  type Shortcut,
   type Topic,
 } from "../types";
 import { decorate, logged } from "../utils/Decorator";
@@ -54,7 +54,7 @@ export default function useRouter() {
   const search = useMemo(() => validateSearchInput(rawSearch), [rawSearch]);
 
   const state: NavigationState = useMemo(
-    () => (rawState as NavigationState | null) ?? { shortcutId: ALL_ITEMS.id },
+    () => (rawState as NavigationState | null) ?? { shortcutId: ALL_ENTITIES.id },
     [rawState]
   );
 
@@ -88,57 +88,49 @@ export default function useRouter() {
     });
   }, [logged_navigate, searchParams, state]);
 
-  const selectTopic = useCallback(
-    (topic: Topic, filter?: Filter) => {
+  const selectCollection = useCallback(
+    (collection: Collection, filter?: Filter) => {
       // Carry the active filter forward so it stays sticky across
       // collection switches.
       const next: NavigationState = {
-        topicId: topic.id,
+        ...(collection.__kind === "feed"
+          ? { feedId: collection.id }
+          : collection.__kind === "topic"
+            ? { topicId: collection.id }
+            : { siteHostname: collection.id }),
         filter: filter ?? state.filter,
       };
       if (isSameNavigation(state, next)) return;
       return logged_navigate(`/?${searchParams.toString()}`, { state: next });
     },
     [logged_navigate, searchParams, state]
+  );
+
+  const selectTopic = useCallback(
+    (topic: Topic, filter?: Filter) => selectCollection(topic, filter),
+    [selectCollection]
   );
 
   const selectFeed = useCallback(
-    (feed: Feed, filter?: Filter) => {
-      const next: NavigationState = {
-        feedId: feed.id,
-        filter: filter ?? state.filter,
-      };
-      if (isSameNavigation(state, next)) return;
-      return logged_navigate(`/?${searchParams.toString()}`, { state: next });
-    },
-    [logged_navigate, searchParams, state]
+    (feed: Feed, filter?: Filter) => selectCollection(feed, filter),
+    [selectCollection]
   );
 
   const selectSite = useCallback(
-    (site: Site, filter?: Filter) => {
+    (site: Site, filter?: Filter) => selectCollection(site, filter),
+    [selectCollection]
+  );
+
+  const selectShortcut = useCallback(
+    (shortcut: Shortcut, filter?: Filter) => {
       const next: NavigationState = {
-        siteHostname: site.hostname,
+        shortcutId: shortcut.id,
         filter: filter ?? state.filter,
       };
       if (isSameNavigation(state, next)) return;
       return logged_navigate(`/?${searchParams.toString()}`, { state: next });
     },
     [logged_navigate, searchParams, state]
-  );
-
-  const selectCollection = useCallback(
-    (collection: Countable, filter?: Filter) => {
-      if (isFeed(collection)) return selectFeed(collection, filter);
-      if (isTopic(collection)) return selectTopic(collection, filter);
-
-      const next: NavigationState = {
-        shortcutId: collection.id,
-        filter: filter ?? state.filter,
-      };
-      if (isSameNavigation(state, next)) return;
-      return logged_navigate(`/?${searchParams.toString()}`, { state: next });
-    },
-    [logged_navigate, searchParams, selectFeed, selectTopic, state]
   );
 
   const selectArticleScope = useCallback(
@@ -205,7 +197,7 @@ export default function useRouter() {
   // History-replaces the current route so it points at a saved Entry, without
   // pushing a new history entry. Used after a link followed within the reader
   // is loaded by URL and persisted: the URL is already current, but the route
-  // lacks the entryId that annotations and related items depend on.
+  // lacks the entryId that annotations and related entities depend on.
   const replaceEntry = useCallback(
     (entry: Entry) =>
       logged_navigate(`/?${searchParams.toString()}`, {
@@ -239,15 +231,16 @@ export default function useRouter() {
     [logged_navigate, searchParams, state]
   );
 
-  const selectItem = useCallback(
-    (item: Item) => {
-      if (isCollection(item)) return selectCollection(item);
-      if (isEntry(item)) return selectEntry(item);
-      if (isAnnotation(item) || isPartialAnnotation(item))
-        return selectAnnotation(item);
-      logger.error("Unknown item type", item);
+  const selectEntity = useCallback(
+    (entity: ManagedEntity | Collection) => {
+      if (isCollection(entity)) return selectCollection(entity);
+      if (isShortcut(entity)) return selectShortcut(entity);
+      if (isEntry(entity)) return selectEntry(entity);
+      if (isAnnotation(entity) || isPartialAnnotation(entity))
+        return selectAnnotation(entity);
+      logger.error("Unknown entity type", entity);
     },
-    [selectAnnotation, selectCollection, selectEntry]
+    [selectAnnotation, selectCollection, selectEntry, selectShortcut]
   );
 
   const applyFilter = useCallback(
@@ -297,8 +290,9 @@ export default function useRouter() {
     replaceUrl,
     selectAnnotation,
     selectArticleScope,
-    selectItem,
+    selectEntity,
     selectCollection,
+    selectShortcut,
     selectFeed,
     selectSite,
     selectFilter: applyFilter,

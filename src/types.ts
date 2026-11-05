@@ -5,12 +5,13 @@ export * from "./domain";
 
 import type { AppError } from "./platform/errors";
 import {
-  isItem,
+  isManagedEntity,
   type Entry,
   type Annotation,
   type Topic,
   type Feed,
-  type Item,
+  type Site,
+  type ManagedEntity,
   type Countable,
 } from "./domain";
 
@@ -24,45 +25,26 @@ export function isAbortError(value?: unknown): value is AbortError {
 
 // ── Query results (derived) ────────────────────────────────────────────────────
 
-/** A domain item carrying its similarity score from an embedding query. */
-export type Ranked<T extends Item> = T & { similarity: number };
+/** A managed entity carrying its similarity score from an embedding query. */
+export type Ranked<T extends ManagedEntity> = T & { similarity: number };
 
-export type RankedItem = Ranked<Entry> | Ranked<Topic> | Ranked<Feed>;
+export type RankedEntity = Ranked<Entry> | Ranked<Topic> | Ranked<Feed>;
 
-export function isRanked<T extends Item>(
+export function isRanked<T extends ManagedEntity>(
   o: T | null | undefined
 ): o is Ranked<T> {
   return !!o && typeof (o as Ranked<T>).similarity === "number";
 }
 
-// ── Items list (derived) ────────────────────────────────────────────────────────
+// ── Entities list (derived) ────────────────────────────────────────────────────────
 
-/** An item in the list returned by listAllItems: an entry (any state) or an annotation. */
-export type ListItem = Entry | PartialAnnotation;
+/** An entity in the list returned by listAllEntities: an entry (any state) or an annotation. */
+export type ListEntity = Entry | PartialAnnotation;
 
-export type AllItemsCounts = {
+export type AllEntitiesCounts = {
   entryCount: number;
   unreadCount: number;
 };
-
-/** A derived grouping of Entries whose stored URLs share a normalized hostname. */
-export type Site = {
-  id: string;
-  title: string;
-  hostname: string;
-  entryCount: number;
-  unreadCount: number;
-};
-
-export function isSite(value: unknown): value is Site {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    typeof (value as Site).hostname === "string" &&
-    typeof (value as Site).entryCount === "number" &&
-    typeof (value as Site).unreadCount === "number"
-  );
-}
 
 // ── Cache projection (derived) ──────────────────────────────────────────────────
 
@@ -75,16 +57,16 @@ export type PartialAnnotation = Pick<
 // An annotation in list form (saved list or embedding-query result). Identified by reference +
 // color + url; a full `Annotation` carries no url, which is what separates the two forms.
 export function isPartialAnnotation(
-  item?: Item | null
-): item is PartialAnnotation {
+  entity?: unknown
+): entity is PartialAnnotation {
   return (
-    isItem(item) &&
-    "color" in item &&
-    typeof (item as PartialAnnotation).color === "string" &&
-    "reference" in item &&
-    typeof (item as PartialAnnotation).reference === "string" &&
-    "url" in item &&
-    typeof (item as PartialAnnotation).url === "string"
+    isManagedEntity(entity) &&
+    "color" in entity &&
+    typeof (entity as PartialAnnotation).color === "string" &&
+    "reference" in entity &&
+    typeof (entity as PartialAnnotation).reference === "string" &&
+    "url" in entity &&
+    typeof (entity as PartialAnnotation).url === "string"
   );
 }
 
@@ -127,12 +109,12 @@ export function isHtmlReaderView(
   return !!value && HTML_READER_VIEWS.includes(value);
 }
 
-/** A saved filter view: a count-bearing item that carries a Filter (e.g. Unread (42)). */
-export type Shortcut = Countable & { filter: Filter };
+/** A saved filter view: a count-bearing managed entity that carries a Filter (e.g. Unread (42)). */
+export type Shortcut = ManagedEntity & Countable & { filter: Filter };
 
-export function isShortcut(item?: Item | null): item is Shortcut {
+export function isShortcut(entity?: unknown): entity is Shortcut {
   return (
-    isItem(item) && "filter" in item && isFilter((item as Shortcut).filter)
+    isManagedEntity(entity) && "filter" in entity && isFilter((entity as Shortcut).filter)
   );
 }
 
@@ -174,7 +156,7 @@ export type NavigationState = {
   tagSelectionRevision?: number;
   topicId?: Topic["id"];
   feedId?: Feed["id"];
-  siteHostname?: Site["hostname"];
+  siteHostname?: Site["id"];
   shortcutId?: Shortcut["id"];
   articleScopeId?: Entry["id"];
   entryId?: Entry["id"];

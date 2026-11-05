@@ -39,7 +39,7 @@ mod tests {
         embeddings::EmbeddingEntry,
         persistence::{articles, entries},
         tags::{Phase, Progress, Tags, Transition, conversion},
-        types::ItemFilter,
+        types::EntityFilter,
     };
     use std::path::Path;
 
@@ -99,7 +99,7 @@ mod tests {
         fn article(&mut self, _: crate::types::Article, _: Vec<String>) {}
     }
     async fn recover(writer: &LibraryWriter, db: &EmbeddingsDb) {
-        crate::recovery::embeddings::repair_item_embeddings(
+        crate::recovery::embeddings::repair_entity_embeddings(
             writer.library_dir(),
             db,
             &mut Sink,
@@ -131,7 +131,7 @@ mod tests {
             assert!(snapshot.tags.iter().all(|tag| tag.name != "Research"));
             let group = vec![source.clone(), destination.clone()];
             assert_eq!(
-                db.list_tag_entry_groups(&[group.clone()], ItemFilter::All)
+                db.list_tag_entry_groups(&[group.clone()], EntityFilter::All)
                     .await
                     .unwrap()
                     .len(),

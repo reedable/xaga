@@ -29,17 +29,17 @@ export function TopicsProvider({ children }: { children: ReactNode }) {
   // This projection lasts for the library session, including picker remounts.
   const membershipChanges = useRef(new Map<string, Map<string, boolean>>());
   const setMembership = useCallback(
-    (topicId: string, itemId: string, present: boolean) => {
+    (topicId: string, entityId: string, present: boolean) => {
       const changes =
-        membershipChanges.current.get(itemId) ?? new Map<string, boolean>();
+        membershipChanges.current.get(entityId) ?? new Map<string, boolean>();
       changes.set(topicId, present);
-      membershipChanges.current.set(itemId, changes);
+      membershipChanges.current.set(entityId, changes);
     },
     []
   );
-  const getMemberships = useCallback((itemId: string, indexedIds: string[]) => {
+  const getMemberships = useCallback((entityId: string, indexedIds: string[]) => {
     const ids = new Set(indexedIds);
-    for (const [topicId, present] of membershipChanges.current.get(itemId) ??
+    for (const [topicId, present] of membershipChanges.current.get(entityId) ??
       []) {
       if (present) ids.add(topicId);
       else ids.delete(topicId);

@@ -16,13 +16,13 @@ export function useMissingPins(
       pins.filter((target) => {
         // A pinned Site with no current Entries remains a valid, empty Site.
         if (target.type === "site") return sites?.hasLoaded === false;
-        const items =
+        const entities =
           target.type === "entry"
             ? entries
             : target.type === "feed"
               ? feeds
               : topics;
-        return !items.some((item) => item.id === target.id);
+        return !entities.some((entity) => entity.id === target.id);
       }),
     [pins, entries, feeds, topics, sites?.hasLoaded]
   );

@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use noyalib::ParserConfig;
 use noyalib::policy::DenyAnchors;
 
-use crate::types::{Annotation, Article, CollectionItem, Entry, Topic};
+use crate::types::{Annotation, Article, Entry, Reference, Topic};
 
 /// The frontmatter parser config. `DenyAnchors` rejects any `&anchor`,
 /// `*alias`, or `<<:` merge key at parse time; `strict()` applies noyalib's
@@ -125,12 +125,7 @@ pub(crate) fn md_to_topic(md: Markdown) -> Topic {
         is_pinned,
         entry_count: 0,
         unread_count: 0,
-        members: md
-            .fm
-            .items
-            .iter()
-            .map(crate::types::Reference::from)
-            .collect(),
+        members: md.fm.entities,
     }
 }
 
@@ -193,7 +188,7 @@ pub struct Frontmatter {
     pub is_unread: Option<bool>,
     pub color: Option<String>,
     pub favicon: Option<String>,
-    pub items: Vec<CollectionItem>,
+    pub entities: Vec<Reference>,
 }
 
 /// Parses only the header fields from a `---`-delimited document.
@@ -272,8 +267,62 @@ struct FrontmatterRaw {
     color: Option<String>,
     #[serde(default)]
     favicon: Option<String>,
-    #[serde(default)]
-    items: Vec<CollectionItem>,
+    #[serde(default, rename = "items", deserialize_with = "deserialize_references")]
+    entities: Vec<Reference>,
+}
+
+// Translate the existing frontmatter encoding into the shared domain Reference.
+fn deserialize_references<'de, D>(deserializer: D) -> Result<Vec<Reference>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::{Deserialize, de::Error};
+
+    let values = Vec::<serde_json::Value>::deserialize(deserializer)?;
+    values
+        .into_iter()
+        .map(|mut value| {
+            let fields = value
+                .as_object_mut()
+                .ok_or_else(|| D::Error::custom("expected a member reference"))?;
+            let kind = fields
+                .remove("type")
+                .ok_or_else(|| D::Error::missing_field("type"))?;
+            if !matches!(kind.as_str(), Some("entry" | "annotation")) {
+                return Err(D::Error::custom(
+                    "topic members must be entries or annotations",
+                ));
+            }
+            let is_annotation = kind.as_str() == Some("annotation");
+            fields.insert("__kind".into(), kind);
+            fields.remove("articleId");
+            if is_annotation && let Some(article_id) = fields.remove("reference") {
+                let id = article_id
+                    .as_str()
+                    .ok_or_else(|| D::Error::custom("annotation reference must be a string"))?;
+                if !id.is_empty() {
+                    fields.insert("articleId".into(), article_id);
+                }
+            }
+            serde_json::from_value(value).map_err(D::Error::custom)
+        })
+        .collect()
+}
+
+pub(crate) fn serialize_references(references: &[Reference]) -> Result<serde_json::Value, MdError> {
+    references
+        .iter()
+        .map(|reference| match reference {
+            Reference::Entry { id } => Ok(serde_json::json!({ "type": "entry", "id": id })),
+            Reference::Annotation { id, article_id } => Ok(serde_json::json!({
+                "type": "annotation", "id": id, "reference": article_id.as_deref().unwrap_or("")
+            })),
+            Reference::Note { .. } => Err(MdError::Frontmatter(
+                "topic members must be entries or annotations".into(),
+            )),
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(serde_json::Value::Array)
 }
 
 pub(crate) fn split_document(raw: &str) -> Result<(Frontmatter, String), MdError> {
@@ -310,7 +359,7 @@ pub(crate) fn split_document(raw: &str) -> Result<(Frontmatter, String), MdError
             is_unread: fm.is_unread,
             color: fm.color,
             favicon: fm.favicon,
-            items: fm.items,
+            entities: fm.entities,
         },
         body,
     ))
@@ -319,6 +368,108 @@ pub(crate) fn split_document(raw: &str) -> Result<(Frontmatter, String), MdError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn references_roundtrip_between_frontmatter_and_native_payloads() {
+        let references = vec![
+            Reference::Entry {
+                id: "entry-1".into(),
+            },
+            Reference::Annotation {
+                id: "annotation-1".into(),
+                article_id: Some("entry-1".into()),
+            },
+        ];
+        let raw = doc(
+            "title: Topic\nitems:\n- type: entry\n  id: entry-1\n- type: annotation\n  id: annotation-1\n  reference: entry-1",
+        );
+        let parsed = parse_frontmatter(&raw).unwrap();
+        assert_eq!(parsed.entities, references);
+        let topic = md_to_topic(Markdown {
+            id: "topic".into(),
+            fm: parsed,
+            body: String::new(),
+        });
+        assert_eq!(topic.members, references);
+
+        let native = serde_json::to_value(&references).unwrap();
+        assert_eq!(
+            native,
+            serde_json::json!([
+                { "__kind": "entry", "id": "entry-1" },
+                { "__kind": "annotation", "id": "annotation-1", "articleId": "entry-1" }
+            ])
+        );
+        assert_eq!(
+            serde_json::from_value::<Vec<Reference>>(native).unwrap(),
+            references
+        );
+
+        let stored = serialize_references(&references).unwrap();
+        assert_eq!(
+            stored,
+            serde_json::json!([
+                { "type": "entry", "id": "entry-1" },
+                { "type": "annotation", "id": "annotation-1", "reference": "entry-1" }
+            ])
+        );
+        let patched = patch_document(&raw, &[("items", stored)], None).unwrap();
+        assert_eq!(
+            test_frontmatter_values(&patched),
+            test_frontmatter_values(&raw)
+        );
+        assert_eq!(parse_frontmatter(&patched).unwrap().entities, references);
+    }
+
+    #[test]
+    fn legacy_annotation_references_without_article_ids_keep_their_identity() {
+        for locator in ["", "\n  reference: ''"] {
+            let raw = doc(&format!(
+                "items:\n- type: annotation\n  id: highlight{locator}"
+            ));
+            let references = parse_frontmatter(&raw).unwrap().entities;
+            assert_eq!(
+                references,
+                vec![Reference::Annotation {
+                    id: "highlight".into(),
+                    article_id: None,
+                }]
+            );
+            let stored = serialize_references(&references).unwrap();
+            let patched = patch_document(&raw, &[("items", stored)], None).unwrap();
+            assert_eq!(parse_frontmatter(&patched).unwrap().entities, references);
+        }
+    }
+
+    #[test]
+    fn reference_adapters_preserve_the_supported_topic_member_shapes() {
+        let entry = parse_frontmatter(&doc(
+            "items:\n- type: entry\n  id: entry\n  reference: null",
+        ))
+        .unwrap();
+        assert_eq!(
+            entry.entities,
+            vec![Reference::Entry { id: "entry".into() }]
+        );
+        for member in [
+            "type: unknown\n  id: member",
+            "type: note\n  id: member",
+            "__kind: entry\n  id: member",
+            "type: entry",
+            "type: annotation\n  id: member\n  reference: null",
+        ] {
+            assert!(
+                parse_frontmatter(&doc(&format!("items:\n- {member}"))).is_err(),
+                "{member}"
+            );
+        }
+        let note = Reference::Note { id: "note".into() };
+        assert_eq!(
+            serde_json::from_value::<Reference>(serde_json::to_value(&note).unwrap()).unwrap(),
+            note
+        );
+        assert!(serialize_references(&[note]).is_err());
+    }
 
     #[test]
     fn reading_state_comes_only_from_the_dedicated_field() {

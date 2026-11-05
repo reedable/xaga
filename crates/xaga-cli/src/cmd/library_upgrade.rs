@@ -809,7 +809,7 @@ mod tests {
     use super::*;
     use xaga_core::{
         persistence::articles::read_article,
-        types::{Entry, ListItem},
+        types::{Entry, ListEntity},
     };
 
     fn values(raw: &str) -> BTreeMap<String, Value> {
@@ -1230,7 +1230,7 @@ custom:
         registry.write_upgrade(dir.path(), &lock).await.unwrap();
         let db = EmbeddingsDb::open_writer(dir.path(), &lock).await.unwrap();
         let (tx, _) = flume::unbounded::<Entry>();
-        let (annotation_tx, _) = flume::unbounded::<ListItem>();
+        let (annotation_tx, _) = flume::unbounded::<ListEntity>();
         xaga_core::embeddings::sync_entry_row(&article, &db, &tx, &tx, &annotation_tx)
             .await
             .unwrap();
@@ -1328,7 +1328,7 @@ custom:
         );
         assert_eq!(db.filter_pinned_entries().await.unwrap()[0].id, "entry");
         assert_eq!(row.topics, vec!["topic"]);
-        assert_eq!(row.items, vec!["note"]);
+        assert_eq!(row.entities, vec!["note"]);
         assert_eq!(row.vector, Some(vec![0.1; 384]));
         let annotation = db.get_entry("note").await.unwrap().unwrap();
         assert_eq!(annotation.title, "selection");
@@ -1609,7 +1609,7 @@ custom:
                     }
                     Arc::new(values.finish()) as ArrayRef
                 }
-                DataType::FixedSizeList(item, width) => {
+                DataType::FixedSizeList(entity, width) => {
                     let values =
                         Float32Array::from_iter_values((0..count * *width as usize).map(|j| {
                             let n = (start as u32)
@@ -1618,7 +1618,7 @@ custom:
                             n.wrapping_mul(2654435761) as f32 / u32::MAX as f32
                         }));
                     Arc::new(FixedSizeListArray::new(
-                        item.clone(),
+                        entity.clone(),
                         *width,
                         Arc::new(values),
                         None,

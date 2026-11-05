@@ -9,7 +9,7 @@ import {
 import { motion } from "framer-motion";
 import type { ElementType, ReactNode } from "react";
 import cx from "../../utils/cx";
-import css from "./SidebarItem.module.css";
+import css from "./SidebarEntity.module.css";
 
 const MotionListItem = motion(ListItem);
 
@@ -19,7 +19,7 @@ type SidebarSummary = {
   unreadCount: number;
 };
 
-export interface SidebarItemProps<T extends SidebarSummary> {
+export interface SidebarEntityProps<T extends SidebarSummary> {
   className?: string;
   collection: T;
   icon?: ElementType;
@@ -29,7 +29,7 @@ export interface SidebarItemProps<T extends SidebarSummary> {
   renderSecondaryAction?: (collection: T) => ReactNode;
 }
 
-export default function SidebarItem<T extends SidebarSummary>({
+export default function SidebarEntity<T extends SidebarSummary>({
   className,
   collection,
   icon: Icon = RssFeed,
@@ -37,7 +37,7 @@ export default function SidebarItem<T extends SidebarSummary>({
   selected = false,
   onSelectCollection,
   renderSecondaryAction,
-}: SidebarItemProps<T>) {
+}: SidebarEntityProps<T>) {
   return (
     <MotionListItem
       layout

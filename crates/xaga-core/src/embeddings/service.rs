@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::types::{Entry, Kind, ListItem};
+use crate::types::{Entry, Kind, ListEntity};
 
 /// Indicates whether the app should restart or exit after the service drains.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -192,7 +192,7 @@ impl Senders {
 struct Events {
     unread: flume::Sender<Entry>,
     bookmarked: flume::Sender<Entry>,
-    annotation: flume::Sender<ListItem>,
+    annotation: flume::Sender<ListEntity>,
 }
 
 /// Owns the `EmbeddingsDb` and `Embedder`; runs the embedding loop.
@@ -211,7 +211,7 @@ pub struct EmbeddingService {
     background_drained_rx: flume::Receiver<()>,
     unread_changed_rx: flume::Receiver<Entry>,
     bookmarked_changed_rx: flume::Receiver<Entry>,
-    annotation_changed_rx: flume::Receiver<ListItem>,
+    annotation_changed_rx: flume::Receiver<ListEntity>,
     restart_requested: Arc<AtomicBool>,
     embedder: Arc<Embedder>,
     // A read handle sharing the loop's write-handle inner; handed to the app via `read_handle()`.
@@ -249,7 +249,7 @@ impl EmbeddingService {
         let (background_drained_tx, background_drained_rx) = flume::unbounded::<()>();
         let (unread_changed_tx, unread_changed_rx) = flume::unbounded::<Entry>();
         let (bookmarked_changed_tx, bookmarked_changed_rx) = flume::unbounded::<Entry>();
-        let (annotation_changed_tx, annotation_changed_rx) = flume::unbounded::<ListItem>();
+        let (annotation_changed_tx, annotation_changed_rx) = flume::unbounded::<ListEntity>();
 
         let senders = Senders {
             control: control_tx,
@@ -348,7 +348,7 @@ impl EmbeddingService {
     }
 
     /// Returns a receiver that fires when an annotation's color or content changes.
-    pub fn subscribe_to_annotation_changed(&self) -> flume::Receiver<ListItem> {
+    pub fn subscribe_to_annotation_changed(&self) -> flume::Receiver<ListEntity> {
         self.annotation_changed_rx.clone()
     }
 
@@ -416,11 +416,11 @@ async fn run_loop(
     // never pile up for long.
     let mut compacted_after_drain = true; // true = no compact needed yet
 
-    // Items processed since the last compact (Regular + Maintenance); resets to 0 after
+    // Entities processed since the last compact (Regular + Maintenance); resets to 0 after
     // every compact so the interval applies regardless of why the last compact fired.
     let mut since_compact: usize = 0;
 
-    // Items processed on the Interactive tier since its last compact. A sustained stream of
+    // Entities processed on the Interactive tier since its last compact. A sustained stream of
     // Interactive work (bulk refresh, "mark all read") keeps the biased select from ever reaching
     // the Regular/Maintenance arms where compaction lives, so without this the DB version files
     // grow unbounded and every commit — and read — degrades. Resets to 0 after every interactive

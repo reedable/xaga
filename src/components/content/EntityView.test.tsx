@@ -1,7 +1,7 @@
 import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { ItemView } from "./ItemView";
+import { EntityView } from "./EntityView";
 
 const mocks = vi.hoisted(() => ({
   state: {
@@ -90,19 +90,19 @@ afterEach(async () => {
   await act(() => root.unmount());
 });
 it("waits for URL classification before mounting a saved entry's HTML reader", async () => {
-  await act(() => root.render(<ItemView />));
+  await act(() => root.render(<EntityView />));
   expect(container.textContent).toContain("Loading…");
   mocks.state = { ...mocks.state, mimeType: "application/pdf" };
   await act(async () => {
     finish();
-    root.render(<ItemView />);
+    root.render(<EntityView />);
   });
   expect(container.textContent).toContain("PDF reader");
   expect(mocks.resolve).toHaveBeenCalledTimes(1);
 });
 it("resolves a history selection even when its route already carries PDF MIME", async () => {
   mocks.state.mimeType = "application/pdf";
-  await act(() => root.render(<ItemView />));
+  await act(() => root.render(<EntityView />));
   expect(mocks.resolve).toHaveBeenCalledWith(mocks.state.url);
   expect(container.textContent).toContain("Loading…");
   await act(async () => {
@@ -112,7 +112,7 @@ it("resolves a history selection even when its route already carries PDF MIME", 
 });
 
 it("ignores repeated activations and clears progress after a failed reload", async () => {
-  await act(() => root.render(<ItemView />));
+  await act(() => root.render(<EntityView />));
   await act(async () => {
     finish();
   });
@@ -133,7 +133,7 @@ it("ignores repeated activations and clears progress after a failed reload", asy
 });
 
 it("does not let an old reload clear a newer article's progress", async () => {
-  await act(() => root.render(<ItemView />));
+  await act(() => root.render(<EntityView />));
   await act(async () => {
     finish();
   });
@@ -144,7 +144,7 @@ it("does not let an old reload clear a newer article's progress", async () => {
     url: "https://example.org/other",
     entryId: "other",
   };
-  await act(() => root.render(<ItemView />));
+  await act(() => root.render(<EntityView />));
   await act(async () => {
     finish();
   });
@@ -160,7 +160,7 @@ it("does not let an old reload clear a newer article's progress", async () => {
 });
 
 it("updates the reader only after a successful reload and permits a later retry", async () => {
-  await act(() => root.render(<ItemView />));
+  await act(() => root.render(<EntityView />));
   await act(async () => {
     finish(true);
   });

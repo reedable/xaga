@@ -76,16 +76,16 @@ function InlineTopicForm({
   );
 }
 
-export function TopicMembership({ item }: { item: Entry | Annotation }) {
+export function TopicMembership({ entity }: { entity: Entry | Annotation }) {
   const [, abortControllerRef] = useAbortController();
   const readOnly = useLibraryReadOnly();
   const animate = useMediaQuery("(prefers-reduced-motion: no-preference)");
   const mutationPending = useRef(false);
   const [mutating, setMutating] = useState(false);
-  const currentItemId = useRef(item.id);
+  const currentEntityId = useRef(entity.id);
   useEffect(() => {
-    currentItemId.current = item.id;
-  }, [item.id]);
+    currentEntityId.current = entity.id;
+  }, [entity.id]);
   const embeddingStartupState = useEmbeddingStartupState();
   const {
     topics,
@@ -93,9 +93,9 @@ export function TopicMembership({ item }: { item: Entry | Annotation }) {
     createTopicWithMember,
     setTopicPinned,
     listEntryTopics,
-    addTopicItem,
-    removeTopicItem,
-    rankTopicsRelatedToItem,
+    addTopicEntity,
+    removeTopicEntity,
+    rankTopicsRelatedToEntity,
   } = useTopics(abortControllerRef);
 
   const [memberIds, setMemberIds] = useState<Set<string>>(new Set());
@@ -111,37 +111,37 @@ export function TopicMembership({ item }: { item: Entry | Annotation }) {
   const [createInitialTitle, setCreateInitialTitle] = useState("");
   const filterInputRef = useRef<HTMLInputElement>(null);
 
-  const itemId = item.id;
+  const entityId = entity.id;
 
-  // Reset on item change so selection stays cleared until the new item's
+  // Reset on entity change so selection stays cleared until the new entity's
   // memberships load; keyed on the id so entry object identity churn from
   // bookmark/unread events doesn't wipe and refetch the same memberships.
-  const [lastItemId, setLastItemId] = useState(itemId);
-  if (lastItemId !== itemId) {
-    setLastItemId(itemId);
+  const [lastEntityId, setLastEntityId] = useState(entityId);
+  if (lastEntityId !== entityId) {
+    setLastEntityId(entityId);
     setMemberIds(new Set());
   }
 
   useEffect(() => {
-    if (!itemId) return;
+    if (!entityId) return;
     const controller = new AbortController();
-    listEntryTopics(itemId).then((ids) => {
+    listEntryTopics(entityId).then((ids) => {
       if (controller.signal.aborted) return;
       setMemberIds(new Set(ids ?? []));
     });
     return () => controller.abort();
-  }, [itemId, listEntryTopics, topics]);
+  }, [entityId, listEntryTopics, topics]);
 
   useEffect(() => {
     if (
-      !itemId ||
+      !entityId ||
       sortBy !== "relevance" ||
       embeddingStartupState !== "available"
     )
       return;
     let cancelled = false;
     setRelevanceLoading(true);
-    void rankTopicsRelatedToItem(itemId).then((results) => {
+    void rankTopicsRelatedToEntity(entityId).then((results) => {
       if (cancelled) return;
       setSimilarityMap(
         new Map((results ?? []).map((result) => [result.id, result.similarity]))
@@ -151,7 +151,7 @@ export function TopicMembership({ item }: { item: Entry | Annotation }) {
     return () => {
       cancelled = true;
     };
-  }, [itemId, sortBy, embeddingStartupState, rankTopicsRelatedToItem]);
+  }, [entityId, sortBy, embeddingStartupState, rankTopicsRelatedToEntity]);
 
   const startCreating = useCallback(() => {
     setCreateInitialTitle(topics.length > 0 ? filterText.trim() : "");
@@ -171,14 +171,14 @@ export function TopicMembership({ item }: { item: Entry | Annotation }) {
         description: values.description,
         threshold: values.threshold,
       };
-      const topic = await createTopicWithMember(input, item);
+      const topic = await createTopicWithMember(input, entity);
       if (!topic) return false;
       setTopicPinned(topic.id, values.pinned);
-      if (currentItemId.current !== item.id) return true;
+      if (currentEntityId.current !== entity.id) return true;
       setMemberIds((previous) => new Set([...previous, topic.id]));
       return true;
     },
-    [createTopicWithMember, item, setTopicPinned, readOnly]
+    [createTopicWithMember, entity, setTopicPinned, readOnly]
   );
 
   const handleSortByChange = (event: SelectChangeEvent) => {
@@ -194,9 +194,9 @@ export function TopicMembership({ item }: { item: Entry | Annotation }) {
       try {
         const removing = memberIds.has(topicId);
         const topic = removing
-          ? await removeTopicItem(topicId, item.id)
-          : await addTopicItem(topicId, item);
-        if (!topic || currentItemId.current !== item.id) return;
+          ? await removeTopicEntity(topicId, entity.id)
+          : await addTopicEntity(topicId, entity);
+        if (!topic || currentEntityId.current !== entity.id) return;
         setMemberIds((previous) => {
           const next = new Set(previous);
           if (removing) next.delete(topicId);
@@ -208,7 +208,7 @@ export function TopicMembership({ item }: { item: Entry | Annotation }) {
         setMutating(false);
       }
     },
-    [item, memberIds, addTopicItem, removeTopicItem, readOnly]
+    [entity, memberIds, addTopicEntity, removeTopicEntity, readOnly]
   );
 
   const sortedTopics = useMemo(

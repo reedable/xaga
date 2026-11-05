@@ -26,4 +26,4 @@ Saved and Relevant do not have consistent meanings. `Saved` currently filters to
 - `crates/xaga-core/src/query/topics.rs`
 - `crates/xaga-core/src/embeddings/row.rs`
 - `src/types.ts`
-- `src/components/list/ItemList.tsx`
+- `src/components/list/EntityList.tsx`

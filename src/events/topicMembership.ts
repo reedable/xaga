@@ -1,13 +1,13 @@
-type TopicItemAdded = { topicId: string; itemId: string };
-type Listener = (event: TopicItemAdded) => void;
+type TopicEntityAdded = { topicId: string; entityId: string };
+type Listener = (event: TopicEntityAdded) => void;
 
 const listeners = new Set<Listener>();
 
-export function emitTopicItemAdded(event: TopicItemAdded): void {
+export function emitTopicEntityAdded(event: TopicEntityAdded): void {
   listeners.forEach((listener) => listener(event));
 }
 
-export function onTopicItemAdded(listener: Listener): () => void {
+export function onTopicEntityAdded(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }

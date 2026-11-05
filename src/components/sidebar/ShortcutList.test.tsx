@@ -2,13 +2,13 @@ import { act } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { Countable } from "../../types";
+import type { Topic } from "../../types";
 import ShortcutList from "./ShortcutList";
 
 const mocks = vi.hoisted(() => ({
   sortMode: "alphabetical",
   selectCollection: vi.fn(),
-  selectSite: vi.fn(),
+  selectShortcut: vi.fn(),
   selectArticleScope: vi.fn(),
   state: {} as { articleScopeId?: string; siteHostname?: string },
 }));
@@ -22,13 +22,13 @@ vi.mock("../../hooks/useFeeds", () => ({
 vi.mock("../../hooks/useRouter", () => ({
   default: () => ({
     selectCollection: mocks.selectCollection,
-    selectSite: mocks.selectSite,
+    selectShortcut: mocks.selectShortcut,
     selectArticleScope: mocks.selectArticleScope,
     state: mocks.state,
   }),
 }));
-vi.mock("../../hooks/useAllItemsCounts", () => ({
-  useAllItemsCounts: () => undefined,
+vi.mock("../../hooks/useAllEntitiesCounts", () => ({
+  useAllEntitiesCounts: () => undefined,
 }));
 vi.mock("../../hooks/useSidebarSort", () => ({
   useSidebarSort: () => [mocks.sortMode, vi.fn()],
@@ -36,7 +36,7 @@ vi.mock("../../hooks/useSidebarSort", () => ({
 vi.mock("./ExpandableList", () => ({
   default: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("./SidebarItem", () => ({
+vi.mock("./SidebarEntity", () => ({
   default: ({
     collection,
     onSelectCollection,
@@ -62,8 +62,11 @@ vi.mock("./SidebarSortControl", () => ({
 vi.mock("./UnreadCount", () => ({ default: () => null }));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 
-const shortcuts: Countable[] = [
+const shortcuts: Topic[] = [
   {
+    __kind: "topic",
+    members: [],
+    isPinned: true,
     id: "zulu",
     title: "Zulu",
     createdAt: "2026-01-01T00:00:00Z",
@@ -71,6 +74,9 @@ const shortcuts: Countable[] = [
     unreadCount: 2,
   },
   {
+    __kind: "topic",
+    members: [],
+    isPinned: true,
     id: "alpha",
     title: "Alpha",
     createdAt: "2026-01-01T00:00:00Z",
@@ -160,13 +166,13 @@ it("sorts article shortcuts at zero, displays no count, and selects their articl
 it("sorts pinned Sites with other shortcuts, keeps All items first, and selects Site scope", async () => {
   const site = {
     id: "example.com",
-    hostname: "example.com",
+    __kind: "site" as const,
     title: "example.com",
     entryCount: 8,
     unreadCount: 5,
   };
   mocks.sortMode = "unread";
-  mocks.state = { siteHostname: site.hostname };
+  mocks.state = { siteHostname: site.id };
   await act(async () =>
     root.render(
       <ShortcutList
@@ -187,6 +193,6 @@ it("sorts pinned Sites with other shortcuts, keeps All items first, and selects 
   expect(button.getAttribute("aria-pressed")).toBe("true");
   expect(button.dataset.count).toBe("true");
   await act(async () => button.click());
-  expect(mocks.selectSite).toHaveBeenCalledWith(site);
-  expect(mocks.selectCollection).not.toHaveBeenCalled();
+  expect(mocks.selectCollection).toHaveBeenCalledWith(site);
+  expect(mocks.selectShortcut).not.toHaveBeenCalled();
 });

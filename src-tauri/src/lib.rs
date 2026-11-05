@@ -555,11 +555,11 @@ fn update_view_checkmarks<R: Runtime>(app: &tauri::AppHandle<R>, selected: &str)
 
     let Some(view) = view else { return };
 
-    for (item_id, value) in [
+    for (entity_id, value) in [
         ("html_reader_view:summary", "summary"),
         ("html_reader_view:reader", "reader"),
     ] {
-        if let Some(MenuItemKind::Check(item)) = view.get(item_id) {
+        if let Some(MenuItemKind::Check(item)) = view.get(entity_id) {
             item.set_checked(value == selected).ok();
         }
     }
@@ -580,12 +580,12 @@ fn update_theme_checkmarks<R: Runtime>(app: &tauri::AppHandle<R>, selected: &str
 
     let Some(view) = view else { return };
 
-    for (item_id, value) in [
+    for (entity_id, value) in [
         ("theme_auto", "auto"),
         ("theme_light", "light"),
         ("theme_dark", "dark"),
     ] {
-        if let Some(MenuItemKind::Check(item)) = view.get(item_id) {
+        if let Some(MenuItemKind::Check(item)) = view.get(entity_id) {
             item.set_checked(value == selected).ok();
         }
     }

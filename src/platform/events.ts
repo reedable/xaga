@@ -13,8 +13,8 @@ export const DOMAIN_EVENT = [
   "pin:changed", // payload: { target: PinTarget, pinned: boolean }
   "entry-pin:changed", // payload: Entry
   "bookmark:changed", // payload: Entry (schema-minted)
-  "annotation:changed", // payload: ListItem (schema-minted)
-  "annotation:replaced", // payload: { oldId, item: ListItem }
+  "annotation:changed", // payload: ListEntity (schema-minted)
+  "annotation:replaced", // payload: { oldId, entity: ListEntity }
   "annotation:removed", // payload: string (annotation id)
   "favicon:changed", // payload: Article (schema-minted)
   "embedding:changed", // payload: none

@@ -929,7 +929,7 @@ pub async fn add_annotation(
         .await
         .map_err(AppError::from)?;
     // Insert/refresh the annotation row now (embedder-free, immediately listable), then defer the
-    // ONNX embed so the new annotation gets a vector — without it, search_related/rank_topics_by_item
+    // ONNX embed so the new annotation gets a vector — without it, search_related/rank_topics_by_entity
     // raise "id not found". embed_entry_vector is checksum-gated, so it skips the unchanged article
     // body and only fills the pending annotation vector via embed_annotations. Tier mirrors the
     // live-edit embed_follow() (Interactive -> Regular). Both jobs carry the domain object.
@@ -1011,7 +1011,7 @@ pub async fn replace_annotation(
         let db = state.embeddings_read.lock().unwrap().clone();
         match db {
             Some(db) => db
-                .find_topic_ids_by_item_id(&old_id)
+                .find_topic_ids_by_entity_id(&old_id)
                 .await
                 .ok()
                 .flatten()
@@ -1021,13 +1021,13 @@ pub async fn replace_annotation(
     };
     for topic_id in topic_ids {
         let _ = writer
-            .replace_topic_item(
+            .replace_topic_entity(
                 WriteTier::Interactive,
                 topic_id.clone(),
                 old_id.clone(),
-                xaga_core::types::CollectionItem::Annotation {
+                xaga_core::types::Reference::Annotation {
                     id: id.clone(),
-                    reference: article_id.clone(),
+                    article_id: Some(article_id.clone()),
                 },
             )
             .await;
@@ -1051,7 +1051,7 @@ pub async fn replace_annotation(
         .annotations
         .iter()
         .find(|annotation| annotation.id == id)
-        .map(|annotation| xaga_core::types::ListItem {
+        .map(|annotation| xaga_core::types::ListEntity {
             id: annotation.id.clone(),
             title: annotation.title.clone(),
             created_at: annotation.created_at.clone(),
@@ -1067,7 +1067,7 @@ pub async fn replace_annotation(
         xaga_core::events::DomainEvent::AnnotationReplaced(
             xaga_core::events::AnnotationReplacement {
                 old_id: old_id.clone(),
-                item: replacement,
+                entity: replacement,
             },
         ),
     );
@@ -1092,7 +1092,7 @@ pub async fn remove_annotation(
         .await
         .map_err(AppError::from)?;
 
-    // Evict the deleted annotation from any topic items lists immediately, so topic item
+    // Evict the deleted annotation from any topic entities lists immediately, so topic entity
     // lists don't serve stale data before LanceDB catches up. Read the annotation's topics
     // from the LanceDB reverse index (the `topics` column, maintained by the topic-membership
     // reconcile) instead of scanning every topic file — mirrors `list_entry_topics`. Best-effort:
@@ -1101,7 +1101,7 @@ pub async fn remove_annotation(
         let db = state.embeddings_read.lock().unwrap().clone();
         match db {
             Some(db) => db
-                .find_topic_ids_by_item_id(&annotation_id)
+                .find_topic_ids_by_entity_id(&annotation_id)
                 .await
                 .ok()
                 .flatten()
@@ -1111,7 +1111,7 @@ pub async fn remove_annotation(
     };
     for topic_id in topic_ids {
         let _ = writer
-            .remove_topic_item(
+            .remove_topic_entity(
                 WriteTier::Interactive,
                 topic_id.clone(),
                 annotation_id.clone(),

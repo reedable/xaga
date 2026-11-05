@@ -1,7 +1,7 @@
 # ListView behavior
 
 The ListView preserves the user's browsing context while they work. Changing an
-item's read/unread state updates its displayed state without removing its row
+Entry's read/unread state updates its displayed state without removing its row
 from the current list, even when the list was opened with the Unread filter.
 Assigning, recoloring, or removing an article bookmark likewise updates the
 existing row without recomputing membership, including a Site’s Saved list.
@@ -15,7 +15,7 @@ These are expected Xaga interactions to preserve when changing list loading,
 state-event handling, or navigation. They do not specify behavior for deletion
 of the underlying content.
 
-Relevant code: `src/components/list/ItemList.tsx`,
+Relevant code: `src/components/list/EntityList.tsx`,
 `src/hooks/useRouter.tsx`, and `src/components/sidebar/ShortcutList.tsx`.
 
 ## Tag browsing

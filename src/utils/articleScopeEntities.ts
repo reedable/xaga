@@ -1,13 +1,13 @@
 import { prepareEntryImages } from "../text/prepareEntryImages";
 import type { ResolveEntryImages } from "../text/inlineEntryImages";
 import { markdownToHtml } from "../text/markdownPipeline";
-import type { Article, ListItem } from "../types";
+import type { Article, ListEntity } from "../types";
 
 /** Resolve each segment using the reader's non-overlapping, per-text-node occurrence convention. */
-export async function articleScopeItems(
+export async function articleScopeEntities(
   article: Article,
   resolveImages: ResolveEntryImages
-): Promise<ListItem[]> {
+): Promise<ListEntity[]> {
   // Template content stays inert: ordering must never load article resources.
   const template = document.createElement("template");
   template.innerHTML = await prepareEntryImages(

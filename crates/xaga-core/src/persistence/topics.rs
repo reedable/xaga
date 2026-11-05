@@ -8,7 +8,7 @@ use crate::{
     md::parse_frontmatter,
     md::{Markdown, md_to_topic, parse_document},
     persistence::walk::for_each_md,
-    types::{CollectionItem, Topic},
+    types::{Reference, Topic},
 };
 
 #[derive(Debug, Error)]
@@ -63,7 +63,7 @@ pub(crate) async fn save_topic(
     title: &str,
     description: &str,
     threshold: Option<f32>,
-    items: Vec<CollectionItem>,
+    entities: Vec<Reference>,
     _token: WriteToken,
 ) -> Result<Topic, TopicsError> {
     let dir = crate::library::topics_dir(library_dir);
@@ -88,6 +88,7 @@ pub(crate) async fn save_topic(
 
     let updated_at = Utc::now().to_rfc3339();
 
+    let stored_members = crate::md::serialize_references(&entities)?;
     let topic = Topic {
         id: id.to_string(),
         title: title.to_string(),
@@ -98,14 +99,14 @@ pub(crate) async fn save_topic(
         is_pinned,
         entry_count: 0,
         unread_count: 0,
-        members: items.iter().map(crate::types::Reference::from).collect(),
+        members: entities,
     };
     let mut updates = vec![
         ("title", serde_json::json!(title)),
         ("updated", serde_json::json!(topic.updated_at)),
         ("summary", serde_json::json!(description)),
         ("threshold", serde_json::json!(threshold)),
-        ("items", serde_json::json!(items)),
+        ("items", stored_members),
     ];
     if existing.is_none() {
         updates.push(("id", serde_json::json!(id)));
@@ -126,7 +127,7 @@ pub async fn read_topic(library_dir: &Path, id: &str) -> Result<Topic, TopicsErr
     let raw = crate::fs::read_md_capped(&path).await?;
     let (fm, body) = parse_document(&raw)?;
     let mut topic = md_to_topic(Markdown {
-        id: crate::util::item_id(&path),
+        id: crate::util::entity_id(&path),
         fm,
         body,
     });
@@ -137,19 +138,18 @@ pub async fn read_topic(library_dir: &Path, id: &str) -> Result<Topic, TopicsErr
     Ok(topic)
 }
 
-/// Returns a topic's stored membership (the `.md` `items:` list) — the storage shape
-/// (`CollectionItem`, carrying the annotation parent `reference`), not the domain `members`.
-pub async fn read_topic_items(
+/// Returns the member references stored in a topic's `.md` `items:` list.
+pub async fn read_topic_entities(
     library_dir: &Path,
     id: &str,
-) -> Result<Vec<CollectionItem>, TopicsError> {
+) -> Result<Vec<Reference>, TopicsError> {
     let path = crate::library::topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
     let raw = crate::fs::read_md_capped(&path).await?;
     let (fm, _body) = parse_document(&raw)?;
-    Ok(fm.items)
+    Ok(fm.entities)
 }
 
 /// Deletes the topic file for the given id.
@@ -187,11 +187,11 @@ pub async fn list_topics(library_dir: &Path) -> Result<Vec<Topic>, TopicsError> 
     Ok(topics)
 }
 
-/// Appends `item` to the topic's manual items list. No-op if already present.
-pub(crate) async fn add_topic_item(
+/// Appends a member reference to the topic. No-op if already present.
+pub(crate) async fn add_topic_entity(
     library_dir: &Path,
     topic_id: &str,
-    item: CollectionItem,
+    entity: Reference,
     token: WriteToken,
 ) -> Result<Topic, TopicsError> {
     let path = crate::library::topic_path(library_dir, topic_id);
@@ -200,20 +200,20 @@ pub(crate) async fn add_topic_item(
     }
     let raw = crate::fs::read_md_capped(&path).await?;
     let (fm, body) = parse_document(&raw)?;
-    if fm.items.iter().any(|i| i.id() == item.id()) {
+    if fm.entities.iter().any(|i| i.id() == entity.id()) {
         return read_topic(library_dir, topic_id).await;
     }
     // When `summary` is absent, the body supplies the description.
     let description = fm.summary.unwrap_or(body);
-    let mut items = fm.items;
-    items.push(item);
+    let mut entities = fm.entities;
+    entities.push(entity);
     save_topic(
         library_dir,
         topic_id,
         &fm.title,
         &description,
         fm.threshold,
-        items,
+        entities,
         token,
     )
     .await
@@ -222,11 +222,11 @@ pub(crate) async fn add_topic_item(
 /// Swaps a member's id in place — same list position, same member type. Used when an
 /// annotation is replaced under a new id (a color change is delete/create); position is
 /// preserved because membership is ordered. No-op if `old_id` is not a member.
-pub(crate) async fn replace_topic_item(
+pub(crate) async fn replace_topic_entity(
     library_dir: &Path,
     topic_id: &str,
     old_id: &str,
-    new_item: CollectionItem,
+    new_entity: Reference,
     token: WriteToken,
 ) -> Result<Topic, TopicsError> {
     let path = crate::library::topic_path(library_dir, topic_id);
@@ -235,30 +235,30 @@ pub(crate) async fn replace_topic_item(
     }
     let raw = crate::fs::read_md_capped(&path).await?;
     let (fm, body) = parse_document(&raw)?;
-    let Some(pos) = fm.items.iter().position(|i| i.id() == old_id) else {
+    let Some(pos) = fm.entities.iter().position(|i| i.id() == old_id) else {
         return read_topic(library_dir, topic_id).await;
     };
     // When `summary` is absent, the body supplies the description.
     let description = fm.summary.unwrap_or(body);
-    let mut items = fm.items;
-    items[pos] = new_item;
+    let mut entities = fm.entities;
+    entities[pos] = new_entity;
     save_topic(
         library_dir,
         topic_id,
         &fm.title,
         &description,
         fm.threshold,
-        items,
+        entities,
         token,
     )
     .await
 }
 
-/// Removes the item with the given ID from the topic's manual items list.
-pub(crate) async fn remove_topic_item(
+/// Removes the member reference with the given ID from the topic.
+pub(crate) async fn remove_topic_entity(
     library_dir: &Path,
     topic_id: &str,
-    item_id: &str,
+    entity_id: &str,
     token: WriteToken,
 ) -> Result<Topic, TopicsError> {
     let path = crate::library::topic_path(library_dir, topic_id);
@@ -267,20 +267,20 @@ pub(crate) async fn remove_topic_item(
     }
     let raw = crate::fs::read_md_capped(&path).await?;
     let (fm, body) = parse_document(&raw)?;
-    if !fm.items.iter().any(|i| i.id() == item_id) {
+    if !fm.entities.iter().any(|i| i.id() == entity_id) {
         return read_topic(library_dir, topic_id).await;
     }
     // When `summary` is absent, the body supplies the description.
     let description = fm.summary.unwrap_or(body);
-    let mut items = fm.items;
-    items.retain(|i| i.id() != item_id);
+    let mut entities = fm.entities;
+    entities.retain(|i| i.id() != entity_id);
     save_topic(
         library_dir,
         topic_id,
         &fm.title,
         &description,
         fm.threshold,
-        items,
+        entities,
         token,
     )
     .await
@@ -293,7 +293,7 @@ mod tests {
     const ORIGINAL: &str = "---\ntitle: Original\ncreated: '2026-01-01T00:00:00Z'\ntags: [pinned, research]\n# User metadata\ncustom: {keep: true}\n---\n\nUser-authored body\n\n";
 
     #[tokio::test]
-    async fn editing_topic_with_block_items_preserves_members() {
+    async fn editing_topic_with_block_entities_preserves_members() {
         let dir = tempfile::tempdir().unwrap();
         let path = crate::library::topic_path(dir.path(), "topic");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -306,14 +306,14 @@ mod tests {
         ] {
             std::fs::write(&path, &raw).unwrap();
             let fm = parse_frontmatter(&raw).unwrap();
-            let expected_items = serde_json::to_value(&fm.items).unwrap();
+            let expected_entities = serde_json::to_value(&fm.entities).unwrap();
             save_topic(
                 dir.path(),
                 "topic",
                 "Updated",
                 "",
                 fm.threshold,
-                fm.items,
+                fm.entities,
                 WriteToken::for_test(),
             )
             .await
@@ -323,8 +323,8 @@ mod tests {
             assert_eq!(saved.members.len(), 2);
             let stored = std::fs::read_to_string(&path).unwrap();
             assert_eq!(
-                serde_json::to_value(parse_frontmatter(&stored).unwrap().items).unwrap(),
-                expected_items
+                serde_json::to_value(parse_frontmatter(&stored).unwrap().entities).unwrap(),
+                expected_entities
             );
         }
     }

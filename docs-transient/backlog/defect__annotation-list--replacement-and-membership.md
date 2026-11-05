@@ -26,7 +26,7 @@ do not consistently re-evaluate collection membership, filters, or sort position
 
 ## References
 
-- `src/components/list/ItemList.tsx`
+- `src/components/list/EntityList.tsx`
 - `src/hooks/useRouter.tsx`
 - `src-tauri/src/commands/articles.rs`
 - `crates/xaga-core/src/events.rs`

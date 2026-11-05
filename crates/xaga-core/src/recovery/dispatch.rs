@@ -1,4 +1,4 @@
-//! The service-driven apply stage: walk-and-repair, streaming each item's correction onto the
+//! The service-driven apply stage: walk-and-repair, streaming each entity's correction onto the
 //! embedding service's tiers as it is found (fresh recovery bulk-inserts instead), plus feed
 //! embedding, deletes, and the reverse-index rebuild.
 
@@ -13,16 +13,16 @@ use crate::embeddings::{Embedder, EmbeddingEntry, EmbeddingsDb, Job, Tier};
 use crate::types::{Article, Topic};
 
 use super::RepairSink;
-use super::embeddings::repair_item_embeddings;
+use super::embeddings::repair_entity_embeddings;
 
-/// Sink for the service path. Incremental recovery enqueues a per-item `Upsert` as each item is
+/// Sink for the service path. Incremental recovery enqueues a per-entity `Upsert` as each entity is
 /// walked, so memory stays bounded. Fresh recovery (empty table) instead collects rows for the fast
 /// bulk-insert path — per-row upserts on an empty table are ~100× slower — and flushes them after
 /// the walk via [`DispatchSink::flush`].
 struct DispatchSink<'a> {
     senders: &'a Senders,
     /// `Some` on fresh recovery: collected `(topics, articles)` awaiting bulk insert. `None` is
-    /// incremental, where each item was already enqueued during the walk.
+    /// incremental, where each entity was already enqueued during the walk.
     fresh: Option<(Vec<Topic>, Vec<(Article, Vec<String>)>)>,
     topic_count: usize,
     article_count: usize,
@@ -72,7 +72,7 @@ impl RepairSink for DispatchSink<'_> {
 
 /// Walks the library and repairs the embeddings, streaming the corrections onto the service's tiers.
 /// Lives here (the bridge), not in `embeddings`, so the filesystem reads it performs
-/// (`repair_item_embeddings`, `list_topics`) stay out of the indexing layer.
+/// (`repair_entity_embeddings`, `list_topics`) stay out of the indexing layer.
 /// Driven by the service's control loop via `Job::StartRecovery`.
 ///
 /// Topics are enqueued before articles so they index first. Recovery is system-initiated, so its
@@ -99,10 +99,10 @@ pub(crate) async fn dispatch_recovery(
 
     let mut sink = DispatchSink::new(fresh, senders);
 
-    let residue = match repair_item_embeddings(library_dir, db, &mut sink, Some(writer)).await {
+    let residue = match repair_entity_embeddings(library_dir, db, &mut sink, Some(writer)).await {
         Ok(residue) => residue,
         Err(e) => {
-            log::error!("recovery: repair_item_embeddings failed: {e}");
+            log::error!("recovery: repair_entity_embeddings failed: {e}");
             return;
         }
     };
@@ -125,7 +125,7 @@ pub(crate) async fn dispatch_recovery(
         }
     }
 
-    // All deletes (items + stale feed rows) as a single batch (one LanceDB version).
+    // All deletes (entities + stale feed rows) as a single batch (one LanceDB version).
     senders.enqueue(
         Tier::Maintenance,
         Job::DeleteBatch {
@@ -134,7 +134,7 @@ pub(crate) async fn dispatch_recovery(
     );
 
     // Rebuild the member→topic reverse index from the topic files. Unconditional: a
-    // membership-only change doesn't alter a member's checksum, so repair_item_embeddings
+    // membership-only change doesn't alter a member's checksum, so repair_entity_embeddings
     // would skip it. Bounded by drift via the topic-row `items` base.
     match crate::persistence::topics::list_topics(library_dir).await {
         Ok(topics) => {

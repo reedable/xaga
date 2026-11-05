@@ -288,13 +288,13 @@ export function HtmlReader({
 
   useEffect(
     () =>
-      onAnnotationReplaced(({ oldId, item }) => {
+      onAnnotationReplaced(({ oldId, entity }) => {
         setTooltip((current) =>
           current?.annotationId === oldId
             ? {
                 ...current,
-                annotationId: item.id,
-                color: item.color ?? current.color,
+                annotationId: entity.id,
+                color: entity.color ?? current.color,
               }
             : current
         );

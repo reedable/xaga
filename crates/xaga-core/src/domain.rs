@@ -9,14 +9,18 @@ use serde::{Deserialize, Serialize};
 /// Palette identifiers shared by article markings and annotation swatches.
 pub const COLOR_NAMES: [&str; 6] = ["red", "orange", "yellow", "green", "blue", "violet"];
 
-// ── Item + capabilities (TS intersections → Rust supertraits) ────────────────────
+// ── Entities + capabilities (TS intersections → Rust supertraits) ───────────────
 
-pub trait Item {
+pub trait Entity {
     fn id(&self) -> &str;
     fn title(&self) -> &str;
+}
+
+/// An entity with an independent managed record and lifecycle.
+pub trait ManagedEntity: Entity {
     fn created_at(&self) -> &str;
     fn updated_at(&self) -> Option<&str>;
-    /// Optional blurb. `None` for items without one.
+    /// Optional blurb. `None` for entities without one.
     fn description(&self) -> Option<&str> {
         None
     }
@@ -26,29 +30,31 @@ pub trait Item {
     }
 }
 
-pub trait WebResource: Item {
+pub trait WebResource: ManagedEntity {
     fn url(&self) -> &str;
 }
-pub trait Document: Item {
+pub trait Document: ManagedEntity {
     fn content(&self) -> &str;
 }
 /// Authoritative summary counts — independent of `members.len()` (live fetch can diverge).
-pub trait Countable: Item {
+pub trait Countable {
     fn entry_count(&self) -> usize;
     fn unread_count(&self) -> usize;
 }
-pub trait Pinnable: Item {
+pub trait Pinnable: ManagedEntity {
     fn is_pinned(&self) -> bool;
 }
-pub trait Colorable: Item {
+pub trait Colorable: ManagedEntity {
     fn color(&self) -> Option<&str>;
 }
 
-// `Collection<T>` has no Rust trait analogue (a generic container); its membership is the
-// `members: Vec<Reference>` field on the collection entities (`Feed`, `Topic`), which also impl
-// `Countable`.
+// Collection covers Feed, Topic, and the derived Site grouping. ManagedCollection<T>
+// describes Feed and Topic: independent entities with a managed lifecycle and typed members.
+// No shared Rust trait is needed: their `members: Vec<Reference>` fields and `Countable` impls
+// carry the managed shape; `types::SiteSummary` carries derived Site counts and hostname.
 
-// ── Kind (the discriminator; Rust's encoding of the TS `__kind` brand) ──────────
+// ── Kind (persisted entity discriminator; mirrors entity brands in TS) ──────────
+// Site's UI brand is assigned at the platform boundary, not stored as an entity Kind.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -88,20 +94,31 @@ impl std::str::FromStr for Kind {
 
 // ── Reference (a branded pointer to a collection member) ────────────────────────
 
-/// A typed, branded pointer to an item — the enum variant IS the brand (mirrors TS
-/// `Reference<T>`). A value object, not an entity. Members of a `Collection`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A typed, branded pointer to an entity — the enum variant IS the brand (mirrors TS
+/// `Reference<T>`). A value object, not an entity. Members of a `ManagedCollection`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "__kind", rename_all = "lowercase")]
 pub enum Reference {
-    Entry { id: String },
-    Annotation { id: String },
-    Note { id: String },
+    Entry {
+        id: String,
+    },
+    Annotation {
+        id: String,
+        /// Containing article, when known, so the annotation can be located.
+        #[serde(default, rename = "articleId", skip_serializing_if = "Option::is_none")]
+        article_id: Option<String>,
+    },
+    Note {
+        id: String,
+    },
 }
 
 impl Reference {
     pub fn id(&self) -> &str {
         match self {
-            Reference::Entry { id } | Reference::Annotation { id } | Reference::Note { id } => id,
+            Reference::Entry { id } | Reference::Annotation { id, .. } | Reference::Note { id } => {
+                id
+            }
         }
     }
 }
@@ -137,13 +154,15 @@ pub struct Entry {
     pub color: Option<String>,
 }
 
-impl Item for Entry {
+impl Entity for Entry {
     fn id(&self) -> &str {
         &self.id
     }
     fn title(&self) -> &str {
         &self.title
     }
+}
+impl ManagedEntity for Entry {
     fn created_at(&self) -> &str {
         &self.created_at
     }
@@ -186,17 +205,19 @@ pub struct Feed {
     pub is_pinned: bool,
     pub entry_count: usize,
     pub unread_count: usize,
-    /// The feed's entries, as references (`Collection<Entry>` membership).
+    /// The feed's entries, as references (`ManagedCollection<Entry>` membership).
     pub members: Vec<Reference>,
 }
 
-impl Item for Feed {
+impl Entity for Feed {
     fn id(&self) -> &str {
         &self.id
     }
     fn title(&self) -> &str {
         &self.title
     }
+}
+impl ManagedEntity for Feed {
     fn created_at(&self) -> &str {
         &self.created_at
     }
@@ -239,17 +260,19 @@ pub struct Topic {
     pub is_pinned: bool,
     pub entry_count: usize,
     pub unread_count: usize,
-    /// Curated members (`Collection<Entry | Annotation | Note>` membership).
+    /// Curated members (`ManagedCollection<Entry | Annotation | Note>` membership).
     pub members: Vec<Reference>,
 }
 
-impl Item for Topic {
+impl Entity for Topic {
     fn id(&self) -> &str {
         &self.id
     }
     fn title(&self) -> &str {
         &self.title
     }
+}
+impl ManagedEntity for Topic {
     fn created_at(&self) -> &str {
         &self.created_at
     }
@@ -285,13 +308,15 @@ pub struct Article {
     pub favicon: Option<String>,
 }
 
-impl Item for Article {
+impl Entity for Article {
     fn id(&self) -> &str {
         self.meta.id()
     }
     fn title(&self) -> &str {
         self.meta.title()
     }
+}
+impl ManagedEntity for Article {
     fn created_at(&self) -> &str {
         self.meta.created_at()
     }
@@ -333,13 +358,15 @@ pub struct Note {
     pub color: Option<String>,
 }
 
-impl Item for Note {
+impl Entity for Note {
     fn id(&self) -> &str {
         &self.id
     }
     fn title(&self) -> &str {
         &self.title
     }
+}
+impl ManagedEntity for Note {
     fn created_at(&self) -> &str {
         &self.created_at
     }
@@ -363,7 +390,7 @@ impl Colorable for Note {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Annotation {
     pub id: String,
-    /// `title` (from `Item`) is the highlighted text; carried so it lists in mixed collections.
+    /// `title` (from `Entity`) is the highlighted text; carried so it lists in mixed collections.
     pub title: String,
     /// The parent article id.
     pub reference: String,
@@ -378,13 +405,15 @@ pub struct Annotation {
     pub created_at: String,
 }
 
-impl Item for Annotation {
+impl Entity for Annotation {
     fn id(&self) -> &str {
         &self.id
     }
     fn title(&self) -> &str {
         &self.title
     }
+}
+impl ManagedEntity for Annotation {
     fn created_at(&self) -> &str {
         &self.created_at
     }

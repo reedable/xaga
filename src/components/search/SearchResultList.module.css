@@ -1,4 +1,4 @@
-.ItemList {
+.EntityList {
   --width: 18rem;
 
   align-items: center;
@@ -45,7 +45,7 @@
     overflow-y: auto;
     width: 100%;
 
-    .ListItem {
+    .ListEntity {
       border-bottom: var(--border);
 
       .ListItemButton {

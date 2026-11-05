@@ -18,13 +18,13 @@ List-all and collection reads materialize complete result sets. Feed reads build
 - Compare offset windows, stable cursors, and chunked membership queries.
 - Define page invalidation and reconciliation for live state and annotation events.
 - Select the sort key, tie-breaker, and supporting indexes.
-- Implement the read API and incremental `ItemList` loading with scale and navigation tests.
+- Implement the read API and incremental `EntityList` loading with scale and navigation tests.
 
 ## References
 
 - `crates/xaga-core/src/embeddings/db.rs`
 - `crates/xaga-core/src/query/items.rs`
 - `crates/xaga-core/src/query/topics.rs`
-- `src/components/list/ItemList.tsx`
+- `src/components/list/EntityList.tsx`
 - `docs/architecture/design_scale.md`
 - [Read-model abstraction](refactor__db-as-cache-read-abstraction.md)

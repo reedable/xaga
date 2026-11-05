@@ -13,7 +13,7 @@ import useRouter from "../../hooks/useRouter";
 import cx from "../../utils/cx";
 import Logger from "../../utils/Logger";
 import ArticleReader, { type ArticleReaderHandle } from "./ArticleReader";
-import css from "./ItemView.module.css";
+import css from "./EntityView.module.css";
 import { PdfReader } from "./PdfReader";
 import {
   Inspector,
@@ -24,14 +24,14 @@ import { useEvents } from "../../hooks/useEvents";
 import type { Annotation } from "../../types";
 import { Toolbar } from "./Toolbar";
 
-type ItemViewProps = {
+type EntityViewProps = {
   className?: string;
   searchPanelRef?: RefObject<HTMLDivElement | null>;
 };
 
-const logger = Logger.getLogger("ItemView");
+const logger = Logger.getLogger("EntityView");
 
-export function ItemView({ className, searchPanelRef }: ItemViewProps) {
+export function EntityView({ className, searchPanelRef }: EntityViewProps) {
   const { state, search } = useRouter();
   const searchOpen = search !== undefined;
   const { entryId, annotationId, url, mimeType } = state;
@@ -64,10 +64,10 @@ export function ItemView({ className, searchPanelRef }: ItemViewProps) {
   const { onAnnotationReplaced, onAnnotationRemoved } = useEvents();
   useEffect(
     () =>
-      onAnnotationReplaced(({ oldId, item }) => {
+      onAnnotationReplaced(({ oldId, entity }) => {
         setDrawerTarget((current) =>
           current?.annotationId === oldId
-            ? { ...current, annotationId: item.id }
+            ? { ...current, annotationId: entity.id }
             : current
         );
       }),

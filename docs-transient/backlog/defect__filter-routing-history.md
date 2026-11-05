@@ -21,5 +21,5 @@ List-filter changes are stored in navigation state and create browser-history en
 ## References
 
 - `src/hooks/useRouter.tsx`
-- `src/components/list/ItemList.tsx`
+- `src/components/list/EntityList.tsx`
 - `src/components/content/Toolbar.tsx`

@@ -10,20 +10,23 @@ import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import { useSidebarSort } from "../../hooks/useSidebarSort";
 import useRouter from "../../hooks/useRouter";
-import { ALL_ITEMS } from "../../Shortcuts";
-import { useAllItemsCounts } from "../../hooks/useAllItemsCounts";
+import { ALL_ENTITIES } from "../../Shortcuts";
+import { useAllEntitiesCounts } from "../../hooks/useAllEntitiesCounts";
 import {
   isEntry,
   isFeed,
   isTopic,
   isSite,
-  type Site,
+  isShortcut,
+  type Collection,
   type Countable,
+  type Entry,
+  type Shortcut,
 } from "../../types";
 import sortSidebarCollections from "../../utils/sortSidebarCollections";
 import ExpandableList from "./ExpandableList";
 import css from "./ShortcutList.module.css";
-import SidebarItem from "./SidebarItem";
+import SidebarEntity from "./SidebarEntity";
 import SidebarSortControl from "./SidebarSortControl";
 import UnreadCount from "./UnreadCount";
 
@@ -34,7 +37,7 @@ import MissingShortcut from "./MissingShortcut";
 type ShortcutListProps = {
   missing?: PinTarget[];
   isExpanded?: boolean;
-  shortcuts: (Countable | Site)[];
+  shortcuts: (Collection | (Entry & Countable))[];
   onClickHeader: () => void;
 };
 
@@ -44,15 +47,15 @@ export default function ShortcutList({
   shortcuts,
   onClickHeader,
 }: ShortcutListProps) {
-  const { selectArticleScope, selectCollection, selectSite, state } =
+  const { selectArticleScope, selectCollection, selectShortcut, state } =
     useRouter();
   const { feedId, topicId, shortcutId, articleScopeId, siteHostname } = state;
   const [, abortControllerRef] = useAbortController();
   const { loadingFeedIds } = useFeeds(abortControllerRef);
   const [sortMode, setSortMode] = useSidebarSort("shortcuts");
-  const counts = useAllItemsCounts();
-  const allItems = useMemo(
-    () => (counts ? { ...ALL_ITEMS, ...counts } : ALL_ITEMS),
+  const counts = useAllEntitiesCounts();
+  const allEntities = useMemo(
+    () => (counts ? { ...ALL_ENTITIES, ...counts } : ALL_ENTITIES),
     [counts]
   );
   const sortedShortcuts = useMemo(
@@ -61,13 +64,13 @@ export default function ShortcutList({
   );
 
   const handleSelectShortcut = useCallback(
-    (collection: Countable | Site) =>
-      isSite(collection)
-        ? selectSite(collection)
-        : isEntry(collection)
-          ? selectArticleScope(collection)
-          : selectCollection(collection),
-    [selectArticleScope, selectCollection, selectSite]
+    (target: Collection | (Entry & Countable) | Shortcut) =>
+      isEntry(target)
+        ? selectArticleScope(target)
+        : isShortcut(target)
+          ? selectShortcut(target)
+          : selectCollection(target),
+    [selectArticleScope, selectCollection, selectShortcut]
   );
 
   return (
@@ -86,11 +89,11 @@ export default function ShortcutList({
         />
       )}
 
-      <SidebarItem
+      <SidebarEntity
         icon={Newspaper}
-        collection={allItems}
+        collection={allEntities}
         loading={loadingFeedIds.size > 0}
-        selected={!articleScopeId && shortcutId === ALL_ITEMS.id}
+        selected={!articleScopeId && shortcutId === ALL_ENTITIES.id}
         onSelectCollection={handleSelectShortcut}
         renderSecondaryAction={
           counts ? () => <UnreadCount count={counts.unreadCount} /> : undefined
@@ -98,7 +101,7 @@ export default function ShortcutList({
       />
 
       {sortedShortcuts.map((shortcut) => (
-        <SidebarItem
+        <SidebarEntity
           collection={shortcut}
           key={`${isEntry(shortcut) ? "entry" : isFeed(shortcut) ? "feed" : isSite(shortcut) ? "site" : "topic"}:${shortcut.id}`}
           icon={
@@ -119,7 +122,7 @@ export default function ShortcutList({
           }
           selected={
             isSite(shortcut)
-              ? siteHostname === shortcut.hostname
+              ? siteHostname === shortcut.id
               : isFeed(shortcut)
                 ? feedId === shortcut.id
                 : isTopic(shortcut)

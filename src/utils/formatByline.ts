@@ -1,21 +1,21 @@
 import { parse } from "tldts";
-import { isEntry, type Item } from "../types";
+import { isEntry, type ManagedEntity } from "../types";
 import formatDate from "./formatDate";
 
-export default function formatByline(item: Item) {
-  const displayDate = formatDate(item);
+export default function formatByline(entity: ManagedEntity) {
+  const displayDate = formatDate(entity);
 
-  if (isEntry(item)) {
-    const displayHost = formatHost(item);
+  if (isEntry(entity)) {
+    const displayHost = formatHost(entity);
     return [displayDate, displayHost].filter(Boolean).join(" • ");
   }
 
   return displayDate;
 }
 
-function formatHost(item: Item) {
-  if (isEntry(item)) {
-    return item.url ? (parse(item.url).domain ?? null) : null;
+function formatHost(entity: ManagedEntity) {
+  if (isEntry(entity)) {
+    return entity.url ? (parse(entity.url).domain ?? null) : null;
   }
 
   return null;

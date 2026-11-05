@@ -30,9 +30,9 @@ pub async fn handle(cmd: BookmarksCommand, data_dir: &Path) {
                     println!("No bookmarks saved.");
                 }
                 Ok(bookmarks) => {
-                    for item in &bookmarks {
-                        println!("{}", item.url);
-                        println!("  {}", item.title);
+                    for entity in &bookmarks {
+                        println!("{}", entity.url);
+                        println!("  {}", entity.title);
                     }
                 }
                 Err(e) => die(e),

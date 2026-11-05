@@ -22,7 +22,7 @@ import {
   isFeed,
   isTopic,
   type Ranked,
-  type Item,
+  type ManagedEntity,
 } from "../../types";
 import cx from "../../utils/cx";
 import formatByline from "../../utils/formatByline";
@@ -43,17 +43,17 @@ export function SearchResultList({
   searchQuery,
   onSaveAsTopic,
 }: SearchResultListProps) {
-  const { selectItem, state, clearSearch } = useRouter();
+  const { selectEntity, state, clearSearch } = useRouter();
   const { entryId } = state;
   const { loading, error, search } = useSearch();
   const embeddingStartupState = useEmbeddingStartupState();
   const { onUnreadChanged, onBookmarkChanged } = useEvents();
   const [, abortControllerRef] = useAbortController();
   const { feeds } = useFeeds(abortControllerRef);
-  const [results, setResults] = useState<Ranked<Item>[]>([]);
+  const [results, setResults] = useState<Ranked<ManagedEntity>[]>([]);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("entries");
 
-  const visibleResults = useMemo((): Item[] => {
+  const visibleResults = useMemo((): ManagedEntity[] => {
     if (typeFilter === "topics") return results.filter(isTopic);
     if (typeFilter === "annotations")
       return results.filter(isPartialAnnotation);
@@ -105,7 +105,7 @@ export function SearchResultList({
   }, [onBookmarkChanged]);
 
   return (
-    <div className={cx(className, css.ItemList)}>
+    <div className={cx(className, css.EntityList)}>
       <SearchInput
         className={css.SearchInput}
         onClear={clearSearch}
@@ -193,28 +193,28 @@ export function SearchResultList({
 
       {embeddingStartupState === "available" && visibleResults.length > 0 && (
         <List className={css.List} disablePadding>
-          {visibleResults.map((item) => (
-            <div key={item.id} className={css.ListItem}>
+          {visibleResults.map((entity) => (
+            <div key={entity.id} className={css.ListEntity}>
               <ListItemButton
                 className={css.ListItemButton}
-                selected={entryId === item.id}
-                onClick={() => selectItem(item)}
+                selected={entryId === entity.id}
+                onClick={() => selectEntity(entity)}
               >
                 <ListItemText
                   primary={
                     <Quotes
-                      quoted={isPartialAnnotation(item)}
-                      color={isPartialAnnotation(item) ? item.color : undefined}
+                      quoted={isPartialAnnotation(entity)}
+                      color={isPartialAnnotation(entity) ? entity.color : undefined}
                     >
-                      {item.title}
+                      {entity.title}
                     </Quotes>
                   }
                   secondary={
                     <>
-                      {isEntry(item) && item.isUnread && (
+                      {isEntry(entity) && entity.isUnread && (
                         <Circle className={css.UnreadIcon} color="primary" />
                       )}
-                      <span>{formatByline(item)}</span>
+                      <span>{formatByline(entity)}</span>
                     </>
                   }
                   slotProps={{

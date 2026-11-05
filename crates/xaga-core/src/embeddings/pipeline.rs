@@ -7,7 +7,7 @@ use super::db::EmbeddingEntry;
 use super::model::Embedder;
 use super::row::{article_embed_text, checksum, feed_embed_text, topic_embed_text};
 use super::{EmbeddingsDb, EmbeddingsError};
-use crate::types::{Annotation, Article, Entry, Feed, Kind, ListItem, Topic};
+use crate::types::{Annotation, Article, Entry, Feed, Kind, ListEntity, Topic};
 
 /// Compares old and new state; sends the entry to the appropriate channels
 /// when reading state or color changes.
@@ -84,7 +84,7 @@ pub(crate) fn annotation_embedding_entry(
         summary: String::new(),
         tags: vec![],
         topics,
-        items: vec![],
+        entities: vec![],
         is_unread: false,
         is_pinned: false,
         vector,
@@ -92,8 +92,8 @@ pub(crate) fn annotation_embedding_entry(
 }
 
 /// The live-update payload the UI consumes to add/refresh a saved annotation.
-fn annotation_list_item(article: &Article, annotation: &Annotation) -> ListItem {
-    ListItem {
+fn annotation_list_entity(article: &Article, annotation: &Annotation) -> ListEntity {
+    ListEntity {
         id: annotation.id.clone(),
         title: annotation.text.join(" "),
         created_at: annotation.created_at.clone(),
@@ -117,7 +117,7 @@ fn annotation_list_item(article: &Article, annotation: &Annotation) -> ListItem 
 pub(crate) async fn sync_annotations(
     article: &Article,
     db: &EmbeddingsDb,
-    annotation_tx: &flume::Sender<ListItem>,
+    annotation_tx: &flume::Sender<ListEntity>,
 ) -> Result<(), EmbeddingsError> {
     let article_id = &article.meta.id;
     let existing = db.get_annotation_meta_for_article(article_id).await?;
@@ -178,7 +178,7 @@ pub(crate) async fn sync_annotations(
                 if let Some(mut existing_entry) = db.get_entry(&annotation.id).await? {
                     existing_entry.color = annotation.color.clone();
                     db.upsert(existing_entry).await?;
-                    let _ = annotation_tx.send(annotation_list_item(article, annotation));
+                    let _ = annotation_tx.send(annotation_list_entity(article, annotation));
                 }
                 continue;
             }
@@ -195,7 +195,7 @@ pub(crate) async fn sync_annotations(
             None => (None, None),
         };
         let topics = if existing.contains_key(&annotation.id) {
-            db.find_topic_ids_by_item_id(&annotation.id)
+            db.find_topic_ids_by_entity_id(&annotation.id)
                 .await?
                 .unwrap_or_default()
         } else {
@@ -205,7 +205,7 @@ pub(crate) async fn sync_annotations(
             article, annotation, topics, vector,
         ))
         .await?;
-        let _ = annotation_tx.send(annotation_list_item(article, annotation));
+        let _ = annotation_tx.send(annotation_list_entity(article, annotation));
     }
 
     // Record the entry's annotation membership (in the entry row's `items`) as the *final* step,
@@ -215,8 +215,8 @@ pub(crate) async fn sync_annotations(
     // doesn't exist yet (recovery will create it).
     let member_ids: Vec<String> = article.annotations.iter().map(|a| a.id.clone()).collect();
     if let Some(mut entry_row) = db.get_entry(article_id).await? {
-        if entry_row.items != member_ids {
-            entry_row.items = member_ids;
+        if entry_row.entities != member_ids {
+            entry_row.entities = member_ids;
             db.upsert(entry_row).await?;
         }
     }
@@ -262,7 +262,7 @@ pub async fn sync_entry_row(
     db: &EmbeddingsDb,
     unread_tx: &flume::Sender<Entry>,
     bookmarked_tx: &flume::Sender<Entry>,
-    annotation_tx: &flume::Sender<ListItem>,
+    annotation_tx: &flume::Sender<ListEntity>,
 ) -> Result<(), EmbeddingsError> {
     sync_entry_row_with_tag_changes(
         article,
@@ -281,7 +281,7 @@ pub(crate) async fn sync_entry_row_with_tag_changes(
     db: &EmbeddingsDb,
     unread_tx: &flume::Sender<Entry>,
     bookmarked_tx: &flume::Sender<Entry>,
-    annotation_tx: &flume::Sender<ListItem>,
+    annotation_tx: &flume::Sender<ListEntity>,
     tag_changes: Option<&std::collections::HashMap<String, bool>>,
     resolved_tags: Option<&[String]>,
 ) -> Result<(), EmbeddingsError> {
@@ -342,9 +342,9 @@ pub(crate) async fn sync_entry_row_with_tag_changes(
             .as_ref()
             .map(|e| e.topics.clone())
             .unwrap_or_default();
-        row.items = existing
+        row.entities = existing
             .as_ref()
-            .map(|e| e.items.clone())
+            .map(|e| e.entities.clone())
             .unwrap_or_default();
         db.upsert(row).await?;
         emit_entry_changes(&article.meta, existing.as_ref(), unread_tx, bookmarked_tx);
@@ -353,7 +353,10 @@ pub(crate) async fn sync_entry_row_with_tag_changes(
     // Matching membership alone does not prove matching annotation content (e.g.
     // a note edited outside the app). Reconcile rows before queuing vector work;
     // vector completion must never own creation or restore an older snapshot.
-    if !article.annotations.is_empty() || existing.as_ref().is_some_and(|row| !row.items.is_empty())
+    if !article.annotations.is_empty()
+        || existing
+            .as_ref()
+            .is_some_and(|row| !row.entities.is_empty())
     {
         sync_annotations(article, db, annotation_tx).await?;
     }
@@ -391,9 +394,9 @@ pub async fn sync_topic_row(topic: &Topic, db: &EmbeddingsDb) -> Result<(), Embe
             .as_ref()
             .map(|e| e.topics.clone())
             .unwrap_or_default();
-        row.items = existing
+        row.entities = existing
             .as_ref()
-            .map(|e| e.items.clone())
+            .map(|e| e.entities.clone())
             .unwrap_or_default();
         db.upsert(row).await?;
     }
@@ -462,7 +465,7 @@ async fn store_entry_vector(
         row.is_unread = existing.is_unread;
         row.is_pinned = existing.is_pinned;
         row.topics = existing.topics.clone();
-        row.items = existing.items.clone();
+        row.entities = existing.entities.clone();
     }
     db.upsert(row).await
 }
@@ -497,9 +500,9 @@ pub async fn embed_topic_vector(
             .as_ref()
             .map(|e| e.topics.clone())
             .unwrap_or_default();
-        row.items = existing
+        row.entities = existing
             .as_ref()
-            .map(|e| e.items.clone())
+            .map(|e| e.entities.clone())
             .unwrap_or_default();
         db.upsert(row).await?;
     }
@@ -550,7 +553,7 @@ pub(crate) async fn reconcile_topic_membership_chunked(
     chunk_size: usize,
 ) -> Result<(), EmbeddingsError> {
     let prior: Vec<String> = db
-        .find_item_ids_by_topic_id(topic_id)
+        .find_entity_ids_by_topic_id(topic_id)
         .await?
         .unwrap_or_default();
     let new_set: HashSet<&str> = member_ids.iter().map(|s| s.as_str()).collect();
@@ -634,7 +637,7 @@ async fn set_topic_base(
     base: &[String],
 ) -> Result<(), EmbeddingsError> {
     if let Some(mut t) = db.get_entry(topic_id).await? {
-        t.items = base.to_vec();
+        t.entities = base.to_vec();
         db.upsert(t).await?;
     }
     Ok(())
@@ -730,7 +733,7 @@ pub(crate) async fn add_topic_member(
 ) -> Result<(), EmbeddingsError> {
     write_topic_delta(db, topic_id, &[member_id], true).await?;
     let mut base = db
-        .find_item_ids_by_topic_id(topic_id)
+        .find_entity_ids_by_topic_id(topic_id)
         .await?
         .unwrap_or_default();
     if !base.iter().any(|m| m == member_id) {
@@ -749,7 +752,7 @@ pub(crate) async fn remove_topic_member(
 ) -> Result<(), EmbeddingsError> {
     write_topic_delta(db, topic_id, &[member_id], false).await?;
     let base = db
-        .find_item_ids_by_topic_id(topic_id)
+        .find_entity_ids_by_topic_id(topic_id)
         .await?
         .unwrap_or_default();
     if base.iter().any(|m| m == member_id) {
@@ -1050,7 +1053,7 @@ mod tests {
                 .await
                 .unwrap()
                 .unwrap()
-                .items
+                .entities
                 .is_empty()
         );
     }
@@ -1148,7 +1151,7 @@ mod tests {
 
         // The `.md` now holds the same content under a new id with a new color.
         let new = annotation("new-id", "red");
-        let (tx, _rx) = flume::unbounded::<ListItem>();
+        let (tx, _rx) = flume::unbounded::<ListEntity>();
         sync_annotations(&article(vec![new]), &db, &tx)
             .await
             .unwrap();
@@ -1169,7 +1172,7 @@ mod tests {
         let mut new = annotation("new-id", "red");
         new.text = vec!["different text".to_string()];
         new.title = "different text".to_string();
-        let (tx, _rx) = flume::unbounded::<ListItem>();
+        let (tx, _rx) = flume::unbounded::<ListEntity>();
         sync_annotations(&article(vec![new]), &db, &tx)
             .await
             .unwrap();

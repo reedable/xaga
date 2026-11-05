@@ -11,9 +11,9 @@ const mocks = vi.hoisted(() => ({
   createTopicWithMember: vi.fn(),
   setTopicPinned: vi.fn(),
   listEntryTopics: vi.fn(async () => [] as string[]),
-  addTopicItem: vi.fn(),
-  removeTopicItem: vi.fn(),
-  rankTopicsRelatedToItem: vi.fn(),
+  addTopicEntity: vi.fn(),
+  removeTopicEntity: vi.fn(),
+  rankTopicsRelatedToEntity: vi.fn(),
 }));
 
 vi.mock("../../hooks/useLibraryReadOnly", () => ({
@@ -83,7 +83,7 @@ afterEach(async () => {
 });
 
 it("offers inline topic creation when no topics exist", async () => {
-  await act(async () => root.render(<TopicMembership item={article} />));
+  await act(async () => root.render(<TopicMembership entity={article} />));
 
   const createAction = [...document.body.querySelectorAll("button")].find(
     (button) => button.textContent === "Create a New Topic"
@@ -119,7 +119,7 @@ it("offers inline topic creation when no topics exist", async () => {
 
   mocks.listEntryTopics.mockResolvedValueOnce(["new"]);
   mocks.topics = [created];
-  await act(async () => root.render(<TopicMembership item={article} />));
+  await act(async () => root.render(<TopicMembership entity={article} />));
   expect(
     (document.body.querySelector('input[type="checkbox"]') as HTMLInputElement)
       .checked
@@ -128,7 +128,7 @@ it("offers inline topic creation when no topics exist", async () => {
 
 it("prefills an inline topic title from a trimmed no-match filter", async () => {
   mocks.topics = [topic("existing", "Existing")];
-  await act(async () => root.render(<TopicMembership item={article} />));
+  await act(async () => root.render(<TopicMembership entity={article} />));
 
   const filter = document.body.querySelector(
     'input[placeholder="Filter topics…"]'
@@ -154,20 +154,20 @@ const article = {
 
 it("edits article memberships inline and preserves checked state after a failed mutation", async () => {
   mocks.topics = [topic("one", "One")];
-  mocks.addTopicItem
+  mocks.addTopicEntity
     .mockResolvedValueOnce(undefined)
     .mockResolvedValueOnce(mocks.topics[0]);
-  mocks.removeTopicItem.mockResolvedValue(mocks.topics[0]);
-  await act(async () => root.render(<TopicMembership item={article} />));
+  mocks.removeTopicEntity.mockResolvedValue(mocks.topics[0]);
+  await act(async () => root.render(<TopicMembership entity={article} />));
   const row = () => container.querySelector('[role="checkbox"]')!;
   expect(row().getAttribute("aria-checked")).toBe("false");
   await click(row());
   expect(row().getAttribute("aria-checked")).toBe("false");
   await click(row());
-  expect(mocks.addTopicItem).toHaveBeenLastCalledWith("one", article);
+  expect(mocks.addTopicEntity).toHaveBeenLastCalledWith("one", article);
   expect(row().getAttribute("aria-checked")).toBe("true");
   await click(row());
-  expect(mocks.removeTopicItem).toHaveBeenCalledWith("one", "parent-article");
+  expect(mocks.removeTopicEntity).toHaveBeenCalledWith("one", "parent-article");
   expect(row().getAttribute("aria-checked")).toBe("false");
   expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
@@ -176,14 +176,14 @@ it("allows read-only membership inspection without enabling assignment or creati
   mocks.readOnly = true;
   mocks.topics = [topic("one", "One")];
   mocks.listEntryTopics.mockResolvedValueOnce(["one"]);
-  await act(async () => root.render(<TopicMembership item={article} />));
+  await act(async () => root.render(<TopicMembership entity={article} />));
   const row = container.querySelector('[role="checkbox"]')!;
   expect(row.getAttribute("aria-checked")).toBe("true");
   expect(row.getAttribute("aria-disabled")).toBe("true");
   await click(row);
-  expect(mocks.removeTopicItem).not.toHaveBeenCalled();
+  expect(mocks.removeTopicEntity).not.toHaveBeenCalled();
   mocks.topics = [];
-  await act(async () => root.render(<TopicMembership item={article} />));
+  await act(async () => root.render(<TopicMembership entity={article} />));
   const create = [...container.querySelectorAll("button")].find(
     (button) => button.textContent === "Create a New Topic"
   )!;
@@ -193,16 +193,16 @@ it("allows read-only membership inspection without enabling assignment or creati
 it("does not apply a late membership mutation to a different article", async () => {
   mocks.topics = [topic("one", "One")];
   let finish!: (value: Topic) => void;
-  mocks.addTopicItem.mockImplementationOnce(
+  mocks.addTopicEntity.mockImplementationOnce(
     () =>
       new Promise((resolve) => {
         finish = resolve;
       })
   );
-  await act(async () => root.render(<TopicMembership item={article} />));
+  await act(async () => root.render(<TopicMembership entity={article} />));
   await click(container.querySelector('[role="checkbox"]')!);
   await act(async () =>
-    root.render(<TopicMembership item={{ ...article, id: "other" }} />)
+    root.render(<TopicMembership entity={{ ...article, id: "other" }} />)
   );
   await act(async () => {
     finish(mocks.topics[0]);
@@ -220,25 +220,25 @@ it("adds and removes the Annotation itself as a typed Topic member", async () =>
     title: "Passage",
   } as Annotation;
   mocks.topics = [topic("one", "One")];
-  mocks.addTopicItem.mockResolvedValue(mocks.topics[0]);
-  mocks.removeTopicItem.mockResolvedValue(mocks.topics[0]);
-  await act(async () => root.render(<TopicMembership item={annotation} />));
+  mocks.addTopicEntity.mockResolvedValue(mocks.topics[0]);
+  mocks.removeTopicEntity.mockResolvedValue(mocks.topics[0]);
+  await act(async () => root.render(<TopicMembership entity={annotation} />));
   await click(container.querySelector('[role="checkbox"]')!);
-  expect(mocks.addTopicItem).toHaveBeenLastCalledWith("one", annotation);
+  expect(mocks.addTopicEntity).toHaveBeenLastCalledWith("one", annotation);
   await click(container.querySelector('[role="checkbox"]')!);
-  expect(mocks.removeTopicItem).toHaveBeenLastCalledWith("one", "annotation");
+  expect(mocks.removeTopicEntity).toHaveBeenLastCalledWith("one", "annotation");
 });
 
 it("shows loading instead of topic creation until the first list arrives", async () => {
   mocks.hasLoaded = false;
-  await act(async () => root.render(<TopicMembership item={article} />));
+  await act(async () => root.render(<TopicMembership entity={article} />));
   expect(container.querySelector('[role="status"]')?.textContent).toBe(
     "Loading Topics…"
   );
   expect(container.textContent).not.toContain("Create a New Topic");
   mocks.topics = [topic("one", "One")];
   mocks.hasLoaded = true;
-  await act(async () => root.render(<TopicMembership item={article} />));
+  await act(async () => root.render(<TopicMembership entity={article} />));
   expect(container.querySelector('[role="status"]')).toBeNull();
   expect(container.textContent).toContain("One");
   expect(container.textContent).not.toContain("Create a New Topic");
@@ -246,10 +246,10 @@ it("shows loading instead of topic creation until the first list arrives", async
 
 it("offers creation only once loading confirms an empty library", async () => {
   mocks.hasLoaded = false;
-  await act(async () => root.render(<TopicMembership item={article} />));
+  await act(async () => root.render(<TopicMembership entity={article} />));
   expect(container.textContent).not.toContain("Create a New Topic");
   mocks.hasLoaded = true;
-  await act(async () => root.render(<TopicMembership item={article} />));
+  await act(async () => root.render(<TopicMembership entity={article} />));
   expect(container.querySelector('[role="status"]')).toBeNull();
   expect(container.textContent).toContain("Create a New Topic");
 });

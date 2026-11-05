@@ -119,8 +119,10 @@ export function buildEntryHtml(
       }
       @keyframes header__h1--scale {
         from {
+          background-color: transparent;
         }
         to {
+          background-color: var(--lliw-semanticColor__background-color--primary);
           font-size: round(down, var(--lliw-1) * 1rem, 1px);
           font-weight: 700;
           font-width: 50%;
@@ -156,7 +158,7 @@ export function buildEntryHtml(
         overflow-y: hidden;
       }
       body>header>h1:not([aria-hidden]) {
-        background-color: var(--lliw-semanticColor__background-color--primary);
+        /*background-color: var(--lliw-semanticColor__background-color--primary);*/
         display: block;
         width: 100%;
 
@@ -204,6 +206,16 @@ export function buildEntryHtml(
       img {
         max-width: 100%;
         height: auto;
+
+        @supports (height: calc-size(auto, size)) {
+          --rhythm: var(--lliw-typography__rhythm-unit);
+          inline-size: auto;
+          max-inline-size: 100%;
+          block-size: calc-size(
+            auto,
+            min(size, max(var(--rhythm), round(down, size, var(--rhythm))))
+          );
+        }
       }
       .xaga-unavailable-image {
         display: block;

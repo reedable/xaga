@@ -331,7 +331,7 @@ pub async fn refresh_all_feeds(
         &crate::library::feeds_dir(library_dir),
         &parse_atom,
         |path, feed| {
-            feeds.push((crate::util::item_id(&path), feed));
+            feeds.push((crate::util::entity_id(&path), feed));
         },
     )
     .await;
@@ -371,7 +371,7 @@ pub async fn list_feeds(
         &crate::library::feeds_dir(library_dir),
         &parse_atom,
         |path, atom_feed| {
-            let id = crate::util::item_id(&path);
+            let id = crate::util::entity_id(&path);
             feeds.push(atom_to_feed(&id, &atom_feed, unread, bookmarked));
         },
     )
