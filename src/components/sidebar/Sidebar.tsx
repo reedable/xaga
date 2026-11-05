@@ -7,10 +7,8 @@ import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import { useSidebar } from "../../hooks/useSidebar";
 import { useTopics } from "../../hooks/useTopics";
 import { useSites } from "../../hooks/useSites";
-import { useMissingPins } from "../../hooks/useMissingPins";
-import { usePinnedEntries } from "../../hooks/usePinnedEntries";
+import { useShortcutTargets } from "../../hooks/useShortcutTargets";
 import cx from "../../utils/cx";
-import sortByUnreadCount from "../../utils/sortByUnreadCount";
 import FeedList from "./FeedList";
 import ShortcutList from "./ShortcutList";
 import css from "./Sidebar.module.css";
@@ -38,31 +36,13 @@ export function Sidebar({
   const isLibraryReadOnly = useLibraryReadOnly();
 
   const { tags } = useTags();
-  const pinnedEntries = usePinnedEntries();
-  const { topics, pinnedTopicIds } = useTopics(abortControllerRef);
+  const { targets: pinnedTargets, missing: missingPins } = useShortcutTargets();
+  const { topics } = useTopics(abortControllerRef);
 
-  const { loading, feeds, pinnedFeedIds, refreshAllFeeds } = useFeeds(abortControllerRef);
-
-  const missingPins = useMissingPins(pinnedEntries, feeds, topics);
+  const { loading, feeds, refreshAllFeeds } = useFeeds(abortControllerRef);
 
   const { expandedList, setExpandedList } = useSidebar(abortControllerRef);
-  const { sites, pinnedSites = [] } = useSites(abortControllerRef);
-
-  const pinnedTargets = useMemo(
-    () =>
-      [
-        ...pinnedSites,
-        // Counts here are only the Shortcuts sorting projection; articles show none.
-        ...pinnedEntries.map((entry) => ({
-          ...entry,
-          entryCount: 0,
-          unreadCount: 0,
-        })),
-        ...pinnedTopicIds.flatMap((id) => topics.filter((t) => t.id === id)),
-        ...pinnedFeedIds.flatMap((id) => feeds.filter((f) => f.id === id)),
-      ].sort(sortByUnreadCount),
-    [feeds, pinnedFeedIds, pinnedTopicIds, topics, pinnedEntries, pinnedSites],
-  );
+  const { sites } = useSites(abortControllerRef);
   const normalizedFilter = filter.trim().toLocaleLowerCase();
   const matchesFilter = useCallback(
     ({ title }: { title: string }) => title.toLocaleLowerCase().includes(normalizedFilter),

@@ -7,9 +7,7 @@ import ShortcutList from "./ShortcutList";
 
 const mocks = vi.hoisted(() => ({
   sortMode: "alphabetical",
-  selectCollection: vi.fn(),
-  selectShortcut: vi.fn(),
-  selectArticleScope: vi.fn(),
+  selectShortcutTarget: vi.fn(),
   state: {} as { articleScopeId?: string; siteHostname?: string },
 }));
 
@@ -21,9 +19,7 @@ vi.mock("../../hooks/useFeeds", () => ({
 }));
 vi.mock("../../hooks/useRouter", () => ({
   default: () => ({
-    selectCollection: mocks.selectCollection,
-    selectShortcut: mocks.selectShortcut,
-    selectArticleScope: mocks.selectArticleScope,
+    selectShortcutTarget: mocks.selectShortcutTarget,
     state: mocks.state,
   }),
 }));
@@ -159,8 +155,7 @@ it("sorts article shortcuts at zero, displays no count, and selects their articl
   expect(button.dataset.count).toBe("false");
   expect(button.getAttribute("aria-pressed")).toBe("true");
   await act(async () => button.click());
-  expect(mocks.selectArticleScope).toHaveBeenCalledWith(article);
-  expect(mocks.selectCollection).not.toHaveBeenCalled();
+  expect(mocks.selectShortcutTarget).toHaveBeenCalledWith(article);
 });
 
 it("sorts pinned Sites with other shortcuts, keeps All items first, and selects Site scope", async () => {
@@ -193,6 +188,5 @@ it("sorts pinned Sites with other shortcuts, keeps All items first, and selects 
   expect(button.getAttribute("aria-pressed")).toBe("true");
   expect(button.dataset.count).toBe("true");
   await act(async () => button.click());
-  expect(mocks.selectCollection).toHaveBeenCalledWith(site);
-  expect(mocks.selectShortcut).not.toHaveBeenCalled();
+  expect(mocks.selectShortcutTarget).toHaveBeenCalledWith(site);
 });

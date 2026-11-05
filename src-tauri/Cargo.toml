@@ -95,3 +95,7 @@ harness = false
 [[test]]
 name = "persisted_resources_webview"
 harness = false
+
+[[test]]
+name = "shortcuts_menu"
+harness = false

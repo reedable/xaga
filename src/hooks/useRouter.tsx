@@ -146,6 +146,16 @@ export default function useRouter() {
     [logged_navigate, searchParams, state]
   );
 
+  const selectShortcutTarget = useCallback(
+    (target: Collection | Entry | Shortcut) =>
+      isEntry(target)
+        ? selectArticleScope(target)
+        : isShortcut(target)
+          ? selectShortcut(target)
+          : selectCollection(target),
+    [selectArticleScope, selectShortcut, selectCollection]
+  );
+
   const selectEntry = useCallback(
     (entry: Entry) => {
       const next: NavigationState = {
@@ -293,6 +303,7 @@ export default function useRouter() {
     selectEntity,
     selectCollection,
     selectShortcut,
+    selectShortcutTarget,
     selectFeed,
     selectSite,
     selectFilter: applyFilter,

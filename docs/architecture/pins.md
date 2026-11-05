@@ -89,6 +89,24 @@ persisted or converted, and Site references never create cache entity rows.
 Future nested groups use `type: group`, stable `id`, `title`, and an ordered
 `children` sequence. Groups are not implemented by the flat-store contract.
 
+The native macOS **Shortcuts** menu sits immediately right of **History**.
+It always starts with **All items**, followed by a separator when pins exist.
+The main UI projects the same resolved targets used by the sidebar, independent
+of sidebar visibility or its text filter. The native menu currently sorts targets
+alphabetically, independently of the sidebar's selected sort mode.
+Pin, title, and count changes refresh the native projection;
+sorting never rewrites `pins.yaml`. Article shortcuts navigate into article
+scope, and Site shortcuts use Site navigation, including empty pinned Sites.
+Unavailable targets open the same Retry/Remove shortcut dialog as the sidebar;
+initial collection loading produces disabled loading items instead.
+
+Only the main window may replace this native projection. Native menu actions
+focus that window and deliver `menu:shortcut` through the typed app-event funnel.
+Projection-specific item keys prevent delayed actions from selecting a different
+target after replacement. Navigation and Retry remain available in read-only
+libraries; Remove shortcut retains its write gate. The native menu does not read
+library files or store pin membership separately.
+
 The recovery walk constructs a membership set once, so its per-entity membership
 lookup does not scan the ordered sequence. Article-shortcut resolution reads one
 membership snapshot and each referenced article file, without repeatedly parsing

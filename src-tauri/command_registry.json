@@ -11,6 +11,7 @@
   "trusted": [
     "ui_network::take_ui_errors",
     "set_find_enabled",
+    "shortcuts_menu::set_shortcuts_menu",
     "commands::settings::get_load_remote_image",
     "commands::settings::set_load_remote_image",
     "commands::articles::load_article",

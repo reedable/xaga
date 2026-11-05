@@ -23,15 +23,17 @@ the Shortcuts sorting control in the native macOS menu.
 - Specify sidebar control placement, appearance, and interaction, and the placement
   of sorting controls within the macOS Shortcuts menu.
 - Expose the currently hidden sidebar controls and connect native menu controls
-  to shared Shortcuts sort state.
+  to shared Shortcuts sort state, replacing the native menu's current fixed
+  alphabetical ordering.
 - Verify keyboard access, selected-state feedback, cross-surface updates,
   per-section persistence, read-only use, and ordering after unread-count changes.
 
 ## References
 
-- [macOS Shortcuts Menu](../active/enhancement__pins--macos-menu.md)
 - [Nested Pin Groups](../available/enhancement__pins--nested-groups.md)
 - [Pin-store contract](../../docs/architecture/pins.md)
 - `src/components/sidebar/SidebarSortControl.tsx`
 - `src/components/sidebar/SidebarSortControl.module.css`
 - `src/hooks/useSidebarSort.ts`
+- `src/components/ShortcutsMenu.tsx`
+- `src-tauri/src/shortcuts_menu.rs`

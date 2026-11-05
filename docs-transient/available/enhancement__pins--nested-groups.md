@@ -56,16 +56,26 @@ persisted in the shared library YAML pin store.
 - Use shared pin persistence, serialized atomic writes, library isolation, and
   read-only gating. Preserve open navigation context during organization changes.
 - Present nested groups in Shortcuts and provide access when the sidebar is hidden.
+- Project the shared parsed hierarchy into the native macOS Shortcuts menu as
+  nested submenus, including empty groups with a disabled Empty item. Do not
+  introduce separate menu storage or parse YAML in menu presentation code.
+- Apply the same per-group sorting in the sidebar and native menu, including
+  recursive unread counts and the title tie-breaker. Refresh the menu for group
+  creation, renaming, moves, removal, and descendant target/count changes.
+- Preserve All items first at the menu root, existing target navigation and
+  unavailable-target actions, and navigation in read-only libraries.
 - Increment the minor release version for the storage-model change and provide
   the corresponding CLI upgrade and documentation.
 
 ## Remaining work
 
-- Complete central pin storage first; Site support is not a prerequisite.
 - Specify group renaming, expansion, keyboard move controls equivalent to drag
   and drop, and responsive navigation presentation.
 - Extend the typed YAML schema, writer operations, platform API, and frontend
   projection; implement migration from flat pins with safe retries.
+- Extend the shared shortcut projection and native menu payload/construction
+  to carry the hierarchy. Verify native submenu selection, empty groups, nested
+  sorting, live group changes, library context, and parity with sidebar navigation.
 - Verify nested persistence, moves, duplicate handling, deletion, keyboard use,
   responsive access, read-only refusal, concurrent changes, and restart/recovery.
 - Run affected Rust and frontend checks and update durable documentation.
@@ -73,7 +83,10 @@ persisted in the shared library YAML pin store.
 ## References
 
 - [Pin-store contract](../../docs/architecture/pins.md).
-- [macOS Shortcuts Menu](../active/enhancement__pins--macos-menu.md)
+- `src/components/ShortcutsMenu.tsx`
+- `src/hooks/useShortcutTargets.ts`
+- `src-tauri/src/shortcuts_menu.rs`
+- `src-tauri/tests/shortcuts_menu.rs`
 - `src/components/sidebar/ShortcutList.tsx`
 - `src/components/list/EntityList.tsx`
 - `crates/xaga-core/src/library_writer/mod.rs`

@@ -97,6 +97,7 @@ fn loader_authority_remains_the_reviewed_callbacks() {
     expected.sort();
     assert_eq!(actual, expected);
     assert!(command_policy::TRUSTED_COMMANDS.contains(&"set_find_enabled"));
+    assert!(command_policy::TRUSTED_COMMANDS.contains(&"set_shortcuts_menu"));
     for label in ["main", "settings", "loader-7", "unknown"] {
         assert!(!command_policy::is_invoke_allowed(
             label,

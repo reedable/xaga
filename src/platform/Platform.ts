@@ -28,7 +28,7 @@ import type {
   TopicSort,
 } from "../types";
 
-import type { PinTarget, PinChange } from "../pins";
+import type { PinTarget, PinChange, ShortcutMenuItem } from "../pins";
 
 export type CreateTopicInput = Omit<
   Topic,
@@ -321,6 +321,8 @@ export interface Platform {
   ): Promise<UnlistenFn>;
   onFind(callback: () => void): Promise<UnlistenFn>;
   setFindEnabled(enabled: boolean): Promise<void>;
+  setShortcutsMenu(items: ShortcutMenuItem[]): Promise<void>;
+  onShortcutMenuSelected(callback: (key: string) => void): Promise<UnlistenFn>;
   onShutdown(callback: () => void): Promise<UnlistenFn>;
   onClearHistory(callback: () => void): Promise<UnlistenFn>;
   clearWebviewHistory(): Promise<void>;

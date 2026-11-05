@@ -1,5 +1,5 @@
 import type { EntryTagChange, Tag, TagSnapshot } from "../domain";
-import type { PinTarget, PinChange } from "../pins";
+import type { PinTarget, PinChange, ShortcutMenuItem } from "../pins";
 import type { ImageRecovery } from "../text/imageReferences";
 import { isAppError, type AppError as SerializedAppError } from "./errors";
 import { invoke } from "@tauri-apps/api/core";
@@ -1536,6 +1536,15 @@ export class TauriPlatform implements Platform {
     const name: AppEvent = "menu:clear-history";
     const listener = decorate(callback).with(logged, { logger, name });
     return listen(name, listener);
+  }
+
+  setShortcutsMenu(items: ShortcutMenuItem[]): Promise<void> {
+    return invoke("set_shortcuts_menu", { items });
+  }
+
+  onShortcutMenuSelected(callback: (key: string) => void): Promise<UnlistenFn> {
+    const name: AppEvent = "menu:shortcut";
+    return listen<string>(name, (event) => callback(event.payload));
   }
 
   clearWebviewHistory(): Promise<void> {

@@ -7,6 +7,7 @@ export type SidebarSortMode = (typeof SIDEBAR_SORT_MODES)[number];
 export type SidebarSection = "shortcuts" | "topics" | "feeds" | "sites";
 
 const DEFAULT_SORT_MODE: SidebarSortMode = "unread";
+const changes = new EventTarget();
 
 function isSidebarSortMode(value: unknown): value is SidebarSortMode {
   return SIDEBAR_SORT_MODES.some((mode) => mode === value);
@@ -20,6 +21,19 @@ export function useSidebarSort(section: SidebarSection) {
   useEffect(() => {
     let cancelled = false;
     changedRef.current = false;
+    const onChange = (event: Event) => {
+      const change = (
+        event as CustomEvent<{
+          section: SidebarSection;
+          value: SidebarSortMode;
+        }>
+      ).detail;
+      if (change.section === section) {
+        changedRef.current = true;
+        setSortModeState(change.value);
+      }
+    };
+    changes.addEventListener("change", onChange);
 
     getViewState<unknown>(`sidebar.sort.${section}`)
       .then((value) => {
@@ -31,6 +45,7 @@ export function useSidebarSort(section: SidebarSection) {
 
     return () => {
       cancelled = true;
+      changes.removeEventListener("change", onChange);
     };
   }, [section]);
 
@@ -38,6 +53,9 @@ export function useSidebarSort(section: SidebarSection) {
     (value: SidebarSortMode) => {
       changedRef.current = true;
       setSortModeState(value);
+      changes.dispatchEvent(
+        new CustomEvent("change", { detail: { section, value } })
+      );
       setViewState(`sidebar.sort.${section}`, value).catch(console.error);
     },
     [section]

@@ -84,6 +84,7 @@ pub(crate) enum AppEvent {
     MenuHtmlReaderView(String),
     MenuClearHistory,
     MenuFind,
+    MenuShortcut(String),
     FeedsImported(Outcome<ImportResult>),
     FeedsExported(Outcome<()>),
     BookmarksImported(Outcome<BookmarkImportResult>),
@@ -113,6 +114,7 @@ impl AppEvent {
             AppEvent::MenuHtmlReaderView(_) => "menu:html-reader-view",
             AppEvent::MenuClearHistory => "menu:clear-history",
             AppEvent::MenuFind => "menu:find",
+            AppEvent::MenuShortcut(_) => "menu:shortcut",
             AppEvent::FeedsImported(_) => "feeds:imported",
             AppEvent::FeedsExported(_) => "feeds:exported",
             AppEvent::BookmarksImported(_) => "bookmarks:imported",
@@ -167,6 +169,7 @@ pub(crate) fn emit_app<R: Runtime>(target: &impl Emitter<R>, event: AppEvent) {
         | AppEvent::SettingsHtmlReaderView(v)
         | AppEvent::MenuSetTheme(v)
         | AppEvent::MenuHtmlReaderView(v)
+        | AppEvent::MenuShortcut(v)
         | AppEvent::LoaderWillUnload(v) => target.emit(name, v),
         AppEvent::SettingsRefreshOnStartup(v)
         | AppEvent::SettingsInlinePdfReader(v)
@@ -217,6 +220,7 @@ mod tests {
             AppEvent::MenuHtmlReaderView(String::new()),
             AppEvent::MenuClearHistory,
             AppEvent::MenuFind,
+            AppEvent::MenuShortcut(String::new()),
             AppEvent::FeedsImported(outcome()),
             AppEvent::FeedsExported(outcome()),
             AppEvent::BookmarksImported(outcome()),
@@ -286,6 +290,7 @@ mod tests {
                 "menu:html-reader-view",
                 "menu:clear-history",
                 "menu:find",
+                "menu:shortcut",
                 "feeds:imported",
                 "feeds:exported",
                 "bookmarks:imported",

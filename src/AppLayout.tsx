@@ -19,6 +19,7 @@ import { EntityList } from "./components/list/EntityList";
 import { SearchResultList } from "./components/search/SearchResultList";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { TitleBar } from "./components/titlebar/TitleBar";
+import ShortcutsMenu from "./components/ShortcutsMenu";
 import useAbortController from "./hooks/useAbortController";
 import { useAppearance } from "./hooks/useAppearance";
 import { useFeeds } from "./hooks/useFeeds";
@@ -185,6 +186,7 @@ export function AppLayout() {
 
   return (
     <div className={css.Root}>
+      <ShortcutsMenu />
       <TitleBar className={css.TitleBar} />
 
       <Snackbar

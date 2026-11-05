@@ -20,6 +20,7 @@ function nativeTest(name, env = {}) {
 }
 
 for (const name of [
+  "shortcuts_menu",
   "webview_policy",
   "ui_network_webview",
   "loader_loopback_webview",

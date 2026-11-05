@@ -41,6 +41,7 @@ export const APP_EVENT = [
   "menu:html-reader-view", // payload: string
   "menu:clear-history", // payload: none
   "menu:find", // payload: none
+  "menu:shortcut", // payload: string (projection-specific item key; "all" for All items)
   "feeds:imported", // payload: ImportOutcome<Feed>
   "feeds:exported", // payload: ExportOutcome
   "bookmarks:imported", // payload: BookmarkImportOutcome

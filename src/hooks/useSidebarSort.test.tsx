@@ -86,3 +86,34 @@ it("persists a selection under only that section's key", async () => {
   );
   expect(storage.setViewState).toHaveBeenCalledTimes(1);
 });
+
+it("synchronizes mounted consumers and refuses late stored state after a user change", async () => {
+  let finish!: (value: string) => void;
+  storage.getViewState.mockImplementation(
+    () =>
+      new Promise<string>((resolve) => {
+        finish = resolve;
+      })
+  );
+  const selections: SortState[] = [];
+  function Consumers() {
+    const first = useSidebarSort("shortcuts");
+    const second = useSidebarSort("shortcuts");
+    useEffect(() => {
+      selections[0] = first;
+      selections[1] = second;
+    }, [first, second]);
+    return null;
+  }
+  await act(async () => root.render(<Consumers />));
+  await act(async () => selections[0][1]("alphabetical"));
+  expect(selections.map((state) => state[0])).toEqual([
+    "alphabetical",
+    "alphabetical",
+  ]);
+  await act(async () => finish("unread"));
+  expect(selections.map((state) => state[0])).toEqual([
+    "alphabetical",
+    "alphabetical",
+  ]);
+});

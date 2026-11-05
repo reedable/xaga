@@ -24,6 +24,9 @@ vi.mock("../../hooks/useAbortController", () => ({
   default: () => [undefined, { current: new AbortController() }],
 }));
 vi.mock("../../hooks/usePinnedEntries", () => ({ usePinnedEntries: () => [] }));
+vi.mock("../../hooks/useShortcutTargets", () => ({
+  useShortcutTargets: () => ({ targets: [...mocks.feeds, ...mocks.topics], missing: [] }),
+}));
 vi.mock("../../hooks/useLibraryReadOnly", () => ({
   useLibraryReadOnly: () => false,
 }));

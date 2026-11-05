@@ -9,6 +9,7 @@ mod loader_download;
 mod loader_identity;
 mod native;
 mod resource_download;
+mod shortcuts_menu;
 mod ui_network;
 #[cfg(target_os = "macos")]
 mod webview_policy;
@@ -918,6 +919,7 @@ pub fn run() {
                     &PredefinedMenuItem::maximize(app, None)?,
                 ],
             )?;
+            let shortcuts_menu = shortcuts_menu::build(app, &[])?;
             Menu::with_items(
                 app,
                 &[
@@ -926,6 +928,7 @@ pub fn run() {
                     &edit_menu,
                     &view_menu,
                     &history_menu,
+                    &shortcuts_menu,
                     &window_menu,
                 ],
             )
@@ -1030,7 +1033,17 @@ pub fn run() {
             "quit" => {
                 app.exit(0);
             }
-            _ => {}
+            id => {
+                if let Some(key) = shortcuts_menu::selection(id) {
+                    // Native menus belong to the app; shortcut navigation belongs
+                    // to its main window, including when Settings owns focus.
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        events::emit_app(&window, events::AppEvent::MenuShortcut(key.to_string()));
+                    }
+                }
+            }
         })
         .setup(move |app| {
             // Resolve settings before creating the webview so its document-start script can apply

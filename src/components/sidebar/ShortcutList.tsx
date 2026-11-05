@@ -5,7 +5,7 @@ import {
   Language,
   RssFeed,
 } from "@mui/icons-material";
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import { useSidebarSort } from "../../hooks/useSidebarSort";
@@ -17,11 +17,9 @@ import {
   isFeed,
   isTopic,
   isSite,
-  isShortcut,
   type Collection,
   type Countable,
   type Entry,
-  type Shortcut,
 } from "../../types";
 import sortSidebarCollections from "../../utils/sortSidebarCollections";
 import ExpandableList from "./ExpandableList";
@@ -47,8 +45,7 @@ export default function ShortcutList({
   shortcuts,
   onClickHeader,
 }: ShortcutListProps) {
-  const { selectArticleScope, selectCollection, selectShortcut, state } =
-    useRouter();
+  const { selectShortcutTarget, state } = useRouter();
   const { feedId, topicId, shortcutId, articleScopeId, siteHostname } = state;
   const [, abortControllerRef] = useAbortController();
   const { loadingFeedIds } = useFeeds(abortControllerRef);
@@ -61,16 +58,6 @@ export default function ShortcutList({
   const sortedShortcuts = useMemo(
     () => sortSidebarCollections(shortcuts, sortMode),
     [shortcuts, sortMode]
-  );
-
-  const handleSelectShortcut = useCallback(
-    (target: Collection | (Entry & Countable) | Shortcut) =>
-      isEntry(target)
-        ? selectArticleScope(target)
-        : isShortcut(target)
-          ? selectShortcut(target)
-          : selectCollection(target),
-    [selectArticleScope, selectCollection, selectShortcut]
   );
 
   return (
@@ -94,7 +81,7 @@ export default function ShortcutList({
         collection={allEntities}
         loading={loadingFeedIds.size > 0}
         selected={!articleScopeId && shortcutId === ALL_ENTITIES.id}
-        onSelectCollection={handleSelectShortcut}
+        onSelectCollection={selectShortcutTarget}
         renderSecondaryAction={
           counts ? () => <UnreadCount count={counts.unreadCount} /> : undefined
         }
@@ -129,7 +116,7 @@ export default function ShortcutList({
                   ? topicId === shortcut.id
                   : isEntry(shortcut) && articleScopeId === shortcut.id
           }
-          onSelectCollection={handleSelectShortcut}
+          onSelectCollection={selectShortcutTarget}
           renderSecondaryAction={
             isEntry(shortcut)
               ? undefined
