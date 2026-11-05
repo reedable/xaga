@@ -162,7 +162,7 @@ git add package.json Cargo.lock \
   crates/xaga-core/Cargo.toml crates/xaga-cli/Cargo.toml
 git commit -m "Release v0.8.5"
 npm run release:tag
-git push github <branch> --follow-tags
+git push origin <branch> --follow-tags
 ```
 
 `release:tag` requires a clean tree; verifies the versions in `package.json`, `tauri.conf.json`, the three workspace manifests, and their `Cargo.lock` entries; rejects `-dev`; accepts final and positive-numbered RC versions; and refuses to replace an existing local tag. It creates an annotated `v<version>` tag on `HEAD` but never commits or pushes.

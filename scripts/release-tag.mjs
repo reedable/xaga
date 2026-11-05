@@ -136,7 +136,7 @@ function main() {
   }).trim();
   console.log(`Created local release tag ${tag}.`);
   console.log(
-    `Push it with: git push github ${branch || "<branch>"} --follow-tags`
+    `Push it with: git push origin ${branch || "<branch>"} --follow-tags`
   );
 }
 
