@@ -68,6 +68,18 @@ lessons should describe the reader’s workflow before introducing storage types
 Wording-only changes can keep lesson IDs and answer order when the meaning and
 correctness remain the same, preserving the trainee’s saved selections.
 
+Before publishing a lesson, read it from the trainee’s position:
+
+- Start with the situation and why it matters, then explain the implementation.
+- Introduce names, acronyms, and technical terms before relying on them.
+- Keep product explanations focused on the reader’s actions; place implementation
+  detail where it helps the relevant technical track.
+- Give quiz scenarios enough context to stand on their own. Use direct questions
+  and parallel answers, avoiding double negatives and unexplained shorthand.
+- Explain why an answer is right or wrong without merely repeating it.
+- Use examples that make the rule concrete, including the limits of the claim.
+- Check the linked docs and code before simplifying a technical distinction.
+
 ## Verification
 
 From the repository root, with the existing development dependencies installed:

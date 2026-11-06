@@ -55,10 +55,10 @@ polling with event-driven delivery of the existing terminal transitions.
   presentation.
 - Add the disabled **Most recent** topic-sort presentation with state-specific
   initializing or unavailable helper text. Handle `loading` to `available`
-  surgically by enabling the control and removing its helper text without changing
+  by enabling the control and removing its helper text without changing
   the selected sort or triggering any topic-list request or item-state update.
-- Add the typed startup-state event to the existing Tauri event funnel and platform
-  event surface. Emit it at the same assignments that currently make startup
+- Add the typed startup-state event to the existing Tauri event handler and platform
+  events. Emit it at the same assignments that currently make startup
   `available` or `unavailable`.
 - Replace readiness polling with subscribe-then-read initialization and verify
   transitions and duplicate delivery for every consuming window.

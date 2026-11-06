@@ -16,7 +16,7 @@ The map of `docs/`.
 
 ## Durable
 
-1. [Principles](principles/index.md) — what governs decisions: decision ownership, least visibility, secure by default, single source of truth, carried intent, priority, DRY.
+1. [Principles](principles/index.md) — rules for decisions, visibility, security defaults, data ownership, passing actions to consumers, priority, and shared implementations.
 
 2. [Architecture](architecture/index.md) — what the system is and how it behaves: crash consistency, design scale, layer ownership, type identity, the single-writer lock, and the security-critical paths in [architecture/security/](architecture/security/).
 

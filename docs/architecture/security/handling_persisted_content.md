@@ -1,6 +1,6 @@
 # Handling persisted content: reading storage back as untrusted input
 
-Storage is a boundary. Anything loaded from storage is untrusted content even when what was written was sanitized at ingest — the write-side sanitization that happens in [handling_remote_content.md](handling_remote_content.md) and [handling_user_supplied_content.md](handling_user_supplied_content.md) is not relied on here. This document covers what happens when previously-stored content is read back and rendered; it applies uniformly regardless of whether the content originally arrived by remote fetch, user import, or IPC (an annotation typed by the user, for instance) — once it's on disk, the provenance no longer matters and the same controls apply to all of it.
+Treat content read from storage as untrusted, even if it was sanitized before saving. Display-time checks do not rely on the ingest checks described in [handling remote content](handling_remote_content.md) and [handling user-supplied content](handling_user_supplied_content.md). The same rendering controls apply to remote articles, imports, and content received through IPC, including user-authored annotations.
 
 Code: `src/text/markdownPipeline.ts`, `src/text/buildEntryHtml.ts`, `src/components/content/HtmlReader.tsx`, `src-tauri/tauri.conf.json`.
 
@@ -49,7 +49,7 @@ use the same recovery and presentation path when their content is viewed.
 local data URIs. Remote HTML `img` sources and responsive candidates are removed
 before reaching the reader. CSS declarations with unavailable URL or
 image-set resources and external stylesheet imports are removed. The bundled `img-src` permits only self and data
-images. This policy does not rely on the UI proxy being a complete boundary.
+images. This policy does not assume that every UI request passes through the proxy.
 An unavailable image displays its nonempty alternative text, then its title when
 that adds content; without either, it displays “Image unavailable.” Decode failures
 use the same presentation. Stored content is not changed to this fallback text.
@@ -58,7 +58,7 @@ Inline SVG is different from an SVG resource displayed through `img` or a CSS
 image property. DOMPurify removes inline SVG scripts and event handlers, but
 SVG resource references such as `image href`, `xlink:href`, and `feImage href`
 can survive sanitization and image preparation. Their network loading is
-restricted by the reader's CSP. Sanitization alone is not a no-network boundary:
+restricted by the reader's CSP. Sanitization alone does not block every network request:
 the native no-CSP control requests external SVG images even after the production
 sanitizer and preparation functions have run.
 
@@ -77,7 +77,7 @@ load of a new or refreshed article reacquires its current icon; successful
 validation atomically replaces the shared resource, while failure preserves the
 cached bytes. Read-only instances can display but not replace shared resources.
 
-The account setting `load_remote_image` gates recovery and the article loader's
+The account setting `load_remote_image` controls recovery and the article loader's
 additional body-image capture fetches. The absent-value default is defined once
 as `DEFAULT_LOAD_REMOTE_IMAGE`, currently `false`, for both new and existing
 installations without a stored value; explicit values take precedence.
@@ -123,7 +123,7 @@ never creates a missing entry. Cleanup considers references throughout the saved
 document. Reading in a read-only library does not initiate recovery downloads.
 
 Validation covers exact source preservation, stale-field refusal, failed writes,
-HTML/CSS local resolution, unavailable-image presentation and the preference gate.
+HTML/CSS local resolution, unavailable-image presentation and the preference check.
 Network and sandbox behavior require native/bundled checks; Node tests alone do
 not establish those properties.
 

@@ -3,7 +3,7 @@
 `<library>/tags.yaml` owns Entry tag identities and display names. Article
 frontmatter owns readable-name assignments; LanceDB's existing `tags` string-list
 column stores resolved UUIDs. Definitions are library-scoped. Feed, Topic, Site,
-Note, and Annotation tagging are outside this contract.
+Note, and Annotation tagging are not covered by this format.
 
 ```yaml
 tags:
@@ -19,8 +19,7 @@ spelling is retained for display until explicit rename. Empty names are refused;
 punctuation-only names are accepted. Duplicate IDs or comparison values are
 invalid. Reads never initialize a missing store, which represents no definitions.
 
-Registry reads and serialization are bounded to 12 MiB, following the pin-store
-precedent. This is a bound on definitions and active transition records, not on
+Registry reads and serialization are bounded to 12 MiB, matching the pin-store limit. This is a bound on definitions and active transition records, not on
 the number of article assignments. Malformed YAML, anchors, unknown fields,
 nonregular stores, and invalid records are refused before mutation. Serialization
 does not preserve YAML comments or formatting.
@@ -69,15 +68,14 @@ After a successful file write, the command carries `EntryTagChange` (`entryId`,
 `entry-tags:changed` event. Failed writes emit no assignment event. The index
 applies that delta to the existing row without changing content, vectors,
 reading/color state, or other assignments. Missing rows remain recovery's
-responsibility. The service retains the latest committed delta per touched
-Entry/tag pair over older queued article snapshots, including when such a
-snapshot first creates the row. Starting recovery clears ordinary session projections before taking a fresh
-source snapshot; merge-affected Entries retain their markers so older queued
-identities still trigger source reconciliation. This bookkeeping is not persisted. Entry deletion also
+responsibility. The service remembers the latest saved assignment change for each affected
+Entry/tag pair and applies it instead of older queued article values, including when such a
+snapshot first creates the row. Starting recovery clears ordinary in-memory assignment changes before reading
+the source again. Entries affected by a merge retain their markers so older
+queued tag IDs still cause the source assignments to be reread. This bookkeeping is not persisted. Entry deletion also
 discards its retained deltas.
 
-Inspector instances subscribe before loading assignments and apply intervening
-committed deltas over the initial result. Navigation discards old target results;
+Inspector instances subscribe before loading assignments and apply successfully saved changes that occurred while the initial read was pending. Navigation discards old target results;
 closing the Inspector does not cancel an assignment already requested. External
 article edits remain a recovery concern, following the existing reconciliation
 contract. This API uses the existing 0.14 storage format.
@@ -112,8 +110,7 @@ and registry refresh paths. Navigation/membership rules are documented in
 
 ## Mutation and indexing
 
-Runtime registry mutations use one library-writer lane, `tags`, under the library
-write right. Lookup/creation and discovery reread inside that lane, so concurrent
+Runtime registry mutations use one library-writer lane, `tags`, while holding the library write lock. Lookup/creation and discovery reread inside that lane, so concurrent
 requests cannot create separate identities for the same comparison value. A
 registry mutation atomically replaces the entire YAML file. The CLI's offline
 conversion holds the exclusive library lock instead of using runtime lanes.
@@ -129,7 +126,7 @@ registry file identity before reuse and rebuilds after atomic replacement.
 
 Recovery loads the registry before discovering article labels, registers unknown
 names through the library writer, and compares resolved assignments independently
-of content checksums. Tag-only drift reuses unchanged vectors. Queued Entry vector
+of content checksums. Tag-only differences are repaired without changing existing vectors. Queued Entry vector
 completion preserves current cached assignments. Reading/color/pin updates do not
 own tag assignments. Index-backed Entry summaries do not substitute indexed UUIDs
 for readable labels; article inspection reads the source-file labels.
@@ -182,7 +179,7 @@ Queued Entry upserts carry resolved UUID assignments alongside their Article
 snapshot. Native producers obtain those IDs through the registry writer lane,
 which reads current source assignments before discovery/resolution. Recovery
 carries its resolved IDs to both incremental jobs and fresh-cache bulk inserts;
-when discovery is needed, it also uses that source-aware writer operation. This
+when discovery is needed, it also uses that writer operation, which rereads the current source assignments. This
 prevents a stale source snapshot from recreating an old definition after alias
 retirement, and lets queued index jobs finish without depending on retired names.
 
@@ -219,10 +216,9 @@ Missing caches provide no indexed candidates beyond any persisted pending batch;
 remaining old labels follow the same discovery rule. Repeated renames retain the
 same tag UUID, and pending batches remain crash-safe until indexed work finishes.
 
-Startup resumes indexed work under the existing library write right. Shutdown
+Startup resumes indexed work while holding the existing library write lock. Shutdown
 stops submissions, drains in-flight writes, waits for workers, and leaves
-unfinished checkpoints durable. Background failures use the main window's
-existing error sink. Bounds and measurements are in
+unfinished checkpoints durable. Background failures use the main window’s existing error-notification handler. Bounds and measurements are in
 [index-first rename scaling](design_scale.md#tag-rename-scaling).
 
 ### Runtime deletion
@@ -251,16 +247,15 @@ index false positives do not remove unrelated labels. A single partial-column
 cache update removes the UUID from that Entry batch, preserving other assignments,
 vectors, content, state, and pins. Only then do both checkpoints advance. Further
 batches retain the arriving priority and yield between service turns. Shutdown
-may leave work unfinished; the durable transition bounds the retry.
+may leave work unfinished; the saved transition records the work to retry.
 
-Source-aware discovery of a deleting label records its Entry ID as pending file
+Discovery that checks the current source file and finds a deleting label records its Entry ID as pending file
 work and invalidates progress, including when the cache missed that file. The
 pending list retains the 1,024-ID bound; if full, discovery refuses the operation
 with `tags:busy` rather than dropping cleanup work or overflowing the checkpoint.
 Retries and recovery can resolve the source after the batch drains. Older queued
 article/assignment jobs also patch a currently deleting source label before
-removing its cached ID, so they cannot hide a file from indexed cleanup. The
-file-identity-checked registry resolver filters retired IDs from queued snapshots
+removing its cached ID, so they cannot hide a file from indexed cleanup. The registry resolver checks the current registry file’s identity and filters retired IDs from queued snapshots
 and assignment deltas; it does not map them to a new identity with the same name.
 
 Recovery completes unfinished deletion batches before discovering article labels,
@@ -289,11 +284,10 @@ query for the superseded selection cannot replace the retained list.
 
 A rename collision offers a second, explicit confirmation naming both tags.
 Cancel leaves both definitions and assignments unchanged. `mergeTags(sourceId,
-destinationId)` invokes trusted native `merge_tags`, requiring the library write
-right. Confirmation is disabled while either participant has an active transition;
+destinationId)` invokes trusted native `merge_tags`, requiring the library write lock. Confirmation is disabled while either participant has an active transition;
 the registry also rejects racing conflicts with `tags:busy`.
 
-The command submits typed merge intent to the Interactive indexing queue. That
+The command submits a typed merge request to the Interactive indexing queue. That
 single consumer counts both indexed Entry populations and persists the survivor
 choice before another cache job runs. It returns the committed snapshot and queues
 bounded conversion at the same priority. A missing service refuses acceptance.
@@ -321,8 +315,8 @@ then discovers source labels under the resulting registry.
 
 Sidebar/header status shows Merging… on the surviving tag. Selection IDs follow
 committed merges, deduplicate, and retain the reader and current article list.
-Subsequent explicit navigation or refresh reads the union using the current
-selection. Inspector assignments follow the survivor and refresh from source on
+Subsequent explicit navigation or refresh includes assignments under either
+participating tag ID for the current merged selection. Inspector assignments follow the survivor and refresh from source on
 merge events and subsequent assignment events, avoiding late losing-ID deltas.
 Bounds and measured batch costs are in [merge scaling](design_scale.md#tag-merge-scaling).
 
@@ -369,7 +363,7 @@ retries the persisted batch. Checkpoint writes compare the transition's revision
 and increment it, refusing stale workers. Newly observed old/non-destination or
 deleting labels invalidate scan completion and cursors for the affected file/index
 phases, preserve pending work, and increment the revision. This prevents a worker with an older snapshot
-from retiring a name past newly discovered work.
+from retiring a name before newly discovered work is finished.
 
 File read–modify–writes belong inside the existing Entry writer lane and use
 validated atomic frontmatter patches. Registry replacement alone does not

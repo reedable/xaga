@@ -1,14 +1,14 @@
 # The Tauri command surface: every registered command is webview-callable
 
-Any JavaScript running in a webview can attempt to invoke a registered command with arbitrary arguments. Tauri capabilities and Xaga's native command gate decide which calls may proceed. Which UI elements invoke a command — a menu item, a button, nothing at all — does not restrict who can attempt the call. The caller must be assumed hostile, including for permitted loader callbacks.
+Any JavaScript running in a webview can attempt to invoke a registered command with arbitrary arguments. Tauri capabilities and Xaga’s native command checks decide which calls may proceed. Which UI elements invoke a command — a menu item, a button, nothing at all — does not restrict who can attempt the call. The caller must be assumed hostile, including for permitted loader callbacks.
 
-This matters because exploits are chains. A renderer compromise on its own may be contained (sandboxed iframe, CSP, no raw-HTML sinks — see [handling_persisted_content.md](handling_persisted_content.md)); a path-accepting command on its own looks benign because "only the menu flow uses it." A permitted command that accepts an unchecked filesystem path can turn script access into an arbitrary file read or overwrite primitive.
+A compromised renderer may be restricted by its iframe sandbox, CSP, and safe HTML rendering (see [handling_persisted_content.md](handling_persisted_content.md)). A permitted command accepting an unchecked filesystem path can bypass that restriction by letting the script read or overwrite files. Intended use by a menu does not restrict other callers.
 
-## The rule: segregate commands by the authority of their inputs
+## Keep caller-selected filesystem access out of the invoke API
 
-Tauri 2.12 enforces capability checks for custom commands from remote origins before Xaga's invoke handler runs. `src-tauri/command_registry.json` is the single registration and classification source. `build.rs` generates the handler expression, native command lists, and application permissions in `OUT_DIR`; duplicate command names fail the build. `capabilities/loader.json` grants only loader callbacks to HTTP/HTTPS origins in `loader-*` windows; `capabilities/trusted-ui.json` grants application commands only to local `main` and `settings` windows. Neither grants remote pages access to the first-party command surface. The Rust window-label and library-write gates remain in force after Tauri's check. Unknown commands are denied by the native gate even in trusted windows.
+Tauri 2.12 enforces capability checks for custom commands from remote origins before Xaga's invoke handler runs. `src-tauri/command_registry.json` is the single registration and classification source. `build.rs` generates the handler expression, native command lists, and application permissions in `OUT_DIR`; duplicate command names fail the build. `capabilities/loader.json` grants only loader callbacks to HTTP/HTTPS origins in `loader-*` windows; `capabilities/trusted-ui.json` grants application commands only to local `main` and `settings` windows. Neither grants remote pages access to application commands. Rust still checks the window label and library-write permission after Tauri’s capability check. It rejects unknown commands even in trusted windows.
 
-Add or remove a command in the registry, not generated files or a separate handler list. Review its classification and, independently, whether it belongs in the library-write gate. `src-tauri/tests/loader_acl.rs` exercises every registered command and an unknown command across loader, trusted, and unknown windows, with HTTP, HTTPS, app-local, file, and data origins. It tests Tauri's ACL alone and in combination with the production window-label gate. An independent assertion pins the seven reviewed loader callbacks, so broadening remote authority requires an explicit test change. An empty loader capability blocks capture and diagnostic IPC, producing a timeout even when navigation finishes successfully.
+Add or remove a command in the registry, not generated files or a separate handler list. Review its classification and, independently, whether it belongs in the library-write check. `src-tauri/tests/loader_acl.rs` exercises every registered command and an unknown command across loader, trusted, and unknown windows, with HTTP, HTTPS, app-local, file, and data origins. It tests Tauri's ACL alone and in combination with the production window-label check. A separate assertion lists the seven reviewed loader callbacks; allowing remote callers more commands requires an explicit test change. An empty loader capability blocks capture and diagnostic IPC, producing a timeout even when navigation finishes successfully.
 
 ## Loader callback ownership
 
@@ -16,8 +16,8 @@ Native loader creation registers the original source URL against its window labe
 
 `receive_html`, `receive_favicon`, and `receive_image` retain their invoking-window/request-ID ownership checks. Loader diagnostics derive the request ID from the invoking window. Callback regression tests supply forged identity fields and verify native attribution and rejection after session removal; these tests use Tauri's mock runtime and do not replace a native webview smoke test.
 
-- **Derived-path commands are fine on the invoke surface.** Commands whose filesystem access is computed in Rust from app state (`library_dir` + `{hash12}` filenames, settings paths) take no authority from the caller; the webview choosing _which_ feed to read is harmless because it cannot choose _where_ on disk that resolves to.
-- **User-supplied-path commands must not exist on the invoke surface.** Anything that takes a path (or any other ambient-authority handle) from its caller hands that authority to the webview. The file dialog and the operation it authorizes belong together on the Rust side (menu handler → Rust-side dialog → direct call); the chosen path must never round-trip through JS.
+- **Rust-derived paths can be used by invoke commands.** Rust calculates paths from app state, such as `library_dir` and `{hash12}` filenames or the settings path. The webview may select a feed but cannot choose an arbitrary disk path.
+- **Do not accept user-selected file paths through invoke.** A caller-selected path or unrestricted resource handle would let JavaScript choose the resource accessed. Keep the native file dialog and its authorized operation together in Rust (menu handler → native dialog → direct call). Do not send the selected path through JavaScript.
 
 ## PDF lookup, opening, and cancellation
 
@@ -29,15 +29,15 @@ captures, and destroys their loader windows. The seven remote loader callbacks d
 not gain access to these operations. PDF writes occur inside `load_article` using
 the writer captured with the active library; no writer means a read-only error.
 
-## Where native-orchestrated operations live
+## Where native file operations live
 
 User-supplied-path operations live in `src-tauri/src/native/` as plain `pub(crate)` functions, not `#[tauri::command]`s. The menu handler opens the file dialog in Rust (`native::*_dialog`) and calls them directly; none are on the invoke surface, so no path is ever taken from the webview. Completion is reported to the frontend by event (`feeds:imported`, `feeds:exported`, `bookmarks:imported`, `bookmarks:exported`) carrying `{ result?, error? }` — the result on success, the error on failure. Feed and bookmark OPML/HTML import/export are the operations that live here.
 
-The `native/` module is the home for this pattern: anything the app shell triggers that carries ambient authority belongs there, never in `commands/`.
+Use `native/` for app-shell operations that act on a resource selected through native controls, rather than exposing that resource selection through `commands/`.
 
-## The trap this guards against
+## Review new commands for caller-controlled access
 
-The pull to resist is routing every operation through the JS/webview layer _for consistency_. File import/export is where that pull is strongest — the natural instinct is to hand it to JS because every other operation goes through JS — and the uniformity hides that a trust boundary runs through the middle of it. Consistency across operations is not a virtue at a security boundary. Before registering a new command, ask: does any argument carry authority (a path, a URL to be written to disk as-is, a raw identifier the backend will trust)? If yes, the orchestration belongs in Rust (`src-tauri/src/native/`), not in the webview — however inconsistent that looks next to the other commands.
+Do not route import/export through JavaScript merely to match other operations. Before registering a command, check whether an argument lets its caller choose a file or other resource the backend would access without independent validation. Paths, URLs used directly as output paths, and unchecked identifiers can grant that access. Keep operations requiring native resource selection in `src-tauri/src/native/`.
 
 ## UI error delivery
 

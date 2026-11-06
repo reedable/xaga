@@ -1,8 +1,7 @@
 # Library pin store
 
 `<library>/pins.yaml` owns pin membership. Its path is derived by
-`library::pins_path`; the Rust `Pins` and `PinTarget` types define the parsed
-contract, and the platform exposes that model to the shared UI provider.
+`library::pins_path`; the Rust `Pins` and `PinTarget` types define the parsed format, and the platform exposes that model to the shared UI provider.
 
 ```yaml
 pins:
@@ -26,14 +25,14 @@ Mutations serialize the parsed model; YAML formatting and comments are not retai
 All pin writes use one Interactive library-writer lane, under the existing
 library write lock. The complete file is replaced through a sibling temporary
 file and atomic rename. A pin edit does not modify the target entity. Library
-read-only gating applies to generic and entity-specific pin commands; target
+read-only checks apply to generic and entity-specific pin commands; target
 navigation remains available in read-only libraries.
 
-The command emits typed `pin:changed` intent after committing storage, then the
+After saving the change, the command emits a typed `pin:changed` event, then the
 UI rereads current central membership. Request generations prevent earlier
 responses from overwriting later snapshots; delayed notifications also read
-current membership. Feed/Topic controls and the article toolbar project membership
-from the shared provider. Article shortcuts resolve source-file metadata without
+current membership. Feed/Topic controls and the article toolbar show pin membership supplied by the
+shared provider. Article shortcuts resolve source-file metadata without
 waiting for cache recovery. The `is_pinned` cache column is a disposable mirror;
 recovery derives it from the central store, never legacy tags or categories.
 
@@ -73,7 +72,7 @@ Site Settings shows a read-only hostname and an **Add to Shortcuts** checkbox.
 Membership comes from the shared pin store each time the dialog opens. Read-only
 libraries can navigate pinned Sites and inspect Settings, but cannot change pins.
 Pinned Sites use current derived total/unread counts and existing Site navigation.
-Once the Site list has loaded, a pinned hostname absent from that projection is
+Once the Site list has loaded, a pinned hostname absent from that computed list is
 still a valid empty Site with zero counts, not an unavailable target. Its pin
 survives cache recovery and out-of-band changes. Initial Site loading uses the
 same skeleton rows as other collection shortcuts. Alphabetical/unread sorting
@@ -87,24 +86,24 @@ libraries; their version mismatch selects read-only mode. No Site membership is
 persisted or converted, and Site references never create cache entity rows.
 
 Future nested groups use `type: group`, stable `id`, `title`, and an ordered
-`children` sequence. Groups are not implemented by the flat-store contract.
+`children` sequence. The current flat-store format does not implement groups.
 
 The native macOS **Shortcuts** menu sits immediately right of **History**.
 It always starts with **All items**, followed by a separator when pins exist.
-The main UI projects the same resolved targets used by the sidebar, independent
+The main UI supplies the same resolved targets used by the sidebar, independent
 of sidebar visibility or its text filter. The native menu currently sorts targets
 alphabetically, independently of the sidebar's selected sort mode.
-Pin, title, and count changes refresh the native projection;
+Pin, title, and count changes refresh the native menu;
 sorting never rewrites `pins.yaml`. Article shortcuts navigate into article
 scope, and Site shortcuts use Site navigation, including empty pinned Sites.
 Unavailable targets open the same Retry/Remove shortcut dialog as the sidebar;
 initial collection loading produces disabled loading items instead.
 
-Only the main window may replace this native projection. Native menu actions
-focus that window and deliver `menu:shortcut` through the typed app-event funnel.
-Projection-specific item keys prevent delayed actions from selecting a different
-target after replacement. Navigation and Retry remain available in read-only
-libraries; Remove shortcut retains its write gate. The native menu does not read
+Only the main window may replace these native menu items. Native menu actions
+focus that window and deliver `menu:shortcut` through the shared typed app-event handler.
+Menu item keys identify the version of the menu that created them, preventing
+a delayed action from selecting a different target after replacement. Navigation and Retry remain available in read-only
+libraries; Remove shortcut still requires write permission. The native menu does not read
 library files or store pin membership separately.
 
 The recovery walk constructs a membership set once, so its per-entity membership

@@ -1,36 +1,44 @@
-# Type Identity: intrinsic shape, extrinsic brand
+# Type Identity: fields and `__kind`
 
-**Shape is the source of truth for intrinsic types. A brand (`__kind`) is a derived distillation, legitimate only for extrinsic role distinctions that structure cannot resolve. A brand is minted from the source of truth and never trusted over shape.**
+**Check an object’s fields to establish its structure. Use `__kind` to distinguish
+roles that can share that structure, and check the fields as well as the kind.
+Create kind values when converting native payloads into UI domain objects.**
 
-This document records the standing rule.
+## Structure and role
 
-## The rule
+Some types, such as Annotation and Topic, have distinguishing fields. Others,
+such as Feed and Entry, share the `WebResource` structure and need a role
+indicator. The project uses `__kind` for that indicator; this document also calls
+it a brand.
 
-- **Intrinsic types** (what a thing _is_ — e.g. Annotation, Topic) are identified by their structure; no discriminator is needed, and where a brand exists anyway it is cross-validated against shape at the boundary.
-- **Extrinsic roles** (what part a thing plays — e.g. feed vs entry, which share the `WebResource` shape) are the one legitimate use of a brand: the shared shape cannot resolve the role, so `__kind` layers on top.
-- **Identity is shape AND brand together — never either alone.** The domain guards (`src/domain.ts`):
-  - `isEntry(entity) = isManagedEntity(entity) && entity.__kind === "entry" && typeof entity.url === "string"`
-  - `isFeed(entity) = isManagedEntity(entity) && entity.__kind === "feed" && Array.isArray(entity.members)`
+A brand cannot override missing or incompatible fields. Where a type has a
+brand, its guard checks both the expected structure and the brand. The domain
+guards in `src/domain.ts` include:
 
-  The structural checks are the foundation; the brand resolves the role. Posing brand-only versus shape-only as a fork misstates the rule — the two are conjoined, not alternatives.
+- `isEntry(entity) = isManagedEntity(entity) && entity.__kind === "entry" && typeof entity.url === "string"`
+- `isFeed(entity) = isManagedEntity(entity) && entity.__kind === "feed" && Array.isArray(entity.members)`
 
-- **Brands are minted at the wire boundary** (`toEntry`/`toFeed`/`toAnyEmbeddedEntity`), from the source of truth, at the moment the object enters the typed world. A brand is never invented downstream and never used to overrule what the structure says.
-- **Capability intersections and generic result wrappers do not introduce brands.**
-  Countable adds counts; Ranked adds similarity. A derived domain collection such
-  as Site retains its own kind so that collection navigation can identify it.
+The native-payload adapters (`toEntry`, `toFeed`, and `toAnyEmbeddedEntity`)
+establish the kind as an object enters the UI domain model. Do not assign a new
+kind later merely to make an object pass a guard.
+
+Capability types and generic result wrappers do not need new kinds. `Countable`
+adds counts; `Ranked` adds similarity. A Site has its own kind because collection
+navigation must distinguish it from Feed and Topic.
 
 ## Entity and collection guards
 
-The base guards are structural: `isEntity` requires string `id` and `title`,
-and `isManagedEntity` additionally requires a string `createdAt`. They describe
-shared contracts rather than a concrete domain kind.
+The base guards check fields: `isEntity` requires string `id` and `title`;
+`isManagedEntity` additionally requires a string `createdAt`. These are shared
+requirements rather than concrete entity kinds.
 
-`isSite` requires Entity shape, the Site brand, and numeric summary counts. It
-does not require managed lifecycle fields. `isManagedCollection` requires Feed
-or Topic shape and numeric summary counts; `isCollection` accepts either a
-managed collection or a Site. Count-bearing entries and built-in shortcuts do
-not become collections merely by having counts.
+`isSite` requires Entity fields, `__kind: "site"`, and numeric summary counts.
+It does not require managed-lifecycle fields. `isManagedCollection` requires
+Feed or Topic fields and numeric summary counts; `isCollection` accepts either a
+managed collection or a Site. An Entry or built-in shortcut does not become a
+collection merely because it has counts.
 
-The platform adapter mints Entry, Feed, Topic, Annotation, and Site brands from
-validated native payloads. See [Collections and identity](organization_model.md#collections-and-identity)
-for the Entity, ManagedEntity, and collection hierarchy.
+The platform adapter supplies Entry, Feed, Topic, Annotation, and Site kinds from
+validated native payloads. See
+[Collections and identity](organization_model.md#collections-and-identity) for
+the type hierarchy.

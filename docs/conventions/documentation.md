@@ -2,7 +2,7 @@
 
 ## Organization
 
-Durable documentation governs, describes, and names the system. It is long-lived and may be cited by code and other durable documents.
+Durable documentation records the system’s rules, design, terminology, and behavior. It remains useful after a task is complete and may be cited by code and other durable documents.
 
 Ideas live under `docs-transient/ideas/`. The directory is a place to hold ideas,
 not a document format: an idea may be prose, a drawing, a poem, a code snippet, a
@@ -31,6 +31,22 @@ resolved rather than retaining a completion report or task history. Code and
 durable documentation must not cite transient tasks in any state.
 
 Each documentation directory has an index. Keep indexes terse and focused on navigation; detailed guidance belongs in the linked documents.
+
+## Language
+
+State the rule or behavior directly. Name the component, file, value, or user
+operation involved. Explain established technical terms when their meaning is
+not clear from context. Use inline code formatting for identifiers and paths.
+
+Avoid invented technical labels, extended metaphors, slogans, and abstract
+phrases that require the reader to reconstruct the operation. For example,
+“the command passes the saved color to the indexing job” explains more than
+“committed intent crosses the boundary.” Describe the actual check or saved
+state rather than giving it an impressive name.
+
+Keep requirements, exceptions, measurements, and known limits explicit when
+simplifying prose. Clearer language must not silently change a design decision
+or make a security claim stronger than the available evidence.
 
 ## Transient task structure
 
@@ -64,7 +80,7 @@ shared group slug and distinguish each story with a modifier:
 
 Use modifiers only when the relationship is close enough that the files benefit
 from sorting together; standalone stories do not need one. A category names why
-the item exists, not the shape of the work that will close it. Two tasks requiring
+the item was raised, rather than the kind of implementation needed to finish it. Two tasks requiring
 the same kind of code change can therefore carry different categories.
 
 The label is one of five words:

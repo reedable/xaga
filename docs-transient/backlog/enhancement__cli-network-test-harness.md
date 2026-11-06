@@ -15,7 +15,7 @@ Core tests exercise proxy behavior over loopback and model-download limits with 
 
 - Define the first diagnostic's target, expected response, timeout, and success criteria.
 - Decide whether the harness is release-visible, feature-gated, or debug-only.
-- Define a test seam that can use loopback without making the production proxy permissive.
+- Define how tests can use loopback without relaxing the production proxy’s address policy.
 - Decide whether the harness covers model download only or also feed and proxy behavior.
 - Implement the top-level command and verify offline, timeout, policy-refusal, and success outcomes.
 

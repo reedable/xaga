@@ -1,28 +1,41 @@
 # Conventional Vocabulary
 
-Conventional vocabulary collects words used across the Xaga codebase that are conventional rather than semantic. Unlike the verbs in [Semantic Vocabulary](semantic_vocabulary.md), these do not carry a single honest meaning independent of context — their meaning is relative to the layer they act in.
+These naming conventions depend on the layer using them. Unlike the terms in
+[Semantic Vocabulary](semantic_vocabulary.md), a name such as `load` does not
+identify one specific operation throughout the codebase. Use these conventions
+only where the caller can tell the source and operation from context.
 
-The test that separates the two: **a word is semantic when it pins the boundary it crosses regardless of how many layers exist; it is conventional when it depends on an implicit single-layer assumption.** A conventional word names only one side of a layer crossing and leans on there being a single implied other side — which holds in a single-layer context but turns into ambiguity in the multi-layered backend. The semantic survivors (`<source>_to_<target>`, `parse`/`serialize`/`deserialize`/`format`) name both ends or a specific boundary, so they stay unambiguous at any layer count.
-
-These words are documented here so their usage stays consistent, not because they name one operation.
+Names such as `<source>_to_<target>`, `parse`, `serialize`, `deserialize`, and
+`format` identify a conversion or representation change explicitly. They remain
+clear when the code has several intermediate representations.
 
 ## Words
 
 ### `load`
 
-A hybrid, layer-relative word. It has no single meaning; what it denotes depends on the layer that uses it.
+`load` has two established uses in Xaga:
 
-- **Persistence layer** — Reads raw content from a source and constructs a typed in-memory object from it (read + deserialize). The materialized counterpart to `save`.
-  - `load_settings(path) -> UserSettings`, cli `load() -> Config`, model `load(model_dir) -> Result<Self>`, `load_default_embedder() -> Result<Arc<Embedder>>`
-- **Runtime / view** — Brings a resource into the runtime or view in a ready-to-use state.
-  - `load_article`, `load_via_webview` (render a page into a webview)
+- **Persistence:** reads raw content and constructs a typed object (read plus
+  deserialize). Examples: `load_settings(path) -> UserSettings`, CLI
+  `load() -> Config`, model `load(model_dir) -> Result<Self>`, and
+  `load_default_embedder() -> Result<Arc<Embedder>>`.
+- **Runtime or view:** makes a resource ready to use or display. Examples:
+  `load_article` and `load_via_webview`.
 
-Because every value crossing into the UI layer is already a domain object, "produces a typed object" does not distinguish `load` from `read`/`list`/`find`/`fetch` there; the distinction only exists at the persistence boundary where raw content exists. Error behavior is also not uniform (settings loads fall back to defaults; model loads return `Result`).
+The UI receives domain objects already, so “produces a typed object” does not
+separate `load` from `read`, `list`, `find`, or `fetch` there. Failure behavior also
+depends on the operation: settings loads can fall back to defaults; model loads
+return `Result`.
 
 ### `map`
 
-A UI-tier mapper convention: `map<target>` converts a wire/JSON payload into a domain type (e.g. `mapEntry`). It names only the target — the source is implicit.
+In the UI, `map<target>` converts a native JSON payload to a domain object, such
+as `mapEntry`. The source is unambiguous there: it is the native payload.
 
-That is safe only where there is exactly one possible source. The UI tier qualifies: the source is always the wire payload. The backend does not — it has multiple layers (`bytes → storage representation → domain representation`), so a target-only name like `mapEntry` is ambiguous about which conversion it performs. The form's safety is therefore layer-relative, which is why it is conventional rather than semantic.
+Backend code converts several representations, such as bytes, storage records,
+and domain objects. A target-only name would not identify which conversion it
+performs. Use `<source>_to_<target>` there, as described under
+[Conversion / Mapping](semantic_vocabulary.md#conversion--mapping).
 
-In the backend, use the semantic `<source>_to_<target>` form (see [Conversion / Mapping](semantic_vocabulary.md)), which names both ends and survives any number of layers. Note `map<target>` composes with — and does not collide with — the functional `map` (`items.map(mapEntry)`): the latter is always a method, the former always a suffixed free function.
+`mapEntry` is a named conversion function; `items.map(mapEntry)` uses the array’s
+`map` method to apply it. The two uses do not conflict.

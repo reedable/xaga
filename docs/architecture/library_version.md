@@ -10,7 +10,7 @@ format_version: '0.10'
 ```
 
 `xaga-core` owns the path, typed model, parsing, serialization, atomic writes,
-and migration-state transitions through the `library` facade. Callers supply the
+and migration-state transitions through the public `library` API. Callers supply the
 application's major/minor at runtime. App startup obtains it from the application's
 package information; the CLI supplies its own application major/minor. No build
 script examines libraries or enforces a separate package-version assertion.
@@ -49,15 +49,15 @@ webview or starting a writer or embedding service:
 - Malformed or unreadable metadata also opens read-only; startup reports the
   metadata error without replacing the manifest.
 
-The writer's presence remains the authority for runtime mode. Existing write
-command gating and disabled controls apply to all read-only causes. Such startup
+Having a writer determines read-write mode; its absence means read-only. The
+same command checks and disabled controls apply for every read-only cause. Such startup
 performs no migration, source writes, cache initialization or recovery. Existing
 cache reads remain available; an absent cache is not created by a read-only open.
 Library switching restarts the app and checks the newly selected library again.
 
 The `library info` CLI command reports the selected library's stored version and
 pending target without taking a write lock, reading the corpus, or changing the
-manifest. Startup mode selection does not impose a new CLI-wide access gate.
+manifest. These app startup checks do not add a new access restriction across all CLI commands.
 
 Manifest reads are bounded to 64 KiB, use strict YAML without anchors, and reject
 nonregular manifest files, unknown fields and malformed major/minor strings.

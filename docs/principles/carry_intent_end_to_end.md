@@ -1,13 +1,24 @@
 # Carry Intent End-to-End
 
-**The layer that knows what the user did carries that intent — typed and prioritized — to every consumer that needs it. Intent is never serialized into a generic event and re-derived approximately downstream.**
+**A command that knows what the user did passes that information to downstream consumers as typed data, with an appropriate priority. Consumers should not have to infer the action from a generic file-change event.**
 
-## The failure mode this names
+## Why the action must be preserved
 
-A command handler knows exactly what the user did: mark read, bookmark, annotate, curate into a topic. Flattening that into a generic `.md` write and re-deriving it from a bare "a file changed" event grinds the pig into spam and reconstructs an approximate pig: the downstream consumer cannot tell a content change from a metadata toggle, and the round-trip adds latency to the most user-facing actions.
+A command handler knows whether the user marked an article read, bookmarked it,
+added an annotation, or changed Topic membership. A generic “a file changed” event
+loses that distinction. A consumer would have to reread the file and infer the
+change, adding work and delaying the visible result.
 
 ## Application in this app
 
-- **Filesystem events are not a message bus.** The Tauri command writes the entity via the pure core API, then itself enqueues a typed, correctly-prioritized job to the embedding service — the intent travels end-to-end instead of being re-derived from a file event (`src-tauri/src/commands/`, the `state.enqueue(Tier::…, Job::…)` sites).
-- **Jobs carry what the producer knows.** `SyncState` carries the new state values in a `StatePatch` (no file read downstream); `AddMember`/`RemoveMember` carry the O(1) membership delta the command already knows, instead of forcing a full reconcile (the `Job` enum, `crates/xaga-core/src/embeddings/`).
-- **Where no intent exists, nothing is carried.** Out-of-band changes — migrations, external edits (e.g. Obsidian) — have no command layer that knows what happened; they are a recovery concern, reconciled on recovery's next run. Eventual sync, not live sync.
+- **Commands queue work after saving.** The Tauri command writes through core,
+  then queues the typed embedding-service job itself (`state.enqueue(Tier::…,
+  Job::…)` in `src-tauri/src/commands/`). Filesystem events do not replace this
+  communication.
+- **Jobs include information the command already has.** `SyncState` carries the
+  saved values in a `StatePatch`, avoiding another file read. `AddMember` and
+  `RemoveMember` carry the individual membership change instead of requiring a
+  full comparison (`Job` in `crates/xaga-core/src/embeddings/`).
+- **External changes use recovery.** Migrations and external editors such as
+  Obsidian have no command handler reporting their changes. Recovery reconciles
+  the saved files on its next run; these changes are not synchronized live.

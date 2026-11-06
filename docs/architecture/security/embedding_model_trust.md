@@ -1,35 +1,64 @@
 # Embedding model content trust
 
-How Xaga decides to trust the embedding model it downloads and executes. Transport containment (proxy, caps) is covered in [fetching_remote_content.md](fetching_remote_content.md); this document covers the _content_: why the bytes fed to onnxruntime are trusted, which links in that chain are cryptographic and which are reputational, and where the chain ends.
+How Xaga verifies the embedding model it downloads and loads, and which assumptions remain after verification. [Fetching remote content](fetching_remote_content.md) covers destination restrictions and resource limits. This document covers expected hashes, their origin, and dependence on the publisher and distributed app.
 
 Code: the pinned manifest, download-time `write_capped`/`verify_checksum`, and
 load-time `read_verified_model_files` in
-`crates/xaga-core/src/embeddings/model.rs`; the verify-then-commit seam is
-`fs::replace_dir_atomic`.
+`crates/xaga-core/src/embeddings/model.rs`; verified downloads are installed through `fs::replace_dir_atomic`.
 
-## Intent
+## What verification establishes
 
-Trust is **moved in time, not eliminated**. No download trusts the server at fetch time: every file is hashed as it streams and compared against values compiled into the binary, and the URL pins an immutable revision. Every later load hashes the installed bytes again before passing them to fastembed or ONNX Runtime. All trust is thereby relocated to a single **anchoring event** — the moment the manifest's values were derived and recorded (see "The anchoring record" below). The security question "are these executable bytes honest?" reduces permanently to "was the anchoring event honest?"
+Every download is hashed while streaming and compared with expected values
+compiled into the binary. The download URL selects an immutable revision. Every
+later load hashes the installed bytes again before fastembed or ONNX Runtime
+receives them.
+
+These checks depend on the expected values being trustworthy and on the app
+binary containing the intended manifest. They establish that the bytes match a
+chosen artifact; they do not establish that the artifact is harmless.
 
 ## The chain of trust
 
-Ordered from download backwards. Each link states what secures it.
-
-1. **Every download and load → the manifest.** _Cryptographic._ Download computes SHA-256 over the streamed bytes before committing the staging directory; mismatch refuses installation and deletes staging. Load reads each installed file once, hashes those in-memory bytes, and refuses before constructing fastembed when any digest differs. A load mismatch leaves the installed files unchanged and does not initiate or offer a download. The pinned revision makes a server-side change of the repo's `main` irrelevant to installs — a hash mismatch is unambiguous evidence of changed content, never "the repo updated."
-
-2. **The manifest → the anchoring event.** _Procedural, with cryptographic elements._ The anchored values are required to agree across three sources before recording: the SHA-256 published by Hugging Face as the Git-LFS oid (computed by HF's infrastructure at upload time — available for LFS-tracked files only, i.e. `model.onnx`), and two independent fetches separated in time, hashed locally (the sole source for the small non-LFS files, which have no published SHA-256). This agreement rules out transient tampering — a one-time MitM, a poisoned cache, a compromised CDN node — but not tampering that was _consistent_ across upload time, both fetches, and the API.
-
-3. **The anchoring event → the anchoring environment.** _Infrastructural._ Both fetches and the API call rode TLS from one machine: a persistent man-in-the-middle on that machine's network or CA trust store could have supplied self-consistent lies. Time-separated fetches raise the bar from "tamper once" to "tamper persistently"; fetching from a genuinely independent network path would raise it further and was not done.
-
-4. **The content → the publisher (Qdrant).** _Reputational — the irreducible link._ With perfect integrity everywhere, the bytes are still whatever the Qdrant organization uploaded. No cryptographic attestation exists that their ONNX conversion of `sentence-transformers/all-MiniLM-L6-v2` is faithful or benign, and no independent party publishes hashes for this artifact. The evidence is reputational: the repo is fastembed's default model source, unchanged since mid-2025, consumed broadly by that ecosystem — a compromise would have a wide blast radius and many observers. That is a likelihood argument, not a verification.
-
-5. **The publisher → upstream.** _Claimed, unverified._ The artifact is presented as a conversion of the upstream sentence-transformers model; the derivation has not been reproduced. Reproducing the ONNX export from upstream weights would replace link 4's trust in Qdrant with trust in upstream plus the conversion toolchain.
-
-6. **The manifest → the binary.** _Deferred to the platform._ Users receive the manifest inside the app; whoever can modify the shipped binary can rewrite the checksums. The manifest's forward integrity is therefore exactly the app's code-signing/distribution story — which this project has not yet established, so nothing today stops a modified build from shipping rewritten checksums — and, for this repository, the integrity of its git history.
+1. **Downloaded and installed bytes are checked against the manifest.** Download
+   computes SHA-256 before committing its staging directory. A mismatch rejects
+   installation and deletes staging. Load reads each installed file once and
+   checks those same bytes before constructing fastembed. A load mismatch
+   preserves installed files and neither initiates nor offers a download. The
+   pinned revision means a remote `main` update is not an explanation for a
+   mismatch.
+2. **Expected hashes were compared before recording.** For `model.onnx`, the
+   Hugging Face Git-LFS SHA-256 was compared with local hashes of two separate
+   downloads at different times. The small non-LFS files have no published
+   SHA-256, so their values came from the two local downloads. Agreement provides
+   evidence against tampering affecting only one observation. It does not exclude
+   an attacker controlling all of those observations consistently.
+3. **The observations used one machine and network environment.** Both downloads
+   and the API request used TLS from one machine. A persistent compromise of its
+   network or trusted certificate authorities could produce matching false data.
+   A genuinely independent network path would provide additional evidence; it
+   was not used.
+4. **The artifact still depends on its publisher, Qdrant.** Matching bytes remain
+   whatever Qdrant uploaded. There is no cryptographic attestation that its ONNX
+   conversion of `sentence-transformers/all-MiniLM-L6-v2` is faithful or safe, and
+   no independent publisher of hashes for this artifact. Its use as fastembed’s
+   default source, unchanged since mid-2025 and widely consumed, provides
+   reputational evidence rather than independent verification.
+5. **The claimed conversion from upstream has not been reproduced.** Reproducing
+   the ONNX export would replace dependence on Qdrant’s conversion with dependence
+   on upstream weights and the conversion tools.
+6. **The checksums depend on the distributed app.** Someone able to replace the
+   app binary can replace its manifest too. Authenticating that binary requires
+   the code-signing and distribution process. The project has not established
+   protection against a modified build shipping rewritten checksums. Repository
+   users also depend on the integrity of Git history.
 
 ## What the behavior check proves
 
-Loading the embedder against the anchored set (normed 384-dim output) proves the artifact _functions_ — it does not prove benignity. Its actual security value: combined with link 1, every successful load executes exactly the bytes that existed at the audited moment, so the onnxruntime parser surface is frozen at one fixed artifact rather than re-exposed to server changes or undetected post-install substitution.
+The recorded artifact produced normalized 384-dimensional output when loaded.
+This demonstrates function, not safety. With the hash checks, subsequent loads
+pass the same selected bytes to the model parser, preventing undetected changes
+by the server or after installation. The parser still has to handle that
+artifact safely.
 
 ## Load-time verification cost
 
@@ -57,7 +86,7 @@ instances load a query-only model alongside their read-only database handle, so
 their existing embedding reads and semantic search remain available without
 starting a writer service.
 
-Library mode and embedding startup state are orthogonal. Library mode selects the
+Library write permission and embedding readiness are independent. Library mode selects the
 initialization path, but either mode begins with embeddings `loading` and can end
 with them `available` or `unavailable`:
 
@@ -75,20 +104,20 @@ embedding failure therefore does not change the library's read-write/read-only
 mode, and library mode alone does not determine whether embedding-backed reads
 are available.
 
-## The anchoring record
+## Origin of the pinned hashes
 
-Values anchored 2026-07-11:
+Values recorded on 2026-07-11:
 
 - `MODEL_REVISION` = the repo's `main` sha from the HF API (`/api/models/{repo}`, lastModified 2025-06-09).
 - `model.onnx` sha256 = the published Git-LFS oid from the HF tree API, which agreed with two independent fetches (an earlier download of `main` and a fresh fetch at the pinned revision).
 - The four JSON files are plain git blobs (no LFS oid published); their sha256s were computed from the same two fetches, which agreed.
-- The anchored set was behavior-checked by loading the embedder.
+- The recorded set was checked by loading the embedder.
 
-A model upgrade re-derives every value the same way and replaces the manifest block (`crates/xaga-core/src/embeddings/model.rs`) and this record in the same motion.
+For a model upgrade, obtain and compare hashes using the same procedure, then update the manifest (`crates/xaga-core/src/embeddings/model.rs`) and this record together.
 
 ## Limits
 
-- **The parser is trusted with the frozen artifact.** onnxruntime parses the model natively; the checksum pins _which_ bytes it parses, not that parsing them is safe.
+- **The checksum does not prove parser safety.** onnxruntime parses the selected model natively. Checking its bytes does not establish that parsing them is safe.
 - **Verification is refusal, not recovery.** A missing or mismatched installed file
   makes embedding-model loading fail. The failed files remain unchanged for
   diagnosis; this path neither deletes them nor obtains a replacement. The app

@@ -1,64 +1,111 @@
 # Single-Writer Account Lock
 
-**The flock on `settings.json` is the account-wide xaga resource lock: whoever holds it has the right to account-wide resources — writing settings.json itself, downloading the embedding model, and any future account-scoped resource. The holder is the app instance; there is no separate lock file.**
+**An exclusive `flock` on `settings.json` coordinates resources shared by the
+same machine/user account, including settings writes and model downloads. No
+separate account lock file is used.**
 
 ## Scope
 
-The account is machine/user scope: everything under the data root (`xaga_core::fs::data_root()`) that exists independently of any library, including settings.json and the model directory. This is a different domain from the [library lock](single_writer_library_lock.md), which is per-library and protects concurrent writes to the whole library (`.md` files and LanceDB); the two locks answer different questions and neither substitutes for the other.
+Account resources live under `xaga_core::fs::data_root()` independently of any
+library. They include `settings.json` and the model directory. The
+[library lock](single_writer_library_lock.md) protects one library’s files and
+LanceDB; neither lock replaces the other.
 
-settings.json doubles as the lock file by design: it is itself the account resource most in need of write coordination (its writes are whole-file read-modify-write), so locking it protects it while also serializing every other account-wide operation — one lock, no invented lock file.
+Settings writes replace the whole file after reading it. Using `settings.json`
+as the lock file coordinates those writes and other account operations through
+the same lock.
 
 ## Acquisition
 
-- Exclusive advisory `flock` on `settings.json` under the data root (`FileLock::try_acquire`, `crates/xaga-core/src/fs.rs`); the file is created if absent, never truncated by acquisition.
-- The lock is handle-tied: the OS releases it on any exit, including crashes. No stale lock files.
-- **Acquisition verifies the inode.** Because writes replace settings.json by rename (below), a contender can win a flock on an inode that was renamed away while it waited. After every successful flock, the acquirer compares the handle's `dev`+`ino` against the path; on mismatch it releases and retries on whatever the path names now. Unix-only identity check (POSIX-verified protocol overall).
+- `FileLock::try_acquire` takes an exclusive advisory `flock` on `settings.json`
+  (`crates/xaga-core/src/fs.rs`). It creates a missing file without truncating it.
+- The OS releases the handle’s lock on exit, including after a crash.
+- After acquisition, compare the handle’s `dev` and `ino` with the file currently
+  at the path. Atomic replacement may have changed that file while acquisition
+  was pending. On mismatch, release the old handle and retry the current path.
+  This identity check is Unix-specific; the locking protocol is POSIX-verified.
 
-## In-process sharing (one holder, reference-counted)
+## In-process sharing
 
-Within a process the flock is held by a single shared, reference-counted handle (`AccountLock`, `src-tauri/src/lib.rs`), **not** re-acquired per call site. Acquiring a fresh `FileLock` per operation was a bug: the model download holds the lock across its whole fetch, and `flock(2)` binds to the open file description, so a settings write during the download opened a _second_ handle and the process contended with itself ("another xaga process holds the account lock" — but it was the same one).
+`AccountLock` shares a single reference-counted handle inside the process
+(`src-tauri/src/lib.rs`). Reacquiring a separate `FileLock` for each operation
+previously made the process contend with itself: a model download held one
+handle while a settings write attempted another.
 
-- **Operation-scoped, not process-lifetime.** The flock is acquired when the first in-process account operation begins and released when the last finishes. It is _not_ held for the process's life, because the library path lives in `settings.json` and `set_library` is an account write — a process-lifetime hold would stop any _other_ instance (on a different library) from ever selecting its library.
-- **Settings writes are synchronous, single-streamed.** Each holds the registry mutex across `write_locked`, so two whole-file read-modify-writes can never interleave (the same clean invariant `write_locked`'s tmp flock assumes).
-- **The model download holds a lease** (`AccountLease`) that carries only the refcount across its async fetch — it never writes settings, so a settings write can rotate the inode underneath it; the download's exclusion transfers to the new handle because the lease references the count, not a specific handle.
-- **`write_locked` hands the lock back on error** (`fs.rs`): a failed rotation returns the original still-valid lock rather than dropping it, so a settings-write failure never releases the flock a concurrent lease still needs.
+- Acquire the lock when the first account operation starts; release it when the
+  last finishes. Holding it for the whole process lifetime would prevent an
+  instance using another library from calling `set_library`, which writes the
+  path in `settings.json`.
+- Settings writes hold the registry mutex across `write_locked`, serializing
+  complete read-modify-write operations.
+- Model download holds an `AccountLease` across the asynchronous fetch. The lease
+  retains the shared reference count, not one particular file handle. A settings
+  write can therefore replace the file and transfer the lock without ending the
+  download’s exclusion of other processes.
+- If `write_locked` fails to replace the file, it returns the still-valid original
+  lock. The failure must not release a lock still required by another lease.
 
 ## Writing settings.json: the rotation protocol
 
-Every settings.json write in the app goes through one funnel (`update_settings`, `src-tauri/src/lib.rs`); the write payload is built only from state loaded _inside_ the hold plus the caller's delta — never from data read before the lock. The write itself (`fs::write_locked`):
+Every app settings write calls `update_settings` (`src-tauri/src/lib.rs`). Build
+its payload from settings read while holding the lock plus the requested change,
+not from a snapshot read before acquisition. `fs::write_locked` then:
 
-1. open `settings.json.tmp` _without_ truncating (a crashed writer's leftover must not be destroyed before its lock is held);
-2. flock the tmp — before the rename, so the path never resolves to an unlocked inode;
-3. truncate, write, fsync;
-4. rename the tmp over `settings.json` — the locked tmp inode becomes the path's inode;
-5. release the old inode's lock. The holder's exclusive hold survives the replacement without a gap.
+1. Opens `settings.json.tmp` without truncation, preserving a previous writer’s
+   temporary file until its lock is acquired.
+2. Locks the temporary file before rename, so the destination path never names
+   an unlocked replacement.
+3. Truncates, writes, and fsyncs the temporary file.
+4. Renames it over `settings.json`, keeping the new inode locked.
+5. Releases the previous inode’s lock.
 
-Crash story: a stale tmp is reclaimed by the next writer's truncation; flocks die with the process; no cleanup code exists or is needed.
+After a crash, the next writer can lock and truncate a leftover temporary file.
+Process exit releases its flocks; no stale-lock cleanup is needed.
 
 ## Stale-view check
 
-A write can be refused for a reason other than contention: the baseline. Each process records settings.json's mtime at the read that formed its view (startup load; refreshed on every write outcome). A write whose baseline no longer matches the file means another process changed settings since this one last looked; the funnel returns the fresh content as a normal outcome (`SettingsOutcome::StaleView`, read under the lock) rather than silently overwriting — the caller refreshes its view and the user retries against current truth. This closes the lost-update race (whole-file writes carrying stale values of every field but the one being changed) and detects writers that bypassed the lock entirely.
+Each process records the file’s modification time when reading its settings
+view, initially at startup and again after every write outcome. A mismatch on a
+later write means the file changed since that view was loaded. Under the lock,
+return fresh settings as `SettingsOutcome::StaleView` instead of overwriting
+them. The caller refreshes and the user retries against the current values.
+
+This prevents a whole-file update from overwriting unrelated newer fields. It
+also detects changes by external programs that did not acquire the lock.
 
 ## Contention behavior
 
-- **Settings writers** fail fast with an explicit error when another process holds the lock; nothing blocks.
-- **The model download** (`download_model`, `crates/xaga-core/src/embeddings/model.rs`) runs while its **caller** holds the right for the whole check + download + commit — the app via its in-process account lease, the CLI via a direct flock — and the caller _skips_ when another process holds it; the raced loser re-checks and finds the winner's files.
-- **Readers never lock.** Rename atomicity guarantees a reader sees an old-complete or new-complete file, never a torn one.
+- Settings writers return an explicit error immediately if another process holds
+  the lock.
+- A model download’s caller holds the lock across check, download, and commit
+  (`download_model`, `crates/xaga-core/src/embeddings/model.rs`). The app uses
+  an account lease; the CLI takes the flock directly. A caller that encounters
+  contention skips downloading and rechecks the files produced by the holder.
+- Readers do not lock. Atomic rename ensures a complete old or new file is read.
 
 ## Who takes it
 
-- The settings write funnel (`src-tauri/src/lib.rs`) — every settings.json write in the app.
-- The model download, from both the app's startup task and `xaga-cli embeddings download-model`.
-- Any future account-scoped resource acquires the same right rather than minting its own lock.
+- Every app settings write through `update_settings`.
+- Model download from app startup and `xaga-cli embeddings download-model`.
+- Future operations on account resources, using this same lock.
 
 ## Limits
 
-- The lock is _advisory_: it binds only participants that acquire it. An external program editing settings.json directly is not excluded — the stale-view check is the tripwire that keeps such writes from being silently overwritten, not a fence that prevents them.
+The lock is advisory: external tools can write without acquiring it. The
+stale-view check detects those changes before a later settings update; it does
+not prevent the external write itself.
 
 ## Relation to the other rules
 
-The funnel is the enumerated-producer discipline of `docs/principles/single_source_of_truth.md` applied to settings.json: one write path, whose payload provenance is stated at the write site. The rotation protocol is the directory-file sibling of `fs::write_atomic`'s crash story (`crash_consistency.md`): ordering decides what survives, and every crash point leaves either the old complete file or the new one.
+The single settings write function follows
+[Single Source of Truth](../principles/single_source_of_truth.md). The replacement
+order preserves the file and lock across interruption, like the atomic file
+replacement described in [Crash Consistency](crash_consistency.md).
 
 ## Frontend refusals
 
-Settings writes return `settings:busy` for lock contention and `settings:stale-view` when the backend refreshes its mirrors after a stale write. Preference setters use `SettingsProvider.saveSettings` to report refusals through the shared error display and trigger reloads in general, appearance, and privacy settings. Local values change after a successful write; refused writes reload the backend values before the user retries.
+Settings writes return `settings:busy` on contention and `settings:stale-view`
+when the backend refreshes its settings after detecting a stale write.
+`SettingsProvider.saveSettings` reports these through the shared error display
+and reloads general, appearance, and privacy settings. Local values change only
+after a successful write. Refused writes reload backend values before retry.

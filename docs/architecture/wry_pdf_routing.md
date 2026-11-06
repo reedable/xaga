@@ -88,7 +88,7 @@ The download cases verify redirect delivery, one retrieval of the final resource
 retained staging paths when the callback returns no path, injected validation,
 and cleanup. The PDF fixture is a one-page PDF; the invalid fixture is labelled
 PDF but fails the signature validator. The test uses the production validator with the current
-`%PDF-` signature contract; it does not establish parser safety.
+`%PDF-` signature check; it does not establish parser safety.
 The `favicon-pdf` case assigns that PDF response to the favicon consumer and
 verifies rejection by image validation rather than acceptance by the PDF consumer.
 
@@ -98,4 +98,4 @@ all bundled application behaviors. The proxy fixture verifies routing through
 a configured proxy; forbidden-destination enforcement is covered separately.
 
 Wry's `response_policy.rs` includes predicate and decision unit tests, with
-feature-enabled and feature-disabled builds covering the compile-time gate.
+feature-enabled and feature-disabled builds covering the compile-time feature selection.

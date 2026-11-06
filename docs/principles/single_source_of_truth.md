@@ -1,6 +1,6 @@
 # Single Source of Truth
 
-**Every datum has exactly one source of truth. The producers of a derived store are enumerated; a write from outside that enumeration is, by definition, drift.**
+**Each value has one authoritative source. Other stored copies must be rebuildable from it, and their permitted write paths must be listed. A write outside those paths violates this rule.**
 
 ## The assignments in this app
 
@@ -23,15 +23,15 @@
 - **`tags.yaml`** owns library tag identities, names, and pending rename/merge/delete
   state. Entry files own readable assignments; indexed tag IDs derive from both.
   See [Tag storage](../architecture/tags.md).
-- **LanceDB** is the queryable read layer that mirrors the above. The durability invariant — every column is reconstructible from the files — is what makes LanceDB a cache, not a second source of truth.
+- **LanceDB** is the queryable read layer that mirrors the above. Every column must be reconstructible from the files. This makes LanceDB a cache rather than an independent source of saved data.
 
 ## The producer rule
 
-LanceDB has exactly two producers: the command layer (live, from user intent) and recovery (reconciliation). A third producer of cache writes is, by definition, drift — the clearest on-course check.
+LanceDB has two permitted producers: command handlers, which apply saved user actions, and recovery, which reconciles the database with files. Adding another database write path violates this rule.
 
 ## What follows from it
 
-- **Derived stores are disposable.** Recovery rebuilds them from the source files; a rebuild of a derived structure is decoupled from unrelated gates (the reverse-index rebuild runs every recovery regardless of the checksum/embedding gate, because a membership-only change never touches the entry `.md` — `crates/xaga-core/src/recovery/`).
+- **Derived stores are disposable.** Recovery rebuilds them from the source files; rebuild decisions must depend on the relevant source data. The reverse index is rebuilt on every recovery regardless of whether content needs embedding, because a membership-only change does not touch the Entry `.md` file (`crates/xaga-core/src/recovery/`).
 - **Writes land on the source of truth**; mirrors follow. The ordering between the two is the subject of `docs/architecture/crash_consistency.md`.
-- **A derived index serves only the direction its source cannot.** Forward (topic → members) is read from the topic `.md` itself; the derived `topics` column serves only the reverse direction (entry/annotation → topics; the `list_entry_topics` command, `src-tauri/src/commands/topics.rs`).
+- **Use the derived index for reverse lookup.** Forward (topic → members) is read from the topic `.md` itself; the derived `topics` column serves only the reverse direction (entry/annotation → topics; the `list_entry_topics` command, `src-tauri/src/commands/topics.rs`).
 - **Making anything other than the source of truth authoritative loses information.** The alternative — moving membership into each member's frontmatter — would have dropped insertion order, member type, and the annotation `reference`, and would have drifted because the membership write path writes only the topic file and would never have touched it.

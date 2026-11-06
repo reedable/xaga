@@ -38,12 +38,12 @@ Code: `src/text/entryWorker.ts`, `src/text/markdownPipeline.ts`, `src/text/build
 The loader webview returns the page's raw DOM HTML. `processEntry` (`entryWorker.ts`) then:
 
 1. Parses it with `DOMParser` and runs Readability — both operate on an inert, non-rendered document; no scripts execute, no event handlers fire, no subresources load. (This inertness assumption is documented at the call site; if it ever stops holding, sanitization must move _before_ parsing.)
-2. **Sanitizes Readability's output with DOMPurify** — the explicit security boundary for article bodies (`entryWorker.ts:68-79`). This strips `<script>`, event-handler attributes, `javascript:`/`data:` URIs, etc. The downstream HTML→markdown conversion is _not_ relied on to drop dangerous markup — that would be a side effect, not a guarantee, and a dependency upgrade could quietly change it.
+2. **Sanitizes Readability's output with DOMPurify** — the step that removes unsafe markup from article bodies (`entryWorker.ts:68-79`). This strips `<script>`, event-handler attributes, `javascript:`/`data:` URIs, etc. The downstream HTML→markdown conversion is _not_ relied on to drop dangerous markup — that would be a side effect, not a guarantee, and a dependency upgrade could quietly change it.
 3. Converts the sanitized HTML to markdown (rehype→remark), which is what gets persisted.
 
 ### Persistence
 
-Article markdown is stored in the same `{hash12}.md` files as feed entries, with the same `noyalib` frontmatter boundary for title/summary/annotations (see above). Captured article bodies have crossed the DOMPurify boundary; feed-supplied summaries are persisted as supplied. Reading stored content back and rendering it is a separate boundary — see [handling_persisted_content.md](handling_persisted_content.md).
+Article markdown is stored in the same `{hash12}.md` files as feed entries, with the same `noyalib` frontmatter validation and serialization for title/summary/annotations (see above). Captured article bodies have been sanitized with DOMPurify; feed-supplied summaries are persisted as supplied. Reading stored content back and rendering it is a separate boundary — see [handling_persisted_content.md](handling_persisted_content.md).
 
 Readability preserves `srcset` and `<picture>` sources. The subsequent
 HTML-to-Markdown conversion uses only `img src` and ignores `<source>` candidates.

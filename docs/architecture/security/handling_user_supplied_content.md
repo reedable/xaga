@@ -1,6 +1,6 @@
 # Handling user-supplied content: OPML and bookmarks.html import
 
-How Xaga secures content the user supplies directly rather than fetches: an imported OPML feed list or `bookmarks.html` file. Both arrive as a local file the user selects via a Rust-owned file dialog, never as a path or content taken from the webview — see [command_surface.md](command_surface.md) for why that authority segregation exists; this document covers what happens to the file's _content_ once selected, not who is allowed to trigger the read.
+How Xaga secures content the user supplies directly rather than fetches: an imported OPML feed list or `bookmarks.html` file. Both arrive as a local file the user selects via a Rust-owned file dialog, never as a path or content taken from the webview — see [command_surface.md](command_surface.md) for why file selection stays in Rust; this document covers what happens to the file's _content_ once selected, not who is allowed to trigger the read.
 
 Content typed directly by the user through IPC (an annotation, a manually entered feed URL) is not covered here: it has no format-specific parser of its own. A manually entered feed URL becomes Remote content once fetched (see [handling_remote_content.md](handling_remote_content.md)); typed text like annotations goes straight to storage and is covered by [handling_persisted_content.md](handling_persisted_content.md), which treats all stored content identically regardless of provenance.
 
@@ -12,7 +12,7 @@ Code: `src-tauri/src/native/feeds.rs`, `src-tauri/src/native/bookmarks.rs`, `cra
 
 ## OPML (feed list)
 
-`parse_opml` (`persistence/opml.rs`) reads the file with `quick_xml` directly — the same parser family as the Feed XML pipeline, so it inherits the same property: no DTD resolution, no external entity expansion, no path from an imported OPML file to a local-file read or request amplification. Only `xmlUrl` attribute values are extracted; nothing else in the document is interpreted or persisted. Each extracted URL is XML-unescaped, trimmed, and then handed to the same `normalize_url` + `add_feed` path a manually-entered feed URL would use — from that point on, each URL becomes Remote content and falls under `handling_remote_content.md`. A URL-count cap on the parsed output is unnecessary: path authority already prevents a compromised renderer from directing import at an attacker-chosen file, so the fetch-fan-out-amplifier threat a URL-count cap would guard against is already closed; the byte cap above transitively bounds URL count regardless.
+`parse_opml` (`persistence/opml.rs`) reads the file with `quick_xml` directly — the same parser family as the Feed XML pipeline, so it inherits the same property: no DTD resolution, no external entity expansion, no path from an imported OPML file to a local-file read or request amplification. Only `xmlUrl` attribute values are extracted; nothing else in the document is interpreted or persisted. Each extracted URL is XML-unescaped, trimmed, and then handed to the same `normalize_url` + `add_feed` path a manually-entered feed URL would use — from that point on, each URL becomes Remote content and falls under `handling_remote_content.md`. No separate parsed-URL count cap is applied. Native file selection prevents a compromised renderer from choosing an import file to trigger many fetches, and the file byte cap also bounds how many URLs it can contain.
 
 ## bookmarks.html (Netscape bookmark file)
 
@@ -23,7 +23,7 @@ Code: `src-tauri/src/native/feeds.rs`, `src-tauri/src/native/bookmarks.rs`, `cra
 - **`color`** — accepted only when it matches a shared swatch palette identifier. Missing or unsupported import colors fall back to Blue.
 - **`add_date`/`published_at`/`last_modified`** — parsed as integers via `str::parse::<i64>`; unparseable values are silently dropped (`None`), never propagated as an error.
 
-Extracted entries are persisted through `write_read_entry` / `set_entry_color` (`persistence/entries.rs`) in the serialized Entry writer lane, the same strict noyalib field-patch frontmatter boundary that Feed XML and Article HTML entries go through — see `handling_remote_content.md`, "Persistence." Title and description injection into frontmatter is bounded the same way regardless of whether the entry originated from a fetched feed or an imported bookmark.
+Extracted entries are persisted through `write_read_entry` / `set_entry_color` (`persistence/entries.rs`) in the serialized Entry writer lane, the same strict `noyalib` frontmatter field-patching used for Feed XML and Article HTML entries — see `handling_remote_content.md`, "Persistence." Title and description injection into frontmatter is bounded the same way regardless of whether the entry originated from a fetched feed or an imported bookmark.
 
 ## What a hostile import file cannot do
 

@@ -1,9 +1,9 @@
 # Sites
 
-A Site is a Collection with membership derived from Entries by normalized hostname.
-It has no independently managed lifecycle or membership record. Feed and Topic
-are ManagedCollections; Site is a browsing projection, not a persisted entity,
-publisher identity, or ownership claim. See [Collections and identity](organization_model.md#collections-and-identity).
+A Site groups Entries by normalized article hostname. It has no independently
+managed lifecycle or saved membership record. Feed and Topic have their own
+records as ManagedCollections; Site is calculated from existing Entries. A Site
+identifies a hostname, not a publisher or an ownership relationship. See [Collections and identity](organization_model.md#collections-and-identity).
 
 ## Identity
 
@@ -46,7 +46,7 @@ normalized hostname is stored in the shared [`pins.yaml` store](pins.md); Site
 membership remains derived. A pinned Site with no currently derived Entries
 remains navigable with zero total and unread counts. Pin changes never create a
 Site file or an entity cache row, and unpinning does not change Entry data or
-the current reading scope. Site pin writes use the shared writer/read-only gate.
+the current reading scope. Site pin writes use the shared writer and read-only checks.
 
 Site targets require library version **0.12** and the explicit
 [CLI upgrade](../library_upgrade.md#site-pins-012) from older library versions.

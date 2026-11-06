@@ -1,8 +1,8 @@
 # Semantic Vocabulary
 
-Semantic vocabulary provides consistency to the names of symbols (variables and functions) used across the entire Xaga codebase. Variable and function names must remain honest about what they are, fit the developers' mental model at their level of abstraction. Unless explicit exception is warranted, they must not reflect their assumed usage or characteristics.
+Use these meanings consistently when naming variables and functions in Xaga. Names should describe what a value represents or what an operation does at the level where callers use it. Do not name a general operation after an assumed use or characteristic unless an explicit exception is justified.
 
-Where strict accuracy and the developer's mental model conflict, favor the mental model. A name that fits how a developer thinks is worth more than one that is technically precise but foreign. Pick the word at the developer's level of abstraction, not the most exact word available.
+When the most technically precise term conflicts with the familiar meaning at the caller’s level, prefer the name callers will understand. Explain the implementation detail separately.
 
 ## Verbs
 
@@ -26,7 +26,7 @@ Where strict accuracy and the developer's mental model conflict, favor the menta
 - `delete` Deletes a record.
 - `update` Updates a record.
 - `upsert` Creates or updates a row (or rows), usually in a database.
-- `replace` Creates a record while deleting an equivalent record that existed previoiusly.
+- `replace` Creates a record while deleting an equivalent record that existed previously.
 
 #### Queue
 
@@ -39,10 +39,10 @@ CRUD over a collection. Separate policy decides which item `dequeue` returns nex
 
 - `fetch` A network call; may be served from cache. Prefer `submit` for writes.
 - `submit` A write (CUD) over the network.
-- `list` Disc IO: gets a directory listing.
-- `read` Disc IO: reads a single file.
-- `write` Disc IO: writes content, overwriting if it exists.
-- `update` Disc IO: updates a file only if it exists.
+- `list` Disk IO: gets a directory listing.
+- `read` Disk IO: reads a single file.
+- `write` Disk IO: writes content, overwriting if it exists.
+- `update` Disk IO: updates a file only if it exists.
 
 ### Events
 
@@ -63,8 +63,8 @@ CRUD over a collection. Separate policy decides which item `dequeue` returns nex
 
 `parse`/`format` and `deserialize`/`serialize` cross the same boundary (representation ↔ typed value); they differ by purpose and fidelity, not direction.
 
-- `parse` Interprets an external representation (usually string) into an internal represetation. May be lossy; no round-trip guarantee.
-- `format` Produces a external reprentation (usually string). The output is in the format preferred by the consumer, and may be human readable.
+- `parse` Interprets an external representation (usually string) into an internal representation. May be lossy; no round-trip guarantee.
+- `format` Produces an external representation (usually string). The output is in the format preferred by the consumer, and may be human readable.
 - `deserialize` Reconstructs a typed value from a machine encoding. Inverse of `serialize`.
 - `serialize` Encodes a typed value into a machine encoding that round-trips losslessly. Inverse of `deserialize`.
 
@@ -124,7 +124,7 @@ Avoid `stop`: ambiguous between graceful (`shutdown`) and abrupt (`abort`).
 
 `sender`/`receiver` are the channel endpoints; `producer`/`consumer` are the roles that use them.
 
-Prohibited: `DTO`, `wire`. The boundary-role noun is `payload`.
+Prohibited: `DTO`, `wire`. Use `payload` for data passed between components or processes.
 
 ### Relationships
 

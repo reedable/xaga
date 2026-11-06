@@ -1,25 +1,70 @@
-# Crash Consistency: write ordering, checkpoints, recovery backstop
+# Crash Consistency: write ordering, checkpoints, and recovery
 
-**Every multi-step write has a defined crash story: ordering decides what survives, checkpoints bound the re-work, and recovery heals the rest from the source of truth.**
+**For every multi-step write, specify what can remain after interruption, which
+saved checkpoints allow retry, and how recovery detects and repairs unfinished
+work from the source files.**
 
 ## The coverage model
 
-Two failure classes are distinguished, and they are covered by different mechanisms:
+- **Graceful shutdown:** biased `select!` in the embedding service’s `run_loop`
+  accepts `Shutdown` between processing iterations. Inline work within an
+  iteration completes before that handling; queued work is dropped rather than
+  drained (`crates/xaga-core/src/embeddings/service.rs`).
+- **Hard kill or crash:** execution can stop between any two commits, including
+  inside an iteration. Cooperative shutdown handling does not protect it.
 
-- **Graceful shutdown.** The service's biased `select!` (`run_loop`, `crates/xaga-core/src/embeddings/service.rs`) takes `Shutdown` between loop turns, so work done inline within one turn is atomic with respect to it. Work still queued at shutdown is dropped, not drained.
-- **Hard kill / crash.** Nothing inline is guaranteed; a multi-commit sequence can stop between any two commits.
-
-**Recovery is the universal backstop for both:** dropped jobs and half-applied sequences are rebuilt from the source files on the next run.
+Recovery rebuilds dropped or partially applied derived work from source files on
+the next run.
 
 ## Instances
 
-- **Entry `.md` before feed `.atom`** (`commit_via_writer`, `crates/xaga-core/src/persistence/feeds.rs`, which awaits every entry write on its own lane before submitting the `.atom` write on the feed lane). Entry content — the irreplaceable part — is persisted before feed membership. A crash between the two leaves entries not yet in the atom; the next refresh re-adds the membership from the live feed and skips the already-written `.md` files, so no content is lost. The reverse order could lose content.
-- **Chunked fan-out with per-chunk checkpoints** (`reconcile_topic_membership`, `crates/xaga-core/src/embeddings/pipeline.rs`). The mechanism: the topic's LanceDB row stores its member-id list (`items`) as the prior-membership base — persisted on the row rather than held in memory so it survives restart — and each reconcile diffs the topic `.md`'s members against that base, touching only the delta. The reconcile is the sole writer of the `topics` (member) and `items` (topic) columns; entry/annotation sync carries them forward untouched on every upsert, so the column lags the file and the diff stays meaningful. Deltas are written in chunks of 1024, and the `items` base is checkpointed after each chunk, so a crash mid-fan-out resumes from the remaining members instead of re-scanning the whole set. Known window: the delete-then-add within a chunk on a hard kill; recovery heals it.
-- **Unconditional recovery rebuild, decoupled from unrelated gates.** The reverse-index rebuild runs on every recovery regardless of the checksum/embedding gate — a membership-only change never touches the entry `.md`, so a gated rebuild would skip it. It backstops both a dropped topic event (graceful shutdown before it ran) and a crash mid-fan-out (`crates/xaga-core/src/recovery/`).
-- **Annotation color change is delete/create in one atomic write** (`replace_annotation`, `crates/xaga-core/src/persistence/articles.rs`). Color is part of the annotation's identity: a recolor replaces the annotation under a new id, and the delete and the create land in a single atomic frontmatter write (`write_atomic_async`), so no crash point exists where the annotation is deleted but not re-created. The changed id set is the crash story: a stranded recolor is visible to the membership diffs that already run (`annotations_differ` in recovery, the `items` compare in `sync_entry_row`), where a same-id color update would be visible to no gate — the entry checksum excludes annotation data and the id set would be unchanged. The same-id path is closed at the persistence layer (`EntryError::ColorChangeRequiresReplace`). LanceDB side, `sync_annotations` moves the vector and `topics` from the same-checksum row it deletes in the same pass — the vector is a pure function of the checksummed content — so the re-keyed row costs no embedder run.
-- **Recovery reconciles the checksum of every row it knows about** — entries, topics, feeds, and annotations alike; the backstop is not universal otherwise. The walk streams an article when its entry embed-gate fires OR any of its annotations drifted: membership (id set), content (the annotation row's stored checksum vs the `.md`), or a pending vector (`annotations_differ`, `crates/xaga-core/src/recovery/embeddings.rs`). All compared against the meta map loaded once before the walk — no per-entry query. The content term is what makes a crash-stranded same-id **note** edit heal at the next startup: the entry checksum excludes annotation content and the id set is unchanged, so no other gate can see it. Every partial state a crash can leave thus differs from the files in a way some gate detects: entry embed-gate, id-set diff, annotation checksum, missing vector, the `items` membership checkpoint, or the unconditional reverse-index rebuild.
-- **Local resources before the entry `.md`** (`save_article`, `crates/xaga-core/src/persistence/articles.rs`, via `persistence::images`). Body-image bytes are written to `<library>/images/<id>/<hash>.<ext>` before Markdown containing `../images/<id>/<hash>` URLs. A successfully acquired favicon atomically replaces `<library>/favicons/<normalized-url-hash>` before the article records that shared reference. Failed favicon acquisition or replacement preserves the article's existing reference and cached bytes. A crash before the Markdown write can leave an unreferenced resource; entry-image GC removes per-entry orphans on the next save, while shared favicon GC is a separate library-wide concern. Reading local content does not initiate acquisition. Remote loading of a new or refreshed article reacquires its favicon; read-only instances may read cached resources but cannot replace them. Entry deletion must delete the `.md` before removing its per-entry image directory.
-- **Out-of-band changes are a recovery concern.** External edits and migrations are not reflected live; recovery reconciles them on its next run. Eventual sync, not live sync.
+- **Entry `.md` before feed `.atom`:** `commit_via_writer` waits for each Entry’s
+  lane before writing the feed lane (`crates/xaga-core/src/persistence/feeds.rs`).
+  A crash between them leaves saved content not yet listed in the feed. The next
+  refresh restores membership from the live feed and skips existing Entry files.
+  Reversing the order could leave membership whose content was never saved.
+- **Topic membership updates in batches:** `reconcile_topic_membership` compares
+  the Topic file with its LanceDB `items` member-ID list, which saves the previous
+  processed membership across restarts. Only this operation writes the member
+  `topics` and Topic `items` columns; Entry and Annotation upserts preserve them.
+  Changes are applied in chunks of 1,024, saving the updated `items` checkpoint
+  after each chunk. Retry handles remaining differences rather than restarting
+  the whole set. A hard kill between a chunk’s deletions and additions can leave
+  partial database state, which recovery repairs
+  (`crates/xaga-core/src/embeddings/pipeline.rs`).
+- **Rebuild the reverse index on every recovery:** Topic membership changes do
+  not modify Entry Markdown or its content checksum. The reverse index must be
+  rebuilt regardless of whether Entry content needs embedding. This repairs both
+  dropped Topic events and interrupted batches (`crates/xaga-core/src/recovery/`).
+- **Annotation color replacement:** `replace_annotation` assigns a new ID when
+  color changes. One atomic frontmatter write removes the old Annotation and adds
+  its replacement, so a crash cannot leave only the removal. The changed ID set
+  lets existing comparisons detect unfinished database work (`annotations_differ`
+  and the `items` check in `sync_entry_row`). Keeping the same ID would evade
+  those checks because the Entry checksum excludes Annotation data.
+  `EntryError::ColorChangeRequiresReplace` refuses that path. `sync_annotations`
+  transfers the vector and `topics` from the old same-checksum row, avoiding
+  unnecessary embedding (`crates/xaga-core/src/persistence/articles.rs`).
+- **Compare all cached entity checksums:** recovery covers Entries, Topics,
+  Feeds, and Annotations. It processes an Article if its Entry needs embedding
+  or an Annotation differs by ID, checksum, or pending vector. Comparisons use
+  one metadata map loaded before the file walk, not a query per Entry
+  (`crates/xaga-core/src/recovery/embeddings.rs`). Annotation checksum comparison
+  detects comment edits that retain the ID and do not affect the Entry checksum.
+  The checks cover content, ID changes, missing vectors, and membership
+  checkpoints; the unconditional reverse-index rebuild covers Topic changes.
+- **Local resources before Entry Markdown:** body images are saved to
+  `<library>/images/<id>/<hash>.<ext>` before Markdown referring to
+  `../images/<id>/<hash>`. A fetched favicon replaces
+  `<library>/favicons/<normalized-url-hash>` atomically before its reference is
+  saved. Failed acquisition or replacement preserves the previous reference and
+  bytes. A crash before Markdown can leave unused resources; per-entry image
+  cleanup runs on the next save, while shared favicon cleanup is a separate
+  library-wide operation. Local reads do not fetch resources. Remote article
+  loads reacquire favicons; read-only instances cannot replace them. Delete the
+  Entry `.md` before its image directory (`save_article` and `persistence::images`).
+- **External changes:** startup recovery reconciles external edits and migrations
+  from files. They are not synchronized live.
 
 ### Queued Annotation vector completion
 
@@ -33,8 +78,7 @@ so same-ID note edits discovered by recovery have current rows before embedding.
 
 Recovery compares cached Annotation IDs against the Annotations actually present
 in the source files. A surviving parent Article does not preserve an orphaned
-Annotation row. The existing complete-source-walk guard still withholds deletes
-when the library cannot be fully read.
+Annotation row. Recovery still withholds deletes when the library cannot be fully read.
 
 ### PDF representation replacement
 
@@ -44,7 +88,7 @@ One normalized URL has one Markdown identity record: an existing
 metadata and user-authored state. When that Entry is absent, the writer
 atomically commits a frontmatter-only `pdfs/{hash12}.md` before atomically
 committing `pdfs/{hash12}.pdf`. A crash can leave a harmless companion without
-bytes; it cannot leave newly committed PDF bytes without reversible identity.
+bytes; it cannot leave newly committed PDF bytes without a Markdown record identifying their source URL.
 A failed companion commit prevents PDF replacement, while a failed PDF commit
 leaves the complete identity record and previous PDF bytes.
 
@@ -61,12 +105,12 @@ Reading-state writes run in the entry's library-writer lane and atomically patch
 `is_unread` without changing tags, annotations, content, or unrelated timestamps.
 Unread is stored as `is_unread: true`; marking read removes the field. Command
 handlers enqueue typed `StatePatch` updates after the file mutation. LanceDB's
-`is_unread` column is derived; cache state changes do not synthesize tag markers.
+`is_unread` column is derived; cache state changes do not create tag markers.
 Recovery compares the cached boolean with the file independently of the content
-checksum, so a crash between the authoritative write and cache update heals.
+checksum, so recovery repairs a crash between the file write and database update.
 
 The CLI performs the explicit 0.9-to-0.10 conversion under the library write lock.
-The disposable CLI owns all legacy-format rules. It converts entries sequentially
+The CLI conversion code owns all legacy-format rules. It converts entries sequentially
 with sibling temporary files, file fsync, atomic rename and directory fsync,
 without using the runtime `LibraryWriter`. Core owns the version manifest and its migration-state writes; the legacy
 content conversion rules remain in the CLI. An existing boolean wins over a conflicting legacy `unread` tag;
@@ -100,7 +144,7 @@ Pin mutations serialize on one library-writer lane and atomically replace
 `pins.yaml`. A crash leaves either the previous complete membership or the next
 complete membership; entity files are untouched. Committed changes are announced
 to the UI without waiting for embedding work. The cache is derived from the store,
-with pin-only drift detected independently of content checksums during recovery.
+with pin-state differences detected independently of content checksums during recovery.
 Missing targets never cause removal of a reference.
 
 The explicit CLI conversion holds the library lock and scans legacy Entry, Topic,
@@ -132,7 +176,7 @@ The command carries the committed optional color in `StatePatch`: an absent
 patch field leaves color unchanged; an explicitly absent value removes it.
 Cache sync compares color values and emits `bookmark:changed` for assignment,
 removal, and color-to-color changes. Recovery compares file color with cached
-color independently of content checksums and repairs crash-stranded changes
+color independently of content checksums and repairs changes not yet copied to the database when a crash occurred
 without recomputing unchanged content embeddings. Queued vector completion
 preserves cached color, reading state, and pin state rather than restoring the
 older state snapshot carried by the embedding job.
@@ -149,8 +193,7 @@ library version after schema conversion, reconciliation, and index creation.
 
 Tag registry mutations serialize on the library writer's `tags` lane and
 atomically replace `tags.yaml`. Article label changes remain in Entry lanes.
-Recovery discovers definitions before indexing assignments and detects tag-only
-drift independently of content checksums; unchanged vectors survive repair.
+Recovery discovers definitions before indexing assignments and detects tag assignment differences independently of content checksums; unchanged vectors survive repair.
 Queued vector completion preserves the row's current tag IDs.
 
 The 0.14 CLI upgrade persists definitions before each batch of cache assignments.
@@ -161,8 +204,8 @@ version before definitions and assignments have been reconciled.
 Pending rename/merge/delete records retain reserved identities, names, and
 file/index checkpoints outside the cache. A pending batch precedes its writes;
 its checkpoint follows successful writes. Revision checks refuse stale checkpoint
-or finalization requests. Newly discovered transitional labels invalidate relevant
-completion/cursors. The [tag storage contract](tags.md#checkpoints-and-retirement)
+or finalization requests. Discovering more labels involved in an active operation invalidates the affected
+completion checks or query cursors. The [tag storage contract](tags.md#checkpoints-and-retirement)
 specifies the records and the evidence required before retirement.
 
 
@@ -172,5 +215,5 @@ advancing progress. A failure retains the batch for replay; recovery resumes it
 before label discovery, including pending files when the cache has been rebuilt.
 Completion releases the name without a source verification pass. Missed source
 labels can then create a new identity; an active deletion reservation prevents
-that recreation. Queued snapshots discard retired IDs and clean active deleting
-labels before removing their cache candidacy. See [runtime deletion](tags.md#runtime-deletion).
+that recreation. Queued snapshots discard retired IDs and remove labels belonging to an active deletion before dropping the affected rows
+from its candidate set. See [runtime deletion](tags.md#runtime-deletion).

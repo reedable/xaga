@@ -16,7 +16,7 @@ If the clients were pooled or made long-lived "for performance": session tickets
 
 - **Ephemeral data stores.** Loader windows are incognito by default; only user-allow-listed domains get a persistent store, and those are segregated per domain (`domain_store_id`), so sites cannot correlate visits through shared storage.
 - **Kill after capture.** The webview is closed as soon as the page's HTML is delivered, discarding cookies, HTTP cache, script state, and WebKit's own TLS session state along with it.
-- **The HTTP cache is a tracking surface, not just a performance feature.** Cached responses carry validators (`ETag`, `Last-Modified`) that the webview would echo back on revalidation — the same server-writable read-back channel as conditional GET, just operated by WebKit instead of by us.
+- **Cached validators can identify a returning client.** Cached responses carry validators (`ETag`, `Last-Modified`) that the webview would echo back on revalidation — WebKit can therefore return server-chosen identifiers on later requests, as a conditional-GET client would.
 
 If loader webviews were reused across article loads: cookies, cache validators, and script-observable state would accumulate across sites and across time within the reused instance, letting both the visited sites and any embedded third parties correlate reads that are currently isolated per-load.
 

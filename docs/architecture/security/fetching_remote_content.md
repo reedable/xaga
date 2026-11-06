@@ -4,7 +4,7 @@ How Xaga secures the _network_ side of loading remote content — feeds, article
 
 Code: `crates/xaga-core/src/network_proxy.rs` (the proxy), `src-tauri/src/article_loader.rs` (loader webview), `src-tauri/src/commands/articles.rs` (PDF persistence and presentation), `src-tauri/src/commands/feeds.rs` (feed fetch), `src-tauri/src/fetch_client.rs` (client factory), `src-tauri/src/lib.rs` (wiring).
 
-## Intent
+## Network requirements
 
 Three invariants govern every outbound request:
 
@@ -140,7 +140,7 @@ The resolver is injectable (`HostResolver` trait) so tests can simulate DNS — 
 
 ### Plaintext HTTP enforcement
 
-The `http_allowed` setting (default `false`) is enforced in the proxy, not in the clients: when off, absolute-form `http://` requests are refused with status `HTTP_BLOCKED_STATUS` (470, defined in `persistence/feeds.rs`) and a plain-text explanation body. Because every consumer dials through the proxy, this one refusal point covers the feed client, the loader webview, its subresources, and every redirect hop — a `https → http` downgrade redirect from any client arrives as absolute-form http and is refused. The non-standard status lets fetch paths distinguish "blocked by the user's own setting" from a real server 4xx: `fetch_xml` maps it to `FeedError::HttpBlocked`, and the webview surfaces the explanation body. The proxy holds the setting handle and reads it per request; it starts before settings load, and the value is `false` (blocked) until seeded.
+The `http_allowed` setting (default `false`) is enforced in the proxy, not in the clients: when off, absolute-form `http://` requests are refused with status `HTTP_BLOCKED_STATUS` (470, defined in `persistence/feeds.rs`) and a plain-text explanation body. For requests routed through the proxy, this check applies to the feed client, loader webview, subresources, and redirect hops — a `https → http` downgrade redirect from any client arrives as absolute-form http and is refused. The non-standard status lets fetch paths distinguish "blocked by the user's own setting" from a real server 4xx: `fetch_xml` maps it to `FeedError::HttpBlocked`, and the webview surfaces the explanation body. The proxy holds the setting handle and reads it per request; it starts before settings load, and the value is `false` (blocked) until seeded.
 
 ### CONNECT port policy
 
@@ -163,13 +163,13 @@ Every outbound consumer:
 
 On the reqwest fetch paths, a request carries nothing about the app or the user beyond what the connection itself requires. By default a request sends:
 
-- **No `User-Agent`.** The request names neither the app nor its version — the header whose value would otherwise advertise exploitable versions to every polled host. Omission is spec-compliant (RFC 9110 makes the header a SHOULD, not a MUST) and matches the default shape of the client class the requests belong to.
+- **No `User-Agent`.** The request names neither the app nor its version — the header whose value would otherwise advertise exploitable versions to every polled host. Omission is spec-compliant (RFC 9110 makes the header a SHOULD, not a MUST) and matches the default behavior of these clients.
 - **No `Accept-Encoding`.** Nothing is negotiated and responses are never decompressed; the bytes counted against `feed_max_body_bytes` are exactly the bytes on the wire. A request that asks for nothing discloses nothing about the build. (Opt-in: `gzip_allowed`, below.)
 - **No `Referer` on redirect hops**, so redirect targets don't learn the originating feed URL. (Opt-in: `referer_allowed`.)
 - **No cookies** — the clients have no cookie jar, so there is no cross-fetch state a host could use to correlate requests.
 - **No conditional-GET validators.** `ETag`/`If-Modified-Since` are not sent: validators are a server-writable tracking channel — see [performance_tradeoff.md](performance_tradeoff.md).
 
-Scope: this covers the reqwest paths (feed XML). The article loader webview sends WebKit's platform-default UA — the genuine identity of the engine making that fetch, consistent with the "everything carried is true" intent.
+Scope: this covers the reqwest paths (feed XML). The article loader webview sends WebKit's platform-default UA — the genuine identity of the engine making that fetch, without claiming to be a different browser.
 
 ### Encoding negotiation
 
@@ -199,7 +199,7 @@ Fetch behavior that trades an invariant against UX is exposed as a setting whose
 
 Every setting above defaults to its secure state, with one exception: **the `max_redirects` default is 3, not 0.** The most secure default is 0 — if a URL does not load in one shot, no redirect is followed. The default of 3 serves UX, not security, and violates docs/principles/secure_by_default.md. Any change to this default, or to the principle, must revisit this record.
 
-## Fetch-adjacent hardening in the loader
+## Additional loader protections
 
 The proxy controls _where_ requests can go; the loader adds controls on _what_ gets loaded and what the loaded page can do:
 
@@ -267,7 +267,7 @@ native close decision, JavaScript recapture, and reader confirmation/save flow.
 
 ## Limits
 
-Places where the invariants are not fully upheld:
+Limits on what these checks establish:
 
 - Proxy behavior is a property of the bundled app; `tauri dev` runtime checks are not representative for webview-level policies (see the CSP note in [handling_persisted_content.md](handling_persisted_content.md)).
 
@@ -276,7 +276,7 @@ The macOS native policy has a GUI smoke test: `cargo test -p xaga --test webview
 ## Native resource downloads
 
 `resource_download.rs` owns app-generated temporary staging paths and the
-explicit `ByteValidator` boundary. It performs no network requests and no
+`ByteValidator` validation interface. It performs no network requests and no
 library writes. A consumer supplies a validator and a byte limit. Successful
 transport alone cannot release content: the staged regular file is read with a
 cap and the validator must return accepted output. Server filenames and callback
@@ -292,7 +292,7 @@ without a pending consumer are rejected. Renderer callbacks cannot replace a
 capture while its native download is active. The callback may report a redirected URL, as
 verified on macOS. It is not proof of the initiating frame. During the favicon
 phase the first accepted candidate must pass the image validator regardless of
-its response MIME type, disposition, URL, or filename; a PDF-shaped response is
+its response MIME type, disposition, URL, or filename; a response containing PDF bytes is
 rejected as an image and cannot reach PDF persistence or presentation. Favicon
 rejection returns the already captured article without favicon data. The original
 requested favicon URL remains storage identity. Completion is matched to the accepted
@@ -312,7 +312,7 @@ only that local reference in the article. A successful later remote load
 atomically replaces the same identity; acquisition failure preserves the cached
 resource. PDF validation remains separate.
 
-The request-purpose boundary is covered at both layers: the ordinary Rust suite
+Tests verify validator selection in both Rust and native WebKit: the ordinary Rust suite
 injects PDF bytes into a production favicon download and asserts that article
 capture survives without favicon or PDF output; the macOS native-download smoke
 case `favicon-pdf` verifies the same image-validator selection for a real
@@ -337,7 +337,7 @@ process crashes may leave OS-temporary remnants. Automatic crash-recovery cleanu
 is not implemented. Decoding runs off the native UI thread; late results after a
 load has ended are discarded rather than persisted.
 
-The PDF consumer uses the shared validator contract to enforce a `%PDF-` prefix
+The PDF consumer uses the shared validator interface to enforce a `%PDF-` prefix
 and a 64 MiB limit, then commits accepted bytes through the library writer.
 Xaga enables the local Wry PDF response-routing feature by default on macOS.
 Local reuse, presentation, and the patch policy are described in
@@ -384,7 +384,7 @@ not navigate a visible article window away from the user's page.
 For a displayed image document, the loader reads original bytes with a bounded
 same-origin fetch of the final document URL (`credentials: omit`, `force-cache`).
 This can issue an additional request when the response is not reusable from
-cache. It avoids cross-origin article-page readback. Native downloads use the same temporary staging boundary with
+cache. It avoids cross-origin article-page readback. Native downloads use the same temporary staging and validation process with
 an image consumer. Both paths pass through `ImageValidator`; renderer-supplied
 MIME is not trusted as proof of format. The `receive_image` callback requires the
 invoking loader's matching request ID and image purpose, and rechecks ownership

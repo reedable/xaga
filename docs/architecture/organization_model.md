@@ -6,13 +6,13 @@ path already conforms.
 
 ## Collections and identity
 
-Collection is the common abstraction for Feed, Topic, and Site. Membership may
-be supplied or derived. ManagedCollection describes Feed and Topic: each has its
-own identity and managed lifecycle independent of its current members. Managed
-does not mean every member is selected manually.
+`Collection` is the shared browsing type for Feed, Topic, and Site. Its members
+may be saved explicitly or calculated from other data. `ManagedCollection`
+describes Feed and Topic: each has its own saved record, ID, and lifecycle,
+independent of its current members. “Managed” does not mean every member is
+selected manually.
 
-Site is a Collection derived from article hostnames, without an independent
-source-of-truth record or persisted membership list. Its normalization rules are
+Site is a Collection derived from article hostnames, without its own saved record or membership list. Its normalization rules are
 specified in [Sites](sites.md). UI `Site.id` holds that normalized hostname,
 explained by a code comment and the platform mapping, without a duplicate UI
 hostname field. Backend hostname naming remains unchanged. Do not fabricate
@@ -27,8 +27,8 @@ typed member references for Feed and Topic. Loaded references may differ from
 authoritative counts. Guards require the appropriate kind and structural shape;
 an article carrying shortcut sorting counts does not become a Collection.
 
-Common collection selection dispatches to Feed, Topic, or Site scope and retains
-the active filter. Managed editing remains specific to Feed and Topic; Site
+Selecting a collection opens the corresponding Feed, Topic, or Site list and
+retains the active filter. Managed editing remains specific to Feed and Topic; Site
 Settings controls its pin. Built-in filter shortcuts and article reading scopes
 use their own navigation operations. Rust represents managed membership through
 Feed/Topic fields and derived Site summaries through `SiteSummary`, without a
@@ -37,9 +37,8 @@ trait supplies identity and title; ManagedEntity extends Entity with lifecycle
 accessors. Countable is independent of either trait.
 
 Derived domain types and APIs use the Entity vocabulary: ListEntity,
-RankedEntity, EmbeddedEntity, EntityFilter, and EntitySort. The list projection
-is `Entry | PartialAnnotation` in TypeScript and a flat ListEntity record in
-Rust. Code uses `selectEntity`, `listAllEntities`, and `list_all_entities` for
+RankedEntity, EmbeddedEntity, EntityFilter, and EntitySort. List results use `Entry | PartialAnnotation` in TypeScript and a flat
+`ListEntity` record in Rust. Code uses `selectEntity`, `listAllEntities`, and `list_all_entities` for
 the corresponding operations.
 
 Storage boundaries retain the existing topic frontmatter `items:` key and
@@ -61,9 +60,8 @@ Annotations; the domain Reference also represents Notes.
 
 ## Pins and Shortcuts
 
-Pinning gives a navigation target access through Shortcuts. Library-scoped YAML
-stores typed references centrally, rather than placing pin ownership in target
-files. References contain an entity type and stable ID; Site references store
+Pinning makes an article or collection available through Shortcuts. Library-scoped YAML
+stores typed references centrally, rather than writing pin state into the target’s files. References contain an entity type and stable ID; Site references store
 the normalized hostname, mapped to UI Site identity. Titles and counts are
 resolved rather than copied into storage.
 
@@ -209,10 +207,11 @@ Remove a deleted tag from active selection without clearing the current list.
 The next explicit navigation/filter change refreshes membership. Removing an
 assignment in Inspector chips never deletes the tag definition.
 
-## Mutation and release contracts
+## Writing changes and releasing storage formats
 
-Use the library write right and writer serialization for authoritative changes;
-carry typed committed intent to index/UI consumers. Preserve read-only behavior
+Hold the library write lock and use writer serialization for saved changes.
+After a write succeeds, pass its action and saved values to the index and UI as
+typed data. Preserve read-only behavior
 and make library-wide operations safe to interrupt and retry at the declared
 [design scale](design_scale.md). Storage-model changes require a minor-version
 increment during 0.x and an explicit CLI upgrade where conversion is needed.

@@ -30,7 +30,7 @@ remain after migration.
   dispatches only image, icon, and PDF consumers. Extend the Wry response-policy
   override for model requests, including renderable JSON companion files; select
   validation from the native request purpose and manifest, not the response name.
-- Adapt the injectable `ByteValidator` staging boundary for model files. Its current
+- Adapt the injectable `ByteValidator` staging and validation interface for model files. Its current
   `finish` reads the whole file into memory and deletes staging after validation;
   support file-based checksum validation and transfer of accepted staged files to
   the model installer without losing the existing bounded-memory behavior.
@@ -39,7 +39,7 @@ remain after migration.
   using the loader timeout mechanism; the article deadline is not a model-download
   budget. Release staging and the account lease on failure or cancellation.
 - Connect loader diagnostics and completion errors to model status through
-  `DomainEvent` → the Tauri event funnel → platform events and UI. Existing loader
+  `DomainEvent` → the shared Tauri event handler → platform events and UI. Existing loader
   diagnostics do not automatically provide model readiness, installation errors,
   service-start errors, or a retry control.
 - Reuse or deliberately replace the startup-status delivery channel that exists
@@ -71,7 +71,7 @@ remain after migration.
 - [Article loader lifecycle](../../../src-tauri/src/article_loader.rs)
 - [Wry navigation policy](https://github.com/reedable/wry/blob/566f7b984147d58e05e69c8dcf8cf6336cc465bb/src/wkwebview/navigation.rs)
 - [Domain events](../../../crates/xaga-core/src/events.rs)
-- [Tauri event funnel](../../../src-tauri/src/events.rs)
+- [Shared Tauri event handler](../../../src-tauri/src/events.rs)
 - [Platform events](../../../src/platform/events.ts)
 - [Model trust](../../../docs/architecture/security/embedding_model_trust.md)
 - [Remote content policy](../../../docs/architecture/security/fetching_remote_content.md)

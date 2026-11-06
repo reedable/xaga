@@ -8,7 +8,7 @@ user-facing error message.
 
 ## Notification lifecycle
 
-The shared error sink queues accepted notifications in arrival order and presents
+The shared error-notification handler queues accepted notifications in arrival order and presents
 one toast at a time. Each notification retains its message, severity, and
 optional diagnostic ID. Later errors and image/favicon warnings do not replace
 the current notification or its Details link. Existing favicon deduplication and
@@ -27,17 +27,17 @@ attempt ends. Saved content stays displayed during retrieval and on retrieval
 failure, including unsupported replacement downloads. Navigation cancels the
 frontend attempt; its completion cannot reset another article's reload status.
 
-## Collection and ownership
+## Collecting and storing diagnostic records
 
-`src-tauri/src/article_diagnostics.rs` owns the native history and log sink.
+`src-tauri/src/article_diagnostics.rs` maintains native history and writes diagnostic logs.
 Its command adapters live in `src-tauri/src/commands/articles.rs`.
 `src/utils/ArticleLoadAttempt.ts` carries an attempt through frontend work;
-shared diagnostic payloads live in `src/types.ts`, and the platform port exposes
+shared diagnostic payloads live in `src/types.ts`, and the `Platform` interface exposes
 `createArticleDiagnostic`, `getArticleDiagnostic`, and `addArticleDiagnosticEvent`.
 `ArticleDiagnosticsDialog` owns presentation and copying under `components/dialogs`.
 
 `useContentLoader`, `useArticles`, and `ArticleReader` identify lookup, fetch,
-extraction, save/readback, and reader-preparation boundaries. `entryWorker.ts`
+extraction, save/readback, and reader-preparation steps. `entryWorker.ts`
 reports its parse, Readability, image restoration, sanitization, and Markdown
 phases. Fresh retries receive new IDs.
 
@@ -214,7 +214,7 @@ When a saved icon reference is remote or its local bytes cannot be read, the
 warning is: “The site icon couldn’t be loaded. Reloading the article will also
 retry loading its icon.” No reference alone is not treated as a load failure.
 Remote references remain excluded from toolbar image sources. Notifications
-are deduplicated by article URL for the lifetime of the error-sink provider
+are deduplicated by article URL for the lifetime of the error-notification provider
 (the app session); the first warning is retained for that URL. These warnings
 make no claim about article availability or the validity of its content.
 

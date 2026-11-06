@@ -10,28 +10,28 @@ const TRAINING = {
         "title": "From discovery to insight",
         "objective": "Explain what Xaga is designed to help its user achieve.",
         "paragraphs": [
-          "Xaga is a Personal Knowledge Management tool: a place to save material, read it, connect it to what you already know, and develop your own insights. Receiving an article before everyone else is not its goal.",
-          "When assessing a product idea, ask how it helps that process. Bringing in more articles may be useful, but the number received does not tell you whether the reader understands more. Explain how a proposed feature helps someone read, interpret, connect, or revisit material.",
-          "The README commits Xaga to privacy and accessibility. It also states a limit: protecting how articles are fetched and stored does not establish whether they are true. The reader still has to judge their claims."
+          "Xaga helps you save material, read it, connect it to what you already know, and develop your own insights. This is the purpose of its Personal Knowledge Management workflow.",
+          "A proposed feature should help with some part of that process. Receiving more articles or opening them faster may be useful, but those numbers alone do not show that the reader understands more. Ask what the feature helps someone learn or connect.",
+          "Privacy and accessibility are product requirements. Xaga protects how material is fetched and stored, but those protections cannot establish whether an article is true. The reader still needs to judge its claims."
         ],
-        "example": "A proposed “most articles opened today” badge measures activity. Before treating it as success, explain how it would help the reader understand or connect material.",
+        "example": "You propose a badge for “most articles opened today.” Before choosing that measure of success, ask whether opening more articles helps the reader understand or connect them.",
         "questions": [
           {
             "prompt": "Which outcome best matches Xaga’s stated purpose?",
             "answers": [
               {
                 "text": "A reader connects an article to prior knowledge and develops an insight.",
-                "feedback": "Understanding and connection are the purpose described in the README.",
+                "feedback": "Reading, connecting ideas, and developing understanding are the outcomes described in Xaga’s README.",
                 "correct": true
               },
               {
                 "text": "The reader receives every article before anyone else.",
-                "feedback": "Being first is explicitly outside the stated goal.",
+                "feedback": "Being first to receive an article does not establish that the reader understands it.",
                 "correct": false
               },
               {
                 "text": "The app guarantees that every saved article is true.",
-                "feedback": "Xaga protects mechanics, not the truth of ideas.",
+                "feedback": "Xaga protects the handling of content; it cannot guarantee the truth of every article.",
                 "correct": false
               }
             ]
@@ -74,11 +74,11 @@ const TRAINING = {
         "title": "Feed, Topic, and Site",
         "objective": "Explain how Feeds, Topics, and Sites group articles.",
         "paragraphs": [
-          "A Feed brings articles into the library. A Topic groups material that belongs together. Both have their own saved records. In the code, they share a type called `ManagedCollection`: each exists independently of the articles it currently contains.",
-          "Sites lets you browse articles by website. Xaga gets the website name from each article’s address and groups the articles automatically. The same Site can include articles from different feeds. You do not create a Site or maintain its article list yourself.",
-          "The code uses `Collection` for the information needed to browse a Feed, Topic, or Site: its ID, title, and article counts. This does not mean all three are stored in the same way. The organization-model document describes the intended design and notes that some code changes may still be outstanding; check the relevant behavior document and code before claiming a feature is available."
+          "A Feed brings articles into your library. A Topic lets you group material that belongs together. You add Feeds and create Topics; each has its own saved record.",
+          "Sites provides another way to browse: by the website an article came from. Xaga reads the website name from each article’s web address and groups articles automatically. Articles from different feeds can appear under the same Site.",
+          "These groups answer different questions. A Feed tells you which subscription supplied an article. A Topic groups related material. A Site brings together articles from the same website. You do not have to create a Site, subscribe to its feed, or add articles to it manually."
         ],
-        "example": "Articles at https://www.example.com/story and https://example.com/other appear under example.com. Xaga treats the leading www. as the same website. An article at https://news.example.com/story appears under news.example.com instead.",
+        "example": "Two feeds bring in articles from example.com. Both articles appear under example.com in Sites. Xaga also treats www.example.com as example.com, but keeps news.example.com separate.",
         "questions": [
           {
             "prompt": "In Xaga, Sites lets you browse articles by website. Two different feeds bring in articles from example.com. When you open example.com in Sites, what should you see?",
@@ -139,25 +139,25 @@ const TRAINING = {
       {
         "id": "markings",
         "level": "Introduction",
-        "title": "Read state, bookmarks, and tags",
+        "title": "Read status, bookmarks, and tags",
         "objective": "Distinguish read status, bookmark color, and tags.",
         "paragraphs": [
-          "An article can be read or unread. This is separate from its tags and bookmark. The unread count beside a Feed, Topic, or Site counts its unread articles; it does not mean the collection has its own reading state.",
-          "Bookmarking an article gives it a color: Red, Orange, Yellow, Green, Blue, or Violet. Changing the color keeps it bookmarked. Removing the color removes the bookmark. Xaga does not store an extra yes/no bookmark value alongside that color.",
-          "Tags are labels you can add to organize articles. An article can have several tags. Removing a tag from one article leaves the tag available for other articles. Saved includes both bookmarked articles and annotations, so it contains more than bookmarked articles alone."
+          "Read status, bookmarks, and tags answer different questions about an article. Read or unread records reading state. A bookmark marks an article with a color. Tags are labels you choose to organize it.",
+          "Bookmark colors are Red, Orange, Yellow, Green, Blue, and Violet. Changing the color keeps the article bookmarked; removing the color removes the bookmark. Xaga uses the color itself to record the bookmark rather than saving an extra yes/no value.",
+          "An article can have several tags. Removing Research from one article leaves the Research tag available elsewhere. Saved includes bookmarked articles and annotations—highlighted passages with optional comments—so Saved is broader than a list of bookmarked articles."
         ],
-        "example": "An unread article can be bookmarked Violet and tagged Research at the same time. Marking it read should not remove either the color or the tag.",
+        "example": "An unread article can be bookmarked Violet and have a tag named Research at the same time. Marking it as read should remove neither the bookmark nor the tag.",
         "questions": [
           {
-            "prompt": "A bookmarked article changes from Blue to Violet. What happens?",
+            "prompt": "You change an article’s bookmark color from Blue to Violet. What happens?",
             "answers": [
               {
-                "text": "It remains bookmarked with Violet as its color.",
+                "text": "The article stays bookmarked, now in Violet.",
                 "feedback": "Giving the article another bookmark color keeps it bookmarked.",
                 "correct": true
               },
               {
-                "text": "It becomes unbookmarked until a flag is set.",
+                "text": "The article becomes unbookmarked until you turn bookmarking on again.",
                 "feedback": "The color itself records the bookmark; there is no separate yes/no value to switch on.",
                 "correct": false
               },
@@ -172,17 +172,17 @@ const TRAINING = {
             "prompt": "An article has a tag named “Research”. You remove that tag from this article. What should happen?",
             "answers": [
               {
-                "text": "The article no longer has the Research tag. The tag remains available for other articles.",
+                "text": "This article loses the Research tag. The tag remains available elsewhere.",
                 "feedback": "Removing a tag from one article does not delete the tag or the article. Other articles keep their tags.",
                 "correct": true
               },
               {
-                "text": "Remove the Research tag from every article.",
+                "text": "Every article loses the Research tag.",
                 "feedback": "You removed the tag from only this article. Deleting the tag everywhere is a separate action that requires confirmation.",
                 "correct": false
               },
               {
-                "text": "Remove the article’s bookmark as well.",
+                "text": "This article loses both the Research tag and its bookmark.",
                 "feedback": "Removing a tag does not change whether the article is bookmarked.",
                 "correct": false
               }
@@ -207,12 +207,12 @@ const TRAINING = {
       {
         "id": "context",
         "level": "Applied",
-        "title": "Preserve the reading context",
+        "title": "Keep your place while reading",
         "objective": "Recognize when the list changes and when only an article’s details change.",
         "paragraphs": [
-          "When you open an unread article and Xaga marks it as read, it stays in the list you were browsing. Its appearance changes to show that it has been read. Changing or removing a bookmark also leaves the article in the current list, including a Saved list.",
-          "Choosing another list or changing a filter asks Xaga for a new set of articles. Keeping the current list stable while you read lets you see what you just opened without losing your place.",
-          "Removing a shortcut does not close the list or article you opened through it. Removing a shortcut and deleting the article or collection are different actions; the rule about keeping your place does not specify what happens when content itself is deleted."
+          "When you are looking at unread articles and open one, Xaga marks it as read. It changes how the article appears but leaves it in the list. You can see what you just opened and continue without losing your place.",
+          "The same rule applies to bookmark changes. Removing a bookmark from an article in an open Saved list does not immediately remove the article from that list. Choosing another list or changing a filter asks for a fresh set of matching articles.",
+          "Removing a shortcut also leaves its current list and open article in place. A shortcut is a way to reach content, not the content itself. Deleting an article or collection is a different operation; this rule does not specify deletion behavior."
         ],
         "example": "Look at your unread articles and open the first one. It stays in the list after being marked read. If you later reopen the unread list, Xaga can show a new list that excludes articles you have read.",
         "questions": [
@@ -220,7 +220,7 @@ const TRAINING = {
             "prompt": "You’re looking at your unread articles and open one to read it. Xaga marks it as read. Should it disappear from the list, or stay visible?",
             "answers": [
               {
-                "text": "Keep the article in the list, but show that it has been read.",
+                "text": "Keep the article in the list and show that it has been read.",
                 "feedback": "The article stays visible until you ask for a fresh list, for example by changing the filter or opening another list.",
                 "correct": true
               },
@@ -230,7 +230,7 @@ const TRAINING = {
                 "correct": false
               },
               {
-                "text": "Ignore the state change until restart.",
+                "text": "Keep showing the article as unread until the app restarts.",
                 "feedback": "The article should show that it has been read.",
                 "correct": false
               }
@@ -274,11 +274,11 @@ const TRAINING = {
         "title": "Shortcuts point to saved material",
         "objective": "Explain what a shortcut saves and what happens when its destination is unavailable.",
         "paragraphs": [
-          "A shortcut points to an article, Feed, Topic, or Site. The library saves these references centrally in `pins.yaml`, rather than changing the article or collection being pinned. Titles and counts are read from the referenced objects. Sorting shortcuts changes their display order, not the saved sequence.",
-          "If Xaga cannot find a shortcut’s destination, it keeps the shortcut and offers Retry and Remove shortcut. It should not say the destination was deleted: a failed read can also make something temporarily unavailable.",
-          "A pinned Site with no articles is still a valid destination and shows zero counts. In a read-only library, you can still open shortcuts and retry unavailable ones, but you cannot remove a shortcut because that changes saved data."
+          "Adding an article, Feed, Topic, or Site to Shortcuts gives you a quick way to open it again. The shortcut points to the existing content; it does not make a copy. The library stores these references in `pins.yaml`.",
+          "If Xaga cannot read a shortcut’s destination, it keeps the shortcut and offers Retry and Remove shortcut. A failed read does not establish that the content was deleted. Keeping the shortcut lets it work again if the content becomes available.",
+          "A Site with no articles is different from unavailable content: it is a valid empty group and shows zero counts. You can open shortcuts and retry unavailable ones in a read-only library, where viewing is allowed but saved changes are refused. Removing a shortcut requires write access."
         ],
-        "example": "A Topic is temporarily unreadable. Keep its shortcut so that it can work again when the Topic becomes readable.",
+        "example": "A Topic cannot be read temporarily. Its shortcut stays visible. Retry tries to find the same Topic again; Remove shortcut removes only that route to it.",
         "questions": [
           {
             "prompt": "A Topic shortcut is still saved, but Xaga cannot currently read the Topic. What should the interface offer?",
@@ -305,17 +305,17 @@ const TRAINING = {
             "answers": [
               {
                 "text": "The shortcut still opens the Site, showing no articles and zero counts.",
-                "feedback": "A Site can remain a valid destination even when it has no articles.",
+                "feedback": "The Site still identifies the website. Having no articles does not prevent you from opening that empty group.",
                 "correct": true
               },
               {
                 "text": "The shortcut becomes permanently broken.",
-                "feedback": "The website can still be opened as an empty Site.",
+                "feedback": "A Site can be empty without being broken. New articles from that website can appear there later.",
                 "correct": false
               },
               {
                 "text": "Xaga should delete the Site’s saved article list.",
-                "feedback": "Sites do not have a separate saved article list; their articles are found from article addresses.",
+                "feedback": "Xaga calculates which articles belong to a Site from their web addresses; there is no separate saved member list to delete.",
                 "correct": false
               }
             ]
@@ -339,12 +339,12 @@ const TRAINING = {
       {
         "id": "tags",
         "level": "Applied",
-        "title": "Tag identity survives a rename",
-        "objective": "Distinguish removing a tag from one article, renaming it, merging it, and deleting it.",
+        "title": "Renaming and merging tags",
+        "objective": "Explain what renaming, merging, and deleting a tag change.",
         "paragraphs": [
-          "Each tag has a permanent ID and a name shown to the user. Renaming the tag keeps that ID. Xaga compares names after removing spaces at either end and converting letters to lowercase. Research and RESEARCH match; straße and strasse do not. Similar-looking names are not necessarily the same tag.",
-          "If you rename a tag to a name already in use, Xaga asks separately whether to merge the two tags. A merge uses the destination name. Internally it keeps the ID with more indexed article assignments; if the counts are equal, it keeps the destination ID. The name shown to the user does not decide which ID survives.",
-          "Merging loses the distinction between articles that had one tag, the other, or both. The confirmation must explain that this cannot be undone. Deleting a tag removes it from articles without deleting the articles. Renames, merges, and deletions save enough progress to resume after interruption. Their completion uses the article index rather than checking every file: a missed file can later cause an old tag name to appear again as a new tag."
+          "A tag has a name and a permanent ID. Renaming it changes the name while keeping it the same tag. Xaga ignores spaces at the start or end and compares names in lowercase. Research and RESEARCH match; straße and strasse remain different because lowercase conversion does not turn ß into ss.",
+          "If you try to rename Research to Notes and Notes already exists, Xaga asks separately whether to merge them. A merge combines their assignments under the name Notes. It loses the distinction between articles that previously had Research, Notes, or both, so the confirmation must explain that this cannot be undone.",
+          "Removing a tag from one article, deleting a tag everywhere, and deleting an article are separate actions. Global tag deletion removes assignments but keeps the articles. Renames, merges, and deletions save progress so they can resume after interruption. They use the article index to find affected files; a file missed by that index can later cause an old tag name to reappear as a separate tag."
         ],
         "example": "You try to rename Research to Notes, but Notes already exists. Xaga should ask whether to merge them and explain the consequences. It must not silently merge them as part of the rename.",
         "questions": [
@@ -407,12 +407,12 @@ const TRAINING = {
       {
         "id": "capabilities",
         "level": "Applied",
-        "title": "Read-only mode and semantic features are separate",
-        "objective": "Distinguish permission to change a library from availability of semantic features.",
+        "title": "Read-only mode is different from unavailable search",
+        "objective": "Distinguish an inability to save changes from an inability to use semantic features.",
         "paragraphs": [
-          "A read-only library lets you view existing data but refuses changes. Whether semantic features work is a separate question. Semantic search finds material by meaning; Related and relevance ranking also depend on the embedding model and its database. Embeddings are numerical representations of content used by those features.",
-          "Embedding startup reports loading, available, or unavailable. While it is loading, the main window waits. If initialization fails, the window opens with the affected features unavailable. Both the model and database must be ready for those features to work.",
-          "The app can open a library read-only because another process is writing to it or because its stored version is missing, different, incomplete, or unreadable. Opening it does not automatically upgrade it. Explain what the user can do and why something is disabled, rather than treating all failures as the same problem."
+          "A read-only library lets you view existing data but refuses saved changes. This can happen because another process holds the library’s write lock or because the stored library version cannot be used for writing by this app. Opening the library does not automatically upgrade it.",
+          "Semantic search finds material by meaning. It uses an embedding model, which turns content into numerical representations, together with an embedding database. Related and relevance ranking also need these resources. Both must be ready before these features can work.",
+          "Write access and semantic features can succeed or fail independently. Semantic search can work in a read-only library. A model failure can disable semantic search while ordinary library changes remain possible. During embedding startup the main window waits; if startup fails, the window opens with the affected features unavailable."
         ],
         "example": "The embedding model fails verification, but the app still has permission to write to the library. Ordinary reading and editing remain available; semantic search and Related do not.",
         "questions": [
@@ -420,7 +420,7 @@ const TRAINING = {
             "prompt": "Can semantic search work while a library is read-only?",
             "answers": [
               {
-                "text": "Yes, if the existing database and query model are ready.",
+                "text": "Yes, if the existing embedding database and model are ready.",
                 "feedback": "Searching existing data does not require permission to change the library.",
                 "correct": true
               },
@@ -475,17 +475,17 @@ const TRAINING = {
       {
         "id": "privacy",
         "level": "Advanced",
-        "title": "Privacy changes are product changes",
+        "title": "A speed improvement can change privacy",
         "objective": "Assess how a loading or performance change could let websites track the reader.",
         "paragraphs": [
-          "Xaga starts with secure settings. If compatibility requires a less secure option, the user controls that choice and is told its consequences. A website failing to load does not authorize the app to relax security settings silently.",
-          "Xaga creates feed-fetching clients for each command and limits the lifetime of article-loading webviews, the embedded browser windows used to load pages. Reusing them could let websites recognize later requests through retained cookies, connections, or other server-provided values. For example, a server can give a client an ETag, a cache validator that the client sends back to check whether content changed. A unique ETag can also identify that client. A proposed speed improvement must account for this privacy cost.",
-          "The network design aims to restrict destinations, reveal as little truthful information as possible, and limit resource use. The fetching document also reports cases where WebKit connects to loopback addresses without using the proxy. Loopback addresses reach the user’s own machine. Do not describe intended protections as proven for every request when these gaps remain."
+          "Xaga’s secure-default rule is to start with secure settings. If a website needs a less secure option to work, the user must control that choice and understand its consequences. A loading failure must not silently relax the settings.",
+          "Faster loading can come at a privacy cost. A website can recognize later requests if the app keeps cookies, connections, or other values the website supplied. One example is an ETag: a server-provided cache value sent back later to ask whether content changed. A unique ETag can also identify a returning client.",
+          "Xaga limits retained state by creating feed-fetching clients for each command and limiting the lifetime of article-loading webviews, its embedded browser windows. Reusing these resources needs a privacy review. Security claims also need evidence: native tests show cases where WebKit reaches loopback addresses on the user’s machine without using the configured proxy. The proxy therefore does not establish complete network isolation."
         ],
-        "example": "A proposal to reuse loader webviews may improve load time. The review must also identify which website-provided values would survive and how they could let a website recognize later visits.",
+        "example": "Keeping an article-loading browser window alive may save startup time. Before accepting that change, identify which website-provided data would survive and whether a website could use it to recognize later visits.",
         "questions": [
           {
-            "prompt": "A proposal would speed up later fetches by keeping server-provided cache validators such as ETags. How should it be reviewed?",
+            "prompt": "A proposal would keep ETag values between feed fetches to avoid downloading unchanged content. How should that change be reviewed?",
             "answers": [
               {
                 "text": "As a performance and privacy trade-off requiring an explicit decision.",
@@ -505,21 +505,21 @@ const TRAINING = {
             ]
           },
           {
-            "prompt": "Which security statement is supported by the fetching document?",
+            "prompt": "Native tests show that some WebKit requests bypass the configured proxy. Which statement is accurate?",
             "answers": [
               {
-                "text": "The proxy enforces its policy on requests it receives, with documented WebKit bypass gaps.",
-                "feedback": "The proxy can check only requests that actually reach it; the documented bypasses remain a limitation.",
+                "text": "The proxy checks requests that reach it, but does not prove all WebKit traffic is contained.",
+                "feedback": "A proxy cannot check a request that bypasses it. The observed bypasses limit the security claim.",
                 "correct": true
               },
               {
-                "text": "All WebKit network traffic is proven to pass through the proxy.",
-                "feedback": "Native diagnostics demonstrate loopback bypasses.",
+                "text": "The proxy’s checks prove that every WebKit request is restricted.",
+                "feedback": "The native tests demonstrate exceptions to that claim: some requests reached the local machine directly.",
                 "correct": false
               },
               {
-                "text": "Successful sanitization guarantees that remote ideas are trustworthy.",
-                "feedback": "Sanitization does not establish truth or network containment.",
+                "text": "Removing unsafe HTML proves that an article’s claims are trustworthy.",
+                "feedback": "HTML sanitization removes unsafe markup. It does not fact-check content or prove network isolation.",
                 "correct": false
               }
             ]
@@ -543,20 +543,20 @@ const TRAINING = {
       {
         "id": "scale",
         "level": "Advanced",
-        "title": "Understand what a performance measurement proves",
+        "title": "Know what a performance result measures",
         "objective": "Tell measured performance apart from estimates and identify what a measurement leaves out.",
         "paragraphs": [
-          "Xaga expects roughly 240–360 thousand articles per year and is designed for around four times that intake: a library containing millions of articles. A small demonstration can show whether an interaction makes sense, but cannot establish performance at that size.",
-          "The design-scale document distinguishes actual measurements from estimates. Some timings cover only database queries and exclude moving results to the UI, creating objects, sorting, and drawing the interface. A database index can find matches quickly while returning a very large set of results still takes time and memory.",
-          "List virtualization means drawing only the list items currently needed on screen. It does not prevent the app from receiving or storing the full query result in memory. Acceptance criteria should identify the operation, library size, number of matches, and which parts were measured. Record assumptions that have not been tested rather than presenting them as established results."
+          "Xaga expects roughly 240–360 thousand articles per year and is designed for around four times that intake: a library containing millions of articles. A small demonstration can show whether an interaction works, but not how it performs with a library that large.",
+          "A performance result is useful only when you know what was timed. A database query might finish quickly while transferring, sorting, and displaying its results takes much longer. The design-scale document separates measurements from estimates and identifies work left out of each measurement.",
+          "List virtualization means drawing only the items needed on screen. It can reduce drawing work while the app still receives and holds every matching result in memory. When assessing a list feature, specify the library size, number of matches, and whether the timing covers the complete user action."
         ],
-        "example": "A query returning a small fraction of 64 thousand database records runs quickly. That does not establish how long the UI takes to display a list drawn from two million matching articles.",
+        "example": "A tag query is quick when it returns a few hundred matches. That does not tell you how the UI behaves when clearing all tag selections returns millions of articles.",
         "questions": [
           {
             "prompt": "Xaga draws only the list items currently needed on screen. What does this limit?",
             "answers": [
               {
-                "text": "The items drawn on screen, but not necessarily the query result or its memory use.",
+                "text": "How many items are drawn, but not necessarily how many results are loaded into memory.",
                 "feedback": "The app can still receive all matching articles from the database.",
                 "correct": true
               },
@@ -611,30 +611,30 @@ const TRAINING = {
       {
         "id": "review",
         "level": "Advanced",
-        "title": "Review a proposal that changes several workflows",
+        "title": "Review a proposal against Xaga’s behavior",
         "objective": "Review a proposal against Xaga’s existing behavior and explain its consequences.",
         "paragraphs": [
-          "Consider a proposal to remove articles from the list as soon as they are read, discard unavailable shortcuts, and merge tags without asking when names match. Each changes an existing rule: keeping your place, retaining a shortcut that may become usable again, or asking before an irreversible merge.",
-          "For each change, identify what the user did and what saved data would change. Moving to another view, removing a tag from one article, renaming a tag, and deleting content have different consequences even when their controls look similar.",
-          "Present the alternatives and consequences to the person who owns the product decision. If a change is approved, update the lasting documentation with the new behavior. Task stories describe work still to do; they should not be the only record of how the product works."
+          "A proposal promises a cleaner interface. It would remove articles from the list as soon as they are read and discard shortcuts with unavailable destinations. It would also merge tags without asking when their names match.",
+          "Each change affects a behavior taught in this track. The first makes the reader lose their place. The second can discard a shortcut to temporarily unreadable content. The third performs an irreversible merge without confirmation. Review those consequences alongside the proposed visual simplicity.",
+          "Explain the alternatives and evidence to the person making the product decision. If a change is approved, update the lasting documentation with its behavior. Task stories describe work still to do and are deleted when finished, so they cannot be the only record of an approved rule."
         ],
-        "example": "For an action affecting many articles, ask what happens to their tags, the open list, read-only access, and saved changes if the operation is interrupted. Assess those consequences alongside how the controls look.",
+        "example": "For an action affecting many articles, ask what changes, what remains visible, whether it works read-only, and what happens if it stops halfway through. A simpler-looking control can still have complicated consequences.",
         "questions": [
           {
-            "prompt": "Which response best reviews the “cleaner interface” proposal?",
+            "prompt": "How should you review the proposal to remove read articles, discard unavailable shortcuts, and merge matching tag names?",
             "answers": [
               {
-                "text": "Explain which three existing behaviors would change and present their consequences for a decision.",
+                "text": "Explain which existing behaviors change and their consequences before a decision is made.",
                 "feedback": "The changes affect what is saved and what the user can keep reading, not just appearance.",
                 "correct": true
               },
               {
-                "text": "Implement it because fewer items in the list always means simpler UX.",
+                "text": "Implement it because fewer visible items always means simpler UX.",
                 "feedback": "Showing fewer things does not by itself justify changing these behaviors.",
                 "correct": false
               },
               {
-                "text": "Keep all implementation details out of the review, including data loss.",
+                "text": "Leave data-loss consequences out of the review because they are implementation details.",
                 "feedback": "Consequences such as irreversible merge are necessary to the decision.",
                 "correct": false
               }
@@ -688,11 +688,11 @@ const TRAINING = {
         "title": "How the UI uses Platform",
         "objective": "Explain how UI components request work from the Rust backend.",
         "paragraphs": [
-          "Xaga’s UI is written in React and TypeScript. Components use the `Platform` interface to request backend operations and listen for events. `TauriPlatform` implements that interface by communicating with the Rust backend and converting the returned data into the objects used by the UI. `main.tsx` creates it and makes it available through `PlatformContext`.",
-          "Components should use `Platform` instead of calling native commands directly. This keeps native communication in one implementation. Add a `Platform` method when a component needs an operation; do not add methods only because they might be useful later.",
-          "A mock implementation could supply sample data without Rust. Starting the Vite server alone does not provide that implementation or replace native startup calls: `main.tsx` also asks Tauri which window is running. A browser-only capture setup would need to handle those dependencies explicitly."
+          "A React component may need to mark an article as read or learn that its bookmark changed. In Xaga, it requests operations and listens for events through the `Platform` interface. The interface declares what the UI can ask for.",
+          "`TauriPlatform` implements those methods by communicating with the Rust backend and converting returned data into UI objects. `main.tsx` creates that implementation and supplies it to components through `PlatformContext`. Keep native communication there rather than adding direct native calls to individual components.",
+          "A TypeScript interface does not implement its methods or supply data by itself. Running the Vite server still leaves Xaga dependent on `TauriPlatform` and native startup calls, including the call that identifies the current window. Running without Rust would require a mock implementation and replacements for those startup calls."
         ],
-        "example": "Follow a bookmark action from a component through `Platform` and `TauriPlatform` to the Rust bookmark command. `Platform` declares the operation; it does not save library data itself.",
+        "example": "To mark an article read, a component calls `Platform.markEntryRead`. `TauriPlatform` sends the request to Rust, where the writer saves the change. The UI interface itself does not write the file.",
         "questions": [
           {
             "prompt": "A React component needs to mark an article as read. How should it request that operation?",
@@ -760,11 +760,12 @@ const TRAINING = {
         "title": "Article summaries, loaded articles, and collections",
         "objective": "Recognize Xaga’s UI types and use their fields according to their meaning.",
         "paragraphs": [
-          "The `Entity` type supplies `id` and `title`. `ManagedEntity` adds fields such as `createdAt` for objects with their own saved record. `Collection` adds article counts and a `__kind` value of feed, topic, or site. Feed and Topic have saved membership lists; Site is calculated from article addresses.",
-          "Entry describes an article’s summary and state. Article adds its loaded body and annotations while keeping `__kind`: entry. Annotation describes a highlighted passage and its optional comment; its content field is that comment, not a separate Note object. These distinctions determine which article or annotation an action affects.",
-          "Type guards are functions that check whether an object has the expected fields and `__kind` value. The docs call `__kind` a brand: it distinguishes roles that can have similar fields. A brand alone is not enough. Article counts also do not turn an Entry into a Collection. Use the supplied total counts rather than `members.length`, because the loaded member list can be incomplete."
+          "Xaga separates an article summary from its loaded contents. `Entry` includes information such as its ID, title, URL, and reading state. `Article` adds the body and annotations. Loading the body does not change the object’s role: both use `__kind: \"entry\"`.",
+          "`Annotation` describes a highlighted passage and its optional comment. Its `content` field stores that comment. This is different from the separate `Note` type. An action on an annotation must identify that annotation, not just its containing article.",
+          "Collections share browsing information without sharing every storage detail. `Entity` provides `id` and `title`; `ManagedEntity` adds fields such as `createdAt` for independently managed records. Feed and Topic have their own records and member lists. Site is calculated from article addresses and does not need an invented creation date or stored member list.",
+          "A type guard checks the object’s fields together with its `__kind` value where required. The kind alone is not enough. A loaded member list can also be incomplete: use `entryCount` for the supplied total, rather than counting `members.length`."
         ],
-        "example": "A Site card can use `id`, `title`, `entryCount`, and `unreadCount`. Do not invent a `createdAt` date or a `members` list just to make it look like a Topic object.",
+        "example": "A Feed object has ten articles loaded in `members`, while `entryCount` reports 300. Show 300 as its article count. The ten loaded references do not establish the total number of articles.",
         "questions": [
           {
             "prompt": "A Feed’s loaded `members` list has ten articles, but `entryCount` reports more. Which value should its article count show?",
@@ -787,21 +788,21 @@ const TRAINING = {
             ]
           },
           {
-            "prompt": "What distinguishes an Article from an Entry summary in the UI types?",
+            "prompt": "What does an `Article` object add to an `Entry` summary?",
             "answers": [
               {
-                "text": "It keeps the entry kind and adds content and annotations.",
-                "feedback": "An Article is an Entry with its body and annotations loaded.",
+                "text": "The article body and annotations, while keeping `__kind: \"entry\"`.",
+                "feedback": "An Article is an Entry with its content loaded. Its role stays entry.",
                 "correct": true
               },
               {
-                "text": "It replaces the entry kind with an article kind.",
-                "feedback": "The Article type still has `__kind`: entry.",
+                "text": "A new article kind that replaces `__kind: \"entry\"`.",
+                "feedback": "Loading the body does not change the kind. Article still uses the entry kind.",
                 "correct": false
               },
               {
-                "text": "It has a `title`.",
-                "feedback": "Other `Entity` objects have titles too.",
+                "text": "A `title` field, which an Entry summary never has.",
+                "feedback": "Entry summaries already have a title. The added fields are content and annotations.",
                 "correct": false
               }
             ]
@@ -825,50 +826,50 @@ const TRAINING = {
       {
         "id": "motion",
         "level": "Introduction",
-        "title": "Build the static experience first",
+        "title": "Make the interface work without animation",
         "objective": "Apply Xaga’s motion convention to controls and overlays.",
         "paragraphs": [
-          "Xaga’s base interface must work without animation. Add animation only inside the CSS media query `prefers-reduced-motion: no-preference`. A browser that does not support that query, or a user who requests reduced motion, gets the complete static interface.",
-          "The reload icon follows this rule. Its base styles set animation to none, and the no-preference query adds spinning while reload is in progress. The control’s `title` and screen-reader status explain that work is running even when the icon does not spin.",
-          "The same rule applies to transitions and third-party components. The Inspector drawer and tab indicator must respect the motion preference. If a component cannot do that, explain its limitation and the alternatives rather than relying on its default animation."
+          "Start with an interface that works without animation. In Xaga, base styles must show a complete, usable state. Add animation only inside `prefers-reduced-motion: no-preference`, the CSS query that matches when the user has not requested reduced motion.",
+          "This order matters. If a browser does not support the query, it keeps the static base styles. If you animate by default and disable animation only for reduced motion, an unsupported query can leave animation running.",
+          "The reload control shows how to apply the rule: its base styles disable animation, the query adds spinning, and its title and screen-reader status still say “Reload in progress...”. Apply the same approach to drawer movement, tab transitions, and animations supplied by component libraries."
         ],
-        "example": "A reload control can show “Reload in progress...” without animation. A spinner adds another cue but cannot be the only indication that the operation is running.",
+        "example": "Turn off motion and activate Reload. The reader should still know that work is in progress. The static status text must provide that information without relying on a spinning icon.",
         "questions": [
           {
-            "prompt": "Which CSS approach follows Xaga’s convention?",
+            "prompt": "You add a busy animation to Xaga’s Reload control. Which CSS approach follows the motion convention?",
             "answers": [
               {
-                "text": "Static base styles with animation enabled only inside no-preference.",
-                "feedback": "Unsupported media queries then retain a usable static state.",
+                "text": "Start without animation and enable it only inside `prefers-reduced-motion: no-preference`.",
+                "feedback": "The interface then works without motion for both reduced-motion users and browsers that do not support the query.",
                 "correct": true
               },
               {
-                "text": "Animation by default, disabled only under reduce.",
-                "feedback": "An unsupported feature would retain animation.",
+                "text": "Animate by default and disable it only inside `prefers-reduced-motion: reduce`.",
+                "feedback": "If the browser does not support that query, the default animation remains enabled. Xaga requires a static base.",
                 "correct": false
               },
               {
-                "text": "Use JavaScript to force animation for all users.",
-                "feedback": "That bypasses the user’s motion preference.",
+                "text": "Use JavaScript to force animation regardless of the motion preference.",
+                "feedback": "That would ignore the user’s motion preference instead of honoring it.",
                 "correct": false
               }
             ]
           },
           {
-            "prompt": "What must remain when a busy animation is absent?",
+            "prompt": "The user has requested reduced motion, so Reload does not spin. How should they know it is still running?",
             "answers": [
               {
-                "text": "Status text that works without animation, including screen-reader feedback.",
+                "text": "Status text should explain that reload is in progress, including feedback for screen readers.",
                 "feedback": "Motion cannot be the only communication channel.",
                 "correct": true
               },
               {
-                "text": "No visible indication until completion.",
+                "text": "Nothing should indicate progress until the operation finishes.",
                 "feedback": "That leaves the static interface incomplete.",
                 "correct": false
               },
               {
-                "text": "A permanently disabled control with no explanation.",
+                "text": "The control should be disabled without any explanation.",
                 "feedback": "Disabling alone does not explain the operation’s state.",
                 "correct": false
               }
@@ -893,14 +894,14 @@ const TRAINING = {
       {
         "id": "routing",
         "level": "Applied",
-        "title": "The list and the selected article are different state",
+        "title": "Keep list navigation separate from article selection",
         "objective": "Keep the current list and the selected article separate when handling navigation.",
         "paragraphs": [
-          "The router tracks the list being browsed separately from the article or annotation selected in it. The code calls the list’s defining collection or article its scope. For an article shortcut, `articleScopeId` identifies the article whose list is open; `entryId` and `annotationId` identify what the reader is showing.",
-          "Reading-state and bookmark-color events update articles already shown without changing which articles are in the list. Removing a shortcut also leaves the open list in place. Choosing another collection or changing a filter starts a new query. Reloading the list for every event would lose these distinctions.",
-          "A query result must still match the view that requested it. If the user changes the selected tags while a query is running, its old result must not replace the new list. Selected tag IDs belong to navigation history, so Back and Forward restore them; they are not saved as library settings."
+          "Opening an article and choosing a different list are separate actions. A list can continue showing the articles you were browsing while the reader displays one selected article or annotation. Marking an article read or changing its bookmark updates it without rebuilding that list.",
+          "The router stores these choices separately. For an article shortcut, `articleScopeId` identifies the article whose list is open. `entryId` and `annotationId` identify the current reader selection. Selecting an annotation should move the reader to its passage without changing which article the list belongs to.",
+          "Queries must follow the latest navigation. If a previous tag query finishes after the user changes their selection, ignore its result. Back and Forward restore selected tag IDs through navigation history; those IDs are not saved as library preferences."
         ],
-        "example": "Open a pinned article’s list, then choose one of its annotations. The reader opens the article at that passage. The list still shows the pinned article and its annotations.",
+        "example": "Open a pinned article and select an annotation in its list. The reader moves to that passage, while the list still contains the same article and its annotations.",
         "questions": [
           {
             "prompt": "Which action should leave the same articles in the list you are browsing?",
@@ -923,7 +924,7 @@ const TRAINING = {
             ]
           },
           {
-            "prompt": "You select different tags while a query is running. Its old result arrives after the new result. What should happen?",
+            "prompt": "You change the selected tags while a query is running. The old query finishes after the new one. Which result should remain on screen?",
             "answers": [
               {
                 "text": "Ignore the old result because it belongs to the previous selection.",
@@ -961,14 +962,14 @@ const TRAINING = {
       {
         "id": "inspector",
         "level": "Applied",
-        "title": "One Inspector, explicit targets",
+        "title": "Know what the Inspector is inspecting",
         "objective": "Distinguish what is being inspected from where the Inspector appears.",
         "paragraphs": [
-          "The shared Inspector shows Related and Topics for Articles and Annotations, and Tags for Articles. Selecting an article or annotation does not open a closed drawer. Inspect is a separate action. The Inspector must know whether you are inspecting the article or a particular annotation.",
-          "Article inspection uses a 280-pixel side panel when the reader’s container is at least 700 CSS pixels wide, and a drawer when it is narrower. Measure the reader’s available space, not the full browser window. Annotation inspection always uses the drawer, even on wide layouts.",
-          "Opening the Inspector preserves your reading position. Its drawer has an accessible name, a Close action, Escape dismissal, and keyboard focus that stays inside until it closes. Focus then returns to the opening control, or the reader if that control is gone. Article and Annotation tabs are remembered separately for the app session. Switching tabs keeps their components mounted rather than discarding their local state."
+          "The Inspector shows information about a selected article or annotation. Related and Topics are available for both; Tags is available for articles. Choosing an annotation in the reader does not open a closed Inspector. Opening Inspect is a separate action.",
+          "For an article, the Inspector uses a 280-pixel side panel when the reader container is at least 700 CSS pixels wide. With less space it opens as a drawer over the window. Measure the reader container, not the whole browser window. An Annotation Inspector always uses the drawer, even on a wide layout.",
+          "Opening and closing inspection must preserve the reading position. The drawer needs an accessible name, a Close action, Escape dismissal, and focus kept inside while it is open. On closing, return focus to its opener or the reader if the opener is gone. Article and Annotation tab choices remain separate for the session."
         ],
-        "example": "A wide browser can still have a narrow reader because surrounding panes consume space. Use the reader’s width to decide whether Article inspection fits beside it.",
+        "example": "A browser window is 1,000 pixels wide, but surrounding panes leave only 600 pixels for the reader. Article inspection uses the drawer because the reader itself is narrower than 700 pixels.",
         "questions": [
           {
             "prompt": "You inspect an Annotation while the reader is wide enough for an Article side panel. Where should Annotation inspection open?",
@@ -1029,30 +1030,30 @@ const TRAINING = {
       {
         "id": "committed",
         "level": "Applied",
-        "title": "Show saved changes without waiting for the index",
+        "title": "Keep successful saves visible while the index catches up",
         "objective": "Show successful Topic and tag changes even while the database is catching up.",
         "paragraphs": [
-          "The `TopicsProvider` remembers successful additions to and removals from Topics while a library is open. It combines those changes with the database’s reverse index, which answers which Topics contain an article or annotation. This index can lag behind the file write, so the remembered changes keep the UI current.",
-          "Before the first Topics list loads, show Loading Topics…. An unanswered request does not mean there are no Topics. A failed save must not appear as a successful membership change. If the inspected article or annotation changes, an earlier request must not overwrite the new selection’s display.",
-          "The Article Tags view reads assignments from files. After a successful save, `EntryTagChange` reports the article ID, tag ID, and whether the tag was added or removed. Tag buttons expose `aria-pressed` so assistive technology can identify selected tags. Changes save immediately; there is no Save button. In read-only mode, assignments remain visible but cannot be changed."
+          "When adding an article to a Topic succeeds, the saved file changes before the database necessarily catches up. Reading only the older database result could make the Topic appear unselected again, even though the save worked.",
+          "`TopicsProvider` remembers successful additions and removals while a library is open. It applies those changes to results from the reverse index—the database lookup that finds which Topics contain an article or annotation. This remembered state survives closing and reopening the picker, but is discarded when the library session ends.",
+          "Keep pending, successful, and failed work distinct. Before the first Topic list arrives, show Loading Topics…. If saving a membership change fails, keep the last saved selection and report the failure. If the user inspects a different article, results for the previous article must not overwrite the new display."
         ],
-        "example": "Adding an article to a Topic succeeds. Close and reopen the Topic picker before the database catches up. `TopicsProvider` should retain the successful change, so the Topic remains selected.",
+        "example": "Add an article to a Topic named Research and wait for the save to succeed. Close and reopen the Topic picker before indexing finishes. Research should remain selected because the successful change is remembered.",
         "questions": [
           {
-            "prompt": "Adding an article to a Topic fails to save. What should the Topic picker show?",
+            "prompt": "You select a Topic to add an article, but the save fails. What should the Topic picker show?",
             "answers": [
               {
-                "text": "Keep the previous selection and report the failure.",
+                "text": "The last successfully saved selection, along with the error.",
                 "feedback": "The UI should not show the change as saved when it failed.",
                 "correct": true
               },
               {
-                "text": "Show the Topic as selected as if the save succeeded.",
+                "text": "The requested selection as if the save had succeeded.",
                 "feedback": "That would misrepresent what was saved.",
                 "correct": false
               },
               {
-                "text": "Remove all Topics from the picker.",
+                "text": "No Topics at all.",
                 "feedback": "One failed save does not mean the Topics are unavailable.",
                 "correct": false
               }
@@ -1104,11 +1105,11 @@ const TRAINING = {
         "title": "Browse articles with several tags",
         "objective": "Explain which articles appear when tags are selected and preserve those selections through updates.",
         "paragraphs": [
-          "Selecting several Tags shows articles with every selected tag. This is called intersection. Selecting Research and History means both, not either one. With no tags selected, Tags browsing shows all Entries under the current filters; it does not include the Annotations shown by the separate All items shortcut.",
-          "When tags are selected, Unread is hidden and a previously selected Unread filter is temporarily treated as All. Saved, All, and text filtering remain available. Clearing the selected tags restores the Unread control and the previous filter. The sidebar and narrow-layout header use the same selected tag IDs.",
-          "Renaming a tag changes its label without changing its selected ID or refreshing the article list. If a selected tag is missing from updated registry data, keep it selected as “Unavailable tag” and let the user deselect it. Silently removing it could show articles the user did not ask for. Explicitly deleting a tag removes its selection but keeps the current list until the next refresh or navigation."
+          "Selecting Research and History in Tags shows articles carrying both tags. This is an intersection: every selected tag must be present. With no tags selected, Tags browsing shows articles under the current filters, rather than including annotations as the All items shortcut does.",
+          "While tags are selected, Unread is hidden and a previous Unread filter is temporarily treated as All. Saved, All, and text filtering remain available. Clearing the selected tags restores Unread and its previous filter. The sidebar and narrow-layout header share the same selected tag IDs.",
+          "A rename changes the displayed name while retaining the selected ID. If a selected tag is missing from refreshed tag data, keep it as “Unavailable tag” and allow deselection. Dropping it silently would show articles that no longer meet the original request. Explicitly deleting a tag removes its selection, but preserves the current list until the next refresh or navigation."
         ],
-        "example": "Select Research and History to see articles with both tags. Renaming Research should update the label without dropping that tag from the selection.",
+        "example": "Research and History are selected. Research temporarily disappears from refreshed tag data. Keep an Unavailable tag selection instead of silently changing the request to “History only.”",
         "questions": [
           {
             "prompt": "You select Research and History in Tags. Which articles should appear?",
@@ -1172,11 +1173,11 @@ const TRAINING = {
         "title": "Check saved content before displaying it",
         "objective": "Explain why saved content is checked again before display and what those checks do.",
         "paragraphs": [
-          "Treat saved content as untrusted when displaying it, even if it was checked before saving. Files can be edited externally, imported, or written by an older version. The display code must apply its own checks rather than assume saved markup is safe.",
-          "`markdownPipeline` converts Markdown and embedded HTML to HTML, then uses DOMPurify to remove unsafe markup. This removal is called sanitization. `buildEntryHtml` prepares the reader document, and `HtmlReader` displays it in an iframe. The iframe limits what that document can do; Content Security Policy (CSP) separately restricts scripts and resource loading.",
-          "Checking markup does not prove that network requests are isolated. The security docs record cases where WebKit reaches the user’s own machine without going through the configured proxy, alongside separate CSP tests. A passing sanitizer test establishes only the behavior tested, not every protection of the packaged application."
+          "A saved article can contain unsafe HTML, even if it was checked before saving. It may have been edited externally, imported, or written by an older version. Check it again when preparing it for display.",
+          "`markdownPipeline` converts Markdown and embedded HTML to HTML, then uses DOMPurify to remove unsafe markup. That removal is called sanitization. `buildEntryHtml` prepares the reader document, and `HtmlReader` displays it in an iframe, an embedded document with restrictions on what it can do.",
+          "Content Security Policy (CSP) supplies additional rules for scripts and resource loading. Each protection needs its own evidence. A test showing that an unsafe attribute is removed does not prove that WebKit blocks network requests. Native tests have found requests to loopback, the user’s own machine, that bypass the configured proxy."
         ],
-        "example": "An externally edited article contains HTML that runs code when clicked. Being stored in the library does not make it safe; the display code must still remove unsafe markup.",
+        "example": "An externally edited article includes HTML with an event handler that could run code. The display pipeline must remove it, even though the file is already in the library.",
         "questions": [
           {
             "prompt": "Why remove unsafe markup again when displaying a saved article?",
@@ -1199,20 +1200,20 @@ const TRAINING = {
             ]
           },
           {
-            "prompt": "A DOM test proves an unsafe HTML attribute is removed. What does it establish?",
+            "prompt": "A test confirms that unsafe HTML is removed before display. What does that result establish?",
             "answers": [
               {
-                "text": "Only that the tested HTML attribute is removed, not that all native network requests are blocked.",
+                "text": "The tested HTML removal works; native network restrictions still need separate checks.",
                 "feedback": "Native WebKit networking and other protections need separate tests.",
                 "correct": true
               },
               {
-                "text": "That WebKit can never reach loopback.",
+                "text": "WebKit can never make a request to the user’s own machine.",
                 "feedback": "The native docs record bypass observations.",
                 "correct": false
               },
               {
-                "text": "That the model’s installed bytes are verified.",
+                "text": "The installed embedding model files have been verified.",
                 "feedback": "Model files are verified separately in the backend; this HTML test says nothing about them.",
                 "correct": false
               }
@@ -1244,11 +1245,11 @@ const TRAINING = {
         "title": "Explain a loading failure without losing the article",
         "objective": "Keep error messages and loading indicators associated with the correct article-loading attempt.",
         "paragraphs": [
-          "Each article-loading attempt has a diagnostic ID connecting its frontend and Rust records. Details opens the matching record. Copy diagnostics copies its JSON as plain text. Keep the normal error message understandable; do not replace it with technical data or display diagnostic text as HTML.",
-          "The error-notification code queues accepted notifications. A later warning must not replace the current notification or redirect its Details link to another attempt. Notifications with diagnostics remain until dismissed. Opening or closing Details does not dismiss them. Previously saved article content stays visible during a reload and after a reload failure.",
-          "Navigating to another article cancels the frontend attempt. Its late completion must not change the next article’s loading indicator. Diagnostic history has size limits, so missing events do not prove an operation never happened. “Image capture enabled” records a preference; it does not establish that a download was attempted or completed."
+          "If an article reload fails, keep the saved article visible and explain the failure. Details opens a diagnostic record for that specific attempt. Its ID connects the UI and Rust records, and Copy diagnostics copies the record as plain-text JSON rather than executable HTML.",
+          "Keep later notifications separate. A warning about a website icon joins the queue instead of replacing the current notification or its Details link. A notification with diagnostics stays until dismissed; opening or closing Details does not dismiss it.",
+          "Loading state also belongs to a specific attempt. Navigating from Article A to Article B cancels A’s frontend attempt; a late result from A must not clear B’s loading indicator. Read diagnostic messages literally: “image capture enabled” reports a setting, not that a download started or succeeded. History is size-limited, so a missing event is not proof that work never happened."
         ],
-        "example": "Article A is reloading when the user opens Article B. If A’s old request finishes later, it must not clear B’s loading indicator or replace B’s content.",
+        "example": "Article A fails to reload. While its error notification is visible, another article produces an icon warning. The first notification must still open A’s diagnostic record.",
         "questions": [
           {
             "prompt": "A warning about a website icon arrives while an error notification with Details is visible. What should happen?",
@@ -1271,20 +1272,20 @@ const TRAINING = {
             ]
           },
           {
-            "prompt": "Diagnostics say image capture was enabled. What can you conclude?",
+            "prompt": "A diagnostic record says “image capture enabled.” Does that mean an image was downloaded?",
             "answers": [
               {
-                "text": "Capture was allowed, but the record does not establish that a download started or finished.",
+                "text": "No. The setting allowed capture; a separate result is needed to show a download happened.",
                 "feedback": "Separate diagnostic records report whether capture was allowed, attempted, and completed.",
                 "correct": true
               },
               {
-                "text": "Every article image was downloaded.",
+                "text": "Yes. It means every article image was downloaded.",
                 "feedback": "Enabled is not a result.",
                 "correct": false
               },
               {
-                "text": "No image could have failed.",
+                "text": "Yes. It means no image download could have failed.",
                 "feedback": "The preference says nothing about outcomes.",
                 "correct": false
               }
@@ -1312,11 +1313,11 @@ const TRAINING = {
         "title": "Review the behavior a screenshot cannot show",
         "objective": "Review behavior when requests overlap or fail, as well as when they succeed.",
         "paragraphs": [
-          "When reviewing a Xaga interface change, identify the article or annotation affected, the list being shown, what has actually been saved, any unfinished requests, and keyboard focus. A screenshot can look right while a late query overwrites a new selection or opening the Inspector reloads the reader.",
-          "Use repeatable examples for data that is still loading, genuinely empty, unavailable, read-only, or failed. These states need different explanations and controls. An empty list is not an adequate replacement for all of them.",
-          "Choose checks that exercise what changed: component tests for inspected objects and focus, navigation tests for old query results, and native WebKit tests for engine-specific behavior. Keep helpers local until another file needs them. Use names that say what an operation does, following the project’s vocabulary conventions."
+          "An interface review needs more than a successful screenshot. Check which article or annotation is selected, which list is open, what has actually been saved, which requests are unfinished, and where keyboard focus goes.",
+          "Use repeatable examples for loading, empty, unavailable, read-only, and failed states. These are different situations. A list that has not loaded should not claim to be empty, and a failed save should not look successful.",
+          "Test the part that changed. Component tests can check the Inspector selection and focus; navigation tests can check late query results; native WebKit tests can check engine-specific behavior. Keep helpers local until another file needs them, so a UI refactor does not expose unnecessary APIs."
         ],
-        "example": "For an Inspector refactor, verify Article and Annotation targets, narrow and wide reader containers, keyboard dismissal and focus return, reduced motion, failed writes, and reader-position preservation.",
+        "example": "Begin inspecting Article A, then switch to Article B before A’s lookup finishes. The completed lookup for A must not replace B’s information. Repeat with an Annotation and check focus when the drawer closes.",
         "questions": [
           {
             "prompt": "Which test could reveal a wrong Inspector selection that a screenshot misses?",
@@ -1387,17 +1388,17 @@ const TRAINING = {
       {
         "id": "layers",
         "level": "Introduction",
-        "title": "Separate file operations from command coordination",
+        "title": "Follow a change from command to file to database",
         "objective": "Identify which work belongs in core, a Tauri command handler, and the CLI.",
         "paragraphs": [
-          "`xaga-core` implements logic and file operations. Tauri command handlers coordinate those operations with queued database work. The CLI handles command-line input and output, database management, and explicit migrations. Put code according to its responsibility, not according to which caller first needed it.",
-          "The bookmark commands get the `LibraryWriter`, wait for the color to be saved, and then queue `SyncState` with the saved color. The handler knows what the user did and passes that information along. Core’s file operations do not choose embedding jobs.",
-          "Keep progress printing and other presentation in the CLI. If shared logic needs to report progress, define that interaction explicitly. Moving console output into core merely because several callers need the same operation would mix responsibilities."
+          "When the UI asks Rust to do something, a Tauri command handler receives the request. In Xaga, the handler coordinates the operation: call core to save the change, wait for success, then queue any database update that follows.",
+          "`xaga-core` implements file operations and shared logic. Those operations do not choose embedding jobs. The command-line interface (CLI) handles terminal input and output, database management, and explicit library upgrades. Put each part where its responsibility belongs, regardless of which caller needed it first.",
+          "The bookmark commands show the sequence. A handler gets `LibraryWriter`, waits for the color to be saved, and queues `SyncState` with that saved color. The database receives the known change without inferring it from a file event. Likewise, shared validation can belong in core while CLI progress printing remains in the CLI."
         ],
-        "example": "For a new state change, identify the core file operation, the command handler that waits for it and queues database work, and any separate CLI output.",
+        "example": "For a bookmark-color change, identify three steps: the command receives the request, the writer saves the file, and a queued job updates the database. A failed file write must not be reported as a successful change.",
         "questions": [
           {
-            "prompt": "A bookmark command has saved the article’s color. Where should it queue `SyncState`?",
+            "prompt": "A bookmark command has successfully saved the new color to the article file. Where should `SyncState` be queued?",
             "answers": [
               {
                 "text": "In the command handler, after the writer succeeds.",
@@ -1455,14 +1456,14 @@ const TRAINING = {
       {
         "id": "authority",
         "level": "Introduction",
-        "title": "Files own data; LanceDB mirrors it",
+        "title": "Know which files own the data",
         "objective": "Identify which file owns a value before changing it or rebuilding its database copy.",
         "paragraphs": [
-          "Entry Markdown files are the source of truth for content, read state, color, tags, and annotations. Feed Atom files store feed membership. Topic Markdown stores its ordered list of typed member references. `pins.yaml` stores shortcuts, `tags.yaml` stores tag IDs and pending changes, and `library.yaml` stores completed and pending library versions.",
-          "LanceDB is the database used to query this data. It is a derived cache: its columns must be rebuildable from the files. The documented rule allows two producers of database updates: live command operations and recovery. An unrelated third write path would violate that rule.",
-          "A Topic file answers “what belongs to this Topic?” Its derived reverse index answers “which Topics contain this article or annotation?” Replacing the file’s member list with the reverse index would lose ordering, member types, and annotation references."
+          "Xaga saves library content in files and uses LanceDB to query a database copy. The files are the source of truth: recovery must be able to rebuild the database from them. Command handlers apply saved user actions to the database; recovery reconciles it with the files.",
+          "Different files own different facts. An Entry is an article record. Its Markdown file stores article content, read status, color, tags, and annotations. Feed Atom files store Feed membership. Topic Markdown stores ordered member references. `pins.yaml` stores shortcuts, `tags.yaml` stores tag IDs and unfinished tag operations, and `library.yaml` stores library-version information.",
+          "The direction of a lookup matters. A Topic file answers “which articles or annotations belong to this Topic?” The reverse database index answers “which Topics contain this article or annotation?” That reverse lookup cannot replace the ordered member list. A content checksum—a value used to detect changed content—also cannot detect every membership or state change."
         ],
-        "example": "Changing Topic membership need not change an article’s content checksum. Recovery must still rebuild the Topic-related database data instead of using that checksum to skip all work.",
+        "example": "Add an article to a Topic without editing the article. The Topic file changes, but the article’s content checksum can stay the same. Recovery must still update the reverse Topic lookup.",
         "questions": [
           {
             "prompt": "Which saved data determines a Topic’s members and their order?",
@@ -1485,7 +1486,7 @@ const TRAINING = {
             ]
           },
           {
-            "prompt": "An article’s content checksum has not changed. Why might recovery still need to update the database?",
+            "prompt": "The article text has not changed, so its content checksum is unchanged. Why might recovery still need to update LanceDB?",
             "answers": [
               {
                 "text": "Reading state, color, or Topic membership can change without changing the article content.",
@@ -1523,31 +1524,31 @@ const TRAINING = {
       {
         "id": "locks",
         "level": "Introduction",
-        "title": "Coordinate writers across processes and within a process",
+        "title": "Protect a library and serialize edits to each file",
         "objective": "Distinguish the library lock, per-file write queues, and the lock for shared settings.",
         "paragraphs": [
-          "An exclusive advisory flock on `xaga.lock` allows only one cooperating process to write to a library. flock is an operating-system file lock, tied to an open handle. The OS releases it when the handle closes, including on process exit. The lock file remaining on disk does not mean a lock is still held. In the app, having a `LibraryWriter` means read-write mode; having no writer means read-only mode.",
-          "`LibraryWriter` also prevents conflicting writes inside that process. Each file has a lane: a queue that runs the entire read-modify-write sequence one operation at a time. Different files can be written concurrently. Atomic rename prevents readers from seeing a half-written file, but alone cannot prevent two writers from reading the same old content and losing one another’s edits.",
-          "The account lock on `settings.json` protects settings and model downloads shared across libraries. Operations in the same process share the lock rather than acquiring competing handles. A settings replacement transfers the lock to the new file without a gap. The code also detects settings changed since the caller read them, avoiding a silent overwrite of newer values."
+          "The library lock prevents two cooperating processes from writing the same library. It is an exclusive operating-system `flock` on `xaga.lock`, tied to an open file handle. The OS releases it when that handle closes, including on process exit. A leftover lock file does not mean the lock is still held.",
+          "One process can still have two operations trying to edit the same article. `LibraryWriter` prevents that conflict with a per-file lane: a queue that reads the current file, applies a change, and saves it before starting the next operation. Other files can be processed in parallel. Atomic rename prevents a half-written file from being visible; it does not by itself prevent one edit overwriting another.",
+          "The account lock on `settings.json` protects settings and model downloads shared across libraries. It is separate from a particular library’s lock. Operations inside the process share it, and a settings replacement transfers the lock to the new file without a gap. A stale-view check also detects settings that changed since the caller read them."
         ],
-        "example": "Two Annotation edits on one Article use the same per-file queue even though the process already holds the library lock. A model download also needs the account lock because model files are shared across libraries.",
+        "example": "Two Annotation edits start for the same article. Even though the process holds the library lock, they must use the same file queue. Otherwise both could read the old article and the second save could erase the first edit.",
         "questions": [
           {
             "prompt": "Why does a process holding the library lock still need a separate write queue for each file?",
             "answers": [
               {
                 "text": "Its own concurrent operations could otherwise read the same old file and overwrite one another’s edits.",
-                "feedback": "The process lock excludes other processes, not overlapping operations inside its holder.",
+                "feedback": "The library lock excludes other processes. The per-file queue also prevents overlapping edits inside the one writing process.",
                 "correct": true
               },
               {
                 "text": "Atomic rename lets readers see half-written files.",
-                "feedback": "Atomic replacement prevents that; lost updates are a different problem.",
+                "feedback": "Atomic rename prevents readers from seeing partial file contents. It does not prevent two operations from saving competing edits.",
                 "correct": false
               },
               {
                 "text": "Every file needs a separate process.",
-                "feedback": "A queue can serialize writes to one file within the same process.",
+                "feedback": "The same process can handle many files, with one serialized queue for each file.",
                 "correct": false
               }
             ]
@@ -1595,17 +1596,17 @@ const TRAINING = {
       {
         "id": "priority",
         "level": "Applied",
-        "title": "Choose priority by who needs the result and when",
+        "title": "Choose queue priority by urgency",
         "objective": "Assign queue priority by urgency and preserve each queue’s shutdown rules.",
         "paragraphs": [
-          "An embedding `Job` describes what to do; its `Tier` describes when to do it relative to other work. Control, Interactive, Regular, and Maintenance are serviced in that order. The same job can use different tiers when its urgency differs. Expensive work is not automatically low priority.",
-          "A feed command can queue the database update needed to show new articles as Interactive, then queue their numerical content representations as Regular. Those representations are called embedding vectors. Recovery can schedule vector creation as Maintenance because nobody is waiting on a newly requested result.",
-          "`LibraryWriter` has separate Interactive and Regular tiers. During shutdown, its queued Interactive writes must finish because they can contain unsaved user input. Queued Regular work may be dropped, so only content that can be obtained again belongs there. The embedding service has a different rule: queued derived database work may be dropped and rebuilt by recovery."
+          "A queued `Job` describes the work; its `Tier` determines which work runs first. The embedding service handles Control, Interactive, Regular, and Maintenance in that order. Choose the tier by who needs the result and how soon, not simply by how expensive the job is.",
+          "When the user adds a feed, they are waiting for articles to appear. The database update can therefore be Interactive, while creation of embedding vectors runs as Regular. A vector is a numerical representation of content used for semantic features. Recovery can create vectors as Maintenance because that work is not serving a newly requested result.",
+          "`LibraryWriter` has its own Interactive and Regular queues, with different shutdown rules from the embedding service. Its Interactive backlog must finish because it can contain unsaved user input. Regular backlog may be dropped, so it must contain only work that can be recreated. Queued database work in the embedding service can be dropped and repaired by recovery."
         ],
         "example": "A large operation requested by the user can be urgent; a small background repair can wait. `Shutdown` also needs immediate attention even when finishing it is expensive.",
         "questions": [
           {
-            "prompt": "What should determine an embedding job’s tier?",
+            "prompt": "The same embedding job can run after a user save or during background recovery. What should determine its priority?",
             "answers": [
               {
                 "text": "Who needs the result and how urgently they need it.",
@@ -1656,7 +1657,7 @@ const TRAINING = {
           },
           {
             "title": "Writer admission and shutdown",
-            "path": "../architecture/single_writer_library_lock.md#in-process-write-serialization-the-writer-axis-2"
+            "path": "../architecture/single_writer_library_lock.md#in-process-write-serialization"
           }
         ]
       },
@@ -1666,11 +1667,11 @@ const TRAINING = {
         "title": "Plan for interruption between writes",
         "objective": "Describe what survives interruption between writes and how recovery detects unfinished work.",
         "paragraphs": [
-          "Graceful shutdown and a forced process termination are different cases. The embedding service handles `Shutdown` between iterations of its processing loop. That does not make a sequence of writes safe from a crash: forced termination can occur between any two commits. Recovery must repair unfinished database work using saved files.",
-          "Feed persistence saves article files before the feed’s membership file. Image bytes are saved before Markdown that refers to them. These orders determine what can remain after interruption: an unused image can be cleaned up later, whereas a saved reference to missing bytes would be unusable.",
-          "Recovery checks read state and color separately from content checksums. When a queued Annotation embedding finishes, it must check that the database record still exists and matches its input before updating the vector. It must not restore a deleted Annotation or overwrite newer metadata. Every possible interruption needs a check that can detect what remains unfinished."
+          "If the process is forcibly terminated, it can stop between any two saved writes. Plan for the file to have changed while the database has not. Graceful shutdown is a separate case: the embedding service handles `Shutdown` between processing iterations, but that handling cannot protect against a crash inside an iteration.",
+          "Write order decides what survives. Feed persistence saves article files before listing them in the feed’s membership file. Image bytes are saved before Markdown refers to them. An unused saved image can be cleaned up; a saved reference without its bytes is unusable.",
+          "Recovery needs a check for each unfinished change. It compares read status and color separately from content checksums. A late Annotation embedding must also check the current database record before updating its vector. If the Annotation was deleted or changed, the old job must not recreate it or overwrite its newer data."
         ],
-        "example": "The process stops after saving a bookmark color to Markdown but before `SyncState` runs. Recovery reads the saved color and repairs the database without recalculating the embedding of unchanged article text.",
+        "example": "The app saves a new bookmark color, then crashes before `SyncState` runs. On restart, recovery finds the saved color in Markdown and updates the database. Unchanged article text does not need another embedding.",
         "questions": [
           {
             "prompt": "The app is forcibly terminated after saving an article’s color but before updating LanceDB. What should happen on recovery?",
@@ -1693,21 +1694,21 @@ const TRAINING = {
             ]
           },
           {
-            "prompt": "An Annotation is deleted while an older embedding job for it is running. What must the job avoid when it finishes?",
+            "prompt": "An Annotation is deleted while an older embedding job for it is still running. Which outcome would be a bug?",
             "answers": [
               {
-                "text": "Recreating the deleted record or writing older metadata back.",
-                "feedback": "Completion must check that the record still exists and matches the job’s input.",
+                "text": "The old job recreates the deleted Annotation record or writes older metadata back.",
+                "feedback": "An old result must not undo a later deletion or restore older data.",
                 "correct": true
               },
               {
-                "text": "Checking whether the current record still exists.",
-                "feedback": "That check is needed to prevent recreating deleted data.",
+                "text": "The old job checks whether the record still exists before updating it.",
+                "feedback": "Checking the current record is required to avoid recreating deleted data.",
                 "correct": false
               },
               {
-                "text": "Updating only the vector on an existing, matching pending record.",
-                "feedback": "That is the constrained update the operation is allowed to make.",
+                "text": "The job changes only the vector on a record that still matches its input.",
+                "feedback": "For an existing record that still matches the input and needs its vector, this limited update is allowed.",
                 "correct": false
               }
             ]
@@ -1731,17 +1732,17 @@ const TRAINING = {
       {
         "id": "transitions",
         "level": "Applied",
-        "title": "Save tag-operation progress outside the database cache",
+        "title": "Record unfinished work before changing many files",
         "objective": "Explain how tag operations record unfinished work and what their completion does not prove.",
         "paragraphs": [
-          "Tag IDs, names, and unfinished renames, merges, or deletions are saved in `tags.yaml`. Article files store readable tag names. LanceDB stores the corresponding tag UUIDs. A rename keeps the same ID while updating names in the affected files.",
-          "The operation saves a batch’s pending work before changing files and advances its checkpoint only after that work succeeds. A checkpoint records how far the operation has progressed. Article changes use their own writer lanes; registry changes use the tags lane. Revision checks reject an outdated worker’s checkpoint. Recovery resumes unfinished operations before discovering ordinary tags from article files.",
-          "These operations finish after processing indexed candidates and saved pending work. They do not inspect every source file to prove none were missed. A file absent from the index can retain an old name, which later discovery can create as a separate tag. Names are reserved while an operation is active to prevent conflicts; completing it releases those reservations."
+          "A tag rename can affect many article files, so it cannot be treated as one indivisible save. Xaga records the tag’s ID, names, and unfinished operation in `tags.yaml`. Article files keep readable tag names; LanceDB keeps the corresponding IDs.",
+          "Before changing a batch of files, save which article IDs are pending. After the batch succeeds, save a checkpoint describing completed progress. Retry can then finish a partly processed batch. Each article still uses its own writer lane, and the registry uses the tags lane. Revision checks prevent an older worker from advancing newer progress.",
+          "The operation uses indexed candidates and saved pending work, rather than checking every source file for completion. A missed article can keep an old tag name and later cause discovery to create a separate tag with that name. Names are reserved while the operation is active to prevent conflicts; completion releases the reservations."
         ],
-        "example": "Before deleting a tag named Research, save its name reservation and pending batch of article IDs. Then remove the tag from files and the database. Saved pending IDs let recovery resume the work even after rebuilding the database.",
+        "example": "Research is being deleted from a batch of articles. Save the pending article IDs before editing those files. If the process stops halfway through, recovery can retry those IDs even if the database has since been rebuilt.",
         "questions": [
           {
-            "prompt": "When should a tag operation save the file IDs in its next pending batch?",
+            "prompt": "A tag operation is about to change its next batch of article files. When should it save the IDs of those pending articles?",
             "answers": [
               {
                 "text": "Before changing those files.",
@@ -1804,30 +1805,30 @@ const TRAINING = {
         "id": "versions",
         "level": "Applied",
         "title": "Version the library, not just the app",
-        "objective": "Trace explicit upgrades and safe read-only startup.",
+        "objective": "Explain when a library version changes and why opening a library does not upgrade it.",
         "paragraphs": [
-          "Each library stores its completed application major.minor version in `library.yaml`. Patch versions, prerelease labels, and build suffixes do not create separate library formats. Updating the app does not relabel libraries. A missing manifest means the version is unknown, not that the library must use a particular older format.",
-          "Before 1.0, the CLI performs explicit conversion while holding the library lock. It records the intended target before changing files or database data and leaves the last completed version in place. Only successful conversion and database reconciliation allow it to mark the target complete. An interrupted upgrade must retry the same target.",
-          "The app reads this metadata before starting a writer or embedding service. Missing, different, incomplete, or unreadable versions open read-only without replacing the original manifest. That startup path does not create a missing cache or run recovery. While the app remains at major version 0, every storage-model change requires a minor-version increment."
+          "The app version and a library’s stored format version are related but separate facts. Each library records its completed `major.minor` in `library.yaml`. A patch, prerelease, or build suffix does not define a new library format. Installing a new app does not rewrite existing library versions.",
+          "Before 1.0, the CLI explicitly upgrades a library while holding its write lock. It records the target version before conversion starts and keeps the last completed version until both files and database have been reconciled. If interrupted, retry must continue toward the same target.",
+          "The app checks this metadata before starting a writer or embedding service. A missing, different, incomplete, or unreadable version opens read-only without rewriting the manifest, creating a cache, or running recovery. A missing manifest does not prove any particular older format. During major version 0, a storage-model change requires a minor-version increment."
         ],
-        "example": "A crash midway through conversion leaves completed version A and pending target B. The next upgrade retries B; normal opening must not declare B complete merely because some files already changed.",
+        "example": "An upgrade from library format 0.13 to 0.14 stops halfway through. The manifest still records completed 0.13 and pending 0.14. A retry must finish conversion and reconciliation before marking 0.14 complete.",
         "questions": [
           {
             "prompt": "When may an upgrade mark the target library version as complete?",
             "answers": [
               {
-                "text": "After both file conversion and database reconciliation succeed.",
-                "feedback": "The completed version must describe work that actually finished.",
+                "text": "After the files are converted and the database has been updated to agree with them.",
+                "feedback": "The target is complete only when both conversion and database reconciliation have succeeded.",
                 "correct": true
               },
               {
                 "text": "As soon as the user selects the target version.",
-                "feedback": "The target is saved as pending while work remains.",
+                "feedback": "The target must remain pending while conversion or reconciliation is unfinished.",
                 "correct": false
               },
               {
                 "text": "Whenever a newer application opens the library.",
-                "feedback": "Normal opening neither migrates nor relabels the library.",
+                "feedback": "Opening the app does not perform an explicit upgrade or change a library’s stored version.",
                 "correct": false
               }
             ]
@@ -1878,11 +1879,11 @@ const TRAINING = {
         "title": "Check network destinations and native command arguments",
         "objective": "Identify what untrusted callers can make a network request or native command do.",
         "paragraphs": [
-          "The network proxy resolves a destination’s hostname, checks every returned IP address, and connects to a validated address without resolving it again. It refuses the destination if any returned address is disallowed. Requests for redirects and page resources receive the same checks when they pass through the proxy. Native WebKit tests have demonstrated loopback connections that bypass it, so proxy checks alone do not prove all connections are contained.",
-          "Checking network destinations does not make downloaded HTML safe. Checking HTML before saving does not remove the need to check it again before display. Parsing limits, content sanitization, rendering restrictions, and model verification each address different risks. Identify what an input is allowed to cause at each step.",
-          "A registered Tauri command can be called through the invoke API. `command_registry.json` supplies command classifications and generated registration and permissions. Window checks and library-write checks remain separate. For user-selected file paths, keep the native file dialog and file operation together in Rust. Accepting an arbitrary path from JavaScript would let the caller choose which file the command accesses."
+          "A network request starts with a destination hostname. DNS can return several IP addresses for it. Xaga’s proxy checks every address and refuses the whole destination if any is disallowed. It connects to a validated address without resolving the hostname again. These checks apply to requests reaching the proxy; native WebKit tests have shown loopback requests that bypass it.",
+          "Destination checks do not make returned content safe. Captured article bodies are sanitized before saving: unsafe markup is removed. Stored content is checked again before display. Resource limits and model verification address other risks. A passing check at one step is not evidence for every other step.",
+          "Native commands also need to restrict what the caller can choose. `command_registry.json` defines Tauri command registration and permissions, while window and library-write checks add separate restrictions. Keep a user-selected import path in Rust from file dialog through file operation. Letting JavaScript supply an arbitrary path could let it read or overwrite a different file."
         ],
-        "example": "An import menu opens its file dialog in Rust and calls a native operation directly. The command for opening a stored PDF calculates its library path in Rust from the source URL; JavaScript cannot choose an arbitrary disk path.",
+        "example": "The import menu opens a native file dialog in Rust, then passes the selected path directly to the Rust import function. A compromised webview cannot use that flow to supply its own arbitrary path.",
         "questions": [
           {
             "prompt": "DNS returns both public and private IP addresses for one hostname. Why does the proxy refuse the destination?",
@@ -1951,30 +1952,30 @@ const TRAINING = {
       {
         "id": "model",
         "level": "Advanced",
-        "title": "Matching model bytes does not prove the model is harmless",
+        "title": "Understand what model verification establishes",
         "objective": "Explain what model checksums establish, what they do not, and how verification failure behaves.",
         "paragraphs": [
-          "The embedding-model manifest specifies an exact revision and expected SHA-256 hashes. A hash is a digest used to check that file bytes match the expected content. Xaga verifies downloads before installation and installed files before passing their bytes to fastembed or ONNX Runtime. It uses those same checked bytes, rather than checking a file and later rereading a potentially changed copy.",
-          "These checks depend on how the expected hashes were obtained and on the application binary that contains them. Matching hashes show that the bytes match the chosen model, not that the publisher or model is harmless. Producing normalized vectors with 384 dimensions shows that the model runs, not that it is safe. The trust document explains which evidence is cryptographic and which depends on procedure, environment, or publisher reputation.",
-          "If an installed file fails verification, model loading stops without deleting the files or downloading replacements. The main window can open with semantic features unavailable. This does not change whether the app may write to the library. The model and database must both initialize before semantic features become available."
+          "Xaga’s model manifest records an exact revision and expected SHA-256 hashes. A hash is a value calculated from a file’s bytes. Xaga compares downloaded files with the expected hashes before installation, and checks installed files again before loading them into fastembed or ONNX Runtime.",
+          "The loader uses the same bytes it checked, rather than checking one file and rereading a potentially changed copy. Matching hashes establish that these are the selected model files. They do not establish that the model or its publisher is harmless. The expected hashes and the application binary containing them must themselves be trusted.",
+          "If an installed file fails verification, loading stops. Xaga keeps the files for diagnosis and does not silently download replacements. The main window opens with semantic features unavailable, while library write permission stays as it was. Both the model and embedding database must initialize before those features become available."
         ],
-        "example": "An installed tokenizer file changes. The next load refuses before constructing the embedder, preserves the files for diagnosis, and does not reinterpret the change as a routine remote update.",
+        "example": "Someone changes an installed model file. Its hash no longer matches the manifest. Xaga refuses to load it, even if the modified model might still produce a vector.",
         "questions": [
           {
             "prompt": "A model file’s hash matches the manifest. What does that establish?",
             "answers": [
               {
-                "text": "Its bytes match the expected file, assuming the manifest and application binary are trusted.",
+                "text": "The file matches the expected bytes, assuming the manifest and application are trusted.",
                 "feedback": "The comparison checks identity with the chosen artifact, not whether it is harmless.",
                 "correct": true
               },
               {
-                "text": "The publisher is proven harmless.",
+                "text": "The model’s publisher has been proven harmless.",
                 "feedback": "A hash comparison cannot establish intent or safety.",
                 "correct": false
               },
               {
-                "text": "Every later model version is approved automatically.",
+                "text": "Every future version of that model has been approved.",
                 "feedback": "A new artifact needs its own expected hashes and review.",
                 "correct": false
               }
@@ -2019,12 +2020,12 @@ const TRAINING = {
       {
         "id": "scale-review",
         "level": "Advanced",
-        "title": "Review writes and queries at the intended library size",
+        "title": "Check large operations as well as individual edits",
         "objective": "Review large operations for bounded batches, safe retries, and evidence at the intended library size.",
         "paragraphs": [
-          "Xaga’s design target is a library of millions of Entries, around four times expected intake. Entry is the code’s article type. A loop that works for one live edit can cause excessive database fragments or memory use during bulk import or recovery. Review the operation with large numbers of articles, not only a single example.",
-          "Processing batches and saving checkpoints limit the work the app retains and must repeat after interruption. They do not automatically limit database-engine allocations or total process memory. LabelList and bitmap indexes help select matching records, but returning a large result still costs time and memory. Distinguish measurements from estimates and list excluded costs.",
-          "For a change that writes data, identify its source files, locks, writer lanes, queue priority, ordering of writes, and recovery checks. Verify the affected security controls and keep exported APIs no wider than needed. If an assumption remains untested or duplicate logic remains separate, record the fact and its location. Do not silently decide its importance or when it must be fixed."
+          "Xaga is designed for libraries containing millions of articles. A loop that works for one edit may create excessive database fragments or memory use when it runs during bulk import or recovery. Review both the individual change and the large operation that uses the same code.",
+          "Batches and checkpoints limit the work retained for retry. They do not prove a limit on the whole process’s memory: parsing, caches, and the database engine allocate memory too. An index can find matches efficiently while returning millions of matches still costs time and space.",
+          "For a change that writes data, trace the source files, locks, per-file queues, priority, and order of saves. Test interruption and retry, including older queued work arriving after newer changes. Record untested assumptions and their code locations instead of presenting them as measured results."
         ],
         "example": "For an operation changing many articles, specify the batch size, what is saved before each write, how retry works after each interruption, and how older queued work avoids overwriting newer data. Test those interruptions rather than checking only successful completion.",
         "questions": [
