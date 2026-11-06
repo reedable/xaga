@@ -2,14 +2,11 @@
 
 ## Summary
 
-Let users organize pinned navigation targets into nested groups in Shortcuts,
-persisted in the shared library YAML pin store.
+Let users organize Shortcuts into nested groups, saved in the library pin store.
 
 ## Requirements
 
-- Represent groups containing typed target references and other groups, with
-  sibling order preserved in YAML and the shared in-memory model.
-- Use group nodes alongside the existing target-reference nodes:
+- Extend the ordered pin tree with groups containing target references or groups:
 
   ```yaml
   pins:
@@ -27,57 +24,51 @@ persisted in the shared library YAML pin store.
               id: abc123
   ```
 
-  Group IDs remain stable across renaming and moves. Target nodes retain the
-  encoding defined by central pin storage; titles and counts remain resolved
-  from targets.
-- Support creating, renaming, moving, and removing groups and moving pins between
-  groups without changing the referenced entities.
-- Allow one pin per typed target across the entire tree. Moving a pin changes
-  its containing group rather than creating another occurrence; toolbar unpin
-  removes that target's single pin.
-- Apply existing alphabetical/unread sorting within each group without changing
-  membership. Manual ordering is outside this story.
-- A group's unread-sort value is the sum of its descendants' shortcut unread
-  counts, recursively. Do not deduplicate articles shared by pinned collections;
-  article shortcuts retain their existing zero contribution. Use the existing
-  title tie-breaker.
-- Organize pins and groups using drag and drop into groups or the root, without
-  permitting a group to be moved into itself or its descendants. Sorting remains
-  governed by the selected mode rather than drop position.
-- Add a plus button to the Shortcuts header and group headers to create a group
-  in that container, following the existing Feed/Topic header affordance.
-- Show an unpin/remove button on hover for each pinned target and group only in
-  Shortcuts. Removing a group uses the child-promotion behavior above. Make the
-  action available on keyboard focus as well.
-- Removing a nonempty group promotes its children into its parent, preserving
-  their pins and nested groups. Removing a root group promotes its children to
-  the root sequence; it does not unpin the subtree's targets.
-- Preserve existing flat pins when adopting the hierarchical format.
-- Use shared pin persistence, serialized atomic writes, library isolation, and
-  read-only gating. Preserve open navigation context during organization changes.
-- Present nested groups in Shortcuts and provide access when the sidebar is hidden.
-- Project the shared parsed hierarchy into the native macOS Shortcuts menu as
-  nested submenus, including empty groups with a disabled Empty item. Do not
-  introduce separate menu storage or parse YAML in menu presentation code.
-- Apply the same per-group sorting in the sidebar and native menu, including
-  recursive unread counts and the title tie-breaker. Refresh the menu for group
-  creation, renaming, moves, removal, and descendant target/count changes.
-- Preserve All items first at the menu root, existing target navigation and
-  unavailable-target actions, and navigation in read-only libraries.
-- Increment the minor release version for the storage-model change and provide
-  the corresponding CLI upgrade and documentation.
+  Group IDs are unique and stable across renames and moves. Preserve existing
+  target encoding, resolved titles/counts, and one pin per typed target across
+  the tree. Toolbar unpin removes that target wherever it occurs.
+- Preserve the [pin-store contract](../../docs/architecture/pins.md), including
+  validation, serialized atomic writes, library isolation, and read-only gating.
+  Organization changes preserve referenced entities and open navigation context.
+- Add groups through plus buttons on Shortcuts and group headers. Create and
+  rename through a title dialog following Feed/Topic editing, with a
+  keyboard-accessible group Settings action. Trim titles, reject empty titles,
+  and allow duplicate titles.
+- Move pins and groups into groups or the root using drag and drop or a
+  keyboard-accessible **Move to…** destination picker. Refuse moves into the
+  moved group or its descendants. Dropping into a collapsed group expands it.
+- Show unpin/remove buttons on hover and keyboard focus in Shortcuts. Removing
+  a group replaces it with its children, preserving their sequence and pins.
+- Append newly pinned targets at root, new groups in their container, and moved
+  nodes in their destination. Display uses existing alphabetical/unread sorting
+  within every container; manual ordering is out of scope.
+- Show and sort groups by their recursive descendant unread count. Count shared
+  articles once per pinned collection; article shortcuts contribute zero. Use
+  the existing title tie-breaker and show no separate group item count.
+- Expand groups independently; new groups start expanded. Remember expansion
+  locally per library and group ID. Filtering reveals matching descendants and
+  their ancestor paths without changing saved expansion; a matching group title
+  reveals its whole subtree.
+- Show the hierarchy in the existing selectable navigation header when the
+  sidebar is hidden. Group editing and pin organization use the sidebar.
+- Build native macOS Shortcuts submenus from the shared hierarchy, using the
+  sidebar's sorting and refreshing for hierarchy, target, and count changes.
+  Empty groups contain a disabled **Empty** item. Keep **All items** first at
+  root, existing navigation and unavailable-target actions, and read-only
+  navigation. Menu code must not parse YAML or maintain separate storage.
+- Increment the minor version while the app remains at major version 0. Provide
+  an explicit CLI library upgrade that preserves flat pins and supports safe
+  retries, with documentation. Older applications must open upgraded libraries
+  read-only through existing version checks.
 
 ## Remaining work
 
-- Specify group renaming, expansion, keyboard move controls equivalent to drag
-  and drop, and responsive navigation presentation.
-- Extend the typed YAML schema, writer operations, platform API, and frontend
-  projection; implement migration from flat pins with safe retries.
-- Extend the shared shortcut projection and native menu payload/construction
-  to carry the hierarchy. Verify native submenu selection, empty groups, nested
-  sorting, live group changes, library context, and parity with sidebar navigation.
-- Verify nested persistence, moves, duplicate handling, deletion, keyboard use,
-  responsive access, read-only refusal, concurrent changes, and restart/recovery.
+- Extend the schema, writer operations, platform API, shared projections, and CLI
+  upgrade. Establish the parser's existing nesting protection and any additional
+  bound needed for safe recursive traversal.
+- Implement the sidebar controls, filtering, selectable header, and native submenus.
+- Verify the requirements, including concurrent writes, interrupted upgrades,
+  library isolation, restart/recovery, and sidebar/native-menu parity.
 - Run affected Rust and frontend checks and update durable documentation.
 
 ## References
