@@ -8,15 +8,15 @@ immediate assignment/removal and creation with assignment, through the
 
 ## Target and view state
 
-`EntityView` derives the Article panel target from the reader route's Entry ID
+`EntityView` derives the Article panel target from the reading pane route's Entry ID
 and owns the drawer target as an Entry ID with an optional Annotation ID.
 Article navigation selects the Article. Annotation navigation selects and
-scrolls to the passage without opening the Inspector drawer; the reader and
+scrolls to the passage without opening the Inspector drawer; the reading pane and
 Article panel retain the parent Article. Selecting an Annotation within the
 already displayed Article preserves its resolved URL and presentation rather
 than clearing and restoring the URL, so passage navigation does not reload the
-reader. Annotation list rows carry their parent Article URL through navigation,
-so changing Articles does not first render the reader without a URL and then reload it when the URL arrives.
+reading pane. Annotation list rows carry their parent Article URL through navigation,
+so changing Articles does not first render the reading pane without a URL and then reload it when the URL arrives.
 Opening Annotation inspection requires
 the explicit Inspect action. Navigation may update an already-open drawer's
 target, but does not open a closed drawer. Opening the
@@ -26,7 +26,7 @@ edits before opening the drawer; a failed save leaves it open and reports the
 error. Opening the drawer preserves the tooltip in place behind the modal
 backdrop. Drawer interaction and focus changes do not dismiss it. Close and backdrop click handlers identify those events as drawer actions even
 after dismissal, preventing the same click from also dismissing the tooltip. Closing the
-drawer restores focus to its tooltip opener when available, with the reader as
+drawer restores focus to its tooltip opener when available, with the reading pane as
 fallback. The tooltip remains visible after the drawer closes; a subsequent
 click outside it dismisses it normally. Deleting the Annotation removes its
 retained tooltip without saving it.
@@ -44,11 +44,11 @@ different Article or Annotation resets the drawer target to that navigation cont
 inspected entity's ID and retains its ranking and entity-selection navigation.
 
 `EntityView` owns Article and Annotation view selections and drawer visibility
-independently of reader reload revisions. Each view selection lasts for the
+independently of reading pane reload revisions. Each view selection lasts for the
 app session across navigation, drawer reopening, and resizing. Changing the
 Annotation drawer's tab does not change the Article panel's selected tab. This
 state is not a library setting and is not persisted. Opening or closing the Inspector does not
-navigate or remount the article reader, preserving its current reading position.
+navigate or remount the reading pane, preserving its current reading position.
 
 The tab panels keep their children mounted while the Inspector remains open.
 Switching tabs hides content without resetting its local state or restarting the
@@ -57,15 +57,15 @@ child state so data from one Article or Annotation is not shown for another.
 
 ## Responsive presentation and keyboard access
 
-For Article inspection, a 280-pixel panel sits beside the reader at
-reader-container widths of at least 700 CSS pixels. Below that boundary, an
+For Article inspection, a 280-pixel panel sits beside the reading pane at
+reading-pane container widths of at least 700 CSS pixels. Below that boundary, an
 article-toolbar button opens the same Inspector in a right-hand drawer. The
-breakpoint measures the reader container rather than the browser viewport.
+breakpoint measures the reading pane container rather than the browser viewport.
 
 Annotation inspection always opens the shared Inspector in the right-hand
 drawer, including when opened from the Annotation tooltip on wide layouts.
 The drawer overlays the main window. The Article panel and tooltip remain
-mounted in place; opening it does not change their content, reader geometry,
+mounted in place; opening it does not change their content, reading pane geometry,
 or reading position. Both presentations share the Inspector implementation,
 with explicit Article and Annotation targets. Resizing
 does not move an inspected Annotation into the panel. Closing Annotation
@@ -75,7 +75,7 @@ Tabs support keyboard switching. The narrow toolbar opener identifies a dialog
 and exposes its expanded state. The drawer has an accessible name, a Close
 action, Escape/backdrop dismissal, and focus containment. Closing returns focus
 to the article-toolbar opener, or to the retained tooltip opener after opening from
-a tooltip, with the reader iframe as fallback. Resizing an Article drawer to the
+a tooltip, with the reading pane iframe as fallback. Resizing an Article drawer to the
 wide layout closes it and focuses the selected panel tab.
 
 The shared drawer slides in from the right only when

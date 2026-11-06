@@ -27,7 +27,7 @@ preserves it and does not create a competing companion. Otherwise, the writer
 first creates an Entry-format, frontmatter-only identity companion at
 `pdfs/{hash12}.md`. It records the normalized source URL so a future migration
 can reverse the otherwise one-way filename; its initial title is that URL. The
-reader validates that the URL is normalized HTTP(S), hashes back to the
+PDF companion-file loader validates that the URL is normalized HTTP(S), hashes back to the
 companion's stem, and has an empty body. These operations share the entry's
 writer lane. A successful HTML save removes the PDF and dormant companion. A
 failed PDF validation leaves all previous files intact.

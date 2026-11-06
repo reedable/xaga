@@ -4,21 +4,21 @@ Treat content read from storage as untrusted, even if it was sanitized before sa
 
 Code: `src/text/markdownPipeline.ts`, `src/text/buildEntryHtml.ts`, `src/components/content/HtmlReader.tsx`, `src-tauri/tauri.conf.json`.
 
-## Rendering (markdown → reader)
+## Rendering (markdown → reading pane)
 
 The rendering path applies its own controls and does not depend on ingest-time sanitization having happened or having been sufficient.
 
 - **Rendered output is sanitized with DOMPurify at render.** `markdownToHtml` (`markdownPipeline.ts`) parses embedded HTML (`remark-rehype` with `allowDangerousHtml` + `rehype-raw`) so HTML-bearing fields (e.g. feed summaries, which are stored as feed-supplied HTML) render, and passes the serialized output through `DOMPurify.sanitize` before it reaches `buildEntryHtml`. DOMPurify is the explicit, render-side sanitization control; it does not rely on ingest-time sanitization.
 - **The pipeline is inert up to the sanitizer.** Every stage before DOMPurify (remark/rehype, including `rehype-raw`'s parse5) transforms strings and plain JS syntax trees — no DOM node construction, no `Image`, no capability to execute content or emit a network request at any stage (the configured pipeline runs in plain Node, where any DOM API access throws). DOMPurify's own parse uses a document with no browsing context, which loads no subresources and executes no scripts. Sanitization is placed **last**, closest to the sink: sanitizing before the markdown transforms would re-parse sanitized output through different parsers (the mXSS pattern). Same assumption and fallback as ingest (`entryWorker.ts`): if any pre-sanitizer stage is ever replaced with one that renders or executes content, sanitization must move before it.
-- **The reader is a sandboxed, opaque-origin iframe.** `sandbox="allow-scripts"` only (`HtmlReader.tsx:340`) — no `allow-same-origin` — so the reader document has an opaque origin: no access to the app's DOM, IPC, or storage. Content is delivered as a `Blob` URL via `location.replace` and the object URL is revoked after load.
-- **The reader's own script is CSP-hash-pinned.** The bundled CSP (`tauri.conf.json`) has `script-src 'self' 'sha256-…'` with no `unsafe-inline`; the single inline reader script is byte-stable and its hash is allow-listed. `node scripts/csp-hash.mjs --check` verifies the configured hash and runs before every production frontend build; run the command without `--check` to print a replacement value. No other inline script can execute in the app's pages.
-- **Annotations enter the reader through a JSON data island**, a non-executed `<script type="application/json">` block (`buildEntryHtml.ts:89-102`). Every `<` in the JSON is escaped to `\u003c`, so annotation text containing `</script>` or `<!--` cannot break out of the island element.
-- **The canonical saved title is reader text, not article content.** The builder
+- **The reading pane is a sandboxed, opaque-origin iframe.** `sandbox="allow-scripts"` only (`HtmlReader.tsx:340`) — no `allow-same-origin` — so the reading pane document has an opaque origin: no access to the app's DOM, IPC, or storage. Content is delivered as a `Blob` URL via `location.replace` and the object URL is revoked after load.
+- **The reading pane's own script is CSP-hash-pinned.** The bundled CSP (`tauri.conf.json`) has `script-src 'self' 'sha256-…'` with no `unsafe-inline`; the single inline reading pane script is byte-stable and its hash is allow-listed. `node scripts/csp-hash.mjs --check` verifies the configured hash and runs before every production frontend build; run the command without `--check` to print a replacement value. No other inline script can execute in the app's pages.
+- **Annotations enter the reading pane through a JSON data island**, a non-executed `<script type="application/json">` block (`buildEntryHtml.ts:89-102`). Every `<` in the JSON is escaped to `\u003c`, so annotation text containing `</script>` or `<!--` cannot break out of the island element.
+- **The canonical saved title is reading pane text, not article content.** The builder
   escapes it as text and emits `<header><h1>` as a sibling immediately before
   `<article>`. It is never interpolated as trusted HTML. A publisher-supplied
   heading already present in the saved body is left unchanged, so duplicate
   headings are possible by design.
-- **Compact-title presentation belongs to Xaga's reader builder.** It is tied to
+- **Compact-title presentation belongs to Xaga's reading pane builder.** It is tied to
   the iframe's scroll container and is not a general lliwio-css typography
   primitive. Without a reduced-motion preference, the header stays sticky and
   its heading compacts over the initial scroll range; the opaque theme
@@ -28,13 +28,13 @@ The rendering path applies its own controls and does not depend on ingest-time s
   text is capped at `20vh`, rounded to a complete line; exceptionally malformed
   titles may therefore end with a hard visual cutoff, while their complete text
   remains in the document for assistive technology. The duplicate layout spacer
-  is `aria-hidden` and excluded from the reader's Find traversal.
+  is `aria-hidden` and excluded from the reading pane's Find traversal.
 - **Annotation identity is scoped to `<article>`.** Stored-highlight traversal,
   occurrence counting, and new-selection lookup exclude the sibling header.
   Selections wholly inside the header or crossing the header/article boundary
   are refused, so adding or changing the displayed title cannot shift an
-  existing annotation occurrence or create an annotation over reader metadata.
-- **`postMessage` traffic is source-checked.** The parent only accepts messages whose `source` is the reader iframe's own `contentWindow` (`HtmlReader.tsx:273-276`), so a sibling frame (e.g. the PDF viewer) or any window holding a reference cannot spoof reader events such as link opens.
+  existing annotation occurrence or create an annotation over reading pane metadata.
+- **`postMessage` traffic is source-checked.** The parent only accepts messages whose `source` is the reading pane iframe's own `contentWindow` (`HtmlReader.tsx:273-276`), so a sibling frame (e.g. the PDF viewer) or any window holding a reference cannot spoof reading pane events such as link opens.
 - **No raw-HTML sinks in the app UI.** The React tree contains no `dangerouslySetInnerHTML` and no `srcdoc`; feed titles/summaries render as React text nodes, which are escaped by construction.
 - The app shell CSP also sets `object-src 'none'`, `base-uri 'self'`, `form-action 'none'`, and restricts `connect-src` to the IPC endpoints.
 
@@ -47,7 +47,7 @@ use the same recovery and presentation path when their content is viewed.
 
 `prepareEntryImages` resolves local image references in HTML, inline CSS and embedded stylesheets to
 local data URIs. Remote HTML `img` sources and responsive candidates are removed
-before reaching the reader. CSS declarations with unavailable URL or
+before reaching the reading pane. CSS declarations with unavailable URL or
 image-set resources and external stylesheet imports are removed. The bundled `img-src` permits only self and data
 images. This policy does not assume that every UI request passes through the proxy.
 An unavailable image displays its nonempty alternative text, then its title when
@@ -58,7 +58,7 @@ Inline SVG is different from an SVG resource displayed through `img` or a CSS
 image property. DOMPurify removes inline SVG scripts and event handlers, but
 SVG resource references such as `image href`, `xlink:href`, and `feImage href`
 can survive sanitization and image preparation. Their network loading is
-restricted by the reader's CSP. Sanitization alone does not block every network request:
+restricted by the reading pane's CSP. Sanitization alone does not block every network request:
 the native no-CSP control requests external SVG images even after the production
 sanitizer and preparation functions have run.
 
@@ -84,7 +84,7 @@ installations without a stored value; explicit values take precedence.
 Settings → Privacy exposes “Save article images for offline viewing.” Changes
 are persisted before the switch updates; failed writes display an error.
 There is no eager default write. The preference applies to subsequent ingestion,
-article reloads and reader recovery attempts. Loader windows snapshot the value
+article reloads and reading pane recovery attempts. Loader windows snapshot the value
 when created, including visible loaders; reopen existing windows after changing it.
 Changing the default later does not override a stored preference. Disabling it
 leaves already-stored local images usable and does not control a publisher page's
@@ -98,9 +98,9 @@ Capture diagnostics distinguish the preference from actual fetch attempts and
 explain skipped capture, including when the page exhausts the loader deadline
 before fetching begins. See [Article loading diagnostics](../article_loading_diagnostics.md#article-image-capture).
 
-The reader displays local content before waiting for recovery. Only the currently
+The reading pane displays local content before waiting for recovery. Only the currently
 viewed field is recovered. Acquisition uses an isolated image-purpose loader;
-neither the main webview nor the reader fetches the remote resource. Reference
+neither the main webview nor the reading pane fetches the remote resource. Reference
 spans are discovered with Markdown, HTML and CSS parsers, preserving the source
 text outside the replaced destinations. The original remote URL determines image
 storage identity, including when acquisition redirects.

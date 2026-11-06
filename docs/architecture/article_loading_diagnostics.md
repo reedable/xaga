@@ -37,7 +37,7 @@ shared diagnostic payloads live in `src/types.ts`, and the `Platform` interface 
 `ArticleDiagnosticsDialog` owns presentation and copying under `components/dialogs`.
 
 `useContentLoader`, `useArticles`, and `ArticleReader` identify lookup, fetch,
-extraction, save/readback, and reader-preparation steps. `entryWorker.ts`
+extraction, save/readback, and reading-pane preparation steps. `entryWorker.ts`
 reports its parse, Readability, image restoration, sanitization, and Markdown
 phases. Fresh retries receive new IDs.
 
@@ -138,7 +138,7 @@ wait that expired and the last observed milestone; the underlying browser cause
 is explicitly unknown unless independent evidence was collected. Navigation
 callbacks are not treated as a verified redirect chain.
 
-A successful `render` step means reader HTML/blob preparation succeeded. It does
+A successful `render` step means reading pane HTML/blob preparation succeeded. It does
 not establish successful painting or decoding inside WebKit's built-in PDF
 viewer. Subsequent visible-browser HTML extraction starts a separate attempt;
 page-script milestones are collected only while the initial request is pending.

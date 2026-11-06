@@ -72,7 +72,7 @@ they do not change target content or membership.
 Retain unresolved references and display that the target cannot be found, with a
 manual removal action. Restoring a target makes the reference usable again.
 A Site with zero members is still a valid navigation target, with zero counts.
-Unpinning preserves the open list and reader context.
+Unpinning preserves the open list and reading pane context.
 
 ## Reading state, bookmarks, and color
 

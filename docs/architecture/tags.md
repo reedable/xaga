@@ -273,7 +273,7 @@ This accepted stale-index consequence differs from interrupted deletion, whose
 active reservation prevents recreation and whose work resumes during recovery.
 
 Deleting a selected tag removes its ID from the current navigation selection
-without replacing the displayed list or reader selection. Definition events are
+without replacing the displayed list or reading pane selection. Definition events are
 retained even if acceptance and completion arrive before a UI render. The next
 explicit navigation, filter change, or refresh queries the remaining selection;
 an empty selection queries all Entries under the existing filters. Bounds and
@@ -314,7 +314,7 @@ tombstone. Recovery remembers active participants before resuming conversion and
 then discovers source labels under the resulting registry.
 
 Sidebar/header status shows Merging… on the surviving tag. Selection IDs follow
-committed merges, deduplicate, and retain the reader and current article list.
+committed merges, deduplicate, and retain the reading pane and current article list.
 Subsequent explicit navigation or refresh includes assignments under either
 participating tag ID for the current merged selection. Inspector assignments follow the survivor and refresh from source on
 merge events and subsequent assignment events, avoiding late losing-ID deltas.

@@ -8,7 +8,7 @@ priority decisions for the user.**
 ## Why the user owns decisions
 
 The code does not contain all the context needed for a product or engineering
-decision. Xaga’s reader may receive thousands of articles per day but read only
+decision. A Xaga user may receive thousands of articles per day but read only
 tens. Product direction, user needs, and domain experience affect which changes
 are useful. A familiar implementation pattern is not evidence that it fits those
 needs.

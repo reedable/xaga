@@ -44,7 +44,7 @@ deselectable; it is never displayed as an internal ID or silently converted to
 an empty selection. A new query with an unavailable selection returns no rows.
 Definition snapshots are session UI state, not a persisted name cache. The
 explicit Delete action removes the selected ID while retaining the current list
-and reader selection. A pending query for the previous selection is discarded. The next explicit
+and reading pane selection. A pending query for the previous selection is discarded. The next explicit
 navigation, filter change, or refresh queries the remaining set, or all Entries
 under the existing filters when it is empty. See the [deletion selection
 contract](organization_model.md#delete).
@@ -75,7 +75,7 @@ Unpinning or changing reading state preserves the open list and reading context.
 
 Passage ordering resolves stored text segments and their zero-based occurrences
 against the rendered full body (or summary only when the body is absent), using the
-reader's per-text-node, non-overlapping occurrence convention. Multi-segment
+reading pane's per-text-node, non-overlapping occurrence convention. Multi-segment
 annotations sort at their earliest resolved segment, even if another segment fails
 to resolve. Annotations with no resolved segment appear last, without a guaranteed
 order among them. Creation, edits, replacement and removal refresh the scoped list

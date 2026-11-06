@@ -1,7 +1,8 @@
 # Xaga training
 
-Open [index.html](index.html) to choose a track. Each track has ten lessons:
-three introductory, four applied, and three advanced. Each lesson includes an
+Open [index.html](index.html) to choose a track. The product track has eleven lessons:
+four introductory, four applied, and three advanced. Interface and engineering
+each have ten lessons: three introductory, four applied, and three advanced. Each lesson includes an
 objective, explanation, Xaga example, references, and two retryable questions
 with answer-specific feedback. Lessons are freely navigable; correct answers
 record progress rather than locking access to later material.
@@ -56,6 +57,12 @@ feedback. Name the object being discussed: for example, introduce Research as
 a tag name before asking what removing it does. Ask what the user or developer
 would do or see, rather than asking an abstract question about a design.
 
+Follow the [documentation terminology](../conventions/documentation.md#terminology-and-audience):
+use user, Xaga, and reading pane for the person, app, and article display. Use
+visible view names consistently, including Topics view. Keep `Entry` and `Article`
+for the actual code types, and database row for a table record. Explain an HTTP
+client as software, rather than using client as another name for the user.
+
 Wrap inline code names, fields, and filenames in single backticks in lesson
 content; the renderer creates semantic `<code>` elements without interpreting HTML.
 
@@ -63,7 +70,7 @@ Use established technical terms and actual code names when they help teach the
 implementation. Explain them on first use in a lesson. Avoid invented labels
 and metaphors that stand in for an explanation; say which component performs
 an operation, which file saves the data, or which result changes. Product
-lessons should describe the reader’s workflow before introducing storage types.
+lessons should describe the user’s workflow before introducing storage types.
 
 Wording-only changes can keep lesson IDs and answer order when the meaning and
 correctness remain the same, preserving the trainee’s saved selections.
@@ -72,7 +79,7 @@ Before publishing a lesson, read it from the trainee’s position:
 
 - Start with the situation and why it matters, then explain the implementation.
 - Introduce names, acronyms, and technical terms before relying on them.
-- Keep product explanations focused on the reader’s actions; place implementation
+- Keep product explanations focused on the user’s actions; place implementation
   detail where it helps the relevant technical track.
 - Give quiz scenarios enough context to stand on their own. Use direct questions
   and parallel answers, avoiding double negatives and unexplained shorthand.

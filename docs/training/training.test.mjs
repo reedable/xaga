@@ -34,10 +34,11 @@ test('three progressive tracks, complete questions, valid references and Markdow
   const p = page();
   try {
     assert.equal(Object.keys(p.tracks).length, 3);
-    for (const track of Object.values(p.tracks)) {
-      assert.equal(track.lessons.length, 10);
-      assert.equal(new Set(track.lessons.map(l => l.id)).size, 10);
-      assert.deepEqual(Array.from(track.lessons.map(l => l.level)), [...Array(3).fill('Introduction'), ...Array(4).fill('Applied'), ...Array(3).fill('Advanced')]);
+    for (const [trackId, track] of Object.entries(p.tracks)) {
+      const introCount = trackId === 'product' ? 4 : 3;
+      assert.equal(track.lessons.length, introCount + 7);
+      assert.equal(new Set(track.lessons.map(l => l.id)).size, track.lessons.length);
+      assert.deepEqual(Array.from(track.lessons.map(l => l.level)), [...Array(introCount).fill('Introduction'), ...Array(4).fill('Applied'), ...Array(3).fill('Advanced')]);
       for (const lesson of track.lessons) {
         assert.ok(lesson.objective && lesson.example && lesson.paragraphs.length >= 3);
         assert.equal(lesson.questions.length, 2);
@@ -60,7 +61,7 @@ test('three progressive tracks, complete questions, valid references and Markdow
   } finally { p.close(); }
 });
 
-test('all 180 answer paths explain the answer and all 30 lessons can complete', () => {
+test('all answer paths explain the answer and all lessons can complete', () => {
   const p = page();
   try {
     for (const [id, track] of Object.entries(p.tracks)) {
@@ -68,8 +69,8 @@ test('all 180 answer paths explain the answer and all 30 lessons can complete', 
         route(p, `${id}/${lesson.id}`);
         assert.equal(p.get('lesson-title').textContent, lesson.title);
         assert.equal(p.get('lesson-meta'), null);
-        assert.equal(p.get('curriculum').querySelector('.track-duration').textContent, 'About 50–80 minutes total');
-        assert.equal(p.get('curriculum').querySelectorAll('.lesson-duration').length, 10);
+        assert.equal(p.get('curriculum').querySelector('.track-duration').textContent, `About ${track.lessons.length * 5}–${track.lessons.length * 8} minutes total`);
+        assert.equal(p.get('curriculum').querySelectorAll('.lesson-duration').length, track.lessons.length);
         assert.equal(p.w.document.querySelectorAll('#curriculum [aria-current="step"]').length, 1);
         const forms = [...p.get('quizzes').querySelectorAll('form')];
         lesson.questions.forEach((question, i) => question.answers.forEach(answer => {
@@ -83,7 +84,7 @@ test('all 180 answer paths explain the answer and all 30 lessons can complete', 
         }));
         assert.equal(p.w.document.querySelector('#curriculum [aria-current=step] .lesson-status').textContent, 'Completed');
       }
-      assert.equal(p.get('track-progress').textContent, '10 / 10 lessons completed');
+      assert.equal(p.get('track-progress').textContent, `${track.lessons.length} / ${track.lessons.length} lessons completed`);
     }
   } finally { p.close(); }
 });

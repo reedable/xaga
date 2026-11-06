@@ -39,7 +39,7 @@ operation involved. Explain established technical terms when their meaning is
 not clear from context. Use inline code formatting for identifiers and paths.
 
 Avoid invented technical labels, extended metaphors, slogans, and abstract
-phrases that require the reader to reconstruct the operation. For example,
+phrases that require the person reading the document to reconstruct the operation. For example,
 “the command passes the saved color to the indexing job” explains more than
 “committed intent crosses the boundary.” Describe the actual check or saved
 state rather than giving it an impressive name.
@@ -47,6 +47,40 @@ state rather than giving it an impressive name.
 Keep requirements, exceptions, measurements, and known limits explicit when
 simplifying prose. Clearer language must not silently change a design decision
 or make a security claim stronger than the available evidence.
+
+### Terminology and audience
+
+Use a stable name for each person, product part, and operation. Do not alternate
+synonyms for variety when they could suggest different things.
+
+| Meaning | Term in prose |
+| --- | --- |
+| Person using the product | user |
+| The application | Xaga |
+| UI area displaying article content | reading pane |
+| Assistive technology that announces content | screen reader |
+| Software sending HTTP requests | HTTP client |
+| One running application process | Xaga process |
+| Saved web article | article; use `Entry` or `Article` when discussing those exact code types |
+| Highlighted passage and optional comment | annotation; use `Annotation` for the code type |
+| Inspector tab for choosing Topics | Topics view |
+| Fixed-schema record in a database table | database row; do not use “row” for an article in a UI list |
+| Whether an article is read or unread | read status; keep exact field names such as `is_unread` in code formatting |
+
+Use visible UI labels when explaining controls and views. Preserve code names,
+file paths, and quoted output exactly, marking identifiers as code. If a code
+name differs from the prose term, explain the relationship on first use.
+
+Write product lessons in terms of user actions and outcomes. Technical lessons
+may introduce implementation terms, but must explain them before relying on
+them. Address the trainee as “you”; use “the user” when discussing the person
+whose product experience they are designing or implementing.
+
+Distinguish operations as well as nouns. Removing a shortcut does not delete its
+destination. Removing a tag from one article does not delete the tag definition.
+Saved is the UI view containing bookmarked articles and annotations, not another
+name for bookmarks alone. Specify the object changed rather than saying only
+“remove it,” “update the state,” or “change the target.”
 
 ## Transient task structure
 

@@ -68,8 +68,8 @@ SVGs used as HTML/CSS images load without requesting their external resources,
 including in the no-CSP control.
 
 The same probe runs the production Markdown sanitizer, image preparation, and
-reader HTML builder in an opaque-origin `allow-scripts` Blob iframe. A response
-from the reader's hash-pinned script confirms the frame is running. These checks
+reading-pane HTML builder in an opaque-origin `allow-scripts` Blob iframe. A response
+from the reading pane’s hash-pinned script confirms the frame is running. These checks
 establish the tested rendering boundaries, not complete proxy routing, all SVG
 features, or end-to-end behavior of the packaged application. They do not cover
 top-level SVG acquisition in the article loader or other operating systems.
@@ -192,7 +192,7 @@ Fetch behavior that trades an invariant against UX is exposed as a setting whose
 - **`max_redirects`** (default 3, range 0–10; 10 is always in force, the user cannot exceed it) — redirect hops honored on the reqwest paths. Consequence of raising it: each permitted hop is another attacker-influenced URL the app will follow. The default itself is a recorded exception — see below.
 - **`referer_allowed`** (default `false`) — send `Referer` on redirect hops. Consequence: redirect targets learn the originating feed URL.
 - **`gzip_allowed`** (default `false`) — negotiate gzip on the reqwest paths. Consequence: hosts learn the client negotiates gzip (see "Encoding negotiation").
-- **`allowed_domains`** (default empty) — domains granted persistent webview storage in the loader (see below). Consequence: those sites can recognize a returning reader.
+- **`allowed_domains`** (default empty) — domains granted persistent webview storage in the loader (see below). Consequence: those sites can recognize a returning user.
 - **`connect_nonstandard_ports_allowed`** (default `false`) — allow `CONNECT` to target a port other than 443. Consequence: `CONNECT` to any port is tunneled opaquely, so a plaintext (or otherwise non-TLS) service on a non-443 port is reachable through the tunnel with no visibility into what the tunneled bytes are.
 
 ### Recorded exception to Secure by Default
@@ -252,7 +252,7 @@ closing the window. Completing the initial capture removes the pending request;
 that absence must not suppress the close capture or the update prompt.
 
 For the current article, when native attribution confirms the same page and HTML
-extraction produces Markdown, the reader must offer **Update article?** with
+extraction produces Markdown, Xaga must offer **Update article?** with
 **Keep old** and **Update**. Closing the loader does not authorize a save: only
 **Update** saves the extracted content to the locally stored `.md`. **Keep old**
 or dismissing the dialog leaves the saved article unchanged. A different page
@@ -263,7 +263,7 @@ capture. The second close, after the close capture has been delivered, must pass
 through without starting another capture.
 
 Run `sh scripts/test-article-update-on-close.sh` for the regression checks of the
-native close decision, JavaScript recapture, and reader confirmation/save flow.
+native close decision, JavaScript recapture, and reading-pane confirmation and save flow.
 
 ## Limits
 
@@ -400,7 +400,7 @@ external entities, or fetch resources. It does not sanitize the original SVG.
 AVIF is checked using `avif-parse` for container structure and AV1 primary/alpha
 metadata, with a primary-image limit of 8 megapixels; this is not pixel decoding.
 The parser accepts still AVIF, not animated `avis` containers. Existing stored
-files still follow the local reader path. Acquisition continues to navigate in
+files still follow the local reading-pane display path. Acquisition continues to navigate in
 the isolated loader; these byte checks do not disable publisher scripts during
 that preceding navigation.
 
