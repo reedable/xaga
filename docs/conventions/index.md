@@ -2,6 +2,10 @@
 
 Conventions for code and documentation, as distinct from what the system is (architecture) and what governs decisions (principles).
 
+## Writing
+
+[Writing style](writing_style.md) — shared language, audience guidance, terminology, and UI copy.
+
 ## Documentation
 
 [Documentation](documentation.md) — durable and transient documents, task lifecycle, structure, filenames, and labels.

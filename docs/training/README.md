@@ -52,40 +52,25 @@ Runtime display rotates option positions deterministically.
 
 ## Writing lessons
 
-Use concrete actions and outcomes in explanations, questions, answers, and
-feedback. Name the object being discussed: for example, introduce Research as
-a tag name before asking what removing it does. Ask what the user or developer
-would do or see, rather than asking an abstract question about a design.
+Follow the [writing style guide](../conventions/writing_style.md), including
+its audience guidance for product, interface, and engineering training. Quote
+actual UI labels in instructions; surrounding prose follows content guidance,
+while interface labels and controls follow UI copy guidance.
 
-Follow the [documentation terminology](../conventions/documentation.md#terminology-and-audience):
-use user, Xaga, and reading pane for the person, app, and article display. Use
-visible view names consistently, including Topics view. Keep `Entry` and `Article`
-for the actual code types, and database row for a table record. Explain an HTTP
-client as software, rather than using client as another name for the user.
+For quizzes, introduce the scenario and named objects before asking what the
+user or developer would do or see. Give each scenario enough context to stand
+alone. Use direct questions and parallel answers, avoiding double negatives and
+unexplained shorthand. Explain why each answer is right or wrong rather than
+merely repeating it.
 
 Wrap inline code names, fields, and filenames in single backticks in lesson
 content; the renderer creates semantic `<code>` elements without interpreting HTML.
 
-Use established technical terms and actual code names when they help teach the
-implementation. Explain them on first use in a lesson. Avoid invented labels
-and metaphors that stand in for an explanation; say which component performs
-an operation, which file saves the data, or which result changes. Product
-lessons should describe the user’s workflow before introducing storage types.
-
 Wording-only changes can keep lesson IDs and answer order when the meaning and
 correctness remain the same, preserving the trainee’s saved selections.
 
-Before publishing a lesson, read it from the trainee’s position:
-
-- Start with the situation and why it matters, then explain the implementation.
-- Introduce names, acronyms, and technical terms before relying on them.
-- Keep product explanations focused on the user’s actions; place implementation
-  detail where it helps the relevant technical track.
-- Give quiz scenarios enough context to stand on their own. Use direct questions
-  and parallel answers, avoiding double negatives and unexplained shorthand.
-- Explain why an answer is right or wrong without merely repeating it.
-- Use examples that make the rule concrete, including the limits of the claim.
-- Check the linked docs and code before simplifying a technical distinction.
+Before publishing, read each lesson from the trainee’s position and verify
+examples, references, answer correctness, and feedback against the shared guide.
 
 ## Verification
 
