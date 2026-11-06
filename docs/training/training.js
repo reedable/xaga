@@ -153,7 +153,11 @@ function renderQuestion(question, questionIndex) {
   function showFeedback(correct, message) {
     feedback.dataset.correct = String(correct);
     const text = document.createElement("span");
-    inlineText(text, message);
+    const result = document.createElement("strong");
+    result.textContent = correct ? "Correct." : "Incorrect. Try again.";
+    const explanation = document.createElement("span");
+    inlineText(explanation, message);
+    text.append(result, document.createTextNode(" "), explanation);
     feedback.replaceChildren(text);
   }
   form.addEventListener("submit", (event) => event.preventDefault());
@@ -169,7 +173,7 @@ function renderQuestion(question, questionIndex) {
     input.parentElement.querySelector(".answer-indicator").textContent = answer.correct ? "✓" : "✕";
     input.setAttribute("aria-describedby", feedback.id);
     input.closest(".answer").append(feedback);
-    showFeedback(answer.correct, `${answer.correct ? "Correct. " : "Incorrect. Try again. "}${answer.feedback}`);
+    showFeedback(answer.correct, answer.feedback);
     if (!record) return;
     selections[key] ??= [];
     selections[key][questionIndex] = question.answers.indexOf(answer);
