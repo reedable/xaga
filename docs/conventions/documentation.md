@@ -64,6 +64,10 @@ synonyms for variety when they could suggest different things.
 | Saved web article | article; use `Entry` or `Article` when discussing those exact code types |
 | Highlighted passage and optional comment | annotation; use `Annotation` for the code type |
 | Inspector tab for choosing Topics | Topics view |
+| External website where an article was published | website |
+| List of saved articles sharing a website hostname | articles from that website |
+| Navigation section listing those websites | Sites section |
+| Domain object and sidebar component for that navigation | `Site` data type and `SiteList` component, respectively |
 | Fixed-schema record in a database table | database row; do not use “row” for an article in a UI list |
 | Whether an article is read or unread | read status; keep exact field names such as `is_unread` in code formatting |
 

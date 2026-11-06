@@ -71,51 +71,51 @@ const TRAINING = {
       {
         "id": "collections",
         "level": "Introduction",
-        "title": "Feed, Topic, and Site",
-        "objective": "Explain how Feeds, Topics, and Sites group articles.",
+        "title": "Browse by feed, Topic, or website",
+        "objective": "Distinguish the source of an article, a Topic, and browsing by website.",
         "paragraphs": [
           "A Feed brings articles into your library. A Topic lets you group material that belongs together. You add Feeds and create Topics; each has its own saved record.",
-          "Sites provides another way to browse: by the website an article came from. Xaga reads the website name from each article’s web address and groups articles automatically. Articles from different feeds can appear under the same Site.",
-          "These groups answer different questions. A Feed tells you which subscription supplied an article. A Topic groups related material. A Site brings together articles from the same website. You do not have to create a Site, subscribe to its feed, or add articles to it manually."
+          "A website can publish several feeds. Suppose example.com publishes one feed called “Arts” and another called “Entertainment”. A user can subscribe to either feed or both. Each Feed shows its own articles. Choosing example.com in Xaga’s Sites section brings together the saved articles from that website, regardless of which feed supplied them.",
+          "These are different ways to browse the same library. Use a Feed to follow a particular subscription, a Topic to group related material, or the Sites section to browse by website. Xaga groups articles using their web addresses. This shows articles already in the library; it does not fetch every article on the website or subscribe the user to its other feeds."
         ],
-        "example": "Two feeds bring in articles from example.com. Both articles appear under example.com in Sites. Xaga also treats www.example.com as example.com, but keeps news.example.com separate.",
+        "example": "You subscribe to two feeds from example.com: “Arts” and “Entertainment”. Open “Arts” to browse articles from that feed, or “Entertainment” to browse articles from the other. Choose example.com in Sites to see the saved articles from both together.",
         "questions": [
           {
-            "prompt": "In Xaga, Sites lets you browse articles by website. Two different feeds bring in articles from example.com. When you open example.com in Sites, what should you see?",
+            "prompt": "You subscribe to two feeds from example.com: one called “Arts” and another called “Entertainment”. When you choose example.com in Xaga’s Sites section, which articles should appear?",
             "answers": [
               {
-                "text": "Articles from example.com, regardless of which feed brought them in.",
-                "feedback": "Xaga uses each article’s web address to group it under a Site. The feed it came from does not matter.",
+                "text": "Saved articles from example.com, regardless of which feed supplied them.",
+                "feedback": "The Sites section groups articles already in the library by website, so it can bring together articles from several feeds.",
                 "correct": true
               },
               {
-                "text": "Only the articles from the feed you added first.",
-                "feedback": "Both feeds can contribute articles to the same Site. The order in which you added the feeds does not matter.",
+                "text": "Only articles from whichever feed you added first.",
+                "feedback": "The feed’s subscription order does not affect this list. Saved articles from either feed can appear when their web addresses belong to example.com.",
                 "correct": false
               },
               {
-                "text": "No articles until you manually add them to that Site.",
-                "feedback": "Xaga groups articles by website automatically. You do not have to add them to a Site yourself.",
+                "text": "No articles until you manually add them to a group for example.com.",
+                "feedback": "Xaga groups saved articles by their web addresses automatically. You do not add them to this list manually.",
                 "correct": false
               }
             ]
           },
           {
-            "prompt": "You save your first article from a new website. Do you need to create a Site for that website in Xaga?",
+            "prompt": "You save your first article from example.com. Must you create a group for example.com before it appears in Xaga’s Sites section?",
             "answers": [
               {
-                "text": "No. Xaga automatically includes the website in Sites based on the article’s web address.",
-                "feedback": "Sites come from the articles in your library. Unlike a Topic, a Site does not need to be created separately.",
+                "text": "No. Xaga lists example.com automatically using the article’s web address.",
+                "feedback": "The Sites section is populated from saved articles. Unlike a Topic, a group of articles from one website does not need to be created separately.",
                 "correct": true
               },
               {
-                "text": "Yes. You must create and name the Site yourself.",
-                "feedback": "You do not create Sites manually. Xaga gets the website name from the article’s web address.",
+                "text": "Yes. You must create and name the group yourself.",
+                "feedback": "Xaga gets the website name from the article’s address and groups its saved articles automatically.",
                 "correct": false
               },
               {
                 "text": "Yes. You must subscribe to a feed from that website first.",
-                "feedback": "A Site does not require a feed subscription. An article from the website is enough.",
+                "feedback": "Browsing saved articles by website does not require subscribing to a feed from that website.",
                 "correct": false
               }
             ]
@@ -127,7 +127,7 @@ const TRAINING = {
             "path": "../architecture/organization_model.md"
           },
           {
-            "title": "Site identity and membership",
+            "title": "How articles are grouped by website",
             "path": "../architecture/sites.md"
           },
           {
@@ -346,9 +346,9 @@ const TRAINING = {
         "title": "Shortcuts point to saved material",
         "objective": "Explain what a shortcut saves and what happens when its destination is unavailable.",
         "paragraphs": [
-          "Adding an article, Feed, Topic, or Site to Shortcuts gives you a quick way to open it again. The shortcut points to the existing content; it does not make a copy. The library stores these references in `pins.yaml`.",
+          "A shortcut can open an article, Feed, Topic, or the list of saved articles from a website. It points to existing content rather than making a copy. The library stores these references in `pins.yaml`.",
           "If Xaga cannot read a shortcut’s destination, it keeps the shortcut and offers Retry and Remove shortcut. A failed read does not establish that the content was deleted. Keeping the shortcut lets it work again if the content becomes available.",
-          "A Site with no articles is different from unavailable content: it is a valid empty group and shows zero counts. You can open shortcuts and retry unavailable ones in a read-only library, where viewing is allowed but saved changes are refused. Removing a shortcut requires write access."
+          "A shortcut to example.com can still open an empty article list after all saved articles from that website are removed. That is different from an unreadable Topic. In a read-only library, viewing is allowed but saved changes are refused: you can open shortcuts and retry unavailable ones, but cannot remove a shortcut."
         ],
         "example": "A Topic cannot be read temporarily. Its shortcut stays visible. Retry tries to find the same Topic again; Remove shortcut removes only that route to it.",
         "questions": [
@@ -373,21 +373,21 @@ const TRAINING = {
             ]
           },
           {
-            "prompt": "A Site is in Shortcuts, but no articles from that website remain in the library. What should happen?",
+            "prompt": "You added a shortcut to the saved articles from example.com. No articles from that website remain in the library. What should the shortcut do?",
             "answers": [
               {
-                "text": "The shortcut still opens the Site, showing no articles and zero counts.",
-                "feedback": "The Site still identifies the website. Having no articles does not prevent you from opening that empty group.",
+                "text": "Open an empty article list for example.com, with zero counts.",
+                "feedback": "The shortcut identifies the website. An empty list is still valid even when no saved articles match it.",
                 "correct": true
               },
               {
                 "text": "The shortcut becomes permanently broken.",
-                "feedback": "A Site can be empty without being broken. New articles from that website can appear there later.",
+                "feedback": "The website’s article list can be empty without being broken. New saved articles from example.com can appear there later.",
                 "correct": false
               },
               {
-                "text": "Xaga should delete the Site’s saved article list.",
-                "feedback": "Xaga calculates which articles belong to a Site from their web addresses; there is no separate saved member list to delete.",
+                "text": "Delete a separate file containing the website’s article list.",
+                "feedback": "Xaga calculates the list from saved article addresses. There is no separate membership file to delete.",
                 "correct": false
               }
             ]
@@ -399,7 +399,7 @@ const TRAINING = {
             "path": "../architecture/pins.md"
           },
           {
-            "title": "Site shortcuts",
+            "title": "Shortcuts to articles from a website",
             "path": "../architecture/sites.md#shortcuts"
           },
           {
@@ -834,7 +834,7 @@ const TRAINING = {
         "paragraphs": [
           "Xaga separates an article summary from its loaded contents. `Entry` includes information such as its ID, title, URL, and read status. `Article` adds the body and annotations. Loading the body does not change the object’s role: both use `__kind: \"entry\"`.",
           "`Annotation` describes a highlighted passage and its optional comment. Its `content` field stores that comment. This is different from the separate `Note` type. An action on an annotation must identify that annotation, not just its containing article.",
-          "Collections share browsing information without sharing every storage detail. `Entity` provides `id` and `title`; `ManagedEntity` adds fields such as `createdAt` for independently managed records. Feed and Topic have their own records and member lists. Site is calculated from article addresses and does not need an invented creation date or stored member list.",
+          "Collections share browsing information without sharing every storage detail. `Entity` provides `id` and `title`; `ManagedEntity` adds fields such as `createdAt` for independently managed records. Feed and Topic have their own records and member lists. The `Site` data type describes articles grouped by a normalized website hostname, without its own creation date or saved member list. The Sites navigation section displays those groups; the `SiteList` component renders that sidebar section.",
           "A type guard checks the object’s fields together with its `__kind` value where required. The kind alone is not enough. A loaded member list can also be incomplete: use `entryCount` for the supplied total, rather than counting `members.length`."
         ],
         "example": "A Feed object has ten articles loaded in `members`, while `entryCount` reports 300. Show 300 as its article count. The ten loaded references do not establish the total number of articles.",
@@ -892,6 +892,10 @@ const TRAINING = {
           {
             "title": "Collections",
             "path": "../architecture/organization_model.md#collections-and-identity"
+          },
+          {
+            "title": "Sites sidebar component",
+            "path": "../../src/components/sidebar/SiteList.tsx"
           }
         ]
       },
