@@ -66,9 +66,20 @@ function updateProgress() {
     node.textContent = isComplete(trackId, item) ? "Completed" : "";
   });
 }
+function inlineText(node, text) {
+  const fragments = text.split(/(`[^`]+`)/g).map((part) => {
+    if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
+      const code = document.createElement("code");
+      code.textContent = part.slice(1, -1);
+      return code;
+    }
+    return document.createTextNode(part);
+  });
+  node.replaceChildren(...fragments);
+}
 function paragraph(text) {
   const node = document.createElement("p");
-  node.textContent = text;
+  inlineText(node, text);
   return node;
 }
 function renderCurriculum() {
@@ -107,7 +118,7 @@ function renderQuestion(question, questionIndex) {
   const form = document.createElement("form");
   const fieldset = document.createElement("fieldset");
   const legend = document.createElement("legend");
-  legend.textContent = `${questionIndex + 1}. ${question.prompt}`;
+  inlineText(legend, `${questionIndex + 1}. ${question.prompt}`);
   fieldset.append(legend);
   // Stable rotation keeps correct answers in different positions on each lesson.
   const offset = (lessonIndex + questionIndex) % question.answers.length;
@@ -128,7 +139,7 @@ function renderQuestion(question, questionIndex) {
     indicator.setAttribute("aria-hidden", "true");
     const answerText = document.createElement("span");
     answerText.className = "answer-text";
-    answerText.textContent = answer.text;
+    inlineText(answerText, answer.text);
     label.append(input, indicator, answerText);
     box.append(label);
     fieldset.append(box);
@@ -142,7 +153,7 @@ function renderQuestion(question, questionIndex) {
   function showFeedback(correct, message) {
     feedback.dataset.correct = String(correct);
     const text = document.createElement("span");
-    text.textContent = message;
+    inlineText(text, message);
     feedback.replaceChildren(text);
   }
   form.addEventListener("submit", (event) => event.preventDefault());
@@ -244,9 +255,9 @@ function navigate(focus = true) {
   document.title = `${lesson.title} · Xaga Training`;
   element("course-title").textContent = track.title;
   element("lesson-title").textContent = lesson.title;
-  element("objective").textContent = lesson.objective;
+  inlineText(element("objective"), lesson.objective);
   element("explanation").replaceChildren(...lesson.paragraphs.map(paragraph));
-  element("example").textContent = lesson.example;
+  inlineText(element("example"), lesson.example);
   element("references").replaceChildren(...lesson.references.map(sourceLink));
   element("quizzes").replaceChildren(...lesson.questions.map(renderQuestion));
   renderCurriculum();

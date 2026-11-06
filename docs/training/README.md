@@ -41,13 +41,32 @@ No build step or frontend framework is required.
 Keep stable track and lesson IDs for bookmarks and saved progress. References
 are relative to `index.html`. Link to authoritative docs and actual code paths;
 identify target designs and known limits rather than describing every documented
-intention as implemented. Scenarios illustrate contracts and are not screenshots
+intention as implemented. Scenarios illustrate documented behavior and are not screenshots
 or claims of a browser-only mock of the application.
 
 When changing a question's meaning, change its lesson ID or deliberately version
 the saved-progress key so an older completion does not stand for a new exercise.
 Keep one correct option per question and give every option an explanation.
 Runtime display rotates option positions deterministically.
+
+## Writing lessons
+
+Use concrete actions and outcomes in explanations, questions, answers, and
+feedback. Name the object being discussed: for example, introduce Research as
+a tag name before asking what removing it does. Ask what the user or developer
+would do or see, rather than asking an abstract question about a design.
+
+Wrap inline code names, fields, and filenames in single backticks in lesson
+content; the renderer creates semantic `<code>` elements without interpreting HTML.
+
+Use established technical terms and actual code names when they help teach the
+implementation. Explain them on first use in a lesson. Avoid invented labels
+and metaphors that stand in for an explanation; say which component performs
+an operation, which file saves the data, or which result changes. Product
+lessons should describe the reader’s workflow before introducing storage types.
+
+Wording-only changes can keep lesson IDs and answer order when the meaning and
+correctness remain the same, preserving the trainee’s saved selections.
 
 ## Verification
 

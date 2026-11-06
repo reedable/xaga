@@ -128,3 +128,5 @@ dialog::backdrop { background: rgb(0 0 0 / .65); }
 
 .track-duration { color: var(--muted); margin-bottom: 24px; }
 .lesson-duration { display: block; color: var(--muted); font-size: .75rem; font-weight: 400; }
+
+code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9em; background: var(--surface); padding: .1em .3em; border-radius: 3px; overflow-wrap: anywhere; }

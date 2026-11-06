@@ -19,8 +19,9 @@ function page({url = 'http://localhost/docs/training/', stored, storedAnswers, f
   return {w, tracks: w.curriculum, get: (id) => w.document.getElementById(id), close: () => w.close()};
 }
 function route(p, hash) { p.w.history.replaceState(null, '', `#${hash}`); p.w.dispatchEvent(new p.w.HashChangeEvent('hashchange')); }
+const plainText = (text) => text.replace(/`([^`]+)`/g, "$1");
 function choose(p, form, text) {
-  const label = [...form.querySelectorAll('label')].find((node) => node.querySelector('.answer-text').textContent === text);
+  const label = [...form.querySelectorAll('label')].find((node) => node.querySelector('.answer-text').textContent === plainText(text));
   assert.ok(label, text);
   label.querySelector('input').checked = true;
   label.querySelector('input').dispatchEvent(new p.w.Event('change', {bubbles: true}));
@@ -78,7 +79,7 @@ test('all 180 answer paths explain the answer and all 30 lessons can complete', 
           assert.equal(formFeedbackCount(forms[i]), 1);
           assert.equal(result.closest('.answer').querySelector('.answer-indicator').textContent, answer.correct ? '✓' : '✕');
           assert.equal(result.closest('.answer').querySelector('.answer-indicator').getAttribute('aria-hidden'), 'true');
-          assert.ok(result.textContent.includes(answer.feedback));
+          assert.ok(result.textContent.includes(plainText(answer.feedback)));
         }));
         assert.equal(p.w.document.querySelector('#curriculum [aria-current=step] .lesson-status').textContent, 'Completed');
       }
@@ -97,7 +98,7 @@ test('selection immediately updates feedback without a submit button', () => {
     assert.equal(form.querySelector('button[type=submit]'), null);
     const correct = p.tracks.product.lessons[0].questions[0].answers[0];
     const feedback = choose(p, form, correct.text);
-    assert.ok(feedback.textContent.includes(correct.feedback));
+    assert.ok(feedback.textContent.includes(plainText(correct.feedback)));
     assert.equal(feedback.dataset.correct, 'true');
     assert.equal(p.w.document.querySelectorAll('.feedback[data-correct=true]').length, 1);
   } finally { p.close(); }
@@ -233,5 +234,21 @@ test('answers persist during navigation when file storage is unavailable', () =>
     const form = p.get('quizzes').querySelector('form');
     assert.ok(form.querySelector('input:checked'));
     assert.equal(form.querySelector('.feedback').dataset.correct, 'false');
+  } finally { p.close(); }
+});
+
+test('inline identifiers render as code without interpreting HTML', () => {
+  const p = page();
+  try {
+    route(p, 'interface/port');
+    assert.ok([...p.get('explanation').querySelectorAll('code')].some(node => node.textContent === 'Platform'));
+    assert.equal(p.get('explanation').textContent.includes('`'), false);
+    const lesson = p.tracks.interface.lessons[0];
+    choose(p, p.get('quizzes').querySelector('form'), lesson.questions[0].answers[0].text);
+    assert.equal(p.get('quizzes').querySelector('.answer-text code').textContent, 'Platform');
+    lesson.paragraphs[0] = 'Use `<script>unsafe()</script>` and <img src=x onerror=unsafe()>.';
+    route(p, 'interface/port');
+    assert.equal(p.get('explanation').querySelector('script, img'), null);
+    assert.equal(p.get('explanation').querySelector('code').textContent, '<script>unsafe()</script>');
   } finally { p.close(); }
 });
