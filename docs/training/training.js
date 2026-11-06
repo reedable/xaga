@@ -1,8 +1,10 @@
 const element = (id) => document.getElementById(id);
 const storageKey = "xaga-training-v1";
+const answersKey = "xaga-training-answers-v1";
 const levels = ["Introduction", "Applied", "Advanced"];
 const lessonMinutes = { min: 5, max: 8 };
 let progress = {};
+let selections = {};
 let active;
 let sourceRequest;
 let sourceOpener;
@@ -20,13 +22,32 @@ function validProgress(value) {
   }
   return clean;
 }
+function validSelections(value) {
+  const clean = {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) return clean;
+  for (const [trackId, track] of Object.entries(TRAINING)) {
+    for (const lesson of track.lessons) {
+      const key = `${trackId}/${lesson.id}`;
+      if (!Array.isArray(value[key])) continue;
+      clean[key] = lesson.questions.map((question, index) => {
+        const answer = value[key][index];
+        return Number.isInteger(answer) && answer >= 0 && answer < question.answers.length ? answer : null;
+      });
+    }
+  }
+  return clean;
+}
 try {
+  selections = validSelections(JSON.parse(localStorage.getItem(answersKey)));
   progress = validProgress(JSON.parse(localStorage.getItem(storageKey)));
 } catch {
   element("storage-note").textContent = "Progress is kept for this visit; saved browser storage is unavailable.";
 }
 function saveProgress() {
-  try { localStorage.setItem(storageKey, JSON.stringify(progress)); }
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(progress));
+    localStorage.setItem(answersKey, JSON.stringify(selections));
+  }
   catch { element("storage-note").textContent = "Progress is kept for this visit; saved browser storage is unavailable."; }
 }
 function isComplete(trackId, lesson) {
@@ -92,47 +113,64 @@ function renderQuestion(question, questionIndex) {
   const offset = (lessonIndex + questionIndex) % question.answers.length;
   const options = question.answers.map((_, index) => question.answers[(index + offset) % question.answers.length]);
   for (const [index, answer] of options.entries()) {
+    const box = document.createElement("div");
+    box.className = "answer";
     const label = document.createElement("label");
-    label.className = "answer";
+    label.className = "answer-choice";
     const input = document.createElement("input");
     input.type = "radio";
     input.name = "answer";
     input.value = index;
     input.required = true;
-    label.append(input, document.createTextNode(answer.text));
-    fieldset.append(label);
+    input.checked = selections[key]?.[questionIndex] === question.answers.indexOf(answer);
+    const indicator = document.createElement("span");
+    indicator.className = "answer-indicator";
+    indicator.setAttribute("aria-hidden", "true");
+    const answerText = document.createElement("span");
+    answerText.className = "answer-text";
+    answerText.textContent = answer.text;
+    label.append(input, indicator, answerText);
+    box.append(label);
+    fieldset.append(box);
   }
   const feedback = document.createElement("div");
   feedback.className = "feedback";
+  feedback.id = `feedback-${trackId}-${lesson.id}-${questionIndex}`;
   feedback.setAttribute("role", "status");
   feedback.setAttribute("aria-live", "polite");
   feedback.setAttribute("aria-atomic", "true");
   function showFeedback(correct, message) {
     feedback.dataset.correct = String(correct);
-    const icon = document.createElement("span");
-    icon.className = "feedback-icon";
-    icon.setAttribute("aria-hidden", "true");
-    icon.textContent = correct ? "✓" : "✕";
     const text = document.createElement("span");
     text.textContent = message;
-    feedback.replaceChildren(icon, text);
-  }
-  if (progress[key]?.includes(questionIndex)) {
-    showFeedback(true, "Previously completed. Try again to revisit your reasoning.");
+    feedback.replaceChildren(text);
   }
   form.addEventListener("submit", (event) => event.preventDefault());
-  form.addEventListener("change", () => {
+  function applySelection(record) {
     const selected = new FormData(form).get("answer");
     if (selected === null) return;
     const answer = options[Number(selected)];
+    const input = form.querySelector("input:checked");
+    form.querySelectorAll("input").forEach((choice) => {
+      choice.removeAttribute("aria-describedby");
+      choice.parentElement.querySelector(".answer-indicator").textContent = "";
+    });
+    input.parentElement.querySelector(".answer-indicator").textContent = answer.correct ? "✓" : "✕";
+    input.setAttribute("aria-describedby", feedback.id);
+    input.closest(".answer").append(feedback);
     showFeedback(answer.correct, `${answer.correct ? "Correct. " : "Incorrect. Try again. "}${answer.feedback}`);
+    if (!record) return;
+    selections[key] ??= [];
+    selections[key][questionIndex] = question.answers.indexOf(answer);
     if (answer.correct) {
       progress[key] = [...new Set([...(progress[key] || []), questionIndex])];
-      saveProgress();
-      updateProgress();
     }
-  });
+    saveProgress();
+    updateProgress();
+  }
+  form.addEventListener("change", () => applySelection(true));
   form.append(fieldset, feedback);
+  applySelection(false);
   return form;
 }
 function sourceLink(reference) {
@@ -226,6 +264,7 @@ function navigate(focus = true) {
 }
 element("reset-progress").addEventListener("click", () => {
   progress = {};
+  selections = {};
   saveProgress();
   navigate(false);
   updateProgress();

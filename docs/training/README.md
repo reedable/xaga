@@ -24,9 +24,11 @@ text, preserving code and Markdown without executing their markup. Browser find
 can locate headings or symbols. The training makes no external network requests
 and has no analytics, CDN assets, or remote dependencies.
 
-Progress is stored under `xaga-training-v1` in browser local storage, separately
+Completion is stored under `xaga-training-v1` and selected answers under
+`xaga-training-answers-v1` in browser local storage, separately
 for each origin. If storage is unavailable it lasts for the current visit.
-Reset progress clears only the training's saved answers. Completion means every
+Reset progress clears only the training's completion and selected answers.
+Returning to a lesson restores the last selection and its feedback for each question. Completion means every
 question in a lesson has been answered correctly at least once; retrying a
 completed question does not revoke prior completion.
 

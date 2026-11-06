@@ -7,24 +7,26 @@ import { JSDOM } from 'jsdom';
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const read = (file) => fs.readFileSync(path.join(dir, file), 'utf8');
 const key = 'xaga-training-v1';
-function page({url = 'http://localhost/docs/training/', stored, fetch} = {}) {
+function page({url = 'http://localhost/docs/training/', stored, storedAnswers, fetch} = {}) {
   const dom = new JSDOM(read('index.html'), {url, runScripts: 'outside-only'});
   const w = dom.window;
   w.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   w.HTMLDialogElement.prototype.close = function () { this.open = false; this.dispatchEvent(new w.Event('close')); };
   if (stored !== undefined) w.localStorage.setItem(key, stored);
+  if (storedAnswers !== undefined) w.localStorage.setItem("xaga-training-answers-v1", storedAnswers);
   w.fetch = fetch || (() => Promise.reject(new Error('No fixture')));
   w.eval(`${read('lessons.js')}\n${read('training.js')}\nwindow.curriculum = TRAINING;`);
   return {w, tracks: w.curriculum, get: (id) => w.document.getElementById(id), close: () => w.close()};
 }
 function route(p, hash) { p.w.history.replaceState(null, '', `#${hash}`); p.w.dispatchEvent(new p.w.HashChangeEvent('hashchange')); }
 function choose(p, form, text) {
-  const label = [...form.querySelectorAll('label')].find((node) => node.textContent === text);
+  const label = [...form.querySelectorAll('label')].find((node) => node.querySelector('.answer-text').textContent === text);
   assert.ok(label, text);
   label.querySelector('input').checked = true;
   label.querySelector('input').dispatchEvent(new p.w.Event('change', {bubbles: true}));
   return form.querySelector('.feedback');
 }
+const formFeedbackCount = (form) => form.querySelectorAll('.feedback').length;
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 test('three progressive tracks, complete questions, valid references and Markdown headings', () => {
@@ -72,8 +74,10 @@ test('all 180 answer paths explain the answer and all 30 lessons can complete', 
         lesson.questions.forEach((question, i) => question.answers.forEach(answer => {
           const result = choose(p, forms[i], answer.text);
           assert.equal(result.dataset.correct, String(answer.correct));
-          assert.equal(result.querySelector('.feedback-icon').textContent, answer.correct ? '✓' : '✕');
-          assert.equal(result.querySelector('.feedback-icon').getAttribute('aria-hidden'), 'true');
+          assert.ok(result.closest('.answer').querySelector('input').checked);
+          assert.equal(formFeedbackCount(forms[i]), 1);
+          assert.equal(result.closest('.answer').querySelector('.answer-indicator').textContent, answer.correct ? '✓' : '✕');
+          assert.equal(result.closest('.answer').querySelector('.answer-indicator').getAttribute('aria-hidden'), 'true');
           assert.ok(result.textContent.includes(answer.feedback));
         }));
         assert.equal(p.w.document.querySelector('#curriculum [aria-current=step] .lesson-status').textContent, 'Completed');
@@ -181,5 +185,53 @@ test('file opening supports lessons without storage or source fetch', () => {
     const lesson = p.tracks.interface.lessons.find(l => l.id === 'motion');
     choose(p, p.get('quizzes').querySelector('form'), lesson.questions[0].answers[0].text);
     assert.equal(p.w.document.querySelectorAll('.feedback[data-correct=true]').length, 1);
+  } finally { p.close(); }
+});
+
+test('correct and incorrect selections and feedback survive navigation, reload, and reset', () => {
+  const p = page();
+  let stored, storedAnswers;
+  const verify = (current) => {
+    const forms = current.get('quizzes').querySelectorAll('form');
+    assert.equal(forms[0].querySelector('.answer-indicator:not(:empty)').textContent, '✓');
+    assert.equal(forms[1].querySelector('.answer-indicator:not(:empty)').textContent, '✕');
+    assert.equal(forms[0].querySelector('.feedback').dataset.correct, 'true');
+    assert.equal(forms[1].querySelector('.feedback').dataset.correct, 'false');
+    for (const form of forms) assert.ok(form.querySelector('.feedback').closest('.answer').querySelector('input').checked);
+  };
+  try {
+    route(p, 'product/purpose');
+    const lesson = p.tracks.product.lessons[0];
+    const forms = p.get('quizzes').querySelectorAll('form');
+    choose(p, forms[0], lesson.questions[0].answers[0].text);
+    choose(p, forms[1], lesson.questions[1].answers[1].text);
+    route(p, 'engineering/layers');
+    route(p, 'product/purpose');
+    verify(p);
+    stored = p.w.localStorage.getItem(key);
+    storedAnswers = p.w.localStorage.getItem('xaga-training-answers-v1');
+  } finally { p.close(); }
+  const restored = page({url: 'http://localhost/docs/training/#product/purpose', stored, storedAnswers});
+  try {
+    verify(restored);
+    restored.get('reset-progress').click();
+    assert.equal(restored.get('quizzes').querySelectorAll('input:checked').length, 0);
+    assert.equal(restored.get('quizzes').querySelectorAll('.feedback:not(:empty)').length, 0);
+    assert.equal(restored.w.localStorage.getItem('xaga-training-answers-v1'), '{}');
+  } finally { restored.close(); }
+});
+
+test('answers persist during navigation when file storage is unavailable', () => {
+  const p = page({url: `file://${path.join(dir, 'index.html')}#interface/motion`});
+  try {
+    const lesson = p.tracks.interface.lessons.find(l => l.id === 'motion');
+    choose(p, p.get('quizzes').querySelector('form'), lesson.questions[0].answers[1].text);
+    p.w.location.hash = 'interface/port';
+    p.w.dispatchEvent(new p.w.HashChangeEvent('hashchange'));
+    p.w.location.hash = 'interface/motion';
+    p.w.dispatchEvent(new p.w.HashChangeEvent('hashchange'));
+    const form = p.get('quizzes').querySelector('form');
+    assert.ok(form.querySelector('input:checked'));
+    assert.equal(form.querySelector('.feedback').dataset.correct, 'false');
   } finally { p.close(); }
 });

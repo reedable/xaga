@@ -81,41 +81,41 @@ const TRAINING = {
         "example": "An article at https://www.example.com/story and another at https://example.com/other belong to example.com. An article at https://news.example.com/story belongs to a different Site.",
         "questions": [
           {
-            "prompt": "Two unrelated feeds contain articles from example.com. How is their Site determined?",
+            "prompt": "In Xaga, Sites lets you browse articles by website. Two different feeds bring in articles from example.com. When you open example.com in Sites, what should you see?",
             "answers": [
               {
-                "text": "By each stored article URL’s normalized hostname.",
-                "feedback": "The Site projection groups Entry URLs independently of feeds.",
+                "text": "Articles from example.com, regardless of which feed brought them in.",
+                "feedback": "Xaga uses each article’s web address to group it under a Site. The feed it came from does not matter.",
                 "correct": true
               },
               {
-                "text": "By the feed that was added first.",
-                "feedback": "Feed membership does not establish Site identity.",
+                "text": "Only the articles from the feed you added first.",
+                "feedback": "Both feeds can contribute articles to the same Site. The order in which you added the feeds does not matter.",
                 "correct": false
               },
               {
-                "text": "By a manually maintained Site membership list.",
-                "feedback": "Site membership is derived rather than separately persisted.",
+                "text": "No articles until you manually add them to that Site.",
+                "feedback": "Xaga groups articles by website automatically. You do not have to add them to a Site yourself.",
                 "correct": false
               }
             ]
           },
           {
-            "prompt": "What should a Site design avoid inventing?",
+            "prompt": "You save your first article from a new website. Do you need to create a Site for that website in Xaga?",
             "answers": [
               {
-                "text": "A creation timestamp solely to satisfy a managed-collection shape.",
-                "feedback": "A Site has no independent managed lifecycle.",
+                "text": "No. Xaga automatically includes the website in Sites based on the article’s web address.",
+                "feedback": "Sites come from the articles in your library. Unlike a Topic, a Site does not need to be created separately.",
                 "correct": true
               },
               {
-                "text": "A normalized hostname used as identity.",
-                "feedback": "That is the defined Site identity.",
+                "text": "Yes. You must create and name the Site yourself.",
+                "feedback": "You do not create Sites manually. Xaga gets the website name from the article’s web address.",
                 "correct": false
               },
               {
-                "text": "Total and unread counts derived from Entries.",
-                "feedback": "Those are part of the shared collection contract.",
+                "text": "Yes. You must subscribe to a feed from that website first.",
+                "feedback": "A Site does not require a feed subscription. An article from the website is enough.",
                 "correct": false
               }
             ]
@@ -169,21 +169,21 @@ const TRAINING = {
             ]
           },
           {
-            "prompt": "Removing Research from one article should do what?",
+            "prompt": "An article has a tag named “Research”. You remove that tag from this article. What should happen?",
             "answers": [
               {
-                "text": "Remove that assignment while preserving the definition and the article.",
-                "feedback": "Assignment removal is distinct from deleting a definition.",
+                "text": "The article no longer has the Research tag. The tag remains available for other articles.",
+                "feedback": "Removing a tag from one article does not delete the tag or the article. Other articles keep their tags.",
                 "correct": true
               },
               {
-                "text": "Delete Research everywhere.",
-                "feedback": "Global deletion is a separate confirmed operation.",
+                "text": "Remove the Research tag from every article.",
+                "feedback": "You removed the tag from only this article. Deleting the tag everywhere is a separate action that requires confirmation.",
                 "correct": false
               },
               {
-                "text": "Remove its bookmark color too.",
-                "feedback": "Tags and bookmark color are independent.",
+                "text": "Remove the article’s bookmark as well.",
+                "feedback": "Removing a tag does not change whether the article is bookmarked.",
                 "correct": false
               }
             ]
