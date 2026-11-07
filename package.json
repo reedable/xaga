@@ -16,6 +16,7 @@
     "test:gui": "node scripts/test-gui.mjs",
     "test:scripts": "node --test scripts/*.test.mjs",
     "test:ui": "vitest run",
+    "test:browser": "playwright test",
     "icons:macos": "node scripts/generate-macos-icon.mjs",
     "lint": "oxlint .",
     "audit": "cargo audit",
@@ -75,6 +76,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@tauri-apps/cli": "^2.12.4",
     "@types/css-tree": "^3.2.0",
     "@types/node": "^24.12.0",

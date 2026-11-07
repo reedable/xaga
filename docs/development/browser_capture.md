@@ -63,8 +63,8 @@ await page.screenshot({ path: "capture.png" });
 
 Recordings can use the same context settings and observable waits. Producing
 User Guide or training assets is separate from maintaining this capture mode.
-The capture platform does not install a browser automation runner or add CI
-browser tests.
+For automated workflows and CI execution, see
+[Browser integration tests](browser_tests.md).
 
 ## Example data and workflows
 

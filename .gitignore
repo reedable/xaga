@@ -50,3 +50,7 @@ pnpm-debug.log*
 # Claude
 .claude/
 .obsidian
+
+# Browser integration artifacts
+/test-results/
+/playwright-report/

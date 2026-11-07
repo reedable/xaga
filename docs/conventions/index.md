@@ -15,6 +15,11 @@ Conventions for code and documentation, as distinct from what the system is (arc
 [Rust formatting](rust_formatting.md) — apply `rustfmt` consistently across the
 Cargo workspace and keep `cargo fmt --all --check` passing.
 
+## Testing
+
+[UI and UX testing](ui_testing.md) — review browser coverage for every UI or UX
+change, update meaningful workflow tests, and verify native behavior separately.
+
 ## Motion
 
 [Motion](motion.md) — static base styles, with animation enabled only when
