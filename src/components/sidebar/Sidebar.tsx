@@ -36,7 +36,11 @@ export function Sidebar({
   const isLibraryReadOnly = useLibraryReadOnly();
 
   const { tags } = useTags();
-  const { targets: pinnedTargets, missing: missingPins, hierarchy } = useShortcutTargets();
+  const {
+    targets: pinnedTargets,
+    missing: missingPins,
+    hierarchy,
+  } = useShortcutTargets();
   const { topics } = useTopics(abortControllerRef);
 
   const { loading, feeds, refreshAllFeeds } = useFeeds(abortControllerRef);
@@ -45,18 +49,28 @@ export function Sidebar({
   const { sites } = useSites(abortControllerRef);
   const normalizedFilter = filter.trim().toLocaleLowerCase();
   const matchesFilter = useCallback(
-    ({ title }: { title: string }) => title.toLocaleLowerCase().includes(normalizedFilter),
-    [normalizedFilter],
+    ({ title }: { title: string }) =>
+      title.toLocaleLowerCase().includes(normalizedFilter),
+    [normalizedFilter]
   );
-  const filteredTopics = useMemo(() => topics.filter(matchesFilter), [matchesFilter, topics]);
-  const filteredFeeds = useMemo(() => feeds.filter(matchesFilter), [feeds, matchesFilter]);
-  const filteredSites = useMemo(() => sites.filter(matchesFilter), [matchesFilter, sites]);
+  const filteredTopics = useMemo(
+    () => topics.filter(matchesFilter),
+    [matchesFilter, topics]
+  );
+  const filteredFeeds = useMemo(
+    () => feeds.filter(matchesFilter),
+    [feeds, matchesFilter]
+  );
+  const filteredSites = useMemo(
+    () => sites.filter(matchesFilter),
+    [matchesFilter, sites]
+  );
 
   const handleExpandedList = useCallback(
     (listType: typeof expandedList) => {
       setExpandedList((prev) => (prev === listType ? null : listType));
     },
-    [setExpandedList],
+    [setExpandedList]
   );
 
   const stopRequestedRef = useRef(false);
@@ -174,7 +188,9 @@ export function Sidebar({
       />
 
       <TagList
-        tags={tags.filter((tag) => tag.name.toLowerCase().includes(normalizedFilter))}
+        tags={tags.filter((tag) =>
+          tag.name.toLowerCase().includes(normalizedFilter)
+        )}
         isExpanded={expandedList === "TAGS"}
         onClickHeader={() => handleExpandedList("TAGS")}
       />

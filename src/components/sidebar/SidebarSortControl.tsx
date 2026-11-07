@@ -8,7 +8,11 @@ type SidebarSortControlProps = {
   onChange: (sortMode: SidebarSortMode) => void;
 };
 
-export default function SidebarSortControl({ label, sortMode, onChange }: SidebarSortControlProps) {
+export default function SidebarSortControl({
+  label,
+  sortMode,
+  onChange,
+}: SidebarSortControlProps) {
   return (
     <ListSubheader className={css.SortControl} component="li" disableSticky>
       <Select

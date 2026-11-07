@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components -- the form hook and fields are one shared unit */
+/* oxlint-disable react/only-export-components -- the form hook and fields are one shared unit */
 import { Add, Remove } from "@mui/icons-material";
 import {
   Box,

@@ -8,10 +8,7 @@ import {
 } from "./build-beta.mjs";
 
 test("adds beta metadata containing the commit hash", () => {
-  assert.equal(
-    betaVersion("0.8.4-rc.2", "f62fb2f"),
-    "0.8.4-rc.2+beta.f62fb2f"
-  );
+  assert.equal(betaVersion("0.8.4-rc.2", "f62fb2f"), "0.8.4-rc.2+beta.f62fb2f");
 });
 
 test("allows final release versions with beta metadata", () => {
@@ -19,8 +16,18 @@ test("allows final release versions with beta metadata", () => {
 });
 
 test("rejects development and unsupported prerelease versions", () => {
-  for (const version of ["0.8.4-dev", "0.8.4-beta.1", "0.8.4-rc", "0.8.4-rc.0", "0.8.4-rc.01", "0.8.4+beta.abc"]) {
-    assert.throws(() => betaVersion(version, "f62fb2f"), /release or numbered release-candidate version/);
+  for (const version of [
+    "0.8.4-dev",
+    "0.8.4-beta.1",
+    "0.8.4-rc",
+    "0.8.4-rc.0",
+    "0.8.4-rc.01",
+    "0.8.4+beta.abc",
+  ]) {
+    assert.throws(
+      () => betaVersion(version, "f62fb2f"),
+      /release or numbered release-candidate version/
+    );
   }
 });
 
@@ -32,7 +39,10 @@ test("accepts untagged RC and final versions", () => {
 
 test("rejects tagged RC and final versions", () => {
   for (const version of ["0.14.0-rc.2", "0.14.0"]) {
-    assert.throws(() => validateUnpublishedVersion(version, true), /already has release tag.*untagged version/);
+    assert.throws(
+      () => validateUnpublishedVersion(version, true),
+      /already has release tag.*untagged version/
+    );
   }
 });
 

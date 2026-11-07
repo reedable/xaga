@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { getViewState, setViewState } from "../storage/viewState";
-import ExpandedListContext, {
-  type ListType,
-} from "./ExpandedListContext";
+import ExpandedListContext, { type ListType } from "./ExpandedListContext";
 
 // View state, persisted client-side (IndexedDB) — not a backend user setting.
 const STORAGE_KEY = "sidebar.expandedList";
@@ -32,9 +36,7 @@ export function ExpandedListProvider({ children }: { children: ReactNode }) {
 
   const setExpandedList = useCallback(
     (
-      updater:
-        | ((prev: ListType | null) => ListType | null)
-        | (ListType | null)
+      updater: ((prev: ListType | null) => ListType | null) | (ListType | null)
     ) => {
       setExpandedListState((prev) => {
         const next = typeof updater === "function" ? updater(prev) : updater;

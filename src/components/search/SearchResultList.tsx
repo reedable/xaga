@@ -204,7 +204,9 @@ export function SearchResultList({
                   primary={
                     <Quotes
                       quoted={isPartialAnnotation(entity)}
-                      color={isPartialAnnotation(entity) ? entity.color : undefined}
+                      color={
+                        isPartialAnnotation(entity) ? entity.color : undefined
+                      }
                     >
                       {entity.title}
                     </Quotes>

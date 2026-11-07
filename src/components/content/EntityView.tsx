@@ -6,7 +6,13 @@ import {
   Typography,
   useMediaQuery,
 } from "@mui/material";
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import useAbortController from "../../hooks/useAbortController";
 import { useContentLoader } from "../../hooks/useContentLoader";
 import useRouter from "../../hooks/useRouter";
@@ -124,7 +130,8 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
     const observer = new ResizeObserver(([entry]) => {
       // Include Search’s current width so its animation does not flip
       // the responsive breakpoint halfway through the transition.
-      const searchWidth = searchPanelRef?.current?.getBoundingClientRect().width ?? 0;
+      const searchWidth =
+        searchPanelRef?.current?.getBoundingClientRect().width ?? 0;
       setNarrow(entry.contentRect.width + searchWidth < 700);
     });
     observer.observe(element);
@@ -260,7 +267,10 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
               ref={inspectorPanel}
               inert={inspectorHidden}
               aria-hidden={inspectorHidden}
-              className={cx(css.InspectorPanel, inspectorHidden && css.InspectorPanelHidden)}
+              className={cx(
+                css.InspectorPanel,
+                inspectorHidden && css.InspectorPanelHidden
+              )}
               aria-label="Article details"
             >
               <div className={css.InspectorPanelContent}>

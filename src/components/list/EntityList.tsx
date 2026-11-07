@@ -1,6 +1,9 @@
 import { useShortcutTargets } from "../../hooks/useShortcutTargets";
 import { pinKey } from "../../pins";
-import { shortcutReference, type ShortcutNode } from "../../utils/projectPinTree";
+import {
+  shortcutReference,
+  type ShortcutNode,
+} from "../../utils/projectPinTree";
 import { Clear, Refresh, Settings } from "@mui/icons-material";
 import {
   Button,
@@ -21,7 +24,14 @@ import {
   Typography,
   type SelectChangeEvent,
 } from "@mui/material";
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { onTopicEntityAdded } from "../../events/topicMembership";
 import useAbortController from "../../hooks/useAbortController";
@@ -101,12 +111,15 @@ export function EntityList({
   } = useRouter();
   const tagSelectionKey = JSON.stringify(state.tagIds);
   const tagIds: string[] | undefined = useMemo(
-    () => (tagSelectionKey === undefined ? undefined : JSON.parse(tagSelectionKey)),
-    [tagSelectionKey],
+    () =>
+      tagSelectionKey === undefined ? undefined : JSON.parse(tagSelectionKey),
+    [tagSelectionKey]
   );
   const hasSelectedTags = !!tagIds?.length;
-  const filter = hasSelectedTags && (!navigationFilter || navigationFilter === "unread")
-    ? "all" : navigationFilter;
+  const filter =
+    hasSelectedTags && (!navigationFilter || navigationFilter === "unread")
+      ? "all"
+      : navigationFilter;
   const { tags, renaming = [], deleting = [], merging = [] } = useTags();
   const tagOptions = useMemo(
     () =>
@@ -116,12 +129,13 @@ export function EntityList({
           .filter((id) => !tags.some((tag) => tag.id === id))
           .map((id) => ({ id, name: "Unavailable tag" })),
       ].sort((a, b) => a.name.localeCompare(b.name)),
-    [tags, tagIds],
+    [tags, tagIds]
   );
   const platform = usePlatform();
   const { pushError } = useErrorSink();
   const pinnedEntries = usePinnedEntries();
-  const { hierarchy: shortcutHierarchy, targets: shortcutTargets } = useShortcutTargets();
+  const { hierarchy: shortcutHierarchy, targets: shortcutTargets } =
+    useShortcutTargets();
   const { articleScopeId } = state;
   const selectedEntityId = state.annotationId ?? state.entryId;
   const [scopedArticle, setScopedArticle] = useState<Entry | null>(null);
@@ -136,9 +150,17 @@ export function EntityList({
   const { siteHostname } = state;
   const [abort, abortControllerRef] = useAbortController();
   const { topics, listTopicEntities } = useTopics(abortControllerRef);
-  const { sites, pinnedSites = [], listSiteEntries } = useSites(abortControllerRef);
+  const {
+    sites,
+    pinnedSites = [],
+    listSiteEntries,
+  } = useSites(abortControllerRef);
 
-  const { feeds, loading: loadingFeeds, refreshAllFeeds } = useFeeds(abortControllerRef);
+  const {
+    feeds,
+    loading: loadingFeeds,
+    refreshAllFeeds,
+  } = useFeeds(abortControllerRef);
 
   const missingPins = useMissingPins(pinnedEntries, feeds, topics);
   const [loading, setLoading] = useState(false);
@@ -151,7 +173,11 @@ export function EntityList({
         id: "__TAGS__",
         title: tagIds.length
           ? tagIds
-              .map((id) => tagOptions.find((tag) => tag.id === id)?.name ?? "Unavailable tag")
+              .map(
+                (id) =>
+                  tagOptions.find((tag) => tag.id === id)?.name ??
+                  "Unavailable tag"
+              )
               .join(" + ")
           : "All Entries",
         createdAt: new Date(0).toISOString(),
@@ -181,11 +207,13 @@ export function EntityList({
       topics,
       sites,
       pinnedSites,
-    ],
+    ]
   );
 
   const siteOptions = useMemo(() => {
-    const options = new Map([...sites, ...pinnedSites].map((site) => [site.id, site]));
+    const options = new Map(
+      [...sites, ...pinnedSites].map((site) => [site.id, site])
+    );
     if (isSite(selectedScope)) options.set(selectedScope.id, selectedScope);
     return [...options.values()];
   }, [sites, pinnedSites, selectedScope]);
@@ -200,10 +228,11 @@ export function EntityList({
           ? [scopedArticle]
           : []),
       ].sort(sortByTitle),
-    [pinnedEntries, articleScopeId, scopedArticle],
+    [pinnedEntries, articleScopeId, scopedArticle]
   );
 
-  const { listEntries, listAllEntities, markEntryRead } = useEntries(abortControllerRef);
+  const { listEntries, listAllEntities, markEntryRead } =
+    useEntries(abortControllerRef);
 
   const {
     onFeedsRefreshed,
@@ -242,17 +271,31 @@ export function EntityList({
       ? `pin:feed:${feedId}`
       : topicId
         ? `pin:topic:${topicId}`
-        : siteHostname ? `pin:site:${siteHostname}` : undefined;
-  const scopeValues = [articleScopeId ? `article:${articleScopeId}` : selectedScope.id];
-  if (activePinKey && shortcutTargets.some((target) => `pin:${pinKey(shortcutReference(target))}` === activePinKey)) {
+        : siteHostname
+          ? `pin:site:${siteHostname}`
+          : undefined;
+  const scopeValues = [
+    articleScopeId ? `article:${articleScopeId}` : selectedScope.id,
+  ];
+  if (
+    activePinKey &&
+    shortcutTargets.some(
+      (target) => `pin:${pinKey(shortcutReference(target))}` === activePinKey
+    )
+  ) {
     scopeValues.push(activePinKey);
   }
-  const headerValues = tagIds !== undefined
-    ? tagIds.length ? tagIds.map((id) => `tag:${id}`) : ["tags:all"]
-    : scopeValues;
+  const headerValues =
+    tagIds !== undefined
+      ? tagIds.length
+        ? tagIds.map((id) => `tag:${id}`)
+        : ["tags:all"]
+      : scopeValues;
   const handleCollectionChange = (event: SelectChangeEvent<string[]>) => {
     const values =
-      typeof event.target.value === "string" ? event.target.value.split(",") : event.target.value;
+      typeof event.target.value === "string"
+        ? event.target.value.split(",")
+        : event.target.value;
     const id =
       values.find((value) => !headerValues.includes(value)) ??
       headerValues.find((value) => !values.includes(value));
@@ -262,12 +305,18 @@ export function EntityList({
       return;
     }
     if (id.startsWith("tag:")) {
-      selectTags(values.filter((value) => value.startsWith("tag:")).map((value) => value.slice(4)));
+      selectTags(
+        values
+          .filter((value) => value.startsWith("tag:"))
+          .map((value) => value.slice(4))
+      );
       return;
     }
     setHeaderOpen(false);
     if (id.startsWith("pin:")) {
-      const target = shortcutTargets.find((target) => `pin:${pinKey(shortcutReference(target))}` === id);
+      const target = shortcutTargets.find(
+        (target) => `pin:${pinKey(shortcutReference(target))}` === id
+      );
       if (target) selectShortcutTarget(target);
       return;
     }
@@ -281,7 +330,9 @@ export function EntityList({
       selectShortcut(shortcut);
       return;
     }
-    const collection = [...topics, ...feeds, ...siteOptions].find((entity) => entity.id === id);
+    const collection = [...topics, ...feeds, ...siteOptions].find(
+      (entity) => entity.id === id
+    );
     if (collection) selectCollection(collection);
   };
 
@@ -290,7 +341,9 @@ export function EntityList({
   }, [loadingFeeds]);
 
   const displayEntities = useMemo(() => {
-    return entities.filter((entity) => entityMatchesTextFilter(entity, filterText));
+    return entities.filter((entity) =>
+      entityMatchesTextFilter(entity, filterText)
+    );
   }, [entities, filterText]);
 
   // Up/Down move the selection to the adjacent visible entity, clamped at both
@@ -304,7 +357,7 @@ export function EntityList({
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
 
       const currentIndex = displayEntities.findIndex(
-        (i) => itemRefs.current.get(i.id) === e.currentTarget,
+        (i) => itemRefs.current.get(i.id) === e.currentTarget
       );
       if (currentIndex === -1) return;
 
@@ -320,7 +373,7 @@ export function EntityList({
         done: () => itemRefs.current.get(next.id)?.focus(),
       });
     },
-    [displayEntities, selectEntity],
+    [displayEntities, selectEntity]
   );
 
   const requestArticleScope = useCallback(async () => {
@@ -332,7 +385,7 @@ export function EntityList({
     try {
       const article = await platform.readArticleScope(signal, articleScopeId);
       const next = await articleScopeEntities(article, (id, refs) =>
-        platform.readEntryImages(signal, id, refs),
+        platform.readEntryImages(signal, id, refs)
       );
       if (
         signal.aborted ||
@@ -349,7 +402,8 @@ export function EntityList({
       setScopedArticle(article);
       setEntities(next);
     } catch (error) {
-      if (!signal.aborted && articleScopeRef.current === articleScopeId) pushError(error);
+      if (!signal.aborted && articleScopeRef.current === articleScopeId)
+        pushError(error);
     } finally {
       if (
         !signal.aborted &&
@@ -369,19 +423,28 @@ export function EntityList({
       const signal = abortControllerRef.current.signal;
       const request = ++listRequestRef.current;
       const commit = (entries: ManagedEntity[]) => {
-        if (!signal.aborted && request === listRequestRef.current) setEntities(entries);
+        if (!signal.aborted && request === listRequestRef.current)
+          setEntities(entries);
       };
       setLoading(true);
 
       try {
         if (tagIds !== undefined) {
-          const entries = await platform.listTagEntries(signal, tagIds, filter ?? "unread");
+          const entries = await platform.listTagEntries(
+            signal,
+            tagIds,
+            filter ?? "unread"
+          );
           commit(entries);
         } else if (isFeed(selectedList)) {
           const entries = await listEntries(selectedList, filter);
           if (entries) commit(entries);
         } else if (isTopic(selectedList)) {
-          const entities = await listTopicEntities(selectedList.id, filter ?? "unread", topicSort);
+          const entities = await listTopicEntities(
+            selectedList.id,
+            filter ?? "unread",
+            topicSort
+          );
           if (entities) commit(entities);
         } else if (isSite(selectedList)) {
           const entries = await listSiteEntries(selectedList.id, filter);
@@ -391,9 +454,11 @@ export function EntityList({
           if (entries) commit(entries);
         }
       } catch (error) {
-        if (!signal.aborted && request === listRequestRef.current) pushError(error);
+        if (!signal.aborted && request === listRequestRef.current)
+          pushError(error);
       } finally {
-        if (!signal.aborted && request === listRequestRef.current) setLoading(false);
+        if (!signal.aborted && request === listRequestRef.current)
+          setLoading(false);
       }
     },
     [
@@ -409,7 +474,7 @@ export function EntityList({
       listSiteEntries,
       listAllEntities,
       topicSort,
-    ],
+    ]
   );
 
   const handleRefresh = useCallback(() => {
@@ -425,7 +490,7 @@ export function EntityList({
     (_event: MouseEvent<HTMLElement>, value: string) => {
       selectFilter(value);
     },
-    [selectFilter],
+    [selectFilter]
   );
 
   const handleMarkEntriesRead = useCallback(async () => {
@@ -433,7 +498,7 @@ export function EntityList({
       displayEntities
         .filter(isEntry)
         .map((entry) => entry.id)
-        .map(markEntryRead),
+        .map(markEntryRead)
     );
   }, [displayEntities, markEntryRead]);
 
@@ -443,16 +508,22 @@ export function EntityList({
   const mergeAddedTopicEntity = useCallback(
     async (changedTopicId: string, entityId: string) => {
       if (changedTopicId !== topicId) return;
-      const authoritative = await listTopicEntities(changedTopicId, filter ?? "unread", topicSort);
+      const authoritative = await listTopicEntities(
+        changedTopicId,
+        filter ?? "unread",
+        topicSort
+      );
       if (
         !authoritative ||
         !isTopic(selectedScopeRef.current) ||
         selectedScopeRef.current.id !== changedTopicId
       )
         return;
-      setEntities((current) => mergeTopicAddition(current, authoritative, entityId));
+      setEntities((current) =>
+        mergeTopicAddition(current, authoritative, entityId)
+      );
     },
-    [topicId, filter, topicSort, listTopicEntities],
+    [topicId, filter, topicSort, listTopicEntities]
   );
 
   const tagTextFilter = tagIds !== undefined ? filterText : undefined;
@@ -462,7 +533,11 @@ export function EntityList({
     if (selectionRevision.current !== state.tagSelectionRevision) {
       const replaced = state.tagSelectionRevision !== undefined;
       selectionRevision.current = state.tagSelectionRevision;
-      if (replaced) { ++listRequestRef.current; setLoading(false); return; }
+      if (replaced) {
+        ++listRequestRef.current;
+        setLoading(false);
+        return;
+      }
     }
     (async () => {
       requestEntities(selectedScopeRef.current);
@@ -514,7 +589,11 @@ export function EntityList({
 
   useEffect(() => {
     return onAnnotationChanged((entity) => {
-      if (articleScopeId && "reference" in entity && entity.reference === articleScopeId) {
+      if (
+        articleScopeId &&
+        "reference" in entity &&
+        entity.reference === articleScopeId
+      ) {
         void requestArticleScope();
         return;
       }
@@ -525,21 +604,34 @@ export function EntityList({
           entity,
           active.shortcutId === ALL_ENTITIES.id,
           active.filter,
-          active.filterText,
-        ),
+          active.filterText
+        )
       );
       if (topicId) void mergeAddedTopicEntity(topicId, entity.id);
     });
-  }, [onAnnotationChanged, topicId, mergeAddedTopicEntity, articleScopeId, requestArticleScope]);
+  }, [
+    onAnnotationChanged,
+    topicId,
+    mergeAddedTopicEntity,
+    articleScopeId,
+    requestArticleScope,
+  ]);
 
   useEffect(() => {
     return onAnnotationReplaced(({ oldId, entity }) => {
-      if (articleScopeId && "reference" in entity && entity.reference === articleScopeId) {
-        if (state.annotationId === oldId && isPartialAnnotation(entity)) selectAnnotation(entity);
+      if (
+        articleScopeId &&
+        "reference" in entity &&
+        entity.reference === articleScopeId
+      ) {
+        if (state.annotationId === oldId && isPartialAnnotation(entity))
+          selectAnnotation(entity);
         void requestArticleScope();
         return;
       }
-      setEntities((prev) => prev.map((value) => (value.id === oldId ? entity : value)));
+      setEntities((prev) =>
+        prev.map((value) => (value.id === oldId ? entity : value))
+      );
     });
   }, [
     onAnnotationReplaced,
@@ -561,7 +653,8 @@ export function EntityList({
 
   useEffect(() => {
     return onFeedsRefreshed(() => {
-      if (tagIds === undefined) return requestEntities(selectedScopeRef.current);
+      if (tagIds === undefined)
+        return requestEntities(selectedScopeRef.current);
     });
   }, [onFeedsRefreshed, requestEntities, tagIds]);
 
@@ -570,19 +663,40 @@ export function EntityList({
       onTopicEntityAdded(async ({ topicId: changedTopicId, entityId }) => {
         await mergeAddedTopicEntity(changedTopicId, entityId);
       }),
-    [mergeAddedTopicEntity],
+    [mergeAddedTopicEntity]
   );
 
-  function shortcutOptions(nodes: ShortcutNode[], depth = 0): React.ReactNode[] {
+  function shortcutOptions(
+    nodes: ShortcutNode[],
+    depth = 0
+  ): React.ReactNode[] {
     return nodes.flatMap((node): React.ReactNode[] => {
       const key = pinKey(node.reference);
       if (!node.children) {
-        return [<MenuItem key={`pin:${key}`} value={`pin:${key}`} disabled={!node.target} sx={{ pl: 2 + depth * 2 }}>{node.title}</MenuItem>];
+        return [
+          <MenuItem
+            key={`pin:${key}`}
+            value={`pin:${key}`}
+            disabled={!node.target}
+            sx={{ pl: 2 + depth * 2 }}
+          >
+            {node.title}
+          </MenuItem>,
+        ];
       }
       const children = node.children.length
         ? shortcutOptions(node.children, depth + 1)
-        : [<MenuItem key={`empty:${key}`} disabled sx={{ pl: 4 + depth * 2 }}>Empty</MenuItem>];
-      return [<ListSubheader key={key} sx={{ pl: 2 + depth * 2 }}>{node.title}</ListSubheader>, ...children];
+        : [
+            <MenuItem key={`empty:${key}`} disabled sx={{ pl: 4 + depth * 2 }}>
+              Empty
+            </MenuItem>,
+          ];
+      return [
+        <ListSubheader key={key} sx={{ pl: 2 + depth * 2 }}>
+          {node.title}
+        </ListSubheader>,
+        ...children,
+      ];
     });
   }
 
@@ -616,7 +730,10 @@ export function EntityList({
             <div className={css.HeadingControl}>
               <Tooltip title="Refresh">
                 <IconButton
-                  className={cx(css.RefreshButton, refreshSpin && css.RefreshLoading)}
+                  className={cx(
+                    css.RefreshButton,
+                    refreshSpin && css.RefreshLoading
+                  )}
                   size="small"
                   onClick={handleRefresh}
                 >
@@ -627,15 +744,38 @@ export function EntityList({
               <Select
                 className={css.CollectionSelect}
                 size="small"
-                MenuProps={{ onKeyDownCapture: (event) => {
-                  if (event.key !== "Tab" || !event.currentTarget.contains(event.target as Node)) return;
-                  const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[data-tag-action]")];
-                  const target = event.target as HTMLElement;
-                  const current = buttons.indexOf(target as HTMLButtonElement);
-                  const rowButton = target.closest(".TagActionRow")?.querySelector<HTMLButtonElement>("[data-tag-action]");
-                  const next = current >= 0 ? buttons[current + (event.shiftKey ? -1 : 1)] : (event.shiftKey ? undefined : rowButton);
-                  if (next) { event.preventDefault(); event.stopPropagation(); next.focus(); }
-                } }}
+                MenuProps={{
+                  onKeyDownCapture: (event) => {
+                    if (
+                      event.key !== "Tab" ||
+                      !event.currentTarget.contains(event.target as Node)
+                    )
+                      return;
+                    const buttons = [
+                      ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                        "[data-tag-action]"
+                      ),
+                    ];
+                    const target = event.target as HTMLElement;
+                    const current = buttons.indexOf(
+                      target as HTMLButtonElement
+                    );
+                    const rowButton = target
+                      .closest(".TagActionRow")
+                      ?.querySelector<HTMLButtonElement>("[data-tag-action]");
+                    const next =
+                      current >= 0
+                        ? buttons[current + (event.shiftKey ? -1 : 1)]
+                        : event.shiftKey
+                          ? undefined
+                          : rowButton;
+                    if (next) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      next.focus();
+                    }
+                  },
+                }}
                 multiple
                 open={headerOpen}
                 onOpen={() => setHeaderOpen(true)}
@@ -654,18 +794,31 @@ export function EntityList({
                   </MenuItem>
                 ))}
                 {shortcutOptions(shortcutHierarchy)}
-                {articleScopeId && !articleOptions.some((entry) => entry.id === articleScopeId) && (
-                  <MenuItem value={`article:${articleScopeId}`} disabled>
-                    Loading article…
-                  </MenuItem>
-                )}
-                {articleOptions.filter((entry) => !shortcutTargets.some((target) => isEntry(target) && target.id === entry.id)).map((entry) => (
-                  <MenuItem key={`article:${entry.id}`} value={`article:${entry.id}`}>
-                    <Typography component="span" variant="body2">
-                      {entry.title}
-                    </Typography>
-                  </MenuItem>
-                ))}
+                {articleScopeId &&
+                  !articleOptions.some(
+                    (entry) => entry.id === articleScopeId
+                  ) && (
+                    <MenuItem value={`article:${articleScopeId}`} disabled>
+                      Loading article…
+                    </MenuItem>
+                  )}
+                {articleOptions
+                  .filter(
+                    (entry) =>
+                      !shortcutTargets.some(
+                        (target) => isEntry(target) && target.id === entry.id
+                      )
+                  )
+                  .map((entry) => (
+                    <MenuItem
+                      key={`article:${entry.id}`}
+                      value={`article:${entry.id}`}
+                    >
+                      <Typography component="span" variant="body2">
+                        {entry.title}
+                      </Typography>
+                    </MenuItem>
+                  ))}
                 {topics.length > 0 && <ListSubheader>Topics</ListSubheader>}
                 {topics.map((t) => (
                   <MenuItem key={t.id} value={t.id}>
@@ -685,16 +838,33 @@ export function EntityList({
                 <ListSubheader>Tags</ListSubheader>
                 <MenuItem value="tags:all">All Entries (Tags)</MenuItem>
                 {tagOptions.map((tag) => (
-                  <MenuItem className="TagActionRow" key={`tag:${tag.id}`} value={`tag:${tag.id}`}>
+                  <MenuItem
+                    className="TagActionRow"
+                    key={`tag:${tag.id}`}
+                    value={`tag:${tag.id}`}
+                  >
                     <Checkbox
                       checked={tagIds?.includes(tag.id) ?? false}
                       tabIndex={-1}
                       slotProps={{ input: { "aria-hidden": true } }}
                     />
-                    <Typography component="span" variant="body2" sx={{ flexGrow: 1 }}>
-                      {tag.name}{deleting.includes(tag.id) ? " — Deleting…" : merging.some((merge) => merge.survivorId === tag.id) ? " — Merging…" : renaming.includes(tag.id) ? " — Renaming…" : ""}
+                    <Typography
+                      component="span"
+                      variant="body2"
+                      sx={{ flexGrow: 1 }}
+                    >
+                      {tag.name}
+                      {deleting.includes(tag.id)
+                        ? " — Deleting…"
+                        : merging.some((merge) => merge.survivorId === tag.id)
+                          ? " — Merging…"
+                          : renaming.includes(tag.id)
+                            ? " — Renaming…"
+                            : ""}
                     </Typography>
-                    {tags.some((entity) => entity.id === tag.id) && <TagActions tag={tag} />}
+                    {tags.some((entity) => entity.id === tag.id) && (
+                      <TagActions tag={tag} />
+                    )}
                   </MenuItem>
                 ))}
                 {siteOptions.length > 0 && <ListSubheader>Sites</ListSubheader>}
@@ -782,7 +952,10 @@ export function EntityList({
 
       <div>
         <Collapse in={loading}>
-          <LinearProgress variant="indeterminate" color={loadingFeeds ? "warning" : "primary"} />
+          <LinearProgress
+            variant="indeterminate"
+            color={loadingFeeds ? "warning" : "primary"}
+          />
         </Collapse>
       </div>
 
@@ -797,7 +970,10 @@ export function EntityList({
       {entities.length > 0 && displayEntities.length === 0 && (
         <div className={cx(css.List, css.Placeholder)}>
           <Typography component="div" variant="body2" color="text.disabled">
-            {getEmptyMessage(articleScopeId ? "all" : (filter ?? "unread"), filterText)}
+            {getEmptyMessage(
+              articleScopeId ? "all" : (filter ?? "unread"),
+              filterText
+            )}
           </Typography>
         </div>
       )}
@@ -818,7 +994,9 @@ export function EntityList({
                 selected={selectedEntityId === entity.id}
                 tabIndex={
                   selectedEntityId === entity.id ||
-                  (!displayEntities.some((value) => value.id === selectedEntityId) &&
+                  (!displayEntities.some(
+                    (value) => value.id === selectedEntityId
+                  ) &&
                     displayEntities[0].id === entity.id)
                     ? 0
                     : -1
@@ -830,7 +1008,9 @@ export function EntityList({
                   primary={
                     <Quotes
                       quoted={isPartialAnnotation(entity)}
-                      color={isPartialAnnotation(entity) ? entity.color : undefined}
+                      color={
+                        isPartialAnnotation(entity) ? entity.color : undefined
+                      }
                     >
                       {entity.title}
                     </Quotes>

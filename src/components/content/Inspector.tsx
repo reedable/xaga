@@ -44,7 +44,9 @@ export function Inspector({
           .readArticleScope(controller.signal, entryId)
           .then(
             (article) =>
-              article.annotations.find((annotation) => annotation.id === annotationId) ?? null,
+              article.annotations.find(
+                (annotation) => annotation.id === annotationId
+              ) ?? null
           )
       : platform.readEntry(controller.signal, entryId);
 
@@ -64,7 +66,12 @@ export function Inspector({
   return (
     <div className={css.Inspector}>
       {showHeading && (
-        <Typography className={css.Target} component="h2" color="text.secondary" variant="overline">
+        <Typography
+          className={css.Target}
+          component="h2"
+          color="text.secondary"
+          variant="overline"
+        >
           {label} details
         </Typography>
       )}
@@ -105,7 +112,9 @@ export function Inspector({
             lookup.entity ? (
               <TopicMembership key={targetKey} entity={lookup.entity} />
             ) : (
-              <Typography variant="body2">{label} topics couldn’t be loaded.</Typography>
+              <Typography variant="body2">
+                {label} topics couldn’t be loaded.
+              </Typography>
             )
           ) : (
             <Typography role="status" variant="body2">

@@ -46,7 +46,6 @@ JavaScript: the invoking native window determines which notification queue is
 drained. Remote loader capabilities do not include it. Live `app:error` events
 are likewise targeted to the originating trusted webview window.
 
-
 `recover_entry_images` is trusted-UI-only. Its image URLs authorize isolated
 network acquisition, not caller-selected filesystem writes. Entry IDs and URL
 hashes derive persistence paths. The command checks the library writer before

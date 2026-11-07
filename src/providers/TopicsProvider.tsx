@@ -37,15 +37,19 @@ export function TopicsProvider({ children }: { children: ReactNode }) {
     },
     []
   );
-  const getMemberships = useCallback((entityId: string, indexedIds: string[]) => {
-    const ids = new Set(indexedIds);
-    for (const [topicId, present] of membershipChanges.current.get(entityId) ??
-      []) {
-      if (present) ids.add(topicId);
-      else ids.delete(topicId);
-    }
-    return [...ids];
-  }, []);
+  const getMemberships = useCallback(
+    (entityId: string, indexedIds: string[]) => {
+      const ids = new Set(indexedIds);
+      for (const [topicId, present] of membershipChanges.current.get(
+        entityId
+      ) ?? []) {
+        if (present) ids.add(topicId);
+        else ids.delete(topicId);
+      }
+      return [...ids];
+    },
+    []
+  );
   const { pins, setPin } = usePins();
   const topics = useMemo(
     () =>

@@ -222,7 +222,10 @@ export function AppLayout() {
           onEditSite={setEditingSite}
         />
 
-        <EntityView className={css.EntityView} searchPanelRef={searchPanelRef} />
+        <EntityView
+          className={css.EntityView}
+          searchPanelRef={searchPanelRef}
+        />
 
         <Collapse
           ref={searchPanelRef}

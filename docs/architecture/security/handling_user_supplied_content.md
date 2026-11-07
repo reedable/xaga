@@ -30,7 +30,6 @@ Extracted entries are persisted through `write_read_entry` / `set_entry_color` (
 - **Choose its own path or bypass the dialog.** Both `import_feeds` and `import_bookmarks` are `pub(crate)` functions, not `#[tauri::command]`s — the file dialog runs in Rust and the chosen path never round-trips through the webview (`native/feeds.rs:1-8`, `native/bookmarks.rs:1-4`). A compromised renderer has no invoke door to redirect an import at an arbitrary file.
 - **Aim a fetch at an attacker-controlled address via a huge URL list**, per the OPML section above — the network proxy (`fetching_remote_content.md`) still validates every URL's resolved address regardless of how many the import produces.
 
-
 ## Import outcomes
 
 Native import/export events carry structured errors with a user-safe `message` and an empty `detail`; technical errors are logged before emission. Import results carry a numeric `failed` count rather than failed-entry strings. The frontend reports complete and partial failures through the shared error display and retains successful imports.

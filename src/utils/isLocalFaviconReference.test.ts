@@ -7,7 +7,9 @@ it("accepts legacy and shared favicon references", () => {
 });
 
 it("rejects remote and unrelated references", () => {
-  expect(isLocalFaviconReference("https://example.org/favicon.ico")).toBe(false);
+  expect(isLocalFaviconReference("https://example.org/favicon.ico")).toBe(
+    false
+  );
   expect(isLocalFaviconReference("../other/favicon.png")).toBe(false);
   expect(isLocalFaviconReference(undefined)).toBe(false);
 });

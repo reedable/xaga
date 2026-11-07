@@ -37,7 +37,7 @@ try {
       "--output-partial-info-plist",
       join(temporaryDirectory, "partial.plist"),
     ],
-    { cwd: root, stdio: "inherit" },
+    { cwd: root, stdio: "inherit" }
   );
 
   cpSync(join(temporaryDirectory, "Xaga-TopHat.icns"), legacyOutput);

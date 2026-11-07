@@ -37,22 +37,38 @@ export function PrivacySettings() {
 
   useEffect(() => {
     let active = true;
-    platform.getLoadRemoteImage().then((value) => {
-      if (active) { setCaptureImages(value); setCaptureLoaded(true); setCaptureError(null); }
-    }).catch(() => {
-      if (active) setCaptureError("Could not load the image capture preference. Reopen Settings to retry.");
-    });
-    return () => { active = false; };
+    platform
+      .getLoadRemoteImage()
+      .then((value) => {
+        if (active) {
+          setCaptureImages(value);
+          setCaptureLoaded(true);
+          setCaptureError(null);
+        }
+      })
+      .catch(() => {
+        if (active)
+          setCaptureError(
+            "Could not load the image capture preference. Reopen Settings to retry."
+          );
+      });
+    return () => {
+      active = false;
+    };
   }, [platform, pushError, refreshVersion]);
 
   async function handleCaptureChange(value: boolean) {
     setCaptureSaving(true);
     setCaptureError(null);
     try {
-      const saved = await saveSettings(() => platform.setLoadRemoteImage(value));
+      const saved = await saveSettings(() =>
+        platform.setLoadRemoteImage(value)
+      );
       if (saved) setCaptureImages(value);
     } catch {
-      setCaptureError("Could not save the image capture preference. Please try again.");
+      setCaptureError(
+        "Could not save the image capture preference. Please try again."
+      );
     } finally {
       setCaptureSaving(false);
     }
@@ -74,7 +90,8 @@ export function PrivacySettings() {
 
   async function handleRemove(domain: string) {
     const next = domains.filter((d) => d !== domain);
-    if (await saveSettings(() => platform.setAllowedDomains(next))) setDomains(next);
+    if (await saveSettings(() => platform.setAllowedDomains(next)))
+      setDomains(next);
   }
 
   return (
@@ -85,17 +102,29 @@ export function PrivacySettings() {
 
       <div className={css.Section}>
         <FormControlLabel
-          control={<Switch checked={captureImages} disabled={!captureLoaded || captureSaving}
-            onChange={(_, checked) => void handleCaptureChange(checked)}
-            slotProps={{ input: { "aria-describedby": "image-capture-description" } }} />}
+          control={
+            <Switch
+              checked={captureImages}
+              disabled={!captureLoaded || captureSaving}
+              onChange={(_, checked) => void handleCaptureChange(checked)}
+              slotProps={{
+                input: { "aria-describedby": "image-capture-description" },
+              }}
+            />
+          }
           label="Save article images for offline viewing"
         />
-        <Typography id="image-capture-description" variant="body2" color="text.secondary">
-          Off by default. Enabling this allows additional network requests to save
-          images when loading articles and recover unavailable images when opening
-          saved articles. Changes apply to new loads; reopen existing loader windows
-          to use the new preference. Saved images remain available when this is off.
-          Original pages can still display images in the loader window.
+        <Typography
+          id="image-capture-description"
+          variant="body2"
+          color="text.secondary"
+        >
+          Off by default. Enabling this allows additional network requests to
+          save images when loading articles and recover unavailable images when
+          opening saved articles. Changes apply to new loads; reopen existing
+          loader windows to use the new preference. Saved images remain
+          available when this is off. Original pages can still display images in
+          the loader window.
         </Typography>
         {captureError && <Alert severity="error">{captureError}</Alert>}
       </div>
@@ -161,8 +190,6 @@ export function PrivacySettings() {
           </div>
         )}
       </div>
-
-
     </div>
   );
 }

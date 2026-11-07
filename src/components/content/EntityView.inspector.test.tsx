@@ -252,7 +252,10 @@ it("opens the shared drawer at wide widths and follows replacement/removal", asy
   ).toBe("article");
   expect(mocks.state.annotationId).toBeUndefined();
   await act(async () =>
-    mocks.replaced!({ oldId: "tooltip-annotation", entity: { id: "recolored" } })
+    mocks.replaced!({
+      oldId: "tooltip-annotation",
+      entity: { id: "recolored" },
+    })
   );
   expect(target()).toBe("recolored");
   await act(async () => mocks.removed!("recolored"));
@@ -366,7 +369,6 @@ it("does not open the Inspector when initially mounted on an Annotation route", 
   expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
 
-
 it("keeps the docked Inspector mounted while responsive width hides and shows it", async () => {
   const panel = container.querySelector("aside")!;
   const inspector = panel.querySelector("[data-inspector]")!;
@@ -380,7 +382,6 @@ it("keeps the docked Inspector mounted while responsive width hides and shows it
   expect(panel.getAttribute("aria-hidden")).toBe("false");
   expect(panel.querySelector("[data-inspector]")).toBe(inspector);
 });
-
 
 it("clips the mounted Inspector when Search opens and restores it when Search closes", async () => {
   const panel = container.querySelector("aside")!;

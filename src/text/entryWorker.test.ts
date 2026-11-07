@@ -69,7 +69,9 @@ describe("processEntry — image URLs across the HTML→markdown boundary", () =
     // markdownToHtml preserves this on the feed-summary path; whether the
     // HTML→markdown conversion also carries it decides if the article path
     // shares that channel.
-    expect(markdown.includes("tracker.test/bg.png")).toMatchInlineSnapshot(`false`);
+    expect(markdown.includes("tracker.test/bg.png")).toMatchInlineSnapshot(
+      `false`
+    );
   });
 
   it("strips <iframe> at ingestion", async () => {
@@ -125,12 +127,18 @@ describe("processEntry — favicon", () => {
 describe("processEntry — no fetchable markup survives ingestion", () => {
   const CONSTRUCTS: [string, string][] = [
     ["img", '<img src="https://t.test/a.png">'],
-    ["img srcset", '<img src="https://t.test/a.png" srcset="https://t.test/2x.png 2x">'],
+    [
+      "img srcset",
+      '<img src="https://t.test/a.png" srcset="https://t.test/2x.png 2x">',
+    ],
     [
       "picture/source",
       '<picture><source srcset="https://t.test/s.webp"><img src="https://t.test/a.png"></picture>',
     ],
-    ["video poster", '<video poster="https://t.test/p.jpg" src="https://t.test/v.mp4"></video>'],
+    [
+      "video poster",
+      '<video poster="https://t.test/p.jpg" src="https://t.test/v.mp4"></video>',
+    ],
     ["audio", '<audio src="https://t.test/a.mp3"></audio>'],
     ["track", '<video><track src="https://t.test/t.vtt"></video>'],
     ["object", '<object data="https://t.test/o.bin"></object>'],
@@ -138,8 +146,14 @@ describe("processEntry — no fetchable markup survives ingestion", () => {
     ["input type=image", '<input type="image" src="https://t.test/i.png">'],
     ["svg image", '<svg><image href="https://t.test/i.png"/></svg>'],
     ["link stylesheet", '<link rel="stylesheet" href="https://t.test/s.css">'],
-    ["style block", "<style>body{background:url(https://t.test/bg.png)}</style>"],
-    ["inline style", '<div style="background-image:url(https://t.test/bg.png)">x</div>'],
+    [
+      "style block",
+      "<style>body{background:url(https://t.test/bg.png)}</style>",
+    ],
+    [
+      "inline style",
+      '<div style="background-image:url(https://t.test/bg.png)">x</div>',
+    ],
   ];
 
   it.each(CONSTRUCTS)("%s leaves no fetchable markup", async (_name, body) => {

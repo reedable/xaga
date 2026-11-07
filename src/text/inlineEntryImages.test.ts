@@ -74,18 +74,18 @@ describe("inlineEntryImages", () => {
   });
 });
 
-
 it("reports missing local images once without recovering or fetching remote URLs", async () => {
   const resolve = vi.fn().mockResolvedValue([null, DATA_URI, null]);
   const missing = vi.fn();
-  const html = '<img alt="one" src="../images/e1/111111111111"><img src="../images/e1/222222222222"><img src="../images/e1/333333333333">';
+  const html =
+    '<img alt="one" src="../images/e1/111111111111"><img src="../images/e1/222222222222"><img src="../images/e1/333333333333">';
   const out = await inlineEntryImages(html, "e1", resolve, missing);
   expect(missing).toHaveBeenCalledOnce();
   expect(resolve).toHaveBeenCalledOnce();
   expect(out).toContain('alt="one"');
   expect(out).toContain(DATA_URI);
-  expect(out).toContain('../images/e1/111111111111');
-  expect(out).not.toContain('https:');
+  expect(out).toContain("../images/e1/111111111111");
+  expect(out).not.toContain("https:");
 });
 
 it("reports resolver failure and leaves stored image paths untouched", async () => {

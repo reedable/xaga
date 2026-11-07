@@ -31,7 +31,9 @@ it("creates a topic with an existing member through one native command", async (
     entry_count: 1,
     unread_count: 1,
     is_pinned: false,
-    members: [{ __kind: "annotation", id: "annotation-1", articleId: "entry-1" }],
+    members: [
+      { __kind: "annotation", id: "annotation-1", articleId: "entry-1" },
+    ],
   });
   const member = {
     __kind: "annotation" as const,
@@ -338,12 +340,16 @@ it("creates and reads tag identities through the native boundary", async () => {
   const tag = { id: "46fa4a27-1ddf-448a-a5e6-95691a29c602", name: "Research" };
   invokeMock.mockResolvedValueOnce(tag);
   expect(await platform.createTag(" RESEARCH ")).toEqual(tag);
-  expect(invokeMock).toHaveBeenLastCalledWith("create_tag", { name: " RESEARCH " });
+  expect(invokeMock).toHaveBeenLastCalledWith("create_tag", {
+    name: " RESEARCH ",
+  });
   invokeMock.mockResolvedValueOnce([tag]);
   expect(await platform.listTags(new AbortController().signal)).toEqual([tag]);
   expect(invokeMock).toHaveBeenLastCalledWith("list_tags");
   invokeMock.mockResolvedValueOnce([{ ...tag, id: "research" }]);
-  await expect(platform.listTags(new AbortController().signal)).rejects.toThrow();
+  await expect(
+    platform.listTags(new AbortController().signal)
+  ).rejects.toThrow();
   const controller = new AbortController();
   controller.abort();
   invokeMock.mockResolvedValueOnce([tag]);
@@ -356,7 +362,9 @@ it("delivers committed tag creation payloads and retains listener cleanup", asyn
   vi.mocked(listen).mockResolvedValueOnce(cleanup);
   const listener = vi.fn();
   const result = await new TauriPlatform().onTagCreated(listener);
-  const handler = vi.mocked(listen).mock.calls.findLast(([name]) => name === "tag:created")![1];
+  const handler = vi
+    .mocked(listen)
+    .mock.calls.findLast(([name]) => name === "tag:created")![1];
   const tag = { id: "46fa4a27-1ddf-448a-a5e6-95691a29c602", name: "Research" };
   handler({ event: "tag:created", id: 0, payload: tag });
   expect(listener).toHaveBeenCalledWith(tag);
@@ -368,71 +376,150 @@ it("carries an Entry assignment delta through commands and notifications", async
   const tagId = "46fa4a27-1ddf-448a-a5e6-95691a29c602";
   const change = { entryId: "article", tagId, assigned: true };
   invokeMock.mockResolvedValueOnce([tagId]);
-  expect(await platform.readEntryTags(new AbortController().signal, "article")).toEqual([tagId]);
-  expect(invokeMock).toHaveBeenLastCalledWith("read_entry_tags", { id: "article" });
+  expect(
+    await platform.readEntryTags(new AbortController().signal, "article")
+  ).toEqual([tagId]);
+  expect(invokeMock).toHaveBeenLastCalledWith("read_entry_tags", {
+    id: "article",
+  });
   invokeMock.mockResolvedValueOnce(change);
   expect(await platform.setEntryTag("article", tagId, true)).toEqual(change);
-  expect(invokeMock).toHaveBeenLastCalledWith("set_entry_tag", { id: "article", tagId, assigned: true });
+  expect(invokeMock).toHaveBeenLastCalledWith("set_entry_tag", {
+    id: "article",
+    tagId,
+    assigned: true,
+  });
   const { listen } = await import("@tauri-apps/api/event");
   const callback = vi.fn();
   await platform.onEntryTagsChanged(callback);
-  const handler = vi.mocked(listen).mock.calls.findLast(([name]) => name === "entry-tags:changed")![1];
+  const handler = vi
+    .mocked(listen)
+    .mock.calls.findLast(([name]) => name === "entry-tags:changed")![1];
   handler({ event: "entry-tags:changed", id: 0, payload: change });
   expect(callback).toHaveBeenCalledWith(change);
 });
 
 it("queries tag intersections and counts over the native read boundary", async () => {
   const platform = new TauriPlatform();
-  const ids = ["46fa4a27-1ddf-448a-a5e6-95691a29c602", "46fa4a27-1ddf-448a-a5e6-95691a29c603"];
+  const ids = [
+    "46fa4a27-1ddf-448a-a5e6-95691a29c602",
+    "46fa4a27-1ddf-448a-a5e6-95691a29c603",
+  ];
   invokeMock.mockResolvedValueOnce([]);
-  expect(await platform.listTagEntries(new AbortController().signal, ids, "saved")).toEqual([]);
-  expect(invokeMock).toHaveBeenLastCalledWith("list_tag_entries", { tagIds: ids, entityFilter: "saved" });
+  expect(
+    await platform.listTagEntries(new AbortController().signal, ids, "saved")
+  ).toEqual([]);
+  expect(invokeMock).toHaveBeenLastCalledWith("list_tag_entries", {
+    tagIds: ids,
+    entityFilter: "saved",
+  });
   invokeMock.mockResolvedValueOnce(3);
-  expect(await platform.countTagUnread(new AbortController().signal, ids)).toBe(3);
-  expect(invokeMock).toHaveBeenLastCalledWith("count_tag_unread", { tagIds: ids });
-  const controller = new AbortController(); controller.abort();
+  expect(await platform.countTagUnread(new AbortController().signal, ids)).toBe(
+    3
+  );
+  expect(invokeMock).toHaveBeenLastCalledWith("count_tag_unread", {
+    tagIds: ids,
+  });
+  const controller = new AbortController();
+  controller.abort();
   invokeMock.mockResolvedValueOnce([]);
-  await expect(platform.listTagEntries(controller.signal, [], "all")).rejects.toThrow();
+  await expect(
+    platform.listTagEntries(controller.signal, [], "all")
+  ).rejects.toThrow();
 });
 
 it("carries tag rename status and typed definition notifications", async () => {
   const platform = new TauriPlatform();
   const id = "46fa4a27-1ddf-448a-a5e6-95691a29c602";
-  const snapshot = { tags: [{ id, name: "Changed" }], renaming: [id], deleting: [], merging: [] };
+  const snapshot = {
+    tags: [{ id, name: "Changed" }],
+    renaming: [id],
+    deleting: [],
+    merging: [],
+  };
   invokeMock.mockResolvedValueOnce(snapshot);
   expect(await platform.renameTag(id, "Changed")).toEqual(snapshot);
-  expect(invokeMock).toHaveBeenLastCalledWith("rename_tag", { id, name: "Changed" });
+  expect(invokeMock).toHaveBeenLastCalledWith("rename_tag", {
+    id,
+    name: "Changed",
+  });
   invokeMock.mockResolvedValueOnce(snapshot);
-  expect(await platform.readTagStatus(new AbortController().signal)).toEqual(snapshot);
-  invokeMock.mockResolvedValueOnce({ ...snapshot, deleting: [id], merging: [] });
-  expect(await platform.deleteTag(id)).toEqual({ ...snapshot, deleting: [id], merging: [] });
+  expect(await platform.readTagStatus(new AbortController().signal)).toEqual(
+    snapshot
+  );
+  invokeMock.mockResolvedValueOnce({
+    ...snapshot,
+    deleting: [id],
+    merging: [],
+  });
+  expect(await platform.deleteTag(id)).toEqual({
+    ...snapshot,
+    deleting: [id],
+    merging: [],
+  });
   expect(invokeMock).toHaveBeenLastCalledWith("delete_tag", { id });
   const { listen } = await import("@tauri-apps/api/event");
-  const callback = vi.fn(); await platform.onTagsChanged(callback);
-  const handler = vi.mocked(listen).mock.calls.findLast(([name]) => name === "tags:changed")![1];
+  const callback = vi.fn();
+  await platform.onTagsChanged(callback);
+  const handler = vi
+    .mocked(listen)
+    .mock.calls.findLast(([name]) => name === "tags:changed")![1];
   handler({ event: "tags:changed", id: 0, payload: snapshot });
   expect(callback).toHaveBeenCalledWith(snapshot);
 });
 
 it("sends explicit merge intent and validates the surviving identity snapshot", async () => {
-  const snapshot = { tags: [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Work" }], renaming: [], deleting: [], merging: [{ sourceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", destinationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", survivorId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", destinationName: "Work" }] };
+  const snapshot = {
+    tags: [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Work" }],
+    renaming: [],
+    deleting: [],
+    merging: [
+      {
+        sourceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        destinationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        survivorId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        destinationName: "Work",
+      },
+    ],
+  };
   invokeMock.mockResolvedValueOnce(snapshot);
-  await expect(new TauriPlatform().mergeTags("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")).resolves.toEqual(snapshot);
-  expect(invokeMock).toHaveBeenLastCalledWith("merge_tags", { sourceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", destinationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" });
+  await expect(
+    new TauriPlatform().mergeTags(
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+    )
+  ).resolves.toEqual(snapshot);
+  expect(invokeMock).toHaveBeenLastCalledWith("merge_tags", {
+    sourceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    destinationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  });
 });
 
 it("parses hierarchical membership and forwards typed organization through the native boundary", async () => {
   const platform = new TauriPlatform();
-  const pins = [{ type: "group", id: "g", title: "Research", children: [{ type: "entry", id: "article" }] }];
+  const pins = [
+    {
+      type: "group",
+      id: "g",
+      title: "Research",
+      children: [{ type: "entry", id: "article" }],
+    },
+  ];
   invokeMock.mockResolvedValueOnce({ pins });
   expect(await platform.listPins(new AbortController().signal)).toEqual(pins);
-  const edit = { action: "move" as const, node: { type: "entry" as const, id: "article" }, parent: "g" };
+  const edit = {
+    action: "move" as const,
+    node: { type: "entry" as const, id: "article" },
+    parent: "g",
+  };
   await platform.organizePins(edit);
   expect(invokeMock).toHaveBeenLastCalledWith("organize_pins", { edit });
   const listener = vi.fn();
   const stop = await platform.onPinChanged(listener);
   const { listen } = await import("@tauri-apps/api/event");
-  const handler = vi.mocked(listen).mock.calls.findLast(([name]) => name === "pins:organized")![1];
+  const handler = vi
+    .mocked(listen)
+    .mock.calls.findLast(([name]) => name === "pins:organized")![1];
   handler({ event: "pins:organized", id: 0, payload: edit });
   expect(listener).toHaveBeenCalledWith({ edit });
   stop();

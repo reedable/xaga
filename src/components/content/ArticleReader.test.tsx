@@ -143,11 +143,13 @@ it("has no external title heading outside the iframe document", async () => {
 });
 
 it("does not invent a remote URL to repair a missing hash-only local image", async () => {
-  mocks.article.description = '![Missing image](../images/entry/0123456789ab)';
+  mocks.article.description = "![Missing image](../images/entry/0123456789ab)";
   mocks.platform.getLoadRemoteImage.mockResolvedValue(true);
   await act(() => root.render(<ArticleReader />));
   expect(mocks.platform.readEntryImages).toHaveBeenCalledWith(
-    expect.any(AbortSignal), "entry", ["../images/entry/0123456789ab"]
+    expect.any(AbortSignal),
+    "entry",
+    ["../images/entry/0123456789ab"]
   );
   expect(mocks.html).toContain("Missing image");
   expect(mocks.html).not.toContain('src="../images/');

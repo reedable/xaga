@@ -129,7 +129,9 @@ it("disables pinning in read-only mode", async () => {
   mocks.readOnly = true;
   await render();
   await act(async () => button("Share").click());
-  expect(menuItem("Add to Shortcuts")!.getAttribute("aria-disabled")).toBe("true");
+  expect(menuItem("Add to Shortcuts")!.getAttribute("aria-disabled")).toBe(
+    "true"
+  );
   expect(mocks.setPin).not.toHaveBeenCalled();
 });
 
@@ -137,13 +139,22 @@ it.each(["../favicons/0123456789ab", "../images/article/0123456789ab"])(
   "displays cached favicon %s through local IPC in read-only mode",
   async (reference) => {
     mocks.readOnly = true;
-    mocks.platform.readArticle.mockResolvedValue({ ...article, favicon: reference });
-    mocks.platform.readEntryImages.mockResolvedValue(["data:image/png;base64,local"]);
+    mocks.platform.readArticle.mockResolvedValue({
+      ...article,
+      favicon: reference,
+    });
+    mocks.platform.readEntryImages.mockResolvedValue([
+      "data:image/png;base64,local",
+    ]);
     await render();
     expect(mocks.platform.readEntryImages).toHaveBeenCalledWith(
-      expect.any(AbortSignal), "article", [reference]
+      expect.any(AbortSignal),
+      "article",
+      [reference]
     );
-    expect(container.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,local");
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
+      "data:image/png;base64,local"
+    );
     expect(mocks.articles.loadArticleByUrl).not.toHaveBeenCalled();
   }
 );
@@ -153,14 +164,21 @@ it.each([
   "../favicons/0123456789ab",
   "../images/foreign/0123456789ab",
   "../images/article/../../private.png",
-])("never renders an unavailable or edited favicon as a direct URL: %s", async (reference) => {
-  mocks.platform.readArticle.mockResolvedValue({ ...article, favicon: reference });
-  await render();
-  expect(container.querySelector("img")).toBeNull();
-  expect(mocks.articles.loadArticleByUrl).not.toHaveBeenCalled();
-  if (reference.startsWith("https:")) expect(mocks.platform.readEntryImages).not.toHaveBeenCalled();
-  expect(mocks.sink.pushError).toHaveBeenCalled();
-});
+])(
+  "never renders an unavailable or edited favicon as a direct URL: %s",
+  async (reference) => {
+    mocks.platform.readArticle.mockResolvedValue({
+      ...article,
+      favicon: reference,
+    });
+    await render();
+    expect(container.querySelector("img")).toBeNull();
+    expect(mocks.articles.loadArticleByUrl).not.toHaveBeenCalled();
+    if (reference.startsWith("https:"))
+      expect(mocks.platform.readEntryImages).not.toHaveBeenCalled();
+    expect(mocks.sink.pushError).toHaveBeenCalled();
+  }
+);
 it("reports a refused pin without displaying it as persisted", async () => {
   await render();
   const error = { code: "E_READ_ONLY", message: "Read-only library" };
@@ -169,7 +187,9 @@ it("reports a refused pin without displaying it as persisted", async () => {
   await act(async () => menuItem("Add to Shortcuts")!.click());
   expect(mocks.sink.pushError).toHaveBeenCalledWith(error);
   await act(async () => button("Share").click());
-  expect(menuItem("Add to Shortcuts")!.getAttribute("aria-disabled")).not.toBe("true");
+  expect(menuItem("Add to Shortcuts")!.getAttribute("aria-disabled")).not.toBe(
+    "true"
+  );
   expect(menuItem("Remove from Shortcuts")).toBeUndefined();
 });
 
@@ -276,13 +296,14 @@ it("dismisses the swatch popup with Escape and restores toolbar focus", async ()
   expect(mocks.bookmarks.addBookmark).not.toHaveBeenCalled();
 });
 
-
 it("keeps Share visible and opens its ordered browser and QR actions", async () => {
   await render();
   const share = button("Share");
   expect(share.className).not.toContain("RevealOnHover");
   await act(async () => share.click());
-  const items = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+  const items = Array.from(
+    document.querySelectorAll<HTMLElement>('[role="menuitem"]')
+  );
   expect(items.map((item) => item.textContent)).toEqual([
     "Open in default browser",
     "Show QR code",
@@ -293,10 +314,11 @@ it("keeps Share visible and opens its ordered browser and QR actions", async () 
   await act(async () => items[0].click());
   expect(mocks.platform.openUrl).toHaveBeenCalledWith("https://example.org");
   await act(async () => share.click());
-  await act(async () => document.querySelectorAll<HTMLElement>('[role="menuitem"]')[1].click());
+  await act(async () =>
+    document.querySelectorAll<HTMLElement>('[role="menuitem"]')[1].click()
+  );
   expect(document.querySelector('[class*="QrPopover"] svg')).not.toBeNull();
 });
-
 
 it("marks the article unread from Share and closes the menu", async () => {
   await render();

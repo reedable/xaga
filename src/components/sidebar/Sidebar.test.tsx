@@ -18,14 +18,21 @@ const mocks = vi.hoisted(() => ({
   ],
 }));
 
-vi.mock("../../providers/TagsContext", () => ({ useTags: () => ({ tags: [], hasLoaded: true, unreadCount: 0 }) }));
-vi.mock("./TagList", () => ({ default: () => <div data-section="tags" data-titles="" /> }));
+vi.mock("../../providers/TagsContext", () => ({
+  useTags: () => ({ tags: [], hasLoaded: true, unreadCount: 0 }),
+}));
+vi.mock("./TagList", () => ({
+  default: () => <div data-section="tags" data-titles="" />,
+}));
 vi.mock("../../hooks/useAbortController", () => ({
   default: () => [undefined, { current: new AbortController() }],
 }));
 vi.mock("../../hooks/usePinnedEntries", () => ({ usePinnedEntries: () => [] }));
 vi.mock("../../hooks/useShortcutTargets", () => ({
-  useShortcutTargets: () => ({ targets: [...mocks.feeds, ...mocks.topics], missing: [] }),
+  useShortcutTargets: () => ({
+    targets: [...mocks.feeds, ...mocks.topics],
+    missing: [],
+  }),
 }));
 vi.mock("../../hooks/useLibraryReadOnly", () => ({
   useLibraryReadOnly: () => false,
@@ -68,8 +75,21 @@ function listMock(section: string) {
     return (
       <div
         data-section={section}
-        data-filter={section === "shortcuts" ? String(props.filter ?? "") : undefined}
-        data-titles={collections.filter(({ title }) => section !== "shortcuts" || title.toLocaleLowerCase().includes(String(props.filter ?? "").trim().toLocaleLowerCase())).map(({ title }) => title).join(",")}
+        data-filter={
+          section === "shortcuts" ? String(props.filter ?? "") : undefined
+        }
+        data-titles={collections
+          .filter(
+            ({ title }) =>
+              section !== "shortcuts" ||
+              title.toLocaleLowerCase().includes(
+                String(props.filter ?? "")
+                  .trim()
+                  .toLocaleLowerCase()
+              )
+          )
+          .map(({ title }) => title)
+          .join(",")}
       >
         {children}
       </div>
@@ -152,7 +172,10 @@ it("keeps every section and the filter above them visible with zero matches", as
   expect(input).not.toBeNull();
   const firstSection = container.querySelector("[data-section]");
   expect(firstSection).not.toBeNull();
-  expect(input!.compareDocumentPosition(firstSection!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(
+    input!.compareDocumentPosition(firstSection!) &
+      Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy();
 });
 
 vi.mock("../../hooks/useMissingPins", () => ({ useMissingPins: () => [] }));

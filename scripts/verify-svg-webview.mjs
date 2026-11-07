@@ -19,10 +19,13 @@ try {
         name: "inline-reader-css",
         setup(builder) {
           builder.onResolve({ filter: /\.css\?inline$/ }, async (args) => {
-            const resolved = await builder.resolve(args.path.replace(/\?inline$/, ""), {
-              resolveDir: args.resolveDir,
-              kind: args.kind,
-            });
+            const resolved = await builder.resolve(
+              args.path.replace(/\?inline$/, ""),
+              {
+                resolveDir: args.resolveDir,
+                kind: args.kind,
+              }
+            );
             return { ...resolved, namespace: "reader-css" };
           });
           builder.onLoad(

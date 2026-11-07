@@ -26,7 +26,8 @@ vi.mock("./providers/ExpandedListProvider", () => ({
   ExpandedListProvider: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock("./providers/AllEntitiesCountsProvider", () => ({
-  AllEntitiesCountsProvider: ({ children }: { children: ReactNode }) => children,
+  AllEntitiesCountsProvider: ({ children }: { children: ReactNode }) =>
+    children,
 }));
 vi.mock("./providers/FeedsProvider", () => ({
   default: ({ children }: { children: ReactNode }) => children,
@@ -34,7 +35,9 @@ vi.mock("./providers/FeedsProvider", () => ({
 vi.mock("./providers/TopicsProvider", () => ({
   TopicsProvider: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock("./providers/TagsProvider", () => ({ TagsProvider: ({ children }: { children: ReactNode }) => children }));
+vi.mock("./providers/TagsProvider", () => ({
+  TagsProvider: ({ children }: { children: ReactNode }) => children,
+}));
 vi.mock("./providers/SitesProvider", () => ({
   SitesProvider: ({
     children,
@@ -87,4 +90,6 @@ it("renders the main application when embeddings are unavailable", async () => {
   ).not.toBeNull();
 });
 
-vi.mock("./providers/PinsProvider", () => ({ default: ({ children }: { children: ReactNode }) => children }));
+vi.mock("./providers/PinsProvider", () => ({
+  default: ({ children }: { children: ReactNode }) => children,
+}));

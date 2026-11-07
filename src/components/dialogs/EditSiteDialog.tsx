@@ -29,9 +29,7 @@ export default function EditSiteDialog({
   useEffect(() => {
     setPinned(
       !!site &&
-        pins.some(
-          (pin) => pin.type === "site" && pin.hostname === site.id
-        )
+        pins.some((pin) => pin.type === "site" && pin.hostname === site.id)
     );
   }, [site, pins]);
   const submit = async (event: SubmitEvent<HTMLFormElement>) => {

@@ -12,7 +12,9 @@ export function mergeTopicAddition(
 
   const added = authoritative[addedIndex];
   for (let i = addedIndex + 1; i < authoritative.length; i++) {
-    const next = current.findIndex((entity) => entity.id === authoritative[i].id);
+    const next = current.findIndex(
+      (entity) => entity.id === authoritative[i].id
+    );
     if (next >= 0)
       return [...current.slice(0, next), added, ...current.slice(next)];
   }

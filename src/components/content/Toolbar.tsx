@@ -14,8 +14,24 @@ import {
   Refresh,
   Search,
 } from "@mui/icons-material";
-import { Collapse, Divider, IconButton, LinearProgress, Menu, MenuItem, Popover, Tooltip } from "@mui/material";
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  Collapse,
+  Divider,
+  IconButton,
+  LinearProgress,
+  Menu,
+  MenuItem,
+  Popover,
+  Tooltip,
+} from "@mui/material";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import QRCode from "react-qr-code";
 import colorCss from "../../colors.module.css";
 import useAbortController from "../../hooks/useAbortController";
@@ -76,7 +92,9 @@ export function Toolbar({
     loading: marking,
     error: markingError,
   } = useBookmarks(abortControllerRef);
-  const [bookmarkAnchor, setBookmarkAnchor] = useState<HTMLElement | null>(null);
+  const [bookmarkAnchor, setBookmarkAnchor] = useState<HTMLElement | null>(
+    null
+  );
   const { markEntryRead, markEntryUnread } = useEntries(abortControllerRef);
   const { onBookmarkChanged, onUnreadChanged, onFaviconChanged } = useEvents();
   const { loadArticleByUrl, loading } = useArticles(abortControllerRef);
@@ -103,10 +121,12 @@ export function Toolbar({
       latestEntry && latestEntry.id === entryId
         ? {
             ...latestEntry,
-            isPinned: pins.some((pin) => pin.type === "entry" && pin.id === entryId),
+            isPinned: pins.some(
+              (pin) => pin.type === "entry" && pin.id === entryId
+            ),
           }
         : null,
-    [latestEntry, entryId, pins],
+    [latestEntry, entryId, pins]
   );
 
   // Only persisted local references may supply an icon. Never render a stored
@@ -114,7 +134,9 @@ export function Toolbar({
   const storedFavicon = isArticle(entry) ? entry.favicon : undefined;
   const isLocalFaviconRef = isLocalFaviconReference(storedFavicon);
   const displayFavicon =
-    isLocalFaviconRef && favicon && favicon.reference === storedFavicon ? favicon.data : null;
+    isLocalFaviconRef && favicon && favicon.reference === storedFavicon
+      ? favicon.data
+      : null;
 
   const shareButtonRef = useRef<HTMLButtonElement>(null);
   const [shareAnchor, setShareAnchor] = useState<HTMLElement | null>(null);
@@ -129,13 +151,15 @@ export function Toolbar({
     async (color: string | null) => {
       if (!entry || marking || isLibraryReadOnly) return;
       const updated =
-        color === null ? await removeBookmark(entry) : await addBookmark(entry, color);
+        color === null
+          ? await removeBookmark(entry)
+          : await addBookmark(entry, color);
       if (updated) {
         setLatestEntry(updated);
         setBookmarkAnchor(null);
       }
     },
-    [entry, marking, isLibraryReadOnly, addBookmark, removeBookmark],
+    [entry, marking, isLibraryReadOnly, addBookmark, removeBookmark]
   );
   useEffect(() => {
     if (markingError) pushError(markingError);
@@ -166,9 +190,9 @@ export function Toolbar({
       subscribe(() =>
         platform.onEntryPinChanged((updated) => {
           if (updated.id === entryId) setLatestEntry(updated);
-        }),
+        })
       ),
-    [entryId, platform],
+    [entryId, platform]
   );
 
   const toggleRead = useCallback(async () => {
@@ -182,7 +206,7 @@ export function Toolbar({
       if (!/^https?:\/\//i.test(inputUrl)) inputUrl = `https://${inputUrl}`;
       selectUrl(inputUrl);
     },
-    [selectUrl],
+    [selectUrl]
   );
 
   const handleShowOriginalSite = useCallback(async () => {
@@ -220,7 +244,8 @@ export function Toolbar({
   // privileged window. The bytes come back over IPC.
   useEffect(() => {
     if (!entry || !storedFavicon) return;
-    const reportFailure = () => pushError(new FaviconLoadError(entry.url, true));
+    const reportFailure = () =>
+      pushError(new FaviconLoadError(entry.url, true));
     if (!isLocalFaviconRef) {
       reportFailure();
       return;
@@ -249,14 +274,14 @@ export function Toolbar({
             isPinned: current?.isPinned ?? entry.isPinned,
           }));
       }),
-    [onBookmarkChanged, entryId],
+    [onBookmarkChanged, entryId]
   );
   useEffect(
     () =>
       onFaviconChanged((article) => {
         if (article.id === entryId) setLatestEntry(article);
       }),
-    [onFaviconChanged, entryId],
+    [onFaviconChanged, entryId]
   );
   useEffect(
     () =>
@@ -267,19 +292,29 @@ export function Toolbar({
             isPinned: current?.isPinned ?? entry.isPinned,
           }));
       }),
-    [onUnreadChanged, entryId],
+    [onUnreadChanged, entryId]
   );
 
   return (
     <div className={css.Toolbar}>
       <Tooltip title="Back">
-        <IconButton size="small" onClick={back} disabled={!canGoBack} aria-label="Back">
+        <IconButton
+          size="small"
+          onClick={back}
+          disabled={!canGoBack}
+          aria-label="Back"
+        >
           <ArrowBack fontSize="small" />
         </IconButton>
       </Tooltip>
 
       <Tooltip title="Forward">
-        <IconButton size="small" onClick={forward} disabled={!canGoForward} aria-label="Forward">
+        <IconButton
+          size="small"
+          onClick={forward}
+          disabled={!canGoForward}
+          aria-label="Forward"
+        >
           <ArrowForward fontSize="small" />
         </IconButton>
       </Tooltip>
@@ -393,20 +428,26 @@ export function Toolbar({
               </MenuItem>
             </Menu>
 
-            <Tooltip title={entry?.color ? "Change bookmark color" : "Add bookmark"}>
+            <Tooltip
+              title={entry?.color ? "Change bookmark color" : "Add bookmark"}
+            >
               <span>
                 <IconButton
                   size="small"
                   onClick={(event) => setBookmarkAnchor(event.currentTarget)}
                   disabled={!entry || isLibraryReadOnly || marking}
-                  aria-label={entry?.color ? "Change bookmark color" : "Add bookmark"}
+                  aria-label={
+                    entry?.color ? "Change bookmark color" : "Add bookmark"
+                  }
                   aria-haspopup="dialog"
                   aria-expanded={!!bookmarkAnchor}
                 >
                   <Bookmark
                     fontSize="small"
                     className={entry?.color ? colorCss[entry.color] : undefined}
-                    style={entry?.color ? { color: "var(--color-icon)" } : undefined}
+                    style={
+                      entry?.color ? { color: "var(--color-icon)" } : undefined
+                    }
                   />
                 </IconButton>
               </span>
@@ -419,7 +460,11 @@ export function Toolbar({
               anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
               transformOrigin={{ vertical: "top", horizontal: "center" }}
             >
-              <div role="dialog" aria-label="Bookmark color" style={{ padding: 8 }}>
+              <div
+                role="dialog"
+                aria-label="Bookmark color"
+                style={{ padding: 8 }}
+              >
                 <ColorSwatches
                   color={entry?.color ?? null}
                   onChange={changeBookmark}
@@ -468,7 +513,11 @@ export function Toolbar({
 
       <Collapse in={!isSearchOpen} orientation="horizontal">
         <Tooltip
-          title={embeddingStartupState === "available" ? "Show Search" : "Search unavailable"}
+          title={
+            embeddingStartupState === "available"
+              ? "Show Search"
+              : "Search unavailable"
+          }
         >
           <span>
             <IconButton

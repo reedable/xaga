@@ -208,7 +208,6 @@ or finalization requests. Discovering more labels involved in an active operatio
 completion checks or query cursors. The [tag storage contract](tags.md#checkpoints-and-retirement)
 specifies the records and the evidence required before retirement.
 
-
 Tag deletion commits its reservation before submitting indexed cleanup. Each batch
 persists both pending lists, removes file labels, then removes cached IDs before
 advancing progress. A failure retains the batch for replay; recovery resumes it

@@ -13,22 +13,47 @@ let container: HTMLDivElement;
 let router: ReturnType<typeof useRouter>;
 function Host() {
   const current = useRouter();
-  useEffect(() => { router = current; }, [current]);
-  const tags = [{ id: "a", name: "Research" }, { id: "b", name: "Work" }];
-  return <TagsContext.Provider value={{ tags, hasLoaded: true, unreadCount: 3 }}>
-    <TagList tags={tags} isExpanded onClickHeader={() => {}} />
-  </TagsContext.Provider>;
+  useEffect(() => {
+    router = current;
+  }, [current]);
+  const tags = [
+    { id: "a", name: "Research" },
+    { id: "b", name: "Work" },
+  ];
+  return (
+    <TagsContext.Provider value={{ tags, hasLoaded: true, unreadCount: 3 }}>
+      <TagList tags={tags} isExpanded onClickHeader={() => {}} />
+    </TagsContext.Provider>
+  );
 }
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+});
 it("toggles the shared tag intersection by keyboard", async () => {
-  container = document.createElement("div"); document.body.append(container);
+  container = document.createElement("div");
+  document.body.append(container);
   root = createRoot(container);
-  await act(async () => root.render(<MemoryRouter initialEntries={[{ pathname: "/", state: { tagIds: ["a"], filter: "saved" } }]}><Host /></MemoryRouter>));
-  const choices = () => [...container.querySelectorAll<HTMLElement>('[role="checkbox"]')];
+  await act(async () =>
+    root.render(
+      <MemoryRouter
+        initialEntries={[
+          { pathname: "/", state: { tagIds: ["a"], filter: "saved" } },
+        ]}
+      >
+        <Host />
+      </MemoryRouter>
+    )
+  );
+  const choices = () => [
+    ...container.querySelectorAll<HTMLElement>('[role="checkbox"]'),
+  ];
   expect(choices()[0].getAttribute("aria-checked")).toBe("true");
   await act(async () => {
     choices()[1].focus();
-    choices()[1].dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    choices()[1].dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true })
+    );
   });
   expect(router.state).toEqual({ tagIds: ["a", "b"], filter: "saved" });
   await act(async () => choices()[0].click());

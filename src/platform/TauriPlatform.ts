@@ -1,5 +1,11 @@
 import type { EntryTagChange, Tag, TagSnapshot } from "../domain";
-import type { PinTarget, PinNode, PinEdit, PinChange, ShortcutMenuItem } from "../pins";
+import type {
+  PinTarget,
+  PinNode,
+  PinEdit,
+  PinChange,
+  ShortcutMenuItem,
+} from "../pins";
 import type { ImageRecovery } from "../text/imageReferences";
 import { isAppError, type AppError as SerializedAppError } from "./errors";
 import { invoke } from "@tauri-apps/api/core";
@@ -83,7 +89,9 @@ const ManagedEntitySchema = z.object({
   updated_at: z.string().nullable(),
 });
 
-const toManagedEntity = (data: z.infer<typeof ManagedEntitySchema>): ManagedEntity => ({
+const toManagedEntity = (
+  data: z.infer<typeof ManagedEntitySchema>
+): ManagedEntity => ({
   id: data.id,
   title: data.title,
   createdAt: data.created_at,
@@ -374,9 +382,28 @@ listen<string>("loader:will-unload" satisfies AppEvent, (e) => {
   console.log("[diagnostic] loader:will-unload", e.payload);
 });
 
-const entryTagChangeSchema = z.object({ entryId: z.string(), tagId: z.uuid({ version: "v4" }), assigned: z.boolean() });
-const tagSchema = z.object({ id: z.uuid({ version: "v4" }), name: z.string().min(1) });
-const tagSnapshotSchema = z.object({ tags: z.array(tagSchema), renaming: z.array(z.uuid({ version: "v4" })), deleting: z.array(z.uuid({ version: "v4" })), merging: z.array(z.object({ sourceId: z.uuid({ version: "v4" }), destinationId: z.uuid({ version: "v4" }), survivorId: z.uuid({ version: "v4" }), destinationName: z.string() })) });
+const entryTagChangeSchema = z.object({
+  entryId: z.string(),
+  tagId: z.uuid({ version: "v4" }),
+  assigned: z.boolean(),
+});
+const tagSchema = z.object({
+  id: z.uuid({ version: "v4" }),
+  name: z.string().min(1),
+});
+const tagSnapshotSchema = z.object({
+  tags: z.array(tagSchema),
+  renaming: z.array(z.uuid({ version: "v4" })),
+  deleting: z.array(z.uuid({ version: "v4" })),
+  merging: z.array(
+    z.object({
+      sourceId: z.uuid({ version: "v4" }),
+      destinationId: z.uuid({ version: "v4" }),
+      survivorId: z.uuid({ version: "v4" }),
+      destinationName: z.string(),
+    })
+  ),
+});
 
 export class TauriPlatform implements Platform {
   async onError(
@@ -598,7 +625,9 @@ export class TauriPlatform implements Platform {
       .with(abortable, { signal })
       .with(logged, { logger, name: "list_all_entities" });
 
-    const results = await invoker<unknown[]>("list_all_entities", { entityFilter });
+    const results = await invoker<unknown[]>("list_all_entities", {
+      entityFilter,
+    });
 
     return results
       .map((e) => ListEntitySchema.transform(toListEntity).safeParse(e))
@@ -857,10 +886,7 @@ export class TauriPlatform implements Platform {
   // "Frontend type branding (`__kind`)".
   async createArticle(
     signal: AbortSignal,
-    article: Omit<
-      Article,
-      "id" | "createdAt" | "__kind" | "isPinned"
-    >,
+    article: Omit<Article, "id" | "createdAt" | "__kind" | "isPinned">,
     imageData: Record<string, string> = {},
     diagnosticId?: string
   ): Promise<Article> {
@@ -1113,7 +1139,11 @@ export class TauriPlatform implements Platform {
 
   // Bookmarks -----------------------------------------------------------------
 
-  async addBookmark(signal: AbortSignal, id: string, color: string): Promise<Entry> {
+  async addBookmark(
+    signal: AbortSignal,
+    id: string,
+    color: string
+  ): Promise<Entry> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "add_bookmark" });
@@ -1285,10 +1315,14 @@ export class TauriPlatform implements Platform {
     return listen<unknown>(name, listener);
   }
 
-  onAnnotationChanged(callback: (entity: ListEntity) => void): Promise<UnlistenFn> {
+  onAnnotationChanged(
+    callback: (entity: ListEntity) => void
+  ): Promise<UnlistenFn> {
     const name: DomainEvent = "annotation:changed";
     const listener = decorate((e) => {
-      const result = ListEntitySchema.transform(toListEntity).safeParse(e.payload);
+      const result = ListEntitySchema.transform(toListEntity).safeParse(
+        e.payload
+      );
       if (result.success) callback(result.data);
     }).with(logged, { logger, name });
 
@@ -1559,17 +1593,34 @@ export class TauriPlatform implements Platform {
     return z.array(z.uuid({ version: "v4" })).parse(result);
   }
 
-  async setEntryTag(id: string, tagId: string, assigned: boolean): Promise<EntryTagChange> {
-    return entryTagChangeSchema.parse(await invoke("set_entry_tag", { id, tagId, assigned }));
+  async setEntryTag(
+    id: string,
+    tagId: string,
+    assigned: boolean
+  ): Promise<EntryTagChange> {
+    return entryTagChangeSchema.parse(
+      await invoke("set_entry_tag", { id, tagId, assigned })
+    );
   }
 
-  onEntryTagsChanged(callback: (change: EntryTagChange) => void): Promise<UnlistenFn> {
-    return listen<unknown>("entry-tags:changed" satisfies DomainEvent,
-      (event) => callback(entryTagChangeSchema.parse(event.payload)));
+  onEntryTagsChanged(
+    callback: (change: EntryTagChange) => void
+  ): Promise<UnlistenFn> {
+    return listen<unknown>(
+      "entry-tags:changed" satisfies DomainEvent,
+      (event) => callback(entryTagChangeSchema.parse(event.payload))
+    );
   }
 
-  async listTagEntries(signal: AbortSignal, tagIds: string[], filter: Filter = "unread"): Promise<Entry[]> {
-    const result = await invoke("list_tag_entries", { tagIds, entityFilter: filter });
+  async listTagEntries(
+    signal: AbortSignal,
+    tagIds: string[],
+    filter: Filter = "unread"
+  ): Promise<Entry[]> {
+    const result = await invoke("list_tag_entries", {
+      tagIds,
+      entityFilter: filter,
+    });
     signal.throwIfAborted();
     return z.array(EntrySchema.transform(toEntry)).parse(result);
   }
@@ -1594,12 +1645,21 @@ export class TauriPlatform implements Platform {
     return tagSnapshotSchema.parse(await invoke("delete_tag", { id }));
   }
 
-  async mergeTags(sourceId: string, destinationId: string): Promise<TagSnapshot> {
-    return tagSnapshotSchema.parse(await invoke("merge_tags", { sourceId, destinationId }));
+  async mergeTags(
+    sourceId: string,
+    destinationId: string
+  ): Promise<TagSnapshot> {
+    return tagSnapshotSchema.parse(
+      await invoke("merge_tags", { sourceId, destinationId })
+    );
   }
 
-  onTagsChanged(callback: (snapshot: TagSnapshot) => void): Promise<UnlistenFn> {
-    return listen<unknown>("tags:changed" satisfies DomainEvent, (event) => callback(tagSnapshotSchema.parse(event.payload)));
+  onTagsChanged(
+    callback: (snapshot: TagSnapshot) => void
+  ): Promise<UnlistenFn> {
+    return listen<unknown>("tags:changed" satisfies DomainEvent, (event) =>
+      callback(tagSnapshotSchema.parse(event.payload))
+    );
   }
 
   async listTags(signal: AbortSignal): Promise<Tag[]> {
@@ -1614,21 +1674,37 @@ export class TauriPlatform implements Platform {
 
   onTagCreated(callback: (tag: Tag) => void): Promise<UnlistenFn> {
     const name: DomainEvent = "tag:created";
-    return listen<unknown>(name, (event) => callback(tagSchema.parse(event.payload)));
+    return listen<unknown>(name, (event) =>
+      callback(tagSchema.parse(event.payload))
+    );
   }
 
   async listPins(signal: AbortSignal): Promise<PinNode[]> {
     const target = z.union([
-      z.object({ type: z.enum(["entry", "feed", "topic"]), id: z.string() }).strict(),
+      z
+        .object({ type: z.enum(["entry", "feed", "topic"]), id: z.string() })
+        .strict(),
       z.object({ type: z.literal("site"), hostname: z.string() }).strict(),
     ]);
-    const node: z.ZodType<PinNode> = z.lazy(() => z.union([
-      z.object({ type: z.literal("group"), id: z.string(), title: z.string(), children: z.array(node) }).strict(),
-      target,
-    ]));
+    const node: z.ZodType<PinNode> = z.lazy(() =>
+      z.union([
+        z
+          .object({
+            type: z.literal("group"),
+            id: z.string(),
+            title: z.string(),
+            children: z.array(node),
+          })
+          .strict(),
+        target,
+      ])
+    );
     const result = await invoke("list_pins");
     signal.throwIfAborted();
-    return z.object({ pins: z.array(node) }).strict().parse(result).pins;
+    return z
+      .object({ pins: z.array(node) })
+      .strict()
+      .parse(result).pins;
   }
 
   organizePins(edit: PinEdit): Promise<void> {
@@ -1639,12 +1715,24 @@ export class TauriPlatform implements Platform {
     return invoke("set_pin", { target, pinned });
   }
 
-  async onPinChanged(callback: (change: PinChange) => void): Promise<UnlistenFn> {
-    const stop = await listen<PinChange>("pin:changed", (event) => callback(event.payload));
+  async onPinChanged(
+    callback: (change: PinChange) => void
+  ): Promise<UnlistenFn> {
+    const stop = await listen<PinChange>("pin:changed", (event) =>
+      callback(event.payload)
+    );
     try {
-      const organized = await listen<PinEdit>("pins:organized", (event) => callback({ edit: event.payload }));
-      return () => { stop(); organized(); };
-    } catch (error) { stop(); throw error; }
+      const organized = await listen<PinEdit>("pins:organized", (event) =>
+        callback({ edit: event.payload })
+      );
+      return () => {
+        stop();
+        organized();
+      };
+    } catch (error) {
+      stop();
+      throw error;
+    }
   }
 
   setFeedPinned(id: string, pinned: boolean): Promise<void> {

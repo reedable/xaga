@@ -58,20 +58,22 @@ export default function App({ entryPoint }: { entryPoint: string }) {
                   <SitesProvider
                     enabled={embeddingStartupState === "available"}
                   >
-                    <TagsProvider enabled={embeddingStartupState === "available"}>
-                    <Routes>
-                      <Route
-                        path="/"
-                        element={
-                          embeddingStartupState !== "loading" ? (
-                            <AllEntitiesCountsProvider>
-                              <AppLayout />
-                            </AllEntitiesCountsProvider>
-                          ) : null
-                        }
-                      />
-                      <Route path="*" element={<Navigate to="/" replace />} />
-                    </Routes>
+                    <TagsProvider
+                      enabled={embeddingStartupState === "available"}
+                    >
+                      <Routes>
+                        <Route
+                          path="/"
+                          element={
+                            embeddingStartupState !== "loading" ? (
+                              <AllEntitiesCountsProvider>
+                                <AppLayout />
+                              </AllEntitiesCountsProvider>
+                            ) : null
+                          }
+                        />
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                      </Routes>
                     </TagsProvider>
                   </SitesProvider>
                 </FeedsProvider>

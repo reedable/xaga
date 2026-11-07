@@ -219,8 +219,8 @@ export function TopicMembership({ entity }: { entity: Entry | Annotation }) {
   const filteredTopics = useMemo(() => {
     const base = filterText
       ? sortedTopics.filter((t) =>
-        t.title.toLowerCase().includes(filterText.toLowerCase())
-      )
+          t.title.toLowerCase().includes(filterText.toLowerCase())
+        )
       : sortedTopics;
     return [...base].sort((a, b) => {
       const aChecked = memberIds.has(a.id);
@@ -262,103 +262,97 @@ export function TopicMembership({ entity }: { entity: Entry | Annotation }) {
               Sort by most relevant
             </MenuItem>
 
-            <MenuItem value="name">
-              Sort alphabetically
-            </MenuItem>
+            <MenuItem value="name">Sort alphabetically</MenuItem>
           </Select>
         </div>
       </div>
 
-      {
-        !creating && (
-          <div className={css.Filter}>
-            <TextField
-              className={css.FilterTextInput}
-              placeholder="Filter topics…"
-              size="small"
-              fullWidth
-              value={filterText}
-              inputRef={filterInputRef}
-              onChange={(e) => setFilterText(e.target.value)}
-              autoComplete="off"
-              variant="standard"
-              slotProps={{
-                htmlInput: { spellCheck: false },
-                input: {
-                  endAdornment: filterText && (
-                    <InputAdornment position="end">
-                      <Tooltip title="Clear">
-                        <IconButton
-                          size="small"
-                          edge="end"
-                          onClick={() => setFilterText("")}
-                          aria-label="Clear"
-                        >
-                          <Close fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </InputAdornment>
-                  ),
-                },
-              }}
-            />
-          </div>
-        )
-      }
-
-      {
-        creating ? (
-          <InlineTopicForm
-            readOnly={readOnly}
-            initialTitle={createInitialTitle}
-            onCancel={stopCreating}
-            onCreate={handleCreate}
+      {!creating && (
+        <div className={css.Filter}>
+          <TextField
+            className={css.FilterTextInput}
+            placeholder="Filter topics…"
+            size="small"
+            fullWidth
+            value={filterText}
+            inputRef={filterInputRef}
+            onChange={(e) => setFilterText(e.target.value)}
+            autoComplete="off"
+            variant="standard"
+            slotProps={{
+              htmlInput: { spellCheck: false },
+              input: {
+                endAdornment: filterText && (
+                  <InputAdornment position="end">
+                    <Tooltip title="Clear">
+                      <IconButton
+                        size="small"
+                        edge="end"
+                        onClick={() => setFilterText("")}
+                        aria-label="Clear"
+                      >
+                        <Close fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </InputAdornment>
+                ),
+              },
+            }}
           />
-        ) : (
-          <List className={css.List} disablePadding>
-            {filteredTopics.map((t) => (
-              <MotionListItem
-                key={t.id}
-                layout={animate}
-                transition={{ duration: animate ? 0.3 : 0, ease: "easeOut" }}
-                disablePadding
+        </div>
+      )}
+
+      {creating ? (
+        <InlineTopicForm
+          readOnly={readOnly}
+          initialTitle={createInitialTitle}
+          onCancel={stopCreating}
+          onCreate={handleCreate}
+        />
+      ) : (
+        <List className={css.List} disablePadding>
+          {filteredTopics.map((t) => (
+            <MotionListItem
+              key={t.id}
+              layout={animate}
+              transition={{ duration: animate ? 0.3 : 0, ease: "easeOut" }}
+              disablePadding
+            >
+              <ListItemButton
+                onClick={() => handleToggle(t.id)}
+                disabled={readOnly || mutating}
+                dense
+                role="checkbox"
+                aria-checked={memberIds.has(t.id)}
               >
-                <ListItemButton
-                  onClick={() => handleToggle(t.id)}
+                <Checkbox
+                  tabIndex={-1}
                   disabled={readOnly || mutating}
-                  dense
-                  role="checkbox"
-                  aria-checked={memberIds.has(t.id)}
-                >
-                  <Checkbox
-                    tabIndex={-1}
-                    disabled={readOnly || mutating}
-                    slotProps={{ input: { "aria-hidden": true } }}
-                    checked={memberIds.has(t.id)}
-                    size="small"
-                    disableRipple
-                    className={css.Checkbox}
-                  />
-                  <ListItemText primary={t.title} />
-                </ListItemButton>
-              </MotionListItem>
-            ))}
-            {(topics.length === 0 ||
-              (filterText.trim() && filteredTopics.length === 0)) && (
-                <ListItem>
-                  <Button
-                    onClick={startCreating}
-                    disabled={readOnly}
-                    fullWidth
-                    variant="outlined"
-                  >
-                    Create a New Topic
-                  </Button>
-                </ListItem>
-              )}
-          </List>
-        )
-      }
-    </div >
+                  slotProps={{ input: { "aria-hidden": true } }}
+                  checked={memberIds.has(t.id)}
+                  size="small"
+                  disableRipple
+                  className={css.Checkbox}
+                />
+                <ListItemText primary={t.title} />
+              </ListItemButton>
+            </MotionListItem>
+          ))}
+          {(topics.length === 0 ||
+            (filterText.trim() && filteredTopics.length === 0)) && (
+            <ListItem>
+              <Button
+                onClick={startCreating}
+                disabled={readOnly}
+                fullWidth
+                variant="outlined"
+              >
+                Create a New Topic
+              </Button>
+            </ListItem>
+          )}
+        </List>
+      )}
+    </div>
   );
 }

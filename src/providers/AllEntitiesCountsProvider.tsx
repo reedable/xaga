@@ -11,7 +11,11 @@ import type { AllEntitiesCounts } from "../types";
 import { debounced } from "../utils/Decorator";
 import AllEntitiesCountsContext from "./AllEntitiesCountsContext";
 
-export function AllEntitiesCountsProvider({ children }: { children: ReactNode }) {
+export function AllEntitiesCountsProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const platform = usePlatform();
   const [counts, setCounts] = useState<AllEntitiesCounts | null>(null);
 

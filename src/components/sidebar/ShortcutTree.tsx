@@ -298,7 +298,9 @@ export default function ShortcutTree({
       >
         {render(filterPinTree(nodes, filter))}
         {dragging && (
-          <div className={css.RootDestination}>Move to top level of Shortcuts</div>
+          <div className={css.RootDestination}>
+            Move to top level of Shortcuts
+          </div>
         )}
       </div>
 
@@ -436,7 +438,10 @@ export default function ShortcutTree({
             select
             label="Destination"
             margin="normal"
-            slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
+            slotProps={{
+              select: { displayEmpty: true },
+              inputLabel: { shrink: true },
+            }}
             value={destination}
             fullWidth
             disabled={busy}

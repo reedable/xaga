@@ -13,7 +13,7 @@ error. A library is stored as three layers, each a projection of the one above:
   fast reads. A pure cache: source of truth for nothing.
 
 So "recovery" is mostly **re-deriving a lower layer from a higher one**. Today the
-only active recovery *pass* is the index reconciliation,
+only active recovery _pass_ is the index reconciliation,
 [`repair_entity_embeddings`](embeddings.rs): scan `entries/` and `topics/`,
 diff against LanceDB, and queue the corrections (embed what's new or changed,
 delete what's gone). The `.atom` ↔ `.md` relationship is kept consistent **by
@@ -34,8 +34,8 @@ is the **irreplaceable content**; the `.atom` is only a **membership label**, an
 membership is cheaply re-derivable because the live feed still lists those entries
 on the next refresh.
 
-**Consequence of an interruption.** A crash leaves entries that are *materialized
-but not yet in the atom*. This is **benign and self-healing**:
+**Consequence of an interruption.** A crash leaves entries that are _materialized
+but not yet in the atom_. This is **benign and self-healing**:
 
 - The content is on disk — nothing is lost.
 - The next refresh of that feed re-adds the entries to the atom from the live
@@ -51,8 +51,8 @@ long as its `.md` exists, and the feed list reconciles on the next refresh.
 **Why there is deliberately no `.atom` → `.md` reconciliation.**
 A reviewer might expect a recovery pass that reads each `.atom`, finds entries
 with no `.md`, and recreates them — and an earlier version had exactly that
-(`reconcile_feed_entries`, since removed). It is unnecessary *given the write
-order*. Such a pass is only needed if the writes happen in the **reverse** order
+(`reconcile_feed_entries`, since removed). It is unnecessary _given the write
+order_. Such a pass is only needed if the writes happen in the **reverse** order
 (atom first): then a crash loses the **content** — an atom id with no `.md` and no
 index row, invisible and unrecoverable except by rebuilding the `.md` from the
 atom. Writing content first makes that failure mode impossible, so the

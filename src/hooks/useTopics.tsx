@@ -120,7 +120,11 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
     async (topicId: string, entityId: string) => {
       const signal = abortControllerRef.current.signal;
       try {
-        const topic = await platform.removeTopicEntity(signal, topicId, entityId);
+        const topic = await platform.removeTopicEntity(
+          signal,
+          topicId,
+          entityId
+        );
         setMembership(topicId, entityId, false);
         setTopics((prev) =>
           prev

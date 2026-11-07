@@ -28,7 +28,13 @@ import type {
   TopicSort,
 } from "../types";
 
-import type { PinTarget, PinNode, PinEdit, PinChange, ShortcutMenuItem } from "../pins";
+import type {
+  PinTarget,
+  PinNode,
+  PinEdit,
+  PinChange,
+  ShortcutMenuItem,
+} from "../pins";
 
 export type CreateTopicInput = Omit<
   Topic,
@@ -164,10 +170,7 @@ export interface Platform {
   // "Frontend type branding (`__kind`)".
   createArticle(
     signal: AbortSignal,
-    article: Omit<
-      Article,
-      "id" | "createdAt" | "__kind" | "isPinned"
-    >,
+    article: Omit<Article, "id" | "createdAt" | "__kind" | "isPinned">,
     imageData?: Record<string, string>,
     diagnosticId?: string
   ): Promise<Article>;
@@ -290,7 +293,9 @@ export interface Platform {
   ): Promise<UnlistenFn>;
   onUnreadChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
   onBookmarkChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
-  onAnnotationChanged(callback: (entity: ListEntity) => void): Promise<UnlistenFn>;
+  onAnnotationChanged(
+    callback: (entity: ListEntity) => void
+  ): Promise<UnlistenFn>;
   onAnnotationReplaced(
     callback: (replacement: { oldId: string; entity: ListEntity }) => void
   ): Promise<UnlistenFn>;
@@ -345,9 +350,19 @@ export interface Platform {
   ): Promise<UnlistenFn>;
 
   readEntryTags(signal: AbortSignal, id: string): Promise<string[]>;
-  setEntryTag(id: string, tagId: string, assigned: boolean): Promise<EntryTagChange>;
-  onEntryTagsChanged(callback: (change: EntryTagChange) => void): Promise<UnlistenFn>;
-  listTagEntries(signal: AbortSignal, tagIds: string[], filter?: Filter): Promise<Entry[]>;
+  setEntryTag(
+    id: string,
+    tagId: string,
+    assigned: boolean
+  ): Promise<EntryTagChange>;
+  onEntryTagsChanged(
+    callback: (change: EntryTagChange) => void
+  ): Promise<UnlistenFn>;
+  listTagEntries(
+    signal: AbortSignal,
+    tagIds: string[],
+    filter?: Filter
+  ): Promise<Entry[]>;
   countTagUnread(signal: AbortSignal, tagIds: string[]): Promise<number>;
   readTagStatus(signal: AbortSignal): Promise<TagSnapshot>;
   renameTag(id: string, name: string): Promise<TagSnapshot>;

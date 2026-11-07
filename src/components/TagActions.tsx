@@ -39,14 +39,19 @@ export function TagActions({ tag }: { tag: Tag }) {
   const [error, setError] = useState("");
   const pending = useRef(false);
   const isDeleting = deleting.includes(tag.id);
-  const isMerging = merging.some((merge) => [merge.sourceId, merge.destinationId].includes(tag.id));
+  const isMerging = merging.some((merge) =>
+    [merge.sourceId, merge.destinationId].includes(tag.id)
+  );
   const busy = renaming.includes(tag.id) || isDeleting || isMerging;
-  const destination = tags.find((item) => item.id === mergeTarget?.id) ?? mergeTarget;
+  const destination =
+    tags.find((item) => item.id === mergeTarget?.id) ?? mergeTarget;
   const destinationBusy =
     !!destination &&
     (renaming.includes(destination.id) ||
       deleting.includes(destination.id) ||
-      merging.some((merge) => [merge.sourceId, merge.destinationId].includes(destination.id)));
+      merging.some((merge) =>
+        [merge.sourceId, merge.destinationId].includes(destination.id)
+      ));
   const close = () => {
     if (!pending.current) {
       setOpen(false);
@@ -66,17 +71,23 @@ export function TagActions({ tag }: { tag: Tag }) {
     } catch (cause) {
       if (isAppError(cause) && cause.code === "tags:collision") {
         try {
-          const snapshot = await platform.readTagStatus(new AbortController().signal);
+          const snapshot = await platform.readTagStatus(
+            new AbortController().signal
+          );
           const target = snapshot.tags.find(
             (item) =>
-              item.id !== tag.id && tagNameComparison(item.name) === tagNameComparison(name),
+              item.id !== tag.id &&
+              tagNameComparison(item.name) === tagNameComparison(name)
           );
           if (target) setMergeTarget(target);
           else setError(cause.message);
         } catch (error) {
           pushError(error);
         }
-      } else if (isAppError(cause) && ["tags:invalid-name", "tags:busy"].includes(cause.code)) {
+      } else if (
+        isAppError(cause) &&
+        ["tags:invalid-name", "tags:busy"].includes(cause.code)
+      ) {
         setError(cause.message);
       } else {
         pushError(cause);
@@ -101,7 +112,8 @@ export function TagActions({ tag }: { tag: Tag }) {
     }
   };
   const confirmMerge = async () => {
-    if (!destination || pending.current || readOnly || busy || destinationBusy) return;
+    if (!destination || pending.current || readOnly || busy || destinationBusy)
+      return;
     pending.current = true;
     setSaving(true);
     setError("");
@@ -110,7 +122,8 @@ export function TagActions({ tag }: { tag: Tag }) {
       setOpen(false);
       setMergeTarget(null);
     } catch (cause) {
-      if (isAppError(cause) && cause.code === "tags:busy") setError(cause.message);
+      if (isAppError(cause) && cause.code === "tags:busy")
+        setError(cause.message);
       else pushError(cause);
     } finally {
       pending.current = false;
@@ -187,7 +200,8 @@ export function TagActions({ tag }: { tag: Tag }) {
         <DialogTitle id={`delete-${tag.id}`}>Delete tag</DialogTitle>
         <DialogContent>
           <DialogContentText id={`delete-description-${tag.id}`}>
-            Delete “{tag.name}” and its article assignments? Articles will remain intact.
+            Delete “{tag.name}” and its article assignments? Articles will
+            remain intact.
           </DialogContentText>
         </DialogContent>
         <DialogActions>
@@ -229,8 +243,8 @@ export function TagActions({ tag }: { tag: Tag }) {
             {destination ? (
               <>
                 <DialogContentText>
-                  Combine “{tag.name}” and “{destination.name}” into a single tag named{" "}
-                  <strong>“{destination.name}”</strong>.
+                  Combine “{tag.name}” and “{destination.name}” into a single
+                  tag named <strong>“{destination.name}”</strong>.
                 </DialogContentText>
                 <DialogContentText sx={{ mt: 2 }}>
                   This cannot be undone.
@@ -262,7 +276,10 @@ export function TagActions({ tag }: { tag: Tag }) {
             <Button
               type="submit"
               disabled={
-                saving || busy || readOnly || (destination ? destinationBusy : !name.trim())
+                saving ||
+                busy ||
+                readOnly ||
+                (destination ? destinationBusy : !name.trim())
               }
             >
               {destination ? "Merge" : "Rename"}

@@ -70,7 +70,9 @@ describe("markdownToHtml — remote-fetch surface", () => {
     );
     // The compliance doc asserts this is a second copy of the image channel.
     // Whichever way this lands, it is now pinned rather than assumed.
-    expect(html).toMatchInlineSnapshot(`"<div style="background-image: url(https://tracker.test/bg.png)">x</div>"`);
+    expect(html).toMatchInlineSnapshot(
+      `"<div style="background-image: url(https://tracker.test/bg.png)">x</div>"`
+    );
   });
 
   it("records whether <iframe> survives (frame-src https: reachability)", async () => {

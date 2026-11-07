@@ -27,7 +27,11 @@ it("does not add duplicates or items excluded by the active filter", () => {
 
 it("inserts a replacement after the old annotation has been evicted", () => {
   const current = [entity("before"), entity("after")];
-  const authoritative = [entity("before"), entity("recolored"), entity("after")];
+  const authoritative = [
+    entity("before"),
+    entity("recolored"),
+    entity("after"),
+  ];
 
   expect(mergeTopicAddition(current, authoritative, "recolored")).toEqual([
     current[0],

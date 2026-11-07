@@ -64,4 +64,3 @@ discovered results.
 - `src/components/dialogs/EditTopicDialog.tsx`
 - `docs-transient/available/enhancement__add-to-topic--inline-topic-creation.md`
 - `docs/principles/single_source_of_truth.md`
-

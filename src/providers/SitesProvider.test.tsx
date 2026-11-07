@@ -89,11 +89,7 @@ it("retains empty pinned Sites, updates counts, and removes only the pin project
     )
   );
   expect(
-    pinnedSites.map((site) => [
-      site.id,
-      site.entryCount,
-      site.unreadCount,
-    ])
+    pinnedSites.map((site) => [site.id, site.entryCount, site.unreadCount])
   ).toEqual([
     ["example.com", 1, 1],
     ["empty.example", 0, 0],

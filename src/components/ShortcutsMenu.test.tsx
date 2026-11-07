@@ -88,7 +88,14 @@ async function render() {
       <MemoryRouter
         initialEntries={[{ pathname: "/", state: { filter: "saved" } }]}
       >
-        <PinsContext.Provider value={{ pins, tree: tree ?? pins, organizePins: vi.fn(), setPin: mocks.setPin }}>
+        <PinsContext.Provider
+          value={{
+            pins,
+            tree: tree ?? pins,
+            organizePins: vi.fn(),
+            setPin: mocks.setPin,
+          }}
+        >
           <FeedsContext.Provider
             value={{
               feeds,
@@ -182,7 +189,10 @@ afterEach(async () => {
 it("shares sidebar sorting and updates titles, counts and membership", async () => {
   await render();
   expect(items().map((i) => i.title)).toEqual([
-    "Zulu Feed", "Alpha Topic", "Article", "example.com",
+    "Zulu Feed",
+    "Alpha Topic",
+    "Article",
+    "example.com",
   ]);
   await act(async () => setSort("alphabetical"));
   expect(items().map((i) => i.title)).toEqual([
@@ -193,12 +203,18 @@ it("shares sidebar sorting and updates titles, counts and membership", async () 
   ]);
   await act(async () => setSort("unread"));
   expect(items().map((i) => i.title)).toEqual([
-    "Zulu Feed", "Alpha Topic", "Article", "example.com",
+    "Zulu Feed",
+    "Alpha Topic",
+    "Article",
+    "example.com",
   ]);
   topics = [{ ...topic, unreadCount: 20, title: "Renamed Topic" }];
   await render();
   expect(items().map((i) => i.title)).toEqual([
-    "Renamed Topic", "Zulu Feed", "Article", "example.com",
+    "Renamed Topic",
+    "Zulu Feed",
+    "Article",
+    "example.com",
   ]);
   feeds = [];
   pins = pins.filter((p) => p.type !== "feed");
@@ -311,26 +327,54 @@ it("serializes native updates and applies the latest snapshot after an in-flight
 
 it("projects nested sorted submenus, empty groups, and current descendant navigation", async () => {
   tree = [
-    { type: "group", id: "research", title: "Research", children: [
-      { type: "topic", id: "topic" },
-      { type: "group", id: "articles", title: "Articles", children: [{ type: "entry", id: "article" }] },
-      { type: "feed", id: "feed" },
-    ] },
+    {
+      type: "group",
+      id: "research",
+      title: "Research",
+      children: [
+        { type: "topic", id: "topic" },
+        {
+          type: "group",
+          id: "articles",
+          title: "Articles",
+          children: [{ type: "entry", id: "article" }],
+        },
+        { type: "feed", id: "feed" },
+      ],
+    },
     { type: "group", id: "empty", title: "Empty group", children: [] },
     { type: "site", hostname: "example.com" },
   ];
   await render();
-  expect(items().map((item) => item.title)).toEqual(["Research", "Empty group", "example.com"]);
-  expect(items()[0].children?.map((item) => item.title)).toEqual(["Zulu Feed", "Alpha Topic", "Articles"]);
+  expect(items().map((item) => item.title)).toEqual([
+    "Research",
+    "Empty group",
+    "example.com",
+  ]);
+  expect(items()[0].children?.map((item) => item.title)).toEqual([
+    "Zulu Feed",
+    "Alpha Topic",
+    "Articles",
+  ]);
   expect(items()[1].children).toEqual([]);
   const articleKey = items()[0].children?.[2].children?.[0].key;
   await act(async () => selected(articleKey!));
   expect(router.state.articleScopeId).toBe("article");
   await act(async () => setSort("alphabetical"));
-  expect(items().map((item) => item.title)).toEqual(["Empty group", "example.com", "Research"]);
-  expect(items()[2].children?.map((item) => item.title)).toEqual(["Alpha Topic", "Articles", "Zulu Feed"]);
+  expect(items().map((item) => item.title)).toEqual([
+    "Empty group",
+    "example.com",
+    "Research",
+  ]);
+  expect(items()[2].children?.map((item) => item.title)).toEqual([
+    "Alpha Topic",
+    "Articles",
+    "Zulu Feed",
+  ]);
   const staleKey = items()[2].children?.[1].children?.[0].key;
-  tree = [{ type: "group", id: "empty", title: "Renamed empty group", children: [] }];
+  tree = [
+    { type: "group", id: "empty", title: "Renamed empty group", children: [] },
+  ];
   await render();
   await act(async () => selected(staleKey!));
   expect(items().map((item) => item.title)).toEqual(["Renamed empty group"]);

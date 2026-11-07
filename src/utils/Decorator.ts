@@ -3,7 +3,7 @@ import type Logger from "./Logger";
 export type Opts = Record<string, unknown> | undefined;
 export type Awaitable<T> = T | Promise<T>;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// oxlint-disable-next-line typescript/no-explicit-any
 export type Fn<T extends unknown[] = any[], R = any> = (
   ...args: T
 ) => Awaitable<R>;

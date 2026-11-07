@@ -5,13 +5,22 @@ import type { EntryTagChange, Tag, TagSnapshot } from "../../domain";
 import { EntryTags } from "./EntryTags";
 
 const mocks = vi.hoisted(() => ({
-  readOnly: false, readTagStatus: vi.fn(), readEntryTags: vi.fn(), createTag: vi.fn(),
-  setEntryTag: vi.fn(), onTagsChanged: vi.fn(), onTagCreated: vi.fn(), onEntryTagsChanged: vi.fn(), pushError: vi.fn(),
+  readOnly: false,
+  readTagStatus: vi.fn(),
+  readEntryTags: vi.fn(),
+  createTag: vi.fn(),
+  setEntryTag: vi.fn(),
+  onTagsChanged: vi.fn(),
+  onTagCreated: vi.fn(),
+  onEntryTagsChanged: vi.fn(),
+  pushError: vi.fn(),
 }));
 vi.mock("../../platform/Platform", () => ({ usePlatform: () => mocks }));
 const sink = { pushError: mocks.pushError };
 vi.mock("../../hooks/useErrorSink", () => ({ useErrorSink: () => sink }));
-vi.mock("../../hooks/useLibraryReadOnly", () => ({ useLibraryReadOnly: () => mocks.readOnly }));
+vi.mock("../../hooks/useLibraryReadOnly", () => ({
+  useLibraryReadOnly: () => mocks.readOnly,
+}));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 const research = { id: "research", name: "Research" };
 const work = { id: "work", name: "Work" };
@@ -22,27 +31,58 @@ let statusListener: (snapshot: TagSnapshot) => void;
 let createdListener: (tag: Tag) => void;
 let cleanup: ReturnType<typeof vi.fn>;
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.readOnly = false;
-  mocks.readTagStatus.mockResolvedValue({ tags: [research, work], renaming: [], deleting: [], merging: [] });
+  vi.clearAllMocks();
+  mocks.readOnly = false;
+  mocks.readTagStatus.mockResolvedValue({
+    tags: [research, work],
+    renaming: [],
+    deleting: [],
+    merging: [],
+  });
   mocks.readEntryTags.mockResolvedValue([research.id]);
-  mocks.setEntryTag.mockImplementation(async (entryId, tagId, assigned) => ({ entryId, tagId, assigned }));
+  mocks.setEntryTag.mockImplementation(async (entryId, tagId, assigned) => ({
+    entryId,
+    tagId,
+    assigned,
+  }));
   mocks.createTag.mockResolvedValue({ id: "new", name: "New" });
   cleanup = vi.fn();
-  mocks.onTagsChanged.mockImplementation(async (listener) => { statusListener = listener; return cleanup; });
-  mocks.onTagCreated.mockImplementation(async (listener) => { createdListener = listener; return cleanup; });
-  mocks.onEntryTagsChanged.mockImplementation(async (listener) => { changeListener = listener; return cleanup; });
-  container = document.createElement("div"); document.body.append(container);
+  mocks.onTagsChanged.mockImplementation(async (listener) => {
+    statusListener = listener;
+    return cleanup;
+  });
+  mocks.onTagCreated.mockImplementation(async (listener) => {
+    createdListener = listener;
+    return cleanup;
+  });
+  mocks.onEntryTagsChanged.mockImplementation(async (listener) => {
+    changeListener = listener;
+    return cleanup;
+  });
+  container = document.createElement("div");
+  document.body.append(container);
   root = createRoot(container);
 });
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+});
 async function render(entryId = "article") {
-  await act(async () => root.render(<EntryTags key={entryId} entryId={entryId} />));
+  await act(async () =>
+    root.render(<EntryTags key={entryId} entryId={entryId} />)
+  );
 }
-const chip = (name: string) => [...container.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === name)!;
+const chip = (name: string) =>
+  [...container.querySelectorAll<HTMLButtonElement>("button")].find(
+    (b) => b.textContent === name
+  )!;
 async function search(value: string) {
   const input = container.querySelector("input")!;
   await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value"
+    )!.set!.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
@@ -54,7 +94,11 @@ it("adds and removes immediately while failed writes retain selection", async ()
   expect(mocks.setEntryTag).toHaveBeenCalledWith("article", "work", true);
   expect(chip("Work").getAttribute("aria-pressed")).toBe("true");
   await act(async () => chip("Research").click());
-  expect(mocks.setEntryTag).toHaveBeenLastCalledWith("article", "research", false);
+  expect(mocks.setEntryTag).toHaveBeenLastCalledWith(
+    "article",
+    "research",
+    false
+  );
   expect(chip("Research").getAttribute("aria-pressed")).toBe("false");
   mocks.setEntryTag.mockRejectedValueOnce(new Error("write failed"));
   await act(async () => chip("Work").click());
@@ -62,8 +106,10 @@ it("adds and removes immediately while failed writes retain selection", async ()
   expect(mocks.pushError).toHaveBeenCalledOnce();
 });
 it("filters and creates a definition then assigns it without a Save action", async () => {
-  await render(); await search(" RESEARCH ");
-  expect(chip("Research")).toBeTruthy(); expect(chip("Work")).toBeUndefined();
+  await render();
+  await search(" RESEARCH ");
+  expect(chip("Research")).toBeTruthy();
+  expect(chip("Work")).toBeUndefined();
   expect(container.textContent).not.toContain("Create “");
   await search("New");
   await act(async () => chip("Create “New”").click());
@@ -72,9 +118,11 @@ it("filters and creates a definition then assigns it without a Save action", asy
   expect(chip("New").getAttribute("aria-pressed")).toBe("true");
 });
 it("shows selection read-only and receives changes from another Inspector", async () => {
-  mocks.readOnly = true; await render();
+  mocks.readOnly = true;
+  await render();
   expect(chip("Research").disabled).toBe(true);
-  await search("New"); expect(chip("Create “New”").disabled).toBe(true);
+  await search("New");
+  expect(chip("Create “New”").disabled).toBe(true);
   await search("");
   await act(async () => {
     changeListener({ entryId: "another", tagId: "work", assigned: true });
@@ -90,8 +138,14 @@ it("shows selection read-only and receives changes from another Inspector", asyn
 });
 it("ignores late results after navigating to another Entry and cleans up listeners", async () => {
   let finish!: (ids: string[]) => void;
-  mocks.readEntryTags.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
-  await render("old"); await render("new");
+  mocks.readEntryTags.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  await render("old");
+  await render("new");
   await act(async () => finish(["work"]));
   expect(chip("Research").getAttribute("aria-pressed")).toBe("true");
   expect(chip("Work").getAttribute("aria-pressed")).toBe("false");
@@ -99,7 +153,12 @@ it("ignores late results after navigating to another Entry and cleans up listene
 });
 it("preserves a committed event that arrives during initial loading", async () => {
   let finish!: (ids: string[]) => void;
-  mocks.readEntryTags.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  mocks.readEntryTags.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
   await render();
   await act(async () => {
     changeListener({ entryId: "article", tagId: "work", assigned: true });
@@ -109,9 +168,15 @@ it("preserves a committed event that arrives during initial loading", async () =
 });
 
 it("matches registry lowercase semantics without equating distinct spellings", async () => {
-  mocks.readTagStatus.mockResolvedValue({ tags: [
-    { id: "german", name: "straße" }, { id: "greek", name: "ΟΣ" },
-  ], renaming: [], deleting: [], merging: [] });
+  mocks.readTagStatus.mockResolvedValue({
+    tags: [
+      { id: "german", name: "straße" },
+      { id: "greek", name: "ΟΣ" },
+    ],
+    renaming: [],
+    deleting: [],
+    merging: [],
+  });
   mocks.readEntryTags.mockResolvedValue([]);
   await render();
   await search("strasse");
@@ -123,10 +188,20 @@ it("matches registry lowercase semantics without equating distinct spellings", a
 
 it("retains a committed rename over an older definition load", async () => {
   let finish!: (snapshot: TagSnapshot) => void;
-  mocks.readTagStatus.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  mocks.readTagStatus.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
   await render();
   await act(async () => {
-    statusListener({ tags: [{ ...research, name: "Renamed" }], renaming: [research.id], deleting: [], merging: [] });
+    statusListener({
+      tags: [{ ...research, name: "Renamed" }],
+      renaming: [research.id],
+      deleting: [],
+      merging: [],
+    });
     finish({ tags: [research, work], renaming: [], deleting: [], merging: [] });
   });
   expect(chip("Renamed")).toBeTruthy();
@@ -135,26 +210,63 @@ it("retains a committed rename over an older definition load", async () => {
 });
 
 it("blocks assignment to deleting tags from initial status and live updates", async () => {
-  mocks.readTagStatus.mockResolvedValueOnce({ tags: [research, work], renaming: [], deleting: [research.id], merging: [] });
+  mocks.readTagStatus.mockResolvedValueOnce({
+    tags: [research, work],
+    renaming: [],
+    deleting: [research.id],
+    merging: [],
+  });
   await render();
   expect(chip("Research").disabled).toBe(true);
   expect(chip("Work").disabled).toBe(false);
-  await act(async () => statusListener({ tags: [research, work], renaming: [], deleting: [work.id], merging: [] }));
+  await act(async () =>
+    statusListener({
+      tags: [research, work],
+      renaming: [],
+      deleting: [work.id],
+      merging: [],
+    })
+  );
   expect(chip("Work").disabled).toBe(true);
   await act(async () => chip("Work").click());
   expect(mocks.setEntryTag).not.toHaveBeenCalled();
-  await act(async () => statusListener({ tags: [research], renaming: [], deleting: [], merging: [] }));
+  await act(async () =>
+    statusListener({
+      tags: [research],
+      renaming: [],
+      deleting: [],
+      merging: [],
+    })
+  );
   expect(chip("Work")).toBeUndefined();
 });
 
 it("redirects merged assignments and reconciles late losing-ID events from current source", async () => {
   await render();
   mocks.readEntryTags.mockResolvedValue([work.id]);
-  await act(async () => statusListener({ tags: [work], renaming: [], deleting: [], merging: [{ sourceId: research.id, destinationId: work.id, survivorId: work.id, destinationName: work.name }] }));
+  await act(async () =>
+    statusListener({
+      tags: [work],
+      renaming: [],
+      deleting: [],
+      merging: [
+        {
+          sourceId: research.id,
+          destinationId: work.id,
+          survivorId: work.id,
+          destinationName: work.name,
+        },
+      ],
+    })
+  );
   expect(chip("Research")).toBeUndefined();
   expect(chip("Work").getAttribute("aria-pressed")).toBe("true");
-  await act(async () => statusListener({ tags: [work], renaming: [], deleting: [], merging: [] }));
+  await act(async () =>
+    statusListener({ tags: [work], renaming: [], deleting: [], merging: [] })
+  );
   mocks.readEntryTags.mockResolvedValue([]);
-  await act(async () => changeListener({ entryId: "article", tagId: research.id, assigned: true }));
+  await act(async () =>
+    changeListener({ entryId: "article", tagId: research.id, assigned: true })
+  );
   expect(chip("Work").getAttribute("aria-pressed")).toBe("false");
 });

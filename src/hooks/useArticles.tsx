@@ -35,19 +35,30 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
   const [error, setError] = useState<unknown>(null);
 
   const reportRecoveredTimeout = useCallback(
-    async (attempt: ArticleLoadAttempt, articleUrl: string, signal: AbortSignal) => {
+    async (
+      attempt: ArticleLoadAttempt,
+      articleUrl: string,
+      signal: AbortSignal
+    ) => {
       if (!attempt.id) return;
       const diagnostic = await platform
         .getArticleDiagnostic(attempt.id)
         .catch(() => null);
       signal.throwIfAborted();
-      if (diagnostic?.events.some((event) =>
-        event.step === "favicon" && ["warning", "failed"].includes(event.outcome)
-      )) {
+      if (
+        diagnostic?.events.some(
+          (event) =>
+            event.step === "favicon" &&
+            ["warning", "failed"].includes(event.outcome)
+        )
+      ) {
         pushError(new FaviconLoadError(articleUrl, false, attempt.id));
       }
       if (
-        diagnostic?.events.some((event) => event.code === "article:timeout" && event.step !== "favicon")
+        diagnostic?.events.some(
+          (event) =>
+            event.code === "article:timeout" && event.step !== "favicon"
+        )
       ) {
         pushError(
           new ArticleLoadError(
@@ -97,7 +108,9 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         await reportRecoveredTimeout(attempt, url, signal);
         if (mimeType === "application/pdf") {
           const pdfBytes = pdfBase64
-            ? await attempt.runStep("pdf_decode", () => base64ToBytes(pdfBase64))
+            ? await attempt.runStep("pdf_decode", () =>
+                base64ToBytes(pdfBase64)
+              )
             : null;
           return { article: null, mimeType, pdfBytes };
         }
@@ -135,10 +148,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           mimeType,
         };
       } catch (e) {
-        outcome =
-          isAbortError(e)
-            ? "cancelled"
-            : "failed";
+        outcome = isAbortError(e) ? "cancelled" : "failed";
         // Unsupported downloaded bytes use the reader's neutral rejection message.
         if (
           errorCode(e instanceof ArticleLoadError ? e.cause : e) ===
@@ -223,10 +233,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           platform.readArticle(signal, article.id, attempt.id)
         );
       } catch (e) {
-        outcome =
-          isAbortError(e)
-            ? "cancelled"
-            : "failed";
+        outcome = isAbortError(e) ? "cancelled" : "failed";
         if (parent) throw e;
         pushError(e);
       } finally {
@@ -251,10 +258,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           platform.readEntry(signal, entryId)
         );
       } catch (e) {
-        outcome =
-          isAbortError(e)
-            ? "cancelled"
-            : "failed";
+        outcome = isAbortError(e) ? "cancelled" : "failed";
         pushError(e);
       } finally {
         await attempt.complete(outcome);
@@ -290,10 +294,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
         // Content missing — fetch from network. loadArticle manages loading state.
         return await loadArticle(article, false, attempt);
       } catch (e) {
-        outcome =
-          isAbortError(e)
-            ? "cancelled"
-            : "failed";
+        outcome = isAbortError(e) ? "cancelled" : "failed";
         pushError(e);
       } finally {
         await attempt.complete(outcome);
@@ -339,7 +340,11 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       setError(null);
       setLoading(true);
 
-      const attempt = await ArticleLoadAttempt.create(platform, "refresh", signal);
+      const attempt = await ArticleLoadAttempt.create(
+        platform,
+        "refresh",
+        signal
+      );
       let outcome: "succeeded" | "failed" | "cancelled" = "succeeded";
       try {
         const article = await attempt.runStep("readback", () =>
@@ -364,10 +369,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           platform.readArticle(signal, article.id, attempt.id)
         );
       } catch (e) {
-        outcome =
-          isAbortError(e)
-            ? "cancelled"
-            : "failed";
+        outcome = isAbortError(e) ? "cancelled" : "failed";
         pushError(e);
       } finally {
         await attempt.complete(outcome);
@@ -391,10 +393,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           platform.findArticle(signal, url, attempt.id)
         );
       } catch (e) {
-        outcome =
-          isAbortError(e)
-            ? "cancelled"
-            : "failed";
+        outcome = isAbortError(e) ? "cancelled" : "failed";
         if (parent) throw e;
         pushError(e);
       } finally {
@@ -411,7 +410,11 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
       setError(null);
       setLoading(true);
 
-      const attempt = await ArticleLoadAttempt.create(platform, "extract", signal);
+      const attempt = await ArticleLoadAttempt.create(
+        platform,
+        "extract",
+        signal
+      );
       let outcome: "succeeded" | "failed" | "cancelled" = "succeeded";
       try {
         const { title, markdown, favicon, imageData } = await attempt.runStep(
@@ -436,10 +439,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           platform.readArticle(signal, article.id, attempt.id)
         );
       } catch (e) {
-        outcome =
-          isAbortError(e)
-            ? "cancelled"
-            : "failed";
+        outcome = isAbortError(e) ? "cancelled" : "failed";
         pushError(e);
       } finally {
         await attempt.complete(outcome);

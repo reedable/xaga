@@ -5,7 +5,11 @@ import type { EntryTagChange, Tag, TagMerge } from "../../domain";
 import { usePlatform } from "../../platform/Platform";
 import { useErrorSink } from "../../hooks/useErrorSink";
 import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
-import { tagNameComparison, resolveMergedTagIds, retainTagMerges } from "../../utils/tags";
+import {
+  tagNameComparison,
+  resolveMergedTagIds,
+  retainTagMerges,
+} from "../../utils/tags";
 import css from "./EntryTags.module.css";
 
 function applyChange(ids: Set<string>, change: EntryTagChange) {
@@ -43,11 +47,16 @@ export function EntryTags({ entryId }: { entryId: string }) {
       const request = ++assignmentRequest.current;
       try {
         const ids = await platform.readEntryTags(controller.signal, entryId);
-        if (!controller.signal.aborted && request === assignmentRequest.current) {
+        if (
+          !controller.signal.aborted &&
+          request === assignmentRequest.current
+        ) {
           assignmentsRefreshed = true;
           setAssigned(new Set(resolveMergedTagIds(ids, mergeHistory.current)));
         }
-      } catch (error) { if (!controller.signal.aborted) pushError(error); }
+      } catch (error) {
+        if (!controller.signal.aborted) pushError(error);
+      }
     };
     const cleanups: (() => void)[] = [];
 
@@ -58,28 +67,43 @@ export function EntryTags({ entryId }: { entryId: string }) {
 
     const addDefinition = (tag: Tag) => {
       if (!controller.signal.aborted)
-        setTags((current) => [...current.filter((item) => item.id !== tag.id), tag]);
+        setTags((current) => [
+          ...current.filter((item) => item.id !== tag.id),
+          tag,
+        ]);
     };
 
     void (async () => {
       try {
         retain(await platform.onTagCreated(addDefinition));
-        retain(await platform.onTagsChanged((snapshot) => {
-          if (!controller.signal.aborted) {
-            receivedSnapshot = true; setTags(snapshot.tags); setDeleting(snapshot.deleting);
-            mergeHistory.current = retainTagMerges(mergeHistory.current, snapshot.merging);
-            setAssigned((ids) => new Set(resolveMergedTagIds(ids, mergeHistory.current)));
-            if (mergeHistory.current.length) void refreshAssignments();
-          }
-        }));
+        retain(
+          await platform.onTagsChanged((snapshot) => {
+            if (!controller.signal.aborted) {
+              receivedSnapshot = true;
+              setTags(snapshot.tags);
+              setDeleting(snapshot.deleting);
+              mergeHistory.current = retainTagMerges(
+                mergeHistory.current,
+                snapshot.merging
+              );
+              setAssigned(
+                (ids) => new Set(resolveMergedTagIds(ids, mergeHistory.current))
+              );
+              if (mergeHistory.current.length) void refreshAssignments();
+            }
+          })
+        );
 
         retain(
           await platform.onEntryTagsChanged((change) => {
             if (change.entryId !== entryId || controller.signal.aborted) return;
-            if (mergeHistory.current.length) { void refreshAssignments(); return; }
+            if (mergeHistory.current.length) {
+              void refreshAssignments();
+              return;
+            }
             if (loading) initialChanges.set(change.tagId, change);
             setAssigned((current) => applyChange(current, change));
-          }),
+          })
         );
 
         const [definitions, ids] = await Promise.all([
@@ -89,13 +113,29 @@ export function EntryTags({ entryId }: { entryId: string }) {
 
         if (controller.signal.aborted) return;
 
-        if (!receivedSnapshot) { setDeleting(definitions.deleting); setTags((current) => [
-          ...definitions.tags,
-          ...current.filter((tag) => !definitions.tags.some((item) => item.id === tag.id)),
-        ]); }
+        if (!receivedSnapshot) {
+          setDeleting(definitions.deleting);
+          setTags((current) => [
+            ...definitions.tags,
+            ...current.filter(
+              (tag) => !definitions.tags.some((item) => item.id === tag.id)
+            ),
+          ]);
+        }
 
-        mergeHistory.current = retainTagMerges(mergeHistory.current, definitions.merging);
-        if (!assignmentsRefreshed) setAssigned(new Set(resolveMergedTagIds([...initialChanges.values()].reduce(applyChange, new Set(ids)), mergeHistory.current)));
+        mergeHistory.current = retainTagMerges(
+          mergeHistory.current,
+          definitions.merging
+        );
+        if (!assignmentsRefreshed)
+          setAssigned(
+            new Set(
+              resolveMergedTagIds(
+                [...initialChanges.values()].reduce(applyChange, new Set(ids)),
+                mergeHistory.current
+              )
+            )
+          );
         loading = false;
         initialChanges.clear();
         setLoaded(true);
@@ -125,17 +165,28 @@ export function EntryTags({ entryId }: { entryId: string }) {
       const change = await platform.setEntryTag(
         entryId,
         chosen.id,
-        tag ? !assigned.has(tag.id) : true,
+        tag ? !assigned.has(tag.id) : true
       );
 
       if (!live.current) return;
-      if (!mergeHistory.current.some((merge) => [merge.sourceId, merge.destinationId].includes(chosen.id))) {
-        setTags((current) => [...current.filter((item) => item.id !== chosen.id), chosen]);
+      if (
+        !mergeHistory.current.some((merge) =>
+          [merge.sourceId, merge.destinationId].includes(chosen.id)
+        )
+      ) {
+        setTags((current) => [
+          ...current.filter((item) => item.id !== chosen.id),
+          chosen,
+        ]);
       }
       if (mergeHistory.current.length) {
         const request = ++assignmentRequest.current;
-        const ids = await platform.readEntryTags(new AbortController().signal, entryId);
-        if (live.current && request === assignmentRequest.current) setAssigned(new Set(resolveMergedTagIds(ids, mergeHistory.current)));
+        const ids = await platform.readEntryTags(
+          new AbortController().signal,
+          entryId
+        );
+        if (live.current && request === assignmentRequest.current)
+          setAssigned(new Set(resolveMergedTagIds(ids, mergeHistory.current)));
       } else setAssigned((current) => applyChange(current, change));
       if (!tag) setQuery("");
     } catch (error) {
@@ -152,7 +203,9 @@ export function EntryTags({ entryId }: { entryId: string }) {
     .filter((tag) => tagNameComparison(tag.name).includes(comparison))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const canCreate = comparison && !tags.some((tag) => tagNameComparison(tag.name) === comparison);
+  const canCreate =
+    comparison &&
+    !tags.some((tag) => tagNameComparison(tag.name) === comparison);
 
   if (failed)
     return (

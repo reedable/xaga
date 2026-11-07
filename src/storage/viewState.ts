@@ -23,7 +23,10 @@ export async function getViewState<T>(key: string): Promise<T | undefined> {
   const db = await openDb();
   try {
     return await new Promise<T | undefined>((resolve, reject) => {
-      const request = db.transaction(STORE, "readonly").objectStore(STORE).get(key);
+      const request = db
+        .transaction(STORE, "readonly")
+        .objectStore(STORE)
+        .get(key);
       request.onsuccess = () => resolve(request.result as T | undefined);
       request.onerror = () => reject(request.error);
     });

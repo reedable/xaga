@@ -8,7 +8,12 @@ import {
 } from "react";
 import { usePlatform } from "../platform/Platform";
 import { useErrorSink } from "../hooks/useErrorSink";
-import { pinTargets, type PinTarget, type PinNode, type PinEdit } from "../pins";
+import {
+  pinTargets,
+  type PinTarget,
+  type PinNode,
+  type PinEdit,
+} from "../pins";
 import { PinsContext } from "./PinsContext";
 
 export default function PinsProvider({ children }: { children: ReactNode }) {
@@ -55,10 +60,13 @@ export default function PinsProvider({ children }: { children: ReactNode }) {
     },
     [platform, refresh]
   );
-  const organizePins = useCallback(async (edit: PinEdit) => {
-    await platform.organizePins(edit);
-    await refresh();
-  }, [platform, refresh]);
+  const organizePins = useCallback(
+    async (edit: PinEdit) => {
+      await platform.organizePins(edit);
+      await refresh();
+    },
+    [platform, refresh]
+  );
   const value = useMemo(
     () => ({ pins, tree, setPin, organizePins, refreshPins: refresh }),
     [pins, tree, setPin, organizePins, refresh]

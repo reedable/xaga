@@ -1,4 +1,9 @@
-import { Checkbox, ListItemButton, ListItemText, Typography } from "@mui/material";
+import {
+  Checkbox,
+  ListItemButton,
+  ListItemText,
+  Typography,
+} from "@mui/material";
 import type { Tag } from "../../domain";
 import useRouter from "../../hooks/useRouter";
 import { useTags } from "../../providers/TagsContext";
@@ -16,7 +21,13 @@ export default function TagList({
   onClickHeader: () => void;
 }) {
   const { state, selectTags } = useRouter();
-  const { tags: definitions, hasLoaded, renaming = [], deleting = [], merging = [] } = useTags();
+  const {
+    tags: definitions,
+    hasLoaded,
+    renaming = [],
+    deleting = [],
+    merging = [],
+  } = useTags();
   const selected = state.tagIds ?? [];
 
   const options = [
@@ -24,7 +35,12 @@ export default function TagList({
     ...selected
       .filter((id) => !definitions.some((tag) => tag.id === id))
       .map((id) => ({ id, name: "Unavailable tag" })),
-  ].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+  ].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    })
+  );
 
   return (
     <ExpandableList
@@ -37,28 +53,45 @@ export default function TagList({
       {!hasLoaded && <Typography role="status">Loading tags…</Typography>}
 
       {options.map((tag) => (
-        <div key={tag.id} className="TagActionRow" style={{ display: "flex", alignItems: "center" }}>
-        <ListItemButton
-          role="checkbox"
-          aria-checked={selected.includes(tag.id)}
-          selected={selected.includes(tag.id)}
-          onClick={() =>
-            selectTags(
-              selected.includes(tag.id)
-                ? selected.filter((id) => id !== tag.id)
-                : [...selected, tag.id],
-            )
-          }
+        <div
+          key={tag.id}
+          className="TagActionRow"
+          style={{ display: "flex", alignItems: "center" }}
         >
-          <Checkbox
-            checked={selected.includes(tag.id)}
-            tabIndex={-1}
-            disableRipple
-            slotProps={{ input: { "aria-hidden": true } }}
-          />
-          <ListItemText primary={tag.name} secondary={deleting.includes(tag.id) ? "Deleting…" : merging.some((merge) => merge.survivorId === tag.id) ? "Merging…" : renaming.includes(tag.id) ? "Renaming…" : undefined} />
-        </ListItemButton>
-        {definitions.some((item) => item.id === tag.id) && <TagActions tag={tag} />}
+          <ListItemButton
+            role="checkbox"
+            aria-checked={selected.includes(tag.id)}
+            selected={selected.includes(tag.id)}
+            onClick={() =>
+              selectTags(
+                selected.includes(tag.id)
+                  ? selected.filter((id) => id !== tag.id)
+                  : [...selected, tag.id]
+              )
+            }
+          >
+            <Checkbox
+              checked={selected.includes(tag.id)}
+              tabIndex={-1}
+              disableRipple
+              slotProps={{ input: { "aria-hidden": true } }}
+            />
+            <ListItemText
+              primary={tag.name}
+              secondary={
+                deleting.includes(tag.id)
+                  ? "Deleting…"
+                  : merging.some((merge) => merge.survivorId === tag.id)
+                    ? "Merging…"
+                    : renaming.includes(tag.id)
+                      ? "Renaming…"
+                      : undefined
+              }
+            />
+          </ListItemButton>
+          {definitions.some((item) => item.id === tag.id) && (
+            <TagActions tag={tag} />
+          )}
         </div>
       ))}
     </ExpandableList>

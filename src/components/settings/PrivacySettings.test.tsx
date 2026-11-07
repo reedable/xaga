@@ -34,10 +34,17 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
 });
-const toggle = () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+const toggle = () =>
+  container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
 it("loads the saved opt-in and persists disabling it", async () => {
   platform.getLoadRemoteImage.mockResolvedValue(true);
-  await act(async () => root.render(<SettingsProvider><PrivacySettings /></SettingsProvider>));
+  await act(async () =>
+    root.render(
+      <SettingsProvider>
+        <PrivacySettings />
+      </SettingsProvider>
+    )
+  );
   expect(toggle().checked).toBe(true);
   await act(async () => toggle().click());
   expect(platform.setLoadRemoteImage).toHaveBeenCalledWith(false);
@@ -45,8 +52,18 @@ it("loads the saved opt-in and persists disabling it", async () => {
 });
 it("waits for persistence before showing opt-in as enabled", async () => {
   let finish!: () => void;
-  platform.setLoadRemoteImage.mockReturnValue(new Promise<void>((resolve) => { finish = resolve; }));
-  await act(async () => root.render(<SettingsProvider><PrivacySettings /></SettingsProvider>));
+  platform.setLoadRemoteImage.mockReturnValue(
+    new Promise<void>((resolve) => {
+      finish = resolve;
+    })
+  );
+  await act(async () =>
+    root.render(
+      <SettingsProvider>
+        <PrivacySettings />
+      </SettingsProvider>
+    )
+  );
   await act(async () => toggle().click());
   expect(platform.setLoadRemoteImage).toHaveBeenCalledWith(true);
   expect(toggle().checked).toBe(false);
@@ -56,7 +73,13 @@ it("waits for persistence before showing opt-in as enabled", async () => {
 });
 it("keeps the previous choice and reports failed persistence", async () => {
   platform.setLoadRemoteImage.mockRejectedValue(new Error("write failed"));
-  await act(async () => root.render(<SettingsProvider><PrivacySettings /></SettingsProvider>));
+  await act(async () =>
+    root.render(
+      <SettingsProvider>
+        <PrivacySettings />
+      </SettingsProvider>
+    )
+  );
   await act(async () => toggle().click());
   expect(toggle().checked).toBe(false);
   expect(sink.pushError).toHaveBeenCalledWith(expect.any(Error));
@@ -64,7 +87,13 @@ it("keeps the previous choice and reports failed persistence", async () => {
 });
 it("disables the switch when the saved preference cannot be read", async () => {
   platform.getLoadRemoteImage.mockRejectedValue(new Error("read failed"));
-  await act(async () => root.render(<SettingsProvider><PrivacySettings /></SettingsProvider>));
+  await act(async () =>
+    root.render(
+      <SettingsProvider>
+        <PrivacySettings />
+      </SettingsProvider>
+    )
+  );
   expect(toggle().disabled).toBe(true);
   expect(container.textContent).toContain("Could not load");
   expect(platform.setLoadRemoteImage).not.toHaveBeenCalled();

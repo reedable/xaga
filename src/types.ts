@@ -114,7 +114,9 @@ export type Shortcut = ManagedEntity & Countable & { filter: Filter };
 
 export function isShortcut(entity?: unknown): entity is Shortcut {
   return (
-    isManagedEntity(entity) && "filter" in entity && isFilter((entity as Shortcut).filter)
+    isManagedEntity(entity) &&
+    "filter" in entity &&
+    isFilter((entity as Shortcut).filter)
   );
 }
 

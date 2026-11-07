@@ -3,11 +3,6 @@
   "identifier": "trusted-ui",
   "description": "Application commands for local first-party windows only.",
   "local": true,
-  "windows": [
-    "main",
-    "settings"
-  ],
-  "permissions": [
-    "allow-trusted-ui-commands"
-  ]
+  "windows": ["main", "settings"],
+  "permissions": ["allow-trusted-ui-commands"]
 }

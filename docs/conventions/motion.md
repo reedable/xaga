@@ -12,7 +12,9 @@ static state remains.
 
 @media (prefers-reduced-motion: no-preference) {
   @keyframes reload-spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .ReloadIconBusy {

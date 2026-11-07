@@ -32,12 +32,12 @@ nearest-neighbor performance. Load took 15.1 seconds and scalar-index creation
 all matching Arrow batches, after inspecting its plan. The query timings below
 exclude UI rendering, domain-object mapping, and sorting.
 
-| State | Blue Entries (ms) | Marked Entries (ms) | Saved items (ms) |
-| --- | ---: | ---: | ---: |
-| Initial | 3,320 | 3,273 | 4,892 |
-| Assign Green | 3,271 | 3,275 | 4,872 |
-| Recolor to Blue | 3,268 | 3,279 | 4,882 |
-| Remove color | 3,268 | 3,275 | 4,974 |
+| State           | Blue Entries (ms) | Marked Entries (ms) | Saved items (ms) |
+| --------------- | ----------------: | ------------------: | ---------------: |
+| Initial         |             3,320 |               3,273 |            4,892 |
+| Assign Green    |             3,271 |               3,275 |            4,872 |
+| Recolor to Blue |             3,268 |               3,279 |            4,882 |
+| Remove color    |             3,268 |               3,275 |            4,974 |
 
 Every plan used `ScalarIndexQuery` with bitmap indexes on kind and color.
 Equality combined both indexes with AND. Marked membership used indexed empty
@@ -67,14 +67,14 @@ process, including setup and verification. Cache commits include scalar-index an
 compaction maintenance as well as assignment updates.
 
 | Entries | Migration (s) | Peak footprint (MiB) | Cache commits |
-| ---: | ---: | ---: | ---: |
-| 2,048 | 0.624 | 44.2 | 12 |
-| 4,096 | 1.253 | 75.5 | 14 |
-| 8,192 | 2.756 | 167.0 | 18 |
-| 16,384 | 5.939 | 335.9 | 26 |
-| 32,768 | 14.509 | 395.4 | 42 |
-| 65,536 | 43.235 | 628.1 | 76 |
-| 131,072 | 239.747 | 859.5 | 141 |
+| ------: | ------------: | -------------------: | ------------: |
+|   2,048 |         0.624 |                 44.2 |            12 |
+|   4,096 |         1.253 |                 75.5 |            14 |
+|   8,192 |         2.756 |                167.0 |            18 |
+|  16,384 |         5.939 |                335.9 |            26 |
+|  32,768 |        14.509 |                395.4 |            42 |
+|  65,536 |        43.235 |                628.1 |            76 |
+| 131,072 |       239.747 |                859.5 |           141 |
 
 Every point verified assignment IDs/counts, retained checksum and Topic references,
 reading/color state, sampled source bytes and the reported unchanged-file count,
@@ -96,9 +96,9 @@ Two extrapolation scenarios, both anchored to the measured 131,072-Entry point:
   the fit's underestimate at that point as observed performance.
 
 | Target Entries | Constant-throughput scenario | Empirical-growth scenario |
-| ---: | ---: | ---: |
-| 1,000,000 | 30.5 min | 64.7 min |
-| 2,000,000 | 61.0 min | 167.3 min |
+| -------------: | ---------------------------: | ------------------------: |
+|      1,000,000 |                     30.5 min |                  64.7 min |
+|      2,000,000 |                     61.0 min |                 167.3 min |
 
 These are modeled scenarios, not measured runtimes, confidence bounds, or latency
 commitments. Only one periodic maintenance cycle is observed in the curve. More
@@ -141,13 +141,13 @@ that point's added rows and index creation/catch-up. Sparse list reads return th
 1% intersection; dense reads return every Entry with no tags selected.
 
 | Total Entries | Build/index (ms) | Unread count (ms) | Sparse list (ms) | Dense list (ms) |
-| ---: | ---: | ---: | ---: | ---: |
-| 2,000 | 225 | 11.8 | 10.1 | 13.1 |
-| 4,000 | 97 | 4.3 | 7.9 | 20.6 |
-| 8,000 | 146 | 5.0 | 12.2 | 37.7 |
-| 16,000 | 213 | 5.1 | 16.8 | 69.9 |
-| 32,000 | 320 | 5.0 | 25.0 | 133.5 |
-| 64,000 | 600 | 6.5 | 42.4 | 262.5 |
+| ------------: | ---------------: | ----------------: | ---------------: | --------------: |
+|         2,000 |              225 |              11.8 |             10.1 |            13.1 |
+|         4,000 |               97 |               4.3 |              7.9 |            20.6 |
+|         8,000 |              146 |               5.0 |             12.2 |            37.7 |
+|        16,000 |              213 |               5.1 |             16.8 |            69.9 |
+|        32,000 |              320 |               5.0 |             25.0 |           133.5 |
+|        64,000 |              600 |               6.5 |             42.4 |           262.5 |
 
 Scaling the 64k per-row list costs linearly gives roughly 0.7–1.3 seconds for a
 1% intersection at 1–2 million Entries, and 4.1–8.2 seconds for returning every
@@ -188,10 +188,10 @@ the initial registry rename request are excluded. Native notification delivery
 and UI rendering are also excluded.
 
 | Library Entries | Affected files | Rename completion (seconds) |
-| ---: | ---: | ---: |
-| 2,000 | 4 | 1.261 |
-| 4,000 | 4 | 1.265 |
-| 8,000 | 4 | 1.259 |
+| --------------: | -------------: | --------------------------: |
+|           2,000 |              4 |                       1.261 |
+|           4,000 |              4 |                       1.265 |
+|           8,000 |              4 |                       1.259 |
 
 The prompt cost in this fixture stayed flat as unrelated files increased. This
 replaces the earlier full-library rename scan and its corpus-linear timing
@@ -208,7 +208,6 @@ post-rename cleanup status or restart requirement for another rename.
 ```sh
 cargo test --workspace --lib --bins --locked tag_rename_scaling_curve -- --ignored --nocapture
 ```
-
 
 ## Tag deletion scaling
 
@@ -236,7 +235,6 @@ fixtures cover pending-file replay after a cache reset, failed batches, and
 post-retirement discovery of missed labels. These establish batch and recovery
 behavior, rather than a production-scale timing claim.
 
-
 ## Tag merge scaling
 
 Merge selects the union of both participating IDs, projecting only Entry IDs in
@@ -255,12 +253,12 @@ carrying both. Vectors were null. Only the first 3,072 Entries had small Markdow
 source fixtures; the test measured three real 1,024-file batches, not full-corpus
 completion. Cache construction and index maintenance took 118.191 seconds.
 
-| Operation | Elapsed |
-| --- | ---: |
-| Count populations and persist acceptance | 39 ms |
-| First 1,024-Entry batch | 7,277 ms |
-| Second 1,024-Entry batch | 8,744 ms |
-| Third 1,024-Entry batch | 7,640 ms |
+| Operation                                |  Elapsed |
+| ---------------------------------------- | -------: |
+| Count populations and persist acceptance |    39 ms |
+| First 1,024-Entry batch                  | 7,277 ms |
+| Second 1,024-Entry batch                 | 8,744 ms |
+| Third 1,024-Entry batch                  | 7,640 ms |
 
 The source ID survived its larger population while all rewritten labels became
 the destination name. Each batch removed exactly 512 losing-ID assignments,

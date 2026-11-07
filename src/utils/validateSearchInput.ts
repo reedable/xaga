@@ -4,7 +4,9 @@
 // where "" means "search open but empty".
 const MAX_SEARCH_LENGTH = 512;
 
-export default function validateSearchInput(value?: unknown): string | undefined {
+export default function validateSearchInput(
+  value?: unknown
+): string | undefined {
   if (typeof value !== "string") return undefined;
   return value.trim().slice(0, MAX_SEARCH_LENGTH);
 }

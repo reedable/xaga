@@ -1,7 +1,9 @@
 import { spawnSync } from "node:child_process";
 
 if (process.platform !== "darwin") {
-  console.error("The native WebKit suite requires macOS with a desktop session.");
+  console.error(
+    "The native WebKit suite requires macOS with a desktop session."
+  );
   process.exit(1);
 }
 
@@ -34,11 +36,24 @@ for (const name of [
 run(process.execPath, ["scripts/verify-svg-webview.mjs"]);
 
 for (const scenario of [
-  "icon", "image", "image-document", "svg", "svg-document",
-  "svg-icon-document", "avif", "avif-document", "avif-icon-document",
-  "pdf", "invalid-pdf", "favicon-pdf", "html", "blob-pdf",
+  "icon",
+  "image",
+  "image-document",
+  "svg",
+  "svg-document",
+  "svg-icon-document",
+  "avif",
+  "avif-document",
+  "avif-icon-document",
+  "pdf",
+  "invalid-pdf",
+  "favicon-pdf",
+  "html",
+  "blob-pdf",
 ]) {
-  nativeTest("resource_download_webview", { XAGA_DOWNLOAD_SMOKE_CASE: scenario });
+  nativeTest("resource_download_webview", {
+    XAGA_DOWNLOAD_SMOKE_CASE: scenario,
+  });
 }
 
 console.log("\nThe fingerprint probe opens a local page in Safari.");

@@ -16,7 +16,10 @@ const mocks = vi.hoisted(() => ({
   removed: undefined as undefined | ((id: string) => void),
   replaced: undefined as
     | undefined
-    | ((event: { oldId: string; entity: { id: string; color: string } }) => void),
+    | ((event: {
+        oldId: string;
+        entity: { id: string; color: string };
+      }) => void),
 }));
 const events = {
   onAnnotationReplaced: (callback: typeof mocks.replaced) => {

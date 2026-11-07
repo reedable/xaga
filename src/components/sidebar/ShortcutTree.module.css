@@ -4,7 +4,7 @@
   .TreeNode {
     min-width: 0;
 
-    >.NodeRow {
+    > .NodeRow {
       display: flex;
       align-items: center;
       position: relative;
@@ -24,7 +24,7 @@
         overflow-wrap: anywhere;
       }
 
-      >.NodeActions {
+      > .NodeActions {
         position: absolute;
         right: 0;
         display: flex;
@@ -38,13 +38,16 @@
       &:hover,
       &:focus-within,
       &[data-actions-open="true"] {
-        >.NodeActions {
+        > .NodeActions {
           opacity: 1;
 
           svg {
-            background-color: var(--lliw-semanticColor__background-color--primary);
+            background-color: var(
+              --lliw-semanticColor__background-color--primary
+            );
             border-radius: 1rem;
-            outline: 0.125rem solid var(--lliw-semanticColor__background-color--primary);
+            outline: 0.125rem solid
+              var(--lliw-semanticColor__background-color--primary);
           }
         }
 
@@ -60,9 +63,10 @@
 
       .GroupChildren {
         /* background-color: var(--lliw-semanticColor__background-color--secondary); */
-        border-left: 1px solid var(--lliw-semanticColor__background-color--tertiary);
+        border-left: 1px solid
+          var(--lliw-semanticColor__background-color--tertiary);
 
-        >.Empty {
+        > .Empty {
           display: block;
           padding: 8px 16px;
         }
@@ -70,7 +74,7 @@
     }
   }
 
-  >.RootDestination {
+  > .RootDestination {
     padding: 12px;
     border: 1px dashed currentColor;
   }

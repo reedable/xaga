@@ -69,7 +69,11 @@ it("requires identity and title for entities and a creation timestamp for manage
 });
 
 it("does not classify shortcuts or count-bearing articles as collections", () => {
-  for (const value of [ALL_ENTITIES, { ...feed, __kind: "entry" }, { ...feed, __kind: undefined }]) {
+  for (const value of [
+    ALL_ENTITIES,
+    { ...feed, __kind: "entry" },
+    { ...feed, __kind: undefined },
+  ]) {
     expect(isCollection(value)).toBe(false);
     expect(isManagedCollection(value)).toBe(false);
     expect(isSite(value)).toBe(false);

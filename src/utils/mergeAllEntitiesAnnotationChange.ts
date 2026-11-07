@@ -1,6 +1,14 @@
-import { isEntry, type Filter, type ManagedEntity, type ListEntity } from "../types";
+import {
+  isEntry,
+  type Filter,
+  type ManagedEntity,
+  type ListEntity,
+} from "../types";
 
-export function entityMatchesTextFilter(entity: ManagedEntity, filterText: string): boolean {
+export function entityMatchesTextFilter(
+  entity: ManagedEntity,
+  filterText: string
+): boolean {
   if (!filterText) return true;
   const lower = filterText.toLowerCase();
   if (entity.title.toLowerCase().includes(lower)) return true;
@@ -38,9 +46,5 @@ export function mergeAllEntitiesAnnotationChange(
     (entity) => entity.createdAt < changed.createdAt
   );
   if (insertion < 0) return [...current, changed];
-  return [
-    ...current.slice(0, insertion),
-    changed,
-    ...current.slice(insertion),
-  ];
+  return [...current.slice(0, insertion), changed, ...current.slice(insertion)];
 }

@@ -22,7 +22,11 @@ vi.mock("./TopicMembership", () => ({
     <div>Topics for {entity.id}</div>
   ),
 }));
-vi.mock("./EntryTags", () => ({ EntryTags: ({ entryId }: { entryId: string }) => <div>Tags for {entryId}</div> }));
+vi.mock("./EntryTags", () => ({
+  EntryTags: ({ entryId }: { entryId: string }) => (
+    <div>Tags for {entryId}</div>
+  ),
+}));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 let root: ReturnType<typeof createRoot>;
 let container: HTMLDivElement;

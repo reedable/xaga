@@ -76,9 +76,9 @@ h2 {
 }
 
 .eyebrow {
-  font-size: .74rem;
+  font-size: 0.74rem;
   font-weight: 700;
-  letter-spacing: .1em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -88,7 +88,7 @@ h2 {
 }
 
 footer {
-  font-size: .85rem;
+  font-size: 0.85rem;
   color: var(--muted);
 }
 
@@ -116,12 +116,12 @@ footer {
 }
 
 .tracks p {
-  font-size: .9rem;
+  font-size: 0.9rem;
 }
 
 .tracks .track-status {
   margin-top: auto;
-  font-size: .8rem;
+  font-size: 0.8rem;
   font-weight: 650;
 }
 
@@ -156,7 +156,7 @@ footer {
 aside {
   border-left: 1px solid var(--border);
   padding-left: 24px;
-  font-size: .9rem;
+  font-size: 0.9rem;
 }
 
 aside h3 {
@@ -239,7 +239,7 @@ legend {
   line-height: 1;
 }
 
-.answer input:checked+.answer-indicator {
+.answer input:checked + .answer-indicator {
   border-color: transparent;
 }
 
@@ -254,7 +254,7 @@ legend {
   font-size: 14px;
 }
 
-.answer input:focus-visible+.answer-indicator {
+.answer input:focus-visible + .answer-indicator {
   outline: 3px solid var(--accent);
   outline-offset: 4px;
 }
@@ -297,7 +297,6 @@ footer {
 }
 
 @media (max-width: 720px) {
-
   main,
   footer {
     padding-left: 20px;
@@ -363,7 +362,7 @@ footer {
 
 #track-progress {
   color: var(--muted);
-  font-size: .8rem;
+  font-size: 0.8rem;
   white-space: nowrap;
 }
 
@@ -377,14 +376,14 @@ footer {
 #curriculum {
   border-right: 1px solid var(--border);
   padding-right: 24px;
-  font-size: .85rem;
+  font-size: 0.85rem;
 }
 
 #curriculum h3 {
   color: var(--muted);
-  font-size: .75rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: .06em;
+  letter-spacing: 0.06em;
   margin: 20px 0 10px;
 }
 
@@ -415,7 +414,7 @@ footer {
 .lesson-status {
   display: block;
   color: var(--muted);
-  font-size: .75rem;
+  font-size: 0.75rem;
 }
 
 .objective {
@@ -456,8 +455,8 @@ footer {
   gap: 12px;
 }
 
-.sources li>a {
-  font-size: .75rem;
+.sources li > a {
+  font-size: 0.75rem;
   white-space: nowrap;
 }
 
@@ -492,9 +491,9 @@ button.secondary:hover {
   font-size: 1.5rem;
 }
 
-.knowledge-check>p {
+.knowledge-check > p {
   color: var(--muted);
-  font-size: .9rem;
+  font-size: 0.9rem;
 }
 
 #quizzes form {
@@ -506,7 +505,7 @@ button.secondary:hover {
   justify-content: space-between;
   gap: 24px;
   margin-top: 32px;
-  font-size: .9rem;
+  font-size: 0.9rem;
 }
 
 .lesson-navigation a {
@@ -533,7 +532,7 @@ dialog {
 }
 
 dialog::backdrop {
-  background: rgb(0 0 0 / .65);
+  background: rgb(0 0 0 / 0.65);
 }
 
 .source-toolbar {
@@ -548,14 +547,14 @@ dialog::backdrop {
 }
 
 #source-status {
-  font-size: .85rem;
+  font-size: 0.85rem;
   color: var(--muted);
 }
 
 #source-content {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: .85rem;
+  font-size: 0.85rem;
   line-height: 1.65;
   tab-size: 2;
 }
@@ -594,15 +593,15 @@ dialog::backdrop {
 .lesson-duration {
   display: block;
   color: var(--muted);
-  font-size: .75rem;
+  font-size: 0.75rem;
   font-weight: 400;
 }
 
 code {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: .9em;
+  font-size: 0.9em;
   background: var(--surface);
-  padding: .1em .3em;
+  padding: 0.1em 0.3em;
   border-radius: 3px;
   overflow-wrap: anywhere;
 }

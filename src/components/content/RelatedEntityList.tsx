@@ -1,9 +1,4 @@
-import {
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemText,
-} from "@mui/material";
+import { List, ListItem, ListItemButton, ListItemText } from "@mui/material";
 import { useCallback, useEffect, useState } from "react";
 import { RELATED_THRESHOLD } from "../../consts";
 import useAbortController from "../../hooks/useAbortController";
@@ -11,7 +6,11 @@ import { useEvents } from "../../hooks/useEvents";
 import useRelatedEntities from "../../hooks/useRelatedEntities";
 import useRouter from "../../hooks/useRouter";
 import { useEmbeddingStartupState } from "../../hooks/useEmbeddingStartupState";
-import { isPartialAnnotation, type Ranked, type ManagedEntity } from "../../types";
+import {
+  isPartialAnnotation,
+  type Ranked,
+  type ManagedEntity,
+} from "../../types";
 import cx from "../../utils/cx";
 import { abortable, decorate, retriable } from "../../utils/Decorator";
 import Logger from "../../utils/Logger";
@@ -24,12 +23,17 @@ interface RelatedEntityListProps {
   entityId: ManagedEntity["id"];
 }
 
-export function RelatedEntityList({ className, entityId }: RelatedEntityListProps) {
+export function RelatedEntityList({
+  className,
+  entityId,
+}: RelatedEntityListProps) {
   const embeddingStartupState = useEmbeddingStartupState();
   const { selectEntity } = useRouter();
   const [abort, abortControllerRef] = useAbortController();
   const { queryByEntity } = useRelatedEntities(abortControllerRef);
-  const [embeddedEntities, setEmbeddedEntities] = useState<Ranked<ManagedEntity>[]>([]);
+  const [embeddedEntities, setEmbeddedEntities] = useState<
+    Ranked<ManagedEntity>[]
+  >([]);
   const {
     onUnreadChanged,
     onBookmarkChanged,
@@ -42,7 +46,13 @@ export function RelatedEntityList({ className, entityId }: RelatedEntityListProp
       setEmbeddedEntities([]);
 
       const retriable_queryByEntity = decorate(async () => {
-        const results = await queryByEntity(id, "all", RELATED_THRESHOLD, 1, 12);
+        const results = await queryByEntity(
+          id,
+          "all",
+          RELATED_THRESHOLD,
+          1,
+          12
+        );
         if (!results) throw new Error("query failed");
         return results;
       })
@@ -94,7 +104,9 @@ export function RelatedEntityList({ className, entityId }: RelatedEntityListProp
   useEffect(() => {
     return onAnnotationChanged((entity) => {
       setEmbeddedEntities((prev) =>
-        prev.map((p) => (p.id === entity.id ? { ...p, color: entity.color } : p))
+        prev.map((p) =>
+          p.id === entity.id ? { ...p, color: entity.color } : p
+        )
       );
     });
   }, [onAnnotationChanged]);
@@ -125,7 +137,9 @@ export function RelatedEntityList({ className, entityId }: RelatedEntityListProp
                 primary={
                   <Quotes
                     quoted={isPartialAnnotation(entity)}
-                    color={isPartialAnnotation(entity) ? entity.color : undefined}
+                    color={
+                      isPartialAnnotation(entity) ? entity.color : undefined
+                    }
                   >
                     {entity.title}
                   </Quotes>

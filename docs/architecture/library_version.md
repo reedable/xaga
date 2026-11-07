@@ -6,7 +6,7 @@ are excluded. Multiple libraries may have different stored versions at the same
 time. There is no independent storage counter or global current-library version.
 
 ```yaml
-format_version: '0.10'
+format_version: "0.10"
 ```
 
 `xaga-core` owns the path, typed model, parsing, serialization, atomic writes,
@@ -19,9 +19,9 @@ The manifest owns the last completed version. An explicit upgrade first writes a
 pending target while retaining that version:
 
 ```yaml
-format_version: '0.9'
+format_version: "0.9"
 migration:
-  target_version: '0.10'
+  target_version: "0.10"
 ```
 
 A library without a manifest is unversioned. Its initial upgrade uses

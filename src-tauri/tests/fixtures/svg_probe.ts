@@ -51,12 +51,16 @@ window.addEventListener("load", async () => {
     );
     const frame = document.createElement("iframe");
     frame.setAttribute("sandbox", "allow-scripts");
-    const html = buildEntryHtml(`${prepared}<p>SVG probe marker</p>`, "SVG probe", {
-      themeMode: "light",
-      fontFamily: "system",
-      fontSize: 16,
-      lineHeight: 1.5,
-    });
+    const html = buildEntryHtml(
+      `${prepared}<p>SVG probe marker</p>`,
+      "SVG probe",
+      {
+        themeMode: "light",
+        fontFamily: "system",
+        fontSize: 16,
+        lineHeight: 1.5,
+      }
+    );
     const blob = URL.createObjectURL(new Blob([html], { type: "text/html" }));
     let readerReady = false;
     window.addEventListener("message", (event) => {

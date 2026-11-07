@@ -4,13 +4,13 @@
 
 The committed application version describes its lifecycle state:
 
-| State             | Version                   | Meaning                                                                      |
-| ----------------- | ------------------------- | ---------------------------------------------------------------------------- |
-| Development       | `0.8.5-dev`               | Work toward the next release is in progress.                                 |
-| Local alpha       | `0.8.5-dev+alpha`          | An invocation-only version identifies an ordinary local build, including work in progress. |
-| Local beta       | `0.8.5-rc.1+beta.9c62ffc` | An invocation-only version identifies local validation of an untagged RC or final version. |
-| Release candidate | `0.8.5-rc.1`              | A distributable candidate for the final `0.8.5` release.                     |
-| Final             | `0.8.5`                   | The published release version.                                               |
+| State             | Version                   | Meaning                                                                                    |
+| ----------------- | ------------------------- | ------------------------------------------------------------------------------------------ |
+| Development       | `0.8.5-dev`               | Work toward the next release is in progress.                                               |
+| Local alpha       | `0.8.5-dev+alpha`         | An invocation-only version identifies an ordinary local build, including work in progress. |
+| Local beta        | `0.8.5-rc.1+beta.9c62ffc` | An invocation-only version identifies local validation of an untagged RC or final version. |
+| Release candidate | `0.8.5-rc.1`              | A distributable candidate for the final `0.8.5` release.                                   |
+| Final             | `0.8.5`                   | The published release version.                                                             |
 
 The normal ordering is:
 

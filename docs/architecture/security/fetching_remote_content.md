@@ -346,7 +346,6 @@ WebKit navigation does not use the reqwest redirect-count setting; destination
 checks apply to requests that reach the proxy, subject to the loopback bypass
 described above, and the loader deadline bounds waiting.
 
-
 ### Native loader lifecycle verification
 
 Run `cargo test -p xaga --test loader_lifecycle_webview --locked` on a Mac

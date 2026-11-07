@@ -17,7 +17,7 @@
     "test:scripts": "node --test scripts/*.test.mjs",
     "test:ui": "vitest run",
     "icons:macos": "node scripts/generate-macos-icon.mjs",
-    "lint": "eslint .",
+    "lint": "oxlint .",
     "audit": "cargo audit",
     "audit:report": "npm run audit || true",
     "icons": "node scripts/generate-icons.mjs",
@@ -34,7 +34,11 @@
     "cli:build": "npm run audit:report && cargo build -p xaga-cli",
     "ui:dev": "vite",
     "ui:build": "node scripts/csp-hash.mjs --check && tsc -b && vite build",
-    "ui:preview": "vite preview"
+    "ui:preview": "vite preview",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "typecheck": "tsc -b"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -48,7 +52,7 @@
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-opener": "^2.5.3",
     "css-tree": "^3.2.1",
-    "dompurify": "^3.4.7",
+    "dompurify": "^3.4.17",
     "framer-motion": "^12.38.0",
     "parse5": "^7.3.0",
     "react": "^19.2.4",
@@ -70,7 +74,6 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
     "@tauri-apps/cli": "^2.12.4",
     "@types/css-tree": "^3.2.0",
     "@types/node": "^24.12.0",
@@ -78,15 +81,12 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.5.0",
-    "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.5.2",
-    "globals": "^17.4.0",
     "jsdom": "^27.0.1",
     "knip": "^6.17.1",
-    "prettier": "^3.8.3",
-    "typescript": "~5.9.3",
-    "typescript-eslint": "^8.57.0",
+    "oxfmt": "^0.77.0",
+    "oxlint": "^1.92.0",
+    "typescript": "^7.0.2",
     "vite": "^8.0.1",
     "vitest": "^3.2.7"
   }

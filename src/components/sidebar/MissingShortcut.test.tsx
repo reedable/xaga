@@ -28,8 +28,9 @@ function mount() {
   return container;
 }
 function button(label: string) {
-  return [...document.querySelectorAll<HTMLButtonElement>("button")]
-    .find((button) => button.textContent === label)!;
+  return [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+    (button) => button.textContent === label
+  )!;
 }
 afterEach(async () => {
   if (root) await act(async () => root.unmount());
@@ -40,10 +41,17 @@ afterEach(async () => {
 it("keeps initial loading as a skeleton and hides target IDs in the compact error row", async () => {
   const container = mount();
   const render = (hasLoaded: boolean) => (
-    <TopicsContext.Provider value={{ setMembership: vi.fn(), getMemberships: (_id: string, ids: string[]) => ids,
-      topics: [], pinnedTopicIds: ["pending"], hasLoaded,
-      setTopics: vi.fn(), setTopicPinned: vi.fn(),
-    }}>
+    <TopicsContext.Provider
+      value={{
+        setMembership: vi.fn(),
+        getMemberships: (_id: string, ids: string[]) => ids,
+        topics: [],
+        pinnedTopicIds: ["pending"],
+        hasLoaded,
+        setTopics: vi.fn(),
+        setTopicPinned: vi.fn(),
+      }}
+    >
       <MissingShortcut target={{ type: "topic", id: "pending" }} />
     </TopicsContext.Provider>
   );
@@ -63,8 +71,12 @@ it("opens details with keyboard-focusable actions and removes only the shortcut"
   await act(async () => row.focus());
   expect(document.activeElement).toBe(row);
   await act(async () => row.click());
-  expect(document.querySelector('[role="dialog"]')!.textContent).toContain("topic: lost");
-  expect(document.querySelector('[role="dialog"]')!.textContent).toContain("We can’t find this topic.");
+  expect(document.querySelector('[role="dialog"]')!.textContent).toContain(
+    "topic: lost"
+  );
+  expect(document.querySelector('[role="dialog"]')!.textContent).toContain(
+    "We can’t find this topic."
+  );
   await act(async () => button("Remove shortcut").click());
   expect(mocks.setPin).toHaveBeenCalledWith(target, false);
 });
@@ -72,15 +84,26 @@ it("allows retry in read-only libraries and displays the safe read error", async
   const container = mount();
   mocks.readOnly = true;
   mocks.readTopic.mockRejectedValue({
-    code: "topic:malformed", message: "The Topic file could not be read.", detail: "SECRET",
+    code: "topic:malformed",
+    message: "The Topic file could not be read.",
+    detail: "SECRET",
   });
-  await act(async () => root.render(<MissingShortcut target={{ type: "topic", id: "broken" }} />));
-  await act(async () => container.querySelector<HTMLElement>('[role="button"]')!.click());
+  await act(async () =>
+    root.render(<MissingShortcut target={{ type: "topic", id: "broken" }} />)
+  );
+  await act(async () =>
+    container.querySelector<HTMLElement>('[role="button"]')!.click()
+  );
   expect(button("Remove shortcut").disabled).toBe(true);
   expect(button("Retry").disabled).toBe(false);
   await act(async () => button("Retry").click());
-  expect(mocks.readTopic).toHaveBeenCalledWith(expect.any(AbortSignal), "broken");
-  expect(document.body.textContent).toContain("The Topic file could not be read.");
+  expect(mocks.readTopic).toHaveBeenCalledWith(
+    expect.any(AbortSignal),
+    "broken"
+  );
+  expect(document.body.textContent).toContain(
+    "The Topic file could not be read."
+  );
   expect(document.body.textContent).not.toContain("SECRET");
   expect(mocks.setPin).not.toHaveBeenCalled();
 });
@@ -90,21 +113,44 @@ it("refreshes shared Topics on successful retry", async () => {
   const results = [{ id: "restored" }];
   mocks.readTopic.mockResolvedValue(results[0]);
   mocks.listTopics.mockResolvedValue(results);
-  await act(async () => root.render(
-    <TopicsContext.Provider value={{ setMembership: vi.fn(), getMemberships: (_id: string, ids: string[]) => ids, topics: [], hasLoaded: true, pinnedTopicIds: [], setTopics, setTopicPinned: vi.fn() }}>
-      <MissingShortcut target={{ type: "topic", id: "restored" }} />
-    </TopicsContext.Provider>
-  ));
-  await act(async () => container.querySelector<HTMLElement>('[role="button"]')!.click());
+  await act(async () =>
+    root.render(
+      <TopicsContext.Provider
+        value={{
+          setMembership: vi.fn(),
+          getMemberships: (_id: string, ids: string[]) => ids,
+          topics: [],
+          hasLoaded: true,
+          pinnedTopicIds: [],
+          setTopics,
+          setTopicPinned: vi.fn(),
+        }}
+      >
+        <MissingShortcut target={{ type: "topic", id: "restored" }} />
+      </TopicsContext.Provider>
+    )
+  );
+  await act(async () =>
+    container.querySelector<HTMLElement>('[role="button"]')!.click()
+  );
   await act(async () => button("Retry").click());
   expect(setTopics).toHaveBeenCalledWith(results);
 });
 it("opens shortcut details from the responsive header", async () => {
-  const { default: MissingShortcutsButton } = await import("./MissingShortcutsButton");
+  const { default: MissingShortcutsButton } =
+    await import("./MissingShortcutsButton");
   const container = mount();
-  await act(async () => root.render(<MissingShortcutsButton targets={[{ type: "feed", id: "lost-feed" }]} />));
+  await act(async () =>
+    root.render(
+      <MissingShortcutsButton targets={[{ type: "feed", id: "lost-feed" }]} />
+    )
+  );
   await act(async () => container.querySelector("button")!.click());
-  await act(async () => document.querySelector<HTMLElement>('[role="dialog"] [role="button"]')!.click());
+  await act(async () =>
+    document
+      .querySelector<HTMLElement>('[role="dialog"] [role="button"]')!
+      .click()
+  );
   expect(document.body.textContent).toContain("feed: lost-feed");
   expect(button("Retry")).toBeTruthy();
 });

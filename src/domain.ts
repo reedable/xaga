@@ -32,27 +32,43 @@ export type Reference<T extends ManagedEntity & { __kind: string }> = {
 
 // Common browsing contract for supplied or derived membership. A collection does not
 // require an independent persisted record, creation timestamp, or loaded member list.
-export type Collection = Entity & Countable & {
-  readonly __kind: "feed" | "topic" | "site";
-};
+export type Collection = Entity &
+  Countable & {
+    readonly __kind: "feed" | "topic" | "site";
+  };
 
 // Managed collections have their own identity and lifecycle independent of their members.
 // They carry BOTH typed member references AND authoritative summary counts (Countable).
 // The two need not agree: with live fetch the loaded `members` won't always match the
 // authoritative count, so counts are real data — NOT derived from `members.length`.
 export type ManagedCollection<T extends ManagedEntity & { __kind: string }> =
-  Collection & ManagedEntity & {
-    readonly __kind: "feed" | "topic";
-    members: Reference<T>[];
-  };
+  Collection &
+    ManagedEntity & {
+      readonly __kind: "feed" | "topic";
+      members: Reference<T>[];
+    };
 
 // Committed assignment intent carried to consumers.
-export type EntryTagChange = { entryId: string; tagId: string; assigned: boolean };
+export type EntryTagChange = {
+  entryId: string;
+  tagId: string;
+  assigned: boolean;
+};
 
 // Library-scoped organizational label; identity is independent of display name.
 export type Tag = { id: string; name: string };
-export type TagMerge = { sourceId: string; destinationId: string; survivorId: string; destinationName: string };
-export type TagSnapshot = { tags: Tag[]; renaming: string[]; deleting: string[]; merging: TagMerge[] };
+export type TagMerge = {
+  sourceId: string;
+  destinationId: string;
+  survivorId: string;
+  destinationName: string;
+};
+export type TagSnapshot = {
+  tags: Tag[];
+  renaming: string[];
+  deleting: string[];
+  merging: TagMerge[];
+};
 
 // ── Domain types (all branded) ──────────────────────────────────────────────────
 export type Entry = WebResource &
@@ -114,7 +130,9 @@ export type Annotation = Document &
 // ── Guards (identity = structural shape AND the __kind brand, together) ──────────
 
 function brandOf(o: unknown): string | undefined {
-  return (o as { __kind?: unknown } | null | undefined)?.__kind as string | undefined;
+  return (o as { __kind?: unknown } | null | undefined)?.__kind as
+    | string
+    | undefined;
 }
 
 export function isEntity(o: unknown): o is Entity {
@@ -131,23 +149,43 @@ export function isManagedEntity(o: unknown): o is ManagedEntity {
 }
 
 export function isEntry(o: unknown): o is Entry {
-  return isManagedEntity(o) && brandOf(o) === "entry" && typeof (o as Entry).url === "string";
+  return (
+    isManagedEntity(o) &&
+    brandOf(o) === "entry" &&
+    typeof (o as Entry).url === "string"
+  );
 }
 
 export function isFeed(o: unknown): o is Feed {
-  return isManagedEntity(o) && brandOf(o) === "feed" && Array.isArray((o as Feed).members);
+  return (
+    isManagedEntity(o) &&
+    brandOf(o) === "feed" &&
+    Array.isArray((o as Feed).members)
+  );
 }
 
 export function isTopic(o: unknown): o is Topic {
-  return isManagedEntity(o) && brandOf(o) === "topic" && Array.isArray((o as Topic).members);
+  return (
+    isManagedEntity(o) &&
+    brandOf(o) === "topic" &&
+    Array.isArray((o as Topic).members)
+  );
 }
 
 export function isNote(o: unknown): o is Note {
-  return isManagedEntity(o) && brandOf(o) === "note" && typeof (o as Note).content === "string";
+  return (
+    isManagedEntity(o) &&
+    brandOf(o) === "note" &&
+    typeof (o as Note).content === "string"
+  );
 }
 
 export function isAnnotation(o: unknown): o is Annotation {
-  return isManagedEntity(o) && brandOf(o) === "annotation" && Array.isArray((o as Annotation).text);
+  return (
+    isManagedEntity(o) &&
+    brandOf(o) === "annotation" &&
+    Array.isArray((o as Annotation).text)
+  );
 }
 
 // An Article is an Entry (brand "entry") that also carries content + annotations.

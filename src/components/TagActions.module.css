@@ -7,5 +7,7 @@
   opacity: 1;
 }
 @media (hover: none) {
-  .Trigger { opacity: 1; }
+  .Trigger {
+    opacity: 1;
+  }
 }
