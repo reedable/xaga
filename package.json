@@ -17,6 +17,7 @@
     "test:scripts": "node --test scripts/*.test.mjs",
     "test:ui": "vitest run",
     "test:browser": "playwright test",
+    "guide:capture": "node scripts/capture-user-guide.mjs",
     "icons:macos": "node scripts/generate-macos-icon.mjs",
     "lint": "oxlint .",
     "audit": "cargo audit",

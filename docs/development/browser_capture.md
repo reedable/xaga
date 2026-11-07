@@ -108,3 +108,33 @@ Topic suggestions return empty results. Text search is unsupported. There is no
 embedding model, network backend, or filesystem persistence. Browser captures
 verify presentation and in-memory interactions; they do not establish native
 behavior or backend correctness.
+
+## User Guide images
+
+The [User Guide](../user_guide.md) uses five screenshots of the shared fictional
+library. To recreate them, start capture mode as described above and run in a
+second terminal:
+
+```sh
+npx playwright install chromium
+npm run guide:capture
+```
+
+`scripts/capture-user-guide.mjs` opens a fresh browser context, walks through the
+reading, bookmark, annotation, Topic, and tag examples, and writes PNG files to
+`docs/images/user-guide/`. It uses the viewport, appearance, locale, timezone,
+fonts, and motion preference described above and waits for the visible results.
+The script also visits the example Site. It does not open a personal library or
+fetch the fictional feed/article URLs.
+
+To preview regenerated assets without replacing the checked-in images, supply an
+output directory:
+
+```sh
+npm run guide:capture -- /tmp/xaga-guide-preview
+```
+
+If capture mode is running on another port, set `XAGA_CAPTURE_URL` to its local
+URL when running the command. Review the generated images alongside the guide
+before replacing them. Keep the illustrated controls and example names aligned
+with the instructions; the same assets can also be used by the training material.

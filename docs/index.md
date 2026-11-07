@@ -12,7 +12,7 @@ The map of `docs/`.
 
 2. [Library upgrade](library_upgrade.md) — explicitly convert a 0.9 library for 0.10
 
-3. [User guide](user_guide.md) — usage documentation (coming soon)
+3. [User guide](user_guide.md) — read, save, annotate, and organize articles
 
 ## Durable
 

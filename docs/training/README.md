@@ -33,6 +33,15 @@ Returning to a lesson restores the last selection and its feedback for each ques
 question in a lesson has been answered correctly at least once; retrying a
 completed question does not revoke prior completion.
 
+## Shared examples
+
+The [User Guide](../user_guide.md) has illustrated reading and organization
+examples using the fictional capture library. Its images under
+`docs/images/user-guide/` can also illustrate product lessons. See
+[User Guide images](../development/browser_capture.md#user-guide-images) for the
+capture recipe; keep reused images and lesson instructions aligned with the
+current UI.
+
 ## Maintaining the material
 
 `lessons.js` contains the curriculum; `training.js` handles navigation, quizzes,
