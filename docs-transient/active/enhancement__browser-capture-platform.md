@@ -41,7 +41,7 @@ examples.
 
 ## References
 
-- [Simple User Guide](enhancement__simple-user-guide.md)
+- [Simple User Guide](../available/enhancement__simple-user-guide.md)
 - [Platform interface](../../src/platform/Platform.ts)
 - [TauriPlatform](../../src/platform/TauriPlatform.ts)
 - [Application entrypoint](../../src/main.tsx)

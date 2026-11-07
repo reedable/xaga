@@ -23,7 +23,7 @@ training material.
   illustration. Give images meaningful alternative text. Any screen recordings
   must have equivalent written steps.
 - Use the deterministic dataset and browser capture mode supplied by the
-  [MockPlatform story](enhancement__browser-capture-platform.md). Captures must
+  [MockPlatform story](../active/enhancement__browser-capture-platform.md). Captures must
   not depend on personal library contents or live network responses.
 - Verify native-only workflows against the real app and capture native UI there;
   the browser capture mode does not verify native behavior.
@@ -47,4 +47,4 @@ training material.
 - [Interactive training preview](../../docs/training/index.html)
 - [Writing style](../../docs/conventions/writing_style.md)
 - [Documentation conventions](../../docs/conventions/documentation.md)
-- [Browser capture platform](enhancement__browser-capture-platform.md)
+- [Browser capture platform](../active/enhancement__browser-capture-platform.md)
