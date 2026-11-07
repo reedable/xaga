@@ -82,9 +82,10 @@ are outside this suite's coverage.
 ## Failures and CI
 
 The **Browser integration** workflow in
-`.github/workflows/browser-tests.yml` runs on pushes, pull requests, and manual
-dispatch. It installs Node.js 24 and Chromium on Ubuntu, runs the same local
-command, and uploads `playwright-report/` and `test-results/` as the
+`.github/workflows/browser-tests.yml` runs when an RC release tag matching
+`v*.*.*-rc.*` is pushed, such as `v0.15.0-rc.1`. Branch pushes, pull requests,
+and final release tags do not trigger it. It installs Node.js 24 and Chromium
+on Ubuntu, runs the same local command, and uploads `playwright-report/` and `test-results/` as the
 `browser-integration` artifact, retained for 14 days. No Rust installation is
 required. A failing test keeps the job failed after artifact upload.
 
