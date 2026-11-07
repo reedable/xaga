@@ -14,16 +14,22 @@ import { decorate, logged } from "./utils/Decorator";
 import Logger from "./utils/Logger";
 
 const root = document.getElementById("root");
+const captureTheme =
+  new URLSearchParams(location.search).get("theme") === "dark"
+    ? "dark"
+    : "light";
 const platform =
   import.meta.env.DEV && import.meta.env.MODE === "capture"
-    ? new (await import("./platform/capture/MockPlatform")).MockPlatform()
+    ? new (await import("./platform/capture/MockPlatform")).MockPlatform(
+        captureTheme
+      )
     : new (await import("./platform/TauriPlatform")).TauriPlatform();
 const entryPoint = isCaptureMode ? "main" : getCurrentWindow().label;
 if (isCaptureMode) {
   history.replaceState(null, "", "/");
   Object.assign(window, {
     xagaCapture: { reset: () => location.reload() },
-    __XAGA_THEME_SETTING__: "light",
+    __XAGA_THEME_SETTING__: captureTheme,
   });
 }
 

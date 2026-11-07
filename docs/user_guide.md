@@ -30,7 +30,10 @@ library. Click **All** to include material you have already read; **Unread** sho
 articles you have not read yet. Type in **Filter items…** to narrow the current
 list, then click an article to open it in the reading pane.
 
-![Xaga with All items on the left and A garden for every season open in the reading pane.](images/user-guide/reading.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/user-guide/reading-dark.png">
+  <img src="images/user-guide/reading.png" alt="Xaga with All items on the left and A garden for every season open in the reading pane.">
+</picture>
 
 Opening an article marks it as read. To change that status, open **Share** in the
 reading pane's toolbar and choose **Mark as unread** or **Mark as read**. The
@@ -48,7 +51,10 @@ the list to navigate when the sidebar is hidden.
 3. Choose **All items**, then **Saved**, to find your bookmarked articles and
    annotations together.
 
-![The bookmark color palette open for A garden for every season, with blue selected.](images/user-guide/bookmark.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/user-guide/bookmark-dark.png">
+  <img src="images/user-guide/bookmark.png" alt="The bookmark color palette open for A garden for every season, with blue selected.">
+</picture>
 
 To change the color, click **Change bookmark color**. To remove the bookmark,
 click **Remove marking**, then **Remove**. This keeps the article in your library.
@@ -60,7 +66,10 @@ click **Remove marking**, then **Remove**. This keeps the article in your librar
 3. If you want to add a comment, type in **Add a note…**, then click outside the
    annotation controls to close them.
 
-![A passage highlighted in violet, with the comment Try this on my next walk. in the annotation controls.](images/user-guide/annotation.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/user-guide/annotation-dark.png">
+  <img src="images/user-guide/annotation.png" alt="A passage highlighted in violet, with the comment Try this on my next walk. in the annotation controls.">
+</picture>
 
 The highlight and optional comment form an annotation. Choose **All items →
 Saved**, then click the quoted passage in the list to return to its place in the
@@ -81,7 +90,10 @@ from different feeds.
 4. Expand **Topics** in the sidebar and select the Topic to browse its members.
    Choose **All** if you also want to see read articles.
 
-![Following the water open with Everyday discoveries selected in the Topics view.](images/user-guide/topics.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/user-guide/topics-dark.png">
+  <img src="images/user-guide/topics.png" alt="Following the water open with Everyday discoveries selected in the Topics view.">
+</picture>
 
 To organize an annotation, click its highlight and choose **Show annotation
 details**, then use its **Topics** view.
@@ -100,7 +112,10 @@ Tags give articles labels you choose:
 3. Expand **Tags** in the sidebar and select tags to browse matching articles.
    Selecting several tags shows articles that have every selected tag.
 
-![Following the water with both Outdoors and Projects selected in the Tags view.](images/user-guide/tags.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/user-guide/tags-dark.png">
+  <img src="images/user-guide/tags.png" alt="Following the water with both Outdoors and Projects selected in the Tags view.">
+</picture>
 
 Tag assignments save as you change them. Removing a tag from one article keeps
 the tag available for other articles.

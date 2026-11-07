@@ -12,7 +12,8 @@ usual setup, then run:
 npm run ui:capture
 ```
 
-Open `http://127.0.0.1:1420/`. This command selects Vite's `capture` development
+Open `http://127.0.0.1:1420/`. Capture mode defaults to light; append
+`?theme=dark` for dark mode. Reloading the plain URL restores light mode. This command selects Vite's `capture` development
 mode explicitly. `npm run ui:dev`, native startup, and production builds select
 `TauriPlatform`. Production builds exclude the mock implementation and fixtures.
 
@@ -112,7 +113,7 @@ behavior or backend correctness.
 ## User Guide images
 
 The [User Guide](../user_guide.md) uses five screenshots of the shared fictional
-library. To recreate them, start capture mode as described above and run in a
+library, each captured in light and dark mode. To recreate them, start capture mode as described above and run in a
 second terminal:
 
 ```sh
@@ -122,7 +123,9 @@ npm run guide:capture
 
 `scripts/capture-user-guide.mjs` opens a fresh browser context, walks through the
 reading, bookmark, annotation, Topic, and tag examples, and writes PNG files to
-`docs/images/user-guide/`. It uses the viewport, appearance, locale, timezone,
+`docs/images/user-guide/`. Light images retain the plain filenames; dark images
+use a `-dark` suffix. The guide uses `<picture>` with a dark color-scheme source
+and a light `<img>` fallback for viewers that do not support theme selection. It uses the viewport, appearance, locale, timezone,
 fonts, and motion preference described above and waits for the visible results.
 The script also visits the example Site. It does not open a personal library or
 fetch the fictional feed/article URLs.

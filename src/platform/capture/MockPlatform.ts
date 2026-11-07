@@ -21,6 +21,10 @@ export class MockPlatform implements Platform {
   private sequence = 0;
   private listeners = new Map<EventName, Set<(value: never) => void>>();
   private theme = "light";
+
+  constructor(theme: "light" | "dark" = "light") {
+    this.theme = theme;
+  }
   private sidebar = true;
   private view = "reader";
   private prefs = { fontFamily: "system", fontSize: 18, lineHeight: 1.6 };
