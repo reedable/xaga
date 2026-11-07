@@ -73,8 +73,9 @@ Fixtures live in `src/platform/capture/fixtures.ts`. They contain three articles
 two derived Sites, an annotation, two tags, a Topic, and a pinned Topic shortcut.
 Article dates are fixed at `2026-01-15T12:00:00.000Z`. New mock records use that
 same timestamp and repeatable identities; passage selection IDs also restart on
-reload. The garden illustration is a local SVG supplied as image bytes through
-the existing reader image API. No article or feed URL is fetched.
+reload. Each article uses its own local PNG photo (`garden.png`, `water.png`,
+or `wood.png`), supplied as image bytes through the existing reader image API.
+No article or feed URL is fetched.
 
 Supported workflows include:
 

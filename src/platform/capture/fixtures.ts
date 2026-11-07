@@ -1,10 +1,23 @@
-import gardenSvg from "./garden.svg?raw";
+import gardenImage from "./garden.png?inline";
+import waterImage from "./water.png?inline";
+import woodImage from "./wood.png?inline";
+
+export const captureImages: Readonly<Record<string, string>> = {
+  "../images/capture/garden.png": gardenImage,
+  "../images/capture/water.png": waterImage,
+  "../images/capture/wood.png": woodImage,
+};
 import type { Article, Feed, Topic, Tag } from "../../types";
 
-export const captureImage = `data:image/svg+xml;base64,${btoa(gardenSvg)}`;
 export const captureDate = "2026-01-15T12:00:00.000Z";
 const captureFeedUrl = "https://fieldnotes.example/feed.xml";
 export const additionalFeedUrl = "https://workshop.example/feed.xml";
+
+const imageAltByArticleId: Record<string, string> = {
+  garden: "A flower garden surrounded by trees and a wooden fence",
+  water: "A stream flowing over stones through a mossy forest",
+  wood: "A woodworking workshop with workbenches, timber, and wall-mounted tools",
+};
 
 export function createFixtures() {
   const articles: Article[] = [
@@ -21,7 +34,7 @@ export function createFixtures() {
     isPinned: false,
     isUnread: Boolean(unread),
     description: "Small observations, practical ideas, and time to explore.",
-    content: `Small changes give us a new way to notice familiar places.\n\n![A quiet garden with a path and raised beds](../images/capture/garden.svg)\n\nBegin with one question and make time to follow it. Record what you discover, then return to it with fresh eyes.\n\n## Try it yourself\n\nChoose a place you know well. Spend a few minutes observing it and write down three details you had not noticed before.`,
+    content: `Small changes give us a new way to notice familiar places.\n\n![${imageAltByArticleId[String(id)]}](../images/capture/${id}.png)\n\nBegin with one question and make time to follow it. Record what you discover, then return to it with fresh eyes.\n\n## Try it yourself\n\nChoose a place you know well. Spend a few minutes observing it and write down three details you had not noticed before.`,
     annotations: [],
   }));
   articles[2].color = "yellow";

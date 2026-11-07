@@ -5,7 +5,7 @@ import {
   createFixtures,
   captureDate,
   additionalFeedUrl,
-  captureImage,
+  captureImages,
 } from "./fixtures";
 
 type EventName = {
@@ -209,9 +209,7 @@ export class MockPlatform implements Platform {
     return this.project(this.article(article.id));
   };
   readEntryImages: Platform["readEntryImages"] = async (_signal, _id, refs) =>
-    refs.map((ref) =>
-      ref === "../images/capture/garden.svg" ? captureImage : null
-    );
+    refs.map((ref) => captureImages[ref] ?? null);
   recoverEntryImages: Platform["recoverEntryImages"] = async (_signal, id) =>
     this.project(this.article(id));
   createArticleDiagnostic: Platform["createArticleDiagnostic"] = async () =>
