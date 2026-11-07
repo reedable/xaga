@@ -177,12 +177,19 @@ The tag must point to the commit containing both the prepared version and the re
 
 1. Check out the tagged commit.
 2. Require a final or numbered-RC tag whose version equals `src-tauri/tauri.conf.json`.
-3. Install the Protocol Buffers compiler required by Lance.
-4. Run script, UI, and non-GUI Rust tests, followed by linting. Native WebKit tests run separately through `npm test` on a Mac with a desktop session.
-5. Check the Rust workspace with the lockfile.
-6. Build the macOS application for Apple Silicon (`aarch64`). Intel Macs are not currently supported.
-7. Create a draft GitHub Release and upload the build artifacts.
-8. Verify that the macOS application bundle has a valid code signature.
+3. Install JavaScript dependencies, then run lint, formatting, frontend type,
+   and reader CSP checks before script and UI tests.
+4. For RC tags, install Chromium and run browser integration tests. Preserve
+   browser reports and failure diagnostics for 14 days. A browser failure blocks
+   the remaining verification steps and release build; final tags skip this step.
+5. Set up Rust and check workspace formatting before restoring the Rust cache
+   and installing the Protocol Buffers compiler required by Lance.
+6. Check the Rust workspace with the lockfile, then run non-GUI Rust tests.
+   These steps preserve the coverage of `npm run test:headless`; native WebKit
+   tests run separately through `npm test` on a Mac with a desktop session.
+7. Build the macOS application for Apple Silicon (`aarch64`). Intel Macs are not currently supported.
+8. Create a draft GitHub Release and upload the build artifacts.
+9. Verify that the macOS application bundle has a valid code signature.
 
 The draft must be inspected before it is published. RC drafts are marked as GitHub prereleases; final drafts are not. The workflow intentionally has no form inputs: the committed version and pushed tag identify the release.
 

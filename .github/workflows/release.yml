@@ -45,8 +45,54 @@ jobs:
             exit 1
           fi
 
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Check frontend types
+        run: npm run typecheck
+
+      - name: Check reader CSP
+        run: node scripts/csp-hash.mjs --check
+
+      - name: Run script tests
+        run: npm run test:scripts
+
+      - name: Run UI tests
+        run: npm run test:ui
+
+      - name: Install Chromium for RC browser tests
+        if: ${{ contains(github.ref_name, '-rc.') }}
+        run: npx playwright install chromium
+
+      - name: Run RC browser workflows
+        if: ${{ contains(github.ref_name, '-rc.') }}
+        timeout-minutes: 10
+        run: npm run test:browser
+
+      - name: Upload browser report and failure diagnostics
+        if: ${{ !cancelled() && contains(github.ref_name, '-rc.') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-integration
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check Rust formatting
+        run: cargo fmt --all --check
 
       - name: Cache Rust dependencies and build output
         uses: Swatinem/rust-cache@v2
@@ -58,20 +104,11 @@ jobs:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: brew install protobuf && protoc --version
 
-      - name: Install JavaScript dependencies
-        run: npm ci
-
-      - name: Run non-GUI tests
-        run: npm run test:headless
-
-      - name: Run linter
-        run: npm run lint
-
-      - name: Check formatting
-        run: npm run format:check
-
       - name: Check Rust workspace
         run: cargo check --workspace --locked
+
+      - name: Run Rust tests
+        run: npm run test:rust
 
   build:
     name: Build ${{ matrix.name }}
@@ -99,6 +136,9 @@ jobs:
           node-version: 24
           cache: npm
 
+      - name: Install JavaScript dependencies
+        run: npm ci
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -114,9 +154,6 @@ jobs:
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: brew install protobuf && protoc --version
-
-      - name: Install JavaScript dependencies
-        run: npm ci
 
       - name: Build and upload release
         uses: tauri-apps/tauri-action@v1

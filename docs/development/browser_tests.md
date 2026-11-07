@@ -81,13 +81,16 @@ are outside this suite's coverage.
 
 ## Failures and CI
 
-The **Browser integration** workflow in
-`.github/workflows/browser-tests.yml` runs when an RC release tag matching
-`v*.*.*-rc.*` is pushed, such as `v0.15.0-rc.1`. Branch pushes, pull requests,
-and final release tags do not trigger it. It installs Node.js 24 and Chromium
-on Ubuntu, runs the same local command, and uploads `playwright-report/` and `test-results/` as the
-`browser-integration` artifact, retained for 14 days. No Rust installation is
-required. A failing test keeps the job failed after artifact upload.
+The **Verify release** job in `.github/workflows/release.yml` runs browser tests
+for RC tags such as `v0.15.0-rc.1`. Branch pushes and pull requests do not trigger
+the release workflow; final release tags skip its browser steps.
+
+After lint, formatting, frontend type/CSP checks, and script/UI tests pass, the
+macOS job installs Chromium and runs the same local browser command. Browser
+failures block the remaining Rust checks and the release build. The job uploads
+`playwright-report/` and `test-results/` as the `browser-integration` artifact,
+retained for 14 days, including when browser tests fail. Artifact upload does not
+clear the failure.
 
 For a failed browser test, `test-results/` contains screenshots, a trace, browser
 console/error/request diagnostics in `browser-log.json`, and Playwright's error
