@@ -30,7 +30,7 @@ the Shortcuts sorting control in the native macOS menu.
 
 ## References
 
-- [Nested Pin Groups](../available/enhancement__pins--nested-groups.md)
+- [Nested Pin Groups](../active/enhancement__pins--nested-groups.md)
 - [Pin-store contract](../../docs/architecture/pins.md)
 - `src/components/sidebar/SidebarSortControl.tsx`
 - `src/components/sidebar/SidebarSortControl.module.css`
