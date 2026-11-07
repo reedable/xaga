@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   state: {} as { articleScopeId?: string; siteHostname?: string },
 }));
 
+vi.mock("../../hooks/useLibraryReadOnly", () => ({ useLibraryReadOnly: () => false }));
+vi.mock("./ShortcutTree", () => ({ default: ({ nodes, renderTarget }: { nodes: import("../../utils/projectPinTree").ShortcutNode[]; renderTarget: (node: import("../../utils/projectPinTree").ShortcutNode) => ReactNode }) => <>{nodes.map(renderTarget)}</> }));
 vi.mock("../../hooks/useAbortController", () => ({
   default: () => [undefined, { current: new AbortController() }],
 }));

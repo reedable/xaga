@@ -42,6 +42,8 @@ The 0.13 article-color format likewise requires an explicit upgrade and minor
 version increment; it removes the old bookmark boolean and tag representation.
 The 0.14 tag registry and indexed UUID assignments require the matching CLI
 upgrade; rename, merge, and deletion storage is included in that format.
+The 0.15 nested pin-group format requires an explicit upgrade; flat pin files
+retain their encoding and order.
 
 Library versions use the application's `major.minor` convention. Each library
 stores its own completed version in `library.yaml`; it is read at runtime and is

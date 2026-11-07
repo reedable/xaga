@@ -150,6 +150,10 @@ enum Op {
         names: Vec<String>,
         resp: oneshot::Sender<Result<crate::tags::Tags, WriterError>>,
     },
+    OrganizePins {
+        edit: crate::pins::PinEdit,
+        resp: oneshot::Sender<Result<crate::pins::Pins, WriterError>>,
+    },
     SetPin {
         target: crate::pins::PinTarget,
         pinned: bool,
@@ -331,7 +335,7 @@ impl Op {
             | Op::CreateTag { .. }
             | Op::DiscoverTags { .. }
             | Op::MutateTags { .. } => "tags".into(),
-            Op::SetPin { .. } => "pins".into(),
+            Op::SetPin { .. } | Op::OrganizePins { .. } => "pins".into(),
             Op::RecoverImages { id, .. }
             | Op::RepairSummary { id, .. }
             | Op::SaveArticle { id, .. }
@@ -371,6 +375,7 @@ impl Op {
             Op::MutateTags { .. } => "mutate_tags",
             Op::ResolveEntryTags { .. } => "resolve_entry_tags",
             Op::DiscoverTags { .. } => "discover_tags",
+            Op::OrganizePins { .. } => "organize_pins",
             Op::SetPin { .. } => "set_pin",
             Op::RecoverImages { .. } => "recover_images",
             Op::RepairSummary { .. } => "repair_summary",
@@ -405,7 +410,9 @@ impl Op {
             Op::MutateTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::ResolveEntryTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::DiscoverTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
-            Op::SetPin { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::SetPin { resp, .. } | Op::OrganizePins { resp, .. } => {
+                drop(resp.send(Err(WriterError::ShuttingDown)))
+            }
             Op::RepairSummary { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SavePdf { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::RecoverImages { resp, .. } | Op::SaveArticle { resp, .. } => {
@@ -490,6 +497,12 @@ impl Op {
             }
             Op::DiscoverTags { names, resp } => {
                 let result = crate::tags::Tags::discover_write(library_dir, &names, token)
+                    .await
+                    .map_err(WriterError::from);
+                let _ = resp.send(result);
+            }
+            Op::OrganizePins { edit, resp } => {
+                let result = crate::pins::Pins::organize(library_dir, edit, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(result);
@@ -1443,6 +1456,15 @@ impl LibraryWriter {
     ) -> Result<crate::tags::Tags, WriterError> {
         let (resp, rx) = oneshot::channel();
         self.submit(Tier::Interactive, Op::DiscoverTags { names, resp }, rx)
+            .await
+    }
+
+    pub async fn organize_pins(
+        &self,
+        edit: crate::pins::PinEdit,
+    ) -> Result<crate::pins::Pins, WriterError> {
+        let (resp, rx) = oneshot::channel();
+        self.submit(Tier::Interactive, Op::OrganizePins { edit, resp }, rx)
             .await
     }
 

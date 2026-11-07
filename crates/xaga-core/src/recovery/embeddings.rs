@@ -34,7 +34,7 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
     let pins = crate::pins::Pins::read(library_dir)
         .await
         .map_err(std::io::Error::other)?;
-    let pin_targets: HashSet<_> = pins.pins.into_iter().collect();
+    let pin_targets: HashSet<_> = pins.targets().into_iter().collect();
     let pinned_ids = db.pinned_ids(Kind::Entry).await?;
     let pinned_topics = db.pinned_ids(Kind::Topic).await?;
     let pinned_feeds = db.pinned_ids(Kind::Feed).await?;
@@ -528,6 +528,14 @@ mod tests {
             lib.into(),
             crate::library::acquire_lock(lib).unwrap(),
         );
+        writer
+            .organize_pins(crate::pins::PinEdit::CreateGroup {
+                id: "group".into(),
+                title: "Group".into(),
+                parent: None,
+            })
+            .await
+            .unwrap();
         for pinned in [true, false] {
             writer
                 .set_pin(
@@ -538,6 +546,17 @@ mod tests {
                 )
                 .await
                 .unwrap();
+            if pinned {
+                writer
+                    .organize_pins(crate::pins::PinEdit::Move {
+                        node: crate::pins::PinNodeRef::Target(crate::pins::PinTarget::Entry {
+                            id: article.meta.id.clone(),
+                        }),
+                        parent: Some("group".into()),
+                    })
+                    .await
+                    .unwrap();
+            }
             let mut sink = CollectingSink { articles: vec![] };
             repair_entity_embeddings(lib, &db, &mut sink, None)
                 .await

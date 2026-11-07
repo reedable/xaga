@@ -10,6 +10,7 @@ export const DOMAIN_EVENT = [
   "entry-tags:changed", // payload: EntryTagChange; committed assignment delta
   "tag:created", // payload: Tag; emitted only for a newly committed definition
   "unread:changed", // payload: Entry (schema-minted)
+  "pins:organized", // payload: PinEdit; committed organization change
   "pin:changed", // payload: { target: PinTarget, pinned: boolean }
   "entry-pin:changed", // payload: Entry
   "bookmark:changed", // payload: Entry (schema-minted)

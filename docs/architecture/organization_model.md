@@ -67,7 +67,8 @@ resolved rather than copied into storage.
 
 The root `pins` sequence contains target nodes. Group nodes extend the tree with
 `type: group`, a stable `id`, `title`, and `children`. Groups organize navigation;
-they do not change target content or membership.
+they do not change target content or membership. The [pin-store contract](pins.md#nested-groups-015)
+defines group editing, ordering, counts, and expansion.
 
 Retain unresolved references and display that the target cannot be found, with a
 manual removal action. Restoring a target makes the reference usable again.

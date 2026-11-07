@@ -411,7 +411,7 @@ async fn convert_pins(dir: &Path, lock: &FileLock) -> Result<(), Error> {
             .map_err(|error| format!("{}: {error}", path.display()))?;
             if let Some(rendered) = converted {
                 if !pins.contains(&target) {
-                    pins.pins.push(target);
+                    pins.pins.push(target.into());
                     // The ordinary parser validates identities, duplicate membership and encoding.
                     let yaml = pins.serialize()?;
                     write_atomic(&library::pins_path(dir), &yaml, lock)?;
@@ -494,6 +494,23 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
         }
     };
 
+    // 0.15 extends the pin tree without rewriting flat references. Validate the
+    // store before advancing metadata; no corpus scan or cache changes are needed.
+    if source_version.is_some_and(|v| v >= library::LibraryVersion::new(0, 14)) {
+        if let Err(error) = xaga_core::pins::Pins::read(dir).await {
+            report
+                .errors
+                .push(format!("pin store: {error}; rerun library upgrade"));
+            return report;
+        }
+        if let Err(error) = upgrade.complete() {
+            report
+                .errors
+                .push(format!("complete library upgrade: {error}"));
+        }
+        return report;
+    }
+
     // Use the ordinary writer-open boundary to create an absent cache. Conversion
     // itself uses direct, narrowly-scoped cache updates owned entirely by this CLI.
     let table = async {
@@ -575,7 +592,7 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
     {
         report.errors.push(format!("pin cache cleanup: {error}"));
     }
-    for chunk in pins.pins.chunks(CACHE_BATCH_SIZE) {
+    for chunk in pins.targets().chunks(CACHE_BATCH_SIZE) {
         let targets: Vec<_> = chunk
             .iter()
             .filter_map(|target| {
@@ -917,14 +934,89 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn nested_pin_upgrade_preserves_flat_bytes_and_resumes_pending_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        library::LibraryManifest::begin_upgrade(
+            dir.path(),
+            library::LibraryVersion::new(0, 14),
+            &lock,
+        )
+        .unwrap()
+        .unwrap()
+        .complete()
+        .unwrap();
+        let raw = "# retained comment\npins: [{type: entry, id: absent}, {type: site, hostname: example.com}]\n";
+        fs::write(library::pins_path(dir.path()), raw).unwrap();
+        // Interrupt after announcing the target, before metadata completion.
+        drop(
+            library::LibraryManifest::begin_upgrade(
+                dir.path(),
+                crate::cmd::library::application_version(),
+                &lock,
+            )
+            .unwrap(),
+        );
+        for _ in 0..2 {
+            let report = upgrade_library(dir.path(), &lock).await;
+            assert!(report.errors.is_empty(), "{report:?}");
+            assert_eq!(
+                fs::read_to_string(library::pins_path(dir.path())).unwrap(),
+                raw
+            );
+            assert!(!library::index_path(dir.path()).exists());
+        }
+        assert!(
+            library::LibraryManifest::read(dir.path())
+                .unwrap()
+                .unwrap()
+                .matches_version(crate::cmd::library::application_version())
+        );
+    }
+
+    #[tokio::test]
+    async fn nested_pin_upgrade_keeps_invalid_store_pending_and_can_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        library::LibraryManifest::begin_upgrade(
+            dir.path(),
+            library::LibraryVersion::new(0, 14),
+            &lock,
+        )
+        .unwrap()
+        .unwrap()
+        .complete()
+        .unwrap();
+        let raw = "pins: [{type: group, id: bad, title: '', children: []}]";
+        fs::write(library::pins_path(dir.path()), raw).unwrap();
+        let report = upgrade_library(dir.path(), &lock).await;
+        assert!(!report.errors.is_empty());
+        assert_eq!(
+            fs::read_to_string(library::pins_path(dir.path())).unwrap(),
+            raw
+        );
+        assert!(
+            !library::LibraryManifest::read(dir.path())
+                .unwrap()
+                .unwrap()
+                .matches_version(crate::cmd::library::application_version())
+        );
+        fs::write(library::pins_path(dir.path()), "pins: []\n").unwrap();
+        assert!(upgrade_library(dir.path(), &lock).await.errors.is_empty());
+    }
+
+    #[tokio::test]
     async fn upgrade_preserves_site_pins_without_creating_site_cache_rows() {
         use xaga_core::pins::{PinTarget, Pins};
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
         let pins = Pins {
-            pins: vec![PinTarget::Site {
-                hostname: "example.com".into(),
-            }],
+            pins: vec![
+                PinTarget::Site {
+                    hostname: "example.com".into(),
+                }
+                .into(),
+            ],
         };
         fs::write(library::pins_path(dir.path()), pins.serialize().unwrap()).unwrap();
         let report = upgrade_library(dir.path(), &lock).await;
@@ -1068,10 +1160,12 @@ custom:
             pins: vec![
                 PinTarget::Entry {
                     id: "unresolved".into(),
-                },
+                }
+                .into(),
                 PinTarget::Entry {
                     id: "article".into(),
-                },
+                }
+                .into(),
             ],
         };
         write_atomic(
@@ -1083,7 +1177,7 @@ custom:
         convert_pins(dir.path(), &lock).await.unwrap();
         let pins = Pins::read(dir.path()).await.unwrap();
         assert_eq!(
-            pins.pins,
+            pins.targets(),
             vec![
                 PinTarget::Entry {
                     id: "unresolved".into()

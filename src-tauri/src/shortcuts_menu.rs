@@ -15,6 +15,7 @@ pub(crate) struct ShortcutMenuItem {
     key: String,
     title: String,
     enabled: bool,
+    children: Option<Vec<ShortcutMenuItem>>,
 }
 
 pub(crate) fn build<R: Runtime>(
@@ -32,16 +33,41 @@ pub(crate) fn build<R: Runtime>(
     if !items.is_empty() {
         menu.append(&PredefinedMenuItem::separator(app)?)?;
     }
-    for item in items {
-        menu.append(&MenuItem::with_id(
-            app,
-            format!("{ITEM_PREFIX}{}", item.key),
-            &item.title,
-            item.enabled,
-            None::<&str>,
-        )?)?;
-    }
+    append_items(app, &menu, items)?;
     Ok(menu)
+}
+
+fn append_items<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    menu: &Submenu<R>,
+    items: &[ShortcutMenuItem],
+) -> tauri::Result<()> {
+    for item in items {
+        if let Some(children) = &item.children {
+            let submenu = Submenu::with_id(app, format!("group:{}", item.key), &item.title, true)?;
+            if children.is_empty() {
+                submenu.append(&MenuItem::with_id(
+                    app,
+                    format!("empty:{}", item.key),
+                    "Empty",
+                    false,
+                    None::<&str>,
+                )?)?;
+            } else {
+                append_items(app, &submenu, children)?;
+            }
+            menu.append(&submenu)?;
+        } else {
+            menu.append(&MenuItem::with_id(
+                app,
+                format!("{ITEM_PREFIX}{}", item.key),
+                &item.title,
+                item.enabled,
+                None::<&str>,
+            )?)?;
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]

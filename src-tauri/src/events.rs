@@ -137,6 +137,7 @@ pub(crate) fn emit_domain<R: Runtime>(target: &impl Emitter<R>, event: DomainEve
         DomainEvent::UnreadChanged(entry) => target.emit(name, entry),
         DomainEvent::BookmarkChanged(entry) => target.emit(name, entry),
         DomainEvent::EntryPinChanged(entry) => target.emit(name, entry),
+        DomainEvent::PinsOrganized(edit) => target.emit(name, edit),
         DomainEvent::PinChanged {
             target: pin,
             pinned,

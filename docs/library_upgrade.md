@@ -1,7 +1,7 @@
 # Upgrading a library
 
 Use the CLI matching the application version you intend to run. The current
-0.14.0-dev CLI upgrades libraries to **0.14**, including tag identities, color-backed
+0.15.0-dev CLI upgrades libraries to **0.15**, including nested pin groups, tag identities, color-backed
 article bookmarks, Site pin support, central pin storage, and the reading-state
 conversion below.
 
@@ -15,7 +15,7 @@ version metadata, or an incomplete upgrade select read-only mode at startup.
 
 1. Close Xaga and other processes using the library.
 2. Back up the library before changing its format.
-3. Run the CLI matching your destination app version (currently 0.14.0-dev):
+3. Run the CLI matching your destination app version (currently 0.15.0-dev):
 
    ```sh
    xaga-cli --data-dir /path/to/library library upgrade
@@ -78,7 +78,7 @@ entity files or cache rows. Cache pin reconciliation applies only to Entry,
 Feed, and Topic targets. Existing Site pins are retained on interrupted retries.
 
 Site pins require library version **0.12** or later. Successful conversion
-advances the manifest to the running CLI’s major/minor version, currently **0.14**.
+advances the manifest to the running CLI’s major/minor version, currently **0.15**.
 Version-mismatched libraries open read-only until explicitly upgraded; the app
 never relabels them automatically. Returning to an older app format requires
 restoring the complete backup.
@@ -135,7 +135,7 @@ Startup never rewrites the version to make it match. Read-only opening does not
 perform recovery or initialize an absent cache. Explicit CLI upgrade errors still
 produce a nonzero exit status; close library users before upgrading.
 
-Migration targets use the running CLI’s major/minor version, currently **0.14**;
+Migration targets use the running CLI’s major/minor version, currently **0.15**;
 there is no separately assigned library revision number.
 
 ## Entry tag identities (0.14)
@@ -150,3 +150,23 @@ before cache conversion. An interrupted or failed upgrade retains its pending
 version; rerun the same command to reuse IDs and finish reconciliation. No app
 startup conversion is performed. The storage format includes rename, merge, and
 deletion records for subsequent tag functionality; see [Tag storage](architecture/tags.md).
+
+## Nested pin groups (0.15)
+
+**0.15.0-dev** adds nested group nodes to `pins.yaml`. Close library users,
+back up the library, and run the matching CLI:
+
+```sh
+xaga-cli --data-dir /path/to/library library upgrade
+```
+
+For a 0.14 library, the upgrade validates the pin store and advances `library.yaml`
+to **0.15**. Flat target encoding, sequence order, and file bytes remain unchanged;
+no article scan or cache rewrite is needed. Earlier libraries also receive their
+required conversions described above. The application does not upgrade automatically.
+
+Malformed pin stores leave the upgrade incomplete and the library read-only.
+Resolve the reported error and retry the same command; an interrupted metadata
+upgrade is safe to resume. Successful retries do not duplicate pins or create
+groups. Older applications open a 0.15 library read-only because its version
+no longer matches. Restore the complete backup to return to the previous format.

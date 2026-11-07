@@ -1,4 +1,7 @@
 import { useCallback, useContext, useMemo } from "react";
+import { usePins } from "../providers/PinsContext";
+import { useSidebarSort } from "./useSidebarSort";
+import { projectPinTree } from "../utils/projectPinTree";
 import FeedsContext from "../providers/FeedsContext";
 import TopicsContext from "../providers/TopicsContext";
 import SitesContext from "../providers/SitesContext";
@@ -8,6 +11,8 @@ import { useMissingPins } from "./useMissingPins";
 /** The same resolved targets serve sidebar and native menu presentation. */
 export function useShortcutTargets() {
   const entries = usePinnedEntries();
+  const { tree } = usePins();
+  const [sortMode] = useSidebarSort("shortcuts");
   const feeds = useContext(FeedsContext);
   const topics = useContext(TopicsContext);
   const sites = useContext(SitesContext);
@@ -46,5 +51,9 @@ export function useShortcutTargets() {
           : target.type === "site" && sites.hasLoaded === false,
     [feeds.hasLoaded, topics.hasLoaded, sites.hasLoaded]
   );
-  return { targets, missing, pending };
+  const hierarchy = useMemo(
+    () => projectPinTree(tree, targets, sortMode, pending),
+    [tree, targets, sortMode, pending]
+  );
+  return { targets, missing, pending, hierarchy };
 }

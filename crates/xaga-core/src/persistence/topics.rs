@@ -177,7 +177,7 @@ pub async fn list_topics(library_dir: &Path) -> Result<Vec<Topic>, TopicsError> 
     let pins = crate::pins::Pins::read(library_dir)
         .await
         .map_err(std::io::Error::other)?;
-    let pin_targets: std::collections::HashSet<_> = pins.pins.into_iter().collect();
+    let pin_targets: std::collections::HashSet<_> = pins.targets().into_iter().collect();
     for topic in &mut topics {
         topic.is_pinned = pin_targets.contains(&crate::pins::PinTarget::Topic {
             id: topic.id.clone(),

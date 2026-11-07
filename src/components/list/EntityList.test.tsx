@@ -1,3 +1,4 @@
+import type { ShortcutNode } from "../../utils/projectPinTree";
 import { act, forwardRef, useEffect, useImperativeHandle } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
@@ -49,6 +50,7 @@ const mocks = vi.hoisted(() => {
     editTopic: vi.fn(),
     feeds: { feeds: [] as Feed[], loading: false, refreshAllFeeds: vi.fn() },
     pins: [] as Article[],
+    shortcutHierarchy: [] as ShortcutNode[],
   };
 });
 vi.mock("../../platform/Platform", () => ({ usePlatform: () => platform }));
@@ -62,6 +64,7 @@ vi.mock("../../hooks/useFeeds", () => ({ useFeeds: () => mocks.feeds }));
 vi.mock("../../hooks/usePinnedEntries", () => ({
   usePinnedEntries: () => mocks.pins,
 }));
+vi.mock("../../hooks/useShortcutTargets", () => ({ useShortcutTargets: () => ({ hierarchy: mocks.shortcutHierarchy, targets: mocks.pins }) }));
 vi.mock("../../hooks/useEvents", () => ({ useEvents: () => mocks.events }));
 vi.mock("../EntityStatus", () => ({
   default: ({ entity }: { entity: { id: string; isUnread?: boolean } }) => (
@@ -165,6 +168,7 @@ beforeEach(() => {
   mocks.tagContext.tags = [{ id: "tag-a", name: "Research" }, { id: "tag-b", name: "Work" }];
   mocks.tagEntries.mockResolvedValue([article]);
   mocks.pins = [article];
+  mocks.shortcutHierarchy = [];
   mocks.feeds.feeds = [];
   mocks.topics.topics = [];
   mocks.sites.sites = [];
@@ -543,4 +547,24 @@ it("retains the list and reader when merged selections collapse to the survivor"
   await act(async () => route.selectTags(["tag-b"]));
   expect(mocks.tagEntries).toHaveBeenCalledTimes(2);
   expect(mocks.tagEntries).toHaveBeenLastCalledWith(expect.any(AbortSignal), ["tag-b"], "all");
+});
+
+it("shows nested shortcut headings in the hidden-sidebar header and opens descendants by typed identity", async () => {
+  mocks.shortcutHierarchy = [{ reference: { type: "group", id: "g" }, title: "Research", unreadCount: 0, children: [
+    { reference: { type: "group", id: "nested" }, title: "Background", unreadCount: 0, children: [
+      { reference: { type: "entry", id: article.id }, title: article.title, unreadCount: 0, target: { ...article, entryCount: 0, unreadCount: 0 } },
+    ] },
+  ] }];
+  await render({ shortcutId: ALL_ENTITIES.id }, true);
+  const combo = container.querySelector<HTMLElement>('[role="combobox"]')!;
+  await act(async () => combo.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
+  const list = document.querySelector('[role="listbox"]')!;
+  expect(list.textContent).toContain("ResearchBackgroundPinned article");
+  const option = [...list.querySelectorAll<HTMLElement>('[role="option"]')].find((item) => item.textContent === article.title)!;
+  await act(async () => option.click());
+  expect(route.state.articleScopeId).toBe(article.id);
+  expect(route.state.entryId).toBe(article.id);
+  await act(async () => combo.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
+  const selected = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((item) => item.textContent === article.title)!;
+  expect(selected.getAttribute("aria-selected")).toBe("true");
 });

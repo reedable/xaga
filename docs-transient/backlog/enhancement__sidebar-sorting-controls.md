@@ -15,7 +15,7 @@ the Shortcuts sorting control in the native macOS menu.
 - Preserve each section's persisted preference and existing sorting semantics.
   Sorting must not rewrite pin membership or stored sequence order.
 - Keep All items first in Shortcuts regardless of sort mode. Apply sorting within
-  each group when nested groups are available.
+  each nested group.
 - Keep sorting controls usable in read-only libraries.
 
 ## Remaining work
@@ -23,14 +23,13 @@ the Shortcuts sorting control in the native macOS menu.
 - Specify sidebar control placement, appearance, and interaction, and the placement
   of sorting controls within the macOS Shortcuts menu.
 - Expose the currently hidden sidebar controls and connect native menu controls
-  to shared Shortcuts sort state, replacing the native menu's current fixed
-  alphabetical ordering.
+  to the shared Shortcuts sort state.
 - Verify keyboard access, selected-state feedback, cross-surface updates,
   per-section persistence, read-only use, and ordering after unread-count changes.
 
 ## References
 
-- [Nested Pin Groups](../active/enhancement__pins--nested-groups.md)
+- [Nested pin groups](../../docs/architecture/pins.md#nested-groups-015)
 - [Pin-store contract](../../docs/architecture/pins.md)
 - `src/components/sidebar/SidebarSortControl.tsx`
 - `src/components/sidebar/SidebarSortControl.module.css`

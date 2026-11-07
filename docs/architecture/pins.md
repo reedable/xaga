@@ -1,7 +1,7 @@
 # Library pin store
 
 `<library>/pins.yaml` owns pin membership. Its path is derived by
-`library::pins_path`; the Rust `Pins` and `PinTarget` types define the parsed format, and the platform exposes that model to the shared UI provider.
+`library::pins_path`; the Rust `Pins`, `PinNode`, and `PinTarget` types define the parsed format, and the platform exposes that model to the shared UI provider.
 
 ```yaml
 pins:
@@ -13,7 +13,7 @@ pins:
     id: topic789
 ```
 
-Identity is target type plus ID. Sequence order is preserved; pinning an existing
+Target identity is type plus ID, independent of group placement. Sequence order is preserved; pinning an existing
 target is a no-op, and unpinning removes only that typed reference. Titles and
 counts are resolved from current targets rather than duplicated in the file.
 Missing stores mean empty membership. Malformed stores, duplicate targets,
@@ -28,8 +28,9 @@ file and atomic rename. A pin edit does not modify the target entity. Library
 read-only checks apply to generic and entity-specific pin commands; target
 navigation remains available in read-only libraries.
 
-After saving the change, the command emits a typed `pin:changed` event, then the
-UI rereads current central membership. Request generations prevent earlier
+After saving a membership change, the command emits a typed `pin:changed` event.
+Organization commands emit `pins:organized` with the committed `PinEdit`. Both
+notifications cause the UI to reread the current central tree. Request generations prevent earlier
 responses from overwriting later snapshots; delayed notifications also read
 current membership. Feed/Topic controls and the article toolbar show pin membership supplied by the
 shared provider. Article shortcuts resolve source-file metadata without
@@ -85,15 +86,79 @@ retain their representation and order. Older applications cannot edit 0.12
 libraries; their version mismatch selects read-only mode. No Site membership is
 persisted or converted, and Site references never create cache entity rows.
 
-Future nested groups use `type: group`, stable `id`, `title`, and an ordered
-`children` sequence. The current flat-store format does not implement groups.
+## Nested groups (0.15)
+
+Library format **0.15**, implemented by **0.15.0-dev**, adds group nodes:
+
+```yaml
+pins:
+  - type: group
+    id: group123
+    title: Research
+    children:
+      - type: site
+        hostname: example.com
+      - type: group
+        id: group456
+        title: Background
+        children: []
+```
+
+Group IDs are unique across the tree and survive renames and moves. Titles are
+trimmed and must be nonempty; duplicate titles are allowed. Typed targets remain
+unique across the entire tree. Strict YAML parsing bounds structural depth to 64;
+the typed model also refuses more than 24 nested groups, including edits received
+through IPC. The existing 12 MiB bound and unknown-field/anchor rejection remain.
+
+`PinEdit` operations create, rename, remove, or move nodes through the same
+Interactive pin writer lane. A move removes and appends the node in one atomic
+store replacement; destinations inside the moved subtree are refused. New pins
+append at root; new groups and moved nodes append in their destination. Removing
+a group replaces it with its children at the same stored position, preserving
+child order and all target pins. Toolbar unpin finds its target at any depth.
+Recovery, entity projections, and article resolution flatten target references
+from this same tree; groups have no entity or cache rows.
+
+In Shortcuts, the header plus button opens a group-title dialog at root. Each
+group has a three-dot actions menu with **Add group**, **Rename group**,
+**Move to…**, and **Remove group**. The menu button appears on hover and keyboard
+focus and stays visible while its menu is open. During those states, the row’s
+unread count is visually hidden with its layout space and screen-reader text
+preserved. Move to… offers the root and eligible groups as a keyboard alternative
+to drag and drop. Moving by drop into a collapsed group expands it. Individual
+shortcuts use the same three-dot menu with **Move to…** and **Remove shortcut**,
+including the same count visibility and keyboard behavior. Removing a shortcut
+only unpins its target. Organization preserves
+the open list and reading pane; read-only libraries can navigate and expand but
+cannot change the tree.
+
+Groups expand independently, defaulting to expanded. Collapsed descendants stay
+mounted inside MUI Collapse; transitions run only when reduced motion is not
+requested. Expansion is local view
+state keyed by library path and group ID. Filtering reveals ancestor paths to
+matching descendants; a matching group title reveals its full subtree. Filtered
+expansion does not rewrite saved expansion. Each container sorts by the selected
+Shortcuts mode. Group unread counts sum descendants recursively without
+article deduplication across pinned collections; article pins contribute zero.
+Groups display that unread count without a separate item count. Sorting never
+rewrites stored sequence order. The selectable navigation header shows the
+hierarchy when the sidebar is hidden; organization controls remain in the sidebar.
+
+The explicit [CLI upgrade](../library_upgrade.md#nested-pin-groups-015) validates
+0.14 pin stores and advances library metadata without rewriting flat pins or
+scanning article files. Interrupted upgrades can be retried. Older libraries
+still run their required conversions before completion. Version mismatch keeps
+older applications from writing upgraded libraries.
+
+## Native menu
 
 The native macOS **Shortcuts** menu sits immediately right of **History**.
 It always starts with **All items**, followed by a separator when pins exist.
 The main UI supplies the same resolved targets used by the sidebar, independent
-of sidebar visibility or its text filter. The native menu currently sorts targets
-alphabetically, independently of the sidebar's selected sort mode.
-Pin, title, and count changes refresh the native menu;
+of sidebar visibility or its text filter. The native menu uses the shared recursively sorted hierarchy, matching the
+sidebar’s selected sort mode. Groups become nested submenus; empty groups contain
+a disabled **Empty** item.
+Pin, group, title, count, and sort changes refresh the native menu;
 sorting never rewrites `pins.yaml`. Article shortcuts navigate into article
 scope, and Site shortcuts use Site navigation, including empty pinned Sites.
 Unavailable targets open the same Retry/Remove shortcut dialog as the sidebar;

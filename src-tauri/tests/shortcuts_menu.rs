@@ -95,7 +95,30 @@ fn main() {
                 panic!("empty")
             };
             assert_eq!(empty.items()?.len(), 1);
-            shortcuts_menu::set_shortcuts_menu(app.handle().clone(), main, items())?;
+            let nested = serde_json::from_value(serde_json::json!([
+                {"key": "group", "title": "Research", "enabled": true, "children": [
+                    {"key": "inner", "title": "Background", "enabled": true, "children": [
+                        {"key": "latest", "title": "Nested target", "enabled": true}
+                    ]},
+                    {"key": "empty", "title": "Empty group", "enabled": true, "children": []}
+                ]}
+            ]))
+            .unwrap();
+            shortcuts_menu::set_shortcuts_menu(app.handle().clone(), main, nested)?;
+            let MenuItemKind::Submenu(root) = app.menu().unwrap().items()?.remove(1) else {
+                panic!("root")
+            };
+            let MenuItemKind::Submenu(group) = root.items()?.remove(2) else {
+                panic!("group")
+            };
+            let MenuItemKind::Submenu(empty_group) = group.items()?.remove(1) else {
+                panic!("empty group")
+            };
+            let MenuItemKind::MenuItem(empty_item) = empty_group.items()?.remove(0) else {
+                panic!("empty item")
+            };
+            assert_eq!(empty_item.text()?, "Empty");
+            assert!(!empty_item.is_enabled()?);
             Ok(())
         })
         .build(context)
@@ -117,7 +140,11 @@ fn main() {
                 let item: *mut AnyObject = msg_send![menu, itemAtIndex: 1isize];
                 let submenu: *mut AnyObject = msg_send![item, submenu];
                 let _: () = msg_send![submenu, performActionForItemAtIndex: 0isize];
-                let _: () = msg_send![submenu, performActionForItemAtIndex: 2isize];
+                let group_item: *mut AnyObject = msg_send![submenu, itemAtIndex: 2isize];
+                let group: *mut AnyObject = msg_send![group_item, submenu];
+                let inner_item: *mut AnyObject = msg_send![group, itemAtIndex: 0isize];
+                let inner: *mut AnyObject = msg_send![inner_item, submenu];
+                let _: () = msg_send![inner, performActionForItemAtIndex: 0isize];
             }
         }
         if matches!(event, RunEvent::Exit) {

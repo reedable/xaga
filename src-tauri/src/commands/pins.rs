@@ -42,3 +42,16 @@ pub async fn set_pin(
     );
     Ok(())
 }
+
+#[tauri::command]
+pub async fn organize_pins(
+    edit: xaga_core::pins::PinEdit,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    super::require_writer(&state)?
+        .organize_pins(edit.clone())
+        .await?;
+    crate::events::emit_domain(&app, xaga_core::events::DomainEvent::PinsOrganized(edit));
+    Ok(())
+}

@@ -1,5 +1,5 @@
 import type { EntryTagChange, Tag, TagSnapshot } from "../domain";
-import type { PinTarget, PinChange, ShortcutMenuItem } from "../pins";
+import type { PinTarget, PinNode, PinEdit, PinChange, ShortcutMenuItem } from "../pins";
 import type { ImageRecovery } from "../text/imageReferences";
 import { isAppError, type AppError as SerializedAppError } from "./errors";
 import { invoke } from "@tauri-apps/api/core";
@@ -1617,30 +1617,34 @@ export class TauriPlatform implements Platform {
     return listen<unknown>(name, (event) => callback(tagSchema.parse(event.payload)));
   }
 
-  async listPins(signal: AbortSignal): Promise<PinTarget[]> {
+  async listPins(signal: AbortSignal): Promise<PinNode[]> {
+    const target = z.union([
+      z.object({ type: z.enum(["entry", "feed", "topic"]), id: z.string() }).strict(),
+      z.object({ type: z.literal("site"), hostname: z.string() }).strict(),
+    ]);
+    const node: z.ZodType<PinNode> = z.lazy(() => z.union([
+      z.object({ type: z.literal("group"), id: z.string(), title: z.string(), children: z.array(node) }).strict(),
+      target,
+    ]));
     const result = await invoke("list_pins");
     signal.throwIfAborted();
-    return z
-      .object({
-        pins: z.array(
-          z.union([
-            z.object({
-              type: z.enum(["entry", "feed", "topic"]),
-              id: z.string(),
-            }),
-            z.object({ type: z.literal("site"), hostname: z.string() }),
-          ])
-        ),
-      })
-      .parse(result).pins;
+    return z.object({ pins: z.array(node) }).strict().parse(result).pins;
+  }
+
+  organizePins(edit: PinEdit): Promise<void> {
+    return invoke("organize_pins", { edit });
   }
 
   setPin(target: PinTarget, pinned: boolean): Promise<void> {
     return invoke("set_pin", { target, pinned });
   }
 
-  onPinChanged(callback: (change: PinChange) => void): Promise<UnlistenFn> {
-    return listen<PinChange>("pin:changed", (event) => callback(event.payload));
+  async onPinChanged(callback: (change: PinChange) => void): Promise<UnlistenFn> {
+    const stop = await listen<PinChange>("pin:changed", (event) => callback(event.payload));
+    try {
+      const organized = await listen<PinEdit>("pins:organized", (event) => callback({ edit: event.payload }));
+      return () => { stop(); organized(); };
+    } catch (error) { stop(); throw error; }
   }
 
   setFeedPinned(id: string, pinned: boolean): Promise<void> {

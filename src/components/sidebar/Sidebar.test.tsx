@@ -68,7 +68,8 @@ function listMock(section: string) {
     return (
       <div
         data-section={section}
-        data-titles={collections.map(({ title }) => title).join(",")}
+        data-filter={section === "shortcuts" ? String(props.filter ?? "") : undefined}
+        data-titles={collections.filter(({ title }) => section !== "shortcuts" || title.toLocaleLowerCase().includes(String(props.filter ?? "").trim().toLocaleLowerCase())).map(({ title }) => title).join(",")}
       >
         {children}
       </div>

@@ -8,13 +8,14 @@ import {
 } from "react";
 import { usePlatform } from "../platform/Platform";
 import { useErrorSink } from "../hooks/useErrorSink";
-import type { PinTarget } from "../pins";
+import { pinTargets, type PinTarget, type PinNode, type PinEdit } from "../pins";
 import { PinsContext } from "./PinsContext";
 
 export default function PinsProvider({ children }: { children: ReactNode }) {
   const platform = usePlatform();
   const { pushError } = useErrorSink();
-  const [pins, setPins] = useState<PinTarget[]>([]);
+  const [tree, setPins] = useState<PinNode[]>([]);
+  const pins = useMemo(() => pinTargets(tree), [tree]);
   const requests = useRef({ generation: 0, active: false });
   const controller = useRef(new AbortController());
   const refresh = useCallback(async () => {
@@ -54,9 +55,13 @@ export default function PinsProvider({ children }: { children: ReactNode }) {
     },
     [platform, refresh]
   );
+  const organizePins = useCallback(async (edit: PinEdit) => {
+    await platform.organizePins(edit);
+    await refresh();
+  }, [platform, refresh]);
   const value = useMemo(
-    () => ({ pins, setPin, refreshPins: refresh }),
-    [pins, setPin, refresh]
+    () => ({ pins, tree, setPin, organizePins, refreshPins: refresh }),
+    [pins, tree, setPin, organizePins, refresh]
   );
   return <PinsContext.Provider value={value}>{children}</PinsContext.Provider>;
 }

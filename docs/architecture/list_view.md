@@ -86,3 +86,12 @@ Pinned articles appear alongside pinned Feeds and Topics, including in the
 selectable header when the sidebar is hidden. Article shortcuts display no count
 and contribute zero to unread-count sorting regardless of their reading state;
 alphabetical sorting uses their titles.
+
+## Nested Shortcuts navigation
+
+The sidebar and hidden-sidebar selectable header project the central pin tree.
+Group headings retain hierarchy in the header; selecting a descendant uses its
+typed target identity and existing navigation behavior. The header provides
+navigation, while group creation and organization use the sidebar. Unavailable
+references retain the existing Retry/Remove shortcut access. See
+[nested pin groups](pins.md#nested-groups-015) for filtering, counts, and sorting.

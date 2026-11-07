@@ -1,3 +1,6 @@
+import { useShortcutTargets } from "../../hooks/useShortcutTargets";
+import { pinKey } from "../../pins";
+import { shortcutReference, type ShortcutNode } from "../../utils/projectPinTree";
 import { Clear, Refresh, Settings } from "@mui/icons-material";
 import {
   Button,
@@ -89,6 +92,7 @@ export function EntityList({
     selectEntity,
     selectCollection,
     selectShortcut,
+    selectShortcutTarget,
     selectArticleScope,
     selectAnnotation,
     state,
@@ -117,6 +121,7 @@ export function EntityList({
   const platform = usePlatform();
   const { pushError } = useErrorSink();
   const pinnedEntries = usePinnedEntries();
+  const { hierarchy: shortcutHierarchy, targets: shortcutTargets } = useShortcutTargets();
   const { articleScopeId } = state;
   const selectedEntityId = state.annotationId ?? state.entryId;
   const [scopedArticle, setScopedArticle] = useState<Entry | null>(null);
@@ -231,12 +236,20 @@ export function EntityList({
     return undefined;
   }, [selectedScope, onEditFeed, onEditTopic, onEditSite]);
 
-  const headerValues =
-    tagIds !== undefined
-      ? tagIds.length
-        ? tagIds.map((id) => `tag:${id}`)
-        : ["tags:all"]
-      : [articleScopeId ? `article:${articleScopeId}` : selectedScope.id];
+  const activePinKey = articleScopeId
+    ? `pin:entry:${articleScopeId}`
+    : feedId
+      ? `pin:feed:${feedId}`
+      : topicId
+        ? `pin:topic:${topicId}`
+        : siteHostname ? `pin:site:${siteHostname}` : undefined;
+  const scopeValues = [articleScopeId ? `article:${articleScopeId}` : selectedScope.id];
+  if (activePinKey && shortcutTargets.some((target) => `pin:${pinKey(shortcutReference(target))}` === activePinKey)) {
+    scopeValues.push(activePinKey);
+  }
+  const headerValues = tagIds !== undefined
+    ? tagIds.length ? tagIds.map((id) => `tag:${id}`) : ["tags:all"]
+    : scopeValues;
   const handleCollectionChange = (event: SelectChangeEvent<string[]>) => {
     const values =
       typeof event.target.value === "string" ? event.target.value.split(",") : event.target.value;
@@ -253,6 +266,11 @@ export function EntityList({
       return;
     }
     setHeaderOpen(false);
+    if (id.startsWith("pin:")) {
+      const target = shortcutTargets.find((target) => `pin:${pinKey(shortcutReference(target))}` === id);
+      if (target) selectShortcutTarget(target);
+      return;
+    }
     const article = pinnedEntries.find((entry) => `article:${entry.id}` === id);
     if (article) {
       selectArticleScope(article);
@@ -555,6 +573,19 @@ export function EntityList({
     [mergeAddedTopicEntity],
   );
 
+  function shortcutOptions(nodes: ShortcutNode[], depth = 0): React.ReactNode[] {
+    return nodes.flatMap((node): React.ReactNode[] => {
+      const key = pinKey(node.reference);
+      if (!node.children) {
+        return [<MenuItem key={`pin:${key}`} value={`pin:${key}`} disabled={!node.target} sx={{ pl: 2 + depth * 2 }}>{node.title}</MenuItem>];
+      }
+      const children = node.children.length
+        ? shortcutOptions(node.children, depth + 1)
+        : [<MenuItem key={`empty:${key}`} disabled sx={{ pl: 4 + depth * 2 }}>Empty</MenuItem>];
+      return [<ListSubheader key={key} sx={{ pl: 2 + depth * 2 }}>{node.title}</ListSubheader>, ...children];
+    });
+  }
+
   return (
     <div className={cx(className, css.EntityList)}>
       <div className={css.Header}>
@@ -622,12 +653,13 @@ export function EntityList({
                     </Typography>
                   </MenuItem>
                 ))}
+                {shortcutOptions(shortcutHierarchy)}
                 {articleScopeId && !articleOptions.some((entry) => entry.id === articleScopeId) && (
                   <MenuItem value={`article:${articleScopeId}`} disabled>
                     Loading article…
                   </MenuItem>
                 )}
-                {articleOptions.map((entry) => (
+                {articleOptions.filter((entry) => !shortcutTargets.some((target) => isEntry(target) && target.id === entry.id)).map((entry) => (
                   <MenuItem key={`article:${entry.id}`} value={`article:${entry.id}`}>
                     <Typography component="span" variant="body2">
                       {entry.title}

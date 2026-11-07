@@ -36,7 +36,7 @@ export function Sidebar({
   const isLibraryReadOnly = useLibraryReadOnly();
 
   const { tags } = useTags();
-  const { targets: pinnedTargets, missing: missingPins } = useShortcutTargets();
+  const { targets: pinnedTargets, missing: missingPins, hierarchy } = useShortcutTargets();
   const { topics } = useTopics(abortControllerRef);
 
   const { loading, feeds, refreshAllFeeds } = useFeeds(abortControllerRef);
@@ -47,10 +47,6 @@ export function Sidebar({
   const matchesFilter = useCallback(
     ({ title }: { title: string }) => title.toLocaleLowerCase().includes(normalizedFilter),
     [normalizedFilter],
-  );
-  const filteredPinnedTargets = useMemo(
-    () => pinnedTargets.filter(matchesFilter),
-    [matchesFilter, pinnedTargets],
   );
   const filteredTopics = useMemo(() => topics.filter(matchesFilter), [matchesFilter, topics]);
   const filteredFeeds = useMemo(() => feeds.filter(matchesFilter), [feeds, matchesFilter]);
@@ -147,12 +143,10 @@ export function Sidebar({
       />
 
       <ShortcutList
-        shortcuts={filteredPinnedTargets}
-        missing={missingPins.filter((pin) =>
-          `${pin.type}: ${pin.type === "site" ? pin.hostname : pin.id}`
-            .toLocaleLowerCase()
-            .includes(normalizedFilter),
-        )}
+        shortcuts={pinnedTargets}
+        hierarchy={hierarchy}
+        filter={filter}
+        missing={missingPins}
         onClickHeader={() => handleExpandedList("SHORTCUTS")}
         isExpanded={expandedList === "SHORTCUTS"}
       />

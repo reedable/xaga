@@ -28,7 +28,7 @@ import type {
   TopicSort,
 } from "../types";
 
-import type { PinTarget, PinChange, ShortcutMenuItem } from "../pins";
+import type { PinTarget, PinNode, PinEdit, PinChange, ShortcutMenuItem } from "../pins";
 
 export type CreateTopicInput = Omit<
   Topic,
@@ -359,7 +359,8 @@ export interface Platform {
   onTagCreated(callback: (tag: Tag) => void): Promise<UnlistenFn>;
 
   // Membership is owned by the library pin store and projected onto targets.
-  listPins(signal: AbortSignal): Promise<PinTarget[]>;
+  listPins(signal: AbortSignal): Promise<PinNode[]>;
+  organizePins(edit: PinEdit): Promise<void>;
   setPin(target: PinTarget, pinned: boolean): Promise<void>;
   onPinChanged(callback: (change: PinChange) => void): Promise<UnlistenFn>;
   setFeedPinned(id: string, pinned: boolean): Promise<void>;

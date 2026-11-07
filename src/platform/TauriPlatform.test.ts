@@ -420,3 +420,20 @@ it("sends explicit merge intent and validates the surviving identity snapshot", 
   await expect(new TauriPlatform().mergeTags("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")).resolves.toEqual(snapshot);
   expect(invokeMock).toHaveBeenLastCalledWith("merge_tags", { sourceId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", destinationId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" });
 });
+
+it("parses hierarchical membership and forwards typed organization through the native boundary", async () => {
+  const platform = new TauriPlatform();
+  const pins = [{ type: "group", id: "g", title: "Research", children: [{ type: "entry", id: "article" }] }];
+  invokeMock.mockResolvedValueOnce({ pins });
+  expect(await platform.listPins(new AbortController().signal)).toEqual(pins);
+  const edit = { action: "move" as const, node: { type: "entry" as const, id: "article" }, parent: "g" };
+  await platform.organizePins(edit);
+  expect(invokeMock).toHaveBeenLastCalledWith("organize_pins", { edit });
+  const listener = vi.fn();
+  const stop = await platform.onPinChanged(listener);
+  const { listen } = await import("@tauri-apps/api/event");
+  const handler = vi.mocked(listen).mock.calls.findLast(([name]) => name === "pins:organized")![1];
+  handler({ event: "pins:organized", id: 0, payload: edit });
+  expect(listener).toHaveBeenCalledWith({ edit });
+  stop();
+});

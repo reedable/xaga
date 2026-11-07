@@ -31,6 +31,7 @@ pub enum DomainEvent {
     BookmarkChanged(Entry),
     /// An article pin changed in its authoritative file.
     EntryPinChanged(Entry),
+    PinsOrganized(crate::pins::PinEdit),
     PinChanged {
         target: crate::pins::PinTarget,
         pinned: bool,
@@ -74,6 +75,7 @@ impl DomainEvent {
             DomainEvent::UnreadChanged(_) => "unread:changed",
             DomainEvent::BookmarkChanged(_) => "bookmark:changed",
             DomainEvent::EntryPinChanged(_) => "entry-pin:changed",
+            DomainEvent::PinsOrganized(_) => "pins:organized",
             DomainEvent::PinChanged { .. } => "pin:changed",
             DomainEvent::AnnotationChanged(_) => "annotation:changed",
             DomainEvent::AnnotationReplaced(_) => "annotation:replaced",
@@ -123,6 +125,7 @@ mod tests {
             DomainEvent::UnreadChanged(entry()),
             DomainEvent::BookmarkChanged(entry()),
             DomainEvent::EntryPinChanged(entry()),
+            DomainEvent::PinsOrganized(crate::pins::PinEdit::RemoveGroup { id: "group".into() }),
             DomainEvent::PinChanged {
                 target: crate::pins::PinTarget::Entry { id: "entry".into() },
                 pinned: true,
@@ -192,6 +195,7 @@ mod tests {
                 "unread:changed",
                 "bookmark:changed",
                 "entry-pin:changed",
+                "pins:organized",
                 "pin:changed",
                 "annotation:changed",
                 "annotation:replaced",

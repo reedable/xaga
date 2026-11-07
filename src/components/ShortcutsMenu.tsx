@@ -1,34 +1,29 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePlatform } from "../platform/Platform";
 import { useShortcutTargets } from "../hooks/useShortcutTargets";
 import { useErrorSink } from "../hooks/useErrorSink";
 import useRouter from "../hooks/useRouter";
 import { ALL_ENTITIES } from "../Shortcuts";
-import { pinKey, type PinTarget } from "../pins";
-import { isEntry, isFeed, isSite } from "../types";
-import sortSidebarCollections from "../utils/sortSidebarCollections";
+import { pinKey, type PinTarget, type ShortcutMenuItem } from "../pins";
+import { shortcutReference, type ShortcutNode } from "../utils/projectPinTree";
 import MissingShortcutDialog from "./sidebar/MissingShortcutDialog";
 
 /** Lives outside the collapsible sidebar so native navigation is always available. */
 export default function ShortcutsMenu() {
   const platform = usePlatform();
   const { pushError } = useErrorSink();
-  const { targets, missing, pending } = useShortcutTargets();
+  const { targets, missing, pending, hierarchy } = useShortcutTargets();
   const { selectShortcutTarget } = useRouter();
   const [unavailable, setUnavailable] = useState<PinTarget | null>(null);
-  const sorted = useMemo(
-    () => sortSidebarCollections(targets, "alphabetical"),
-    [targets]
-  );
   const current = useRef({
-    sorted,
+    targets,
     missing,
     pending,
     selectShortcutTarget,
   });
   useEffect(() => {
-    current.current = { sorted, missing, pending, selectShortcutTarget };
-  }, [sorted, missing, pending, selectShortcutTarget]);
+    current.current = { targets, missing, pending, selectShortcutTarget };
+  }, [targets, missing, pending, selectShortcutTarget]);
   const keys = useRef(new Map<string, string>());
   const queue = useRef(Promise.resolve());
 
@@ -45,16 +40,9 @@ export default function ShortcutsMenu() {
         }
         const identity = keys.current.get(key);
         if (!identity) return;
-        const target = state.sorted.find((target) => {
-          const type = isEntry(target)
-            ? "entry"
-            : isFeed(target)
-              ? "feed"
-              : isSite(target)
-                ? "site"
-                : "topic";
-          return `${type}:${target.id}` === identity;
-        });
+        const target = state.targets.find(
+          (target) => pinKey(shortcutReference(target)) === identity
+        );
         if (target) {
           state.selectShortcutTarget(target);
         } else {
@@ -79,26 +67,24 @@ export default function ShortcutsMenu() {
     // A new projection gets fresh keys: delayed clicks cannot select another item
     // after a reorder, removal, or library transition.
     const generation = crypto.randomUUID();
-    const projected = [
-      ...sorted.map((target) => ({
-        identity: `${isEntry(target) ? "entry" : isFeed(target) ? "feed" : isSite(target) ? "site" : "topic"}:${target.id}`,
-        title: target.title,
-        enabled: true,
-      })),
-      ...missing.map((target) => ({
-        identity: pinKey(target),
-        title: pending(target) ? "Loading shortcut…" : "Shortcut unavailable",
-        enabled: !pending(target),
-      })),
-    ];
-    const items = projected.map((item, index) => ({
-      key: `${generation}:${index}`,
-      title: item.title,
-      enabled: item.enabled,
-    }));
-    keys.current = new Map(
-      items.map((item, index) => [item.key, projected[index].identity])
-    );
+    const nodes = hierarchy;
+    const identities = new Map<string, string>();
+    let index = 0;
+    const project = (nodes: ShortcutNode[]): ShortcutMenuItem[] =>
+      nodes.map((node) => {
+        const key = `${generation}:${index++}`;
+        if (node.children)
+          return {
+            key,
+            title: node.title,
+            enabled: true,
+            children: project(node.children),
+          };
+        identities.set(key, pinKey(node.reference));
+        return { key, title: node.title, enabled: !node.pending };
+      });
+    const items = project(nodes);
+    keys.current = identities;
     let active = true;
     // Serialize IPC updates and skip projections superseded before they start.
     queue.current = queue.current
@@ -109,7 +95,7 @@ export default function ShortcutsMenu() {
     return () => {
       active = false;
     };
-  }, [platform, sorted, missing, pending, pushError]);
+  }, [platform, targets, missing, pending, hierarchy, pushError]);
 
   return (
     unavailable && (
