@@ -126,7 +126,10 @@ npm run guide:capture
 reading, bookmark, annotation, Topic, and tag examples, and writes PNG files to
 `docs/images/user-guide/`. Light images retain the plain filenames; dark images
 use a `-dark` suffix. The guide uses `<picture>` with a dark color-scheme source
-and a light `<img>` fallback for viewers that do not support theme selection. It uses the viewport, appearance, locale, timezone,
+and a light `<img>` fallback for viewers that do not support theme selection.
+Each 1440 × 900 capture is framed with a subtle border, a soft shadow, and
+40 pixels of transparent padding, producing a 1520 × 980 PNG. The framing is
+baked into the image so it also appears in Markdown viewers without custom CSS. It uses the viewport, appearance, locale, timezone,
 fonts, and motion preference described above and waits for the visible results.
 The script also visits the example Site. It does not open a personal library or
 fetch the fictional feed/article URLs.

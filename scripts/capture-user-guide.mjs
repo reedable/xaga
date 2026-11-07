@@ -39,10 +39,34 @@ try {
       await page.evaluate(() => document.fonts.ready);
       for (const image of await reader(page).locator("img").all())
         await expect(image).toHaveJSProperty("complete", true);
-      await page.screenshot({
-        path: `${output}/${name}${theme === "dark" ? "-dark" : ""}.png`,
-        animations: "disabled",
+      const screenshot = await page.screenshot({ animations: "disabled" });
+      // Frame the captured pixels separately so the application layout and
+      // reader interactions stay identical to the unframed capture.
+      const frame = await browser.newPage({
+        viewport: { width: 1520, height: 980 },
+        deviceScaleFactor: 1,
       });
+      try {
+        await frame.setContent(`
+          <style>
+            html, body { margin: 0; background: transparent; }
+            body { padding: 40px; }
+            img {
+              display: block; width: 1440px; height: 900px;
+              outline: 1px solid ${theme === "dark" ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.20)"};
+              box-shadow: 0 8px 24px ${theme === "dark" ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.20)"};
+            }
+          </style>
+          <img alt="" src="data:image/png;base64,${screenshot.toString("base64")}">
+        `);
+        await frame.locator("img").evaluate((image) => image.decode());
+        await frame.screenshot({
+          path: `${output}/${name}${theme === "dark" ? "-dark" : ""}.png`,
+          omitBackground: true,
+        });
+      } finally {
+        await frame.close();
+      }
       console.log(`Captured ${name} (${theme})`);
     }
     const captureURL = new URL(baseURL);
