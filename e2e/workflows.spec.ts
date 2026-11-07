@@ -51,7 +51,10 @@ test("a colored bookmark appears in Saved and can be removed", async ({
   await page.getByRole("button", { name: "Add bookmark", exact: true }).click();
   const palette = page.getByRole("dialog", { name: "Bookmark color" });
   await palette.getByRole("button", { name: "blue", exact: true }).click();
-  await page.getByRole("button", { name: "Saved", exact: true }).click();
+  const saved = page.getByRole("button", { name: "Saved", exact: true });
+  await saved.click();
+  await expect(saved).toHaveAttribute("aria-pressed", "true");
+  await expect(articleButton(page, water)).toHaveCount(0);
   await openArticle(page, garden);
   await page
     .getByRole("button", { name: "Change bookmark color", exact: true })
@@ -66,8 +69,14 @@ test("a colored bookmark appears in Saved and can be removed", async ({
   await expect(
     page.getByRole("button", { name: "Add bookmark", exact: true })
   ).toBeEnabled();
-  await page.getByRole("button", { name: "All", exact: true }).click();
-  await page.getByRole("button", { name: "Saved", exact: true }).click();
+  // Bookmark edits preserve the open list. Wait for All to finish navigating
+  // before returning to Saved; otherwise the second click can hit the old view.
+  const all = page.getByRole("button", { name: "All", exact: true });
+  await all.click();
+  await expect(all).toHaveAttribute("aria-pressed", "true");
+  await expect(articleButton(page, water)).toBeVisible();
+  await saved.click();
+  await expect(saved).toHaveAttribute("aria-pressed", "true");
   await expect(articleButton(page, garden)).toHaveCount(0);
   await expect(articleButton(page, "Making room for a workshop")).toBeVisible();
 });
