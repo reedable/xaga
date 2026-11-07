@@ -4,7 +4,7 @@
 
 .ListItemTextPrimary {
   font-size: 13px !important;
-  max-height: 1rem;
+  max-height: 1rlh;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

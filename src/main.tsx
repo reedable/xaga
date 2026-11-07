@@ -6,7 +6,7 @@ import "@reedable/lliwio-css/colors.css";
 import "@reedable/lliwio-css/semanticColors.css";
 import "./index.css";
 import { PlatformContext } from "./platform/Platform";
-import { TauriPlatform } from "./platform/TauriPlatform";
+import { isCaptureMode } from "./platform/captureMode";
 import { AppearanceProvider } from "./providers/AppearanceProvider";
 import { SettingsProvider } from "./providers/SettingsProvider";
 import { EmbeddingStartupProvider } from "./providers/EmbeddingStartupProvider";
@@ -14,7 +14,18 @@ import { decorate, logged } from "./utils/Decorator";
 import Logger from "./utils/Logger";
 
 const root = document.getElementById("root");
-const platform = new TauriPlatform();
+const platform =
+  import.meta.env.DEV && import.meta.env.MODE === "capture"
+    ? new (await import("./platform/capture/MockPlatform")).MockPlatform()
+    : new (await import("./platform/TauriPlatform")).TauriPlatform();
+const entryPoint = isCaptureMode ? "main" : getCurrentWindow().label;
+if (isCaptureMode) {
+  history.replaceState(null, "", "/");
+  Object.assign(window, {
+    xagaCapture: { reset: () => location.reload() },
+    __XAGA_THEME_SETTING__: "light",
+  });
+}
 
 const logger = Logger.getLogger("history");
 
@@ -41,7 +52,7 @@ createRoot(root!).render(
       <SettingsProvider>
         <AppearanceProvider>
           <EmbeddingStartupProvider>
-            <App entryPoint={getCurrentWindow().label} />
+            <App entryPoint={entryPoint} />
           </EmbeddingStartupProvider>
         </AppearanceProvider>
       </SettingsProvider>

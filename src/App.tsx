@@ -6,6 +6,8 @@ import {
   Route,
   Routes,
 } from "react-router-dom";
+import { isCaptureMode } from "./platform/captureMode";
+import { CaptureReady } from "./platform/capture/CaptureReady";
 import css from "./App.module.css";
 import { AppLayout } from "./AppLayout";
 import { Settings } from "./components/settings/Settings";
@@ -68,6 +70,7 @@ export default function App({ entryPoint }: { entryPoint: string }) {
                             embeddingStartupState !== "loading" ? (
                               <AllEntitiesCountsProvider>
                                 <AppLayout />
+                                {isCaptureMode && <CaptureReady />}
                               </AllEntitiesCountsProvider>
                             ) : null
                           }

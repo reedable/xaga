@@ -1,3 +1,7 @@
+import { isCaptureMode } from "../platform/captureMode";
+
+const captureViewState = new Map<string, unknown>();
+
 // Client-side view state (not user settings): transient UI state that belongs to the
 // UI layer, persisted in the browser via IndexedDB. A minimal keyed store — one object
 // store of arbitrary values — so view state can be added without a backend round-trip.
@@ -20,6 +24,8 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 export async function getViewState<T>(key: string): Promise<T | undefined> {
+  if (isCaptureMode)
+    return structuredClone(captureViewState.get(key)) as T | undefined;
   const db = await openDb();
   try {
     return await new Promise<T | undefined>((resolve, reject) => {
@@ -36,6 +42,10 @@ export async function getViewState<T>(key: string): Promise<T | undefined> {
 }
 
 export async function setViewState<T>(key: string, value: T): Promise<void> {
+  if (isCaptureMode) {
+    captureViewState.set(key, structuredClone(value));
+    return;
+  }
   const db = await openDb();
   try {
     await new Promise<void>((resolve, reject) => {

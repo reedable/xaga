@@ -4,7 +4,7 @@
 
 Automate representative UI workflows in a real browser against `MockPlatform`,
 without Rust or native IPC. Depends on the
-[Browser Capture Platform](../active/enhancement__browser-capture-platform.md).
+[Browser Capture Platform](../../docs/development/browser_capture.md).
 
 ## Requirements
 
@@ -41,7 +41,7 @@ without Rust or native IPC. Depends on the
 
 ## References
 
-- [Browser Capture Platform](../active/enhancement__browser-capture-platform.md)
+- [Browser Capture Platform](../../docs/development/browser_capture.md)
 - [Platform interface](../../src/platform/Platform.ts)
 - [Existing component test configuration](../../vitest.config.ts)
 - [Package scripts](../../package.json)

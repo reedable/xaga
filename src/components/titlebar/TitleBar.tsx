@@ -1,5 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback } from "react";
+import { isCaptureMode } from "../../platform/captureMode";
 import css from "./TitleBar.module.css";
 
 interface TitleBarProps {
@@ -8,7 +9,7 @@ interface TitleBarProps {
 
 export function TitleBar({ className }: TitleBarProps) {
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
+    if (isCaptureMode || e.button !== 0) return;
     const target = e.target as HTMLElement;
     if (target.closest("button, input, a, textarea")) return;
     void getCurrentWindow().startDragging();
@@ -16,6 +17,7 @@ export function TitleBar({ className }: TitleBarProps) {
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      if (isCaptureMode) return;
       const target = e.target as HTMLElement;
       if (target.closest("button, input, a, textarea")) return;
       void getCurrentWindow().toggleMaximize();

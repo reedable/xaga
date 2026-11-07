@@ -33,6 +33,7 @@
     "cli:debug": "cargo run -p xaga-cli --",
     "cli:build": "npm run audit:report && cargo build -p xaga-cli",
     "ui:dev": "vite",
+    "ui:capture": "vite --mode capture --host 127.0.0.1",
     "ui:build": "node scripts/csp-hash.mjs --check && tsc -b && vite build",
     "ui:preview": "vite preview",
     "lint:fix": "oxlint --fix .",

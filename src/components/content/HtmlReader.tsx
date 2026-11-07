@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
+import { isCaptureMode } from "../../platform/captureMode";
+
 import { useAppearance } from "../../hooks/useAppearance";
 import { useErrorSink } from "../../hooks/useErrorSink";
 import { useEvents } from "../../hooks/useEvents";
@@ -22,6 +24,13 @@ import Logger from "../../utils/Logger";
 import { AnnotationTooltip } from "./AnnotationTooltip";
 import { FindBar } from "./FindBar";
 import css from "./HtmlReader.module.css";
+
+let captureAnnotationSequence = 0;
+function createAnnotationId() {
+  return isCaptureMode
+    ? `capture-annotation-${++captureAnnotationSequence}`
+    : uuidv4();
+}
 
 export interface HtmlReaderSelectionRect {
   top: number;
@@ -109,7 +118,7 @@ export function HtmlReader({
       // (Backend refuses with E_READ_ONLY regardless — this is the affordance layer.)
       if (isLibraryReadOnly) return;
       setTooltip({
-        annotationId: uuidv4(),
+        annotationId: createAnnotationId(),
         text: texts,
         occurrence: occurrences,
         color: null,
@@ -146,7 +155,7 @@ export function HtmlReader({
       // backend's id-set diffs. First save of a fresh selection keeps the minted id.
       const isRecolor =
         color !== null && tooltip.color !== null && color !== tooltip.color;
-      const id = isRecolor ? uuidv4() : tooltip.annotationId;
+      const id = isRecolor ? createAnnotationId() : tooltip.annotationId;
 
       if (tooltip.occurrence.length > 0) {
         iframeRef.current?.contentWindow?.postMessage(
