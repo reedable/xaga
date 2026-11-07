@@ -130,7 +130,7 @@ export default function ShortcutList({
         }
         filter={filter}
         createRequest={createRequest}
-        renderTarget={(node) => {
+        renderTarget={(node, unreadCount) => {
           const shortcut = node.target;
           return shortcut ? (
             <SidebarEntity
@@ -163,13 +163,9 @@ export default function ShortcutList({
               }
               onSelectCollection={selectShortcutTarget}
               renderSecondaryAction={
-                isEntry(shortcut)
-                  ? undefined
-                  : () => (
-                      <span className={css.NodeUnreadCount}>
-                        <UnreadCount count={shortcut.unreadCount} />
-                      </span>
-                    )
+                !isEntry(shortcut) && shortcut.unreadCount > 0
+                  ? () => unreadCount
+                  : undefined
               }
             />
           ) : node.reference.type !== "group" ? (

@@ -29,7 +29,7 @@ import { useErrorSink } from "../../hooks/useErrorSink";
 import { getViewState, setViewState } from "../../storage/viewState";
 import { filterPinTree, type ShortcutNode } from "../../utils/projectPinTree";
 import UnreadCount from "./UnreadCount";
-import css from "./ShortcutList.module.css";
+import css from "./ShortcutTree.module.css";
 
 const DRAG_TYPE = "application/x-xaga-pin";
 
@@ -37,7 +37,7 @@ type Props = {
   nodes: ShortcutNode[];
   filter: string;
   createRequest: number;
-  renderTarget: (node: ShortcutNode) => ReactNode;
+  renderTarget: (node: ShortcutNode, unreadCount: ReactNode) => ReactNode;
 };
 
 export default function ShortcutTree({
@@ -55,21 +55,26 @@ export default function ShortcutTree({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
+
   const [titleDialog, setTitleDialog] = useState<{
     id?: string;
     parent: string | null;
     title: string;
   }>();
+
   const [moveDialog, setMoveDialog] = useState<ShortcutNode>();
   const [destination, setDestination] = useState("");
   const actionMenuId = useId();
+
   const [actionMenu, setActionMenu] = useState<{
     anchor: HTMLElement;
     node: ShortcutNode;
   }>();
+
   useEffect(() => {
     if (createRequest) setTitleDialog({ parent: null, title: "" });
   }, [createRequest]);
+
   useEffect(() => {
     let active = true;
     void (async () => {
@@ -88,12 +93,15 @@ export default function ShortcutTree({
   function expand(id: string, value: boolean) {
     setExpanded((current) => ({ ...current, [id]: value }));
   }
+
   useEffect(() => {
     if (storageKey) void setViewState(storageKey, expanded).catch(pushError);
   }, [storageKey, expanded, pushError]);
+
   async function execute(operation: () => Promise<void>): Promise<boolean> {
     if (busy || readOnly) return false;
     setBusy(true);
+
     try {
       await operation();
       return true;
@@ -104,21 +112,25 @@ export default function ShortcutTree({
       setBusy(false);
     }
   }
+
   async function edit(edit: PinEdit) {
     return execute(() => organizePins(edit));
   }
+
   async function move(node: PinNodeRef, parent: string | null) {
     if (await edit({ action: "move", node, parent })) {
       if (parent) expand(parent, true);
       setMoveDialog(undefined);
     }
   }
+
   function drop(event: DragEvent, parent: string | null) {
     if (!event.dataTransfer.types.includes(DRAG_TYPE)) return;
     event.preventDefault();
     event.stopPropagation();
     setDragging(false);
     if (readOnly || busy) return;
+
     try {
       void move(
         JSON.parse(event.dataTransfer.getData(DRAG_TYPE)) as PinNodeRef,
@@ -128,6 +140,7 @@ export default function ShortcutTree({
       pushError(error);
     }
   }
+
   function allowDrop(event: DragEvent) {
     if (!readOnly && !busy && event.dataTransfer.types.includes(DRAG_TYPE)) {
       event.preventDefault();
@@ -135,11 +148,13 @@ export default function ShortcutTree({
       event.dataTransfer.dropEffect = "move";
     }
   }
+
   function actions(node: ShortcutNode) {
     const open =
       !!actionMenu &&
       pinKey(actionMenu.node.reference) === pinKey(node.reference);
     const label = node.reference.type === "group" ? "group" : "shortcut";
+
     return (
       <span className={css.NodeActions}>
         <Tooltip
@@ -151,6 +166,7 @@ export default function ShortcutTree({
         >
           <span>
             <IconButton
+              className={css.NodeActionButton}
               size="small"
               aria-label={`Actions for ${label} ${node.title}`}
               aria-haspopup="menu"
@@ -174,6 +190,7 @@ export default function ShortcutTree({
       const group =
         node.reference.type === "group" ? node.reference : undefined;
       const isOpen = !!filter.trim() || (group && expanded[group.id] !== false);
+
       return (
         <div
           key={pinKey(node.reference)}
@@ -220,7 +237,14 @@ export default function ShortcutTree({
                 </span>
               </ListItemButton>
             ) : (
-              <div className={css.TargetRow}>{renderTarget(node)}</div>
+              <div className={css.TargetRow}>
+                {renderTarget(
+                  node,
+                  <span className={css.NodeUnreadCount}>
+                    <UnreadCount count={node.unreadCount} />
+                  </span>
+                )}
+              </div>
             )}
             {actions(node)}
           </div>
@@ -231,12 +255,14 @@ export default function ShortcutTree({
               unmountOnExit={false}
               timeout={animate ? "auto" : 0}
             >
-              <div className={css.GroupChildren}>
-                {node.children?.length ? (
-                  render(node.children)
-                ) : (
-                  <span className={css.Empty}>Empty</span>
-                )}
+              <div className={css.GroupChildrenContainer}>
+                <div className={css.GroupChildren}>
+                  {node.children?.length ? (
+                    render(node.children)
+                  ) : (
+                    <span className={css.Empty}>Empty</span>
+                  )}
+                </div>
               </div>
             </Collapse>
           )}
@@ -244,6 +270,7 @@ export default function ShortcutTree({
       );
     });
   }
+
   function destinations(
     nodes: ShortcutNode[],
     prefix = ""
@@ -261,6 +288,7 @@ export default function ShortcutTree({
       ];
     });
   }
+
   return (
     <>
       <div
@@ -270,9 +298,10 @@ export default function ShortcutTree({
       >
         {render(filterPinTree(nodes, filter))}
         {dragging && (
-          <div className={css.RootDestination}>Move to Shortcuts root</div>
+          <div className={css.RootDestination}>Move to top level of Shortcuts</div>
         )}
       </div>
+
       <Menu
         id={actionMenuId}
         anchorEl={actionMenu?.anchor}
@@ -337,6 +366,7 @@ export default function ShortcutTree({
             : "Remove shortcut"}
         </MenuItem>
       </Menu>
+
       <Dialog
         open={!!titleDialog}
         onClose={() => !busy && setTitleDialog(undefined)}
@@ -371,6 +401,7 @@ export default function ShortcutTree({
             <TextField
               autoFocus
               label="Title"
+              margin="normal"
               value={titleDialog?.title ?? ""}
               disabled={busy}
               onChange={(event) =>
@@ -394,6 +425,7 @@ export default function ShortcutTree({
           </DialogActions>
         </form>
       </Dialog>
+
       <Dialog
         open={!!moveDialog}
         onClose={() => !busy && setMoveDialog(undefined)}
@@ -403,12 +435,14 @@ export default function ShortcutTree({
           <TextField
             select
             label="Destination"
+            margin="normal"
+            slotProps={{ select: { displayEmpty: true }, inputLabel: { shrink: true } }}
             value={destination}
             fullWidth
             disabled={busy}
             onChange={(event) => setDestination(event.target.value)}
           >
-            <MenuItem value="">Shortcuts (root)</MenuItem>
+            <MenuItem value="">Top level of Shortcuts</MenuItem>
             {destinations(nodes).map((group) => (
               <MenuItem key={group.id} value={group.id}>
                 {group.title}
@@ -416,6 +450,7 @@ export default function ShortcutTree({
             ))}
           </TextField>
         </DialogContent>
+
         <DialogActions>
           <Button disabled={busy} onClick={() => setMoveDialog(undefined)}>
             Cancel

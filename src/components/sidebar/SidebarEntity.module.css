@@ -4,6 +4,10 @@
 
 .ListItemTextPrimary {
   font-size: 13px !important;
+  max-height: 1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .Icon {

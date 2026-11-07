@@ -1,0 +1,77 @@
+.RootDrop {
+  min-height: 40px;
+
+  .TreeNode {
+    min-width: 0;
+
+    >.NodeRow {
+      display: flex;
+      align-items: center;
+      position: relative;
+
+      .TargetRow {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .GroupTitle {
+        flex: 1;
+        font-size: 0.875rem;
+        font-weight: 700;
+        font-width: 80%;
+        margin-left: 0.5rem;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      >.NodeActions {
+        position: absolute;
+        right: 0;
+        display: flex;
+        opacity: 0;
+
+        .NodeActionButton {
+          margin: 0 0.5rem 0 0;
+        }
+      }
+
+      &:hover,
+      &:focus-within,
+      &[data-actions-open="true"] {
+        >.NodeActions {
+          opacity: 1;
+
+          svg {
+            background-color: var(--lliw-semanticColor__background-color--primary);
+            border-radius: 1rem;
+            outline: 0.125rem solid var(--lliw-semanticColor__background-color--primary);
+          }
+        }
+
+        /* Retain the count's layout space and screen-reader text while actions show. */
+        .NodeUnreadCount {
+          opacity: 0;
+        }
+      }
+    }
+
+    .GroupChildrenContainer {
+      padding-left: 1.5rem;
+
+      .GroupChildren {
+        /* background-color: var(--lliw-semanticColor__background-color--secondary); */
+        border-left: 1px solid var(--lliw-semanticColor__background-color--tertiary);
+
+        >.Empty {
+          display: block;
+          padding: 8px 16px;
+        }
+      }
+    }
+  }
+
+  >.RootDestination {
+    padding: 12px;
+    border: 1px dashed currentColor;
+  }
+}

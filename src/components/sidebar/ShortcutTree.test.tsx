@@ -114,16 +114,18 @@ it("offers root but excludes the moved group and descendants from keyboard desti
   await render();
   await groupAction("Research", "Move to…");
   const select = document.querySelector<HTMLElement>('[role="combobox"]')!;
+  expect(select.textContent).toBe("Top level of Shortcuts");
   await act(async () =>
     select.dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true, button: 0 })
     )
   );
   expect(document.querySelector('[role="listbox"]')?.textContent).toBe(
-    "Shortcuts (root)"
+    "Top level of Shortcuts"
   );
   const option = document.querySelector<HTMLElement>('[role="option"]')!;
   await click(option);
+  expect(select.textContent).toBe("Top level of Shortcuts");
   const move = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
     (button) => button.textContent === "Move"
   )!;
