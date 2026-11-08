@@ -77,6 +77,13 @@ load of a new or refreshed article reacquires its current icon; successful
 validation atomically replaces the shared resource, while failure preserves the
 cached bytes. Read-only instances can display but not replace shared resources.
 
+Favicon acquisition remains independent per article load; there is no shared
+in-flight request registry. Xaga's article loading is user-driven, cached reads
+do not reacquire icons, and navigation cancels the previous load. Brief overlap
+is possible, but no recurring duplicate-fetch cost has been established for
+that workflow. Shared favicon writes are atomic. Add request coalescing only if
+observed duplicate acquisition warrants its cancellation and lifecycle complexity.
+
 The account setting `load_remote_image` controls recovery and the article loader's
 additional body-image capture fetches. The absent-value default is defined once
 as `DEFAULT_LOAD_REMOTE_IMAGE`, currently `false`, for both new and existing
@@ -110,6 +117,32 @@ image references. It does not resolve reference-style Markdown image definitions
 or candidates supplied only through `srcset` or `<picture><source>`. Rendering
 removes responsive candidates and uses an available `img src`; without a usable
 source, the image receives the common unavailable presentation.
+
+### Manual edits and article refresh
+
+Refreshing an article from its website replaces the saved Markdown body with
+newly captured content. Any manual edits to that body are lost, including added
+text, changed links, and reference-style images. Refresh does not merge those
+edits with the remote page. Keep a separate copy if you need to preserve them.
+This replacement concerns article content: annotations, tags, reading state,
+and other omitted frontmatter fields retain the preservation rules below.
+
+### Reference-style images in edited Markdown
+
+Xaga's article capture writes inline images (`![alt](URL)`), not reference-style
+images such as `![alt][photo]` with a separate `[photo]: URL` definition. Reference
+style therefore suggests manual editing or externally authored Markdown; it is
+not evidence of a capture failure or an unintended edit.
+
+Markdown rendering resolves these definitions, but image recovery does not
+download or rewrite their remote destinations, even when image recovery is
+enabled. The reading pane applies the same local-only image policy: a supported
+local image can display; a remote image receives the alternative-text/title or
+“Image unavailable” presentation described above. This fallback changes only
+the display, leaving the saved reference and definition untouched. No additional
+automatic conversion or recovery is required for this form.
+
+### Recovery writes
 
 `recover_entry_images` captures the library/writer at invocation. After loading,
 `LibraryWriter::recover_images` rereads the entry inside its writer lane and
