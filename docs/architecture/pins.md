@@ -47,9 +47,11 @@ Removal is disabled in read-only libraries and affects only the pin. Initial
 Topic/Feed loading uses skeleton rows instead of unavailable-target errors.
 Restoring a target resolves the same reference on the next target refresh.
 Removing a pin preserves the current list and reading scope.
-Article shortcuts suppress counts and contribute zero to unread sorting; the
-built-in All items target stays first. Alphabetical/unread sorting is presentation
-state and never rewrites the sequence.
+Article shortcuts suppress counts and contribute zero to unread sorting.
+**All items** is library-wide navigation below the sidebar toolbar and above
+**Filter collections…**, independent of shortcut expansion and collection
+filtering. Alphabetical/unread sorting is presentation state and never rewrites
+the sequence.
 
 Site pins use `type: site` and a normalized `hostname`, not an entity ID:
 
@@ -77,7 +79,7 @@ Once the Site list has loaded, a pinned hostname absent from that computed list 
 still a valid empty Site with zero counts, not an unavailable target. Its pin
 survives cache recovery and out-of-band changes. Initial Site loading uses the
 same skeleton rows as other collection shortcuts. Alphabetical/unread sorting
-includes Sites while **All items** stays first.
+includes Sites; **All items** is outside the sorted shortcuts.
 
 Site targets extend the library format to **0.12**, implemented by **0.12.0-dev**.
 Existing 0.11 libraries require the explicit

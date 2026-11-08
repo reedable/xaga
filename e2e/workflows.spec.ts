@@ -16,6 +16,31 @@ test.beforeEach(async ({ page }) => {
   await startCapture(page);
 });
 
+test("All items stays above the collection filter across section changes", async ({
+  page,
+}) => {
+  const allItems = page.getByRole("button", { name: "All items", exact: true });
+  const filter = page.getByRole("textbox", {
+    name: "Filter collections",
+    exact: true,
+  });
+  await expect(allItems).toHaveCount(1);
+  const itemBox = await allItems.boundingBox();
+  const filterBox = await filter.boundingBox();
+  expect(itemBox!.y + itemBox!.height).toBeLessThan(filterBox!.y);
+  for (const section of ["Shortcuts (1)", "Topics (1)", "Feeds (1)"]) {
+    await page.getByRole("button", { name: section, exact: true }).click();
+    await expect(allItems).toBeVisible();
+  }
+  await filter.fill("no matching collection");
+  await expect(allItems).toBeVisible();
+  await allItems.focus();
+  await page.keyboard.press("Enter");
+  await expect(allItems).toHaveClass(/Mui-selected/);
+  await expect(articleButton(page, water)).toBeVisible();
+  await expect(filter).toHaveValue("no matching collection");
+});
+
 test("read status updates Unread membership and collection counts", async ({
   page,
 }) => {

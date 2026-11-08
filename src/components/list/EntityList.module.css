@@ -54,7 +54,7 @@
           margin-right: 4px;
         }
 
-        & > div {
+        &>div {
           margin-left: -12px;
           margin-right: -2px;
         }
@@ -82,7 +82,7 @@
     .FilterButtonGroup {
       gap: 0.25em;
       margin: 0.25em 0 0 0;
-      padding: 5.5px 1rem 0 1rem;
+      padding: 0.25rem 1rem 0 1rem;
 
       button {
         border: var(--border);

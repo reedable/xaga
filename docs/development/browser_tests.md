@@ -56,6 +56,8 @@ runner configuration.
 
 `e2e/workflows.spec.ts` exercises:
 
+- Keeping All items above the collection filter across section changes and
+  unmatched filters, with keyboard navigation and selected-state feedback.
 - Opening an article, changing read status, and checking Unread membership and
   aggregate/feed counts after the providers update.
 - Choosing a bookmark color, revisiting the article in Saved, and removing the

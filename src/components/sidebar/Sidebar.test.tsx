@@ -4,6 +4,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
 
 const mocks = vi.hoisted(() => ({
+  selectShortcutTarget: vi.fn(),
+  state: {} as { shortcutId?: string; articleScopeId?: string },
+  loadingFeedIds: new Set<string>(),
   feeds: [
     { id: "feed-alpha", title: "Alpha Feed" },
     { id: "feed-beta", title: "Beta Feed" },
@@ -49,6 +52,7 @@ vi.mock("../../hooks/useTopics", () => ({
 vi.mock("../../hooks/useFeeds", () => ({
   useFeeds: () => ({
     loading: false,
+    loadingFeedIds: mocks.loadingFeedIds,
     feeds: mocks.feeds,
     pinnedFeedIds: ["feed-alpha", "feed-beta"],
     refreshAllFeeds: vi.fn(),
@@ -56,6 +60,16 @@ vi.mock("../../hooks/useFeeds", () => ({
 }));
 vi.mock("../../hooks/useSites", () => ({
   useSites: () => ({ sites: mocks.sites }),
+}));
+
+vi.mock("../../hooks/useRouter", () => ({
+  default: () => ({
+    state: mocks.state,
+    selectShortcutTarget: mocks.selectShortcutTarget,
+  }),
+}));
+vi.mock("../../hooks/useAllEntitiesCounts", () => ({
+  useAllEntitiesCounts: () => ({ entryCount: 5, unreadCount: 2 }),
 }));
 
 function listMock(section: string) {
@@ -107,6 +121,9 @@ let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
 beforeEach(() => {
+  mocks.state = {};
+  mocks.loadingFeedIds = new Set();
+  vi.clearAllMocks();
   container = document.createElement("div");
   root = createRoot(container);
 });
@@ -170,6 +187,19 @@ it("keeps every section and the filter above them visible with zero matches", as
 
   const input = container.querySelector('[aria-label="Filter collections"]');
   expect(input).not.toBeNull();
+  const allItems = [
+    ...container.querySelectorAll<HTMLElement>('[role="button"]'),
+  ].filter((button) => button.textContent === "All items");
+  expect(allItems).toHaveLength(1);
+  expect(
+    allItems[0].compareDocumentPosition(input!) &
+      Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy();
+  expect(allItems[0].parentElement!.textContent).toBe("All items2");
+  await act(async () => allItems[0].click());
+  expect(mocks.selectShortcutTarget).toHaveBeenCalledWith(
+    expect.objectContaining({ title: "All items", unreadCount: 2 })
+  );
   const firstSection = container.querySelector("[data-section]");
   expect(firstSection).not.toBeNull();
   expect(
@@ -179,3 +209,31 @@ it("keeps every section and the filter above them visible with zero matches", as
 });
 
 vi.mock("../../hooks/useMissingPins", () => ({ useMissingPins: () => [] }));
+
+it("preserves All items selection and feed-loading feedback", async () => {
+  const { ALL_ENTITIES } = await import("../../Shortcuts");
+  mocks.state = { shortcutId: ALL_ENTITIES.id };
+  mocks.loadingFeedIds = new Set(["feed-alpha"]);
+  const render = () =>
+    root.render(
+      <Sidebar
+        filter=""
+        onAddFeed={vi.fn()}
+        onAddTopic={vi.fn()}
+        onFilterChange={vi.fn()}
+      />
+    );
+  await act(async () => render());
+  const item = container.querySelector("li")!;
+  expect(
+    item.querySelector('[role="button"]')!.classList.contains("Mui-selected")
+  ).toBe(true);
+  expect(item.querySelector('[role="progressbar"]')).not.toBeNull();
+  mocks.state = { shortcutId: ALL_ENTITIES.id, articleScopeId: "article" };
+  mocks.loadingFeedIds = new Set();
+  await act(async () => render());
+  expect(
+    item.querySelector('[role="button"]')!.classList.contains("Mui-selected")
+  ).toBe(false);
+  expect(item.querySelector('[role="progressbar"]')).toBeNull();
+});

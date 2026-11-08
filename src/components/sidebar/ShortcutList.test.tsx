@@ -110,7 +110,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
 });
 
-it("places the control before All items and sorts only pinned collections", async () => {
+it("places the control before the sorted pinned collections", async () => {
   await act(async () => {
     root.render(
       <ShortcutList isExpanded shortcuts={shortcuts} onClickHeader={vi.fn()} />
@@ -123,7 +123,7 @@ it("places the control before All items and sorts only pinned collections", asyn
         element.getAttribute("data-collection-title") ??
         (element.hasAttribute("data-sort-control") ? "sort-control" : null)
     )
-  ).toEqual(["sort-control", "All items", "Alpha", "Zulu"]);
+  ).toEqual(["sort-control", "Alpha", "Zulu"]);
 });
 
 it("does not render the sort control while collapsed", async () => {
@@ -162,7 +162,7 @@ it("sorts article shortcuts at zero, displays no count, and selects their articl
     [...container.querySelectorAll("[data-collection-title]")].map((node) =>
       node.getAttribute("data-collection-title")
     )
-  ).toEqual(["All items", "Zulu", "Alpha", "Article"]);
+  ).toEqual(["Zulu", "Alpha", "Article"]);
   const button = container.querySelector<HTMLButtonElement>(
     '[data-collection-title="Article"]'
   )!;
@@ -172,7 +172,7 @@ it("sorts article shortcuts at zero, displays no count, and selects their articl
   expect(mocks.selectShortcutTarget).toHaveBeenCalledWith(article);
 });
 
-it("sorts pinned Sites with other shortcuts, keeps All items first, and selects Site scope", async () => {
+it("sorts pinned Sites with other shortcuts and selects Site scope", async () => {
   const site = {
     id: "example.com",
     __kind: "site" as const,
@@ -195,7 +195,7 @@ it("sorts pinned Sites with other shortcuts, keeps All items first, and selects 
     [...container.querySelectorAll("[data-collection-title]")].map((node) =>
       node.getAttribute("data-collection-title")
     )
-  ).toEqual(["All items", "example.com", "Zulu", "Alpha"]);
+  ).toEqual(["example.com", "Zulu", "Alpha"]);
   const button = container.querySelector<HTMLButtonElement>(
     '[data-collection-title="example.com"]'
   )!;

@@ -19,8 +19,6 @@ import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import { useSidebarSort } from "../../hooks/useSidebarSort";
 import useRouter from "../../hooks/useRouter";
-import { ALL_ENTITIES } from "../../Shortcuts";
-import { useAllEntitiesCounts } from "../../hooks/useAllEntitiesCounts";
 import {
   isEntry,
   isFeed,
@@ -35,7 +33,6 @@ import ExpandableList from "./ExpandableList";
 import css from "./ShortcutList.module.css";
 import SidebarEntity from "./SidebarEntity";
 import SidebarSortControl from "./SidebarSortControl";
-import UnreadCount from "./UnreadCount";
 
 import type { PinTarget } from "../../pins";
 import MissingShortcut from "./MissingShortcut";
@@ -60,15 +57,10 @@ export default function ShortcutList({
   const [createRequest, setCreateRequest] = useState(0);
   const readOnly = useLibraryReadOnly();
   const { selectShortcutTarget, state } = useRouter();
-  const { feedId, topicId, shortcutId, articleScopeId, siteHostname } = state;
+  const { feedId, topicId, articleScopeId, siteHostname } = state;
   const [, abortControllerRef] = useAbortController();
   const { loadingFeedIds } = useFeeds(abortControllerRef);
   const [sortMode, setSortMode] = useSidebarSort("shortcuts");
-  const counts = useAllEntitiesCounts();
-  const allEntities = useMemo(
-    () => (counts ? { ...ALL_ENTITIES, ...counts } : ALL_ENTITIES),
-    [counts]
-  );
   const sortedShortcuts = useMemo(
     () => sortSidebarCollections(shortcuts, sortMode),
     [shortcuts, sortMode]
@@ -106,17 +98,6 @@ export default function ShortcutList({
           onChange={setSortMode}
         />
       )}
-
-      <SidebarEntity
-        icon={Newspaper}
-        collection={allEntities}
-        loading={loadingFeedIds.size > 0}
-        selected={!articleScopeId && shortcutId === ALL_ENTITIES.id}
-        onSelectCollection={selectShortcutTarget}
-        renderSecondaryAction={
-          counts ? () => <UnreadCount count={counts.unreadCount} /> : undefined
-        }
-      />
 
       <ShortcutTree
         nodes={

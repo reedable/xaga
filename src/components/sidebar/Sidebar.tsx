@@ -1,6 +1,17 @@
-import { Clear, Refresh } from "@mui/icons-material";
-import { IconButton, InputAdornment, TextField, Tooltip } from "@mui/material";
+import { Clear, Newspaper, Refresh } from "@mui/icons-material";
+import {
+  IconButton,
+  InputAdornment,
+  List,
+  TextField,
+  Tooltip,
+} from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ALL_ENTITIES } from "../../Shortcuts";
+import { useAllEntitiesCounts } from "../../hooks/useAllEntitiesCounts";
+import useRouter from "../../hooks/useRouter";
+import SidebarEntity from "./SidebarEntity";
+import UnreadCount from "./UnreadCount";
 import useAbortController from "../../hooks/useAbortController";
 import { useFeeds } from "../../hooks/useFeeds";
 import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
@@ -43,7 +54,14 @@ export function Sidebar({
   } = useShortcutTargets();
   const { topics } = useTopics(abortControllerRef);
 
-  const { loading, feeds, refreshAllFeeds } = useFeeds(abortControllerRef);
+  const { loading, loadingFeedIds, feeds, refreshAllFeeds } =
+    useFeeds(abortControllerRef);
+  const { selectShortcutTarget, state } = useRouter();
+  const counts = useAllEntitiesCounts();
+  const allEntities = useMemo(
+    () => (counts ? { ...ALL_ENTITIES, ...counts } : ALL_ENTITIES),
+    [counts]
+  );
 
   const { expandedList, setExpandedList } = useSidebar(abortControllerRef);
   const { sites } = useSites(abortControllerRef);
@@ -121,6 +139,23 @@ export function Sidebar({
           </span>
         </Tooltip>
       </div>
+
+      <List dense disablePadding className={css.AllItems}>
+        <SidebarEntity
+          icon={Newspaper}
+          collection={allEntities}
+          loading={loadingFeedIds.size > 0}
+          selected={
+            !state.articleScopeId && state.shortcutId === ALL_ENTITIES.id
+          }
+          onSelectCollection={selectShortcutTarget}
+          renderSecondaryAction={
+            counts
+              ? () => <UnreadCount count={counts.unreadCount} />
+              : undefined
+          }
+        />
+      </List>
 
       <TextField
         className={css.FilterInput}

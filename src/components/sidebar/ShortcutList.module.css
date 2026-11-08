@@ -1,5 +1,5 @@
 .ShortcutList {
-  content: "";
+  border-top: 0 !important;
 }
 
 .SkeletonRow {

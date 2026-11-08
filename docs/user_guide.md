@@ -25,7 +25,7 @@ The examples below use a small fictional library: **Field notes** is a feed,
 
 ## Find and read an article
 
-Choose a feed, or choose **All items** under **Shortcuts** to browse across your
+Choose a feed, or choose **All items** above **Filter collections…** to browse across your
 library. Click **All** to include material you have already read; **Unread** shows
 articles you have not read yet. Type in **Filter items…** to narrow the current
 list, then click an article to open it in the reading pane.

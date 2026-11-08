@@ -49,9 +49,14 @@
     white-space: nowrap;
   }
 
+  .AllItems {
+    flex-shrink: 0;
+    margin-bottom: 0.5rem;
+  }
+
   .FilterInput {
     flex-shrink: 0;
-    padding: 0.5rem 1rem 0.75rem;
+    padding: 0 1rem 0.75rem;
 
     input {
       font-size: 0.8125em;
