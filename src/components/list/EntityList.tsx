@@ -179,7 +179,7 @@ export function EntityList({
                   "Unavailable tag"
               )
               .join(" + ")
-          : "All Entries",
+          : "All items", // TODO Make annotations taggable
         createdAt: new Date(0).toISOString(),
       }) ||
       (articleScopeId &&
