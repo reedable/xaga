@@ -2,7 +2,10 @@
 
 ## Summary
 
-Switching libraries can relaunch into a blank window. The observed case used `tauri dev`; `restart_process` always spawns the current executable even though its comment says development mode should exit for the Tauri watcher. Release behavior has not been established.
+Switching libraries under `tauri dev` relaunches into a blank main window.
+Opening Settings from the macOS menu after that switch also produces a blank
+window. The user reports that switching works in 0.15.0. Investigate the shared
+frontend-load and development relaunch path without assuming a confirmed cause.
 
 ## Requirements
 
@@ -14,8 +17,12 @@ Switching libraries can relaunch into a blank window. The observed case used `ta
 
 ## Remaining work
 
-- Reproduce library switching separately under `tauri dev` and a bundled release.
-- Capture successor startup, frontend-load, and IPC logs to locate the failure boundary.
+- Reproduce a library switch under `tauri dev`, then open Settings from the macOS
+  menu; verify frontend loading in both windows. Compare with the reported working
+  0.15.0 flow.
+- Capture successor startup, frontend-load, development-server availability, and
+  IPC logs to locate the failure boundary. Check `restart_process` executable
+  spawning against its stated watcher-driven development behavior.
 - If limited to development, choose watcher-driven exit or another explicit development workflow.
 - If bundled builds fail, diagnose executable spawning and startup against the updated settings.
 - Cover writer, read-only, and shutdown-requested relaunch paths.
