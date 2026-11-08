@@ -22,6 +22,15 @@ an edit during acquisition, read-only recovery and refused saves, and staging
 cleanup. Its local server and gates are shared with `loader_lifecycle_webview`.
 Both require a macOS desktop session.
 
+`loader_lifecycle_webview` also exercises WebKit-selected `srcset` and `<picture>`
+URLs with offline image capture disabled and enabled. It checks serialized
+selection metadata, successful capture pairings, alternative/title preservation,
+and that disabled capture's HTML snapshot adds no image request. Conversion and
+presentation regressions in `article_loader.images.test.ts` cover failed capture,
+missing browser selection, relative fallback sources, all HTML delivery paths,
+and unavailable-image rendering. Browser capture-mode workflows do not run the
+native article loader; they supplement these loader-specific checks.
+
 The UI-network and SVG rendering probes show temporary test windows. Hidden
 fixture views on the tested WebKit did not complete their image/timer milestones;
 visibility does not change the probes' proxy configuration or CSP assertions.

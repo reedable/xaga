@@ -36,6 +36,15 @@ mod lifecycle {
             Option<tauri::async_runtime::JoinHandle<Result<article_loader::LoaderCapture, String>>>,
     }
     async fn start(app: &tauri::AppHandle, server: &Server, name: &str, timeout: u64) -> Load {
+        start_with_images(app, server, name, timeout, false).await
+    }
+    async fn start_with_images(
+        app: &tauri::AppHandle,
+        server: &Server,
+        name: &str,
+        timeout: u64,
+        images: bool,
+    ) -> Load {
         let proxy = Arc::new(
             network_proxy::start_scoped(
                 network_proxy::ProxyConfig::deny_all()
@@ -65,7 +74,7 @@ mod lifecycle {
                 timeout,
                 false,
                 article_loader::LoaderPurpose::Article,
-                false,
+                images,
                 &[],
                 true,
                 proxy,
@@ -254,6 +263,58 @@ mod lifecycle {
             assert_cleanup(&app, &load).await;
             cancel(&app, &load).await; // completion followed by cancellation is harmless
             println!("PASS: concurrent {name} retains its own article");
+        }
+        // Exercise actual WebKit responsive selection through production HTML delivery.
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(2, 2)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .unwrap();
+        let selected = server.add_response(
+            "/responsive-selected.png",
+            png.into_inner(),
+            "image/png",
+            None,
+            None,
+        );
+        let origin = format!("http://localhost:{}", server.address.port());
+        server.add_response("/responsive", br#"<!doctype html><title>Responsive images</title>
+          <article><p>Responsive image selection</p>
+          <img srcset="/responsive-selected.png 1x" alt="srcset only" title="selected image">
+          <picture><source srcset="/responsive-selected.png"><img src="/fallback.png" alt="picture fallback"></picture>
+          <picture><source srcset="/responsive-selected.png"><img alt="picture only"></picture>
+          </article>"#.to_vec(), "text/html", None, None);
+        for enabled in [false, true] {
+            let before = selected.requests.load(Ordering::SeqCst);
+            let mut load = start_with_images(&app, &server, "responsive", 15, enabled).await;
+            let capture = load.result.take().unwrap().await.unwrap().unwrap();
+            let marker = format!("data-xaga-selected-src=\"{origin}/responsive-selected.png\"");
+            if !enabled {
+                assert_eq!(
+                    capture.html.matches(&marker).count(),
+                    3,
+                    "responsive selections missing: {}",
+                    capture.html
+                );
+            }
+            assert!(capture.html.contains("title=\"selected image\""));
+            assert_eq!(
+                capture.html.matches("data-xaga-url=").count(),
+                if enabled { 3 } else { 0 }
+            );
+            let requests = selected.requests.load(Ordering::SeqCst) - before;
+            if enabled {
+                assert!(
+                    requests >= 4,
+                    "expected browser load and three capture fetches"
+                );
+                let captured = format!("data-xaga-url=\"{origin}/responsive-selected.png\"");
+                assert_eq!(capture.html.matches(&captured).count(), 3);
+            } else {
+                // Snapshotting must not trigger an additional resource load.
+                assert_eq!(requests, 1);
+            }
+            assert_cleanup(&app, &load).await;
+            println!("PASS: responsive URLs retained with image capture enabled={enabled}");
         }
         gate.release();
         until("all loader windows closed", || {

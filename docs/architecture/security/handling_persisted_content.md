@@ -112,6 +112,11 @@ spans are discovered with Markdown, HTML and CSS parsers, preserving the source
 text outside the replaced destinations. The original remote URL determines image
 storage identity, including when acquisition redirects.
 
+Article ingestion preserves the browser-selected responsive image URL as an
+ordinary Markdown image destination, even if capture was disabled or failed.
+That retained URL is eligible for the existing setting-gated recovery path; it
+does not permit remote loading in the reading pane.
+
 Recovery discovers inline Markdown image destinations, HTML `img src`, and CSS
 image references. It does not resolve reference-style Markdown image definitions
 or candidates supplied only through `srcset` or `<picture><source>`. Rendering

@@ -92,12 +92,18 @@ export async function processEntry(
 
   for (const img of Array.from(doc.querySelectorAll("img"))) {
     const stashed = img.getAttribute("data-xaga-url");
-    if (!stashed) continue;
-
+    const selected = img.getAttribute("data-xaga-selected-src");
     const src = img.getAttribute("src");
-    if (src && src.startsWith("data:")) dataToUrl.set(src, stashed);
-
+    if (stashed && src && src.startsWith("data:")) {
+      // The URL whose bytes were captured wins over later browser selection.
+      dataToUrl.set(src, stashed);
+    } else if (selected) {
+      // Readability and Markdown conversion run without a rendering browser.
+      // Supply its selected URL as src; never choose a srcset candidate here.
+      img.setAttribute("src", selected);
+    }
     img.removeAttribute("data-xaga-url");
+    img.removeAttribute("data-xaga-selected-src");
   }
 
   phase?.("readability");

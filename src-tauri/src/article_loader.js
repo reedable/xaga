@@ -35,12 +35,33 @@ window.open = function () {
 };
 window.focus = function () {};
 
+// currentSrc is a live DOM property and is absent from serialized HTML. Preserve
+// it in an inert document: changing a live or detached image src can fetch bytes.
+function __xagaSnapshotHtml() {
+  var images = document.images ? [].slice.call(document.images) : [];
+  if (
+    !images.some(function (img) {
+      return !!img.currentSrc;
+    })
+  )
+    return document.documentElement.outerHTML;
+  var inert = document.implementation.createHTMLDocument("");
+  var root = inert.importNode(document.documentElement, true);
+  var copies = root.querySelectorAll("img");
+  for (var i = 0; i < images.length; i++) {
+    copies[i].removeAttribute("data-xaga-selected-src");
+    if (images[i].currentSrc)
+      copies[i].setAttribute("data-xaga-selected-src", images[i].currentSrc);
+  }
+  return root.outerHTML;
+}
+
 // ---------------------------------------------------------------------------
 // Fetch remote images as data: URLs before the HTML is captured, so the stored
 // article carries its images locally and rendering it later makes no network
 // request. An image whose host sends no `Access-Control-Allow-Origin` cannot be
-// read (fetch() rejects); those keep their original remote `src` and are
-// neutralised downstream (extract_images -> data-xaga-src). Set
+// read (fetch() rejects); their selected URLs survive conversion without bytes
+// and receive the unavailable presentation in the reading pane. Set
 // __XAGA_FETCH_IMAGES__ to false to disable.
 // ---------------------------------------------------------------------------
 var __XAGA_FETCH_IMAGES__ = window.__LOAD_REMOTE_IMAGE__ === true;
@@ -262,10 +283,7 @@ window.__xagaCaptureOnTimeout = function () {
     window.__TAURI_INTERNALS__
       .invoke("receive_html", {
         id: window.__LOADER_ID__,
-        html:
-          mimeType === "application/pdf"
-            ? ""
-            : document.documentElement.outerHTML,
+        html: mimeType === "application/pdf" ? "" : __xagaSnapshotHtml(),
         mimeType: mimeType,
         favicon: null,
         faviconData: null,
@@ -290,7 +308,7 @@ window.__captureAndClose = function () {
   }
   __xagaFetchImages().then(function () {
     window.__TAURI_INTERNALS__.invoke("capture_and_close_loader", {
-      html: document.documentElement.outerHTML,
+      html: __xagaSnapshotHtml(),
       mimeType: mimeType,
       // URL only: this window is visible and the user may be browsing it,
       // so it is never navigated away to read the favicon's bytes.
@@ -369,7 +387,7 @@ window.addEventListener("load", function () {
         if (__xagaTimedOut) return;
         __xagaDiagnostic("images_finished");
         __xagaDiagnostic("capture_started");
-        var html = document.documentElement.outerHTML;
+        var html = __xagaSnapshotHtml();
         var favicon = __xagaFaviconUrl();
         try {
           __xagaDiagnostic("capture_sent");
@@ -427,9 +445,7 @@ window.addEventListener("load", function () {
         var spaMimeType = document.contentType || "text/html";
         notifyPageLoaded(
           window.location.href,
-          spaMimeType === "application/pdf"
-            ? ""
-            : document.documentElement.outerHTML,
+          spaMimeType === "application/pdf" ? "" : __xagaSnapshotHtml(),
           spaMimeType
         );
       }, 300);

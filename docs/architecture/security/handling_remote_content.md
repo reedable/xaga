@@ -35,7 +35,7 @@ Code: `src/text/entryWorker.ts`, `src/text/markdownPipeline.ts`, `src/text/build
 
 ### Processing (capture → markdown)
 
-The loader webview returns the page's raw DOM HTML. `processEntry` (`entryWorker.ts`) then:
+The loader webview returns a serialized snapshot of the page's DOM HTML. `processEntry` (`entryWorker.ts`) then:
 
 1. Parses it with `DOMParser` and runs Readability — both operate on an inert, non-rendered document; no scripts execute, no event handlers fire, no subresources load. (This inertness assumption is documented at the call site; if it ever stops holding, sanitization must move _before_ parsing.)
 2. **Sanitizes Readability's output with DOMPurify** — the step that removes unsafe markup from article bodies (`entryWorker.ts:68-79`). This strips `<script>`, event-handler attributes, `javascript:`/`data:` URIs, etc. The downstream HTML→markdown conversion is _not_ relied on to drop dangerous markup — that would be a side effect, not a guarantee, and a dependency upgrade could quietly change it.
@@ -45,13 +45,25 @@ The loader webview returns the page's raw DOM HTML. `processEntry` (`entryWorker
 
 Article markdown is stored in the same `{hash12}.md` files as feed entries, with the same `noyalib` frontmatter validation and serialization for title/summary/annotations (see above). Captured article bodies have been sanitized with DOMPurify; feed-supplied summaries are persisted as supplied. Reading stored content back and rendering it is a separate boundary — see [handling_persisted_content.md](handling_persisted_content.md).
 
-Readability preserves `srcset` and `<picture>` sources. The subsequent
-HTML-to-Markdown conversion uses only `img src` and ignores `<source>` candidates.
-Successful loader image capture supplies a `src` from the browser-selected
-`currentSrc` before conversion. With failed or disabled capture, an image that
-has only `srcset` can lose its URLs during conversion; a `<picture>` retains only
-its fallback `img src`. Feed summaries bypass this conversion and can retain
-responsive-image HTML.
+Before HTML leaves the loader, an inert document snapshot records each available
+browser-selected `img.currentSrc` in `data-xaga-selected-src`. Normal, deadline,
+visible capture-and-close, and SPA deliveries share this snapshot operation. It
+does not change live image sources or initiate resource acquisition.
+
+Before Readability, conversion uses the selected URL as `img src` when no
+successful capture pairing exists, then removes the snapshot attribute. If no
+selected URL is available, the existing `src` is retained; conversion does not
+select a `srcset` or `<picture>` candidate itself. Readability resolves relative
+sources against the article URL. Alternative text and titles survive conversion.
+
+Successful capture's `data-xaga-url` plus data-URI bytes remains authoritative,
+even if browser selection changes before serialization. The restored remote URL
+keys the bytes sent to persistence. Failed or disabled capture retains the
+selected remote URL in Markdown without supplying bytes. Only successful image
+writes replace those remote references with local paths.
+
+Feed summaries bypass article conversion and can retain responsive-image HTML.
+Their rendering/recovery policy and externally edited Markdown are unchanged.
 
 ## Native PDF downloads
 
