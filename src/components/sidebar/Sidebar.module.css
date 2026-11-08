@@ -37,6 +37,12 @@
     }
   }
 
+  .RefreshWrap {
+    display: inline-flex;
+    position: relative;
+    z-index: 10;
+  }
+
   .ReadOnlyBadge {
     align-self: center;
     background-color: red;

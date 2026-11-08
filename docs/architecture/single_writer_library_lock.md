@@ -50,6 +50,15 @@ use the same name (`src/hooks/useLibraryReadOnly.tsx`).
   without changing its unread status.
 - The frontend reads the mode through `is_library_read_only` and
   `library:mode-changed`, shows a read-only badge, and disables write controls.
+  Controls stay disabled until the initial mode arrives; a newer event takes
+  precedence over an older command response. Feed/article refresh, read-status
+  actions, Mark all read, annotation mutations, and Feed/Topic form writes explain
+  their unavailability. Annotation text and collection details remain inspectable.
+  Native imports start disabled and are enabled only after writer acquisition;
+  export, library switching, settings, sorting, and navigation remain available.
+  Failed form saves remain open, and annotation color/removal changes wait for
+  persistence before changing highlights. Residual refused writes use the shared
+  error surface.
 - File reads, search, and lists remain available. `EmbeddingsDb::open_readonly`
   opens an existing table without creating or migrating it. `open_writer` requires
   the library lock, which is retained across asynchronous mutations.

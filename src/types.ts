@@ -217,3 +217,14 @@ export type ArticleDiagnostic = {
   }[];
   droppedEvents: number;
 };
+
+export type FeedRefreshFailure = {
+  id: string;
+  title: string;
+  code: AppError["code"];
+  message: string;
+};
+export type FeedRefreshOutcome = {
+  feeds: Feed[];
+  failures: FeedRefreshFailure[];
+};

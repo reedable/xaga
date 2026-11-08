@@ -20,10 +20,10 @@ should participate in the existing setting-gated recovery.
 
 ## Remaining work
 
-- Reproduce responsive-only summary presentation and compare selection/rewrite
-  options, implementation costs, and limits without choosing a product policy.
-- Record findings in durable docs and present options for PO decision. Create
-  bounded follow-up stories where warranted, then delete this investigation.
+- Obtain the PO's selection/rewrite policy decision from the
+  [recovery options](../../docs/architecture/security/handling_persisted_content.md#responsive-images-in-feed-summaries-recovery-options).
+- Capture the chosen policy in bounded implementation stories, or record an
+  explicit decision to retain fallback-only behavior; then delete this spike.
 
 ## References
 

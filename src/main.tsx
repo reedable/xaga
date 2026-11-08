@@ -26,7 +26,12 @@ const platform =
     : new (await import("./platform/TauriPlatform")).TauriPlatform();
 const entryPoint = isCaptureMode ? "main" : getCurrentWindow().label;
 if (isCaptureMode) {
-  history.replaceState(null, "", "/");
+  const scenario = new URLSearchParams(location.search).get("scenario");
+  history.replaceState(
+    null,
+    "",
+    scenario ? `/?scenario=${encodeURIComponent(scenario)}` : "/"
+  );
   Object.assign(window, {
     xagaCapture: { reset: () => location.reload() },
     __XAGA_THEME_SETTING__: captureTheme,

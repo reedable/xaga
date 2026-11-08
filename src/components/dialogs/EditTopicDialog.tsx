@@ -1,3 +1,5 @@
+import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
+import { useErrorSink } from "../../hooks/useErrorSink";
 import {
   Button,
   Dialog,
@@ -40,6 +42,8 @@ export default function EditTopicDialog({
   onSave,
   onDelete,
 }: EditTopicDialogProps) {
+  const readOnly = useLibraryReadOnly();
+  const { pushError } = useErrorSink();
   const [, abortControllerRef] = useAbortController();
   const { pinnedTopicIds } = useTopics(abortControllerRef);
 
@@ -67,6 +71,7 @@ export default function EditTopicDialog({
   const handleSubmit = useCallback(
     async (e: SubmitEvent<HTMLFormElement>) => {
       e.preventDefault();
+      if (readOnly) return;
       if (!form.values.title) return;
 
       setSaving(true);
@@ -78,24 +83,28 @@ export default function EditTopicDialog({
           form.values.pinned
         );
         onClose();
+      } catch (error) {
+        pushError(error);
       } finally {
         setSaving(false);
       }
     },
-    [form.values, onClose, onSave]
+    [form.values, onClose, onSave, readOnly, pushError]
   );
 
   const handleDelete = useCallback(async () => {
-    if (!topic) return;
+    if (!topic || readOnly) return;
     setDeleting(true);
 
     try {
       await onDelete(topic);
       onClose();
+    } catch (error) {
+      pushError(error);
     } finally {
       setDeleting(false);
     }
-  }, [onClose, onDelete, topic]);
+  }, [onClose, onDelete, topic, readOnly, pushError]);
 
   const busy = saving || deleting;
 
@@ -104,15 +113,20 @@ export default function EditTopicDialog({
       <form onSubmit={handleSubmit}>
         <DialogTitle>{topic ? "Edit Topic" : "Add Topic"}</DialogTitle>
 
+        {readOnly && (
+          <p role="status">
+            This library is read-only. Changes are unavailable.
+          </p>
+        )}
         <DialogContent
           sx={{
             display: "flex",
             flexDirection: "column",
             gap: 2,
-            pt: "16px !important",
+            pt: "1rem !important",
           }}
         >
-          <TopicFormFields form={form} busy={busy} autoFocus />
+          <TopicFormFields form={form} busy={busy || readOnly} autoFocus />
         </DialogContent>
 
         <DialogActions>
@@ -120,7 +134,7 @@ export default function EditTopicDialog({
             <Button
               onClick={handleDelete}
               color="error"
-              disabled={busy}
+              disabled={busy || readOnly}
               sx={{ mr: "auto" }}
             >
               Delete
@@ -132,7 +146,7 @@ export default function EditTopicDialog({
           <Button
             type="submit"
             variant="contained"
-            disabled={!form.values.title || busy}
+            disabled={!form.values.title || busy || readOnly}
           >
             Save
           </Button>

@@ -8,25 +8,30 @@ import { subscribe } from "./useEvents";
  * command, and the `library:mode-changed` event payload — one concept, one
  * name at every layer.
  *
- * Initial value comes from the command; the event covers the startup race
- * (mode is announced once at setup and is fixed for the process's lifetime —
- * a library switch restarts the process). Defaults to `false` (writable)
- * until the first answer arrives, so write affordances don't flash disabled
- * on every launch; a read-only instance's writes are refused by the backend
- * gate regardless of what the UI shows.
+ * Write controls remain disabled until mode is known. A newer mode event wins
+ * over an older command response; backend enforcement remains authoritative.
  */
 export function useLibraryReadOnly(): boolean {
   const platform = usePlatform();
-  const [isLibraryReadOnly, setLibraryReadOnly] = useState(false);
+  const [isLibraryReadOnly, setLibraryReadOnly] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
 
-    platform.isLibraryReadOnly().then((value) => {
-      if (!cancelled) setLibraryReadOnly(value);
-    });
+    let announced = false;
+    platform
+      .isLibraryReadOnly()
+      .then((value) => {
+        if (!cancelled && !announced) setLibraryReadOnly(value);
+      })
+      .catch(() => {
+        // Unknown mode must not enable writes. Backend errors have their own sink.
+      });
     const unsubscribe = subscribe(() =>
-      platform.onLibraryModeChanged((value) => setLibraryReadOnly(value))
+      platform.onLibraryModeChanged((value) => {
+        announced = true;
+        if (!cancelled) setLibraryReadOnly(value);
+      })
     );
 
     return () => {

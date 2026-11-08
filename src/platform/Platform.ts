@@ -16,6 +16,7 @@ import type {
   RankedEntity,
   Entry,
   Feed,
+  FeedRefreshOutcome,
   Filter,
   HtmlReaderView,
   ImportOutcome,
@@ -75,7 +76,7 @@ export interface Platform {
   // Feeds
   listFeeds(signal: AbortSignal): Promise<Feed[]>;
   addFeed(signal: AbortSignal, feedUrl: string): Promise<Feed>;
-  refreshAllFeeds(signal: AbortSignal): Promise<Feed[]>;
+  refreshAllFeeds(signal: AbortSignal): Promise<FeedRefreshOutcome>;
   renameFeed(signal: AbortSignal, feedId: string, title: string): Promise<Feed>;
   removeFeed(signal: AbortSignal, feedUrl: string): Promise<string>;
 

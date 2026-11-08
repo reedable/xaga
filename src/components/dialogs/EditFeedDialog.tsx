@@ -1,3 +1,5 @@
+import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
+import { useErrorSink } from "../../hooks/useErrorSink";
 import {
   Button,
   Checkbox,
@@ -36,6 +38,8 @@ export default function EditFeedDialog({
   onSave,
   onDelete,
 }: EditFeedDialogProps) {
+  const readOnly = useLibraryReadOnly();
+  const { pushError } = useErrorSink();
   const [, abortControllerRef] = useAbortController();
   const { pinnedFeedIds } = useFeeds(abortControllerRef);
 
@@ -58,6 +62,7 @@ export default function EditFeedDialog({
   const handleSubmit = useCallback(
     async (e: SubmitEvent<HTMLFormElement>) => {
       e.preventDefault();
+      if (readOnly) return;
       setSaving(true);
 
       try {
@@ -68,24 +73,38 @@ export default function EditFeedDialog({
           await onSave(title.trim(), pinnedState);
         }
         onClose();
+      } catch (error) {
+        pushError(error);
       } finally {
         setSaving(false);
       }
     },
-    [isAdding, onAdd, onClose, onSave, pinnedState, title, url]
+    [
+      isAdding,
+      onAdd,
+      onClose,
+      onSave,
+      pinnedState,
+      title,
+      url,
+      readOnly,
+      pushError,
+    ]
   );
 
   const handleDelete = useCallback(async () => {
-    if (!feed) return;
+    if (!feed || readOnly) return;
     setDeleting(true);
 
     try {
       await onDelete(feed);
       onClose();
+    } catch (error) {
+      pushError(error);
     } finally {
       setDeleting(false);
     }
-  }, [feed, onClose, onDelete]);
+  }, [feed, onClose, onDelete, readOnly, pushError]);
 
   const busy = useMemo(() => saving || deleting, [deleting, saving]);
 
@@ -99,17 +118,23 @@ export default function EditFeedDialog({
       <form onSubmit={handleSubmit}>
         <DialogTitle>{isAdding ? "Add Feed" : "Edit Feed"}</DialogTitle>
 
+        {readOnly && (
+          <p role="status">
+            This library is read-only. Changes are unavailable.
+          </p>
+        )}
         <DialogContent
           sx={{
             display: "flex",
             flexDirection: "column",
             gap: 2,
-            pt: "16px !important",
+            pt: "1rem !important",
           }}
         >
           {isAdding ? (
             <>
               <TextField
+                disabled={readOnly || saving || deleting}
                 label="URL"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
@@ -120,6 +145,7 @@ export default function EditFeedDialog({
               />
 
               <TextField
+                disabled={readOnly || saving || deleting}
                 label="Name (optional)"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -129,6 +155,7 @@ export default function EditFeedDialog({
           ) : (
             <>
               <TextField
+                disabled={readOnly || saving || deleting}
                 label="Name"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -152,7 +179,7 @@ export default function EditFeedDialog({
               <Checkbox
                 checked={pinnedState}
                 onChange={(e) => setPinnedState(e.target.checked)}
-                disabled={busy}
+                disabled={busy || readOnly}
               />
             }
             label="Add to Shortcuts"
@@ -164,7 +191,7 @@ export default function EditFeedDialog({
             <Button
               onClick={handleDelete}
               color="error"
-              disabled={busy}
+              disabled={busy || readOnly}
               sx={{ mr: "auto" }}
             >
               Delete
@@ -178,7 +205,7 @@ export default function EditFeedDialog({
           <Button
             type="submit"
             variant="contained"
-            disabled={!canSubmit || busy}
+            disabled={!canSubmit || busy || readOnly}
           >
             {isAdding ? "Add" : "Save"}
           </Button>

@@ -8,7 +8,11 @@ import type {
   ShortcutMenuItem,
 } from "../pins";
 import type { ImageRecovery } from "../text/imageReferences";
-import { isAppError, type AppError as SerializedAppError } from "./errors";
+import {
+  ERROR_CODE,
+  isAppError,
+  type AppError as SerializedAppError,
+} from "./errors";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -28,6 +32,7 @@ import type {
   RankedEntity,
   Entry,
   Feed,
+  FeedRefreshOutcome,
   Filter,
   HtmlReaderView,
   ImportOutcome,
@@ -542,12 +547,24 @@ export class TauriPlatform implements Platform {
     return FeedSchema.transform(toFeed).parse(result);
   }
 
-  async refreshAllFeeds(signal: AbortSignal): Promise<Feed[]> {
+  async refreshAllFeeds(signal: AbortSignal): Promise<FeedRefreshOutcome> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "refresh_all_feeds" });
     const result = await invoker("refresh_all_feeds", {});
-    return z.array(FeedSchema.transform(toFeed)).parse(result);
+    return z
+      .object({
+        feeds: z.array(FeedSchema.transform(toFeed)),
+        failures: z.array(
+          z.object({
+            id: z.string(),
+            title: z.string(),
+            code: z.enum(ERROR_CODE),
+            message: z.string(),
+          })
+        ),
+      })
+      .parse(result);
   }
 
   async renameFeed(

@@ -10,6 +10,7 @@ import {
   Snackbar,
 } from "@mui/material";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useStartupFeedRefresh } from "./hooks/useStartupFeedRefresh";
 import css from "./AppLayout.module.css";
 import { EntityView } from "./components/content/EntityView";
 import EditSiteDialog from "./components/dialogs/EditSiteDialog";
@@ -32,6 +33,7 @@ import { useSidebarFilter } from "./hooks/useSidebarFilter";
 import { type Feed, type Topic, type Site, type Filter } from "./types";
 
 export function AppLayout() {
+  useStartupFeedRefresh();
   const { selectTopic, selectFeed, search } = useRouter();
   const [listFilter, setListFilter] = useState<Filter>("unread");
   const appRef = useRef<HTMLDivElement>(null);

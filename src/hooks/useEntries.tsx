@@ -1,4 +1,5 @@
 import { useCallback, useState, type RefObject } from "react";
+import { useErrorSink } from "./useErrorSink";
 import { usePlatform } from "../platform/Platform";
 import type { Entry, Feed, Filter } from "../types";
 
@@ -6,6 +7,7 @@ export default function useEntries(
   abortControllerRef: RefObject<AbortController>
 ) {
   const platform = usePlatform();
+  const { pushError } = useErrorSink();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -53,11 +55,12 @@ export default function useEntries(
         return await platform.markEntryRead(signal, entryId);
       } catch (e) {
         setError(e);
+        pushError(e);
       } finally {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, platform, pushError]
   );
 
   const markEntryUnread = useCallback(
@@ -70,11 +73,12 @@ export default function useEntries(
         return await platform.markEntryUnread(signal, entryId);
       } catch (e) {
         setError(e);
+        pushError(e);
       } finally {
         setLoading(false);
       }
     },
-    [abortControllerRef, platform]
+    [abortControllerRef, platform, pushError]
   );
 
   return {

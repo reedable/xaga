@@ -103,3 +103,7 @@ harness = false
 [[test]]
 name = "sidebar_sort_menu"
 harness = false
+
+[[test]]
+name = "library_menu"
+harness = false

@@ -196,10 +196,10 @@ export function Toolbar({
   );
 
   const toggleRead = useCallback(async () => {
-    if (!entry) return;
+    if (!entry || isLibraryReadOnly) return;
     if (entry.isUnread) await markEntryRead(entry.id);
     else await markEntryUnread(entry.id);
-  }, [entry, markEntryRead, markEntryUnread]);
+  }, [entry, markEntryRead, markEntryUnread, isLibraryReadOnly]);
 
   const handleNavigate = useCallback(
     (inputUrl: string) => {
@@ -347,12 +347,20 @@ export function Toolbar({
 
             <AddressBar url={url ?? null} onNavigate={handleNavigate} />
 
-            <Tooltip title={reloading ? "Reload in progress..." : "Refresh"}>
+            <Tooltip
+              title={
+                isLibraryReadOnly
+                  ? "This library is read-only"
+                  : reloading
+                    ? "Reload in progress..."
+                    : "Refresh"
+              }
+            >
               <span>
                 <IconButton
                   size="small"
                   onClick={reloading ? undefined : (reload ?? undefined)}
-                  disabled={!reload}
+                  disabled={!reload || isLibraryReadOnly}
                   title={reloading ? "Reload in progress..." : "Refresh"}
                   aria-label={reloading ? "Reload in progress..." : "Refresh"}
                 >
@@ -413,7 +421,10 @@ export function Toolbar({
                 {entry?.isPinned ? "Remove from Shortcuts" : "Add to Shortcuts"}
               </MenuItem>
               <MenuItem
-                disabled={!entry}
+                disabled={!entry || isLibraryReadOnly}
+                title={
+                  isLibraryReadOnly ? "This library is read-only" : undefined
+                }
                 onClick={() => {
                   setShareAnchor(null);
                   void toggleRead();

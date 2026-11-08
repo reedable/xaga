@@ -47,3 +47,5 @@ Architecture of the security-critical paths, in [security/](security/). These de
 6. [Performance trade-off](security/performance_tradeoff.md) — resource teardown as a privacy tool: per-invocation clients and single-use loader webviews are rebuilt, not pooled; conditional-GET validators are not sent (a server-writable tracking channel).
 
 7. [Embedding model trust](security/embedding_model_trust.md) — trust moved in time, not eliminated: every download verifies against a pinned manifest; the chain runs cryptographic → procedural → infrastructural → reputational, ending at the publisher and the app's own binary.
+
+[Feed refresh](feed_refresh.md) — partial outcomes, safe reporting, retry, and startup behavior.

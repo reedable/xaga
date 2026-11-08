@@ -4,6 +4,7 @@ import {
   shortcutReference,
   type ShortcutNode,
 } from "../../utils/projectPinTree";
+import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import { Clear, Refresh, Settings } from "@mui/icons-material";
 import {
   Button,
@@ -104,6 +105,7 @@ export function EntityList({
   onEditTopic,
   onEditSite,
 }: EntityListProps) {
+  const readOnly = useLibraryReadOnly();
   const location = useLocation();
   const navigationType = useNavigationType();
   const lastLocationKey = useRef(location.key);
@@ -347,10 +349,6 @@ export function EntityList({
     if (collection) selectCollection(collection);
   };
 
-  useEffect(() => {
-    if (!loadingFeeds) setRefreshSpin(false);
-  }, [loadingFeeds]);
-
   const displayEntities = useMemo(() => {
     return entities.filter((entity) =>
       entityMatchesTextFilter(entity, filterText)
@@ -494,14 +492,27 @@ export function EntityList({
     ]
   );
 
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = useCallback(async () => {
     if (tagIds !== undefined) {
       void requestEntities(selectedScope);
       return;
     }
-    refreshAllFeeds();
+    if (readOnly || refreshSpin || loadingFeeds) return;
     setRefreshSpin(true);
-  }, [tagIds, requestEntities, selectedScope, refreshAllFeeds]);
+    try {
+      await refreshAllFeeds();
+    } finally {
+      setRefreshSpin(false);
+    }
+  }, [
+    tagIds,
+    requestEntities,
+    selectedScope,
+    refreshAllFeeds,
+    refreshSpin,
+    loadingFeeds,
+    readOnly,
+  ]);
 
   const handleFilter = useCallback(
     (_event: MouseEvent<HTMLElement>, value: string) => {
@@ -511,13 +522,14 @@ export function EntityList({
   );
 
   const handleMarkEntriesRead = useCallback(async () => {
+    if (readOnly) return;
     await Promise.all(
       displayEntities
         .filter(isEntry)
         .map((entry) => entry.id)
         .map(markEntryRead)
     );
-  }, [displayEntities, markEntryRead]);
+  }, [displayEntities, markEntryRead, readOnly]);
 
   const selectedScopeRef = useRef(selectedScope);
   selectedScopeRef.current = selectedScope;
@@ -777,17 +789,30 @@ export function EntityList({
 
           {isSelectableHeader && (
             <div className={css.HeadingControl}>
-              <Tooltip title="Refresh">
-                <IconButton
-                  className={cx(
-                    css.RefreshButton,
-                    refreshSpin && css.RefreshLoading
-                  )}
-                  size="small"
-                  onClick={handleRefresh}
-                >
-                  <Refresh fontSize="small" />
-                </IconButton>
+              <Tooltip
+                title={
+                  readOnly && tagIds === undefined
+                    ? "This library is read-only"
+                    : "Refresh"
+                }
+              >
+                <span>
+                  <IconButton
+                    className={cx(
+                      css.RefreshButton,
+                      refreshSpin && css.RefreshLoading
+                    )}
+                    size="small"
+                    aria-label="Refresh collection"
+                    disabled={
+                      tagIds === undefined &&
+                      (readOnly || refreshSpin || loadingFeeds)
+                    }
+                    onClick={handleRefresh}
+                  >
+                    <Refresh fontSize="small" />
+                  </IconButton>
+                </span>
               </Tooltip>
 
               <Select
@@ -1100,7 +1125,15 @@ export function EntityList({
 
       {!articleScopeId && (
         <div className={css.Toolbar}>
-          <Button onClick={handleMarkEntriesRead}>Mark all read</Button>
+          <Tooltip
+            title={readOnly ? "This library is read-only" : "Mark all read"}
+          >
+            <span>
+              <Button disabled={readOnly} onClick={handleMarkEntriesRead}>
+                Mark all read
+              </Button>
+            </span>
+          </Tooltip>
         </div>
       )}
     </div>

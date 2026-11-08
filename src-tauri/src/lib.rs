@@ -5,6 +5,7 @@ mod commands;
 mod error;
 mod events;
 mod fetch_client;
+mod library_menu;
 mod loader_download;
 mod loader_identity;
 mod native;
@@ -802,7 +803,7 @@ pub fn run() {
                         app,
                         "import_feeds",
                         "Import Feeds From OPML\u{2026}",
-                        true,
+                        false,
                         None::<&str>,
                     )?,
                     &MenuItem::with_id(
@@ -817,7 +818,7 @@ pub fn run() {
                         app,
                         "import_bookmarks",
                         "Import Bookmarks\u{2026}",
-                        true,
+                        false,
                         None::<&str>,
                     )?,
                     &MenuItem::with_id(
@@ -1162,6 +1163,7 @@ pub fn run() {
             let line_height = settings.html_reader_line_height.unwrap_or(1.75);
             let show_sidebar = settings.show_sidebar.unwrap_or(true);
             let sidebar_sort = settings.sidebar_sort.unwrap_or_default();
+            library_menu::update_imports(app.handle(), service_lock.is_some())?;
             // Announce the mode to any already-loaded frontend; late-loading frontends
             // read it via the `is_library_read_only` command instead. Mode is fixed for
             // the process's lifetime (a library switch restarts the process).

@@ -29,15 +29,11 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
   const createTopic = useCallback(
     async (topic: CreateTopicInput) => {
       const signal = abortControllerRef.current.signal;
-      try {
-        const created = await platform.createTopic(signal, topic);
-        setTopics((prev) => [...prev, created].sort(sortByUnreadCount));
-        return created;
-      } catch (e) {
-        pushError(e);
-      }
+      const created = await platform.createTopic(signal, topic);
+      setTopics((prev) => [...prev, created].sort(sortByUnreadCount));
+      return created;
     },
-    [abortControllerRef, platform, pushError, setTopics]
+    [abortControllerRef, platform, setTopics]
   );
 
   const createTopicWithMember = useCallback(
@@ -63,25 +59,17 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
   const saveTopic = useCallback(
     async (topic: Topic) => {
       const signal = abortControllerRef.current.signal;
-      try {
-        return await platform.saveTopic(signal, topic);
-      } catch (e) {
-        pushError(e);
-      }
+      return await platform.saveTopic(signal, topic);
     },
-    [abortControllerRef, platform, pushError]
+    [abortControllerRef, platform]
   );
 
   const deleteTopic = useCallback(
     async (id: string) => {
       const signal = abortControllerRef.current.signal;
-      try {
-        await platform.deleteTopic(signal, id);
-      } catch (e) {
-        pushError(e);
-      }
+      await platform.deleteTopic(signal, id);
     },
-    [abortControllerRef, platform, pushError]
+    [abortControllerRef, platform]
   );
 
   const listTopicEntities = useCallback(

@@ -57,11 +57,32 @@ pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, A
     Ok(feed)
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct FeedRefreshFailure {
+    pub id: String,
+    pub title: String,
+    pub code: String,
+    pub message: String,
+}
+#[derive(Debug, Default, serde::Serialize)]
+pub struct FeedRefreshOutcome {
+    pub feeds: Vec<Feed>,
+    pub failures: Vec<FeedRefreshFailure>,
+}
+fn feed_refresh_failure(id: String, title: String, error: &feeds::FeedError) -> FeedRefreshFailure {
+    FeedRefreshFailure {
+        id,
+        title,
+        code: error.code().to_owned(),
+        message: error.user_message().to_owned(),
+    }
+}
+
 #[tauri::command]
 pub async fn refresh_all_feeds(
     window: tauri::Window,
     state: State<'_, AppState>,
-) -> Result<Vec<Feed>, AppError> {
+) -> Result<FeedRefreshOutcome, AppError> {
     let library = state.library_path();
     let writer = crate::commands::require_writer(&state)?;
     let timeout_secs = *state.feed_timeout_secs.read().unwrap();
@@ -86,9 +107,9 @@ pub async fn refresh_all_feeds(
         max_body_bytes,
     )
     .await;
-    let mut refreshed = Vec::new();
+    let mut outcome = FeedRefreshOutcome::default();
 
-    for (id, result) in results {
+    for (id, title, result) in results {
         match result {
             Ok((feed, created)) => {
                 // User-initiated CRUD: the user clicked Refresh and is waiting, so the entry
@@ -102,10 +123,15 @@ pub async fn refresh_all_feeds(
                     &window,
                     xaga_core::events::DomainEvent::FeedRefreshed(feed.clone()),
                 );
-                refreshed.push(feed);
+                outcome.feeds.push(feed);
             }
 
-            Err(e) => log::warn!("refresh_all_feeds {id}: {e}"),
+            Err(error) => {
+                log::warn!("refresh_all_feeds {id}: {error}");
+                outcome
+                    .failures
+                    .push(feed_refresh_failure(id, title, &error));
+            }
         }
     }
 
@@ -114,7 +140,7 @@ pub async fn refresh_all_feeds(
     // per-feed unread-count patch.
     crate::events::emit_domain(&window, xaga_core::events::DomainEvent::FeedsRefreshed);
 
-    Ok(refreshed)
+    Ok(outcome)
 }
 
 #[tauri::command]
@@ -197,4 +223,31 @@ pub async fn list_entries(
         .map_err(|e| e.to_string())?;
     xaga_core::query::filter::sort_entities(&mut entities);
     Ok(entities)
+}
+
+#[cfg(test)]
+mod refresh_tests {
+    use super::*;
+    #[test]
+    fn failures_retain_identity_and_safe_reason_without_diagnostics() {
+        let error = feeds::FeedError::FeedParse("private parser fragment".into());
+        let failure = feed_refresh_failure("id".into(), "Named feed".into(), &error);
+        let value = serde_json::to_value(&failure).unwrap();
+        assert_eq!(value["title"], "Named feed");
+        assert_eq!(value["id"], "id");
+        assert_eq!(value["code"], "feed:parse");
+        assert_eq!(value["message"], error.user_message());
+        assert!(!value.to_string().contains("private parser fragment"));
+        let outcome = FeedRefreshOutcome {
+            feeds: vec![],
+            failures: vec![failure],
+        };
+        assert_eq!(
+            serde_json::to_value(outcome).unwrap()["failures"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+    }
 }

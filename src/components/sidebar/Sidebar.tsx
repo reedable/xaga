@@ -7,7 +7,7 @@ import {
   TextField,
   Tooltip,
 } from "@mui/material";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ALL_ENTITIES } from "../../Shortcuts";
 import { useAllEntitiesCounts } from "../../hooks/useAllEntitiesCounts";
 import useRouter from "../../hooks/useRouter";
@@ -93,31 +93,17 @@ export function Sidebar({
     [setExpandedList]
   );
 
-  const stopRequestedRef = useRef(false);
-  const iidRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [spin, setSpin] = useState(false);
 
-  const handleRefreshAllFeeds = () => {
-    refreshAllFeeds();
+  const handleRefreshAllFeeds = async () => {
+    if (spin || loading) return;
     setSpin(true);
-
-    iidRef.current = setInterval(() => {
-      if (stopRequestedRef.current) {
-        setSpin(false);
-        clearInterval(iidRef.current);
-      }
-    }, 1000);
-  };
-
-  useEffect(() => {
-    return () => clearTimeout(iidRef.current);
-  }, []);
-
-  useEffect(() => {
-    if (!loading) {
-      stopRequestedRef.current = true;
+    try {
+      await refreshAllFeeds();
+    } finally {
+      setSpin(false);
     }
-  }, [loading]);
+  };
 
   return (
     <div className={cx(className, css.Sidebar)}>
@@ -131,14 +117,22 @@ export function Sidebar({
           className={css.ToolbarButton}
           menuAnchor={() => toolbarRef.current}
         />
-        <Tooltip title="Refresh">
+        <Tooltip
+          title={
+            isLibraryReadOnly
+              ? "This library is read-only"
+              : spin || loading
+                ? "Refresh in progress…"
+                : "Refresh"
+          }
+        >
           {/* span keeps the Tooltip working when the button is disabled */}
           <span className={css.RefreshWrap}>
             <IconButton
               className={cx(css.ToolbarButton, spin && css.Loading)}
               size="small"
               aria-label="Refresh"
-              disabled={isLibraryReadOnly}
+              disabled={isLibraryReadOnly || spin || loading}
               onClick={() => handleRefreshAllFeeds()}
             >
               <Refresh fontSize="small" />

@@ -20,12 +20,23 @@ export class MockPlatform implements Platform {
   private data = createFixtures();
   private pins: PinTarget[] = [{ type: "topic", id: "observations" }];
   private sequence = 0;
+  private refreshAttempts = 0;
+  private scenario = new URLSearchParams(location.search).get("scenario");
   private listeners = new Map<EventName, Set<(value: never) => void>>();
   private theme = "light";
   private sidebarSort: SidebarSortMode = "unread";
 
   constructor(theme: "light" | "dark" = "light") {
     this.theme = theme;
+    if (["refresh-failure", "refresh-all-fail"].includes(this.scenario ?? "")) {
+      this.data.feeds.push({
+        ...this.data.feeds[0],
+        id: "workshop",
+        title: "Workshop",
+        url: additionalFeedUrl,
+        members: [],
+      });
+    }
     if (localStorage.getItem("xaga-capture-sidebar-sort") === "alphabetical")
       this.sidebarSort = "alphabetical";
   }
@@ -124,7 +135,13 @@ export class MockPlatform implements Platform {
     return value;
   }
   getLibrary: Platform["getLibrary"] = async () => "/examples/Capture library";
-  isLibraryReadOnly: Platform["isLibraryReadOnly"] = async () => false;
+  isLibraryReadOnly: Platform["isLibraryReadOnly"] = async () => {
+    if (this.scenario === "read-only-delayed")
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    return (
+      this.scenario === "read-only" || this.scenario === "read-only-delayed"
+    );
+  };
   embeddingStartupState: Platform["embeddingStartupState"] = async () =>
     "available";
   setWindowTitle: Platform["setWindowTitle"] = async (title) => {
@@ -194,7 +211,9 @@ export class MockPlatform implements Platform {
   readArticleScope: Platform["readArticleScope"] = async (_signal, id) =>
     this.project(this.article(id));
   readArticle: Platform["readArticle"] = async (_signal, id) =>
-    this.entryChange(id, { isUnread: false }, "onUnreadChanged");
+    this.scenario === "read-only" || this.scenario === "read-only-delayed"
+      ? this.project(this.article(id))
+      : this.entryChange(id, { isUnread: false }, "onUnreadChanged");
   findArticle: Platform["findArticle"] = async (_signal, url) => {
     const a = this.data.articles.find((a) => a.url === url);
     return a ? this.project(a) : null;
@@ -464,6 +483,15 @@ export class MockPlatform implements Platform {
   getTheme: Platform["getTheme"] = async () => this.theme;
   setTheme: Platform["setTheme"] = async (theme) => {
     this.theme = theme;
+    if (["refresh-failure", "refresh-all-fail"].includes(this.scenario ?? "")) {
+      this.data.feeds.push({
+        ...this.data.feeds[0],
+        id: "workshop",
+        title: "Workshop",
+        url: additionalFeedUrl,
+        members: [],
+      });
+    }
     if (localStorage.getItem("xaga-capture-sidebar-sort") === "alphabetical")
       this.sidebarSort = "alphabetical";
     this.emit("onThemeChangedFromSettings", theme);
@@ -505,7 +533,8 @@ export class MockPlatform implements Platform {
     this.prefs.lineHeight = value;
     this.emit("onHtmlReaderLineHeightChanged", value);
   };
-  getRefreshOnStartup: Platform["getRefreshOnStartup"] = async () => false;
+  getRefreshOnStartup: Platform["getRefreshOnStartup"] = async () =>
+    this.scenario === "startup-refresh-failure";
   getInlinePdfReader: Platform["getInlinePdfReader"] = async () => false;
   getLoadRemoteImage: Platform["getLoadRemoteImage"] = async () => false;
   getImportMaxBytes: Platform["getImportMaxBytes"] = async () => 10485760;
@@ -520,8 +549,44 @@ export class MockPlatform implements Platform {
     this.unsupported("Opening external links");
   setLibrary: Platform["setLibrary"] = async () =>
     this.unsupported("Library selection");
-  refreshAllFeeds: Platform["refreshAllFeeds"] = async () =>
-    this.unsupported("Live feed refresh");
+  refreshAllFeeds: Platform["refreshAllFeeds"] = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    this.refreshAttempts += 1;
+    if (this.scenario === "refresh-refused")
+      throw {
+        code: "library:read-only",
+        message: "This library is read-only.",
+        detail: "Synthetic refusal",
+      };
+    const failures =
+      this.refreshAttempts === 1 &&
+      [
+        "refresh-failure",
+        "startup-refresh-failure",
+        "refresh-all-fail",
+      ].includes(this.scenario ?? "")
+        ? this.data.feeds
+            .filter(
+              (_feed, index) =>
+                this.scenario === "refresh-all-fail" || index === 0
+            )
+            .map((feed) => ({
+              id: feed.id,
+              title: feed.title,
+              code: "feed:http" as const,
+              message: "Couldn't reach this feed.",
+            }))
+        : [];
+    const feeds =
+      this.scenario === "refresh-all-fail" && failures.length
+        ? []
+        : this.data.feeds.filter(
+            (feed) => !failures.some((failure) => failure.id === feed.id)
+          );
+    feeds.forEach((feed) => this.emit("onFeedRefreshed", feed));
+    this.emit("onFeedsRefreshed", undefined);
+    return { feeds, failures };
+  };
   openStoredPdf: Platform["openStoredPdf"] = async () =>
     this.unsupported("Opening PDFs");
   readStoredPdf: Platform["readStoredPdf"] = async () => null;

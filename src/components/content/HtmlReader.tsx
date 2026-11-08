@@ -66,10 +66,10 @@ interface HtmlReaderProps {
   onReplaceAnnotation?: (
     oldId: string,
     annotation: Omit<Annotation, "createdAt" | "updatedAt" | "__kind">
-  ) => void;
+  ) => Promise<void> | void;
   onRemoveAnnotation?: (
     annotation: Pick<Annotation, "id" | "reference">
-  ) => void;
+  ) => Promise<void> | void;
 }
 
 export function HtmlReader({
@@ -146,70 +146,82 @@ export function HtmlReader({
   );
 
   const handleChangeTooltip = useCallback(
-    (color: string | null, note: string) => {
-      if (!tooltip || !entryId) return;
+    async (color: string | null, note: string) => {
+      if (!tooltip || !entryId || isLibraryReadOnly || savingTooltip.current)
+        return;
+      savingTooltip.current = true;
+      try {
+        // A color change on an already-saved annotation (tooltip.color non-null) is
+        // delete/create, not an update: the annotation is replaced under a new id —
+        // color is part of its identity — so a crash-stranded change is visible to the
+        // backend's id-set diffs. First save of a fresh selection keeps the minted id.
+        const isRecolor =
+          color !== null && tooltip.color !== null && color !== tooltip.color;
+        const id = isRecolor ? createAnnotationId() : tooltip.annotationId;
 
-      // A color change on an already-saved annotation (tooltip.color non-null) is
-      // delete/create, not an update: the annotation is replaced under a new id —
-      // color is part of its identity — so a crash-stranded change is visible to the
-      // backend's id-set diffs. First save of a fresh selection keeps the minted id.
-      const isRecolor =
-        color !== null && tooltip.color !== null && color !== tooltip.color;
-      const id = isRecolor ? createAnnotationId() : tooltip.annotationId;
+        if (isRecolor) {
+          await onReplaceAnnotation?.(tooltip.annotationId, {
+            id,
+            title: tooltip.text.join(" "),
+            reference: entryId,
+            text: tooltip.text,
+            occurrence: tooltip.occurrence,
+            color: color as string,
+            content: note,
+          });
+        } else if (color !== null && color !== tooltip.color) {
+          await onSaveAnnotation?.({
+            id,
+            title: tooltip.text.join(" "),
+            reference: entryId,
+            text: tooltip.text,
+            occurrence: tooltip.occurrence,
+            color,
+            content: note,
+          });
+        } else if (color === null && tooltip.color !== null) {
+          await onRemoveAnnotation?.({
+            id: tooltip.annotationId,
+            reference: entryId,
+          });
+        }
 
-      if (tooltip.occurrence.length > 0) {
-        iframeRef.current?.contentWindow?.postMessage(
-          { type: "remove-highlight", annotationId: tooltip.annotationId },
-          "*"
-        );
-        if (color !== null) {
+        if (tooltip.occurrence.length > 0) {
           iframeRef.current?.contentWindow?.postMessage(
-            {
-              type: "apply-highlights",
-              annotations: [
-                {
-                  id,
-                  text: tooltip.text,
-                  occurrence: tooltip.occurrence,
-                  color,
-                  note: note || null,
-                },
-              ],
-            },
+            { type: "remove-highlight", annotationId: tooltip.annotationId },
             "*"
           );
+          if (color !== null) {
+            iframeRef.current?.contentWindow?.postMessage(
+              {
+                type: "apply-highlights",
+                annotations: [
+                  {
+                    id,
+                    text: tooltip.text,
+                    occurrence: tooltip.occurrence,
+                    color,
+                    note: note || null,
+                  },
+                ],
+              },
+              "*"
+            );
+          }
         }
-      }
 
-      if (isRecolor) {
-        onReplaceAnnotation?.(tooltip.annotationId, {
-          id,
-          title: tooltip.text.join(" "),
-          reference: entryId,
-          text: tooltip.text,
-          occurrence: tooltip.occurrence,
-          color: color as string,
-          content: note,
-        });
-      } else if (color !== null && color !== tooltip.color) {
-        void onSaveAnnotation?.({
-          id,
-          title: tooltip.text.join(" "),
-          reference: entryId,
-          text: tooltip.text,
-          occurrence: tooltip.occurrence,
-          color,
-          content: note,
-        });
-      } else if (color === null && tooltip.color !== null) {
-        onRemoveAnnotation?.({ id: tooltip.annotationId, reference: entryId });
+        setTooltip((prev) =>
+          prev ? { ...prev, annotationId: id, color, note } : null
+        );
+      } catch (error) {
+        pushError(error);
+      } finally {
+        savingTooltip.current = false;
       }
-
-      setTooltip((prev) =>
-        prev ? { ...prev, annotationId: id, color, note } : null
-      );
     },
     [
+      isLibraryReadOnly,
+      pushError,
       tooltip,
       onSaveAnnotation,
       onReplaceAnnotation,

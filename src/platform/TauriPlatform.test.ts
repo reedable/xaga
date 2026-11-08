@@ -546,3 +546,21 @@ it("validates the shared sidebar sort and delivers committed native changes", as
   handler({ event: "settings:sidebar-sort", id: 0, payload: "invalid" });
   expect(listener).toHaveBeenCalledTimes(1);
 });
+
+it("decodes typed per-feed refresh failures and successful empty passes", async () => {
+  const failure = {
+    id: "notes",
+    title: "Field notes",
+    code: "feed:http",
+    message: "Couldn't reach this feed.",
+  };
+  invokeMock.mockResolvedValueOnce({ feeds: [], failures: [failure] });
+  expect(
+    await new TauriPlatform().refreshAllFeeds(new AbortController().signal)
+  ).toEqual({ feeds: [], failures: [failure] });
+  expect(invokeMock).toHaveBeenLastCalledWith("refresh_all_feeds", {});
+  invokeMock.mockResolvedValueOnce({ feeds: [], failures: [] });
+  expect(
+    await new TauriPlatform().refreshAllFeeds(new AbortController().signal)
+  ).toEqual({ feeds: [], failures: [] });
+});

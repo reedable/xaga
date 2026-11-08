@@ -1,3 +1,6 @@
+vi.mock("../../hooks/useLibraryReadOnly", () => ({
+  useLibraryReadOnly: () => false,
+}));
 import type { ShortcutNode } from "../../utils/projectPinTree";
 import {
   act,

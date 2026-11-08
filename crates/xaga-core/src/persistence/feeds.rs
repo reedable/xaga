@@ -322,7 +322,7 @@ pub async fn refresh_all_feeds(
     bookmarked: &HashSet<String>,
     timeout_secs: u64,
     max_body_bytes: u64,
-) -> Vec<(String, Result<(Feed, Vec<Article>)>)> {
+) -> Vec<(String, String, Result<(Feed, Vec<Article>)>)> {
     // Walk + parse each `.atom` once; the parsed feed flows straight into the refresh, so we
     // never re-read the file it was just walked from.
     let mut feeds: Vec<(String, Atom)> = Vec::new();
@@ -339,6 +339,7 @@ pub async fn refresh_all_feeds(
     let mut results = Vec::with_capacity(feeds.len());
 
     for (id, mut existing) in feeds {
+        let title = existing.title().value.clone();
         let result: Result<(Feed, Vec<Article>)> = async {
             let new_entries =
                 fetch_and_merge(client, &mut existing, &id, timeout_secs, max_body_bytes).await?;
@@ -353,7 +354,7 @@ pub async fn refresh_all_feeds(
             ))
         }
         .await;
-        results.push((id, result));
+        results.push((id, title, result));
     }
 
     results
@@ -661,6 +662,53 @@ mod tests {
             matches!(err, FeedError::BodyTooLarge { max_bytes, .. } if max_bytes == cap),
             "expected BodyTooLarge, got: {err:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn refresh_pass_retains_success_and_identifies_failed_feed() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = dir.path();
+        tokio::fs::create_dir_all(crate::library::feeds_dir(library))
+            .await
+            .unwrap();
+        let (port, _request) = serve_once(xml_response(TINY_XML, false));
+        let client = reqwest::Client::new();
+        for (id, title, url) in [
+            ("good", "Working feed", format!("http://127.0.0.1:{port}/")),
+            ("bad", "Unavailable feed", "https://[invalid".to_owned()),
+        ] {
+            let mut atom = seed_atom(id.into(), url);
+            atom.set_title(title);
+            write_feed_atom(library, id, &atom, false, WriteToken::for_test())
+                .await
+                .unwrap();
+        }
+        let writer = LibraryWriter::start(
+            library.to_path_buf(),
+            crate::library::acquire_lock(library).unwrap(),
+        );
+        let results = refresh_all_feeds(
+            &client,
+            library,
+            &writer,
+            &HashSet::new(),
+            &HashSet::new(),
+            2,
+            1 << 20,
+        )
+        .await;
+        assert_eq!(results.len(), 2);
+        let success = results.iter().find(|(id, _, _)| id == "good").unwrap();
+        let (feed, articles) = success.2.as_ref().unwrap();
+        assert_eq!(feed.id, "good");
+        assert!(
+            articles.is_empty(),
+            "no-new-article refresh is still successful"
+        );
+        let failure = results.iter().find(|(id, _, _)| id == "bad").unwrap();
+        assert_eq!(failure.1, "Unavailable feed");
+        assert!(failure.2.is_err());
+        writer.shutdown().await;
     }
 
     /// A refresh commit (`require_exists = true`) must NOT recreate a feed the user removed

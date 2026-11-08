@@ -1,6 +1,12 @@
 import { useCallback, useContext, useEffect, type RefObject } from "react";
 import { usePlatform } from "../platform/Platform";
 import FeedsContext from "../providers/FeedsContext";
+import { isAbortError } from "../types";
+import { useErrorSink } from "./useErrorSink";
+import {
+  feedRefreshError,
+  feedRefreshRequestError,
+} from "../utils/feedRefreshError";
 import type { Feed } from "../types";
 import { debounced, decorate } from "../utils/Decorator";
 import sortByUnreadCount from "../utils/sortByUnreadCount";
@@ -27,6 +33,7 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
   } = context;
 
   const platform = usePlatform();
+  const { pushError } = useErrorSink();
   const { listFeeds } = useSidebar(abortControllerRef);
 
   const refreshAllFeeds = useCallback(
@@ -40,14 +47,30 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
         // One backend call refreshes every feed; mark them all loading for its duration.
         setLoadingSet(new Set(list.map((feed) => feed.id)));
         const refreshed = await platform.refreshAllFeeds(signal);
-        refreshed?.forEach((feed) => cb(feed));
+        if (signal.aborted) return;
+        setFeeds((current) =>
+          current.map(
+            (feed) =>
+              refreshed.feeds.find((updated) => updated.id === feed.id) ?? feed
+          )
+        );
+        refreshed.feeds.forEach((feed) => cb(feed));
+        if (refreshed.failures.length) {
+          const failure = feedRefreshError(refreshed.failures);
+          setError(failure);
+          pushError(failure);
+        }
       } catch (e) {
-        setError(e);
+        if (!signal.aborted && !isAbortError(e)) {
+          const failure = feedRefreshRequestError(e);
+          setError(failure);
+          pushError(failure);
+        }
       } finally {
         setLoadingSet(new Set());
       }
     },
-    [abortControllerRef, platform, setError, setLoadingSet]
+    [abortControllerRef, platform, setError, setLoadingSet, setFeeds, pushError]
   );
 
   const addFeed = useCallback(
@@ -58,6 +81,7 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
         return await platform.addFeed(signal, feedUrl);
       } catch (e) {
         setError(e);
+        throw e;
       }
     },
     [abortControllerRef, platform, setError]
@@ -71,6 +95,7 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
         return await platform.renameFeed(signal, feedId, title);
       } catch (e) {
         setError(e);
+        throw e;
       }
     },
     [abortControllerRef, platform, setError]
@@ -84,6 +109,7 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
         return await platform.removeFeed(signal, feedUrl);
       } catch (e) {
         setError(e);
+        throw e;
       }
     },
     [abortControllerRef, platform, setError]

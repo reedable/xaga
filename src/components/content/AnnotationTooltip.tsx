@@ -1,3 +1,4 @@
+import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import { InfoOutlined } from "@mui/icons-material";
 import {
   ClickAwayListener,
@@ -32,6 +33,7 @@ export function AnnotationTooltip({
   onOpenInspector,
   inspectorOpen,
 }: AnnotationTooltipProps) {
+  const readOnly = useLibraryReadOnly();
   const initialNote = note ?? "";
   const [noteValue, setNoteValue] = useState(initialNote);
 
@@ -76,8 +78,14 @@ export function AnnotationTooltip({
         style={{ top: position.y, left: position.x }}
       >
         <div className={css.Body}>
+          {readOnly && (
+            <p>
+              This library is read-only. Annotation changes are unavailable.
+            </p>
+          )}
           {color !== null && (
             <TextField
+              slotProps={{ input: { readOnly } }}
               multiline
               minRows={1}
               maxRows={6}
@@ -85,6 +93,7 @@ export function AnnotationTooltip({
               variant="standard"
               value={noteValue}
               onChange={(e) => {
+                if (readOnly) return;
                 setNoteValue(e.target.value);
                 onChange(color, e.target.value);
               }}
@@ -96,6 +105,7 @@ export function AnnotationTooltip({
 
           <div className={css.ColorRow}>
             <ColorSwatches
+              disabled={readOnly}
               color={color}
               onChange={(next) => onChange(next, noteValue)}
             />

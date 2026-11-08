@@ -171,6 +171,76 @@ with the separate bundled macOS Downloads authorization procedure. Missing
 hash-only local references cannot initiate automatic repair: the source URL is
 not retained. Explicit article refresh can reacquire resources found on the page.
 
+## Responsive images in feed summaries: recovery options
+
+This is an investigation of a current limitation, not an approved recovery policy.
+Feed ingestion preserves supplied summary HTML. The article loader's selected-URL
+snapshot does not apply: a summary is stored markup, with no live publisher page
+or browser-selected `currentSrc` at ingestion.
+
+The synthetic fixtures in `src/text/summaryResponsiveImages.test.ts` reproduce
+these results using the production discovery, conversion, and preparation functions:
+
+| Summary markup                                             | Recovery discovers                            | Reading pane before recovery                         |
+| ---------------------------------------------------------- | --------------------------------------------- | ---------------------------------------------------- |
+| `img srcset` with density alternatives, no `src`           | Nothing                                       | Alternative text/unavailable presentation            |
+| `img srcset` with width alternatives and `sizes`, no `src` | Nothing                                       | Alternative text/unavailable presentation            |
+| `picture` with media alternatives and no fallback `src`    | Nothing                                       | Alternative text/unavailable presentation            |
+| `picture` with format alternatives and fallback `src`      | Only the fallback                             | Alternative text until fallback recovery succeeds    |
+| Relative fallback `src` with density alternatives          | Absolute URL resolved against the article URL | Alternative text until fallback recovery succeeds    |
+| Already-local fallback plus remote responsive alternatives | No remote candidate                           | Local fallback, with responsive alternatives removed |
+
+Unsupported type alternatives do not prevent discovery of an ordinary fallback.
+This does not establish that any proposed candidate can be decoded: acquisition
+validation and rendering failure handling remain necessary. These fixtures
+establish behavior, not how prevalent these patterns are in real subscriptions.
+
+The [HTML image selection model](https://html.spec.whatwg.org/multipage/images.html#selecting-an-image-source)
+depends on more than URL order: density, source size, media conditions, supported
+formats, and the user agent's selection behavior matter. A first/largest-URL
+heuristic would be a new product policy, not equivalent browser selection.
+
+Three bounded choices are available:
+
+| Choice                                        | User-visible behavior                                                             | Cost and limits                                                                                                                                     |
+| --------------------------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keep fallback-only recovery                   | Summaries without `img src` continue to show alternative text                     | No new selection or acquisition; responsive-only gap remains                                                                                        |
+| Recover one selected image per image position | A successful recovery replaces the unavailable presentation with one cached image | Needs an explicit selection environment and fallback policy; saved choice does not adapt after viewport/DPR changes                                 |
+| Preserve and localize responsive alternatives | Local candidates can vary with viewport/media/type support                        | Multiple acquisitions, budgets and deduplication; parser-aware rewriting and renderer changes; largest privacy and compatibility verification scope |
+
+For a single-image policy, density candidates need a target density; width
+candidates also need a defined source size. Media alternatives need a defined
+viewport/environment, and type alternatives need capability checks and a rule
+for failed decoding. Relative candidates must resolve against the same article
+URL used by current recovery. An isolated browser could choose more faithfully
+than a custom selector, but loading responsive markup can initiate requests
+before selection is observed. Its network behavior and layout environment would
+need native verification; the existing image-purpose loader currently acquires
+one URL, rather than selecting from a summary fragment.
+
+For persistence, inserting a chosen local `img src` while retaining responsive
+markup preserves source information, but the current renderer still strips those
+alternatives and displays the cached fallback. Flattening a whole `picture` to
+one `img` makes snapshot behavior explicit but loses the original alternatives.
+Localizing every candidate preserves responsive behavior only if preparation is
+extended to retain validated local candidates; remote candidates must still be
+removed before rendering. Today's URL-span `ImagePatch` cannot insert a missing
+`src` or replace a whole responsive structure without an extended, validated
+patch contract.
+
+Any implementation must keep **Save article images for offline viewing** as the
+acquisition gate, display available local content first, and use isolated native
+acquisition with existing validation and budgets. Failed acquisitions must leave
+stored source unchanged. A stale summary must refuse rewriting under the writer
+lane; unrelated summary text, article body, annotations and tags stay intact.
+Navigating away must not let a late result update the newly opened article.
+Reopening a successfully recovered summary should use the local resource without
+repeating acquisition. Feed ingestion and externally edited article bodies are
+outside this decision.
+
+No production behavior is changed by this investigation. A selection/rewrite
+policy must be approved before implementation is scoped.
+
 ## Preserving frontmatter during writes
 
 Markdown file framing is intentionally assembled by the application: an opening

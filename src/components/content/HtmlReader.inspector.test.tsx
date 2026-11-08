@@ -274,3 +274,39 @@ it.each(["Close", "backdrop", "Escape"])(
     expect(opener.closest("[inert]")).toBeNull();
   }
 );
+
+it("keeps annotation inspection available in read-only mode without offering changes", async () => {
+  mocks.readOnly = true;
+  await highlight();
+  expect(container.textContent).toContain("This library is read-only");
+  expect(container.querySelector("textarea")?.readOnly).toBe(true);
+  expect(button("Remove marking").disabled).toBe(true);
+  expect(button("blue").disabled).toBe(true);
+  await act(async () => button("Show annotation details").click());
+  expect(mocks.open).toHaveBeenCalled();
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(mocks.remove).not.toHaveBeenCalled();
+});
+
+it("reports a refused annotation removal without hiding the saved highlight", async () => {
+  const error = {
+    code: "library:read-only",
+    message: "This library is read-only.",
+    detail: "fixture",
+  };
+  mocks.remove.mockRejectedValueOnce(error);
+  await highlight();
+  const frame = container.querySelector("iframe")!;
+  const post = vi.spyOn(frame.contentWindow!, "postMessage");
+  await act(async () => button("Remove marking").click());
+  const confirm = Array.from(container.querySelectorAll("button")).find(
+    (control) => control.textContent === "Remove"
+  )!;
+  await act(async () => confirm.click());
+  expect(mocks.pushError).toHaveBeenCalledWith(error);
+  expect(post).not.toHaveBeenCalledWith(
+    expect.objectContaining({ type: "remove-highlight" }),
+    "*"
+  );
+  expect(button("Show annotation details")).not.toBeNull();
+});
