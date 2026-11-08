@@ -1,7 +1,7 @@
 # Xaga training
 
-Open [index.html](index.html) to choose a track. The product track has eleven lessons:
-four introductory, four applied, and three advanced. Interface and engineering
+Open [index.html](index.html) to choose a track. The product track has twelve lessons:
+four introductory, five applied, and three advanced. Interface and engineering
 each have ten lessons: three introductory, four applied, and three advanced. Each lesson includes an
 objective, explanation, Xaga example, references, and two retryable questions
 with answer-specific feedback. Lessons are freely navigable; correct answers

@@ -616,6 +616,80 @@ const TRAINING = {
         ],
       },
       {
+        id: "article-refresh",
+        level: "Applied",
+        title: "Refreshing an externally edited article",
+        objective:
+          "Explain what happens to external body edits, annotations, and tags when you refresh an article.",
+        paragraphs: [
+          "You can edit a saved article’s Markdown file in a text editor outside Xaga. If you then choose “Refresh” in the article toolbar, Xaga replaces the body with a new copy from the website. Your body edits are lost, including added text, changed links, and inserted images.",
+          "Annotations and tags you add in Xaga are preserved. To retain external body edits too, keep a separate copy before refreshing; Xaga does not merge them into the new body.",
+          "This is article refresh. Feed refresh checks subscriptions for articles.",
+        ],
+        example:
+          "You edit an article’s body outside Xaga and add an annotation and tag in Xaga. After article refresh, the annotation and tag remain, but your body edits are gone.",
+        questions: [
+          {
+            prompt:
+              "You edit an article’s Markdown body outside Xaga and add an annotation and tag in Xaga. After a successful article “Refresh”, what remains?",
+            answers: [
+              {
+                text: "The annotation and tag remain; the external body edits are lost.",
+                feedback:
+                  "Refresh replaces the body without merging external edits. Annotations and tags are preserved.",
+                correct: true,
+              },
+              {
+                text: "The annotation, tag, and external body edits all remain.",
+                feedback:
+                  "Refresh preserves annotations and tags, but replaces the body, losing external edits.",
+                correct: false,
+              },
+              {
+                text: "Only the new body remains; the annotation and tag are removed.",
+                feedback:
+                  "Replacing the body does not remove annotations or tags.",
+                correct: false,
+              },
+            ],
+          },
+          {
+            prompt:
+              "You edited an article’s body outside Xaga. You want to refresh it from the website and keep your edits for later. What should you do?",
+            answers: [
+              {
+                text: "Keep a separate copy of your edits, then use the article’s “Refresh”.",
+                feedback:
+                  "The separate copy retains your edits when refresh replaces the body.",
+                correct: true,
+              },
+              {
+                text: "Use the article’s “Refresh” and rely on Xaga to merge your edits.",
+                feedback:
+                  "Refresh replaces the body; it does not merge external edits.",
+                correct: false,
+              },
+              {
+                text: "Refresh the feeds to replace the body and retain your edits.",
+                feedback:
+                  "Feed refresh checks subscriptions. It does not replace this article’s body.",
+                correct: false,
+              },
+            ],
+          },
+        ],
+        references: [
+          {
+            title: "Manual edits and article refresh",
+            path: "../architecture/security/handling_persisted_content.md#manual-edits-and-article-refresh",
+          },
+          {
+            title: "Article refresh control",
+            path: "../../src/components/content/Toolbar.tsx",
+          },
+        ],
+      },
+      {
         id: "privacy",
         level: "Advanced",
         title: "A speed improvement can change privacy",

@@ -64,14 +64,15 @@ test("three progressive tracks, complete questions, valid references and Markdow
     assert.equal(Object.keys(p.tracks).length, 3);
     for (const [trackId, track] of Object.entries(p.tracks)) {
       const introCount = trackId === "product" ? 4 : 3;
-      assert.equal(track.lessons.length, introCount + 7);
+      const appliedCount = trackId === "product" ? 5 : 4;
+      assert.equal(track.lessons.length, introCount + appliedCount + 3);
       assert.equal(
         new Set(track.lessons.map((l) => l.id)).size,
         track.lessons.length
       );
       assert.deepEqual(Array.from(track.lessons.map((l) => l.level)), [
         ...Array(introCount).fill("Introduction"),
-        ...Array(4).fill("Applied"),
+        ...Array(appliedCount).fill("Applied"),
         ...Array(3).fill("Advanced"),
       ]);
       for (const lesson of track.lessons) {
