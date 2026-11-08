@@ -524,3 +524,25 @@ it("parses hierarchical membership and forwards typed organization through the n
   expect(listener).toHaveBeenCalledWith({ edit });
   stop();
 });
+
+it("validates the shared sidebar sort and delivers committed native changes", async () => {
+  const platform = new TauriPlatform();
+  invokeMock.mockResolvedValueOnce("alphabetical");
+  await expect(platform.getSidebarSort()).resolves.toBe("alphabetical");
+  invokeMock.mockResolvedValueOnce("invalid");
+  await expect(platform.getSidebarSort()).rejects.toThrow();
+  await platform.setSidebarSort("unread");
+  expect(invokeMock).toHaveBeenLastCalledWith("set_sidebar_sort", {
+    value: "unread",
+  });
+  const listener = vi.fn();
+  await platform.onSidebarSortChanged(listener);
+  const { listen } = await import("@tauri-apps/api/event");
+  const handler = vi
+    .mocked(listen)
+    .mock.calls.findLast(([name]) => name === "settings:sidebar-sort")![1];
+  handler({ event: "settings:sidebar-sort", id: 0, payload: "alphabetical" });
+  expect(listener).toHaveBeenCalledExactlyOnceWith("alphabetical");
+  handler({ event: "settings:sidebar-sort", id: 0, payload: "invalid" });
+  expect(listener).toHaveBeenCalledTimes(1);
+});

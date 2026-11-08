@@ -71,6 +71,7 @@ pub(crate) struct LoaderClosed {
 pub(crate) enum AppEvent {
     Error(crate::error::SerializedError),
     SettingsTheme(String),
+    SettingsSidebarSort(crate::sidebar_sort::SidebarSort),
     SettingsRefreshOnStartup(bool),
     SettingsHtmlReaderFontFamily(String),
     SettingsHtmlReaderFontSize(f64),
@@ -101,6 +102,7 @@ impl AppEvent {
         match self {
             AppEvent::Error(_) => "app:error",
             AppEvent::SettingsTheme(_) => "settings:theme",
+            AppEvent::SettingsSidebarSort(_) => "settings:sidebar-sort",
             AppEvent::SettingsRefreshOnStartup(_) => "settings:refresh-on-startup",
             AppEvent::SettingsHtmlReaderFontFamily(_) => "settings:html-reader-font-family",
             AppEvent::SettingsHtmlReaderFontSize(_) => "settings:html-reader-font-size",
@@ -165,6 +167,7 @@ pub(crate) fn emit_app<R: Runtime>(target: &impl Emitter<R>, event: AppEvent) {
     let name = event.name();
     let result = match &event {
         AppEvent::Error(v) => target.emit(name, v),
+        AppEvent::SettingsSidebarSort(v) => target.emit(name, v),
         AppEvent::SettingsTheme(v)
         | AppEvent::SettingsHtmlReaderFontFamily(v)
         | AppEvent::SettingsHtmlReaderView(v)
@@ -208,6 +211,7 @@ mod tests {
         vec![
             AppEvent::Error(crate::error::AppError::Message("test".into()).serialized()),
             AppEvent::SettingsTheme(String::new()),
+            AppEvent::SettingsSidebarSort(crate::sidebar_sort::SidebarSort::default()),
             AppEvent::SettingsRefreshOnStartup(false),
             AppEvent::SettingsHtmlReaderFontFamily(String::new()),
             AppEvent::SettingsHtmlReaderFontSize(0.0),
@@ -278,6 +282,7 @@ mod tests {
             [
                 "app:error",
                 "settings:theme",
+                "settings:sidebar-sort",
                 "settings:refresh-on-startup",
                 "settings:html-reader-font-family",
                 "settings:html-reader-font-size",

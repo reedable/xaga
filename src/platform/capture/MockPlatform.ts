@@ -1,3 +1,4 @@
+import type { SidebarSortMode } from "../../sidebarSort";
 import type { Platform } from "../Platform";
 import type { Entry, Filter, ListEntity, Topic, Annotation } from "../../types";
 import { pinKey, type PinTarget } from "../../pins";
@@ -21,9 +22,12 @@ export class MockPlatform implements Platform {
   private sequence = 0;
   private listeners = new Map<EventName, Set<(value: never) => void>>();
   private theme = "light";
+  private sidebarSort: SidebarSortMode = "unread";
 
   constructor(theme: "light" | "dark" = "light") {
     this.theme = theme;
+    if (localStorage.getItem("xaga-capture-sidebar-sort") === "alphabetical")
+      this.sidebarSort = "alphabetical";
   }
   private sidebar = true;
   private view = "reader";
@@ -460,8 +464,18 @@ export class MockPlatform implements Platform {
   getTheme: Platform["getTheme"] = async () => this.theme;
   setTheme: Platform["setTheme"] = async (theme) => {
     this.theme = theme;
+    if (localStorage.getItem("xaga-capture-sidebar-sort") === "alphabetical")
+      this.sidebarSort = "alphabetical";
     this.emit("onThemeChangedFromSettings", theme);
   };
+  getSidebarSort: Platform["getSidebarSort"] = async () => this.sidebarSort;
+  setSidebarSort: Platform["setSidebarSort"] = async (value) => {
+    localStorage.setItem("xaga-capture-sidebar-sort", value);
+    this.sidebarSort = value;
+    this.emit("onSidebarSortChanged", value);
+  };
+  onSidebarSortChanged: Platform["onSidebarSortChanged"] = (callback) =>
+    this.subscribe("onSidebarSortChanged", callback);
   getShowSidebar: Platform["getShowSidebar"] = async () => this.sidebar;
   setShowSidebar: Platform["setShowSidebar"] = async (show) => {
     this.sidebar = show;

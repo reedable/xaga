@@ -24,6 +24,7 @@ fn test_state(path: PathBuf) -> AppState {
         html_reader_font_size: shared(16.0),
         html_reader_line_height: shared(1.5),
         show_sidebar: shared(true),
+        sidebar_sort: shared(sidebar_sort::SidebarSort::default()),
         embedding_service: Arc::new(Mutex::new(None)),
         embedding_query_model: Arc::new(Mutex::new(None)),
         embedding_startup_state: shared(EmbeddingStartupState::Unavailable),

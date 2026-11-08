@@ -120,6 +120,16 @@ Tags give articles labels you choose:
 Tag assignments save as you change them. Removing a tag from one article keeps
 the tag available for other articles.
 
+## Sort sidebar collections
+
+Click **Sort collections**, immediately left of **Refresh** at the top of the
+sidebar. Choose **Sort by unread** or **Sort by name**. The same choices are
+available in the macOS **View** menu, beside **Show Sidebar**.
+
+Your choice applies to Shortcuts, Topics, Feeds, and Sites, including nested
+shortcut groups, and is remembered when you reopen Xaga. Tags stay sorted by
+name. Sorting is also available when your library is read-only.
+
 ## Keep a shortcut
 
 For an open article, choose **Share → Add to Shortcuts**. For a feed or Topic,

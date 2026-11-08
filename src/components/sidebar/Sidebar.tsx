@@ -1,3 +1,4 @@
+import SidebarSortControl from "./SidebarSortControl";
 import { Clear, Newspaper, Refresh } from "@mui/icons-material";
 import {
   IconButton,
@@ -43,6 +44,7 @@ export function Sidebar({
   onAddFeed,
   onAddTopic,
 }: SidebarProps) {
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const [, abortControllerRef] = useAbortController();
   const isLibraryReadOnly = useLibraryReadOnly();
 
@@ -119,18 +121,23 @@ export function Sidebar({
 
   return (
     <div className={cx(className, css.Sidebar)}>
-      <div className={css.Buttons}>
+      <div ref={toolbarRef} className={css.Buttons}>
         {isLibraryReadOnly && (
           <Tooltip title="This library is open in read-only mode">
             <span className={css.ReadOnlyBadge}>Read-only</span>
           </Tooltip>
         )}
+        <SidebarSortControl
+          className={css.ToolbarButton}
+          menuAnchor={() => toolbarRef.current}
+        />
         <Tooltip title="Refresh">
           {/* span keeps the Tooltip working when the button is disabled */}
           <span className={css.RefreshWrap}>
             <IconButton
-              className={cx(css.RefreshButton, spin && css.Loading)}
+              className={cx(css.ToolbarButton, spin && css.Loading)}
               size="small"
+              aria-label="Refresh"
               disabled={isLibraryReadOnly}
               onClick={() => handleRefreshAllFeeds()}
             >

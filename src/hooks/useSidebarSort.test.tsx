@@ -1,119 +1,96 @@
 import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { SidebarSection, SidebarSortMode } from "./useSidebarSort";
 import { useSidebarSort } from "./useSidebarSort";
+import type { SidebarSortMode } from "../sidebarSort";
+import { SidebarSortProvider } from "../providers/SidebarSortProvider";
 
-const storage = vi.hoisted(() => ({
-  getViewState: vi.fn(),
-  setViewState: vi.fn(),
+const mocks = vi.hoisted(() => ({
+  getSidebarSort: vi.fn(),
+  setSidebarSort: vi.fn(),
+  onSidebarSortChanged: vi.fn(),
+  pushError: vi.fn(),
 }));
-
-vi.mock("../storage/viewState", () => storage);
+vi.mock("../platform/Platform", () => ({ usePlatform: () => mocks }));
+vi.mock("./useErrorSink", () => ({ useErrorSink: () => mocks }));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-
-type SortState = readonly [SidebarSortMode, (value: SidebarSortMode) => void];
-
-let captured = new Map<SidebarSection, SortState>();
-
-function Capture({ section }: { section: SidebarSection }) {
-  const state = useSidebarSort(section);
+let root: ReturnType<typeof createRoot>;
+let changed: (value: SidebarSortMode) => void;
+let stop: ReturnType<typeof vi.fn>;
+let consumers: ReturnType<typeof useSidebarSort>[];
+function Capture({ index }: { index: number }) {
+  const value = useSidebarSort();
   useEffect(() => {
-    captured.set(section, state);
-  }, [section, state]);
+    consumers[index] = value;
+  }, [value, index]);
   return null;
 }
-
-let root: ReturnType<typeof createRoot>;
-
+async function render() {
+  await act(async () =>
+    root.render(
+      <SidebarSortProvider>
+        <Capture index={0} />
+        <Capture index={1} />
+      </SidebarSortProvider>
+    )
+  );
+}
 beforeEach(() => {
   vi.clearAllMocks();
-  captured = new Map();
-  storage.getViewState.mockResolvedValue(undefined);
-  storage.setViewState.mockResolvedValue(undefined);
+  consumers = [];
+  stop = vi.fn();
+  mocks.getSidebarSort.mockResolvedValue("unread");
+  mocks.onSidebarSortChanged.mockImplementation(async (callback) => {
+    changed = callback;
+    return stop;
+  });
+  mocks.setSidebarSort.mockImplementation(async (value) => changed(value));
   root = createRoot(document.createElement("div"));
 });
-
 afterEach(async () => {
   await act(async () => root.unmount());
 });
 
-it("defaults each section independently to unread ordering", async () => {
-  await act(async () => {
-    root.render(
-      <>
-        <Capture section="shortcuts" />
-        <Capture section="topics" />
-      </>
-    );
-  });
-
-  expect(captured.get("shortcuts")?.[0]).toBe("unread");
-  expect(captured.get("topics")?.[0]).toBe("unread");
-  expect(storage.getViewState).toHaveBeenCalledWith("sidebar.sort.shortcuts");
-  expect(storage.getViewState).toHaveBeenCalledWith("sidebar.sort.topics");
+it("starts unread, reads one shared preference, and synchronizes all consumers", async () => {
+  await render();
+  expect(consumers.map((c) => c[0])).toEqual(["unread", "unread"]);
+  expect(mocks.getSidebarSort).toHaveBeenCalledOnce();
+  await act(async () => consumers[0][1]("alphabetical"));
+  expect(mocks.setSidebarSort).toHaveBeenCalledExactlyOnceWith("alphabetical");
+  expect(consumers.map((c) => c[0])).toEqual(["alphabetical", "alphabetical"]);
+  await act(async () => changed("unread"));
+  expect(consumers.map((c) => c[0])).toEqual(["unread", "unread"]);
+  expect(mocks.setSidebarSort).toHaveBeenCalledTimes(1);
 });
-
-it("restores a valid saved selection and ignores invalid stored state", async () => {
-  storage.getViewState.mockImplementation((key: string) =>
-    Promise.resolve(
-      key === "sidebar.sort.feeds" ? "alphabetical" : "not-a-sort-mode"
-    )
-  );
-
-  await act(async () => {
-    root.render(
-      <>
-        <Capture section="feeds" />
-        <Capture section="sites" />
-      </>
-    );
-  });
-
-  expect(captured.get("feeds")?.[0]).toBe("alphabetical");
-  expect(captured.get("sites")?.[0]).toBe("unread");
+it("restores the shared choice on a subsequent mount", async () => {
+  mocks.getSidebarSort.mockResolvedValue("alphabetical");
+  await render();
+  expect(consumers.map((c) => c[0])).toEqual(["alphabetical", "alphabetical"]);
+  expect(mocks.setSidebarSort).not.toHaveBeenCalled();
 });
-
-it("persists a selection under only that section's key", async () => {
-  await act(async () => root.render(<Capture section="topics" />));
-
-  await act(async () => captured.get("topics")?.[1]("alphabetical"));
-
-  expect(captured.get("topics")?.[0]).toBe("alphabetical");
-  expect(storage.setViewState).toHaveBeenCalledWith(
-    "sidebar.sort.topics",
-    "alphabetical"
-  );
-  expect(storage.setViewState).toHaveBeenCalledTimes(1);
-});
-
-it("synchronizes mounted consumers and refuses late stored state after a user change", async () => {
-  let finish!: (value: string) => void;
-  storage.getViewState.mockImplementation(
+it("does not let a late startup read overwrite a committed menu or UI change", async () => {
+  let finish!: (mode: SidebarSortMode) => void;
+  mocks.getSidebarSort.mockImplementation(
     () =>
-      new Promise<string>((resolve) => {
+      new Promise<SidebarSortMode>((resolve) => {
         finish = resolve;
       })
   );
-  const selections: SortState[] = [];
-  function Consumers() {
-    const first = useSidebarSort("shortcuts");
-    const second = useSidebarSort("shortcuts");
-    useEffect(() => {
-      selections[0] = first;
-      selections[1] = second;
-    }, [first, second]);
-    return null;
-  }
-  await act(async () => root.render(<Consumers />));
-  await act(async () => selections[0][1]("alphabetical"));
-  expect(selections.map((state) => state[0])).toEqual([
-    "alphabetical",
-    "alphabetical",
-  ]);
+  await render();
+  await act(async () => changed("alphabetical"));
   await act(async () => finish("unread"));
-  expect(selections.map((state) => state[0])).toEqual([
-    "alphabetical",
-    "alphabetical",
-  ]);
+  expect(consumers.map((c) => c[0])).toEqual(["alphabetical", "alphabetical"]);
+});
+it("keeps the previous choice and reports failed persistence", async () => {
+  await render();
+  const error = new Error("settings write failed");
+  mocks.setSidebarSort.mockRejectedValue(error);
+  await act(async () => consumers[0][1]("alphabetical"));
+  expect(consumers[0][0]).toBe("unread");
+  expect(mocks.pushError).toHaveBeenCalledWith(error);
+});
+it("unsubscribes and ignores late reads after unmount", async () => {
+  await render();
+  await act(async () => root.render(null));
+  expect(stop).toHaveBeenCalledOnce();
 });

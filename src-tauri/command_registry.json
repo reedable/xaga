@@ -52,6 +52,8 @@
     "commands::settings::set_html_reader_font_size",
     "commands::settings::set_html_reader_line_height",
     "commands::settings::get_show_sidebar",
+    "commands::settings::get_sidebar_sort",
+    "commands::settings::set_sidebar_sort",
     "commands::settings::set_show_sidebar",
     "commands::settings::get_allowed_domains",
     "commands::settings::set_allowed_domains",

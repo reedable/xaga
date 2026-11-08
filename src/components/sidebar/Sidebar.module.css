@@ -21,16 +21,15 @@
   width: var(--width);
 
   .Buttons {
+    align-items: center;
     display: inline-flex;
-    gap: 0.5rem;
     justify-content: flex-end;
+    padding: 0.25rem 0.5rem 0 0;
     width: 100%;
   }
 
-  .RefreshButton {
-    margin: 0.25rem 0.5rem 0 0;
-    top: 0;
-    right: 0;
+  .ToolbarButton {
+    /* The window title bar overlaps this row. Keep both controls above it. */
     z-index: 10;
 
     &.Loading {
@@ -44,7 +43,7 @@
     border-radius: 0.75rem;
     color: white;
     font-size: 0.7rem;
-    margin: 0.25rem 0 0 0.5rem;
+    margin: 0 0.5rem;
     padding: 0.05rem 0.5rem;
     white-space: nowrap;
   }

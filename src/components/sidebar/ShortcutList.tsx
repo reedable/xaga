@@ -32,7 +32,6 @@ import sortSidebarCollections from "../../utils/sortSidebarCollections";
 import ExpandableList from "./ExpandableList";
 import css from "./ShortcutList.module.css";
 import SidebarEntity from "./SidebarEntity";
-import SidebarSortControl from "./SidebarSortControl";
 
 import type { PinTarget } from "../../pins";
 import MissingShortcut from "./MissingShortcut";
@@ -60,7 +59,7 @@ export default function ShortcutList({
   const { feedId, topicId, articleScopeId, siteHostname } = state;
   const [, abortControllerRef] = useAbortController();
   const { loadingFeedIds } = useFeeds(abortControllerRef);
-  const [sortMode, setSortMode] = useSidebarSort("shortcuts");
+  const [sortMode] = useSidebarSort();
   const sortedShortcuts = useMemo(
     () => sortSidebarCollections(shortcuts, sortMode),
     [shortcuts, sortMode]
@@ -91,14 +90,6 @@ export default function ShortcutList({
         </Tooltip>
       )}
     >
-      {isExpanded && (
-        <SidebarSortControl
-          label="Shortcuts"
-          sortMode={sortMode}
-          onChange={setSortMode}
-        />
-      )}
-
       <ShortcutTree
         nodes={
           hierarchy ??

@@ -88,6 +88,31 @@ retain their representation and order. Older applications cannot edit 0.12
 libraries; their version mismatch selects read-only mode. No Site membership is
 persisted or converted, and Site references never create cache entity rows.
 
+## Sidebar sorting
+
+The sidebar toolbar has one **Sort collections** button immediately left of
+Refresh. Its menu offers **Sort by unread** and **Sort by name**, with the current
+choice marked. The menu opens beside the sidebar so its collections remain
+visible while choosing their order. Matching checked commands in the macOS View menu are grouped with
+**Show Sidebar**. Both controls save through the same account-settings command;
+only a successful write updates the choice and menu checkmarks. Failures use the
+shared error presentation.
+
+The optional `sidebar_sort` account preference stores `unread` or `alphabetical`.
+Absence defaults to unread, without an eager write. Old IndexedDB
+`sidebar.sort.<section>` preferences are ignored. One `SidebarSortProvider`
+subscribes to the typed `settings:sidebar-sort` event before reading the initial
+value, so a late startup read cannot overwrite a newer change.
+
+The choice applies to Shortcuts, Topics, Feeds, and Sites, including each nested
+shortcut container and its native-menu and responsive projections. Unread sorting
+uses descending unread counts with title comparison for ties; name sorting uses
+title comparison. Groups retain recursive count semantics, and article shortcuts
+contribute zero. Sorting changes presentation only, preserving `pins.yaml` order.
+Tags stay sorted by name, and All items stays above the collection filter.
+Sorting remains available in read-only libraries because it changes an account
+preference rather than library data.
+
 ## Nested groups (0.15)
 
 Library format **0.15**, implemented by **0.15.0-dev**, adds group nodes:

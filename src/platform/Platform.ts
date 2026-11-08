@@ -1,3 +1,4 @@
+import type { SidebarSortMode } from "../sidebarSort";
 import type { ImageRecovery } from "../text/imageReferences";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { createContext, useContext } from "react";
@@ -267,6 +268,11 @@ export interface Platform {
   setHtmlReaderFontFamily(value: string): Promise<void>;
   setHtmlReaderFontSize(value: number): Promise<void>;
   setHtmlReaderLineHeight(value: number): Promise<void>;
+  getSidebarSort(): Promise<SidebarSortMode>;
+  setSidebarSort(value: SidebarSortMode): Promise<void>;
+  onSidebarSortChanged(
+    callback: (value: SidebarSortMode) => void
+  ): Promise<UnlistenFn>;
   getShowSidebar(): Promise<boolean>;
   setShowSidebar(value: boolean): Promise<void>;
 

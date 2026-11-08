@@ -1,3 +1,4 @@
+import { SidebarSortProvider } from "../providers/SidebarSortProvider";
 import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "../test/NavigationRouter";
@@ -17,6 +18,9 @@ import { ALL_ENTITIES } from "../Shortcuts";
 const mocks = vi.hoisted(() => ({
   entries: [] as Entry[],
   platform: {
+    getSidebarSort: vi.fn(),
+    setSidebarSort: vi.fn(),
+    onSidebarSortChanged: vi.fn(),
     setShortcutsMenu: vi.fn(),
     onShortcutMenuSelected: vi.fn(),
     readTopic: vi.fn(),
@@ -75,7 +79,7 @@ let topics: Topic[];
 let loaded: boolean;
 function Host() {
   const value = useRouter();
-  const [, setMode] = useSidebarSort("shortcuts");
+  const [, setMode] = useSidebarSort();
   useEffect(() => {
     router = value;
     setSort = setMode;
@@ -86,55 +90,57 @@ async function render() {
   await act(async () =>
     root.render(
       <MemoryRouter initialEntries={[{ pathname: "/", state: {} }]}>
-        <PinsContext.Provider
-          value={{
-            pins,
-            tree: tree ?? pins,
-            organizePins: vi.fn(),
-            setPin: mocks.setPin,
-          }}
-        >
-          <FeedsContext.Provider
+        <SidebarSortProvider>
+          <PinsContext.Provider
             value={{
-              feeds,
-              hasLoaded: loaded,
-              pinnedFeedIds: feeds.map((f) => f.id),
-              error: null,
-              loading: false,
-              loadingFeedIds: new Set(),
-              setError: vi.fn(),
-              setLoading: vi.fn(),
-              setLoadingSet: vi.fn(),
-              setFeeds: vi.fn(),
-              setFeedPinned: vi.fn(),
+              pins,
+              tree: tree ?? pins,
+              organizePins: vi.fn(),
+              setPin: mocks.setPin,
             }}
           >
-            <TopicsContext.Provider
+            <FeedsContext.Provider
               value={{
-                topics,
+                feeds,
                 hasLoaded: loaded,
-                pinnedTopicIds: topics.map((t) => t.id),
-                setTopics: vi.fn(),
-                setTopicPinned: vi.fn(),
-                setMembership: vi.fn(),
-                getMemberships: (_id, ids) => ids,
+                pinnedFeedIds: feeds.map((f) => f.id),
+                error: null,
+                loading: false,
+                loadingFeedIds: new Set(),
+                setError: vi.fn(),
+                setLoading: vi.fn(),
+                setLoadingSet: vi.fn(),
+                setFeeds: vi.fn(),
+                setFeedPinned: vi.fn(),
               }}
             >
-              <SitesContext.Provider
+              <TopicsContext.Provider
                 value={{
-                  sites: [],
-                  pinnedSites: pins.some((p) => p.type === "site")
-                    ? [emptySite("example.com")]
-                    : [],
+                  topics,
                   hasLoaded: loaded,
-                  refreshSites: vi.fn(),
+                  pinnedTopicIds: topics.map((t) => t.id),
+                  setTopics: vi.fn(),
+                  setTopicPinned: vi.fn(),
+                  setMembership: vi.fn(),
+                  getMemberships: (_id, ids) => ids,
                 }}
               >
-                <Host />
-              </SitesContext.Provider>
-            </TopicsContext.Provider>
-          </FeedsContext.Provider>
-        </PinsContext.Provider>
+                <SitesContext.Provider
+                  value={{
+                    sites: [],
+                    pinnedSites: pins.some((p) => p.type === "site")
+                      ? [emptySite("example.com")]
+                      : [],
+                    hasLoaded: loaded,
+                    refreshSites: vi.fn(),
+                  }}
+                >
+                  <Host />
+                </SitesContext.Provider>
+              </TopicsContext.Provider>
+            </FeedsContext.Provider>
+          </PinsContext.Provider>
+        </SidebarSortProvider>
       </MemoryRouter>
     )
   );
@@ -160,6 +166,15 @@ beforeEach(() => {
     selected = callback;
     return unlisten;
   });
+  let sortChanged: (mode: string) => void;
+  mocks.platform.getSidebarSort.mockResolvedValue("unread");
+  mocks.platform.onSidebarSortChanged.mockImplementation(async (callback) => {
+    sortChanged = callback;
+    return vi.fn();
+  });
+  mocks.platform.setSidebarSort.mockImplementation(async (value) =>
+    sortChanged(value)
+  );
   mocks.storage.getViewState.mockResolvedValue(undefined);
   mocks.storage.setViewState.mockResolvedValue(undefined);
   mocks.setPin.mockResolvedValue(undefined);

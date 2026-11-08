@@ -1,3 +1,4 @@
+import { SIDEBAR_SORT_MODES, type SidebarSortMode } from "../sidebarSort";
 import type { EntryTagChange, Tag, TagSnapshot } from "../domain";
 import type {
   PinTarget,
@@ -1434,6 +1435,23 @@ export class TauriPlatform implements Platform {
     const name = "set_html_reader_line_height";
     const invoker = decorate(invoke).with(logged, { logger, name });
     return invoker<void>(name, { value });
+  }
+
+  async getSidebarSort(): Promise<SidebarSortMode> {
+    return z.enum(SIDEBAR_SORT_MODES).parse(await invoke("get_sidebar_sort"));
+  }
+  async setSidebarSort(value: SidebarSortMode): Promise<void> {
+    return invoke("set_sidebar_sort", { value });
+  }
+  onSidebarSortChanged(
+    callback: (value: SidebarSortMode) => void
+  ): Promise<UnlistenFn> {
+    const name: AppEvent = "settings:sidebar-sort";
+    return listen<unknown>(name, (event) => {
+      const result = z.enum(SIDEBAR_SORT_MODES).safeParse(event.payload);
+      if (result.success) callback(result.data);
+      else logger.warn("Invalid sidebar sort event", result.error);
+    });
   }
 
   async getShowSidebar(): Promise<boolean> {

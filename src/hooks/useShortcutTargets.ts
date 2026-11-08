@@ -12,7 +12,7 @@ import { useMissingPins } from "./useMissingPins";
 export function useShortcutTargets() {
   const entries = usePinnedEntries();
   const { tree } = usePins();
-  const [sortMode] = useSidebarSort("shortcuts");
+  const [sortMode] = useSidebarSort();
   const feeds = useContext(FeedsContext);
   const topics = useContext(TopicsContext);
   const sites = useContext(SitesContext);

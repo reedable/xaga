@@ -307,3 +307,41 @@ mod import_limit_tests {
         }
     }
 }
+
+#[tauri::command]
+pub async fn get_sidebar_sort(
+    state: State<'_, AppState>,
+) -> Result<crate::sidebar_sort::SidebarSort, AppError> {
+    Ok(*state.sidebar_sort.read().unwrap())
+}
+
+pub(crate) fn save_sidebar_sort(
+    app: &AppHandle,
+    state: &AppState,
+    value: crate::sidebar_sort::SidebarSort,
+) -> Result<(), AppError> {
+    match update_settings(state, |s| s.sidebar_sort = Some(value))? {
+        SettingsOutcome::StaleView(fresh) => {
+            let error = stale_view_error(state, &fresh);
+            let current = *state.sidebar_sort.read().unwrap();
+            crate::sidebar_sort::update(app, current);
+            crate::events::emit_app(app, crate::events::AppEvent::SettingsSidebarSort(current));
+            Err(error)
+        }
+        SettingsOutcome::Written(_) => {
+            *state.sidebar_sort.write().unwrap() = value;
+            crate::sidebar_sort::update(app, value);
+            crate::events::emit_app(app, crate::events::AppEvent::SettingsSidebarSort(value));
+            Ok(())
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn set_sidebar_sort(
+    value: crate::sidebar_sort::SidebarSort,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), AppError> {
+    save_sidebar_sort(&app, &state, value)
+}

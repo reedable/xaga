@@ -10,7 +10,6 @@ import sortSidebarCollections from "../../utils/sortSidebarCollections";
 import ExpandableList from "./ExpandableList";
 import css from "./FeedList.module.css";
 import SidebarEntity from "./SidebarEntity";
-import SidebarSortControl from "./SidebarSortControl";
 import UnreadCount from "./UnreadCount";
 
 type FeedListProps = {
@@ -33,7 +32,7 @@ export default function FeedList({
   const { feedId } = state;
   const [, abortControllerRef] = useAbortController();
   const { loadingFeedIds } = useFeeds(abortControllerRef);
-  const [sortMode, setSortMode] = useSidebarSort("feeds");
+  const [sortMode] = useSidebarSort();
   const sortedFeeds = useMemo(
     () => sortSidebarCollections(feeds, sortMode),
     [feeds, sortMode]
@@ -67,14 +66,6 @@ export default function FeedList({
         </Tooltip>
       )}
     >
-      {isExpanded && (
-        <SidebarSortControl
-          label="Feeds"
-          sortMode={sortMode}
-          onChange={setSortMode}
-        />
-      )}
-
       {sortedFeeds.map((feed) => (
         <SidebarEntity
           collection={feed}

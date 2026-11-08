@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
 
 const mocks = vi.hoisted(() => ({
+  readOnly: false,
   selectShortcutTarget: vi.fn(),
   state: {} as { shortcutId?: string; articleScopeId?: string },
   loadingFeedIds: new Set<string>(),
@@ -21,6 +22,9 @@ const mocks = vi.hoisted(() => ({
   ],
 }));
 
+vi.mock("../../hooks/useSidebarSort", () => ({
+  useSidebarSort: () => ["unread", vi.fn()],
+}));
 vi.mock("../../providers/TagsContext", () => ({
   useTags: () => ({ tags: [], hasLoaded: true, unreadCount: 0 }),
 }));
@@ -38,7 +42,7 @@ vi.mock("../../hooks/useShortcutTargets", () => ({
   }),
 }));
 vi.mock("../../hooks/useLibraryReadOnly", () => ({
-  useLibraryReadOnly: () => false,
+  useLibraryReadOnly: () => mocks.readOnly,
 }));
 vi.mock("../../hooks/useSidebar", () => ({
   useSidebar: () => ({ expandedList: null, setExpandedList: vi.fn() }),
@@ -236,4 +240,28 @@ it("preserves All items selection and feed-loading feedback", async () => {
     item.querySelector('[role="button"]')!.classList.contains("Mui-selected")
   ).toBe(false);
   expect(item.querySelector('[role="progressbar"]')).toBeNull();
+});
+
+it("keeps the shared sort control available in a read-only library", async () => {
+  mocks.readOnly = true;
+  await act(async () =>
+    root.render(
+      <Sidebar
+        filter=""
+        onFilterChange={vi.fn()}
+        onAddFeed={vi.fn()}
+        onAddTopic={vi.fn()}
+      />
+    )
+  );
+  expect(
+    container.querySelector<HTMLButtonElement>(
+      '[aria-label="Sort collections"]'
+    )?.disabled
+  ).toBe(false);
+  expect(
+    container.querySelector<HTMLButtonElement>('button[aria-label="Refresh"]')
+      ?.disabled
+  ).toBe(true);
+  mocks.readOnly = false;
 });

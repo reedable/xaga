@@ -9,7 +9,6 @@ import { type Topic } from "../../types";
 import sortSidebarCollections from "../../utils/sortSidebarCollections";
 import ExpandableList from "./ExpandableList";
 import SidebarEntity from "./SidebarEntity";
-import SidebarSortControl from "./SidebarSortControl";
 import css from "./TopicList.module.css";
 import UnreadCount from "./UnreadCount";
 
@@ -33,7 +32,7 @@ export default function TopicList({
   const { topicId } = state;
   const [, abortControllerRef] = useAbortController();
   const { loadingFeedIds } = useFeeds(abortControllerRef);
-  const [sortMode, setSortMode] = useSidebarSort("topics");
+  const [sortMode] = useSidebarSort();
   const sortedTopics = useMemo(
     () => sortSidebarCollections(topics, sortMode),
     [sortMode, topics]
@@ -67,14 +66,6 @@ export default function TopicList({
         </Tooltip>
       )}
     >
-      {isExpanded && (
-        <SidebarSortControl
-          label="Topics"
-          sortMode={sortMode}
-          onChange={setSortMode}
-        />
-      )}
-
       {sortedTopics.map((topic) => (
         <SidebarEntity
           collection={topic}

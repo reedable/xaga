@@ -110,7 +110,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
 });
 
-it("places the control before the sorted pinned collections", async () => {
+it("renders sorted pinned collections without a per-section control", async () => {
   await act(async () => {
     root.render(
       <ShortcutList isExpanded shortcuts={shortcuts} onClickHeader={vi.fn()} />
@@ -123,7 +123,7 @@ it("places the control before the sorted pinned collections", async () => {
         element.getAttribute("data-collection-title") ??
         (element.hasAttribute("data-sort-control") ? "sort-control" : null)
     )
-  ).toEqual(["sort-control", "Alpha", "Zulu"]);
+  ).toEqual(["Alpha", "Zulu"]);
 });
 
 it("does not render the sort control while collapsed", async () => {

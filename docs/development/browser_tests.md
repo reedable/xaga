@@ -92,6 +92,13 @@ Collection browsing is checked against the complete browser history state:
 switching collections leaves it unchanged, and Back/Forward restores the
 collection captured when each article was opened, even after intervening browsing.
 
+`e2e/sidebar-sort.spec.ts` checks the shared sort control's placement and alignment,
+menu placement beside the sidebar without covering its collections, keyboard operation, checked choice, ordering across sections, and saved preference after
+reload. Provider tests cover native-event synchronization, startup races, and
+failed saves. Projection tests cover nested groups, count updates, and unchanged
+stored order. The native `sidebar_sort_menu` test verifies macOS menu construction,
+checkmark updates, enabled commands, and Cocoa action dispatch.
+
 Assertions use the visible controls and results. The capture API is used only to
 exercise its reset operation; tests do not modify mock data directly. The dataset
 and its behavior remain owned by the capture platform.

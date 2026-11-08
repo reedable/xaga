@@ -22,6 +22,9 @@ vi.mock("./platform/Platform", () => ({ usePlatform: () => mocks.platform }));
 vi.mock("./AppLayout", () => ({
   AppLayout: () => <div data-testid="app-layout" />,
 }));
+vi.mock("./providers/SidebarSortProvider", () => ({
+  SidebarSortProvider: ({ children }: { children: ReactNode }) => children,
+}));
 vi.mock("./providers/ExpandedListProvider", () => ({
   ExpandedListProvider: ({ children }: { children: ReactNode }) => children,
 }));

@@ -7,7 +7,6 @@ import sortSidebarCollections from "../../utils/sortSidebarCollections";
 import ExpandableList from "./ExpandableList";
 import css from "./SiteList.module.css";
 import SidebarEntity from "./SidebarEntity";
-import SidebarSortControl from "./SidebarSortControl";
 import UnreadCount from "./UnreadCount";
 
 type SiteListProps = {
@@ -23,7 +22,7 @@ export default function SiteList({
 }: SiteListProps) {
   const { selectSite, state } = useRouter();
   const { siteHostname } = state;
-  const [sortMode, setSortMode] = useSidebarSort("sites");
+  const [sortMode] = useSidebarSort();
   const sortedSites = useMemo(
     () => sortSidebarCollections(sites, sortMode),
     [sites, sortMode]
@@ -41,14 +40,6 @@ export default function SiteList({
       isExpanded={isExpanded}
       onClickHeader={onClickHeader}
     >
-      {isExpanded && (
-        <SidebarSortControl
-          label="Sites"
-          sortMode={sortMode}
-          onChange={setSortMode}
-        />
-      )}
-
       {sortedSites.map((site) => (
         <SidebarEntity
           collection={site}

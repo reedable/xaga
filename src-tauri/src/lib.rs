@@ -10,6 +10,7 @@ mod loader_identity;
 mod native;
 mod resource_download;
 mod shortcuts_menu;
+mod sidebar_sort;
 mod ui_network;
 #[cfg(target_os = "macos")]
 mod webview_policy;
@@ -104,6 +105,7 @@ pub(crate) struct AppState {
     pub(crate) html_reader_font_size: Arc<RwLock<f64>>,
     pub(crate) html_reader_line_height: Arc<RwLock<f64>>,
     pub(crate) show_sidebar: Arc<RwLock<bool>>,
+    pub(crate) sidebar_sort: Arc<RwLock<sidebar_sort::SidebarSort>>,
     pub(crate) embedding_service: Arc<Mutex<Option<EmbeddingService>>>,
     /// Model used by interactive text queries. Kept separately from the
     /// writer service so read-only instances can still search.
@@ -238,6 +240,7 @@ pub(crate) struct UserSettings {
     #[serde(alias = "reader_line_height")]
     pub(crate) html_reader_line_height: Option<f64>,
     pub(crate) show_sidebar: Option<bool>,
+    pub(crate) sidebar_sort: Option<sidebar_sort::SidebarSort>,
     pub(crate) allowed_domains: Option<Vec<String>>,
     pub(crate) inline_pdf_reader: Option<bool>,
     pub(crate) load_remote_image: Option<bool>,
@@ -494,6 +497,7 @@ pub(crate) fn refresh_state_from_settings(state: &AppState, s: &UserSettings) {
     *state.html_reader_font_size.write().unwrap() = s.html_reader_font_size.unwrap_or(16.0);
     *state.html_reader_line_height.write().unwrap() = s.html_reader_line_height.unwrap_or(1.75);
     *state.show_sidebar.write().unwrap() = s.show_sidebar.unwrap_or(true);
+    *state.sidebar_sort.write().unwrap() = s.sidebar_sort.unwrap_or_default();
     *state.allowed_domains.write().unwrap() = s.allowed_domains.unwrap_or_default();
     *state.inline_pdf_reader.write().unwrap() = s.inline_pdf_reader.unwrap_or(false);
     *state.html_reader_view.write().unwrap() =
@@ -670,6 +674,7 @@ pub fn run() {
     let html_reader_font_size: Arc<RwLock<f64>> = Arc::new(RwLock::new(16.0));
     let html_reader_line_height: Arc<RwLock<f64>> = Arc::new(RwLock::new(1.75));
     let show_sidebar: Arc<RwLock<bool>> = Arc::new(RwLock::new(true));
+    let sidebar_sort = Arc::new(RwLock::new(sidebar_sort::SidebarSort::default()));
     let embedding_service: Arc<Mutex<Option<EmbeddingService>>> = Arc::new(Mutex::new(None));
     let embedding_query_model: Arc<Mutex<Option<Arc<Embedder>>>> = Arc::new(Mutex::new(None));
     let embedding_startup_state = Arc::new(RwLock::new(EmbeddingStartupState::Loading));
@@ -690,6 +695,7 @@ pub fn run() {
     let setup_inline_pdf_reader = Arc::clone(&inline_pdf_reader);
     let setup_html_reader_view = Arc::clone(&html_reader_view);
     let setup_show_sidebar = Arc::clone(&show_sidebar);
+    let setup_sidebar_sort = Arc::clone(&sidebar_sort);
     let setup_library = Arc::clone(&library);
     let setup_theme = Arc::clone(&theme);
     let setup_refresh_on_startup = Arc::clone(&refresh_on_startup);
@@ -724,6 +730,7 @@ pub fn run() {
             html_reader_font_size,
             html_reader_line_height,
             show_sidebar,
+            sidebar_sort,
             embedding_service: embedding_service.clone(),
             embedding_query_model,
             embedding_startup_state,
@@ -838,6 +845,7 @@ pub fn run() {
                     &MenuItem::with_id(app, "find", "Find\u{2026}", false, Some("cmd+f"))?,
                 ],
             )?;
+            let sidebar_sort_items = sidebar_sort::build(app)?;
             let view_menu = Submenu::with_id_and_items(
                 app,
                 "view_menu",
@@ -877,6 +885,8 @@ pub fn run() {
                         true,
                         None::<&str>,
                     )?,
+                    &sidebar_sort_items[0],
+                    &sidebar_sort_items[1],
                     &PredefinedMenuItem::separator(app)?,
                     &CheckMenuItem::with_id(
                         app,
@@ -999,6 +1009,14 @@ pub fn run() {
                 };
                 update_theme_checkmarks(app, theme);
                 events::emit_app(app, events::AppEvent::MenuSetTheme(theme.to_string()));
+            }
+            id @ ("sidebar_sort_unread" | "sidebar_sort_name") => {
+                let value = sidebar_sort::selection(id).unwrap();
+                if let Err(error) = commands::settings::save_sidebar_sort(app, &app.state::<AppState>(), value) {
+                    // Native check items toggle before their handler; restore the saved state on refusal.
+                    sidebar_sort::update(app, *app.state::<AppState>().sidebar_sort.read().unwrap());
+                    events::emit_app(app, events::AppEvent::Error(error.serialized()));
+                }
             }
             "show_sidebar" => {
                 let checked = app
@@ -1143,6 +1161,7 @@ pub fn run() {
             let font_size = settings.html_reader_font_size.unwrap_or(16.0);
             let line_height = settings.html_reader_line_height.unwrap_or(1.75);
             let show_sidebar = settings.show_sidebar.unwrap_or(true);
+            let sidebar_sort = settings.sidebar_sort.unwrap_or_default();
             // Announce the mode to any already-loaded frontend; late-loading frontends
             // read it via the `is_library_read_only` command instead. Mode is fixed for
             // the process's lifetime (a library switch restarts the process).
@@ -1168,6 +1187,7 @@ pub fn run() {
             *setup_reader_font_size.write().unwrap() = font_size;
             *setup_reader_line_height.write().unwrap() = line_height;
             *setup_show_sidebar.write().unwrap() = show_sidebar;
+            *setup_sidebar_sort.write().unwrap() = sidebar_sort;
             *setup_allowed_domains.write().unwrap() = settings.allowed_domains.unwrap_or_default();
             *setup_inline_pdf_reader.write().unwrap() = settings.inline_pdf_reader.unwrap_or(false);
             let html_reader_view_str = settings.html_reader_view.unwrap_or_else(|| "reader".to_string());
@@ -1176,6 +1196,7 @@ pub fn run() {
             // Correct the menu checkmarks now that we know the persisted values.
             update_theme_checkmarks(app.handle(), &theme);
             update_show_sidebar_checkmark(app.handle(), show_sidebar);
+            sidebar_sort::update(app.handle(), sidebar_sort);
             update_view_checkmarks(app.handle(), &html_reader_view_str);
 
             // The main window is created hidden ("visible": false in
@@ -1636,6 +1657,31 @@ mod library_mode_tests {
 #[cfg(test)]
 mod settings_funnel_tests {
     use super::*;
+
+    #[test]
+    fn sidebar_sort_is_one_persisted_preference_with_unread_default() {
+        use sidebar_sort::SidebarSort;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let registry = Mutex::new(AccountLock::default());
+        let (_, baseline) =
+            update_settings_file(&registry, &path, None, |s| s.theme = Some("dark".into()))
+                .unwrap();
+        assert_eq!(
+            load_settings(&path).sidebar_sort.unwrap_or_default(),
+            SidebarSort::Unread
+        );
+        update_settings_file(&registry, &path, baseline, |s| {
+            s.sidebar_sort = Some(SidebarSort::Alphabetical)
+        })
+        .unwrap();
+        let reopened = load_settings(&path);
+        assert_eq!(reopened.sidebar_sort, Some(SidebarSort::Alphabetical));
+        assert_eq!(reopened.theme.as_deref(), Some("dark"));
+        assert!(!commands::is_write_refused("set_sidebar_sort", true));
+        assert!(commands::is_invoke_allowed("main", "set_sidebar_sort"));
+        assert!(!commands::is_invoke_allowed("loader-1", "set_sidebar_sort"));
+    }
 
     #[test]
     fn import_limit_is_persisted_without_replacing_other_settings() {

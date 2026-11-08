@@ -19,7 +19,10 @@ mode explicitly. `npm run ui:dev`, native startup, and production builds select
 
 Reload the page to reset. Automation can call `window.xagaCapture.reset()` and
 wait for the new document to load. Reset discards dataset edits, generated IDs,
-preferences, filters, sidebar expansion, selection, and navigation history. Capture
+preferences, filters, sidebar expansion, selection, and navigation history. The
+shared sidebar-sort preference is an exception: capture mode stores it in its own
+local-storage key to exercise account-preference persistence across reloads.
+Fresh browser contexts start with unread sorting. Capture
 view state uses memory instead of IndexedDB and does not read or modify saved
 native view state. Every launch starts at `/` with no selected article.
 
