@@ -76,6 +76,7 @@ import Quotes from "../Quotes";
 import MissingShortcutsButton from "../sidebar/MissingShortcutsButton";
 import { TagActions } from "../TagActions";
 import css from "./EntityList.module.css";
+import colorCss from "../../colors.module.css";
 
 function getEmptyMessage(filter: Filter, filterText: string): string {
   const label = filter === "all" ? "items" : `${filter} items`;
@@ -990,7 +991,12 @@ export function EntityList({
                   if (node) itemRefs.current.set(entity.id, node);
                   else itemRefs.current.delete(entity.id);
                 }}
-                className={css.ListItemButton}
+                className={cx(
+                  css.ListItemButton,
+                  isEntry(entity) && css.ArticleItem,
+                  isEntry(entity) && entity.color && css.Bookmarked,
+                  isEntry(entity) && entity.color && colorCss[entity.color]
+                )}
                 selected={selectedEntityId === entity.id}
                 tabIndex={
                   selectedEntityId === entity.id ||
@@ -1006,16 +1012,25 @@ export function EntityList({
               >
                 <ListItemText
                   primary={
-                    <Quotes
-                      quoted={isPartialAnnotation(entity)}
-                      color={
-                        isPartialAnnotation(entity) ? entity.color : undefined
-                      }
-                    >
-                      {entity.title}
-                    </Quotes>
+                    <>
+                      <Quotes
+                        quoted={isPartialAnnotation(entity)}
+                        color={
+                          isPartialAnnotation(entity) ? entity.color : undefined
+                        }
+                      >
+                        {entity.title}
+                      </Quotes>
+                      {isEntry(entity) && entity.color && (
+                        <span className={css.ScreenReaderOnly}>
+                          {` Bookmarked, ${entity.color[0].toUpperCase()}${entity.color.slice(1)}`}
+                        </span>
+                      )}
+                    </>
                   }
-                  secondary={<EntityStatus entity={entity} />}
+                  secondary={
+                    <EntityStatus entity={entity} showBookmark={false} />
+                  }
                   slotProps={{
                     primary: { className: css.Primary },
                     secondary: { className: css.Secondary },

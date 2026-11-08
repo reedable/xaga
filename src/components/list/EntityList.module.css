@@ -54,7 +54,7 @@
           margin-right: 4px;
         }
 
-        &>div {
+        & > div {
           margin-left: -12px;
           margin-right: -2px;
         }
@@ -121,6 +121,20 @@
         align-items: flex-start;
         padding: 0.75rem 1rem;
 
+        &.ArticleItem {
+          padding-left: 1.25rem;
+        }
+
+        &.Bookmarked::before {
+          content: "";
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          border-left: 0.25rem solid var(--color-icon);
+          pointer-events: none;
+        }
+
         .Primary {
           display: -webkit-box;
           -webkit-box-orient: vertical;
@@ -165,4 +179,16 @@
     justify-content: space-between;
     padding: 0.5em 0.5em;
   }
+}
+
+.ScreenReaderOnly {
+  position: absolute;
+  width: 0.0625rem;
+  height: 0.0625rem;
+  padding: 0;
+  margin: -0.0625rem;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

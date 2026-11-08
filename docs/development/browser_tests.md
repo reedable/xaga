@@ -60,8 +60,8 @@ runner configuration.
   unmatched filters, with keyboard navigation and selected-state feedback.
 - Opening an article, changing read status, and checking Unread membership and
   aggregate/feed counts after the providers update.
-- Choosing a bookmark color, revisiting the article in Saved, and removing the
-  bookmark.
+- Choosing and changing a bookmark color, verifying accessible labels and article
+  text alignment, revisiting the article in Saved, and removing the bookmark.
 - Selecting a passage with a real browser click, adding a colored annotation and
   comment, and revisiting its highlighted passage through Saved.
 - Adding an article to a Topic and browsing that Topic through the collection
@@ -70,6 +70,11 @@ runner configuration.
   by arrow-key navigation through the open list.
 - Resetting after edits and restoring the initial dataset, navigation, filters,
   and sidebar expansion.
+
+`e2e/bookmark-colors.spec.ts` checks all six article bookmark borders in light
+and dark themes with selection, unread, hover, and keyboard-focus cues. It attaches
+row screenshots for visual review. The capture startup helper accepts a theme
+through the existing capture URL parameter.
 
 Assertions use the visible controls and results. The capture API is used only to
 exercise its reset operation; tests do not modify mock data directly. The dataset

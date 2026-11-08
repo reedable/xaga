@@ -76,6 +76,21 @@ test("a colored bookmark appears in Saved and can be removed", async ({
   await page.getByRole("button", { name: "Add bookmark", exact: true }).click();
   const palette = page.getByRole("dialog", { name: "Bookmark color" });
   await palette.getByRole("button", { name: "blue", exact: true }).click();
+  await expect(articleButton(page, garden)).toHaveAccessibleName(
+    /Bookmarked, Blue/
+  );
+  await expect(articleButton(page, water)).not.toHaveAccessibleName(
+    /Bookmarked/
+  );
+  // Marked and unmarked article titles retain the same horizontal alignment.
+  const titleLeft = async (title: string) =>
+    articleButton(page, title)
+      .locator(".MuiListItemText-primary")
+      .evaluate((node) => node.getBoundingClientRect().left);
+  expect(await titleLeft(garden)).toBe(await titleLeft(water));
+  await expect(
+    articleButton(page, garden).locator('[data-testid="BookmarkIcon"]')
+  ).toHaveCount(0);
   const saved = page.getByRole("button", { name: "Saved", exact: true });
   await saved.click();
   await expect(saved).toHaveAttribute("aria-pressed", "true");
@@ -87,6 +102,13 @@ test("a colored bookmark appears in Saved and can be removed", async ({
   await expect(
     palette.getByRole("button", { name: "blue", exact: true })
   ).toHaveAttribute("aria-pressed", "true");
+  await palette.getByRole("button", { name: "red", exact: true }).click();
+  await expect(articleButton(page, garden)).toHaveAccessibleName(
+    /Bookmarked, Red/
+  );
+  await page
+    .getByRole("button", { name: "Change bookmark color", exact: true })
+    .click();
   await palette
     .getByRole("button", { name: "Remove marking", exact: true })
     .click();
@@ -94,6 +116,10 @@ test("a colored bookmark appears in Saved and can be removed", async ({
   await expect(
     page.getByRole("button", { name: "Add bookmark", exact: true })
   ).toBeEnabled();
+  await expect(articleButton(page, garden)).toBeVisible();
+  await expect(articleButton(page, garden)).not.toHaveAccessibleName(
+    /Bookmarked/
+  );
   // Bookmark edits preserve the open list. Wait for All to finish navigating
   // before returning to Saved; otherwise the second click can hit the old view.
   const all = page.getByRole("button", { name: "All", exact: true });

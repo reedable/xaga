@@ -25,6 +25,10 @@ change, update meaningful workflow tests, and verify native behavior separately.
 [Motion](motion.md) — static base styles, with animation enabled only when
 `prefers-reduced-motion: no-preference` matches.
 
+## UI styling
+
+[UI styling](ui_styling.md) — rem lengths in decimal increments of one sixteenth.
+
 ## Vocabulary
 
 Naming rules for symbols, in [vocabulary/](vocabulary/):

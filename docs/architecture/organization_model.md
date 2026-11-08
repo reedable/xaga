@@ -91,6 +91,12 @@ are `red`, `orange`, `yellow`, `green`, `blue`, and `violet`. Article marking
 commands carry optional color through the writer and cache; `bookmark:changed`
 announces assignment, removal, and recoloring even when membership stays marked.
 
+In the item list, articles show their bookmark color as a full-height
+`0.25rem` left border with no top or bottom inset. Unmarked articles reserve the same horizontal space.
+Screen readers receive “Bookmarked, [color]” alongside the title. Assignment,
+recoloring, and removal update the indicator while preserving open-list membership
+under the [ListView contract](list_view.md). Annotation presentation is unchanged.
+
 Every color-marked article is a bookmarked Entry eligible for bookmark export,
 including formats unable to carry color. Saved includes marked articles and
 annotations. Article marking uses swatch interaction without comment input;

@@ -68,8 +68,11 @@ export const test = base.extend<{ browserDiagnostics: void }>({
 
 export { expect };
 
-export async function startCapture(page: Page) {
-  await page.goto("/");
+export async function startCapture(
+  page: Page,
+  theme: "light" | "dark" = "light"
+) {
+  await page.goto(theme === "dark" ? "/?theme=dark" : "/");
   await expect(page.locator("html")).toHaveAttribute(
     "data-capture-ready",
     "true"

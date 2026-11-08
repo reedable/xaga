@@ -7,8 +7,10 @@ items only; annotation and other list presentations are unchanged.
 
 ## Requirements
 
-- Replace the lower-right bookmark icon with a 4 px left border in the assigned
-  color, spanning the item height with small top and bottom insets.
+- Replace the lower-right bookmark icon with a 0.25rem left border in the assigned
+  color, spanning the full item height with no top or bottom inset.
+- Follow the [UI styling convention](../../docs/conventions/ui_styling.md): use
+  decimal rem lengths in increments of `0.0625rem`.
 - Reserve equal space on unbookmarked articles to keep text aligned.
 - Add screen-reader-only text such as “Bookmarked, Blue” to marked articles,
   supplementing the article title. Unmarked articles need no bookmark label.
@@ -18,11 +20,9 @@ items only; annotation and other list presentations are unchanged.
 
 ## Remaining work
 
-- Implement the presentation, choosing exact inset spacing during implementation.
-- Update component and browser coverage for alignment, accessible text, and live
-  bookmark changes; run relevant component checks and `npm run test:browser`.
-- Review all six colors in light/dark themes across selected, unread, hovered,
-  and focused states. Verify unchanged annotations and report verification gaps.
+- Review the full-height border presentation and accessible labels. Native WebKit
+  and screen-reader sessions have not been verified; Chromium capture tests cover
+  the browser presentation and accessible names.
 
 ## References
 

@@ -6,16 +6,20 @@ import css from "./EntityStatus.module.css";
 
 interface EntityStatusProps {
   entity: ManagedEntity;
+  showBookmark?: boolean;
 }
 
-export default function EntityStatus({ entity }: EntityStatusProps) {
+export default function EntityStatus({
+  entity,
+  showBookmark = true,
+}: EntityStatusProps) {
   return (
     <span className={css.EntityStatus}>
       {isEntry(entity) && entity.isUnread && (
         <Circle className={css.UnreadIcon} color="primary" />
       )}
       <Byline className={css.Byline} entity={entity} />
-      {isEntry(entity) && entity.color && (
+      {showBookmark && isEntry(entity) && entity.color && (
         <Bookmark
           className={colorCss[entity.color]}
           style={{ color: "var(--color-icon)" }}

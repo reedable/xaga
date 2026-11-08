@@ -375,13 +375,39 @@ it("preserves a Site's open Saved list when article color is removed", async () 
   mocks.sites.listSiteEntries.mockResolvedValue([marked]);
   await render({ siteHostname: "example.org", filter: "saved" });
   expect(mocks.sites.listSiteEntries).toHaveBeenCalledOnce();
-  const before = rows().map((row) => row.textContent);
+  const before = rows()[0];
+  expect(before.textContent).toContain("Bookmarked, Blue");
   await act(async () =>
     mocks.callbacks.onBookmarkChanged({ ...marked, color: undefined } as never)
   );
-  expect(rows().map((row) => row.textContent)).toEqual(before);
+  expect(rows()).toHaveLength(1);
+  expect(rows()[0]).toBe(before);
+  expect(before.textContent).not.toContain("Bookmarked");
   expect(mocks.sites.listSiteEntries).toHaveBeenCalledOnce();
   expect(route.state.siteHostname).toBe("example.org");
+});
+
+it("updates the article bookmark label on assignment, recoloring, and removal", async () => {
+  await render({ articleScopeId: article.id });
+  const row = rows()[0];
+  expect(row.textContent).not.toContain("Bookmarked");
+  for (const color of ["blue", "red", "orange", "yellow", "green", "violet"]) {
+    await act(async () =>
+      mocks.callbacks.onBookmarkChanged({ ...article, color } as never)
+    );
+    expect(rows()[0]).toBe(row);
+    expect(row.textContent).toContain(
+      `Bookmarked, ${color[0].toUpperCase()}${color.slice(1)}`
+    );
+  }
+  await act(async () =>
+    mocks.callbacks.onBookmarkChanged({ ...article, color: undefined } as never)
+  );
+  expect(rows()[0]).toBe(row);
+  expect(row.textContent).not.toContain("Bookmarked");
+  expect(rows()).toHaveLength(3);
+  expect(rows()[1].textContent).not.toContain("Bookmarked");
+  expect(rows()[2].textContent).not.toContain("Bookmarked");
 });
 
 it("keeps an empty Site selected when unpinned and opens its Settings", async () => {
