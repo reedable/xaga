@@ -76,6 +76,12 @@ and dark themes with selection, unread, hover, and keyboard-focus cues. It attac
 row screenshots for visual review. The capture startup helper accepts a theme
 through the existing capture URL parameter.
 
+`e2e/annotation-routing.spec.ts` exercises recoloring and deleting selected
+annotations in article, All items, and Topic lists, and editing an unselected
+annotation while browsing a Feed. It checks selection and retained reading/list
+context. Component tests cover selected annotation routes in all four contexts,
+history replacement, and late events; Feed lists expose article items in the UI.
+
 Assertions use the visible controls and results. The capture API is used only to
 exercise its reset operation; tests do not modify mock data directly. The dataset
 and its behavior remain owned by the capture platform.

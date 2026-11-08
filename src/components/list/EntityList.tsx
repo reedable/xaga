@@ -105,7 +105,7 @@ export function EntityList({
     selectShortcut,
     selectShortcutTarget,
     selectArticleScope,
-    selectAnnotation,
+    replaceAnnotationSelection,
     state,
     selectFilter,
     selectTags,
@@ -620,13 +620,13 @@ export function EntityList({
 
   useEffect(() => {
     return onAnnotationReplaced(({ oldId, entity }) => {
+      if (isPartialAnnotation(entity))
+        replaceAnnotationSelection(oldId, entity);
       if (
         articleScopeId &&
         "reference" in entity &&
         entity.reference === articleScopeId
       ) {
-        if (state.annotationId === oldId && isPartialAnnotation(entity))
-          selectAnnotation(entity);
         void requestArticleScope();
         return;
       }
@@ -638,19 +638,24 @@ export function EntityList({
     onAnnotationReplaced,
     articleScopeId,
     requestArticleScope,
-    state.annotationId,
-    selectAnnotation,
+    replaceAnnotationSelection,
   ]);
 
   useEffect(() => {
     return onAnnotationRemoved((id) => {
+      replaceAnnotationSelection(id);
       if (articleScopeId) {
         void requestArticleScope();
         return;
       }
       setEntities((prev) => prev.filter((p) => p.id !== id));
     });
-  }, [onAnnotationRemoved, articleScopeId, requestArticleScope]);
+  }, [
+    onAnnotationRemoved,
+    articleScopeId,
+    requestArticleScope,
+    replaceAnnotationSelection,
+  ]);
 
   useEffect(() => {
     return onFeedsRefreshed(() => {

@@ -790,3 +790,137 @@ it("shows nested shortcut headings in the hidden-sidebar header and opens descen
   ].find((item) => item.textContent === article.title)!;
   expect(selected.getAttribute("aria-selected")).toBe("true");
 });
+
+for (const scope of ["article", "all", "feed", "topic"] as const) {
+  it(`replaces and clears selected annotation routes without adding history in ${scope} scope`, async () => {
+    const annotation = { ...article.annotations[1], url: article.url };
+    const replacement = { ...annotation, id: "replacement", color: "blue" };
+    const members = [article, annotation];
+    mocks.entries.listAllEntities.mockResolvedValue(members);
+    mocks.entries.listEntries.mockResolvedValue(members);
+    mocks.topics.listTopicEntities.mockResolvedValue(members);
+    mocks.feeds.feeds = [
+      {
+        __kind: "feed",
+        id: "feed",
+        title: "Feed",
+        url: "https://example.org/feed",
+      },
+    ] as Feed[];
+    mocks.topics.topics = [
+      { __kind: "topic", id: "topic", title: "Topic" },
+    ] as Topic[];
+    const context =
+      scope === "article"
+        ? { articleScopeId: article.id }
+        : scope === "all"
+          ? { shortcutId: ALL_ENTITIES.id }
+          : scope === "feed"
+            ? { feedId: "feed" }
+            : { topicId: "topic" };
+    const initial = {
+      ...context,
+      filter: "saved" as const,
+      entryId: article.id,
+      url: article.url,
+      mimeType: "text/html",
+    };
+    await render(initial);
+    await act(async () => route.selectAnnotation(annotation));
+    const selected = { ...route.state };
+    article.annotations[1] = replacement;
+    await act(async () =>
+      mocks.callbacks.onAnnotationReplaced({
+        oldId: annotation.id,
+        entity: replacement,
+      } as never)
+    );
+    expect(route.state).toEqual({ ...selected, annotationId: replacement.id });
+    expect(
+      rows().some(
+        (row) =>
+          row.textContent === annotation.title &&
+          row.classList.contains("Mui-selected")
+      )
+    ).toBe(true);
+    await act(async () => route.goBack());
+    expect(route.state).toEqual(initial);
+    await act(async () => route.goForward());
+    expect(route.state.annotationId).toBe(replacement.id);
+    article.annotations = article.annotations.filter(
+      (a) => a.id !== replacement.id
+    );
+    await act(async () =>
+      mocks.callbacks.onAnnotationRemoved(replacement.id as never)
+    );
+    expect(route.state).toEqual({ ...selected, annotationId: undefined });
+    expect(rows()[0].classList.contains("Mui-selected")).toBe(true);
+    await act(async () => route.goBack());
+    expect(route.state).toEqual(initial);
+    await act(async () => route.goForward());
+    expect(route.state.annotationId).toBeUndefined();
+    if (scope !== "article") {
+      expect(
+        mocks.entries.listAllEntities.mock.calls.length +
+          mocks.entries.listEntries.mock.calls.length +
+          mocks.topics.listTopicEntities.mock.calls.length
+      ).toBe(1);
+    }
+  });
+
+  it(`ignores unselected and late annotation events in ${scope} scope`, async () => {
+    const annotation = { ...article.annotations[1], url: article.url };
+    const other = { ...article.annotations[0], url: article.url };
+    const members = [article, annotation, other];
+    mocks.entries.listAllEntities.mockResolvedValue(members);
+    mocks.entries.listEntries.mockResolvedValue(members);
+    mocks.topics.listTopicEntities.mockResolvedValue(members);
+    mocks.feeds.feeds = [
+      {
+        __kind: "feed",
+        id: "feed",
+        title: "Feed",
+        url: "https://example.org/feed",
+      },
+    ] as Feed[];
+    mocks.topics.topics = [
+      { __kind: "topic", id: "topic", title: "Topic" },
+    ] as Topic[];
+    const context =
+      scope === "article"
+        ? { articleScopeId: article.id }
+        : scope === "all"
+          ? { shortcutId: ALL_ENTITIES.id }
+          : scope === "feed"
+            ? { feedId: "feed" }
+            : { topicId: "topic" };
+    await render({
+      ...context,
+      entryId: article.id,
+      annotationId: annotation.id,
+      url: article.url,
+      filter: "saved",
+    });
+    const removed = mocks.callbacks.onAnnotationRemoved;
+    const replaced = mocks.callbacks.onAnnotationReplaced;
+    const selected = { ...route.state };
+    await act(async () =>
+      replaced({
+        oldId: other.id,
+        entity: { ...other, id: "other-new" },
+      } as never)
+    );
+    await act(async () => removed(other.id as never));
+    expect(route.state).toEqual(selected);
+    await act(async () => route.selectAnnotation(other));
+    const newer = { ...route.state };
+    await act(async () =>
+      replaced({
+        oldId: annotation.id,
+        entity: { ...annotation, id: "late-new" },
+      } as never)
+    );
+    await act(async () => removed(annotation.id as never));
+    expect(route.state).toEqual(newer);
+  });
+}

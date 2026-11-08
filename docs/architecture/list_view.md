@@ -14,6 +14,20 @@ These are expected Xaga interactions to preserve when changing list loading,
 state-event handling, or navigation. They do not specify behavior for deletion
 of the underlying content.
 
+## Annotation selection after edits
+
+Recoloring a selected annotation replaces its ID in the current route. Deleting
+it clears `annotationId`, leaving its parent article selected. Both operations
+replace the current history entry and preserve the article URL, presentation,
+list scope, and filters. They do not add a Back/Forward step.
+
+The same selection rule applies in article-scoped, All items, Feed, and Topic
+contexts. Unselected annotations and late events for a previous selection do
+not change the current selection. A replacement must belong to the selected
+parent article. Non-article-scoped lists update or remove the affected item
+without reloading membership; article-scoped lists retain their authoritative
+refresh and passage ordering.
+
 Relevant code: `src/components/list/EntityList.tsx`,
 `src/hooks/useRouter.tsx`, and `src/components/sidebar/ShortcutList.tsx`.
 

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ALL_ENTITIES } from "../Shortcuts";
 import {
@@ -58,6 +64,10 @@ export default function useRouter() {
       (rawState as NavigationState | null) ?? { shortcutId: ALL_ENTITIES.id },
     [rawState]
   );
+  const stateRef = useRef(state);
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const currentIdx =
     (window.history.state as { idx?: number } | null)?.idx ?? 0;
@@ -211,6 +221,21 @@ export default function useRouter() {
     [logged_navigate, searchParams, state]
   );
 
+  const replaceAnnotationSelection = useCallback(
+    (oldId: string, replacement?: Pick<Annotation, "id" | "reference">) => {
+      const current = stateRef.current;
+      if (current.annotationId !== oldId) return;
+      if (replacement && replacement.reference !== current.entryId) return;
+      const next = { ...current, annotationId: replacement?.id };
+      stateRef.current = next;
+      return logged_navigate(`/?${searchParams.toString()}`, {
+        replace: true,
+        state: next,
+      });
+    },
+    [logged_navigate, searchParams]
+  );
+
   const selectUrl = useCallback(
     (url: string) => {
       const next: NavigationState = {
@@ -321,6 +346,7 @@ export default function useRouter() {
     replaceMimeType,
     replaceUrl,
     selectAnnotation,
+    replaceAnnotationSelection,
     selectArticleScope,
     selectEntity,
     selectCollection,
