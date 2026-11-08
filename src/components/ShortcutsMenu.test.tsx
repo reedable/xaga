@@ -1,6 +1,6 @@
 import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "../test/NavigationRouter";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import ShortcutsMenu from "./ShortcutsMenu";
 import useRouter from "../hooks/useRouter";
@@ -85,9 +85,7 @@ function Host() {
 async function render() {
   await act(async () =>
     root.render(
-      <MemoryRouter
-        initialEntries={[{ pathname: "/", state: { filter: "saved" } }]}
-      >
+      <MemoryRouter initialEntries={[{ pathname: "/", state: {} }]}>
         <PinsContext.Provider
           value={{
             pins,
@@ -226,13 +224,12 @@ it("shares sidebar sorting and updates titles, counts and membership", async () 
 it("routes every target through sidebar navigation, including article scope and empty Sites", async () => {
   await render();
   await click("Zulu Feed");
-  expect(router.state).toEqual({ feedId: "feed", filter: "saved" });
+  expect(router.state).toEqual({ feedId: "feed" });
   await click("Alpha Topic");
-  expect(router.state).toEqual({ topicId: "topic", filter: "saved" });
+  expect(router.state).toEqual({ topicId: "topic" });
   await click("example.com");
   expect(router.state).toEqual({
     siteHostname: "example.com",
-    filter: "saved",
   });
   await click("Article");
   expect(router.state).toEqual({

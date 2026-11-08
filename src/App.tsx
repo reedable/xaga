@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { NavigationProvider } from "./providers/NavigationProvider";
 import {
   BrowserRouter,
   MemoryRouter,
@@ -53,36 +54,41 @@ export default function App({ entryPoint }: { entryPoint: string }) {
         </MemoryRouter>
       ) : (
         <BrowserRouter>
-          <ExpandedListProvider>
-            <PinsProvider>
-              <TopicsProvider>
-                <FeedsProvider>
-                  <SitesProvider
-                    enabled={embeddingStartupState === "available"}
-                  >
-                    <TagsProvider
+          <NavigationProvider>
+            <ExpandedListProvider>
+              <PinsProvider>
+                <TopicsProvider>
+                  <FeedsProvider>
+                    <SitesProvider
                       enabled={embeddingStartupState === "available"}
                     >
-                      <Routes>
-                        <Route
-                          path="/"
-                          element={
-                            embeddingStartupState !== "loading" ? (
-                              <AllEntitiesCountsProvider>
-                                <AppLayout />
-                                {isCaptureMode && <CaptureReady />}
-                              </AllEntitiesCountsProvider>
-                            ) : null
-                          }
-                        />
-                        <Route path="*" element={<Navigate to="/" replace />} />
-                      </Routes>
-                    </TagsProvider>
-                  </SitesProvider>
-                </FeedsProvider>
-              </TopicsProvider>
-            </PinsProvider>
-          </ExpandedListProvider>
+                      <TagsProvider
+                        enabled={embeddingStartupState === "available"}
+                      >
+                        <Routes>
+                          <Route
+                            path="/"
+                            element={
+                              embeddingStartupState !== "loading" ? (
+                                <AllEntitiesCountsProvider>
+                                  <AppLayout />
+                                  {isCaptureMode && <CaptureReady />}
+                                </AllEntitiesCountsProvider>
+                              ) : null
+                            }
+                          />
+                          <Route
+                            path="*"
+                            element={<Navigate to="/" replace />}
+                          />
+                        </Routes>
+                      </TagsProvider>
+                    </SitesProvider>
+                  </FeedsProvider>
+                </TopicsProvider>
+              </PinsProvider>
+            </ExpandedListProvider>
+          </NavigationProvider>
         </BrowserRouter>
       )}
     </>

@@ -1,6 +1,6 @@
 import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "../test/NavigationRouter";
 import { afterEach, expect, it, vi } from "vitest";
 import { TagsProvider } from "./TagsProvider";
 import { useTags } from "./TagsContext";

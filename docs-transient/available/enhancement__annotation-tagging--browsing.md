@@ -51,5 +51,5 @@ and its navigation redesign are outside this story.
 - [Tag query contract](../../docs/architecture/tags.md)
 - [Design scale](../../docs/architecture/design_scale.md)
 - [Index queries](../../crates/xaga-core/src/embeddings/db.rs)
-- [Item list](../../src/components/list/EntityList.tsx)
+- [ListView](../../src/components/list/EntityList.tsx)
 - [Routing](../../src/hooks/useRouter.tsx)

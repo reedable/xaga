@@ -97,7 +97,7 @@ Avoid `stop`: ambiguous between graceful (`shutdown`) and abrupt (`abort`).
 - `table` A collection of `row`s, accessed by column/key; not inherently ordered.
 - `set` An unordered collection of unique `value`s, tested by membership.
 - `queue` A collection items are added to and taken from under an ordering policy.
-- `item` A single member of a collection.
+- `item` A generic member of a collection, such as a queue. For Xaga domain objects, use `entity` or the concrete type (`Entry`, `Annotation`, `Topic`, `Feed`, or `Site`). Call the browsing UI `ListView`. See the [organization model](../../architecture/organization_model.md#collections-and-identity) for domain terminology and retained storage names and UI labels.
 - `element` An HTML/DOM node. Not a synonym for `item`; legitimate only where HTML is the subject (e.g. parsing).
 - `id` A value that uniquely identifies a record.
 - `payload` Data carried across a boundary (IPC, network).

@@ -29,10 +29,11 @@ import { usePlatform } from "./platform/Platform";
 import { useEmbeddingStartupState } from "./hooks/useEmbeddingStartupState";
 import { useSettings } from "./hooks/useSettings";
 import { useSidebarFilter } from "./hooks/useSidebarFilter";
-import { type Feed, type Topic, type Site } from "./types";
+import { type Feed, type Topic, type Site, type Filter } from "./types";
 
 export function AppLayout() {
   const { selectTopic, selectFeed, search } = useRouter();
+  const [listFilter, setListFilter] = useState<Filter>("unread");
   const appRef = useRef<HTMLDivElement>(null);
   const searchPanelRef = useRef<HTMLDivElement>(null);
   const [autoHideSidebar, setAutoHideSidebar] = useState(false);
@@ -93,7 +94,8 @@ export function AppLayout() {
         setTopicPinned(topic.id, pinned);
 
         await requestTopics();
-        selectTopic(topic, "unread");
+        setListFilter("unread");
+        selectTopic(topic);
       }
     },
     [
@@ -215,6 +217,8 @@ export function AppLayout() {
         </Collapse>
 
         <EntityList
+          filter={listFilter}
+          onFilterChange={setListFilter}
           className={css.EntityList}
           isSelectableHeader={autoHideSidebar || !showSidebar}
           onEditFeed={setEditingFeed}

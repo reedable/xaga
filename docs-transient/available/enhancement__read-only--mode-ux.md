@@ -31,6 +31,6 @@ controls remain enabled. Complete the documented disabled-control behavior.
 - [Write-command policy](../../src-tauri/src/commands/mod.rs)
 - [Article controls](../../src/components/content/Toolbar.tsx)
 - [Annotation controls](../../src/components/content/AnnotationTooltip.tsx)
-- [Item list](../../src/components/list/EntityList.tsx)
+- [ListView](../../src/components/list/EntityList.tsx)
 - [Dialogs](../../src/components/dialogs/)
 - [Native menu](../../src-tauri/src/lib.rs)

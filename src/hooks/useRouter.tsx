@@ -5,20 +5,18 @@ import {
   useMemo,
   useRef,
 } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { ALL_ENTITIES } from "../Shortcuts";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigationState } from "../providers/NavigationContext";
 import {
   isAnnotation,
   isCollection,
   isEntry,
-  isFilter,
   isPartialAnnotation,
   isShortcut,
   type Annotation,
   type Collection,
   type Entry,
   type Feed,
-  type Filter,
   type ManagedEntity,
   type NavigationState,
   type Site,
@@ -47,23 +45,17 @@ function isSameNavigation(a: NavigationState, b: NavigationState) {
     a.shortcutId === b.shortcutId &&
     a.entryId === b.entryId &&
     a.annotationId === b.annotationId &&
-    a.url === b.url &&
-    a.filter === b.filter
+    a.url === b.url
   );
 }
 
 export default function useRouter() {
   const navigate = useNavigate();
-  const { state: rawState } = useLocation();
+  const { state, selectCollectionState } = useNavigationState();
   const [searchParams] = useSearchParams();
   const rawSearch = searchParams.get("search");
   const search = useMemo(() => validateSearchInput(rawSearch), [rawSearch]);
 
-  const state: NavigationState = useMemo(
-    () =>
-      (rawState as NavigationState | null) ?? { shortcutId: ALL_ENTITIES.id },
-    [rawState]
-  );
   const stateRef = useRef(state);
   useLayoutEffect(() => {
     stateRef.current = state;
@@ -87,7 +79,6 @@ export default function useRouter() {
     (ids: string[]) => {
       const next: NavigationState = {
         tagIds: [...new Set(ids)].sort(),
-        filter: state.filter,
       };
       if (
         isSameNavigation(state, next) &&
@@ -121,48 +112,44 @@ export default function useRouter() {
   );
 
   const selectCollection = useCallback(
-    (collection: Collection, filter?: Filter) => {
-      // Carry the active filter forward so it stays sticky across
-      // collection switches.
+    (collection: Collection) => {
       const next: NavigationState = {
         ...(collection.__kind === "feed"
           ? { feedId: collection.id }
           : collection.__kind === "topic"
             ? { topicId: collection.id }
             : { siteHostname: collection.id }),
-        filter: filter ?? state.filter,
       };
       if (isSameNavigation(state, next)) return;
-      return logged_navigate(`/?${searchParams.toString()}`, { state: next });
+      return selectCollectionState(next);
     },
-    [logged_navigate, searchParams, state]
+    [selectCollectionState, state]
   );
 
   const selectTopic = useCallback(
-    (topic: Topic, filter?: Filter) => selectCollection(topic, filter),
+    (topic: Topic) => selectCollection(topic),
     [selectCollection]
   );
 
   const selectFeed = useCallback(
-    (feed: Feed, filter?: Filter) => selectCollection(feed, filter),
+    (feed: Feed) => selectCollection(feed),
     [selectCollection]
   );
 
   const selectSite = useCallback(
-    (site: Site, filter?: Filter) => selectCollection(site, filter),
+    (site: Site) => selectCollection(site),
     [selectCollection]
   );
 
   const selectShortcut = useCallback(
-    (shortcut: Shortcut, filter?: Filter) => {
+    (shortcut: Shortcut) => {
       const next: NavigationState = {
         shortcutId: shortcut.id,
-        filter: filter ?? state.filter,
       };
       if (isSameNavigation(state, next)) return;
-      return logged_navigate(`/?${searchParams.toString()}`, { state: next });
+      return selectCollectionState(next);
     },
-    [logged_navigate, searchParams, state]
+    [selectCollectionState, state]
   );
 
   const selectArticleScope = useCallback(
@@ -300,15 +287,6 @@ export default function useRouter() {
     [selectAnnotation, selectCollection, selectEntry, selectShortcut]
   );
 
-  const applyFilter = useCallback(
-    (filter: string) => {
-      const next = isFilter(filter) ? { ...state, filter } : state;
-      if (isSameNavigation(state, next)) return;
-      logged_navigate(`/?${searchParams.toString()}`, { state: next });
-    },
-    [logged_navigate, searchParams, state]
-  );
-
   const invokeSearch = useCallback(
     (searchQuery: string) => {
       const params = new URLSearchParams(searchParams);
@@ -332,7 +310,6 @@ export default function useRouter() {
   }, [currentIdx]);
 
   return {
-    filter: state.filter,
     canGoBack,
     canGoForward,
     search,
@@ -354,7 +331,6 @@ export default function useRouter() {
     selectShortcutTarget,
     selectFeed,
     selectSite,
-    selectFilter: applyFilter,
     selectTopic,
     selectTags,
     replaceTagSelection,

@@ -165,7 +165,6 @@ export type NavigationState = {
   annotationId?: Annotation["id"];
   url?: Entry["url"];
   mimeType?: string;
-  filter?: Filter;
 };
 
 // ── Article diagnostics ──────────────────────────────────────────────────────

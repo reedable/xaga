@@ -1,7 +1,13 @@
 import type { ShortcutNode } from "../../utils/projectPinTree";
-import { act, forwardRef, useEffect, useImperativeHandle } from "react";
+import {
+  act,
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
 import { createRoot } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "../../test/NavigationRouter";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import useRouter from "../../hooks/useRouter";
 import type {
@@ -10,6 +16,7 @@ import type {
   Topic,
   ListEntity,
   NavigationState,
+  Filter,
   Site,
 } from "../../types";
 import { ALL_ENTITIES } from "../../Shortcuts";
@@ -37,6 +44,7 @@ const mocks = vi.hoisted(() => {
         "onEmbeddingsChanged",
       ].map((name) => [name, register(name)])
     ),
+    scrollIntoView: vi.fn(({ done }: { done?: () => void }) => done?.()),
     tagEntries: vi.fn(),
     tagContext: {
       tags: [
@@ -107,7 +115,7 @@ vi.mock("react-virtuoso", () => ({
     ref
   ) {
     useImperativeHandle(ref, () => ({
-      scrollIntoView: ({ done }: { done: () => void }) => done(),
+      scrollIntoView: mocks.scrollIntoView,
     }));
     return (
       <div>
@@ -138,23 +146,50 @@ let article: Article;
 const rows = () => [
   ...container.querySelectorAll<HTMLElement>(".MuiListItemButton-root"),
 ];
+function ListHost({
+  initialFilter,
+  selectable,
+}: {
+  initialFilter: Filter;
+  selectable: boolean;
+}) {
+  const [filter, onFilterChange] = useState<Filter>(initialFilter);
+  return (
+    <EntityList
+      filter={filter}
+      onFilterChange={onFilterChange}
+      isSelectableHeader={selectable}
+      onEditFeed={mocks.editFeed}
+      onEditTopic={mocks.editTopic}
+      onEditSite={mocks.editSite}
+    />
+  );
+}
+
 async function render(
-  state: NavigationState = { articleScopeId: "article", entryId: "article" },
+  state: NavigationState & { filter?: Filter } = {
+    articleScopeId: "article",
+    entryId: "article",
+  },
   selectable = false
 ) {
+  const { filter: initialFilter = "unread", ...navigationState } = state;
   await act(async () => {
     root.render(
-      <MemoryRouter initialEntries={[{ pathname: "/", state }]}>
+      <MemoryRouter
+        initialEntries={[{ pathname: "/", state: navigationState }]}
+      >
         <Observe />
-        <EntityList
-          isSelectableHeader={selectable}
-          onEditFeed={mocks.editFeed}
-          onEditTopic={mocks.editTopic}
-          onEditSite={mocks.editSite}
-        />
+        <ListHost initialFilter={initialFilter} selectable={selectable} />
       </MemoryRouter>
     );
   });
+}
+async function selectFilter(filter: string) {
+  const label = filter[0].toUpperCase() + filter.slice(1);
+  await act(async () =>
+    container.querySelector<HTMLElement>(`[aria-label="${label}"]`)!.click()
+  );
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -422,7 +457,7 @@ it("keeps an empty Site selected when unpinned and opens its Settings", async ()
   mocks.sites.listSiteEntries.mockResolvedValue([]);
   const state = { siteHostname: site.id };
   await render(state);
-  expect(mocks.sites.listSiteEntries).toHaveBeenCalledWith(site.id, undefined);
+  expect(mocks.sites.listSiteEntries).toHaveBeenCalledWith(site.id, "unread");
   const settings =
     container.querySelector<HTMLButtonElement>('button[aria-label="Edit"]') ??
     container.querySelector<HTMLButtonElement>('button[title="Edit"]');
@@ -488,7 +523,7 @@ it.each(["feed", "topic", "site"] as const)(
       )!;
     await openHeader();
     await act(async () => option(collection.title).click());
-    expect(route.state).toEqual({ ...scope, filter: "saved" });
+    expect(route.state).toEqual(scope);
     expect(rows().map((row) => row.textContent)).toEqual([article.title]);
     if (kind === "feed")
       expect(mocks.entries.listEntries).toHaveBeenCalledWith(feed, "saved");
@@ -525,7 +560,6 @@ it.each(["feed", "topic", "site"] as const)(
     await act(async () => option("All items").click());
     expect(route.state).toEqual({
       shortcutId: ALL_ENTITIES.id,
-      filter: "saved",
     });
     expect(mocks.entries.listAllEntities).toHaveBeenLastCalledWith("saved");
   }
@@ -556,7 +590,7 @@ it("browses Entry intersections and retains membership through state and assignm
   });
   expect(rows()).toHaveLength(1);
   expect(mocks.tagEntries).toHaveBeenCalledOnce();
-  await act(async () => route.selectFilter("saved"));
+  await selectFilter("saved");
   expect(mocks.tagEntries).toHaveBeenCalledTimes(2);
   expect(mocks.tagEntries).toHaveBeenLastCalledWith(
     expect.any(AbortSignal),
@@ -607,7 +641,7 @@ it("updates renamed or missing labels without reloading the active list", async 
   expect(container.textContent).toContain("Renamed");
   expect(mocks.tagEntries).toHaveBeenCalledOnce();
   mocks.tagContext.tags = [];
-  await act(async () => route.selectFilter("saved"));
+  await selectFilter("saved");
   expect(container.textContent).toContain("Unavailable tag");
   expect(route.state.tagIds).toEqual(["tag-a"]);
 });
@@ -690,7 +724,7 @@ it("removes deleted selections without refreshing membership until explicit navi
   expect(route.state.tagIds).toEqual([]);
   expect(rows()).toHaveLength(1);
   expect(mocks.tagEntries).toHaveBeenCalledOnce();
-  await act(async () => route.selectFilter("saved"));
+  await selectFilter("saved");
   expect(mocks.tagEntries).toHaveBeenCalledTimes(2);
   expect(mocks.tagEntries).toHaveBeenLastCalledWith(
     expect.any(AbortSignal),
@@ -805,10 +839,24 @@ for (const scope of ["article", "all", "feed", "topic"] as const) {
         id: "feed",
         title: "Feed",
         url: "https://example.org/feed",
+        createdAt: "2026-01-01",
+        isPinned: false,
+        members: [],
+        entryCount: 2,
+        unreadCount: 1,
       },
     ] as Feed[];
     mocks.topics.topics = [
-      { __kind: "topic", id: "topic", title: "Topic" },
+      {
+        __kind: "topic",
+        id: "topic",
+        title: "Topic",
+        createdAt: "2026-01-01",
+        isPinned: false,
+        members: [],
+        entryCount: 2,
+        unreadCount: 1,
+      },
     ] as Topic[];
     const context =
       scope === "article"
@@ -820,12 +868,11 @@ for (const scope of ["article", "all", "feed", "topic"] as const) {
             : { topicId: "topic" };
     const initial = {
       ...context,
-      filter: "saved" as const,
       entryId: article.id,
       url: article.url,
       mimeType: "text/html",
     };
-    await render(initial);
+    await render({ ...initial, filter: "saved" });
     await act(async () => route.selectAnnotation(annotation));
     const selected = { ...route.state };
     article.annotations[1] = replacement;
@@ -881,10 +928,24 @@ for (const scope of ["article", "all", "feed", "topic"] as const) {
         id: "feed",
         title: "Feed",
         url: "https://example.org/feed",
+        createdAt: "2026-01-01",
+        isPinned: false,
+        members: [],
+        entryCount: 2,
+        unreadCount: 1,
       },
     ] as Feed[];
     mocks.topics.topics = [
-      { __kind: "topic", id: "topic", title: "Topic" },
+      {
+        __kind: "topic",
+        id: "topic",
+        title: "Topic",
+        createdAt: "2026-01-01",
+        isPinned: false,
+        members: [],
+        entryCount: 2,
+        unreadCount: 1,
+      },
     ] as Topic[];
     const context =
       scope === "article"
@@ -924,3 +985,111 @@ for (const scope of ["article", "all", "feed", "topic"] as const) {
     expect(route.state).toEqual(newer);
   });
 }
+
+it("retains the current filter through Topic/article Back and Forward without adding filter history", async () => {
+  const second = { ...article, id: "second", title: "Second article" };
+  mocks.topics.topics = [
+    {
+      __kind: "topic",
+      id: "topic",
+      title: "Topic",
+      createdAt: "2026-01-01",
+      isPinned: false,
+      members: [],
+      entryCount: 2,
+      unreadCount: 1,
+    },
+  ] as Topic[];
+  mocks.topics.listTopicEntities.mockResolvedValue([article, second]);
+  await render({ topicId: "topic" });
+  await act(async () => route.selectEntity(article));
+  const firstSelection = { ...route.state };
+  await act(async () =>
+    mocks.callbacks.onUnreadChanged({ ...article, isUnread: false } as never)
+  );
+  expect(rows()).toHaveLength(2);
+  await selectFilter("all");
+  expect(route.state).toEqual(firstSelection);
+  await act(async () => route.selectEntity(second));
+  await selectFilter("saved");
+  await act(async () => route.goBack());
+  expect(route.state).toEqual(firstSelection);
+  expect(
+    container
+      .querySelector('[aria-label="Saved"]')
+      ?.getAttribute("aria-pressed")
+  ).toBe("true");
+  await act(async () => route.goBack());
+  expect(route.state).toEqual({ topicId: "topic" });
+  await selectFilter("unread");
+  await act(async () => route.goForward());
+  expect(route.state).toEqual(firstSelection);
+  expect(
+    container
+      .querySelector('[aria-label="Unread"]')
+      ?.getAttribute("aria-pressed")
+  ).toBe("true");
+  await act(async () => route.goForward());
+  expect(route.state.entryId).toBe(second.id);
+  expect(route.state).not.toHaveProperty("filter");
+});
+
+it("scrolls only once on Back/Forward, never on clicks or article updates", async () => {
+  await render();
+  expect(mocks.scrollIntoView).not.toHaveBeenCalled();
+  await act(async () => rows()[1].click());
+  await act(async () => rows()[2].click());
+  expect(mocks.scrollIntoView).not.toHaveBeenCalled();
+  await act(async () => route.goBack());
+  expect(mocks.scrollIntoView).toHaveBeenLastCalledWith({
+    index: 1,
+    behavior: "auto",
+  });
+  expect(mocks.scrollIntoView).toHaveBeenCalledTimes(1);
+  await act(async () => route.replaceUrl("https://example.org/resolved"));
+  await act(async () =>
+    mocks.callbacks.onUnreadChanged({ ...article, isUnread: false } as never)
+  );
+  expect(mocks.scrollIntoView).toHaveBeenCalledTimes(1);
+  await act(async () => route.goForward());
+  expect(mocks.scrollIntoView).toHaveBeenLastCalledWith({
+    index: 2,
+    behavior: "auto",
+  });
+  expect(mocks.scrollIntoView).toHaveBeenCalledTimes(2);
+});
+
+it("waits for a restored collection to load before scrolling without focusing", async () => {
+  mocks.entries.listAllEntities.mockResolvedValue([article]);
+  await render({ shortcutId: ALL_ENTITIES.id, filter: "all" });
+  await act(async () => route.selectEntity(article));
+  await act(async () => route.selectArticleScope(article));
+  let resolve!: (entries: Article[]) => void;
+  mocks.entries.listAllEntities.mockImplementationOnce(
+    () =>
+      new Promise<Article[]>((done) => {
+        resolve = done;
+      })
+  );
+  await act(async () => route.goBack());
+  expect(mocks.scrollIntoView).not.toHaveBeenCalled();
+  await act(async () => resolve([article]));
+  expect(mocks.scrollIntoView).toHaveBeenCalledExactlyOnceWith({
+    index: 0,
+    behavior: "auto",
+  });
+});
+
+it("does not scroll later when a history-restored selection was filtered out", async () => {
+  mocks.entries.listAllEntities.mockResolvedValue([article]);
+  await render({ shortcutId: ALL_ENTITIES.id, filter: "all" });
+  await act(async () => route.selectEntity(article));
+  await act(async () => route.selectEntity({ ...article, id: "other" }));
+  mocks.entries.listAllEntities.mockResolvedValue([]);
+  await selectFilter("saved");
+  await act(async () => route.goBack());
+  expect(mocks.scrollIntoView).not.toHaveBeenCalled();
+  mocks.entries.listAllEntities.mockResolvedValue([article]);
+  await selectFilter("all");
+  expect(mocks.scrollIntoView).not.toHaveBeenCalled();
+});

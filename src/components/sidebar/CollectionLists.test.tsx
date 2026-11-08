@@ -1,6 +1,6 @@
 import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "../../test/NavigationRouter";
 import { afterEach, expect, it, vi } from "vitest";
 import type { Feed, Topic } from "../../domain";
 import useRouter from "../../hooks/useRouter";
@@ -46,16 +46,14 @@ afterEach(async () => {
 });
 
 it.each(["feed", "topic", "site"] as const)(
-  "selects a %s from the sidebar with its counts and active filter",
+  "selects a %s from the sidebar with its counts",
   async (kind) => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
     await act(async () =>
       root.render(
-        <MemoryRouter
-          initialEntries={[{ pathname: "/", state: { filter: "saved" } }]}
-        >
+        <MemoryRouter initialEntries={[{ pathname: "/", state: {} }]}>
           <Observe />
           {kind === "feed" && (
             <FeedList
@@ -92,7 +90,6 @@ it.each(["feed", "topic", "site"] as const)(
         topic: { topicId: topic.id },
         site: { siteHostname: site.id },
       }[kind],
-      filter: "saved",
     });
     expect(row.classList.contains("Mui-selected")).toBe(true);
   }

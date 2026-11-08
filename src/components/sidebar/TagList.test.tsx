@@ -1,6 +1,6 @@
 import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "../../test/NavigationRouter";
 import { afterEach, expect, it, vi } from "vitest";
 import useRouter from "../../hooks/useRouter";
 import { TagsContext } from "../../providers/TagsContext";
@@ -37,9 +37,7 @@ it("toggles the shared tag intersection by keyboard", async () => {
   await act(async () =>
     root.render(
       <MemoryRouter
-        initialEntries={[
-          { pathname: "/", state: { tagIds: ["a"], filter: "saved" } },
-        ]}
+        initialEntries={[{ pathname: "/", state: { tagIds: ["a"] } }]}
       >
         <Host />
       </MemoryRouter>
@@ -55,7 +53,7 @@ it("toggles the shared tag intersection by keyboard", async () => {
       new KeyboardEvent("keydown", { key: "Enter", bubbles: true })
     );
   });
-  expect(router.state).toEqual({ tagIds: ["a", "b"], filter: "saved" });
+  expect(router.state).toEqual({ tagIds: ["a", "b"] });
   await act(async () => choices()[0].click());
   expect(router.state.tagIds).toEqual(["b"]);
   await act(async () => choices()[1].click());

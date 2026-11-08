@@ -9,7 +9,7 @@ Saved and Relevant do not have consistent meanings. `Saved` currently filters to
 - Define Saved independently of the current filter implementation.
 - Define Relevant and Similar, including whether they name item state, query membership, or ordering.
 - Define how topic membership, bookmarks, annotations, similarity thresholds, and relevance scores affect each concept.
-- Keep global item lists and topic item lists consistent with the definitions.
+- Keep global entity lists and Topic entity lists consistent with the definitions.
 - Use the settled Bookmark and Collection definitions.
 
 ## Remaining work

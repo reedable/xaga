@@ -33,6 +33,7 @@ import {
   type MouseEvent,
 } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
+import { useLocation, useNavigationType } from "react-router-dom";
 import { onTopicEntityAdded } from "../../events/topicMembership";
 import useAbortController from "../../hooks/useAbortController";
 import useEntries from "../../hooks/useEntries";
@@ -50,6 +51,7 @@ import { ALL_ENTITIES, SHORTCUTS } from "../../Shortcuts";
 import { emptySite } from "../../sites";
 import {
   isEntry,
+  isFilter,
   isFeed,
   isManagedCollection,
   isPartialAnnotation,
@@ -84,6 +86,8 @@ function getEmptyMessage(filter: Filter, filterText: string): string {
 }
 
 type EntityListProps = {
+  filter: Filter;
+  onFilterChange: (filter: Filter) => void;
   className?: string;
   isSelectableHeader: boolean;
   onEditFeed: (feed: Feed) => void;
@@ -92,14 +96,21 @@ type EntityListProps = {
 };
 
 export function EntityList({
+  filter: listFilter,
+  onFilterChange,
   className,
   isSelectableHeader,
   onEditFeed,
   onEditTopic,
   onEditSite,
 }: EntityListProps) {
+  const location = useLocation();
+  const navigationType = useNavigationType();
+  const lastLocationKey = useRef(location.key);
+  const pendingHistorySelection = useRef<string | undefined>(undefined);
+  // Request effects run before the history effect, ahead of the loading render.
+  const listLoading = useRef(false);
   const {
-    filter: navigationFilter,
     selectEntity,
     selectCollection,
     selectShortcut,
@@ -107,7 +118,6 @@ export function EntityList({
     selectArticleScope,
     replaceAnnotationSelection,
     state,
-    selectFilter,
     selectTags,
   } = useRouter();
   const tagSelectionKey = JSON.stringify(state.tagIds);
@@ -118,9 +128,9 @@ export function EntityList({
   );
   const hasSelectedTags = !!tagIds?.length;
   const filter =
-    hasSelectedTags && (!navigationFilter || navigationFilter === "unread")
+    hasSelectedTags && (!listFilter || listFilter === "unread")
       ? "all"
-      : navigationFilter;
+      : listFilter;
   const { tags, renaming = [], deleting = [], merging = [] } = useTags();
   const tagOptions = useMemo(
     () =>
@@ -383,6 +393,7 @@ export function EntityList({
     const stateVersion = articleStateRef.current.version;
     const signal = abortControllerRef.current.signal;
     setLoading(true);
+    listLoading.current = true;
     try {
       const article = await platform.readArticleScope(signal, articleScopeId);
       const next = await articleScopeEntities(article, (id, refs) =>
@@ -410,8 +421,10 @@ export function EntityList({
         !signal.aborted &&
         version === articleRequestRef.current &&
         articleScopeRef.current === articleScopeId
-      )
+      ) {
+        listLoading.current = false;
         setLoading(false);
+      }
     }
   }, [articleScopeId, abortControllerRef, platform, pushError]);
 
@@ -428,6 +441,7 @@ export function EntityList({
           setEntities(entries);
       };
       setLoading(true);
+      listLoading.current = true;
 
       try {
         if (tagIds !== undefined) {
@@ -458,8 +472,10 @@ export function EntityList({
         if (!signal.aborted && request === listRequestRef.current)
           pushError(error);
       } finally {
-        if (!signal.aborted && request === listRequestRef.current)
+        if (!signal.aborted && request === listRequestRef.current) {
+          listLoading.current = false;
           setLoading(false);
+        }
       }
     },
     [
@@ -489,9 +505,9 @@ export function EntityList({
 
   const handleFilter = useCallback(
     (_event: MouseEvent<HTMLElement>, value: string) => {
-      selectFilter(value);
+      if (isFilter(value)) onFilterChange(value);
     },
-    [selectFilter]
+    [onFilterChange]
   );
 
   const handleMarkEntriesRead = useCallback(async () => {
@@ -536,6 +552,7 @@ export function EntityList({
       selectionRevision.current = state.tagSelectionRevision;
       if (replaced) {
         ++listRequestRef.current;
+        listLoading.current = false;
         setLoading(false);
         return;
       }
@@ -556,6 +573,32 @@ export function EntityList({
     shortcutId,
     requestEntities,
     abort,
+  ]);
+
+  useEffect(() => {
+    if (lastLocationKey.current !== location.key) {
+      lastLocationKey.current = location.key;
+      if (navigationType === "POP")
+        pendingHistorySelection.current = selectedEntityId;
+      // Reader URL/presentation replacements may arrive while the list loads.
+      else if (
+        navigationType === "PUSH" ||
+        pendingHistorySelection.current !== selectedEntityId
+      )
+        pendingHistorySelection.current = undefined;
+    }
+    const id = pendingHistorySelection.current;
+    if (!id || listLoading.current) return;
+    pendingHistorySelection.current = undefined;
+    const index = displayEntities.findIndex((entity) => entity.id === id);
+    if (index !== -1)
+      virtuosoRef.current?.scrollIntoView({ index, behavior: "auto" });
+  }, [
+    location.key,
+    navigationType,
+    selectedEntityId,
+    displayEntities,
+    loading,
   ]);
 
   useEffect(() => {

@@ -37,5 +37,5 @@ and domain objects. A target-only name would not identify which conversion it
 performs. Use `<source>_to_<target>` there, as described under
 [Conversion / Mapping](semantic_vocabulary.md#conversion--mapping).
 
-`mapEntry` is a named conversion function; `items.map(mapEntry)` uses the array’s
+`mapEntry` is a named conversion function; `entities.map(mapEntry)` uses the array’s
 `map` method to apply it. The two uses do not conflict.

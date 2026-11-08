@@ -82,6 +82,16 @@ annotation while browsing a Feed. It checks selection and retained reading/list
 context. Component tests cover selected annotation routes in all four contexts,
 history replacement, and late events; Feed lists expose article items in the UI.
 
+`e2e/filter-history.spec.ts` checks Topic/article Back and Forward after filter
+changes and read-status updates. It verifies that filters do not add history
+entries, that the current filter survives history and collection navigation, and
+that a restored article can remain open while excluded from the Unread list.
+It also checks history-only scrolling with retained focus, and unchanged list
+scroll position after clicking an entity and rendering its article.
+Collection browsing is checked against the complete browser history state:
+switching collections leaves it unchanged, and Back/Forward restores the
+collection captured when each article was opened, even after intervening browsing.
+
 Assertions use the visible controls and results. The capture API is used only to
 exercise its reset operation; tests do not modify mock data directly. The dataset
 and its behavior remain owned by the capture platform.

@@ -7,6 +7,37 @@ Assigning, recoloring, or removing an article bookmark likewise updates the
 displayed article without changing which articles are in the list, including a Site’s Saved list.
 Explicit navigation or changing the filter establishes a new list.
 
+All/Saved/Unread is UI component state owned by `AppLayout`, with Unread as the
+initial value. It carries across collection changes and is not stored in route
+state or persisted as a preference. Changing it updates list membership without
+adding a navigation-history entry. Saving a Topic retains the existing reset to
+Unread.
+
+Back/Forward restores collection and article selection using the current filter;
+it neither restores an earlier filter nor resets it to All. An article restored
+in the reading pane can therefore be absent from the filtered list, including
+when opening it previously marked it read. Tag-selection history and the existing
+text-filter behavior are independent of this reading-state filter.
+
+Selecting a Feed, Topic, Site, or the All items shortcut changes the current
+browsing view in `NavigationProvider` component state. It neither pushes nor
+replaces a history entry. The existing article history, including any Forward
+destinations, remains untouched while browsing collections.
+
+Opening an article pushes its selection together with the collection selected
+at that moment. That collection is a snapshot belonging to the article history
+entry; later collection browsing does not alter it. Back/Forward restores those
+saved article and collection selections, discarding the temporary browsing
+selection. Article shortcuts open an article and therefore still push an article
+selection. Tag-selection history retains its existing behavior.
+
+When Back/Forward restores a selection present in the filtered ListView, scroll
+that entity into view once, after the restored collection has loaded. Scrolling does not
+move keyboard focus. If the entity is excluded, leave the
+list unchanged. Clicking an entity and subsequent article rendering or metadata
+updates do not trigger list scrolling. Up/Down navigation retains its existing
+scroll-and-focus behavior.
+
 Removing a pin removes its shortcut without closing or clearing the list opened
 through that shortcut. The list remains open even after its shortcut is removed.
 
@@ -24,7 +55,7 @@ list scope, and filters. They do not add a Back/Forward step.
 The same selection rule applies in article-scoped, All items, Feed, and Topic
 contexts. Unselected annotations and late events for a previous selection do
 not change the current selection. A replacement must belong to the selected
-parent article. Non-article-scoped lists update or remove the affected item
+parent article. Non-article-scoped lists update or remove the affected entity
 without reloading membership; article-scoped lists retain their authoritative
 refresh and passage ordering.
 
