@@ -52,6 +52,9 @@ export default function ExpandableList({
       </div>
 
       <div
+        // Keep outgoing rows out of input and accessibility queries while Collapse animates.
+        inert={!isExpanded}
+        aria-hidden={!isExpanded}
         className={cx(
           className,
           css.ExpanderContent,

@@ -41,6 +41,52 @@ test("All items stays above the collection filter across section changes", async
   await expect(filter).toHaveValue("no matching collection");
 });
 
+test("collapsing sidebar rows cannot compete with the newly opened section", async ({
+  page,
+}) => {
+  // Keep the outgoing rows mounted through a deliberately slow transition.
+  await page.addStyleTag({
+    content: ".MuiCollapse-root { transition-duration: 10s !important; }",
+  });
+  const shortcuts = page.getByRole("list", {
+    name: "Shortcuts",
+    exact: true,
+    includeHidden: true,
+  });
+  await page.getByRole("button", { name: "Topics (1)", exact: true }).click();
+  const outgoingTopic = shortcuts.getByRole("button", {
+    name: "Everyday discoveries",
+    exact: true,
+    includeHidden: true,
+  });
+  await expect(outgoingTopic).toHaveCount(1);
+  expect(
+    await shortcuts.evaluate(
+      (node) => node.closest('[inert][aria-hidden="true"]') !== null
+    )
+  ).toBe(true);
+  await outgoingTopic.evaluate((node) => {
+    (node as HTMLElement).focus();
+  });
+  await expect(
+    page.getByRole("button", { name: "Topics (1)", exact: true })
+  ).toBeFocused();
+  // Intentionally unscoped: the outgoing shortcut must no longer match.
+  const topic = page.getByRole("button", {
+    name: "Everyday discoveries",
+    exact: true,
+  });
+  await expect(topic).toHaveCount(1);
+  await topic.click();
+  await expect(topic).toHaveClass(/Mui-selected/);
+  await page
+    .getByRole("button", { name: "Shortcuts (1)", exact: true })
+    .click();
+  await expect(topic).toHaveCount(1);
+  await topic.click();
+  await expect(topic).toHaveClass(/Mui-selected/);
+});
+
 test("read status updates Unread membership and collection counts", async ({
   page,
 }) => {
