@@ -138,3 +138,70 @@ under **Shortcuts** in the sidebar.
 
 Choose **Share → Remove from Shortcuts** to unpin an article. Removing a shortcut
 keeps its destination and your current reading context.
+
+## Adjust Settings
+
+Open **Xaga → Settings…**. Settings are shared across your libraries on this
+machine. Switches save immediately. Numeric fields save when you leave the field,
+press Enter, or close Settings. Invalid input or a failed save keeps Settings
+open; the input remains available for correction or retry.
+
+### General
+
+Use **Switch library** to choose another library folder. **Refresh all feeds on
+start-up** automatically contacts subscribed websites when Xaga starts; a change
+applies on the next start. **Show PDFs in the reading pane** chooses between the
+reading pane and your default PDF app.
+
+Under **Size limits**, **Maximum import file size** applies to feed and bookmark
+import files (default 64 MiB). **Maximum feed response size** applies to each
+fetched feed, edited in MiB (default 10 MiB), counting decompressed bytes
+when compression is enabled. Larger limits allow larger inputs and can use more
+memory. Changes apply to the next import or feed operation.
+
+Under **Timeouts**, **Article load timeout** bounds article-loader operations,
+including image recovery; **Feed request timeout** covers connection, response,
+and body reading for each feed. Both default to 10 seconds. Longer timeouts give
+slower websites more time but delay reporting failure. Changes apply to new
+loader operations or the next feed add, refresh, or import. Feed size and timeout
+fields retain their existing limits, including zero. Feed size accepts fractional
+MiB that equal a whole number of bytes; timeouts accept whole seconds.
+
+### Appearance
+
+Under **Reading**, **Default article view** selects **Summary** or **Reader**.
+The font, font size, and line height controls adjust the reading presentation.
+
+### Privacy
+
+**Send referring URLs for feed redirects** is off by default. Enabling it lets
+redirect destinations learn the previous feed URL and may help feeds that
+require it. **Allow compressed feed transfers** is also off by default. Enabling
+it advertises gzip support to feed websites, revealing another client capability
+in exchange for potentially smaller transfers. The feed size limit still counts
+decompressed bytes. Both changes apply to the next feed add, refresh, or import;
+they do not change article-loader headers or compression.
+
+**Keep website sessions** lets listed websites retain cookies and site data in
+isolated sessions, for example to stay logged in. Persistent sessions require
+macOS 14 or later. Reopen existing loader windows after changing this list.
+**Save article images for offline viewing** allows additional image requests;
+its description explains when the change takes effect and which images remain
+available when it is off.
+
+### Security
+
+**Allow unencrypted HTTP** is off by default. Enabling it allows HTTP requests
+routed through Xaga’s proxy; traffic can be read and changed in transit.
+**Allow HTTPS connections on other ports** is also off by default: CONNECT
+tunnels are restricted to port 443. Enabling it permits tunnels to any port,
+increasing the services a website can reach. Address checks still apply, but the
+proxy cannot inspect traffic inside a tunnel. These changes apply to new proxy
+requests or tunnels, leaving existing connections unaffected. These controls
+cover feeds and article-loader requests that use the proxy; WebKit can bypass
+the proxy for some local requests, so they do not govern all webview traffic.
+
+**Maximum feed redirects** defaults to 3 and accepts 0–10. Zero refuses the first
+redirect; higher values follow more website-selected destinations. Changes apply
+to the next feed add, refresh, or import. This does not limit redirects in
+article-loader windows.

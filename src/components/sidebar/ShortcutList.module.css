@@ -3,7 +3,7 @@
 }
 
 .SkeletonRow {
-  min-height: 40px;
+  min-height: 2.25rem;
   gap: 8px;
 }
 

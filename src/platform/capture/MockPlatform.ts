@@ -1,3 +1,4 @@
+import type { FetchSettings } from "../fetchSettings";
 import type { SidebarSortMode } from "../../sidebarSort";
 import type { Platform } from "../Platform";
 import type { Entry, Filter, ListEntity, Topic, Annotation } from "../../types";
@@ -23,6 +24,19 @@ export class MockPlatform implements Platform {
   private refreshAttempts = 0;
   private scenario = new URLSearchParams(location.search).get("scenario");
   private listeners = new Map<EventName, Set<(value: never) => void>>();
+  private fetchSettings: FetchSettings = {
+    refererAllowed: false,
+    gzipAllowed: false,
+    httpAllowed: false,
+    connectNonstandardPortsAllowed: false,
+    maxRedirects: "3",
+    loaderTimeoutSecs: "10",
+    feedTimeoutSecs: "10",
+    feedMaxBodyBytes: "10485760",
+  };
+  private importMaxBytes = 64 * 1024 * 1024;
+  private refreshOnStartup = false;
+  private settingsAttempts = 0;
   private theme = "light";
   private sidebarSort: SidebarSortMode = "unread";
 
@@ -534,10 +548,28 @@ export class MockPlatform implements Platform {
     this.emit("onHtmlReaderLineHeightChanged", value);
   };
   getRefreshOnStartup: Platform["getRefreshOnStartup"] = async () =>
-    this.scenario === "startup-refresh-failure";
+    this.refreshOnStartup || this.scenario === "startup-refresh-failure";
   getInlinePdfReader: Platform["getInlinePdfReader"] = async () => false;
   getLoadRemoteImage: Platform["getLoadRemoteImage"] = async () => false;
-  getImportMaxBytes: Platform["getImportMaxBytes"] = async () => 10485760;
+  getFetchSettings: Platform["getFetchSettings"] = async () =>
+    structuredClone(this.fetchSettings);
+  setFetchSetting: Platform["setFetchSetting"] = async (change) => {
+    if (
+      this.scenario === "settings-save-failure" &&
+      this.settingsAttempts++ === 0
+    )
+      throw {
+        code: "settings:busy",
+        message: "Another Xaga instance is busy. Please try again.",
+        detail: "Synthetic settings refusal",
+      };
+    this.fetchSettings = {
+      ...this.fetchSettings,
+      [change.setting]: change.value,
+    };
+  };
+  getImportMaxBytes: Platform["getImportMaxBytes"] = async () =>
+    this.importMaxBytes;
   getAllowedDomains: Platform["getAllowedDomains"] = async () => [];
   onError: Platform["onError"] = (callback) =>
     this.subscribe("onError", callback);
@@ -598,10 +630,12 @@ export class MockPlatform implements Platform {
   queryByEntity: Platform["queryByEntity"] = async () => [];
   queryByText: Platform["queryByText"] = async () =>
     this.unsupported("Text search");
-  setImportMaxBytes: Platform["setImportMaxBytes"] = async () =>
-    this.unsupported("Import size settings");
-  setRefreshOnStartup: Platform["setRefreshOnStartup"] = async () =>
-    this.unsupported("Startup refresh settings");
+  setImportMaxBytes: Platform["setImportMaxBytes"] = async (value) => {
+    this.importMaxBytes = value;
+  };
+  setRefreshOnStartup: Platform["setRefreshOnStartup"] = async (value) => {
+    this.refreshOnStartup = value;
+  };
   onOpenLibrary: Platform["onOpenLibrary"] = (callback) =>
     this.subscribe("onOpenLibrary", callback);
   onOpenSettings: Platform["onOpenSettings"] = (callback) =>

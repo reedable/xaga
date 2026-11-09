@@ -123,6 +123,8 @@ pub(crate) struct AppState {
     /// Port of the local SSRF-filtering proxy that loader webviews and the
     /// per-invocation fetch clients (see [`fetch_client`]) are routed through.
     pub(crate) network_proxy_port: u16,
+    pub(crate) http_allowed: Arc<RwLock<bool>>,
+    pub(crate) connect_nonstandard_ports_allowed: Arc<RwLock<bool>>,
     /// Redirect cap for the reqwest fetch paths (feed XML), already
     /// clamped to [`fetch_client::MAX_REDIRECTS_CEILING`]. The article loader
     /// webview is not covered (docs/architecture/security/fetching_untrusted_content.md,
@@ -492,6 +494,9 @@ pub(crate) fn refresh_state_from_settings(state: &AppState, s: &UserSettings) {
     *state.max_redirects.write().unwrap() = fetch_client::effective_max_redirects(s.max_redirects);
     *state.referer_allowed.write().unwrap() = s.referer_allowed.unwrap_or(false);
     *state.gzip_allowed.write().unwrap() = s.gzip_allowed.unwrap_or(false);
+    *state.http_allowed.write().unwrap() = s.http_allowed.unwrap_or(false);
+    *state.connect_nonstandard_ports_allowed.write().unwrap() =
+        s.connect_nonstandard_ports_allowed.unwrap_or(false);
     *state.html_reader_font_family.write().unwrap() = s
         .html_reader_font_family
         .unwrap_or_else(|| "system".to_string());
@@ -742,6 +747,8 @@ pub fn run() {
             load_remote_image,
             html_reader_view,
             network_proxy_port,
+            http_allowed,
+            connect_nonstandard_ports_allowed,
             max_redirects,
             referer_allowed,
             gzip_allowed,
@@ -1856,3 +1863,7 @@ mod embedding_startup_state_tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "../tests/support/app_state.rs"]
+mod test_app_state;

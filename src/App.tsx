@@ -52,6 +52,7 @@ export default function App({ entryPoint }: { entryPoint: string }) {
       {entryPoint === "settings" ? (
         <MemoryRouter initialEntries={["/general"]}>
           <Settings />
+          {isCaptureMode && <CaptureReady settingsOnly />}
         </MemoryRouter>
       ) : (
         <BrowserRouter>

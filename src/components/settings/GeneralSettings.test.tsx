@@ -1,3 +1,5 @@
+import { SettingsSaveProvider } from "./SettingsSaveProvider";
+import { FetchSettingsProvider } from "./FetchSettingsProvider";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -7,6 +9,17 @@ import { GeneralSettings } from "./GeneralSettings";
 const MIB = 1024 * 1024;
 const platform = vi.hoisted(() => ({
   onWindowCloseRequested: vi.fn().mockResolvedValue(() => {}),
+  getFetchSettings: vi.fn().mockResolvedValue({
+    refererAllowed: false,
+    gzipAllowed: false,
+    httpAllowed: false,
+    connectNonstandardPortsAllowed: false,
+    maxRedirects: "3",
+    loaderTimeoutSecs: "10",
+    feedTimeoutSecs: "10",
+    feedMaxBodyBytes: "10485760",
+  }),
+  setFetchSetting: vi.fn().mockResolvedValue(undefined),
   getLibrary: vi.fn().mockResolvedValue("library"),
   getRefreshOnStartup: vi.fn().mockResolvedValue(false),
   getInlinePdfReader: vi.fn().mockResolvedValue(false),
@@ -40,7 +53,11 @@ beforeEach(async () => {
   await act(async () =>
     root.render(
       <SettingsProvider>
-        <GeneralSettings />
+        <SettingsSaveProvider>
+          <FetchSettingsProvider>
+            <GeneralSettings />
+          </FetchSettingsProvider>
+        </SettingsSaveProvider>
       </SettingsProvider>
     )
   );
@@ -50,7 +67,11 @@ afterEach(async () => {
   container.remove();
 });
 const input = () =>
-  container.querySelector<HTMLInputElement>('input[type="number"]')!;
+  document.getElementById(
+    Array.from(container.querySelectorAll("label")).find(
+      (label) => label.textContent === "Maximum import file size"
+    )!.htmlFor
+  ) as HTMLInputElement;
 async function blur() {
   await act(async () =>
     input().dispatchEvent(new FocusEvent("focusout", { bubbles: true }))
@@ -84,7 +105,11 @@ it("loads bytes as MiB and saves the converted value", async () => {
   await act(async () =>
     root.render(
       <SettingsProvider>
-        <GeneralSettings key="reopened" />
+        <SettingsSaveProvider>
+          <FetchSettingsProvider>
+            <GeneralSettings key="reopened" />
+          </FetchSettingsProvider>
+        </SettingsSaveProvider>
       </SettingsProvider>
     )
   );
@@ -129,7 +154,7 @@ it("waits for persistence and prevents overlapping saves", async () => {
 });
 
 it.each(["settings:busy", "settings:stale-view"])(
-  "reloads the actual limit after %s and allows retry",
+  "retains the draft after %s reloads the saved limit and allows retry",
   async (code) => {
     const error = { code, message: "Please retry", detail: "" };
     platform.setImportMaxBytes.mockImplementationOnce(async () => {
@@ -139,7 +164,7 @@ it.each(["settings:busy", "settings:stale-view"])(
     await edit("128");
     await blur();
     expect(sink.pushError).toHaveBeenCalledWith(error);
-    expect(input().value).toBe("96");
+    expect(input().value).toBe("128");
 
     await edit("128");
     await blur();
@@ -197,7 +222,7 @@ it("keeps the window open when saving on close fails", async () => {
   });
   expect(allowed).toBe(false);
   expect(sink.pushError).toHaveBeenCalledWith(error);
-  expect(input().value).toBe("64");
+  expect(input().value).toBe("128");
 });
 
 it("keeps invalid edits visible instead of closing and silently discarding them", async () => {

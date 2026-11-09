@@ -71,6 +71,15 @@ runner configuration.
 - Resetting after edits and restoring the initial dataset, navigation, filters,
   and sidebar expansion.
 
+`e2e/settings.spec.ts` opens Settings through the capture platform’s `window=settings`
+parameter and existing readiness/reset mechanism. It checks General/Appearance/
+Privacy/Security organization, secure defaults, exact large-integer transport,
+redirect validation, successful saving across panel navigation, and refusal/retry.
+Component tests cover coordinated close, in-flight saves, invalid input, and
+failed drafts; backend tests cover persisted changes and live runtime handles.
+The browser mock does not verify native window closing, native IPC, disk writes,
+or actual network-policy enforcement.
+
 `e2e/bookmark-colors.spec.ts` checks all six article bookmark borders in light
 and dark themes with selection, unread, hover, and keyboard-focus cues. It attaches
 row screenshots for visual review. The capture startup helper accepts a theme

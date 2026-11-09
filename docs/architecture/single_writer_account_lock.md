@@ -107,5 +107,9 @@ replacement described in [Crash Consistency](crash_consistency.md).
 Settings writes return `settings:busy` on contention and `settings:stale-view`
 when the backend refreshes its settings after detecting a stale write.
 `SettingsProvider.saveSettings` reports these through the shared error display
-and reloads general, appearance, and privacy settings. Local values change only
-after a successful write. Refused writes reload backend values before retry.
+and reloads general, appearance, privacy, and security settings. Saved values change
+only after a successful write. Refused writes reload backend values before retry;
+numeric controls retain their unsaved input rather than replacing it with that
+reload. The shared Settings close coordinator awaits every mounted numeric
+control, including an in-flight save. Invalid input or a refused write prevents
+closing. Concurrent close requests share that same pending operation.

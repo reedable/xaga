@@ -72,6 +72,7 @@ export const ERROR_CODE = [
   "settings:busy",
   "import:too-large",
   "settings:invalid-import-limit",
+  "settings:invalid-fetch-setting",
   "app:error", // transitional catch-all for not-yet-typed string errors
 ] as const;
 export type ErrorCode = (typeof ERROR_CODE)[number];

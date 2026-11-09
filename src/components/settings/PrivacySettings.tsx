@@ -1,3 +1,4 @@
+import { SettingsControlLabel } from "./SettingsControlLabel";
 import { Close } from "@mui/icons-material";
 import {
   Alert,
@@ -15,6 +16,8 @@ import { useSettings } from "../../hooks/useSettings";
 import { useErrorSink } from "../../hooks/useErrorSink";
 import { usePlatform } from "../../platform/Platform";
 import css from "./PrivacySettings.module.css";
+
+import { FetchSwitch } from "./FetchSettingControls";
 
 const DOMAIN_RE =
   /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
@@ -100,6 +103,17 @@ export function PrivacySettings() {
         Privacy
       </Typography>
 
+      <FetchSwitch
+        setting="refererAllowed"
+        label="Send referring URLs for feed redirects"
+        description="Off by default. Redirect destinations can learn the previous feed URL when enabled. May help feeds that require a referring URL. Applies to the next feed add, refresh, or import; does not change article-loader headers."
+      />
+      <FetchSwitch
+        setting="gzipAllowed"
+        label="Allow compressed feed transfers"
+        description="Off by default. Advertises gzip support to feed websites, revealing another client capability in exchange for potentially smaller transfers. The feed size limit still counts decompressed bytes. Applies to the next feed add, refresh, or import; does not change article-loader compression."
+      />
+
       <div className={css.Section}>
         <FormControlLabel
           control={
@@ -108,37 +122,43 @@ export function PrivacySettings() {
               disabled={!captureLoaded || captureSaving}
               onChange={(_, checked) => void handleCaptureChange(checked)}
               slotProps={{
-                input: { "aria-describedby": "image-capture-description" },
+                input: {
+                  "aria-labelledby": "image-capture-description-label",
+                  "aria-describedby": "image-capture-description",
+                },
               }}
             />
           }
-          label="Save article images for offline viewing"
+          disableTypography
+          sx={{ alignItems: "flex-start" }}
+          label={
+            <SettingsControlLabel
+              id="image-capture-description"
+              label="Save article images for offline viewing"
+            >
+              Off by default. Enabling this allows additional network requests
+              to save images when loading articles and recover unavailable
+              images when opening saved articles. Changes apply to new loads;
+              reopen existing loader windows to use the new preference. Saved
+              images remain available when this is off. Original pages can still
+              display images in the loader window.
+            </SettingsControlLabel>
+          }
         />
-        <Typography
-          id="image-capture-description"
-          variant="body2"
-          color="text.secondary"
-        >
-          Off by default. Enabling this allows additional network requests to
-          save images when loading articles and recover unavailable images when
-          opening saved articles. Changes apply to new loads; reopen existing
-          loader windows to use the new preference. Saved images remain
-          available when this is off. Original pages can still display images in
-          the loader window.
-        </Typography>
         {captureError && <Alert severity="error">{captureError}</Alert>}
       </div>
 
       <div className={css.Section}>
         <Typography variant="subtitle2" gutterBottom>
-          Allowed Domains
+          Keep website sessions
         </Typography>
         <Typography variant="body2" color="text.secondary" gutterBottom>
           By default, every browsing session is incognito — no cookies or site
           data are saved. Add domains here to keep persistent sessions (e.g. to
           stay logged in). Each domain gets its own isolated cookie jar.
           Persistent sessions require macOS 14 or later; on older systems, all
-          sessions remain incognito.
+          sessions remain incognito. Changes apply when opening a new loader
+          window; reopen existing windows to use the new session preference.
         </Typography>
 
         <div className={css.InputRow}>

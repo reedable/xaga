@@ -1,3 +1,4 @@
+import { SettingsControlLabel } from "./SettingsControlLabel";
 import {
   Button,
   Checkbox,
@@ -5,14 +6,17 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { usePlatform } from "../../platform/Platform";
 import { useErrorSink } from "../../hooks/useErrorSink";
-import { subscribe } from "../../hooks/useEvents";
+import { NumericSetting } from "./NumericSetting";
+import { FetchNumber } from "./FetchSettingControls";
 import { useSettings } from "../../hooks/useSettings";
 import css from "./GeneralSettings.module.css";
 
 export function GeneralSettings() {
+  const pdfHelpId = useId();
+  const refreshHelpId = useId();
   const {
     library,
     switchLibrary,
@@ -23,14 +27,14 @@ export function GeneralSettings() {
   } = useSettings();
 
   return (
-    <div>
+    <div className={css.General}>
       <Typography component="h1" variant="h6" gutterBottom>
         General
       </Typography>
 
       <div className={css.LibrarySection}>
         <Typography variant="subtitle2" gutterBottom>
-          Library Location
+          Library location
         </Typography>
 
         <div className={css.LibraryRow}>
@@ -46,37 +50,112 @@ export function GeneralSettings() {
             onClick={switchLibrary}
             className={css.SwitchButton}
           >
-            Switch
+            Switch library
           </Button>
         </div>
       </div>
 
+      <Typography
+        component="h2"
+        variant="subtitle1"
+        className={css.SectionHeading}
+      >
+        Size limits
+      </Typography>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        className={css.SectionDescription}
+      >
+        Larger inputs can use more memory. Changes apply to the next import or
+        feed request.
+      </Typography>
       <ImportSizeSetting />
+      <FetchNumber
+        setting="feedMaxBodyBytes"
+        label="Maximum feed response size"
+        unit="MiB"
+        description="Feed downloads; 10 MiB by default. Counts decompressed bytes."
+      />
+      <Typography
+        component="h2"
+        variant="subtitle1"
+        className={css.SectionHeading}
+      >
+        Timeouts
+      </Typography>
+      <Typography
+        variant="body2"
+        color="text.secondary"
+        className={css.SectionDescription}
+      >
+        Longer waits allow slow websites more time but delay failures. Changes
+        apply to new article loads and feed requests.
+      </Typography>
+      <FetchNumber
+        setting="loaderTimeoutSecs"
+        label="Article load timeout"
+        unit="sec"
+        description="Article loading and image recovery. Default: 10 seconds."
+      />
+      <FetchNumber
+        setting="feedTimeoutSecs"
+        label="Feed request timeout"
+        unit="sec"
+        description="Connection, response, and body reading. Default: 10 seconds."
+      />
 
       <div className={css.RefreshSection}>
         <FormControlLabel
           control={
             <Checkbox
+              slotProps={{
+                input: {
+                  "aria-labelledby": `${pdfHelpId}-label`,
+                  "aria-describedby": pdfHelpId,
+                },
+              }}
               checked={inlinePdfReader}
               onChange={(e) => setInlinePdfReader(e.target.checked)}
             />
           }
-          label="Show PDFs in the reading pane"
+          disableTypography
+          sx={{ alignItems: "flex-start" }}
+          label={
+            <SettingsControlLabel
+              id={pdfHelpId}
+              label="Show PDFs in the reading pane"
+            >
+              When off, PDFs open in your default app.
+            </SettingsControlLabel>
+          }
         />
-        <Typography variant="body2" color="text.secondary">
-          When off, PDFs open in your default app.
-        </Typography>
       </div>
 
       <div className={css.RefreshSection}>
         <FormControlLabel
           control={
             <Checkbox
+              slotProps={{
+                input: {
+                  "aria-labelledby": `${refreshHelpId}-label`,
+                  "aria-describedby": refreshHelpId,
+                },
+              }}
               checked={refreshOnStartup}
               onChange={(e) => setRefreshOnStartup(e.target.checked)}
             />
           }
-          label="Refresh all feeds on start-up"
+          disableTypography
+          sx={{ alignItems: "flex-start" }}
+          label={
+            <SettingsControlLabel
+              id={refreshHelpId}
+              label="Refresh all feeds on start-up"
+            >
+              Contacts subscribed websites automatically on the next startup.
+            </SettingsControlLabel>
+          }
         />
       </div>
     </div>
@@ -90,105 +169,36 @@ function ImportSizeSetting() {
   const { saveSettings, refreshVersion } = useSettings();
   const { pushError } = useErrorSink();
   const [savedBytes, setSavedBytes] = useState<number | null>(null);
-  const [draft, setDraft] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const pendingSave = useRef<Promise<boolean> | null>(null);
-  const value = draft ?? (savedBytes === null ? "" : String(savedBytes / MIB));
-  const bytes = Number(value) * MIB;
-  const valid =
-    value.trim() !== "" &&
-    Number.isInteger(Number(value)) &&
-    Number.isSafeInteger(bytes) &&
-    bytes > 0;
-
   useEffect(() => {
     let active = true;
     platform
       .getImportMaxBytes()
       .then((limit) => {
-        if (active) {
-          setSavedBytes(limit);
-          setDraft(null);
-        }
+        if (active) setSavedBytes(limit);
       })
       .catch((error) => {
-        if (active) {
-          setSavedBytes(null);
-          pushError(error);
-        }
+        if (active) pushError(error);
       });
     return () => {
       active = false;
     };
   }, [platform, pushError, refreshVersion]);
-
-  function save(): Promise<boolean> {
-    if (pendingSave.current) return pendingSave.current;
-    if (draft === null || bytes === savedBytes) return Promise.resolve(true);
-    if (!valid || savedBytes === null) return Promise.resolve(false);
-    setSaving(true);
-    const pending = saveSettings(() => platform.setImportMaxBytes(bytes))
-      .then((saved) => {
-        if (saved) {
-          setSavedBytes(bytes);
-          setDraft(null);
-        }
-        return saved;
-      })
-      .finally(() => {
-        pendingSave.current = null;
-        setSaving(false);
-      });
-    pendingSave.current = pending;
-    return pending;
-  }
-
-  const saveBeforeClose = useEffectEvent(() => save());
-  useEffect(
-    () =>
-      subscribe(() =>
-        platform.onWindowCloseRequested(saveBeforeClose).catch((error) => {
-          pushError(error);
-          return () => {};
-        })
-      ),
-    [platform, pushError]
-  );
-
   return (
-    <div className={css.RefreshSection}>
-      <TextField
-        label="Maximum import file size"
-        type="number"
-        size="small"
-        value={value}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => void save()}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            void save();
-          }
-        }}
-        disabled={savedBytes === null || saving}
-        error={draft !== null && !valid}
-        helperText={
-          draft !== null && !valid
-            ? "Enter a positive whole number of MiB."
-            : "MiB (1 MiB = 1,048,576 bytes)"
-        }
-        slotProps={{
-          htmlInput: {
-            min: 1,
-            step: 1,
-            max: Math.floor(Number.MAX_SAFE_INTEGER / MIB),
-          },
-        }}
-      />
-      <Typography variant="body2" color="text.secondary">
-        Applies to feed and bookmark imports. Raising the limit allows larger
-        files and may increase memory use. Changes apply to the next import.
-      </Typography>
-    </div>
+    <NumericSetting
+      label="Maximum import file size"
+      savedValue={savedBytes === null ? null : String(savedBytes / MIB)}
+      minimum={1n}
+      maximum={BigInt(Math.floor(Number.MAX_SAFE_INTEGER / MIB))}
+      unit="MiB"
+      description="Feed and bookmark import files."
+      saveValue={async (value) => {
+        const bytes = Number(value) * MIB;
+        const saved = await saveSettings(() =>
+          platform.setImportMaxBytes(bytes)
+        );
+        if (saved) setSavedBytes(bytes);
+        return saved;
+      }}
+    />
   );
 }

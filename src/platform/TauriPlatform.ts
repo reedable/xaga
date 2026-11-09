@@ -1,3 +1,4 @@
+import type { FetchSettings, FetchSettingChange } from "./fetchSettings";
 import { SIDEBAR_SORT_MODES, type SidebarSortMode } from "../sidebarSort";
 import type { EntryTagChange, Tag, TagSnapshot } from "../domain";
 import type {
@@ -1396,6 +1397,18 @@ export class TauriPlatform implements Platform {
     const name = "set_theme";
     const invoker = decorate(invoke).with(logged, { logger, name });
     return invoker<void>(name, { theme });
+  }
+
+  async getFetchSettings(): Promise<FetchSettings> {
+    const name = "get_fetch_settings";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<FetchSettings>(name);
+  }
+
+  async setFetchSetting(change: FetchSettingChange): Promise<void> {
+    const name = "set_fetch_setting";
+    const invoker = decorate(invoke).with(logged, { logger, name });
+    return invoker<void>(name, { change });
   }
 
   async getImportMaxBytes(): Promise<number> {

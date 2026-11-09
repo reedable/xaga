@@ -6,7 +6,11 @@ import { TagsContext } from "../../providers/TagsContext";
 import AllEntitiesCountsContext from "../../providers/AllEntitiesCountsContext";
 import { useSettings } from "../../hooks/useSettings";
 
-export function CaptureReady() {
+export function CaptureReady({
+  settingsOnly = false,
+}: {
+  settingsOnly?: boolean;
+}) {
   const feeds = useContext(FeedsContext);
   const topics = useContext(TopicsContext);
   const sites = useContext(SitesContext);
@@ -15,11 +19,12 @@ export function CaptureReady() {
   const { settingsLoaded } = useSettings();
   const ready =
     settingsLoaded &&
-    feeds?.hasLoaded &&
-    topics?.hasLoaded &&
-    sites?.hasLoaded &&
-    tags?.hasLoaded &&
-    counts !== null;
+    (settingsOnly ||
+      (feeds?.hasLoaded &&
+        topics?.hasLoaded &&
+        sites?.hasLoaded &&
+        tags?.hasLoaded &&
+        counts !== null));
   useEffect(() => {
     let active = true;
     if (ready)

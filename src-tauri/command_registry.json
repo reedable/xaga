@@ -41,6 +41,8 @@
     "commands::library::get_library",
     "commands::library::set_library",
     "commands::library::is_library_read_only",
+    "commands::settings::get_fetch_settings",
+    "commands::settings::set_fetch_setting",
     "commands::settings::get_theme",
     "commands::settings::set_theme",
     "commands::settings::get_import_max_bytes",

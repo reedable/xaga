@@ -1,3 +1,4 @@
+import type { FetchSettings, FetchSettingChange } from "./fetchSettings";
 import type { SidebarSortMode } from "../sidebarSort";
 import type { ImageRecovery } from "../text/imageReferences";
 import type { UnlistenFn } from "@tauri-apps/api/event";
@@ -257,6 +258,8 @@ export interface Platform {
   setTheme(theme: string): Promise<void>;
 
   // Settings
+  getFetchSettings(): Promise<FetchSettings>;
+  setFetchSetting(change: FetchSettingChange): Promise<void>;
   getImportMaxBytes(): Promise<number>;
   setImportMaxBytes(value: number): Promise<void>;
   getRefreshOnStartup(): Promise<boolean>;

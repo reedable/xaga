@@ -118,8 +118,20 @@ export function AppearanceSettings() {
         </FormControl>
       </div>
 
+      <Typography
+        component="h2"
+        variant="subtitle1"
+        className={css.ReadingHeading}
+      >
+        Reading
+      </Typography>
+
       <div className={css.SummarySection}>
+        <Typography id="default-article-view" variant="subtitle2">
+          Default article view
+        </Typography>
         <RadioGroup
+          aria-labelledby="default-article-view"
           value={view}
           onChange={(e) => changeHtmlReaderView(e.target.value as typeof view)}
         >
@@ -135,14 +147,6 @@ export function AppearanceSettings() {
           />
         </RadioGroup>
       </div>
-
-      <Typography
-        component="h2"
-        variant="subtitle1"
-        className={css.ReadingHeading}
-      >
-        Reading
-      </Typography>
 
       <div className={css.FontSection}>
         <FormControl size="small" className={css.SelectControl}>

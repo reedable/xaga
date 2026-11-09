@@ -195,6 +195,38 @@ Fetch behavior that trades an invariant against UX is exposed as a setting whose
 - **`allowed_domains`** (default empty) — domains granted persistent webview storage in the loader (see below). Consequence: those sites can recognize a returning user.
 - **`connect_nonstandard_ports_allowed`** (default `false`) — allow `CONNECT` to target a port other than 443. Consequence: `CONNECT` to any port is tunneled opaquely, so a plaintext (or otherwise non-TLS) service on a non-443 port is reachable through the tunnel with no visibility into what the tunneled bytes are.
 
+### Settings controls and runtime updates
+
+Settings → Privacy exposes `referer_allowed` and `gzip_allowed`; Settings →
+Security exposes `http_allowed`, `connect_nonstandard_ports_allowed`, and
+`max_redirects`. Descriptions state their consequences, retrieval scope, and
+when changes apply. General exposes loader/feed timeouts and the feed body cap,
+with feed/import size limits grouped together. Defaults and enforcement above
+are unchanged.
+
+`get_fetch_settings` returns the resolved process values. `set_fetch_setting`
+accepts a typed single-setting change, writes through the account settings
+funnel, then updates only that setting’s live handle. The proxy shares the HTTP
+and CONNECT handles with `AppState`, so changes affect new proxy requests and
+tunnels without restart; existing connections are unaffected. Stale-view reloads
+refresh these handles as well. Feed commands build clients from the next
+invocation’s saved settings; WebKit headers and redirect counts are unaffected.
+
+Timeouts and feed-size limits retain their existing `u64` semantics, including
+zero and values above JavaScript’s safe-integer range. Their IPC representation
+is a decimal string in both directions. Native decoding rejects fractional byte
+counts or seconds, negative, exponent-form, and overflowing values rather than
+rounding them. Feed
+size is edited in MiB using exact decimal conversion, including fractional MiB
+for arbitrary existing byte values. Values must resolve to whole bytes within
+the u64 range.
+Redirect input uses the same string transport but is limited to 0–10. Numeric
+controls save on blur, Enter, and coordinated Settings close; failed writes retain
+the draft for retry. Browser coverage checks presentation and mock saving;
+backend tests check persistence, resolved defaults, and live handle updates.
+These checks do not establish WebKit traffic enforcement beyond the evidence
+and limits recorded above.
+
 ### Recorded exception to Secure by Default
 
 Every setting above defaults to its secure state, with one exception: **the `max_redirects` default is 3, not 0.** The most secure default is 0 — if a URL does not load in one shot, no redirect is followed. The default of 3 serves UX, not security, and violates docs/principles/secure_by_default.md. Any change to this default, or to the principle, must revisit this record.

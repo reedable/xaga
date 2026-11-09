@@ -564,3 +564,28 @@ it("decodes typed per-feed refresh failures and successful empty passes", async 
     await new TauriPlatform().refreshAllFeeds(new AbortController().signal)
   ).toEqual({ feeds: [], failures: [] });
 });
+
+it("transports fetch limits as exact decimal strings without numeric conversion", async () => {
+  const platform = new TauriPlatform();
+  const settings = {
+    refererAllowed: false,
+    gzipAllowed: false,
+    httpAllowed: false,
+    connectNonstandardPortsAllowed: false,
+    maxRedirects: "3",
+    loaderTimeoutSecs: "18446744073709551615",
+    feedTimeoutSecs: "0",
+    feedMaxBodyBytes: "9007199254740993",
+  };
+  invokeMock.mockResolvedValueOnce(settings);
+  expect(await platform.getFetchSettings()).toEqual(settings);
+  expect(invokeMock).toHaveBeenLastCalledWith("get_fetch_settings");
+  invokeMock.mockResolvedValueOnce(undefined);
+  await platform.setFetchSetting({
+    setting: "feedMaxBodyBytes",
+    value: "9007199254740993",
+  });
+  expect(invokeMock).toHaveBeenLastCalledWith("set_fetch_setting", {
+    change: { setting: "feedMaxBodyBytes", value: "9007199254740993" },
+  });
+});

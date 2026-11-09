@@ -46,6 +46,8 @@ pub(crate) enum AppError {
     ImportTooLarge,
     #[error("import size limit must be positive whole MiB and exactly representable in bytes")]
     InvalidImportLimit,
+    #[error("invalid fetch setting value")]
+    InvalidFetchSetting,
     /// Transitional catch-all for ad-hoc string errors not yet promoted to a
     /// typed variant. The string is log-only detail.
     #[error("{0}")]
@@ -65,6 +67,7 @@ impl AppError {
             AppError::SettingsBusy => "settings:busy",
             AppError::ImportTooLarge => "import:too-large",
             AppError::InvalidImportLimit => "settings:invalid-import-limit",
+            AppError::InvalidFetchSetting => "settings:invalid-fetch-setting",
             AppError::Message(_) => "app:error",
         }
     }
@@ -86,6 +89,9 @@ impl AppError {
                 "This file exceeds the import size limit. Increase Maximum import file size in Settings → General, or import a smaller file."
             }
             AppError::InvalidImportLimit => "Enter a positive whole number of MiB.",
+            AppError::InvalidFetchSetting => {
+                "Enter a whole number within the setting’s supported range."
+            }
             AppError::Message(_) => "Something went wrong.",
         }
     }
@@ -187,6 +193,7 @@ mod tests {
         "settings:busy",
         "import:too-large",
         "settings:invalid-import-limit",
+        "settings:invalid-fetch-setting",
         "app:error",
     ];
 

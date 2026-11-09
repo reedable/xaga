@@ -345,3 +345,203 @@ pub async fn set_sidebar_sort(
 ) -> Result<(), AppError> {
     save_sidebar_sort(&app, &state, value)
 }
+
+/// Decimal strings keep the full u64 range exact across JavaScript IPC.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FetchSettings {
+    referer_allowed: bool,
+    gzip_allowed: bool,
+    http_allowed: bool,
+    connect_nonstandard_ports_allowed: bool,
+    max_redirects: String,
+    loader_timeout_secs: String,
+    feed_timeout_secs: String,
+    feed_max_body_bytes: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(tag = "setting", content = "value", rename_all = "camelCase")]
+pub(crate) enum FetchSetting {
+    RefererAllowed(bool),
+    GzipAllowed(bool),
+    HttpAllowed(bool),
+    ConnectNonstandardPortsAllowed(bool),
+    MaxRedirects(#[serde(deserialize_with = "decimal_u64")] u64),
+    LoaderTimeoutSecs(#[serde(deserialize_with = "decimal_u64")] u64),
+    FeedTimeoutSecs(#[serde(deserialize_with = "decimal_u64")] u64),
+    FeedMaxBodyBytes(#[serde(deserialize_with = "decimal_u64")] u64),
+}
+
+fn decimal_u64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
+    let value = <String as serde::Deserialize>::deserialize(d)?;
+    if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(serde::de::Error::custom("expected decimal whole number"));
+    }
+    value.parse().map_err(serde::de::Error::custom)
+}
+
+impl FetchSetting {
+    fn validate(&self) -> Result<(), AppError> {
+        if matches!(self, Self::MaxRedirects(value) if *value > u64::from(crate::fetch_client::MAX_REDIRECTS_CEILING))
+        {
+            return Err(AppError::InvalidFetchSetting);
+        }
+        Ok(())
+    }
+
+    fn apply(&self, settings: &mut crate::UserSettings) {
+        match *self {
+            Self::RefererAllowed(v) => settings.referer_allowed = Some(v),
+            Self::GzipAllowed(v) => settings.gzip_allowed = Some(v),
+            Self::HttpAllowed(v) => settings.http_allowed = Some(v),
+            Self::ConnectNonstandardPortsAllowed(v) => {
+                settings.connect_nonstandard_ports_allowed = Some(v)
+            }
+            Self::MaxRedirects(v) => settings.max_redirects = Some(v as u32),
+            Self::LoaderTimeoutSecs(v) => settings.loader_timeout_secs = Some(v),
+            Self::FeedTimeoutSecs(v) => settings.feed_timeout_secs = Some(v),
+            Self::FeedMaxBodyBytes(v) => settings.feed_max_body_bytes = Some(v),
+        }
+    }
+
+    fn apply_to_state(&self, state: &AppState) {
+        match *self {
+            Self::RefererAllowed(v) => *state.referer_allowed.write().unwrap() = v,
+            Self::GzipAllowed(v) => *state.gzip_allowed.write().unwrap() = v,
+            Self::HttpAllowed(v) => *state.http_allowed.write().unwrap() = v,
+            Self::ConnectNonstandardPortsAllowed(v) => {
+                *state.connect_nonstandard_ports_allowed.write().unwrap() = v
+            }
+            Self::MaxRedirects(v) => *state.max_redirects.write().unwrap() = v as u32,
+            Self::LoaderTimeoutSecs(v) => *state.loader_timeout_secs.write().unwrap() = v,
+            Self::FeedTimeoutSecs(v) => *state.feed_timeout_secs.write().unwrap() = v,
+            Self::FeedMaxBodyBytes(v) => *state.feed_max_body_bytes.write().unwrap() = v,
+        }
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn get_fetch_settings(
+    state: State<'_, AppState>,
+) -> Result<FetchSettings, AppError> {
+    Ok(FetchSettings {
+        referer_allowed: *state.referer_allowed.read().unwrap(),
+        gzip_allowed: *state.gzip_allowed.read().unwrap(),
+        http_allowed: *state.http_allowed.read().unwrap(),
+        connect_nonstandard_ports_allowed: *state.connect_nonstandard_ports_allowed.read().unwrap(),
+        max_redirects: state.max_redirects.read().unwrap().to_string(),
+        loader_timeout_secs: state.loader_timeout_secs.read().unwrap().to_string(),
+        feed_timeout_secs: state.feed_timeout_secs.read().unwrap().to_string(),
+        feed_max_body_bytes: state.feed_max_body_bytes.read().unwrap().to_string(),
+    })
+}
+
+#[tauri::command]
+pub(crate) async fn set_fetch_setting(
+    change: FetchSetting,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    change.validate()?;
+    match update_settings(&state, |settings| change.apply(settings))? {
+        SettingsOutcome::StaleView(fresh) => Err(stale_view_error(&state, &fresh)),
+        SettingsOutcome::Written(_) => {
+            change.apply_to_state(&state);
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+mod fetch_setting_tests {
+    use super::*;
+
+    #[test]
+    fn fetch_changes_persist_and_update_the_running_handles() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let state = crate::test_app_state::test_state(dir.path().into());
+        let registry = std::sync::Mutex::new(crate::AccountLock::default());
+        let http_proxy_handle = std::sync::Arc::clone(&state.http_allowed);
+        let connect_proxy_handle = std::sync::Arc::clone(&state.connect_nonstandard_ports_allowed);
+        let mut baseline = None;
+        for change in [
+            FetchSetting::RefererAllowed(true),
+            FetchSetting::GzipAllowed(true),
+            FetchSetting::HttpAllowed(true),
+            FetchSetting::ConnectNonstandardPortsAllowed(true),
+            FetchSetting::MaxRedirects(0),
+            FetchSetting::LoaderTimeoutSecs(u64::MAX),
+            FetchSetting::FeedTimeoutSecs(0),
+            FetchSetting::FeedMaxBodyBytes(9_007_199_254_740_993),
+        ] {
+            change.validate().unwrap();
+            let (outcome, next) =
+                crate::update_settings_file(&registry, &path, baseline, |settings| {
+                    change.apply(settings)
+                })
+                .unwrap();
+            assert!(matches!(outcome, SettingsOutcome::Written(_)));
+            change.apply_to_state(&state);
+            baseline = next;
+        }
+        let saved = crate::load_settings(&path);
+        assert_eq!(saved.http_allowed, Some(true));
+        assert_eq!(saved.connect_nonstandard_ports_allowed, Some(true));
+        assert_eq!(saved.referer_allowed, Some(true));
+        assert_eq!(saved.gzip_allowed, Some(true));
+        assert_eq!(saved.max_redirects, Some(0));
+        assert_eq!(saved.loader_timeout_secs, Some(u64::MAX));
+        assert_eq!(saved.feed_timeout_secs, Some(0));
+        assert_eq!(saved.feed_max_body_bytes, Some(9_007_199_254_740_993));
+        assert!(*http_proxy_handle.read().unwrap());
+        assert!(*connect_proxy_handle.read().unwrap());
+        assert!(*state.referer_allowed.read().unwrap());
+        assert!(*state.gzip_allowed.read().unwrap());
+        assert_eq!(*state.max_redirects.read().unwrap(), 0);
+        assert_eq!(*state.loader_timeout_secs.read().unwrap(), u64::MAX);
+        assert_eq!(*state.feed_timeout_secs.read().unwrap(), 0);
+        assert_eq!(
+            *state.feed_max_body_bytes.read().unwrap(),
+            9_007_199_254_740_993
+        );
+        crate::refresh_state_from_settings(&state, &crate::UserSettings::default());
+        assert!(!*http_proxy_handle.read().unwrap());
+        assert!(!*connect_proxy_handle.read().unwrap());
+        assert_eq!(*state.max_redirects.read().unwrap(), 3);
+        assert_eq!(*state.loader_timeout_secs.read().unwrap(), 10);
+        assert_eq!(*state.feed_timeout_secs.read().unwrap(), 10);
+        assert_eq!(*state.feed_max_body_bytes.read().unwrap(), 10 * 1024 * 1024);
+    }
+
+    #[test]
+    fn numeric_settings_preserve_u64_without_new_policy_limits() {
+        for setting in ["loaderTimeoutSecs", "feedTimeoutSecs", "feedMaxBodyBytes"] {
+            for value in ["0", "10", "9007199254740993", "18446744073709551615"] {
+                let change: FetchSetting =
+                    serde_json::from_value(serde_json::json!({"setting": setting, "value": value}))
+                        .unwrap();
+                change.validate().unwrap();
+                let mut settings = crate::UserSettings::default();
+                change.apply(&mut settings);
+                let expected = Some(value.parse::<u64>().unwrap());
+                match setting {
+                    "loaderTimeoutSecs" => assert_eq!(settings.loader_timeout_secs, expected),
+                    "feedTimeoutSecs" => assert_eq!(settings.feed_timeout_secs, expected),
+                    _ => assert_eq!(settings.feed_max_body_bytes, expected),
+                }
+            }
+            for value in ["", "-1", "1.5", "1e2", "18446744073709551616"] {
+                assert!(
+                    serde_json::from_value::<FetchSetting>(
+                        serde_json::json!({"setting": setting, "value": value})
+                    )
+                    .is_err()
+                );
+            }
+        }
+        assert!(FetchSetting::MaxRedirects(0).validate().is_ok());
+        assert!(FetchSetting::MaxRedirects(10).validate().is_ok());
+        assert!(FetchSetting::MaxRedirects(11).validate().is_err());
+    }
+}

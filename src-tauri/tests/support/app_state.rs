@@ -28,6 +28,8 @@ pub(super) fn test_state(path: PathBuf) -> AppState {
         load_remote_image: shared(true),
         html_reader_view: shared("summary".into()),
         network_proxy_port: 0,
+        http_allowed: shared(false),
+        connect_nonstandard_ports_allowed: shared(false),
         max_redirects: shared(0),
         referer_allowed: shared(false),
         gzip_allowed: shared(false),

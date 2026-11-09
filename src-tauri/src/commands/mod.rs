@@ -173,7 +173,12 @@ mod tests {
 
     #[test]
     fn import_limit_commands_are_trusted_account_settings() {
-        for command in ["get_import_max_bytes", "set_import_max_bytes"] {
+        for command in [
+            "get_import_max_bytes",
+            "set_import_max_bytes",
+            "get_fetch_settings",
+            "set_fetch_setting",
+        ] {
             assert!(is_invoke_allowed("settings", command));
             assert!(is_invoke_allowed("main", command));
             assert!(!is_invoke_allowed("loader-7", command));
