@@ -326,7 +326,7 @@ export function Toolbar({
               <IconButton
                 size="small"
                 onClick={handleShowOriginalSite}
-                disabled={!entry}
+                disabled={!url}
                 aria-label="Show Original Site"
               >
                 {displayFavicon ? (

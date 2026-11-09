@@ -39,8 +39,8 @@ for (const scope of ["article", "all", "topic", "feed"] as const) {
         .getByRole("button", { name: "Topics (1)", exact: true })
         .click();
       await page
+        .getByRole("list", { name: "Topics", exact: true })
         .getByRole("button", { name: "Everyday discoveries", exact: true })
-        .first()
         .click();
       await page.getByRole("button", { name: "All", exact: true }).click();
     } else if (scope === "feed") {
@@ -48,6 +48,7 @@ for (const scope of ["article", "all", "topic", "feed"] as const) {
         .getByRole("button", { name: "Feeds (1)", exact: true })
         .click();
       await page
+        .getByRole("list", { name: "Feeds", exact: true })
         .getByRole("button", { name: "Field notes", exact: true })
         .click();
       await page.getByRole("button", { name: "All", exact: true }).click();

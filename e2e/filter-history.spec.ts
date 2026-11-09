@@ -141,7 +141,10 @@ test("collection browsing leaves article history and saved collection snapshots 
     .click();
   expect(await page.evaluate(() => history.state)).toEqual(gardenHistory);
   await page.getByRole("button", { name: "Feeds (1)", exact: true }).click();
-  await page.getByRole("button", { name: "Field notes", exact: true }).click();
+  await page
+    .getByRole("list", { name: "Feeds", exact: true })
+    .getByRole("button", { name: "Field notes", exact: true })
+    .click();
   expect(await page.evaluate(() => history.state)).toEqual(gardenHistory);
   await openArticle(page, water);
   const waterHistory = await page.evaluate(() =>

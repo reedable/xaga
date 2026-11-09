@@ -31,7 +31,10 @@ const mocks = vi.hoisted(() => ({
     onFaviconChanged: () => () => {},
   },
   router: {
-    state: { entryId: "article", url: "https://example.org" },
+    state: { entryId: "article", url: "https://example.org" } as {
+      entryId?: string;
+      url?: string;
+    },
     selectUrl: vi.fn(),
     invokeSearch: vi.fn(),
     clearSearch: vi.fn(),
@@ -83,6 +86,7 @@ const article = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.readOnly = false;
+  mocks.router.state = { entryId: "article", url: "https://example.org" };
   mocks.pins = [];
   mocks.setPin.mockImplementation(async (target, pinned) => {
     mocks.pins = pinned ? [target] : [];
@@ -106,6 +110,36 @@ const menuItem = (label: string) =>
 async function render() {
   await act(async () => root.render(<Toolbar reload={null} />));
 }
+
+it("opens the original site after a URL load fails without a saved article", async () => {
+  mocks.router.state = { url: "https://example.org/failed" };
+  await render();
+  expect(button("Show Original Site").disabled).toBe(false);
+  await act(async () => button("Show Original Site").click());
+  expect(mocks.articles.loadArticleByUrl).toHaveBeenCalledWith(
+    "https://example.org/failed",
+    true
+  );
+});
+
+it("opens the original site even when reading the saved article fails", async () => {
+  mocks.platform.readArticle.mockRejectedValue(new Error("Read failed"));
+  await render();
+  expect(button("Show Original Site").disabled).toBe(false);
+  await act(async () => button("Show Original Site").click());
+  expect(mocks.articles.loadArticleByUrl).toHaveBeenCalledWith(
+    "https://example.org",
+    true
+  );
+});
+
+it("disables the original site action when no URL is selected", async () => {
+  mocks.router.state = {};
+  await render();
+  expect(button("Show Original Site").disabled).toBe(true);
+  await act(async () => button("Show Original Site").click());
+  expect(mocks.articles.loadArticleByUrl).not.toHaveBeenCalled();
+});
 
 it("pins and unpins through the platform using committed state", async () => {
   await render();

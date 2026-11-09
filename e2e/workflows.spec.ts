@@ -60,9 +60,12 @@ test("read status updates Unread membership and collection counts", async ({
   await expect(articleButton(page, garden)).toHaveCount(0);
   await expect(articleButton(page, water)).toBeVisible();
   await page.getByRole("button", { name: "Feeds (1)", exact: true }).click();
-  const feed = page.getByRole("listitem").filter({
-    has: page.getByRole("button", { name: "Field notes", exact: true }),
-  });
+  const feed = page
+    .getByRole("list", { name: "Feeds", exact: true })
+    .getByRole("listitem")
+    .filter({
+      has: page.getByRole("button", { name: "Field notes", exact: true }),
+    });
   await expect(feed).toHaveText("Field notes1");
   await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
     garden

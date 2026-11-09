@@ -63,6 +63,7 @@ test("one keyboard-accessible sidebar sort choice applies across sections and su
   await expect(dialog).not.toBeVisible();
   await page.getByRole("button", { name: "Feeds (2)", exact: true }).click();
   const feedOrder = page
+    .getByRole("list", { name: "Feeds", exact: true })
     .getByRole("button")
     .filter({ hasText: /^(Field notes|A workshop)$/ });
   await expect(feedOrder).toHaveText(["Field notes", "A workshop"]);
@@ -76,6 +77,7 @@ test("one keyboard-accessible sidebar sort choice applies across sections and su
     .getByRole("button", { name: "Shortcuts (2)", exact: true })
     .click();
   const shortcutOrder = page
+    .getByRole("list", { name: "Shortcuts", exact: true })
     .getByRole("button")
     .filter({ hasText: /^(Everyday discoveries|A workshop)$/ });
   await expect(shortcutOrder).toHaveText([
