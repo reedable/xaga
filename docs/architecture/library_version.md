@@ -26,7 +26,9 @@ migration:
 
 A library without a manifest is unversioned. Its initial upgrade uses
 `format_version: null` with the pending target; absence is never interpreted as a
-specific historical version. Normal opening does not initialize or relabel it.
+specific historical version. Opening an empty directory initializes a new library at
+the running app version while holding the library lock. Only the lock file may
+already exist; directories containing any other files remain unversioned.
 
 Before 1.0, the CLI orchestrates content conversion and cache reconciliation. It
 calls core's `begin_upgrade` while holding the library write lock, before changing
@@ -45,7 +47,9 @@ webview or starting a writer or embedding service:
 
 - A completed version matching the app's major/minor may acquire the library
   write lock. Lock contention still produces a read-only instance.
-- A different version, missing manifest, or incomplete migration opens read-only.
+- An empty directory is initialized at the app version and may open writable.
+- A different version, missing manifest in a nonempty directory, or incomplete
+  migration opens read-only.
 - Malformed or unreadable metadata also opens read-only; startup reports the
   metadata error without replacing the manifest.
 

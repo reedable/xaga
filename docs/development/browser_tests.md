@@ -136,3 +136,24 @@ trace for the preceding interactions. Startup failures appear in the command or
 CI step output; they may occur before a browser can produce artifacts. Reports
 and test results are ignored by Git and replaced on subsequent runs, so copy any
 diagnostics you need before rerunning.
+
+## Native feed-refresh notification
+
+On macOS with a desktop session, start Vite in one terminal:
+
+```sh
+npm run ui:dev -- --host 127.0.0.1 --port 1422
+```
+
+Then run:
+
+```sh
+cargo test -p xaga --test feed_refresh_webview --locked
+```
+
+This fixture uses the production native refresh command, IPC adapter, feed hook,
+and shared notification component together. A temporary library and controlled
+proxy supply one successful feed and one HTTP 403 failure. It checks the visible
+failure message, cleared loading, retry, and persistence of the successful feed.
+It does not read or modify account settings or user libraries. The fixture page
+is test infrastructure and is not an application entry point.

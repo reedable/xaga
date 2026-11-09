@@ -7,40 +7,9 @@ include!("../src/lib.rs");
 #[path = "support/resource_server.rs"]
 mod resource_server;
 
-fn test_state(path: PathBuf) -> AppState {
-    fn shared<T>(value: T) -> Arc<RwLock<T>> {
-        Arc::new(RwLock::new(value))
-    }
-    AppState {
-        library: shared(LibraryHandle { path, writer: None }),
-        account_lock: Arc::new(Mutex::new(AccountLock::default())),
-        theme: shared("light".into()),
-        refresh_on_startup: shared(false),
-        loader_timeout_secs: shared(10),
-        feed_timeout_secs: shared(10),
-        feed_max_body_bytes: shared(DEFAULT_FEED_MAX_BODY_BYTES),
-        import_max_bytes: shared(DEFAULT_IMPORT_MAX_BYTES),
-        html_reader_font_family: shared("system".into()),
-        html_reader_font_size: shared(16.0),
-        html_reader_line_height: shared(1.5),
-        show_sidebar: shared(true),
-        sidebar_sort: shared(sidebar_sort::SidebarSort::default()),
-        embedding_service: Arc::new(Mutex::new(None)),
-        embedding_query_model: Arc::new(Mutex::new(None)),
-        embedding_startup_state: shared(EmbeddingStartupState::Unavailable),
-        embeddings_read: Arc::new(Mutex::new(None)),
-        allowed_domains: shared(Vec::new()),
-        named_stores_supported: true,
-        inline_pdf_reader: shared(false),
-        load_remote_image: shared(true),
-        html_reader_view: shared("summary".into()),
-        network_proxy_port: 0,
-        max_redirects: shared(0),
-        referer_allowed: shared(false),
-        gzip_allowed: shared(false),
-        settings_baseline: shared(None),
-    }
-}
+#[path = "support/app_state.rs"]
+mod app_state;
+use app_state::test_state;
 
 #[cfg(target_os = "macos")]
 async fn verify(app: tauri::AppHandle) {

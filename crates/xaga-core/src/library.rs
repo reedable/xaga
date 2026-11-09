@@ -18,26 +18,44 @@ fn manifest_path(library_dir: &Path) -> PathBuf {
     library_dir.join(MANIFEST_NAME)
 }
 
-/// Select write mode at startup using this library's runtime metadata.
-/// Missing, mismatched and incomplete metadata opens without a writer. No library
-/// directory, metadata or lock file is created for those read-only openings.
+/// Select write mode, initializing a new empty directory at the app version.
+/// Existing unversioned, mismatched and incomplete libraries remain read-only.
 pub fn open(
     library_dir: &Path,
     app_version: LibraryVersion,
 ) -> Result<Option<FileLock>, LibraryFormatError> {
-    let matches = || -> Result<bool, LibraryFormatError> {
-        Ok(LibraryManifest::read(library_dir)?
-            .is_some_and(|manifest| manifest.matches_version(app_version)))
+    // Only the library lock may exist in a new directory (including after a
+    // previous initialization attempt). Never infer a format for existing data.
+    let is_empty = || -> Result<bool, LibraryFormatError> {
+        let entries = match std::fs::read_dir(library_dir) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(error.into()),
+        };
+        for entry in entries {
+            if entry?.file_name() != LOCK_FILE_NAME {
+                return Ok(false);
+            }
+        }
+        Ok(true)
     };
-    if !matches()? {
-        return Ok(None);
+    match LibraryManifest::read(library_dir)? {
+        Some(manifest) if !manifest.matches_version(app_version) => return Ok(None),
+        None if !is_empty()? => return Ok(None),
+        _ => {}
     }
-    let lock = acquire_lock(library_dir);
-    // Recheck inside the write right: an upgrade may have raced the first read.
-    if lock.is_some() && !matches()? {
+    let Some(lock) = acquire_lock(library_dir) else {
         return Ok(None);
+    };
+    // Recheck inside the write right: another opener or upgrade may have raced us.
+    match LibraryManifest::read(library_dir)? {
+        Some(manifest) if manifest.matches_version(app_version) => Ok(Some(lock)),
+        None if is_empty()? => {
+            LibraryManifest::initialize(library_dir, app_version, &lock)?;
+            Ok(Some(lock))
+        }
+        _ => Ok(None),
     }
-    Ok(lock)
 }
 
 // ── Layout ──────────────────────────────────────────────────────────────────────

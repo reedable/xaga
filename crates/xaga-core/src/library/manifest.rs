@@ -170,6 +170,18 @@ impl LibraryManifest {
         crate::fs::write_atomic(&super::manifest_path(dir), yaml.as_bytes())?;
         Ok(())
     }
+    /// Initialize a new library after the caller verifies emptiness under its lock.
+    pub(super) fn initialize(
+        dir: &Path,
+        version: LibraryVersion,
+        lock: &FileLock,
+    ) -> Result<(), LibraryFormatError> {
+        Self {
+            format_version: Some(version),
+            migration: None,
+        }
+        .write(dir, lock)
+    }
     /// Persist the pending state before callers mutate source files or caches.
     /// None means this library already completed the current storage upgrade.
     /// The supplied lock must be the write right for this library directory.
@@ -302,14 +314,56 @@ mod tests {
     }
 
     #[test]
-    fn missing_and_pending_versions_are_readonly_without_initialization() {
+    fn empty_library_is_initialized_and_reopens_with_one_writer() {
         let dir = tempfile::tempdir().unwrap();
+        let writer = library::open(dir.path(), version("0.10")).unwrap().unwrap();
+        assert!(
+            LibraryManifest::read(dir.path())
+                .unwrap()
+                .unwrap()
+                .matches_version(version("0.10"))
+        );
         assert!(
             library::open(dir.path(), version("0.10"))
                 .unwrap()
                 .is_none()
         );
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+        drop(writer);
+        assert!(
+            library::open(dir.path(), version("0.10"))
+                .unwrap()
+                .is_some()
+        );
+        assert!(!library::index_path(dir.path()).exists());
+    }
+
+    #[test]
+    fn empty_library_with_leftover_lock_is_initialized() {
+        let dir = tempfile::tempdir().unwrap();
+        drop(library::acquire_lock(dir.path()).unwrap());
+        assert!(
+            library::open(dir.path(), version("0.10"))
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            LibraryManifest::read(dir.path())
+                .unwrap()
+                .unwrap()
+                .matches_version(version("0.10"))
+        );
+    }
+
+    #[test]
+    fn existing_unversioned_and_pending_libraries_remain_readonly() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("existing.md"), "existing content").unwrap();
+        assert!(
+            library::open(dir.path(), version("0.10"))
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
         let missing = dir.path().join("absent");
         assert!(library::open(&missing, version("0.10")).unwrap().is_none());
         assert!(!missing.exists());

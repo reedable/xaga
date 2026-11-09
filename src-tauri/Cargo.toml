@@ -107,3 +107,7 @@ harness = false
 [[test]]
 name = "library_menu"
 harness = false
+
+[[test]]
+name = "feed_refresh_webview"
+harness = false

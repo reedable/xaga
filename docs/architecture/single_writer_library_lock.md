@@ -151,8 +151,9 @@ its migration-specific file writes remain in the CLI.
 
 Core owns `library.yaml` and its atomic read/write API. The app compares this
 library's stored major/minor with the running app's major/minor before constructing
-the main webview or starting the writer/service. It never initializes missing
-version metadata on open. The existing read-only command check and controls apply
+the main webview or starting the writer/service. Empty directories are initialized
+at the app version under the library lock; existing unversioned content is left
+read-only. The existing read-only command check and controls apply
 regardless of whether the cause is a version state or lock contention. An absent
 cache is not created by read-only opening. Explicit pre-1.0 CLI migrations hold
 the library lock and call the core manifest API before conversion and after

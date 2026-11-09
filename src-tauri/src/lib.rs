@@ -1590,8 +1590,23 @@ mod library_mode_tests {
     }
 
     #[test]
+    fn empty_library_starts_a_writer() {
+        let dir = tempfile::tempdir().unwrap();
+        let (writer, error) = library_writer_for_startup(dir.path(), "0.10".parse().unwrap());
+        assert!(error.is_none());
+        assert!(writer.is_some());
+        assert!(
+            xaga_core::library::LibraryManifest::read(dir.path())
+                .unwrap()
+                .unwrap()
+                .matches_version("0.10".parse().unwrap())
+        );
+    }
+
+    #[test]
     fn mismatched_and_unversioned_libraries_have_no_writer() {
         let unversioned = tempfile::tempdir().unwrap();
+        std::fs::write(unversioned.path().join("existing.md"), "existing content").unwrap();
         assert!(
             handle_for(unversioned.path())
                 .read()
@@ -1599,7 +1614,7 @@ mod library_mode_tests {
                 .writer
                 .is_none()
         );
-        assert_eq!(std::fs::read_dir(unversioned.path()).unwrap().count(), 0);
+        assert_eq!(std::fs::read_dir(unversioned.path()).unwrap().count(), 1);
         let older = tempfile::tempdir().unwrap();
         seed_version(older.path(), "0.9");
         let before = std::fs::read(older.path().join("library.yaml")).unwrap();
