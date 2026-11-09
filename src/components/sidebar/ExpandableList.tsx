@@ -59,7 +59,7 @@ export default function ExpandableList({
         )}
       >
         <Collapse in={isExpanded}>
-          <List dense disablePadding>
+          <List aria-label={label} dense disablePadding>
             {children}
           </List>
         </Collapse>

@@ -21,8 +21,8 @@ test("Back and Forward restore Topic articles without restoring list filters", a
     .check();
   await page.getByRole("button", { name: "Topics (1)", exact: true }).click();
   await page
+    .getByRole("list", { name: "Topics", exact: true })
     .getByRole("button", { name: "Everyday discoveries", exact: true })
-    .first()
     .click();
   const unread = page.getByRole("button", { name: "Unread", exact: true });
   const all = page.getByRole("button", { name: "All", exact: true });
@@ -136,8 +136,8 @@ test("collection browsing leaves article history and saved collection snapshots 
   );
   await page.getByRole("button", { name: "Topics (1)", exact: true }).click();
   await page
+    .getByRole("list", { name: "Topics", exact: true })
     .getByRole("button", { name: "Everyday discoveries", exact: true })
-    .first()
     .click();
   expect(await page.evaluate(() => history.state)).toEqual(gardenHistory);
   await page.getByRole("button", { name: "Feeds (1)", exact: true }).click();
@@ -157,8 +157,8 @@ test("collection browsing leaves article history and saved collection snapshots 
   await expect(articleButton(page, "Making room for a workshop")).toBeVisible();
   await page.getByRole("button", { name: "Topics (1)", exact: true }).click();
   await page
+    .getByRole("list", { name: "Topics", exact: true })
     .getByRole("button", { name: "Everyday discoveries", exact: true })
-    .first()
     .click();
   await page.getByRole("button", { name: "Forward", exact: true }).click();
   await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(

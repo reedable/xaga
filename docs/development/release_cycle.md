@@ -82,14 +82,17 @@ npm run ui:preview
 ```
 
 Run all tests with `npm test`: script and UI tests, Rust unit and ACL integration
-tests, Rust documentation tests, and the native WebKit suite. The command stops
+tests, Rust documentation tests, Playwright browser tests, and the native WebKit suite. The command stops
 on the first failure. The full suite requires macOS with a logged-in desktop
 session; the fingerprint probe opens a local page in Safari. Native download
 tests run every supported scenario, and the SVG wrapper builds its fixture.
 
-Use `npm run test:headless` for the complete non-GUI suite, or
+Install Chromium once with `npx playwright install chromium` before running browser
+tests. Use `npm run test:ci` for all suites that do not require a desktop session.
+Use `npm run test:headless` for script, UI, and Rust tests without Playwright, or
 `npm run test:gui` for native WebKit tests only. Individual suites remain
-available as `npm run test:scripts`, `npm run test:ui`, and `npm run test:rust`.
+available as `npm run test:scripts`, `npm run test:ui`, `npm run test:rust`, and
+`npm run test:browser`.
 Pass Vitest file filters through `npm run test:ui -- <files>`.
 
 The ordinary production build is:
@@ -178,15 +181,14 @@ The tag must point to the commit containing both the prepared version and the re
 1. Check out the tagged commit.
 2. Require a final or numbered-RC tag whose version equals `src-tauri/tauri.conf.json`.
 3. Install JavaScript dependencies, then run lint, formatting, frontend type,
-   and reader CSP checks before script and UI tests.
-4. For RC tags, install Chromium and run browser integration tests. Preserve
-   browser reports and failure diagnostics for 14 days. A browser failure blocks
-   the remaining verification steps and release build; final tags skip this step.
-5. Set up Rust and check workspace formatting before restoring the Rust cache
+   and reader CSP checks.
+4. Set up Rust and check workspace formatting before restoring the Rust cache
    and installing the Protocol Buffers compiler required by Lance.
-6. Check the Rust workspace with the lockfile, then run non-GUI Rust tests.
-   These steps preserve the coverage of `npm run test:headless`; native WebKit
-   tests run separately through `npm test` on a Mac with a desktop session.
+5. Check the Rust workspace with the lockfile and install Chromium.
+6. Run `npm run test:ci`: script, UI, Rust, and browser tests for both RC and final
+   tags. Preserve browser reports and failure diagnostics for 14 days. Any test
+   failure blocks the release build. Native WebKit tests run separately through
+   `npm test` on a Mac with a desktop session.
 7. Build the macOS application for Apple Silicon (`aarch64`). Intel Macs are not currently supported.
 8. Create a draft GitHub Release and upload the build artifacts.
 9. Verify that the macOS application bundle has a valid code signature.

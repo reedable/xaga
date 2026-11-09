@@ -60,32 +60,6 @@ jobs:
       - name: Check reader CSP
         run: node scripts/csp-hash.mjs --check
 
-      - name: Run script tests
-        run: npm run test:scripts
-
-      - name: Run UI tests
-        run: npm run test:ui
-
-      - name: Install Chromium for RC browser tests
-        if: ${{ contains(github.ref_name, '-rc.') }}
-        run: npx playwright install chromium
-
-      - name: Run RC browser workflows
-        if: ${{ contains(github.ref_name, '-rc.') }}
-        timeout-minutes: 10
-        run: npm run test:browser
-
-      - name: Upload browser report and failure diagnostics
-        if: ${{ !cancelled() && contains(github.ref_name, '-rc.') }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: browser-integration
-          path: |
-            playwright-report/
-            test-results/
-          if-no-files-found: ignore
-          retention-days: 14
-
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -107,8 +81,23 @@ jobs:
       - name: Check Rust workspace
         run: cargo check --workspace --locked
 
-      - name: Run Rust tests
-        run: npm run test:rust
+      - name: Install Chromium for browser tests
+        run: npx playwright install chromium
+
+      - name: Run CI tests
+        timeout-minutes: 30
+        run: npm run test:ci
+
+      - name: Upload browser report and failure diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-integration
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14
 
   build:
     name: Build ${{ matrix.name }}

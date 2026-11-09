@@ -18,6 +18,9 @@ npx playwright install chromium
 npm run test:browser
 ```
 
+`npm test` includes this suite along with script, UI, Rust, and native GUI tests.
+`npm run test:ci` runs script, UI, Rust, and browser tests without the native GUI suite.
+
 On Linux, install the browser's operating-system dependencies as well:
 
 ```sh
@@ -114,19 +117,18 @@ and its behavior remain owned by the capture platform.
 
 This suite establishes UI integration with the in-memory platform. Native IPC,
 filesystem persistence, backend correctness, and native-only workflows require
-the existing component, Rust, and GUI checks. Those commands remain separate and
-unchanged. Screenshot baseline testing and nested shortcut-group organization
+the existing component, Rust, and GUI checks. Each suite can also be run individually. Screenshot baseline testing and nested shortcut-group organization
 are outside this suite's coverage.
 
 ## Failures and CI
 
 The **Verify release** job in `.github/workflows/release.yml` runs browser tests
-for RC tags such as `v0.15.0-rc.1`. Branch pushes and pull requests do not trigger
-the release workflow; final release tags skip its browser steps.
+for both RC tags such as `v0.15.0-rc.1` and final release tags. Branch pushes and
+pull requests do not trigger the release workflow.
 
-After lint, formatting, frontend type/CSP checks, and script/UI tests pass, the
-macOS job installs Chromium and runs the same local browser command. Browser
-failures block the remaining Rust checks and the release build. The job uploads
+After lint, formatting, frontend type/CSP checks, and Rust workspace checks pass,
+the macOS job installs Chromium and runs `npm run test:ci`. Browser failures
+block the release build. The job uploads
 `playwright-report/` and `test-results/` as the `browser-integration` artifact,
 retained for 14 days, including when browser tests fail. Artifact upload does not
 clear the failure.
