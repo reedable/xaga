@@ -11,12 +11,12 @@ and consumer under the existing network policy. Remediation is follow-up work.
 - Cover these cases across hidden/visible loader top frames and subframes, plus
   main/settings windows and their subframes:
 
-  | Cases | Variants |
-  | --- | --- |
-  | References and origins | Relative URL; cross-origin without CORS |
-  | Schemes | HTTP(S), data, blob, file, unsupported scheme |
-  | Redirects | Permitted and policy-forbidden destinations |
-  | Responses | Attachment; HTML presented as an image; malformed image; missing resource |
+  | Cases                  | Variants                                                                  |
+  | ---------------------- | ------------------------------------------------------------------------- |
+  | References and origins | Relative URL; cross-origin without CORS                                   |
+  | Schemes                | HTTP(S), data, blob, file, unsupported scheme                             |
+  | Redirects              | Permitted and policy-forbidden destinations                               |
+  | Responses              | Attachment; HTML presented as an image; malformed image; missing resource |
 
 - Exercise image, favicon, and PDF consumers and ordinary rendered responses.
   Record expected routing or refusal for each matrix cell; explain inapplicable

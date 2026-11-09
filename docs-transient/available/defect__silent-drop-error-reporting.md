@@ -13,12 +13,12 @@ validation failures as genuinely empty collections.
   dumping document content.
 - For list/search requests, preserve these distinct outcomes:
 
-  | Outcome | Presentation |
-  | --- | --- |
-  | Valid empty result | Existing empty state |
-  | Some invalid items | Valid items plus one shared-sink notification with omitted count |
-  | All items invalid | Persistent “Items couldn't be displayed” state plus one notification |
-  | Request failure | Loading-failure state with retry |
+  | Outcome            | Presentation                                                         |
+  | ------------------ | -------------------------------------------------------------------- |
+  | Valid empty result | Existing empty state                                                 |
+  | Some invalid items | Valid items plus one shared-sink notification with omitted count     |
+  | All items invalid  | Persistent “Items couldn't be displayed” state plus one notification |
+  | Request failure    | Loading-failure state with retry                                     |
 
 - Retain result status after notifications disappear. Do not add per-item error
   placeholders or notify once per rejected item.
