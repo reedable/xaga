@@ -104,21 +104,30 @@ Expand **Sites** and select a website to see articles you already have from
 that website. Sites groups saved material; selecting a website does not subscribe
 you to its feeds or fetch all its pages.
 
-Tags give articles labels you choose:
+Tags give articles and annotations labels you choose:
 
-1. Open an article and select **Tags** in **Article details**.
+1. Open an article and select **Tags** in **Article details**. To tag an
+   annotation, click its highlighted passage, choose **Show annotation details**,
+   and select **Tags** in **Annotation details**.
 2. Click a tag to assign it; click it again to remove that assignment. For a new
    tag, type its name in **Find or create a tag**, then click **Create “name”**.
-3. Expand **Tags** in the sidebar and select tags to browse matching articles.
-   Selecting several tags shows articles that have every selected tag.
+3. Expand **Tags** in the sidebar and select tags to browse matching articles and annotations.
+   Each result must have every selected tag itself; tags on an article and its
+   annotations are not combined. Selecting an annotation opens its passage.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/user-guide/tags-dark.png">
   <img src="images/user-guide/tags.png" alt="Following the water with both Outdoors and Projects selected in the Tags view.">
 </picture>
 
-Tag assignments save as you change them. Removing a tag from one article keeps
-the tag available for other articles.
+Tag assignments save as you change them. Removing a tag from one article or
+annotation keeps the tag available elsewhere. Tagging an annotation does not tag
+its article or other annotations. Recoloring keeps its tags.
+
+With tags selected, **Saved** includes matching annotations and bookmarked
+articles. Clear the selection to return to All items under your current filters.
+Deleting a tag removes its assignments from articles and annotations while
+retaining that content; removing one chip assignment only affects its target.
 
 ## Sort sidebar collections
 

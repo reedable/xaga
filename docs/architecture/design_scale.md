@@ -277,3 +277,35 @@ Reproduce in an isolated temporary library:
 ```sh
 cargo test -p xaga-core --lib tag_merge_at_design_scale --locked -- --ignored --nocapture
 ```
+
+## Annotation tag scaling (0.16)
+
+`cargo test -p xaga-core annotation_tag_scaling -- --ignored --nocapture`
+creates an isolated two-million-row cache: 1.8 million Entries and 200,000
+Annotations. The selected two-tag intersection contains 20,000 articles and
+1,024 annotations sharing one parent. The explained mixed query uses the kind
+bitmap and tag LabelList indexes and projects summaries without vectors or content.
+
+One development-machine run measured:
+
+| Operation                                                    |      Time |
+| ------------------------------------------------------------ | --------: |
+| Build and index 2,000,000 rows in 25,000-row batches         | 47,144 ms |
+| Return and sort 21,024 mixed summaries                       | 10,499 ms |
+| Count 10,000 matching unread Entries                         |    305 ms |
+| Find the shared parent from 1,024 matching annotations       |    273 ms |
+| Rewrite matching labels in that 1,024-annotation source file |    672 ms |
+| Convert the shared parent's cached assignments               |  5,533 ms |
+
+Other verification suites ran on the same host during this measurement. These
+numbers describe that run; they are not isolated latency guarantees. Candidate
+queries read at most 1,024 Entry IDs and 1,024 Annotation references and retain
+at most 1,024 distinct parent IDs. Source patches serialize per parent, with up
+to eight parents in flight. The parent document and its annotations still have
+to fit the existing bounded Markdown parser and read limits.
+
+The measurement verifies indexed intersections, Entry-only unread counting, and
+one source patch for many annotations in a file. It does not establish the cost
+of a full-corpus transition, a hard process-memory ceiling, or latency under
+other storage, fragmentation, registry, document-size, or concurrent-work loads.
+Broad selections retain the existing cost of returning complete summary arrays.

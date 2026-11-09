@@ -168,3 +168,9 @@ proxy supply one successful feed and one HTTP 403 failure. It checks the visible
 failure message, cleared loading, retry, and persistence of the successful feed.
 It does not read or modify account settings or user libraries. The fixture page
 is test infrastructure and is not an application entry point.
+
+`e2e/annotation-tags.spec.ts` covers annotation tag assignment by keyboard,
+creation with immediate assignment, recoloring, passage browsing with retained
+tag selection, and read-only assignment display and focus return in a narrow
+drawer. These fixtures do not verify native IPC, library locks, Markdown writes,
+registry transitions, or upgrades; Rust and platform tests cover those boundaries.

@@ -437,6 +437,29 @@ pub struct EmbeddingsDb {
     schema: Arc<Schema>,
 }
 
+fn list_entities_from_batches(batches: &[RecordBatch]) -> Vec<crate::types::ListEntity> {
+    use crate::types::ListEntity;
+    let mut entities = Vec::new();
+    for batch in batches {
+        if let Some(cols) = BatchSummaryColumns::from_batch(batch) {
+            for i in 0..batch.num_rows() {
+                let entry = cols.summary_at(i);
+                entities.push(ListEntity {
+                    id: entry.id,
+                    title: entry.title,
+                    created_at: entry.created_at,
+                    url: entry.url,
+                    is_unread: entry.is_unread,
+                    is_pinned: entry.is_pinned,
+                    reference: (cols.kind_at(i) == Kind::Annotation).then(|| cols.reference_at(i)),
+                    color: entry.color,
+                });
+            }
+        }
+    }
+    entities
+}
+
 impl EmbeddingsDb {
     /// Bulk CLI maintenance uses the same compaction/pruning as the service,
     /// then catches scalar indexes up with newly written fragments.
@@ -772,7 +795,7 @@ impl EmbeddingsDb {
         &self,
         filter: crate::types::EntityFilter,
     ) -> Result<Vec<crate::types::ListEntity>, EmbeddingsError> {
-        use crate::types::{EntityFilter, ListEntity};
+        use crate::types::EntityFilter;
         let predicate = match filter {
             EntityFilter::All => "kind IN ('entry', 'annotation')",
             EntityFilter::Unread => "kind = 'entry' AND is_unread = true",
@@ -788,33 +811,24 @@ impl EmbeddingsDb {
             .await?
             .try_collect()
             .await?;
-        let mut entities = Vec::new();
-        for batch in &batches {
-            if let Some(cols) = BatchSummaryColumns::from_batch(batch) {
-                for i in 0..batch.num_rows() {
-                    let entry = cols.summary_at(i);
-                    entities.push(ListEntity {
-                        id: entry.id,
-                        title: entry.title,
-                        created_at: entry.created_at,
-                        url: entry.url,
-                        is_unread: entry.is_unread,
-                        is_pinned: entry.is_pinned,
-                        reference: (cols.kind_at(i) == Kind::Annotation)
-                            .then(|| cols.reference_at(i)),
-                        color: entry.color,
-                    });
-                }
-            }
-        }
-        Ok(entities)
+        Ok(list_entities_from_batches(&batches))
     }
 
     fn tag_predicate(
         ids: &[String],
         filter: crate::types::EntityFilter,
     ) -> Result<String, EmbeddingsError> {
-        let mut predicate = Kind::Entry.predicate().to_string();
+        Self::tag_predicate_for(ids, filter, Some(Kind::Entry))
+    }
+
+    fn tag_predicate_for(
+        ids: &[String],
+        filter: crate::types::EntityFilter,
+        kind: Option<Kind>,
+    ) -> Result<String, EmbeddingsError> {
+        let mut predicate = kind
+            .map(|kind| kind.predicate().to_owned())
+            .unwrap_or_else(|| "kind IN ('entry', 'annotation')".into());
         let mut labels = Vec::new();
         for id in ids {
             let parsed = uuid::Uuid::parse_str(id)
@@ -828,22 +842,28 @@ impl EmbeddingsDb {
             predicate.push_str(&format!(" AND array_has_all(tags, [{}])", labels.join(",")));
         }
         match filter {
-            crate::types::EntityFilter::Unread => predicate.push_str(" AND is_unread = true"),
-            crate::types::EntityFilter::Saved | crate::types::EntityFilter::Bookmarked => {
-                predicate.push_str(" AND color != ''")
+            crate::types::EntityFilter::Unread => {
+                predicate.push_str(" AND kind = 'entry' AND is_unread = true")
             }
+            crate::types::EntityFilter::Saved if kind.is_none() => {
+                predicate.push_str(" AND (kind = 'annotation' OR color != '')")
+            }
+            crate::types::EntityFilter::Bookmarked => {
+                predicate.push_str(" AND kind = 'entry' AND color != ''")
+            }
+            crate::types::EntityFilter::Saved => predicate.push_str(" AND color != ''"),
             crate::types::EntityFilter::All => {}
         }
         Ok(predicate)
     }
 
-    /// Direct Entry assignments matching every selected identity; no annotations or collections.
-    pub async fn list_tag_entries(
+    /// Direct article and annotation assignments matching every selected identity.
+    pub async fn list_tag_entities(
         &self,
         ids: &[String],
         filter: crate::types::EntityFilter,
-    ) -> Result<Vec<Entry>, EmbeddingsError> {
-        self.list_tag_entry_groups(
+    ) -> Result<Vec<crate::types::ListEntity>, EmbeddingsError> {
+        self.list_tag_entity_groups(
             &ids.iter().map(|id| vec![id.clone()]).collect::<Vec<_>>(),
             filter,
         )
@@ -851,12 +871,17 @@ impl EmbeddingsDb {
     }
 
     /// Intersect selections, accepting either identity of an active merge per group.
-    pub async fn list_tag_entry_groups(
+    pub async fn list_tag_entity_groups(
         &self,
         groups: &[Vec<String>],
         filter: crate::types::EntityFilter,
-    ) -> Result<Vec<Entry>, EmbeddingsError> {
-        let predicate = Self::tag_group_predicate(groups, filter)?;
+    ) -> Result<Vec<crate::types::ListEntity>, EmbeddingsError> {
+        let filter = if !groups.is_empty() && filter == crate::types::EntityFilter::Unread {
+            crate::types::EntityFilter::All
+        } else {
+            filter
+        };
+        let predicate = Self::tag_group_predicate_for(groups, filter, None)?;
         let batches: Vec<RecordBatch> = self
             .table
             .query()
@@ -866,7 +891,7 @@ impl EmbeddingsDb {
             .await?
             .try_collect()
             .await?;
-        let mut entries = entries_from_batches(&batches);
+        let mut entries = list_entities_from_batches(&batches);
         crate::query::filter::sort_entities(&mut entries);
         Ok(entries)
     }
@@ -889,47 +914,57 @@ impl EmbeddingsDb {
         limit: usize,
     ) -> Result<Vec<String>, EmbeddingsError> {
         self.reload().await?;
-        let predicates = tag_ids
-            .iter()
-            .map(|id| {
-                Self::tag_predicate(std::slice::from_ref(id), crate::types::EntityFilter::All)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        if predicates.is_empty() {
+        if tag_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let mut predicate = format!("(({}))", predicates.join(") OR ("));
-        if let Some(after) = after {
-            predicate.push_str(&format!(" AND id > '{}'", after.replace('\'', "''")));
-        }
-        let batches: Vec<RecordBatch> = self
-            .table
-            .query()
-            .select(Select::columns(&["id"]))
-            .only_if(predicate)
-            .order_by(Some(vec![lancedb::query::ColumnOrdering {
-                column_name: "id".into(),
-                ascending: true,
-                nulls_first: false,
-            }]))
-            .limit(limit)
-            .execute()
-            .await?
-            .try_collect()
-            .await?;
-        let mut ids = Vec::new();
-        for batch in batches {
-            let column = batch
-                .column_by_name("id")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap();
-            for index in 0..column.len() {
-                ids.push(column.value(index).to_owned());
+        let mut parents = Vec::new();
+        // Candidate rows and retained parent IDs are both bounded.
+        for (kind, column) in [(Kind::Entry, "id"), (Kind::Annotation, "reference")] {
+            let alternatives = tag_ids
+                .iter()
+                .map(|id| {
+                    Self::tag_predicate_for(
+                        std::slice::from_ref(id),
+                        crate::types::EntityFilter::All,
+                        Some(kind),
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut predicate = format!("(({}))", alternatives.join(") OR ("));
+            if let Some(after) = after {
+                predicate.push_str(&format!(" AND {column} > '{}'", after.replace('\'', "''")));
+            }
+            let batches: Vec<RecordBatch> = self
+                .table
+                .query()
+                .select(Select::columns(&[column]))
+                .only_if(predicate)
+                .order_by(Some(vec![lancedb::query::ColumnOrdering {
+                    column_name: column.into(),
+                    ascending: true,
+                    nulls_first: false,
+                }]))
+                .limit(limit)
+                .execute()
+                .await?
+                .try_collect()
+                .await?;
+            for batch in batches {
+                let values = batch
+                    .column_by_name(column)
+                    .unwrap()
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .unwrap();
+                for index in 0..batch.num_rows() {
+                    parents.push(values.value(index).to_owned());
+                }
             }
         }
-        Ok(ids)
+        parents.sort();
+        parents.dedup();
+        parents.truncate(limit);
+        Ok(parents)
     }
 
     /// Remove one identity from a bounded Entry batch, preserving every other column.
@@ -945,14 +980,15 @@ impl EmbeddingsDb {
         if ids.len() > 1024 {
             return Err(std::io::Error::other("tag batch exceeds 1024 Entries").into());
         }
-        let predicate = Self::tag_predicate(&[tag_id.into()], crate::types::EntityFilter::All)?;
+        let predicate =
+            Self::tag_predicate_for(&[tag_id.into()], crate::types::EntityFilter::All, None)?;
         let ids = ids
             .iter()
             .map(|id| format!("'{}'", id.replace('\'', "''")))
             .collect::<Vec<_>>()
             .join(",");
         let removed = format!("array_remove(tags, '{tag_id}')");
-        let selected = format!("{predicate} AND id IN ({ids})");
+        let selected = format!("{predicate} AND (id IN ({ids}) OR reference IN ({ids}))");
         if let Some(replacement) = replacement {
             Self::tag_predicate(&[replacement.into()], crate::types::EntityFilter::All)?;
             // Two idempotent subsets avoid unsupported CASE expressions. A crash between
@@ -981,8 +1017,9 @@ impl EmbeddingsDb {
         Ok(())
     }
 
-    pub(crate) async fn count_tag_entries(&self, id: &str) -> Result<u64, EmbeddingsError> {
-        let predicate = Self::tag_predicate(&[id.into()], crate::types::EntityFilter::All)?;
+    pub(crate) async fn count_tag_assignments(&self, id: &str) -> Result<u64, EmbeddingsError> {
+        let predicate =
+            Self::tag_predicate_for(&[id.into()], crate::types::EntityFilter::All, None)?;
         Ok(self.table.count_rows(Some(predicate)).await? as u64)
     }
 
@@ -991,6 +1028,24 @@ impl EmbeddingsDb {
     pub(crate) async fn set_entry_tag_ids(
         &self,
         entry: &str,
+        tags: &[String],
+    ) -> Result<(), EmbeddingsError> {
+        self.set_target_tag_ids(entry, None, tags).await
+    }
+
+    pub(crate) async fn set_annotation_tag_ids(
+        &self,
+        entry: &str,
+        annotation: &str,
+        tags: &[String],
+    ) -> Result<(), EmbeddingsError> {
+        self.set_target_tag_ids(annotation, Some(entry), tags).await
+    }
+
+    async fn set_target_tag_ids(
+        &self,
+        id: &str,
+        parent: Option<&str>,
         tags: &[String],
     ) -> Result<(), EmbeddingsError> {
         Self::tag_predicate(tags, crate::types::EntityFilter::All)?;
@@ -1005,12 +1060,18 @@ impl EmbeddingsDb {
                     .join(",")
             )
         };
+        let predicate = if let Some(parent) = parent {
+            format!(
+                "kind = 'annotation' AND reference = '{}' AND id = '{}'",
+                parent.replace('\'', "''"),
+                id.replace('\'', "''")
+            )
+        } else {
+            format!("kind = 'entry' AND id = '{}'", id.replace('\'', "''"))
+        };
         self.table
             .update()
-            .only_if(format!(
-                "kind = 'entry' AND id = '{}'",
-                entry.replace('\'', "''")
-            ))
+            .only_if(predicate)
             .column("tags", value)
             .execute()
             .await?;
@@ -1021,7 +1082,15 @@ impl EmbeddingsDb {
         groups: &[Vec<String>],
         filter: crate::types::EntityFilter,
     ) -> Result<String, EmbeddingsError> {
-        let mut predicate = Self::tag_predicate(&[], filter)?;
+        Self::tag_group_predicate_for(groups, filter, Some(Kind::Entry))
+    }
+
+    fn tag_group_predicate_for(
+        groups: &[Vec<String>],
+        filter: crate::types::EntityFilter,
+        kind: Option<Kind>,
+    ) -> Result<String, EmbeddingsError> {
+        let mut predicate = Self::tag_predicate_for(&[], filter, kind)?;
         for group in groups {
             if group.is_empty() {
                 return Err(EmbeddingsError::Parse("empty tag identity group".into()));
@@ -1029,7 +1098,11 @@ impl EmbeddingsDb {
             let alternatives = group
                 .iter()
                 .map(|id| {
-                    Self::tag_predicate(std::slice::from_ref(id), crate::types::EntityFilter::All)
+                    Self::tag_predicate_for(
+                        std::slice::from_ref(id),
+                        crate::types::EntityFilter::All,
+                        kind,
+                    )
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             predicate.push_str(&format!(" AND (({}))", alternatives.join(") OR (")));
@@ -1339,16 +1412,17 @@ impl EmbeddingsDb {
     }
 
     /// Returns a map of `id → checksum` for all annotation rows belonging to `article_id`.
-    /// Returns `(checksum, color)` per annotation id for the given article.
+    /// Returns `(checksum, color, tags)` per annotation id for the given article.
     pub(crate) async fn get_annotation_meta_for_article(
         &self,
         article_id: &str,
-    ) -> Result<HashMap<String, (String, String)>, EmbeddingsError> {
+    ) -> Result<HashMap<String, (String, String, Vec<String>)>, EmbeddingsError> {
         let escaped = article_id.replace('\'', "''");
 
         let batches: Vec<RecordBatch> = self
             .table
             .query()
+            .select(Select::columns(&["id", "checksum", "color", "tags"]))
             .only_if(format!("reference = '{escaped}'"))
             .execute()
             .await?
@@ -1375,7 +1449,21 @@ impl EmbeddingsDb {
                 for i in 0..batch.num_rows() {
                     map.insert(
                         ids.value(i).to_string(),
-                        (checksums.value(i).to_string(), colors.value(i).to_string()),
+                        (
+                            checksums.value(i).to_string(),
+                            colors.value(i).to_string(),
+                            {
+                                let tags = batch
+                                    .column_by_name("tags")
+                                    .unwrap()
+                                    .as_any()
+                                    .downcast_ref::<ListArray>()
+                                    .unwrap()
+                                    .value(i);
+                                let tags = tags.as_any().downcast_ref::<StringArray>().unwrap();
+                                (0..tags.len()).map(|i| tags.value(i).to_owned()).collect()
+                            },
+                        ),
                     );
                 }
             }
@@ -2168,40 +2256,68 @@ mod tests {
         db.ensure_indexes().await.unwrap();
         db.ensure_indexes().await.unwrap();
         let ids = vec![TAG_A.into(), TAG_B.into()];
-        let list = db.list_tag_entries(&ids, EntityFilter::All).await.unwrap();
-        assert_eq!(list.len(), 2);
+        let list = db.list_tag_entities(&ids, EntityFilter::All).await.unwrap();
+        assert_eq!(list.len(), 3);
         assert!(list.iter().any(|entry| entry.id == "both"));
+        assert!(
+            list.iter()
+                .any(|entry| entry.id == "annotation" && entry.reference.is_some())
+        );
         assert_eq!(db.count_tag_unread(&ids).await.unwrap(), 1);
         assert_eq!(
-            db.list_tag_entries(&ids, EntityFilter::Unread)
-                .await
-                .unwrap()[0]
-                .id,
-            "both"
-        );
-        assert_eq!(
-            db.list_tag_entries(&ids, EntityFilter::Saved)
-                .await
-                .unwrap()[0]
-                .id,
-            "both"
-        );
-        assert_eq!(
-            db.list_tag_entries(&[], EntityFilter::All)
+            db.list_tag_entities(&ids, EntityFilter::Unread)
                 .await
                 .unwrap()
                 .len(),
-            4
+            3
+        );
+        let saved = db
+            .list_tag_entities(&ids, EntityFilter::Saved)
+            .await
+            .unwrap();
+        assert_eq!(saved.len(), 2);
+        assert!(saved.iter().any(|entity| entity.id == "annotation"));
+        assert_eq!(
+            db.list_tag_entities(&[], EntityFilter::All)
+                .await
+                .unwrap()
+                .len(),
+            5
         );
         assert_eq!(db.count_tag_unread(&[]).await.unwrap(), 2);
+        for filter in [
+            EntityFilter::All,
+            EntityFilter::Unread,
+            EntityFilter::Saved,
+            EntityFilter::Bookmarked,
+        ] {
+            let mut tags: Vec<_> = db
+                .list_tag_entities(&[], filter)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|e| e.id)
+                .collect();
+            let mut all: Vec<_> = db
+                .filter_entities(filter)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|e| e.id)
+                .collect();
+            tags.sort();
+            all.sort();
+            assert_eq!(tags, all);
+        }
+
         assert!(
-            db.list_tag_entries(&[uuid::Uuid::new_v4().to_string()], EntityFilter::All)
+            db.list_tag_entities(&[uuid::Uuid::new_v4().to_string()], EntityFilter::All)
                 .await
                 .unwrap()
                 .is_empty()
         );
         assert!(
-            db.list_tag_entries(&["x') OR true --".into()], EntityFilter::All)
+            db.list_tag_entities(&["x') OR true --".into()], EntityFilter::All)
                 .await
                 .is_err()
         );
@@ -2228,20 +2344,20 @@ mod tests {
         .unwrap();
         assert_eq!(db.count_tag_unread(&ids).await.unwrap(), 0);
         assert_eq!(
-            db.list_tag_entries(&ids, EntityFilter::All)
+            db.list_tag_entities(&ids, EntityFilter::All)
                 .await
                 .unwrap()
                 .len(),
-            1
+            2
         );
         let readonly = EmbeddingsDb::open_readonly(dir.path()).await.unwrap();
         assert_eq!(
             readonly
-                .list_tag_entries(&[], EntityFilter::All)
+                .list_tag_entities(&[], EntityFilter::All)
                 .await
                 .unwrap()
                 .len(),
-            4
+            5
         );
     }
 
@@ -2289,10 +2405,10 @@ mod tests {
             let count = db.count_tag_unread(&ids).await.unwrap();
             let count_us = start.elapsed().as_micros();
             let start = Instant::now();
-            let sparse = db.list_tag_entries(&ids, EntityFilter::All).await.unwrap();
+            let sparse = db.list_tag_entities(&ids, EntityFilter::All).await.unwrap();
             let sparse_us = start.elapsed().as_micros();
             let start = Instant::now();
-            let dense = db.list_tag_entries(&[], EntityFilter::All).await.unwrap();
+            let dense = db.list_tag_entities(&[], EntityFilter::All).await.unwrap();
             let dense_us = start.elapsed().as_micros();
             assert_eq!(count, total / 200);
             assert_eq!(sparse.len(), total / 100);
@@ -2302,6 +2418,130 @@ mod tests {
             );
             previous = total;
         }
+    }
+
+    #[tokio::test]
+    #[ignore = "explicit two-million-row annotation tagging measurement"]
+    async fn annotation_tag_scaling() {
+        use std::time::Instant;
+        let dir = tempfile::tempdir().unwrap();
+        let writer = crate::library_writer::LibraryWriter::start(
+            dir.path().into(),
+            crate::library::acquire_lock(dir.path()).unwrap(),
+        );
+        let research = writer.create_tag("Research".into()).await.unwrap().tag;
+        let work = writer.create_tag("Work".into()).await.unwrap().tag;
+        let db = EmbeddingsDb::open_writer(dir.path(), &writer.lock())
+            .await
+            .unwrap();
+        let started = Instant::now();
+        for base in (0..2_000_000).step_by(25_000) {
+            let rows = (base..base + 25_000)
+                .map(|i| {
+                    let annotation = i % 10 == 0;
+                    let mut row = sample(
+                        &format!("{}-{i:07}", if annotation { "ann" } else { "entry" }),
+                        if annotation { "annotation" } else { "entry" },
+                        None,
+                    );
+                    if annotation {
+                        row.reference = if i < 10_240 {
+                            "shared-parent".into()
+                        } else {
+                            format!("parent-{i:07}")
+                        };
+                    }
+                    if (!annotation && i % 100 == 1) || (annotation && i < 10_240) {
+                        row.tags = vec![research.id.clone(), work.id.clone()];
+                    }
+                    row.is_unread = i % 200 == 1;
+                    row
+                })
+                .collect();
+            db.add_batch(rows).await.unwrap();
+        }
+        db.ensure_indexes().await.unwrap();
+        db.table
+            .optimize(lancedb::table::optimize::OptimizeAction::Index(
+                Default::default(),
+            ))
+            .await
+            .unwrap();
+        let build_ms = started.elapsed().as_millis();
+        let groups = vec![vec![research.id.clone()], vec![work.id.clone()]];
+        let predicate =
+            EmbeddingsDb::tag_group_predicate_for(&groups, crate::types::EntityFilter::All, None)
+                .unwrap();
+        let plan = db
+            .table
+            .query()
+            .select(Select::columns(&EmbeddingsDb::SUMMARY_COLUMNS))
+            .only_if(predicate)
+            .explain_plan(false)
+            .await
+            .unwrap();
+        assert!(plan.contains("LabelList"), "{plan}");
+        let start = Instant::now();
+        let results = db
+            .list_tag_entity_groups(&groups, crate::types::EntityFilter::All)
+            .await
+            .unwrap();
+        let list_ms = start.elapsed().as_millis();
+        assert_eq!(results.len(), 21_024);
+        let start = Instant::now();
+        assert_eq!(db.count_tag_group_unread(&groups).await.unwrap(), 10_000);
+        let count_ms = start.elapsed().as_millis();
+        let start = Instant::now();
+        assert_eq!(
+            db.tag_entry_id_batch(&research.id, Some("entry-9999999"), 1024)
+                .await
+                .unwrap(),
+            vec!["shared-parent"]
+        );
+        let candidates_ms = start.elapsed().as_millis();
+        let path = crate::library::entry_path(dir.path(), "shared-parent");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let annotations = (0..1024).map(|i| format!("- id: ann-{:07}\n  text: [passage]\n  occurrence: [0]\n  color: blue\n  created_at: today\n  tags: [Research, Work]\n", i*10)).collect::<String>();
+        std::fs::write(
+            &path,
+            format!(
+                "---\nsource: https://example.org/a\nannotations:\n{annotations}---\n\nExact body\n"
+            ),
+        )
+        .unwrap();
+        let start = Instant::now();
+        writer
+            .patch_tag_labels(
+                "shared-parent".into(),
+                vec!["Research".into()],
+                Some("Notes".into()),
+            )
+            .await
+            .unwrap();
+        let source_ms = start.elapsed().as_millis();
+        let article = crate::persistence::articles::read_article(dir.path(), "shared-parent")
+            .await
+            .unwrap();
+        assert_eq!(article.annotations.len(), 1024);
+        assert!(
+            article
+                .annotations
+                .iter()
+                .all(|a| a.tags == vec!["Notes", "Work"])
+        );
+        let start = Instant::now();
+        db.patch_tag_batch(&research.id, Some(&work.id), &["shared-parent".into()])
+            .await
+            .unwrap();
+        let cache_ms = start.elapsed().as_millis();
+        assert_eq!(
+            db.get_entry("ann-0000000").await.unwrap().unwrap().tags,
+            vec![work.id]
+        );
+        println!(
+            "annotation_tag_scale rows=2000000 annotations=200000 shared_parent_annotations=1024 build_ms={build_ms} list_ms={list_ms} count_ms={count_ms} parent_candidates_ms={candidates_ms} source_patch_ms={source_ms} cache_patch_ms={cache_ms}\n{plan}"
+        );
+        writer.shutdown().await;
     }
 
     #[tokio::test]

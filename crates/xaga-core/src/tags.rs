@@ -178,6 +178,19 @@ pub struct EntryTagChange {
     pub assigned: bool,
 }
 
+/// Resolved assignments carried separately from readable source labels.
+pub type AnnotationTagIds = HashMap<String, Vec<String>>;
+
+/// A committed assignment on one annotation in its parent Entry file.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnotationTagChange {
+    pub entry_id: String,
+    pub annotation_id: String,
+    pub tag_id: String,
+    pub assigned: bool,
+}
+
 /// The committed lookup/creation result used by the command's notification.
 #[derive(Debug)]
 pub struct TagCreation {
@@ -701,37 +714,78 @@ pub(crate) async fn patch_file(
     new: Option<&str>,
     token: crate::library_writer::WriteToken,
 ) -> Result<(), crate::library_writer::WriterError> {
-    let mut names = match crate::persistence::entries::read_entry_tags(dir, id).await {
-        Ok(names) => names,
-        Err(crate::persistence::entries::EntryError::NotFound) => return Ok(()),
-        Err(crate::persistence::entries::EntryError::Io(error))
-            if error.kind() == std::io::ErrorKind::NotFound =>
-        {
+    let Some(path) = crate::persistence::entries::find_entry_path(dir, id).await else {
+        return Ok(());
+    };
+    let raw = match crate::fs::read_md_capped(&path).await {
+        Ok(raw) => raw,
+        Err(crate::fs::ReadMdError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
             return Ok(());
         }
-        Err(error) => return Err(error.into()),
+        Err(e) => return Err(crate::persistence::entries::EntryError::from(e).into()),
     };
-    let before = names.clone();
+    let fields =
+        crate::md::frontmatter_json(&raw).map_err(crate::persistence::entries::EntryError::from)?;
     let old: HashSet<_> = old.iter().map(|name| key(name)).collect();
-    let deduplicate = old.len() > 1;
-    let mut replaced = false;
-    names.retain_mut(|name| {
-        if !old.contains(&key(name)) {
-            return true;
-        }
-        match new {
-            Some(new) if !replaced || !deduplicate => {
-                *name = new.into();
-                replaced = true;
-                true
+    let mut updates = Vec::new();
+    let names: Vec<String> =
+        serde_json::from_value(fields.get("tags").cloned().unwrap_or(serde_json::json!([])))
+            .map_err(|e| invalid(&e.to_string()))?;
+    let next = rewrite_labels(&names, &old, new);
+    if names != next {
+        updates.push(("tags", serde_json::json!(next)));
+    }
+    if let Some(mut annotations) = fields.get("annotations").cloned() {
+        let mut changed = false;
+        for annotation in annotations
+            .as_array_mut()
+            .ok_or_else(|| invalid("annotations must be a sequence"))?
+        {
+            let Some(value) = annotation.get("tags") else {
+                continue;
+            };
+            let labels: Vec<String> =
+                serde_json::from_value(value.clone()).map_err(|e| invalid(&e.to_string()))?;
+            let next = rewrite_labels(&labels, &old, new);
+            if next != labels {
+                changed = true;
+                let record = annotation
+                    .as_object_mut()
+                    .ok_or_else(|| invalid("annotation must be a mapping"))?;
+                if next.is_empty() {
+                    record.remove("tags");
+                } else {
+                    record.insert("tags".into(), serde_json::json!(next));
+                }
             }
-            _ => false,
         }
-    });
-    if names != before {
-        crate::persistence::entries::set_entry_tags(dir, id, names, token).await?;
+        if changed {
+            updates.push(("annotations", annotations));
+        }
+    }
+    if !updates.is_empty() {
+        crate::persistence::documents::upsert(&path, &updates, None, token).await?;
     }
     Ok(())
+}
+
+fn rewrite_labels(names: &[String], old: &HashSet<String>, new: Option<&str>) -> Vec<String> {
+    let mut replaced = false;
+    names
+        .iter()
+        .filter_map(|name| {
+            if !old.contains(&key(name)) {
+                return Some(name.clone());
+            }
+            match new {
+                Some(new) if !replaced || old.len() <= 1 => {
+                    replaced = true;
+                    Some(new.into())
+                }
+                _ => None,
+            }
+        })
+        .collect()
 }
 
 /// Storage operations used by transition dispatchers. No file/index work is
@@ -816,6 +870,27 @@ impl Tags {
             .find(|t| t.ids().iter().any(|v| v.as_str() == id) && t.revision() == revision)
             .ok_or(TagsError::Stale)
     }
+    /// Apply the shared article/annotation assignment and alias rules to labels.
+    pub(crate) fn set_assignment(
+        &self,
+        labels: &mut Vec<String>,
+        id: &str,
+        assigned: bool,
+    ) -> Result<String, TagsError> {
+        let (canonical, name) = self.assignment(id)?;
+        let resolver = self.resolver();
+        labels.retain(|label| {
+            resolver
+                .resolve(std::slice::from_ref(label))
+                .map(|ids| !ids.contains(&canonical))
+                .unwrap_or(true)
+        });
+        if assigned {
+            labels.push(name);
+        }
+        Ok(canonical)
+    }
+
     /// Returns the canonical readable name for a new assignment; deletion refuses it.
     pub(crate) fn assignment(&self, id: &str) -> Result<(String, String), TagsError> {
         let tag = self.tag(id)?;

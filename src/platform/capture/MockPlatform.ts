@@ -277,6 +277,7 @@ export class MockPlatform implements Platform {
     this.data.topics.forEach((t) => {
       t.members = t.members.filter((m) => m.id !== input.id);
     });
+    delete this.data.assignments[input.id];
     this.emit("onAnnotationRemoved", input.id);
     this.changed();
     return this.project(article);
@@ -302,6 +303,8 @@ export class MockPlatform implements Platform {
         member.id === oldId ? { ...member, id: input.id } : member
       );
     });
+    this.data.assignments[input.id] = this.data.assignments[oldId] ?? [];
+    delete this.data.assignments[oldId];
     this.emit("onAnnotationReplaced", {
       oldId,
       entity: { ...annotation, url: article.url },
@@ -446,6 +449,38 @@ export class MockPlatform implements Platform {
     this.emit("onTagCreated", tag);
     return structuredClone(tag);
   };
+  readAnnotationTags: Platform["readAnnotationTags"] = async (
+    _signal,
+    entryId,
+    annotationId
+  ) => {
+    if (!this.article(entryId).annotations.some((a) => a.id === annotationId))
+      throw new Error("Annotation unavailable");
+    return [...(this.data.assignments[annotationId] ?? [])];
+  };
+  setAnnotationTag: Platform["setAnnotationTag"] = async (
+    entryId,
+    annotationId,
+    tagId,
+    assigned
+  ) => {
+    await this.readAnnotationTags(
+      new AbortController().signal,
+      entryId,
+      annotationId
+    );
+    const ids = (this.data.assignments[annotationId] ?? []).filter(
+      (id) => id !== tagId
+    );
+    if (assigned) ids.push(tagId);
+    this.data.assignments[annotationId] = ids;
+    const change = { entryId, annotationId, tagId, assigned };
+    this.emit("onAnnotationTagsChanged", change);
+    this.changed();
+    return change;
+  };
+  onAnnotationTagsChanged: Platform["onAnnotationTagsChanged"] = (callback) =>
+    this.subscribe("onAnnotationTagsChanged", callback);
   readEntryTags: Platform["readEntryTags"] = async (_signal, id) => [
     ...(this.data.assignments[id] ?? []),
   ];
@@ -461,19 +496,25 @@ export class MockPlatform implements Platform {
     this.changed();
     return change;
   };
-  listTagEntries: Platform["listTagEntries"] = async (_signal, ids, filter) =>
-    this.filter(
-      this.data.articles
-        .filter(
-          (a) =>
-            ids.length === 0 ||
-            ids.every((id) => this.data.assignments[a.id]?.includes(id))
-        )
-        .map((a) => this.project(a)),
-      filter
-    ) as Entry[];
-  countTagUnread: Platform["countTagUnread"] = async (signal, ids) =>
-    (await this.listTagEntries(signal, ids, "unread")).length;
+  listTagEntities: Platform["listTagEntities"] = async (
+    signal,
+    ids,
+    filter
+  ) => {
+    const entities = await this.listAllEntities(
+      signal,
+      ids.length && filter === "unread" ? "all" : (filter ?? "unread")
+    );
+    return entities.filter((entity) =>
+      ids.every((id) => this.data.assignments[entity.id]?.includes(id))
+    );
+  };
+  countTagUnread: Platform["countTagUnread"] = async (signal, ids) => {
+    const entities = await this.listAllEntities(signal, "unread");
+    return entities.filter((entity) =>
+      ids.every((id) => this.data.assignments[entity.id]?.includes(id))
+    ).length;
+  };
   renameTag: Platform["renameTag"] = async (id, name) => {
     const tag = this.data.tags.find((t) => t.id === id);
     if (!tag) return this.unsupported("Unknown tag");

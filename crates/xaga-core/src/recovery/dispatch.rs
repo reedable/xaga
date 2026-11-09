@@ -23,7 +23,10 @@ struct DispatchSink<'a> {
     senders: &'a Senders,
     /// `Some` on fresh recovery: collected `(topics, articles)` awaiting bulk insert. `None` is
     /// incremental, where each entity was already enqueued during the walk.
-    fresh: Option<(Vec<Topic>, Vec<(Article, Vec<String>)>)>,
+    fresh: Option<(
+        Vec<Topic>,
+        Vec<(Article, Vec<String>, crate::tags::AnnotationTagIds)>,
+    )>,
     topic_count: usize,
     article_count: usize,
 }
@@ -59,13 +62,23 @@ impl RepairSink for DispatchSink<'_> {
         }
     }
 
-    fn article(&mut self, article: Article, tag_ids: Vec<String>) {
+    fn article(
+        &mut self,
+        article: Article,
+        tag_ids: Vec<String>,
+        annotation_tag_ids: crate::tags::AnnotationTagIds,
+    ) {
         self.article_count += 1;
         match &mut self.fresh {
-            Some((_, articles)) => articles.push((article, tag_ids)),
-            None => self
-                .senders
-                .enqueue(Tier::Maintenance, Job::UpsertEntry { article, tag_ids }),
+            Some((_, articles)) => articles.push((article, tag_ids, annotation_tag_ids)),
+            None => self.senders.enqueue(
+                Tier::Maintenance,
+                Job::UpsertEntry {
+                    article,
+                    tag_ids,
+                    annotation_tag_ids,
+                },
+            ),
         }
     }
 }
@@ -168,21 +181,21 @@ const BULK_BATCH: usize = 1024;
 /// annotation) and inserts in batches, then queues the carried `Article` for the embed pass.
 async fn bulk_insert_articles(
     db: &EmbeddingsDb,
-    articles: Vec<(Article, Vec<String>)>,
+    articles: Vec<(Article, Vec<String>, crate::tags::AnnotationTagIds)>,
     senders: &Senders,
 ) {
     let mut buf: Vec<EmbeddingEntry> = Vec::with_capacity(BULK_BATCH);
 
-    for (article, tags) in articles {
+    for (article, tags, annotation_tag_ids) in articles {
         buf.push(EmbeddingEntry::from_article(&article, None, tags));
 
         for annotation in &article.annotations {
-            buf.push(annotation_embedding_entry(
-                &article,
-                annotation,
-                Vec::new(),
-                None,
-            ));
+            let mut row = annotation_embedding_entry(&article, annotation, Vec::new(), None);
+            row.tags = annotation_tag_ids
+                .get(&annotation.id)
+                .cloned()
+                .unwrap_or_default();
+            buf.push(row);
         }
 
         senders.enqueue(Tier::Maintenance, Job::EmbedEntry { article });

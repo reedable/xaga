@@ -389,6 +389,9 @@ impl Colorable for Note {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Annotation {
+    /// Readable source labels; indexed identities are resolved separately.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
     pub id: String,
     /// `title` (from `Entity`) is the highlighted text; carried so it lists in mixed collections.
     pub title: String,

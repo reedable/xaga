@@ -1,6 +1,11 @@
 import type { FetchSettings, FetchSettingChange } from "./fetchSettings";
 import { SIDEBAR_SORT_MODES, type SidebarSortMode } from "../sidebarSort";
-import type { EntryTagChange, Tag, TagSnapshot } from "../domain";
+import type {
+  AnnotationTagChange,
+  EntryTagChange,
+  Tag,
+  TagSnapshot,
+} from "../domain";
 import type {
   PinTarget,
   PinNode,
@@ -393,6 +398,9 @@ const entryTagChangeSchema = z.object({
   entryId: z.string(),
   tagId: z.uuid({ version: "v4" }),
   assigned: z.boolean(),
+});
+const annotationTagChangeSchema = entryTagChangeSchema.extend({
+  annotationId: z.string(),
 });
 const tagSchema = z.object({
   id: z.uuid({ version: "v4" }),
@@ -1635,6 +1643,44 @@ export class TauriPlatform implements Platform {
     return invoker<void>(name);
   }
 
+  async readAnnotationTags(
+    signal: AbortSignal,
+    entryId: string,
+    annotationId: string
+  ): Promise<string[]> {
+    const result = await invoke("read_annotation_tags", {
+      entryId,
+      annotationId,
+    });
+    signal.throwIfAborted();
+    return z.array(z.uuid({ version: "v4" })).parse(result);
+  }
+
+  async setAnnotationTag(
+    entryId: string,
+    annotationId: string,
+    tagId: string,
+    assigned: boolean
+  ): Promise<AnnotationTagChange> {
+    return annotationTagChangeSchema.parse(
+      await invoke("set_annotation_tag", {
+        entryId,
+        annotationId,
+        tagId,
+        assigned,
+      })
+    );
+  }
+
+  onAnnotationTagsChanged(
+    callback: (change: AnnotationTagChange) => void
+  ): Promise<UnlistenFn> {
+    return listen<unknown>(
+      "annotation-tags:changed" satisfies DomainEvent,
+      (event) => callback(annotationTagChangeSchema.parse(event.payload))
+    );
+  }
+
   async readEntryTags(signal: AbortSignal, id: string): Promise<string[]> {
     const result = await invoke("read_entry_tags", { id });
     signal.throwIfAborted();
@@ -1660,17 +1706,17 @@ export class TauriPlatform implements Platform {
     );
   }
 
-  async listTagEntries(
+  async listTagEntities(
     signal: AbortSignal,
     tagIds: string[],
     filter: Filter = "unread"
-  ): Promise<Entry[]> {
-    const result = await invoke("list_tag_entries", {
+  ): Promise<ListEntity[]> {
+    const result = await invoke("list_tag_entities", {
       tagIds,
       entityFilter: filter,
     });
     signal.throwIfAborted();
-    return z.array(EntrySchema.transform(toEntry)).parse(result);
+    return z.array(ListEntitySchema.transform(toListEntity)).parse(result);
   }
 
   async countTagUnread(signal: AbortSignal, tagIds: string[]): Promise<number> {

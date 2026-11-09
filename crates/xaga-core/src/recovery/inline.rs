@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::embeddings::pipeline::{
-    embed_entry_vector, embed_feed, embed_topic_vector, sync_entry_row, sync_topic_row,
+    embed_entry_vector, embed_feed, embed_topic_vector, sync_topic_row,
 };
 use crate::embeddings::{Embedder, EmbeddingsDb};
 use crate::types::{Article, Entry, ListEntity, Topic};
@@ -25,7 +25,7 @@ pub struct RecoveryReport {
 #[derive(Default)]
 struct InlineSink {
     topics: Vec<Topic>,
-    articles: Vec<Article>,
+    articles: Vec<(Article, Vec<String>, crate::tags::AnnotationTagIds)>,
 }
 
 impl RepairSink for InlineSink {
@@ -33,8 +33,13 @@ impl RepairSink for InlineSink {
         self.topics.push(topic);
     }
 
-    fn article(&mut self, article: Article, _tag_ids: Vec<String>) {
-        self.articles.push(article);
+    fn article(
+        &mut self,
+        article: Article,
+        _tag_ids: Vec<String>,
+        _annotation_tag_ids: crate::tags::AnnotationTagIds,
+    ) {
+        self.articles.push((article, _tag_ids, _annotation_tag_ids));
     }
 }
 
@@ -102,13 +107,16 @@ async fn process_inline(
         }
     }
 
-    for article in &sink.articles {
-        if let Err(e) = sync_entry_row(
+    for (article, tag_ids, annotation_tag_ids) in &sink.articles {
+        if let Err(e) = crate::embeddings::pipeline::sync_entry_row_with_tag_changes(
             article,
             db,
             &noop_unread_tx,
             &noop_bookmarked_tx,
             &noop_annotation_tx,
+            None,
+            Some(tag_ids),
+            Some(annotation_tag_ids),
         )
         .await
         {

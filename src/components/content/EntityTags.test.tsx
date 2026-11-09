@@ -1,13 +1,21 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
-import type { EntryTagChange, Tag, TagSnapshot } from "../../domain";
-import { EntryTags } from "./EntryTags";
+import type {
+  AnnotationTagChange,
+  EntryTagChange,
+  Tag,
+  TagSnapshot,
+} from "../../domain";
+import { EntityTags } from "./EntityTags";
 
 const mocks = vi.hoisted(() => ({
   readOnly: false,
   readTagStatus: vi.fn(),
   readEntryTags: vi.fn(),
+  readAnnotationTags: vi.fn(),
+  setAnnotationTag: vi.fn(),
+  onAnnotationTagsChanged: vi.fn(),
   createTag: vi.fn(),
   setEntryTag: vi.fn(),
   onTagsChanged: vi.fn(),
@@ -27,6 +35,7 @@ const work = { id: "work", name: "Work" };
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 let changeListener: (change: EntryTagChange) => void;
+let annotationListener: (change: AnnotationTagChange) => void;
 let statusListener: (snapshot: TagSnapshot) => void;
 let createdListener: (tag: Tag) => void;
 let cleanup: ReturnType<typeof vi.fn>;
@@ -40,6 +49,20 @@ beforeEach(() => {
     merging: [],
   });
   mocks.readEntryTags.mockResolvedValue([research.id]);
+  mocks.readAnnotationTags.mockResolvedValue([research.id]);
+  mocks.setAnnotationTag.mockImplementation(
+    async (entryId, annotationId, tagId, assigned) => ({
+      entryId,
+      annotationId,
+      tagId,
+      assigned,
+    })
+  );
+  mocks.onAnnotationTagsChanged.mockImplementation(async (listener) => {
+    annotationListener = listener;
+    return cleanup;
+  });
+
   mocks.setEntryTag.mockImplementation(async (entryId, tagId, assigned) => ({
     entryId,
     tagId,
@@ -69,7 +92,7 @@ afterEach(async () => {
 });
 async function render(entryId = "article") {
   await act(async () =>
-    root.render(<EntryTags key={entryId} entryId={entryId} />)
+    root.render(<EntityTags key={entryId} entryId={entryId} />)
   );
 }
 const chip = (name: string) =>
@@ -269,4 +292,140 @@ it("redirects merged assignments and reconciles late losing-ID events from curre
     changeListener({ entryId: "article", tagId: research.id, assigned: true })
   );
   expect(chip("Work").getAttribute("aria-pressed")).toBe("false");
+});
+
+async function renderAnnotation(
+  entryId = "popup-parent",
+  annotationId = "popup-annotation"
+) {
+  await act(async () =>
+    root.render(
+      <EntityTags
+        key={`${entryId}/${annotationId}`}
+        entryId={entryId}
+        annotationId={annotationId}
+      />
+    )
+  );
+}
+
+it("reads and assigns the explicit inspected Annotation independently of article selection", async () => {
+  await renderAnnotation();
+  expect(mocks.readAnnotationTags).toHaveBeenCalledWith(
+    expect.any(AbortSignal),
+    "popup-parent",
+    "popup-annotation"
+  );
+  expect(mocks.readEntryTags).not.toHaveBeenCalled();
+  expect(
+    container.querySelector('[aria-label="Annotation tags"]')
+  ).not.toBeNull();
+  await act(async () => chip("Work").click());
+  expect(mocks.setAnnotationTag).toHaveBeenCalledWith(
+    "popup-parent",
+    "popup-annotation",
+    "work",
+    true
+  );
+  expect(mocks.setEntryTag).not.toHaveBeenCalled();
+  expect(chip("Work").getAttribute("aria-pressed")).toBe("true");
+  mocks.setAnnotationTag.mockRejectedValueOnce(new Error("write failed"));
+  await act(async () => chip("Work").click());
+  expect(chip("Work").getAttribute("aria-pressed")).toBe("true");
+});
+
+it("retains committed annotation changes during an initial read and ignores other targets", async () => {
+  let finish!: (ids: string[]) => void;
+  mocks.readAnnotationTags.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  await renderAnnotation();
+  await act(async () => {
+    annotationListener({
+      entryId: "popup-parent",
+      annotationId: "other",
+      tagId: "research",
+      assigned: false,
+    });
+    annotationListener({
+      entryId: "popup-parent",
+      annotationId: "popup-annotation",
+      tagId: "work",
+      assigned: true,
+    });
+    finish(["research"]);
+  });
+  expect(chip("Research").getAttribute("aria-pressed")).toBe("true");
+  expect(chip("Work").getAttribute("aria-pressed")).toBe("true");
+});
+
+it("does not display a completed write on a different annotation target", async () => {
+  let finish!: (change: AnnotationTagChange) => void;
+  mocks.setAnnotationTag.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  await renderAnnotation();
+  await act(async () => chip("Work").click());
+  await renderAnnotation("other-parent", "other-annotation");
+  await act(async () =>
+    finish({
+      entryId: "popup-parent",
+      annotationId: "popup-annotation",
+      tagId: "work",
+      assigned: true,
+    })
+  );
+  expect(chip("Work").getAttribute("aria-pressed")).toBe("false");
+});
+
+it("does not fall back to Article assignments for a missing annotation", async () => {
+  mocks.readAnnotationTags.mockRejectedValueOnce(
+    new Error("missing annotation")
+  );
+  await renderAnnotation();
+  expect(container.textContent).toContain("Tags couldn’t be loaded.");
+  expect(mocks.readEntryTags).not.toHaveBeenCalled();
+  expect(mocks.setEntryTag).not.toHaveBeenCalled();
+});
+
+it("never substitutes Article tags for an explicitly empty annotation ID", async () => {
+  mocks.readAnnotationTags.mockRejectedValueOnce(
+    new Error("invalid annotation")
+  );
+  await renderAnnotation("parent", "");
+  expect(mocks.readAnnotationTags).toHaveBeenCalledWith(
+    expect.any(AbortSignal),
+    "parent",
+    ""
+  );
+  expect(mocks.readEntryTags).not.toHaveBeenCalled();
+  expect(container.textContent).toContain("Tags couldn’t be loaded.");
+});
+
+it("finishes creation and assignment to the original annotation after inspection closes", async () => {
+  let finish!: (tag: Tag) => void;
+  mocks.createTag.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  await renderAnnotation();
+  await search("New");
+  await act(async () => chip("Create “New”").click());
+  await act(async () => root.unmount());
+  await act(async () => finish({ id: "new", name: "New" }));
+  expect(mocks.setAnnotationTag).toHaveBeenCalledWith(
+    "popup-parent",
+    "popup-annotation",
+    "new",
+    true
+  );
+  expect(mocks.pushError).not.toHaveBeenCalled();
 });

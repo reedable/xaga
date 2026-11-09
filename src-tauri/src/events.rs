@@ -134,6 +134,7 @@ pub(crate) fn emit_domain<R: Runtime>(target: &impl Emitter<R>, event: DomainEve
     let name = event.name();
     let result = match &event {
         DomainEvent::EntryTagsChanged(change) => target.emit(name, change),
+        DomainEvent::AnnotationTagsChanged(change) => target.emit(name, change),
         DomainEvent::TagsChanged(snapshot) => target.emit(name, snapshot),
         DomainEvent::TagCreated(tag) => target.emit(name, tag),
         DomainEvent::UnreadChanged(entry) => target.emit(name, entry),

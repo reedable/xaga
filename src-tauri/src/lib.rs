@@ -163,11 +163,43 @@ impl AppState {
             return;
         };
         match writer.resolve_entry_tags(article.meta.id.clone()).await {
-            Ok((_, tag_ids)) => self.enqueue(tier, Job::UpsertEntry { article, tag_ids }),
+            Ok((_, tag_ids)) => match writer
+                .resolve_annotation_tags(article.meta.id.clone())
+                .await
+            {
+                Ok((_, annotation_tag_ids)) => self.enqueue(
+                    tier,
+                    Job::UpsertEntry {
+                        article,
+                        tag_ids,
+                        annotation_tag_ids,
+                    },
+                ),
+                Err(error) => log::error!("resolve annotation tags before indexing: {error}"),
+            },
             Err(error) => log::error!(
                 "resolve entry tags before indexing {}: {error}",
                 article.meta.id
             ),
+        }
+    }
+
+    pub(crate) async fn enqueue_annotations(&self, article: xaga_core::types::Article) {
+        let Some(writer) = self.writer() else {
+            return;
+        };
+        match writer
+            .resolve_annotation_tags(article.meta.id.clone())
+            .await
+        {
+            Ok((_, annotation_tag_ids)) => self.enqueue(
+                Tier::Interactive,
+                Job::SyncAnnotations {
+                    article,
+                    annotation_tag_ids,
+                },
+            ),
+            Err(error) => log::error!("resolve annotation tags before indexing: {error}"),
         }
     }
 

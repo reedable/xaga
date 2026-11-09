@@ -76,7 +76,7 @@ describe("capture platform", () => {
         feed,
         topic: await platform.readTopic(signal(), topic.id),
         tag,
-        entries: await platform.listTagEntries(signal(), [tag.id]),
+        entries: await platform.listTagEntities(signal(), [tag.id]),
         saved: await platform.listAllEntities(signal(), "saved"),
       };
     }

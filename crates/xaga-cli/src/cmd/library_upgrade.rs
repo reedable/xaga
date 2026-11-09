@@ -494,13 +494,20 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
         }
     };
 
-    // 0.15 extends the pin tree without rewriting flat references. Validate the
-    // store before advancing metadata; no corpus scan or cache changes are needed.
+    // Optional annotation tags (0.16) and nested pins (0.15) preserve existing
+    // source bytes and parent-ID transition checkpoints. Validate both stores
+    // before advancing metadata; ordinary recovery rebuilds derived assignments.
     if source_version.is_some_and(|v| v >= library::LibraryVersion::new(0, 14)) {
         if let Err(error) = xaga_core::pins::Pins::read(dir).await {
             report
                 .errors
                 .push(format!("pin store: {error}; rerun library upgrade"));
+            return report;
+        }
+        if let Err(error) = xaga_core::tags::Tags::read(dir).await {
+            report
+                .errors
+                .push(format!("tag store: {error}; rerun library upgrade"));
             return report;
         }
         if let Err(error) = upgrade.complete() {
@@ -1805,5 +1812,51 @@ custom:
             "tag_curve rows={rows} migration_ms={migration_ms} cache_commits={commits} completed_retry_ms={}",
             started.elapsed().as_millis()
         );
+    }
+}
+
+#[cfg(test)]
+mod annotation_tag_upgrade_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn annotation_tag_upgrade_preserves_pending_transitions_and_retries_validation() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        library::LibraryManifest::begin_upgrade(
+            dir.path(),
+            library::LibraryVersion::new(0, 15),
+            &lock,
+        )
+        .unwrap()
+        .unwrap()
+        .complete()
+        .unwrap();
+        let tag_path = dir.path().join("tags.yaml");
+        fs::write(&tag_path, "tags: [invalid").unwrap();
+        let failed = upgrade_library(dir.path(), &lock).await;
+        assert!(!failed.errors.is_empty());
+        let manifest = library::LibraryManifest::read(dir.path()).unwrap().unwrap();
+        assert_eq!(
+            manifest.format_version(),
+            Some(library::LibraryVersion::new(0, 15))
+        );
+        assert_eq!(
+            manifest.migration_target(),
+            Some(crate::cmd::library::application_version())
+        );
+        let transition = "tags:\n- id: 46fa4a27-1ddf-448a-a5e6-95691a29c602\n  name: Current\ntransitions:\n- type: rename\n  revision: 0\n  id: 46fa4a27-1ddf-448a-a5e6-95691a29c602\n  old_name: Previous\n  files:\n    complete: false\n    pending: [parent]\n";
+        fs::write(&tag_path, transition).unwrap();
+        let report = upgrade_library(dir.path(), &lock).await;
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(fs::read_to_string(&tag_path).unwrap(), transition);
+        let manifest = library::LibraryManifest::read(dir.path()).unwrap().unwrap();
+        assert_eq!(
+            manifest.format_version(),
+            Some(crate::cmd::library::application_version())
+        );
+        assert_eq!(manifest.migration_target(), None);
+        assert!(!dir.path().join("embeddings.lance").exists());
+        assert!(upgrade_library(dir.path(), &lock).await.errors.is_empty());
     }
 }

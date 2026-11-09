@@ -183,6 +183,66 @@ pub async fn read_article(library_dir: &Path, id: &str) -> Result<Article, Entry
     project_pin(library_dir, article_from_document(id, fm, body)).await
 }
 
+/// Reads direct annotation assignments from the source file, without requiring a cache.
+pub async fn read_annotation_tags(
+    library_dir: &Path,
+    article_id: &str,
+    annotation_id: &str,
+) -> Result<Vec<String>, EntryError> {
+    let (_, annotations, index) =
+        annotation_tag_target(library_dir, article_id, annotation_id).await?;
+    Ok(annotations[index].tags.clone())
+}
+
+async fn annotation_tag_target(
+    library_dir: &Path,
+    article_id: &str,
+    annotation_id: &str,
+) -> Result<(std::path::PathBuf, Vec<Annotation>, usize), EntryError> {
+    if !crate::persistence::entries::is_safe_id(article_id)
+        || !crate::persistence::entries::is_safe_id(annotation_id)
+    {
+        return Err(EntryError::InvalidId);
+    }
+    let path = find_entry_path(library_dir, article_id)
+        .await
+        .ok_or(EntryError::NotFound)?;
+    let raw = crate::fs::read_md_capped(&path).await?;
+    let (fm, _) = parse_document(&raw)?;
+    let mut matches = fm
+        .annotations
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| a.id == annotation_id);
+    let index = matches.next().ok_or(EntryError::NotFound)?.0;
+    if matches.next().is_some() {
+        return Err(EntryError::InvalidId);
+    }
+    Ok((path, fm.annotations, index))
+}
+
+pub(crate) async fn set_annotation_tag(
+    library_dir: &Path,
+    article_id: &str,
+    annotation_id: &str,
+    tag_id: &str,
+    assigned: bool,
+    token: WriteToken,
+) -> Result<crate::tags::AnnotationTagChange, crate::library_writer::WriterError> {
+    let registry = crate::tags::Tags::read(library_dir).await?;
+    let (path, annotations, index) =
+        annotation_tag_target(library_dir, article_id, annotation_id).await?;
+    let mut labels = annotations[index].tags.clone();
+    let canonical_id = registry.set_assignment(&mut labels, tag_id, assigned)?;
+    super::documents::patch_annotation_tags(&path, index, &labels, token).await?;
+    Ok(crate::tags::AnnotationTagChange {
+        entry_id: article_id.into(),
+        annotation_id: annotation_id.into(),
+        tag_id: canonical_id,
+        assigned,
+    })
+}
+
 /// Adds or updates an annotation in the article's frontmatter (upsert by id). A same-id
 /// update must not change the color: a color change is delete/create (color is part of the
 /// annotation's identity) and must go through [`replace_annotation`] — a same-id color write
@@ -206,8 +266,10 @@ pub(crate) async fn add_annotation(
             return Err(EntryError::ColorChangeRequiresReplace);
         }
         let created_at = annotations[pos].created_at.clone();
+        let tags = annotations[pos].tags.clone();
         annotations[pos] = Annotation {
             created_at,
+            tags,
             ..annotation
         };
     } else {
@@ -261,8 +323,10 @@ pub(crate) async fn replace_annotation(
     let mut annotations = fm.annotations.clone();
     if let Some(pos) = annotations.iter().position(|a| a.id == old_id) {
         let created_at = annotations[pos].created_at.clone();
+        let tags = annotations[pos].tags.clone();
         annotations[pos] = Annotation {
             created_at,
+            tags,
             ..annotation
         };
     } else {
@@ -340,6 +404,7 @@ mod tests {
 
     fn annotation(id: &str, color: &str, note: &str) -> Annotation {
         Annotation {
+            tags: vec![],
             id: id.to_string(),
             title: "highlighted text".to_string(),
             reference: String::new(),
@@ -1213,4 +1278,445 @@ pub(super) async fn project_pin(
             id: article.meta.id.clone(),
         });
     Ok(article)
+}
+
+#[cfg(test)]
+mod annotation_tag_tests {
+    use super::*;
+    use crate::library_writer::LibraryWriter;
+
+    const SOURCE: &str = "---\nsource: https://example.org/a\ncustom: '001' # retain\ntags: [Article]\nannotations:\n  - id: note\n    text: [selection]\n    occurrence: [0]\n    color: yellow\n    note: Original\n    created_at: yesterday\n    custom: retained # annotation metadata\n  - id: sibling\n    text: [other]\n    occurrence: [0]\n    color: blue\n    created_at: yesterday\n---\n\nExact **body**\n\n";
+
+    #[tokio::test]
+    async fn assignment_preserves_other_bytes_and_latest_tags_through_edits() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("entries")).unwrap();
+        let path = crate::library::entry_path(dir.path(), "a");
+        std::fs::write(&path, SOURCE).unwrap();
+        let writer = LibraryWriter::start(
+            dir.path().into(),
+            crate::library::acquire_lock(dir.path()).unwrap(),
+        );
+        let tag = writer.create_tag("Research".into()).await.unwrap().tag;
+        let stale = read_article(dir.path(), "a").await.unwrap().annotations[0].clone();
+        writer
+            .set_annotation_tag("a".into(), "note".into(), tag.id.clone(), true)
+            .await
+            .unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("custom: '001' # retain"));
+        assert!(saved.contains("custom: retained # annotation metadata"));
+        assert!(saved.ends_with("---\n\nExact **body**\n\n"));
+        let article = read_article(dir.path(), "a").await.unwrap();
+        assert_eq!(article.annotations[0].tags, vec!["Research"]);
+        assert!(article.annotations[1].tags.is_empty());
+        assert_eq!(article.meta.tags.as_deref().unwrap(), &["Article"]);
+        let mut edited = stale;
+        edited.content = "Edited".into();
+        writer
+            .add_annotation(
+                crate::library_writer::Tier::Interactive,
+                "a".into(),
+                edited.clone(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            read_annotation_tags(dir.path(), "a", "note").await.unwrap(),
+            vec!["Research"]
+        );
+        writer
+            .save_article(
+                crate::library_writer::Tier::Interactive,
+                "a".into(),
+                "https://example.org/a".into(),
+                "Refreshed".into(),
+                None,
+                None,
+                None,
+                None,
+                "Refreshed body".into(),
+                Default::default(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            read_annotation_tags(dir.path(), "a", "note").await.unwrap(),
+            vec!["Research"]
+        );
+        edited.id = "replacement".into();
+        edited.color = "red".into();
+        writer
+            .replace_annotation(
+                crate::library_writer::Tier::Interactive,
+                "a".into(),
+                "note".into(),
+                edited,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            read_annotation_tags(dir.path(), "a", "replacement")
+                .await
+                .unwrap(),
+            vec!["Research"]
+        );
+        writer
+            .set_annotation_tag("a".into(), "replacement".into(), tag.id, false)
+            .await
+            .unwrap();
+        assert!(
+            read_annotation_tags(dir.path(), "a", "replacement")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(!raw.contains("tags: []"));
+        writer.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn missing_invalid_and_unknown_targets_do_not_mutate_source() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("entries")).unwrap();
+        let path = crate::library::entry_path(dir.path(), "a");
+        std::fs::write(&path, SOURCE).unwrap();
+        let writer = LibraryWriter::start(
+            dir.path().into(),
+            crate::library::acquire_lock(dir.path()).unwrap(),
+        );
+        let tag = writer.create_tag("Research".into()).await.unwrap().tag;
+        for (parent, annotation, tag_id) in [
+            ("a", "missing", tag.id.as_str()),
+            ("../a", "note", tag.id.as_str()),
+            ("a", "note", "unknown"),
+        ] {
+            assert!(
+                writer
+                    .set_annotation_tag(parent.into(), annotation.into(), tag_id.into(), true)
+                    .await
+                    .is_err()
+            );
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), SOURCE);
+        }
+        writer.shutdown().await;
+    }
+}
+
+#[cfg(test)]
+mod annotation_tag_index_tests {
+    use super::*;
+    use crate::{
+        embeddings::{EmbeddingEntry, EmbeddingsDb},
+        library_writer::{LibraryWriter, Tier},
+    };
+
+    async fn setup() -> (tempfile::TempDir, LibraryWriter, EmbeddingsDb) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("entries")).unwrap();
+        std::fs::write(crate::library::entry_path(dir.path(), "parent"), "---\nsource: https://example.org/a\nannotations:\n- id: first\n  text: [First]\n  occurrence: [0]\n  color: blue\n  created_at: yesterday\n- id: second\n  text: [Second]\n  occurrence: [0]\n  color: yellow\n  created_at: yesterday\n---\n\nBody\n").unwrap();
+        let writer = LibraryWriter::start(
+            dir.path().into(),
+            crate::library::acquire_lock(dir.path()).unwrap(),
+        );
+        let db = EmbeddingsDb::open_writer(dir.path(), &writer.lock())
+            .await
+            .unwrap();
+        (dir, writer, db)
+    }
+
+    #[tokio::test]
+    async fn concurrent_annotation_and_comment_writes_preserve_independent_assignments() {
+        let (dir, writer, _) = setup().await;
+        let tag = writer.create_tag("Research".into()).await.unwrap().tag;
+        let mut stale = read_article(dir.path(), "parent")
+            .await
+            .unwrap()
+            .annotations[0]
+            .clone();
+        stale.content = "Comment".into();
+        let (first, second, comment) = tokio::join!(
+            writer.set_annotation_tag("parent".into(), "first".into(), tag.id.clone(), true),
+            writer.set_annotation_tag("parent".into(), "second".into(), tag.id.clone(), true),
+            writer.add_annotation(Tier::Interactive, "parent".into(), stale),
+        );
+        first.unwrap();
+        second.unwrap();
+        comment.unwrap();
+        let article = read_article(dir.path(), "parent").await.unwrap();
+        assert!(
+            article
+                .annotations
+                .iter()
+                .all(|a| a.tags == vec!["Research"])
+        );
+        assert_eq!(article.annotations[0].content, "Comment");
+        writer.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn annotation_only_tag_edits_recover_without_changing_vectors() {
+        let (dir, writer, db) = setup().await;
+        let tag = writer.create_tag("Research".into()).await.unwrap().tag;
+        let article = read_article(dir.path(), "parent").await.unwrap();
+        let (events, _) = flume::unbounded();
+        let (annotations, _) = flume::unbounded();
+        crate::embeddings::pipeline::sync_entry_row(&article, &db, &events, &events, &annotations)
+            .await
+            .unwrap();
+        for id in ["parent", "first", "second"] {
+            let mut row = db.get_entry(id).await.unwrap().unwrap();
+            row.vector = Some(vec![0.5; 384]);
+            db.upsert(row).await.unwrap();
+        }
+        writer
+            .set_annotation_tag("parent".into(), "first".into(), tag.id.clone(), true)
+            .await
+            .unwrap();
+        struct Sink(Vec<(Article, Vec<String>, crate::tags::AnnotationTagIds)>);
+        impl crate::recovery::RepairSink for Sink {
+            fn topic(&mut self, _: crate::types::Topic) {}
+            fn article(
+                &mut self,
+                a: Article,
+                tags: Vec<String>,
+                annotations: crate::tags::AnnotationTagIds,
+            ) {
+                self.0.push((a, tags, annotations));
+            }
+        }
+        let mut sink = Sink(Vec::new());
+        crate::recovery::embeddings::repair_entity_embeddings(
+            dir.path(),
+            &db,
+            &mut sink,
+            Some(&writer),
+        )
+        .await
+        .unwrap();
+        assert_eq!(sink.0.len(), 1);
+        let (current, tags, ids) = &sink.0[0];
+        assert_eq!(ids["first"], vec![tag.id.clone()]);
+        crate::embeddings::pipeline::sync_entry_row_with_tag_changes(
+            current,
+            &db,
+            &events,
+            &events,
+            &annotations,
+            None,
+            Some(tags),
+            Some(ids),
+        )
+        .await
+        .unwrap();
+        let row = db.get_entry("first").await.unwrap().unwrap();
+        assert_eq!(row.tags, vec![tag.id]);
+        assert_eq!(row.vector, Some(vec![0.5; 384]));
+        assert!(
+            db.get_entry("second")
+                .await
+                .unwrap()
+                .unwrap()
+                .tags
+                .is_empty()
+        );
+        let mut settled = Sink(Vec::new());
+        crate::recovery::embeddings::repair_entity_embeddings(
+            dir.path(),
+            &db,
+            &mut settled,
+            Some(&writer),
+        )
+        .await
+        .unwrap();
+        assert!(settled.0.is_empty());
+        writer.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn annotation_merge_collapses_both_participants_and_preserves_vectors() {
+        let (dir, writer, db) = setup().await;
+        let research = writer.create_tag("Research".into()).await.unwrap().tag;
+        let work = writer.create_tag("Work".into()).await.unwrap().tag;
+        for tag in [&research, &work] {
+            writer
+                .set_annotation_tag("parent".into(), "first".into(), tag.id.clone(), true)
+                .await
+                .unwrap();
+        }
+        writer
+            .set_annotation_tag("parent".into(), "second".into(), research.id.clone(), true)
+            .await
+            .unwrap();
+        let article = read_article(dir.path(), "parent").await.unwrap();
+        let (_, tags) = writer
+            .resolve_annotation_tags("parent".into())
+            .await
+            .unwrap();
+        let mut rows = Vec::new();
+        for a in &article.annotations {
+            let mut row = crate::embeddings::pipeline::annotation_embedding_entry(
+                &article,
+                a,
+                vec!["topic".into()],
+                Some(vec![0.5; 384]),
+            );
+            row.tags = tags[&a.id].clone();
+            rows.push(row);
+        }
+        db.add_batch(rows).await.unwrap();
+        let snapshot =
+            crate::tags::merge::begin(&writer, &db, research.id.clone(), work.id.clone())
+                .await
+                .unwrap();
+        let survivor = snapshot.merging[0].survivor_id.clone();
+        crate::tags::conversion::resume(&writer, &db).await.unwrap();
+        let current = read_article(dir.path(), "parent").await.unwrap();
+        assert!(current.annotations.iter().all(|a| a.tags == vec!["Work"]));
+        for id in ["first", "second"] {
+            let row = db.get_entry(id).await.unwrap().unwrap();
+            assert_eq!(row.tags, vec![survivor.clone()]);
+            assert_eq!(row.vector, Some(vec![0.5; 384]));
+            assert_eq!(row.topics, vec!["topic"]);
+        }
+        writer.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn pending_parent_cleanup_survives_replacement_and_cache_loss() {
+        let (dir, writer, db) = setup().await;
+        let tag = writer.create_tag("Research".into()).await.unwrap().tag;
+        for id in ["first", "second"] {
+            writer
+                .set_annotation_tag("parent".into(), id.into(), tag.id.clone(), true)
+                .await
+                .unwrap();
+        }
+        let article = read_article(dir.path(), "parent").await.unwrap();
+        let (_, ids) = writer
+            .resolve_annotation_tags("parent".into())
+            .await
+            .unwrap();
+        let mut rows = vec![EmbeddingEntry::from_article(
+            &article,
+            Some(vec![0.5; 384]),
+            vec![],
+        )];
+        for a in &article.annotations {
+            let mut row = crate::embeddings::pipeline::annotation_embedding_entry(
+                &article,
+                a,
+                vec![],
+                Some(vec![0.5; 384]),
+            );
+            row.tags = ids[&a.id].clone();
+            rows.push(row);
+        }
+        db.add_batch(rows).await.unwrap();
+        assert_eq!(
+            db.tag_entry_id_batch(&tag.id, None, 1024).await.unwrap(),
+            vec!["parent"]
+        );
+        writer.delete_tag(tag.id.clone()).await.unwrap();
+        writer
+            .mutate_tags(crate::tags::Mutation::Checkpoint {
+                id: tag.id.clone(),
+                revision: 0,
+                phase: crate::tags::Phase::Files,
+                progress: crate::tags::Progress {
+                    pending: vec!["parent".into()],
+                    ..Default::default()
+                },
+            })
+            .await
+            .unwrap();
+        let mut replacement = article.annotations[0].clone();
+        replacement.id = "replaced".into();
+        replacement.color = "red".into();
+        writer
+            .replace_annotation(
+                Tier::Interactive,
+                "parent".into(),
+                "first".into(),
+                replacement,
+            )
+            .await
+            .unwrap();
+        db.delete_by_ids(&["first".into(), "second".into(), "parent".into()])
+            .await
+            .unwrap();
+        crate::tags::conversion::resume(&writer, &db).await.unwrap();
+        let current = read_article(dir.path(), "parent").await.unwrap();
+        assert_eq!(current.annotations[0].id, "replaced");
+        assert!(current.annotations.iter().all(|a| a.tags.is_empty()));
+        assert!(
+            crate::tags::Tags::read(dir.path())
+                .await
+                .unwrap()
+                .tags
+                .is_empty()
+        );
+        writer.shutdown().await;
+    }
+}
+
+#[cfg(test)]
+mod annotation_tag_layout_tests {
+    use super::*;
+    #[tokio::test]
+    async fn patches_block_and_flow_annotation_records_without_changing_siblings() {
+        let layouts = [
+            "annotations:\n- id: note\n  text: [text]\n  occurrence: [0]\n  color: blue\n  created_at: today\n",
+            "annotations:\n- tags: [Research]\n  id: note\n  text: [text]\n  occurrence: [0]\n  color: blue\n  created_at: today\n",
+            "annotations: [{id: note, text: [text], occurrence: [0], color: blue, created_at: today}]\n",
+            "annotations: [{tags: [Research], id: note, text: [text], occurrence: [0], color: blue, created_at: today}]\n",
+            "annotations: [{id: note, tags: [Research], text: [text], occurrence: [0], color: blue, created_at: today}]\n",
+            "annotations: [{id: note, text: [text], occurrence: [0], color: blue, created_at: today, tags: [Research]}]\n",
+        ];
+        for layout in layouts.into_iter().chain([
+            "annotations:\n- tags: [Research]\n  # retain sibling\n  id: note\n  text: [text]\n  occurrence: [0]\n  color: blue\n  created_at: today\n",
+            "annotations:\n- id: note\n  text: [text]\n  occurrence: [0]\n  color: blue\n  created_at: today\n  tags:\n  - Research\n  # retain sibling\ncustom_nested: retained\n",
+        ]) {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::create_dir(dir.path().join("entries")).unwrap();
+            let path = crate::library::entry_path(dir.path(), "parent");
+            let original = format!(
+                "---\nsource: https://example.org/a\n{layout}custom: '001' # retain\n---\n\nExact body\n"
+            );
+            std::fs::write(&path, &original).unwrap();
+            let writer = crate::library_writer::LibraryWriter::start(
+                dir.path().into(),
+                crate::library::acquire_lock(dir.path()).unwrap(),
+            );
+            let tag = writer.create_tag("Research".into()).await.unwrap().tag;
+            writer
+                .set_annotation_tag("parent".into(), "note".into(), tag.id.clone(), true)
+                .await
+                .unwrap_or_else(|e| panic!("{layout}: {e}"));
+            assert_eq!(
+                read_annotation_tags(dir.path(), "parent", "note")
+                    .await
+                    .unwrap_or_else(|e| panic!("layout={layout}\nsaved={}\nerror={e}", std::fs::read_to_string(&path).unwrap())),
+                vec!["Research"]
+            );
+            writer
+                .set_annotation_tag("parent".into(), "note".into(), tag.id, false)
+                .await
+                .unwrap_or_else(|e| panic!("{layout}: {e}"));
+            let raw = std::fs::read_to_string(path).unwrap();
+            assert!(
+                read_annotation_tags(dir.path(), "parent", "note")
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(raw.contains("custom: '001' # retain"));
+            assert!(raw.ends_with("---\n\nExact body\n"));
+            assert!(!raw.contains("tags:"));
+            if layout.contains("# retain sibling") { assert!(raw.contains("# retain sibling")); }
+
+            writer.shutdown().await;
+        }
+    }
 }

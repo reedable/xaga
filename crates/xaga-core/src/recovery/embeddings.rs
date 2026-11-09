@@ -167,6 +167,35 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
             observed_transitions.extend(observations);
         }
         let resolved_tags = resolved_tags.expect("resolved above or through the writer");
+        let mut annotation_tag_ids = article
+            .annotations
+            .iter()
+            .map(|a| resolver.resolve(&a.tags).map(|ids| (a.id.clone(), ids)))
+            .collect::<Result<crate::tags::AnnotationTagIds, _>>()
+            .ok();
+        let annotation_observations = article
+            .annotations
+            .iter()
+            .flat_map(|a| tags.observation_ids(&a.tags))
+            .collect::<Vec<_>>();
+        if annotation_tag_ids.is_none() || !annotation_observations.is_empty() {
+            let writer = writer.ok_or_else(|| {
+                std::io::Error::other("annotation label discovery requires a library writer")
+            })?;
+            let (store, ids) = writer
+                .resolve_annotation_tags(article.meta.id.clone())
+                .await
+                .map_err(std::io::Error::other)?;
+            tags = store;
+            resolver = tags.resolver();
+            annotation_tag_ids = Some(ids);
+        }
+        let annotation_tag_ids = annotation_tag_ids.expect("resolved above");
+        let annotation_tags_differ = annotation_tag_ids.iter().any(|(id, tags)| {
+            db_meta
+                .get(id)
+                .is_none_or(|(_, _, _, _, _, _, _, stored)| stored != tags)
+        });
         article.meta.is_pinned = pin_targets.contains(&crate::pins::PinTarget::Entry {
             id: article.meta.id.clone(),
         });
@@ -186,9 +215,10 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
         if needs_embed
             || state_differs
             || annotations_differ(&article)
+            || annotation_tags_differ
             || pinned_ids.contains(&article.meta.id) != article.meta.is_pinned
         {
-            sink.article(article, resolved_tags);
+            sink.article(article, resolved_tags, annotation_tag_ids);
         }
     }
 
@@ -262,7 +292,12 @@ mod tests {
     }
     impl RepairSink for CollectingSink {
         fn topic(&mut self, _topic: Topic) {}
-        fn article(&mut self, article: Article, _tag_ids: Vec<String>) {
+        fn article(
+            &mut self,
+            article: Article,
+            _tag_ids: Vec<String>,
+            _annotation_tag_ids: crate::tags::AnnotationTagIds,
+        ) {
             self.articles.push(article.meta.id.clone());
         }
     }
@@ -301,6 +336,7 @@ mod tests {
         .unwrap();
         let db = EmbeddingsDb::open(dir.path()).await.unwrap();
         let live = Annotation {
+            tags: vec![],
             id: "live".into(),
             title: "Passage".into(),
             reference: "entry".into(),
@@ -450,6 +486,7 @@ mod tests {
             lib,
             "abcdef123456",
             Annotation {
+                tags: vec![],
                 id: "a1".to_string(),
                 title: "highlighted".to_string(),
                 reference: "abcdef123456".to_string(),
@@ -680,7 +717,12 @@ mod tag_tests {
     }
     impl RepairSink for Sink {
         fn topic(&mut self, _: crate::types::Topic) {}
-        fn article(&mut self, article: Article, _tag_ids: Vec<String>) {
+        fn article(
+            &mut self,
+            article: Article,
+            _tag_ids: Vec<String>,
+            _annotation_tag_ids: crate::tags::AnnotationTagIds,
+        ) {
             self.articles.push(article);
         }
     }

@@ -244,18 +244,8 @@ pub(crate) async fn set_entry_tag(
     token: WriteToken,
 ) -> Result<crate::tags::EntryTagChange, crate::library_writer::WriterError> {
     let registry = crate::tags::Tags::read(library_dir).await?;
-    let (canonical_id, name) = registry.assignment(tag_id)?;
     let mut names = read_entry_tags(library_dir, id).await?;
-    let resolver = registry.resolver();
-    names.retain(|label| {
-        resolver
-            .resolve(std::slice::from_ref(label))
-            .map(|ids| !ids.contains(&canonical_id))
-            .unwrap_or(true)
-    });
-    if assigned {
-        names.push(name);
-    }
+    let canonical_id = registry.set_assignment(&mut names, tag_id, assigned)?;
     set_entry_tags(library_dir, id, names, token).await?;
     Ok(crate::tags::EntryTagChange {
         entry_id: id.into(),

@@ -106,9 +106,9 @@ existing passage and comment context.
 ## Tags
 
 Tags are optional user-defined organizational labels, with zero or more per
-Entry. Initial functionality covers Entries/Articles only. Other entities need
-further assignment and browsing UX design; theoretical applicability does not
-imply implemented support.
+article or annotation. Assignments are direct: tagging an article does not tag
+its annotations, and tagging an annotation does not tag its parent or siblings.
+Other entity kinds are not supported.
 
 A library YAML registry has a root `tags` sequence of definitions containing
 `id` and display `name`. IDs are UUID v4 strings, independent of names and stable
@@ -133,15 +133,17 @@ precedence over discovery.
 
 ### Assignment and browsing
 
-The Inspector's Article Tags view presents searchable selectable chips. Clicking
+The Inspector's Article and Annotation Tags views presents searchable selectable chips. Clicking
 a chip immediately assigns/removes that tag; removal preserves its definition.
 An unmatched name offers Create “name”, which creates and assigns. No Save step
 is required. The shared Inspector handles Articles and Annotations; its
-presentation is specified in [Inspector](article_inspector.md). Initial tag
-assignment remains Article-only.
+presentation is specified in [Inspector](article_inspector.md). Annotation
+assignment targets both the parent Entry ID and the Annotation ID.
 
-A Tags sidebar multi-select list browses Entries carrying every selected tag.
-No selection means all Entries under existing text and Unread/Saved/All filters.
+A Tags sidebar multi-select list browses articles and annotations directly
+carrying every selected tag. No selection behaves as All items under the existing
+text and Unread/Saved/All filters. Saved includes annotations and color-marked
+articles. Selecting an annotation opens its parent at the passage.
 With tags selected, the Unread button is hidden and a retained/default Unread
 filter is treated as All; Saved and All remain available. Presentation and sorting
 are specified in [ListView behavior](list_view.md#tag-browsing).
@@ -201,8 +203,8 @@ discovery; this stale-index consequence is accepted, as with rename and deletion
 ### Delete
 
 Delete is available in the same actions menu and confirms removal of the tag
-and its assignments without deleting articles. Assigned tags are deletable;
-cleanup uses indexed Entry candidates and persisted pending work in bounded,
+and its assignments without deleting articles or annotations. Assigned tags are deletable;
+cleanup uses indexed article and annotation candidates grouped by parent Entry and persisted pending work in bounded,
 checkpointed, resumable batches. Block new assignments and
 rename/merge involving a deleting tag. External occurrences join pending cleanup
 until completion. Recovery resumes interrupted deletion before discovering labels.

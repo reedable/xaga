@@ -6,7 +6,7 @@ import { useErrorSink } from "../../hooks/useErrorSink";
 import type { Annotation, Entry } from "../../types";
 import { RelatedEntityList } from "./RelatedEntityList";
 import { TopicMembership } from "./TopicMembership";
-import { EntryTags } from "./EntryTags";
+import { EntityTags } from "./EntityTags";
 import css from "./Inspector.module.css";
 
 export type InspectorView = "related" | "topics" | "tags";
@@ -27,7 +27,7 @@ export function Inspector({
   const { entryId, annotationId } = target;
   const entityId = annotationId ?? entryId;
   const targetKey = JSON.stringify([entryId, annotationId]);
-  const label = annotationId ? "Annotation" : "Article";
+  const label = annotationId !== undefined ? "Annotation" : "Article";
   const platform = usePlatform();
   const { pushError } = useErrorSink();
 
@@ -39,16 +39,17 @@ export function Inspector({
   useEffect(() => {
     const controller = new AbortController();
 
-    const read = annotationId
-      ? platform
-          .readArticleScope(controller.signal, entryId)
-          .then(
-            (article) =>
-              article.annotations.find(
-                (annotation) => annotation.id === annotationId
-              ) ?? null
-          )
-      : platform.readEntry(controller.signal, entryId);
+    const read =
+      annotationId !== undefined
+        ? platform
+            .readArticleScope(controller.signal, entryId)
+            .then(
+              (article) =>
+                article.annotations.find(
+                  (annotation) => annotation.id === annotationId
+                ) ?? null
+            )
+        : platform.readEntry(controller.signal, entryId);
 
     void read
       .then((entity) => {
@@ -94,14 +95,16 @@ export function Inspector({
           <Tab disableRipple value="related" label="Related" />
           <Tab disableRipple value="topics" label="Topics" />
 
-          {!annotationId && <Tab disableRipple value="tags" label="Tags" />}
+          <Tab disableRipple value="tags" label="Tags" />
         </TabList>
 
-        {!annotationId && (
-          <TabPanel className={css.View} value="tags" tabIndex={0} keepMounted>
-            <EntryTags key={entryId} entryId={entryId} />
-          </TabPanel>
-        )}
+        <TabPanel className={css.View} value="tags" tabIndex={0} keepMounted>
+          <EntityTags
+            key={targetKey}
+            entryId={entryId}
+            annotationId={annotationId}
+          />
+        </TabPanel>
 
         <TabPanel className={css.View} value="related" tabIndex={0} keepMounted>
           <RelatedEntityList key={targetKey} entityId={entityId} />

@@ -162,10 +162,10 @@ const TRAINING = {
         paragraphs: [
           "Read status, bookmarks, and tags answer different questions about an article. Read or unread records read status. A bookmark marks an article with a color. Tags are labels you choose to organize it.",
           "Bookmark colors are Red, Orange, Yellow, Green, Blue, and Violet. Changing the color keeps the article bookmarked; removing the color removes the bookmark. Xaga uses the color itself to record the bookmark rather than saving an extra yes/no value.",
-          "An article can have several tags. Removing Research from one article leaves the Research tag available elsewhere. Saved includes bookmarked articles and annotations—highlighted passages with optional comments—so Saved is broader than a list of bookmarked articles.",
+          "Articles and annotations can each have several tags. Open a highlighted passage’s Annotation details and select Tags to assign labels directly to that annotation. Its parent and siblings keep their own assignments. Removing Research from one target leaves the Research tag available elsewhere. Saved includes bookmarked articles and annotations—highlighted passages with optional comments—so Saved is broader than a list of bookmarked articles.",
         ],
         example:
-          "An unread article can be bookmarked Violet and have a tag named Research at the same time. Marking it as read should remove neither the bookmark nor the tag.",
+          "An unread article can be bookmarked Violet and have a tag named Research at the same time. In Tags browsing, each article or annotation must directly have every selected tag; assignments split across targets do not combine. Marking it as read should remove neither the bookmark nor the tag.",
         questions: [
           {
             prompt:
@@ -471,7 +471,7 @@ const TRAINING = {
         paragraphs: [
           "A tag has a name and a permanent ID. Renaming it changes the name while keeping it the same tag. Xaga ignores spaces at the start or end and compares names in lowercase. Research and RESEARCH match; straße and strasse remain different because lowercase conversion does not turn ß into ss.",
           "If you try to rename Research to Notes and Notes already exists, Xaga asks separately whether to merge them. A merge combines their assignments under the name Notes. It loses the distinction between articles that previously had Research, Notes, or both, so the confirmation must explain that this cannot be undone.",
-          "Removing a tag from one article, deleting a tag everywhere, and deleting an article are separate actions. Global tag deletion removes assignments but keeps the articles. Renames, merges, and deletions save progress so they can resume after interruption. They use the article index to find affected files; a file missed by that index can later cause an old tag name to reappear as a separate tag.",
+          "Removing a tag from one article, deleting a tag everywhere, and deleting an article are separate actions. Global tag deletion removes article and annotation assignments but keeps the articles and annotations. Renames, merges, and deletions save progress so they can resume after interruption. They use indexed article and annotation assignments to find parent files; a file missed by that index can later cause an old tag name to reappear as a separate tag.",
         ],
         example:
           "You try to rename Research to Notes, but Notes already exists. Xaga should ask whether to merge them and explain the consequences. It must not silently merge them as part of the rename.",

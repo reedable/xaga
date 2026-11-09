@@ -111,6 +111,20 @@ pub(crate) fn test_frontmatter_values(
     noyalib::from_str_with_config(yaml, &FM_PARSER).unwrap()
 }
 
+/// Untyped fields for narrowly owned nested patches; validated with the normal parser first.
+pub(crate) fn frontmatter_json(raw: &str) -> Result<serde_json::Value, MdError> {
+    parse_document(raw)?;
+    let yaml = raw
+        .trim_start()
+        .strip_prefix("---\n")
+        .ok_or(MdError::Delimiter)?;
+    let end = yaml.find("\n---\n").ok_or(MdError::Delimiter)?;
+    let value: std::collections::BTreeMap<String, noyalib::Value> =
+        noyalib::from_str_with_config(&yaml[..end], &FM_PARSER)
+            .map_err(|e| MdError::Frontmatter(e.to_string()))?;
+    serde_json::to_value(value).map_err(|e| MdError::Frontmatter(e.to_string()))
+}
+
 /// Converts .md storage format to Topic domain object
 pub(crate) fn md_to_topic(md: Markdown) -> Topic {
     let is_pinned = false;
@@ -201,6 +215,8 @@ pub(crate) fn parse_frontmatter(raw: &str) -> Result<Frontmatter, MdError> {
 /// content = note). Mapped to/from the domain type by the `From` impls below.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub(crate) struct FrontmatterAnnotation {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
     pub id: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reference: String,
@@ -215,6 +231,7 @@ pub(crate) struct FrontmatterAnnotation {
 impl From<FrontmatterAnnotation> for Annotation {
     fn from(a: FrontmatterAnnotation) -> Self {
         Annotation {
+            tags: a.tags,
             title: a.text.join(" "),
             content: a.note.unwrap_or_default(),
             id: a.id,
@@ -230,6 +247,7 @@ impl From<FrontmatterAnnotation> for Annotation {
 impl From<&Annotation> for FrontmatterAnnotation {
     fn from(a: &Annotation) -> Self {
         FrontmatterAnnotation {
+            tags: a.tags.clone(),
             id: a.id.clone(),
             reference: a.reference.clone(),
             text: a.text.clone(),

@@ -156,7 +156,9 @@ it("confirms deletion once, preserves the tag on cancellation, and restores focu
       (item) => item.textContent === "Delete “Research”"
     )!;
   await act(async () => deleteItem().click());
-  expect(document.body.textContent).toContain("Articles will remain intact.");
+  expect(document.body.textContent).toContain(
+    "Articles and annotations will remain intact."
+  );
   await act(async () => button("Cancel").click());
   expect(mocks.deleteTag).not.toHaveBeenCalled();
   await act(async () => {

@@ -65,9 +65,10 @@ Relevant code: `src/components/list/EntityList.tsx`,
 ## Tag browsing
 
 The Tags sidebar section and the Tags options in the existing selectable header
-share the route's selected tag IDs. Multiple selections intersect: each Entry
-must directly carry every selected identity. An empty selection in Tags browsing
-shows all Entries, rather than the mixed Entry/Annotation All items shortcut.
+share the route's selected tag IDs. Multiple selections intersect: each article or annotation
+must directly carry every selected identity. Parent and annotation assignments
+are never combined. An empty selection in Tags browsing has the same mixed
+Entry/Annotation membership as All items under the current filters.
 With tags selected, Saved/All and text filtering remain available. The Unread
 button is hidden, and a retained/default Unread filter is treated as All in that
 view. Clearing tag selection restores the Unread control and the retained filter.
@@ -90,7 +91,7 @@ an empty selection. A new query with an unavailable selection returns no rows.
 Definition snapshots are session UI state, not a persisted name cache. The
 explicit Delete action removes the selected ID while retaining the current list
 and reading pane selection. A pending query for the previous selection is discarded. The next explicit
-navigation, filter change, or refresh queries the remaining set, or all Entries
+navigation, filter change, or refresh queries the remaining set, or all items
 under the existing filters when it is empty. See the [deletion selection
 contract](organization_model.md#delete).
 

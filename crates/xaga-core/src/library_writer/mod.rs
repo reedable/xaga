@@ -142,7 +142,7 @@ enum Op {
         updates: flume::Sender<Result<crate::tags::TagSnapshot, WriterError>>,
         resp: oneshot::Sender<Result<crate::tags::Tags, WriterError>>,
     },
-    ResolveEntryTags {
+    ResolveEntityTags {
         id: String,
         resp: oneshot::Sender<Result<(crate::tags::Tags, Vec<String>), WriterError>>,
     },
@@ -210,6 +210,26 @@ enum Op {
         old_names: Vec<String>,
         new_name: Option<String>,
         resp: oneshot::Sender<Result<(), WriterError>>,
+    },
+    ResolveAnnotationTags {
+        id: String,
+        resp: oneshot::Sender<
+            Result<
+                (
+                    crate::tags::Tags,
+                    Vec<Annotation>,
+                    crate::tags::AnnotationTagIds,
+                ),
+                WriterError,
+            >,
+        >,
+    },
+    SetAnnotationTag {
+        article_id: String,
+        annotation_id: String,
+        tag_id: String,
+        assigned: bool,
+        resp: oneshot::Sender<Result<crate::tags::AnnotationTagChange, WriterError>>,
     },
     SetEntryTag {
         id: String,
@@ -331,7 +351,8 @@ impl Op {
     /// topic sharing an id string can never collide onto one lane.
     fn lane_key(&self) -> String {
         match self {
-            Op::ResolveEntryTags { .. }
+            Op::ResolveEntityTags { .. }
+            | Op::ResolveAnnotationTags { .. }
             | Op::CreateTag { .. }
             | Op::DiscoverTags { .. }
             | Op::MutateTags { .. } => "tags".into(),
@@ -343,6 +364,7 @@ impl Op {
             | Op::ReplaceAnnotation { article_id: id, .. }
             | Op::RemoveAnnotation { article_id: id, .. }
             | Op::PatchTagLabels { id, .. }
+            | Op::SetAnnotationTag { article_id: id, .. }
             | Op::SetEntryTag { id, .. }
             | Op::SetEntryUnread { id, .. }
             | Op::SetEntryColor { id, .. } => format!("entry/{id}"),
@@ -373,7 +395,8 @@ impl Op {
         match self {
             Op::CreateTag { .. } => "create_tag",
             Op::MutateTags { .. } => "mutate_tags",
-            Op::ResolveEntryTags { .. } => "resolve_entry_tags",
+            Op::ResolveEntityTags { .. } => "resolve_entry_tags",
+            Op::ResolveAnnotationTags { .. } => "resolve_annotation_tags",
             Op::DiscoverTags { .. } => "discover_tags",
             Op::OrganizePins { .. } => "organize_pins",
             Op::SetPin { .. } => "set_pin",
@@ -386,6 +409,7 @@ impl Op {
             Op::RemoveAnnotation { .. } => "remove_annotation",
             Op::PatchTagLabels { .. } => "patch_tag_labels",
             Op::SetEntryTag { .. } => "set_entry_tag",
+            Op::SetAnnotationTag { .. } => "set_annotation_tag",
             Op::SetEntryUnread { .. } => "set_entry_unread",
             Op::SetEntryColor { .. } => "set_entry_color",
             Op::BookmarkEntry { .. } => "bookmark_entry",
@@ -408,7 +432,10 @@ impl Op {
         match self {
             Op::CreateTag { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::MutateTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
-            Op::ResolveEntryTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::ResolveAnnotationTags { resp, .. } => {
+                drop(resp.send(Err(WriterError::ShuttingDown)))
+            }
+            Op::ResolveEntityTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::DiscoverTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetPin { resp, .. } | Op::OrganizePins { resp, .. } => {
                 drop(resp.send(Err(WriterError::ShuttingDown)))
@@ -423,6 +450,7 @@ impl Op {
             Op::RemoveAnnotation { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::PatchTagLabels { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryTag { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
+            Op::SetAnnotationTag { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryUnread { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::SetEntryColor { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::BookmarkEntry { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
@@ -483,7 +511,29 @@ impl Op {
                 }
                 let _ = resp.send(result);
             }
-            Op::ResolveEntryTags { id, resp } => {
+            Op::ResolveAnnotationTags { id, resp } => {
+                let result = async {
+                    let article = articles::read_article(library_dir, &id).await?;
+                    let labels: Vec<_> = article
+                        .annotations
+                        .iter()
+                        .flat_map(|a| a.tags.iter().cloned())
+                        .collect();
+                    let store =
+                        crate::tags::Tags::discover_entry_write(library_dir, &id, &labels, token)
+                            .await?;
+                    let resolver = store.resolver();
+                    let ids = article
+                        .annotations
+                        .iter()
+                        .map(|a| Ok((a.id.clone(), resolver.resolve(&a.tags)?)))
+                        .collect::<Result<_, crate::tags::TagsError>>()?;
+                    Ok((store, article.annotations, ids))
+                }
+                .await;
+                let _ = resp.send(result);
+            }
+            Op::ResolveEntityTags { id, resp } => {
                 let result = async {
                     let names = entries::read_entry_tags(library_dir, &id).await?;
                     let store =
@@ -636,6 +686,24 @@ impl Op {
                     &id,
                     &old_names,
                     new_name.as_deref(),
+                    token,
+                )
+                .await;
+                let _ = resp.send(result);
+            }
+            Op::SetAnnotationTag {
+                article_id,
+                annotation_id,
+                tag_id,
+                assigned,
+                resp,
+            } => {
+                let result = articles::set_annotation_tag(
+                    library_dir,
+                    &article_id,
+                    &annotation_id,
+                    &tag_id,
+                    assigned,
                     token,
                 )
                 .await;
@@ -1165,6 +1233,28 @@ impl LibraryWriter {
         self.submit(tier, op, rx).await
     }
 
+    pub async fn set_annotation_tag(
+        &self,
+        article_id: String,
+        annotation_id: String,
+        tag_id: String,
+        assigned: bool,
+    ) -> Result<crate::tags::AnnotationTagChange, WriterError> {
+        let (resp, rx) = oneshot::channel();
+        self.submit(
+            Tier::Interactive,
+            Op::SetAnnotationTag {
+                article_id,
+                annotation_id,
+                tag_id,
+                assigned,
+                resp,
+            },
+            rx,
+        )
+        .await
+    }
+
     pub async fn set_entry_tag(
         &self,
         id: String,
@@ -1435,12 +1525,40 @@ impl LibraryWriter {
     }
 
     /// Resolve current source assignments in the registry lane before enqueuing an index job.
+    pub async fn resolve_annotation_tags(
+        &self,
+        id: String,
+    ) -> Result<(crate::tags::Tags, crate::tags::AnnotationTagIds), WriterError> {
+        let (store, _, ids) = self.resolve_annotation_snapshot(id).await?;
+        Ok((store, ids))
+    }
+
+    pub(crate) async fn resolve_annotation_snapshot(
+        &self,
+        id: String,
+    ) -> Result<
+        (
+            crate::tags::Tags,
+            Vec<Annotation>,
+            crate::tags::AnnotationTagIds,
+        ),
+        WriterError,
+    > {
+        let (resp, rx) = oneshot::channel();
+        self.submit(
+            Tier::Interactive,
+            Op::ResolveAnnotationTags { id, resp },
+            rx,
+        )
+        .await
+    }
+
     pub async fn resolve_entry_tags(
         &self,
         id: String,
     ) -> Result<(crate::tags::Tags, Vec<String>), WriterError> {
         let (resp, rx) = oneshot::channel();
-        self.submit(Tier::Interactive, Op::ResolveEntryTags { id, resp }, rx)
+        self.submit(Tier::Interactive, Op::ResolveEntityTags { id, resp }, rx)
             .await
     }
 
@@ -1808,6 +1926,7 @@ mod tests {
 
     fn annotation(id: &str) -> Annotation {
         Annotation {
+            tags: vec![],
             id: id.to_string(),
             title: "highlighted".to_string(),
             reference: String::new(),

@@ -216,3 +216,19 @@ Completion releases the name without a source verification pass. Missed source
 labels can then create a new identity; an active deletion reservation prevents
 that recreation. Queued snapshots discard retired IDs and remove labels belonging to an active deletion before dropping the affected rows
 from its candidate set. See [runtime deletion](tags.md#runtime-deletion).
+
+### Annotation tag assignments (0.16)
+
+Annotation assignment patches commit to the parent Markdown file before typed
+indexing work and UI events are submitted. Unlike ordinary document upserts,
+this narrowly owned lossless patch retains all other frontmatter bytes, including
+unsupported fields; it does not interpret them. A crash in that gap leaves the source
+assignment saved; recovery compares annotation tag IDs independently of content
+checksums and repairs the cache without re-embedding unchanged content. Delayed
+vector jobs change only vectors on matching existing rows.
+
+Rename/merge/delete pending file and index batches hold parent Entry IDs. Source
+patches reread every current assignment in that parent and precede cache changes.
+Recoloring changes the Annotation ID without changing the pending file address.
+After cache loss, persisted parent batches replay before ordinary label discovery.
+Old parent-ID checkpoints retain their encoding through the explicit 0.16 upgrade.

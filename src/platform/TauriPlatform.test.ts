@@ -407,9 +407,9 @@ it("queries tag intersections and counts over the native read boundary", async (
   ];
   invokeMock.mockResolvedValueOnce([]);
   expect(
-    await platform.listTagEntries(new AbortController().signal, ids, "saved")
+    await platform.listTagEntities(new AbortController().signal, ids, "saved")
   ).toEqual([]);
-  expect(invokeMock).toHaveBeenLastCalledWith("list_tag_entries", {
+  expect(invokeMock).toHaveBeenLastCalledWith("list_tag_entities", {
     tagIds: ids,
     entityFilter: "saved",
   });
@@ -424,7 +424,7 @@ it("queries tag intersections and counts over the native read boundary", async (
   controller.abort();
   invokeMock.mockResolvedValueOnce([]);
   await expect(
-    platform.listTagEntries(controller.signal, [], "all")
+    platform.listTagEntities(controller.signal, [], "all")
   ).rejects.toThrow();
 });
 
@@ -588,4 +588,72 @@ it("transports fetch limits as exact decimal strings without numeric conversion"
   expect(invokeMock).toHaveBeenLastCalledWith("set_fetch_setting", {
     change: { setting: "feedMaxBodyBytes", value: "9007199254740993" },
   });
+});
+
+it("reads, toggles, and receives annotation assignments with both target IDs", async () => {
+  const platform = new TauriPlatform();
+  const tagId = "46fa4a27-1ddf-448a-a5e6-95691a29c602";
+  const change = {
+    entryId: "parent",
+    annotationId: "annotation",
+    tagId,
+    assigned: true,
+  };
+  invokeMock.mockResolvedValueOnce([tagId]);
+  expect(
+    await platform.readAnnotationTags(
+      new AbortController().signal,
+      "parent",
+      "annotation"
+    )
+  ).toEqual([tagId]);
+  expect(invokeMock).toHaveBeenLastCalledWith("read_annotation_tags", {
+    entryId: "parent",
+    annotationId: "annotation",
+  });
+  invokeMock.mockResolvedValueOnce(change);
+  expect(
+    await platform.setAnnotationTag("parent", "annotation", tagId, true)
+  ).toEqual(change);
+  expect(invokeMock).toHaveBeenLastCalledWith("set_annotation_tag", {
+    entryId: "parent",
+    annotationId: "annotation",
+    tagId,
+    assigned: true,
+  });
+  const { listen } = await import("@tauri-apps/api/event");
+  const callback = vi.fn();
+  await platform.onAnnotationTagsChanged(callback);
+  const handler = vi
+    .mocked(listen)
+    .mock.calls.findLast(([name]) => name === "annotation-tags:changed")![1];
+  handler({ event: "annotation-tags:changed", id: 0, payload: change });
+  expect(callback).toHaveBeenCalledWith(change);
+});
+
+it("maps tag browsing annotation results to their parent reference", async () => {
+  const platform = new TauriPlatform();
+  invokeMock.mockResolvedValueOnce([
+    {
+      id: "annotation",
+      title: "Passage",
+      reference: "parent",
+      created_at: "today",
+      url: "https://example.org/a",
+      is_unread: false,
+      color: "blue",
+    },
+  ]);
+  expect(
+    await platform.listTagEntities(new AbortController().signal, [], "all")
+  ).toEqual([
+    {
+      id: "annotation",
+      title: "Passage",
+      reference: "parent",
+      createdAt: "today",
+      url: "https://example.org/a",
+      color: "blue",
+    },
+  ]);
 });

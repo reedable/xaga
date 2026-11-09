@@ -113,6 +113,43 @@ async fn create_in_library(
 }
 
 #[tauri::command]
+pub async fn read_annotation_tags(
+    entry_id: String,
+    annotation_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, AppError> {
+    let dir = state.library_path();
+    let labels =
+        xaga_core::persistence::articles::read_annotation_tags(&dir, &entry_id, &annotation_id)
+            .await?;
+    Ok(Tags::read(&dir).await?.resolver().resolve(&labels)?)
+}
+
+#[tauri::command]
+pub async fn set_annotation_tag(
+    entry_id: String,
+    annotation_id: String,
+    tag_id: String,
+    assigned: bool,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<xaga_core::tags::AnnotationTagChange, AppError> {
+    let writer = state.writer().ok_or(AppError::ReadOnly)?;
+    let change = writer
+        .set_annotation_tag(entry_id, annotation_id, tag_id, assigned)
+        .await?;
+    state.enqueue(
+        xaga_core::embeddings::Tier::Interactive,
+        xaga_core::embeddings::Job::SetAnnotationTag(change.clone()),
+    );
+    crate::events::emit_domain(
+        &app,
+        xaga_core::events::DomainEvent::AnnotationTagsChanged(change.clone()),
+    );
+    Ok(change)
+}
+
+#[tauri::command]
 pub async fn read_entry_tags(
     id: String,
     state: State<'_, AppState>,
@@ -200,11 +237,11 @@ fn selected_groups(
 }
 
 #[tauri::command]
-pub async fn list_tag_entries(
+pub async fn list_tag_entities(
     tag_ids: Vec<String>,
     entity_filter: Option<String>,
     state: State<'_, AppState>,
-) -> Result<Vec<xaga_core::types::Entry>, AppError> {
+) -> Result<Vec<xaga_core::types::ListEntity>, AppError> {
     let filter = super::parse_entity_filter(entity_filter)?;
     let Some(ids) = selected_groups(&Tags::read(&state.library_path()).await?, &tag_ids)? else {
         return Ok(vec![]);
@@ -216,7 +253,7 @@ pub async fn list_tag_entries(
         .clone()
         .ok_or_else(|| AppError::Message("embeddings read handle unavailable".into()))?;
     db.reload().await?;
-    Ok(db.list_tag_entry_groups(&ids, filter).await?)
+    Ok(db.list_tag_entity_groups(&ids, filter).await?)
 }
 
 #[tauri::command]
@@ -322,7 +359,7 @@ mod tests {
         let store = Tags::read(dir.path()).await.unwrap();
         assert_eq!(selected_ids(&store, &[tag.id]).unwrap(), None);
         assert_eq!(selected_ids(&store, &[]).unwrap(), Some(vec![]));
-        assert!(!super::super::is_write_refused("list_tag_entries", true));
+        assert!(!super::super::is_write_refused("list_tag_entities", true));
         assert!(!super::super::is_write_refused("count_tag_unread", true));
     }
 
@@ -373,6 +410,11 @@ mod tests {
         }
         assert_eq!(std::fs::read(&path).unwrap(), before);
         assert!(super::super::is_write_refused("set_entry_tag", true));
+        assert!(super::super::is_write_refused("set_annotation_tag", true));
+        assert!(!super::super::is_write_refused(
+            "read_annotation_tags",
+            true
+        ));
         assert!(!super::super::is_write_refused("read_entry_tags", true));
         writer.shutdown().await;
         other.shutdown().await;

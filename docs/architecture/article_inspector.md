@@ -1,7 +1,7 @@
 # Inspector
 
-One shared Inspector implementation provides Related and Topics views for Articles and
-Annotations, and a Tags view for Articles. It replaces the standalone Add to Topic
+One shared Inspector implementation provides Related, Topics, and Tags views for
+Articles and Annotations. It replaces the standalone Add to Topic
 button and its drawer. The Tags view uses searchable selectable chips for
 immediate assignment/removal and creation with assignment, through the
 [Entry assignment API](tags.md#entry-assignment-api).

@@ -114,10 +114,20 @@ fn annotation_list_entity(article: &Article, annotation: &Annotation) -> ListEnt
 /// - Applies a color-only change in place, preserving the existing vector.
 ///
 /// Emits the live `annotation_tx` event for inserted/updated rows.
+#[cfg(test)]
 pub(crate) async fn sync_annotations(
     article: &Article,
     db: &EmbeddingsDb,
     annotation_tx: &flume::Sender<ListEntity>,
+) -> Result<(), EmbeddingsError> {
+    sync_annotations_with_tags(article, db, annotation_tx, None).await
+}
+
+pub(crate) async fn sync_annotations_with_tags(
+    article: &Article,
+    db: &EmbeddingsDb,
+    annotation_tx: &flume::Sender<ListEntity>,
+    resolved: Option<&crate::tags::AnnotationTagIds>,
 ) -> Result<(), EmbeddingsError> {
     let article_id = &article.meta.id;
     let existing = db.get_annotation_meta_for_article(article_id).await?;
@@ -145,7 +155,7 @@ pub(crate) async fn sync_annotations(
     let mut carried: std::collections::HashMap<String, (Option<Vec<f32>>, Vec<String>)> =
         std::collections::HashMap::new();
     for id in &to_delete {
-        if let Some((stored_checksum, _)) = existing.get(id) {
+        if let Some((stored_checksum, _, _)) = existing.get(id) {
             if current_checksums.contains(stored_checksum) && !carried.contains_key(stored_checksum)
             {
                 if let Some(e) = db.get_entry(id).await? {
@@ -165,15 +175,27 @@ pub(crate) async fn sync_annotations(
 
     for annotation in &article.annotations {
         let checksum = annotation_checksum(annotation);
+        let tags = if let Some(resolved) = resolved {
+            resolved.get(&annotation.id).cloned().unwrap_or_default()
+        } else {
+            db.resolve_tag_names(&annotation.tags).await?
+        };
+        if existing
+            .get(&annotation.id)
+            .is_some_and(|(_, _, stored)| stored != &tags)
+        {
+            db.set_annotation_tag_ids(article_id, &annotation.id, &tags)
+                .await?;
+        }
 
         match existing.get(&annotation.id) {
-            Some((stored_checksum, stored_color))
+            Some((stored_checksum, stored_color, _))
                 if stored_checksum == &checksum && stored_color == &annotation.color =>
             {
                 // Unchanged — row and vector already current.
                 continue;
             }
-            Some((stored_checksum, _)) if stored_checksum == &checksum => {
+            Some((stored_checksum, _, _)) if stored_checksum == &checksum => {
                 // Color-only change: update in place, preserving the existing vector — no embed.
                 if let Some(mut existing_entry) = db.get_entry(&annotation.id).await? {
                     existing_entry.color = annotation.color.clone();
@@ -201,10 +223,9 @@ pub(crate) async fn sync_annotations(
         } else {
             carried_topics.unwrap_or_default()
         };
-        db.upsert(annotation_embedding_entry(
-            article, annotation, topics, vector,
-        ))
-        .await?;
+        let mut row = annotation_embedding_entry(article, annotation, topics, vector);
+        row.tags = tags;
+        db.upsert(row).await?;
         let _ = annotation_tx.send(annotation_list_entity(article, annotation));
     }
 
@@ -272,6 +293,7 @@ pub async fn sync_entry_row(
         annotation_tx,
         None,
         None,
+        None,
     )
     .await
 }
@@ -284,6 +306,7 @@ pub(crate) async fn sync_entry_row_with_tag_changes(
     annotation_tx: &flume::Sender<ListEntity>,
     tag_changes: Option<&std::collections::HashMap<String, bool>>,
     resolved_tags: Option<&[String]>,
+    annotation_tag_ids: Option<&crate::tags::AnnotationTagIds>,
 ) -> Result<(), EmbeddingsError> {
     let id = article.meta.id.clone();
 
@@ -358,7 +381,7 @@ pub(crate) async fn sync_entry_row_with_tag_changes(
             .as_ref()
             .is_some_and(|row| !row.entities.is_empty())
     {
-        sync_annotations(article, db, annotation_tx).await?;
+        sync_annotations_with_tags(article, db, annotation_tx, annotation_tag_ids).await?;
     }
 
     Ok(())
@@ -802,6 +825,7 @@ mod tests {
 
     fn annotation(id: &str, color: &str) -> Annotation {
         Annotation {
+            tags: vec![],
             id: id.to_string(),
             title: "highlighted".to_string(),
             reference: "article-1".to_string(),
@@ -889,6 +913,7 @@ mod tests {
             &events,
             &annotations,
             Some(&changes),
+            None,
             None,
         )
         .await

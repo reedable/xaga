@@ -915,6 +915,7 @@ pub async fn add_annotation(
 ) -> Result<Article, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let annotation = xaga_core::types::Annotation {
+        tags: vec![],
         id,
         title: text.join(" "),
         reference: article_id.clone(),
@@ -933,12 +934,7 @@ pub async fn add_annotation(
     // raise "id not found". embed_entry_vector is checksum-gated, so it skips the unchanged article
     // body and only fills the pending annotation vector via embed_annotations. Tier mirrors the
     // live-edit embed_follow() (Interactive -> Regular). Both jobs carry the domain object.
-    state.enqueue(
-        Tier::Interactive,
-        Job::SyncAnnotations {
-            article: article.clone(),
-        },
-    );
+    state.enqueue_annotations(article.clone()).await;
     state.enqueue(
         Tier::Regular,
         Job::EmbedEntry {
@@ -967,6 +963,7 @@ pub async fn replace_annotation(
 ) -> Result<Article, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let annotation = xaga_core::types::Annotation {
+        tags: vec![],
         id: id.clone(),
         title: text.join(" "),
         reference: article_id.clone(),
@@ -990,12 +987,7 @@ pub async fn replace_annotation(
     // inserts the new one with a pending vector; the deferred EmbedEntry fills it. Enqueued
     // before the member jobs below so the new row exists when AddMember writes its `topics`.
     // Tier mirrors add_annotation.
-    state.enqueue(
-        Tier::Interactive,
-        Job::SyncAnnotations {
-            article: article.clone(),
-        },
-    );
+    state.enqueue_annotations(article.clone()).await;
     state.enqueue(
         Tier::Regular,
         Job::EmbedEntry {
@@ -1126,12 +1118,7 @@ pub async fn remove_annotation(
         );
     }
 
-    state.enqueue(
-        Tier::Interactive,
-        Job::SyncAnnotations {
-            article: article.clone(),
-        },
-    );
+    state.enqueue_annotations(article.clone()).await;
 
     crate::events::emit_domain(
         &window,

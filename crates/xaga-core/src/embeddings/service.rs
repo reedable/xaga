@@ -16,7 +16,7 @@ use crate::types::{Article, Feed, Topic};
 use super::model::{Embedder, load_default_embedder};
 use super::pipeline::{
     add_topic_member, apply_state, embed_entry_vector, embed_feed, embed_topic_vector,
-    reconcile_topic_membership, remove_topic_member, sync_annotations, sync_topic_row,
+    reconcile_topic_membership, remove_topic_member, sync_topic_row,
 };
 use super::{EmbeddingsDb, EmbeddingsError};
 use crate::fs::FileLock;
@@ -53,6 +53,7 @@ pub struct StatePatch {
 /// variant — sets its priority, so the same action may ride different tiers
 /// (e.g. `EmbedEntry` on Regular from a live save, Maintenance from recovery).
 pub enum Job {
+    SetAnnotationTag(crate::tags::AnnotationTagChange),
     SetEntryTag(crate::tags::EntryTagChange),
     /// Count populations and reserve the explicit merge in the cache write order.
     BeginTagMerge {
@@ -83,6 +84,7 @@ pub enum Job {
     UpsertEntry {
         article: Article,
         tag_ids: Vec<String>,
+        annotation_tag_ids: crate::tags::AnnotationTagIds,
     },
     /// Topic created/edited: sync the row from the carried `Topic`, then defer an `EmbedTopic`.
     UpsertTopic {
@@ -91,6 +93,7 @@ pub enum Job {
     /// Reconcile an entry's annotation rows (embedder-free) from the carried `Article`.
     SyncAnnotations {
         article: Article,
+        annotation_tag_ids: crate::tags::AnnotationTagIds,
     },
     /// Precise reverse-index delta the producer already knows (single member).
     AddMember {
@@ -435,6 +438,7 @@ async fn run_loop(
     > = Default::default();
     // Identity participants remain known after retirement while old jobs can still arrive.
     let mut merged_tags = std::collections::HashSet::new();
+    let mut annotation_parents = std::collections::HashSet::new();
     loop {
         // Queues are defined per *priority*, and the definition and examples of each level of
         // priority are provided below.
@@ -456,6 +460,7 @@ async fn run_loop(
                         Ok(store) => remember_merges(&mut merged_tags, &store.snapshot()),
                         Err(error) => { writer.report_tag_error(error.into()); continue; }
                     }
+                    annotation_parents.clear();
                     tag_changes.retain(|_, changes| changes.keys().any(|id| merged_tags.contains(id)));
                     log::info!("embedding service: starting recovery for {}", dir.display());
                     crate::recovery::dispatch::dispatch_recovery(&dir, &db, &embedder, &senders, &writer).await;
@@ -484,7 +489,7 @@ async fn run_loop(
                 Ok(job) => {
                     // Interactive has items — mark that a post-drain compact is needed.
                     compacted_after_drain = false;
-                    handle_job(job, Tier::Interactive, &db, &embedder, &senders, &events, &mut tag_changes, &mut merged_tags, &writer).await;
+                    handle_job(job, Tier::Interactive, &db, &embedder, &senders, &events, &mut tag_changes, &mut merged_tags, &mut annotation_parents, &writer).await;
 
                     // Compact on the Interactive path itself: a sustained Interactive stream never
                     // yields to the Regular/Maintenance arms (biased select), so their compaction
@@ -511,7 +516,7 @@ async fn run_loop(
 
             result = regular_rx.recv_async() => match result {
                 Ok(job) => {
-                    handle_job(job, Tier::Regular, &db, &embedder, &senders, &events, &mut tag_changes, &mut merged_tags, &writer).await;
+                    handle_job(job, Tier::Regular, &db, &embedder, &senders, &events, &mut tag_changes, &mut merged_tags, &mut annotation_parents, &writer).await;
                     since_compact += 1;
 
                     if since_compact >= BACKGROUND_COMPACT_INTERVAL {
@@ -550,7 +555,7 @@ async fn run_loop(
                     }
 
                     let resets_interval = matches!(job, Job::Compact | Job::EnsureIndexes);
-                    handle_job(job, Tier::Maintenance, &db, &embedder, &senders, &events, &mut tag_changes, &mut merged_tags, &writer).await;
+                    handle_job(job, Tier::Maintenance, &db, &embedder, &senders, &events, &mut tag_changes, &mut merged_tags, &mut annotation_parents, &writer).await;
 
                     if resets_interval {
                         since_compact = 0;
@@ -635,6 +640,82 @@ async fn prepare_entry_tags(
     Ok(())
 }
 
+async fn apply_annotation_tag_change(
+    writer: &crate::library_writer::LibraryWriter,
+    db: &EmbeddingsDb,
+    change: &crate::tags::AnnotationTagChange,
+    tag_changes: &mut std::collections::HashMap<String, std::collections::HashMap<String, bool>>,
+) -> Result<(), crate::library_writer::WriterError> {
+    let labels = crate::persistence::articles::read_annotation_tags(
+        writer.library_dir(),
+        &change.entry_id,
+        &change.annotation_id,
+    )
+    .await?;
+    let registry = crate::tags::Tags::read(writer.library_dir()).await?;
+    let ids = registry.resolver().resolve(&labels)?;
+    tag_changes
+        .entry(change.annotation_id.clone())
+        .or_default()
+        .insert(change.tag_id.clone(), ids.contains(&change.tag_id));
+    db.set_annotation_tag_ids(&change.entry_id, &change.annotation_id, &ids)
+        .await
+        .map_err(|e| crate::tags::TagsError::Invalid(e.to_string()))?;
+    Ok(())
+}
+
+async fn refresh_annotation_snapshot(
+    writer: &crate::library_writer::LibraryWriter,
+    article: &mut Article,
+    ids: &mut crate::tags::AnnotationTagIds,
+) -> Result<(), crate::library_writer::WriterError> {
+    let (_, annotations, current_ids) = writer
+        .resolve_annotation_snapshot(article.meta.id.clone())
+        .await?;
+    article.annotations = annotations;
+    *ids = current_ids;
+    Ok(())
+}
+
+async fn prepare_annotation_tags(
+    writer: &crate::library_writer::LibraryWriter,
+    db: &EmbeddingsDb,
+    article: &mut Article,
+    assignments: &mut crate::tags::AnnotationTagIds,
+    changes: &std::collections::HashMap<String, std::collections::HashMap<String, bool>>,
+    merged: &std::collections::HashSet<String>,
+) -> Result<(), crate::library_writer::WriterError> {
+    if assignments.iter().any(|(id, tags)| {
+        tags.iter()
+            .chain(changes.get(id).into_iter().flat_map(|c| c.keys()))
+            .any(|tag| merged.contains(tag))
+    }) {
+        refresh_annotation_snapshot(writer, article, assignments).await?;
+    } else {
+        for (id, tags) in assignments.iter_mut() {
+            if let Some(changes) = changes.get(id) {
+                for (tag, assigned) in changes {
+                    tags.retain(|t| t != tag);
+                    if *assigned {
+                        tags.push(tag.clone());
+                    }
+                }
+            }
+            // Patch a deleting label in its source before filtering it out.
+            let deleting = db
+                .retain_current_tag_ids(tags)
+                .await
+                .map_err(|e| crate::tags::TagsError::Invalid(e.to_string()))?;
+            for name in deleting {
+                writer
+                    .patch_tag_name(article.meta.id.clone(), name, None)
+                    .await?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Executes a single work `Job`. The control-flow variants (Shutdown / Reset /
 /// StartRecovery) are handled by the loop's control arm, not here. `arrival` is the tier
 /// the job was dequeued from; deferred embeddings follow the existing tier policy,
@@ -649,6 +730,7 @@ async fn handle_job(
     events: &Events,
     tag_changes: &mut std::collections::HashMap<String, std::collections::HashMap<String, bool>>,
     merged_tags: &mut std::collections::HashSet<String>,
+    annotation_parents: &mut std::collections::HashSet<String>,
     writer: &crate::library_writer::LibraryWriter,
 ) {
     match job {
@@ -672,6 +754,22 @@ async fn handle_job(
                 }
                 Ok(false) => {}
                 Err(error) => writer.report_tag_error(error),
+            }
+        }
+        Job::SetAnnotationTag(change) => {
+            annotation_parents.insert(change.entry_id.clone());
+            // Reading the current source also handles a later removal or merge.
+            // Missing/replaced targets never create cache rows.
+            let result = apply_annotation_tag_change(writer, db, &change, tag_changes).await;
+            if let Err(error) = result {
+                if !matches!(
+                    error,
+                    crate::library_writer::WriterError::Entry(
+                        crate::persistence::entries::EntryError::NotFound
+                    )
+                ) {
+                    writer.report_tag_error(error);
+                }
             }
         }
         Job::SetEntryTag(mut change) => {
@@ -726,9 +824,31 @@ async fn handle_job(
             }
         }
         Job::UpsertEntry {
-            article,
+            mut article,
             mut tag_ids,
+            mut annotation_tag_ids,
         } => {
+            if annotation_parents.contains(&article.meta.id) {
+                if let Err(error) =
+                    refresh_annotation_snapshot(writer, &mut article, &mut annotation_tag_ids).await
+                {
+                    writer.report_tag_error(error);
+                    return;
+                }
+            }
+            if let Err(error) = prepare_annotation_tags(
+                writer,
+                db,
+                &mut article,
+                &mut annotation_tag_ids,
+                tag_changes,
+                merged_tags,
+            )
+            .await
+            {
+                writer.report_tag_error(error);
+                return;
+            }
             let changes = tag_changes.get(&article.meta.id);
             if let Err(error) = prepare_entry_tags(
                 writer,
@@ -751,6 +871,7 @@ async fn handle_job(
                 &events.annotation,
                 None,
                 Some(&tag_ids),
+                Some(&annotation_tag_ids),
             )
             .await
             {
@@ -791,8 +912,39 @@ async fn handle_job(
                 log::error!("embed_feed failed id={}: {e}", feed.id);
             }
         }
-        Job::SyncAnnotations { article } => {
-            if let Err(e) = sync_annotations(&article, db, &events.annotation).await {
+        Job::SyncAnnotations {
+            mut article,
+            mut annotation_tag_ids,
+        } => {
+            annotation_parents.insert(article.meta.id.clone());
+            if let Err(error) =
+                refresh_annotation_snapshot(writer, &mut article, &mut annotation_tag_ids).await
+            {
+                writer.report_tag_error(error);
+                return;
+            }
+
+            if let Err(error) = prepare_annotation_tags(
+                writer,
+                db,
+                &mut article,
+                &mut annotation_tag_ids,
+                tag_changes,
+                merged_tags,
+            )
+            .await
+            {
+                writer.report_tag_error(error);
+                return;
+            }
+            if let Err(e) = super::pipeline::sync_annotations_with_tags(
+                &article,
+                db,
+                &events.annotation,
+                Some(&annotation_tag_ids),
+            )
+            .await
+            {
                 log::error!("sync_annotations failed id={}: {e}", article.meta.id);
             }
         }
@@ -813,6 +965,7 @@ async fn handle_job(
             }
         }
         Job::Delete { entity } => {
+            annotation_parents.remove(&entity.id);
             tag_changes.remove(&entity.id);
             if let Err(e) = db.delete_by_id(&entity.id).await {
                 log::error!("delete failed id={}: {e}", entity.id);
@@ -820,6 +973,7 @@ async fn handle_job(
         }
         Job::DeleteBatch { ids } => {
             for id in &ids {
+                annotation_parents.remove(id);
                 tag_changes.remove(id);
             }
             log::debug!("delete batch n={}", ids.len());
@@ -944,6 +1098,91 @@ mod tag_deletion_tests {
             .await
             .unwrap();
         assert_eq!(stale, vec![other, recreated.id]);
+        writer.shutdown().await;
+    }
+}
+
+#[cfg(test)]
+mod annotation_assignment_queue_tests {
+    use super::*;
+    #[tokio::test]
+    async fn committed_assignments_survive_missing_rows_stale_snapshots_and_replacement() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = crate::library::entry_path(dir.path(), "parent");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, "---\nsource: https://example.org/a\nannotations:\n- id: old\n  text: [Passage]\n  occurrence: [0]\n  color: blue\n  created_at: today\n---\n\nBody\n").unwrap();
+        let writer = crate::library_writer::LibraryWriter::start(
+            dir.path().into(),
+            crate::library::acquire_lock(dir.path()).unwrap(),
+        );
+        let db = EmbeddingsDb::open_writer(dir.path(), &writer.lock())
+            .await
+            .unwrap();
+        let tag = writer.create_tag("Research".into()).await.unwrap().tag;
+        let mut stale = crate::persistence::articles::read_article(dir.path(), "parent")
+            .await
+            .unwrap();
+        let (_, mut ids) = writer
+            .resolve_annotation_tags("parent".into())
+            .await
+            .unwrap();
+        let change = writer
+            .set_annotation_tag("parent".into(), "old".into(), tag.id.clone(), true)
+            .await
+            .unwrap();
+        let mut changes = Default::default();
+        apply_annotation_tag_change(&writer, &db, &change, &mut changes)
+            .await
+            .unwrap();
+        assert!(db.get_entry("old").await.unwrap().is_none());
+        prepare_annotation_tags(
+            &writer,
+            &db,
+            &mut stale,
+            &mut ids,
+            &changes,
+            &Default::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(ids["old"], vec![tag.id.clone()]);
+        let (events, _) = flume::unbounded();
+        super::super::pipeline::sync_annotations_with_tags(&stale, &db, &events, Some(&ids))
+            .await
+            .unwrap();
+        assert_eq!(
+            db.get_entry("old").await.unwrap().unwrap().tags,
+            vec![tag.id.clone()]
+        );
+        let mut replacement = stale.annotations[0].clone();
+        replacement.id = "new".into();
+        replacement.color = "red".into();
+        writer
+            .replace_annotation(
+                crate::library_writer::Tier::Interactive,
+                "parent".into(),
+                "old".into(),
+                replacement,
+            )
+            .await
+            .unwrap();
+        refresh_annotation_snapshot(&writer, &mut stale, &mut ids)
+            .await
+            .unwrap();
+        super::super::pipeline::sync_annotations_with_tags(&stale, &db, &events, Some(&ids))
+            .await
+            .unwrap();
+        assert!(db.get_entry("old").await.unwrap().is_none());
+        assert_eq!(
+            db.get_entry("new").await.unwrap().unwrap().tags,
+            vec![tag.id]
+        );
+        assert!(
+            apply_annotation_tag_change(&writer, &db, &change, &mut changes)
+                .await
+                .is_err()
+        );
+        assert!(db.get_entry("old").await.unwrap().is_none());
         writer.shutdown().await;
     }
 }

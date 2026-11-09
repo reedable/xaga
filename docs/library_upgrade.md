@@ -1,7 +1,7 @@
 # Upgrading a library
 
 Use the CLI matching the application version you intend to run. The current
-0.15.0-dev CLI upgrades libraries to **0.15**, including nested pin groups, tag identities, color-backed
+0.15.0-dev CLI upgrades libraries to **0.15**, including annotation tags, nested pin groups, tag identities, color-backed
 article bookmarks, Site pin support, central pin storage, and the reading-state
 conversion below.
 
@@ -170,3 +170,21 @@ Resolve the reported error and retry the same command; an interrupted metadata
 upgrade is safe to resume. Successful retries do not duplicate pins or create
 groups. Older applications open a 0.15 library read-only because its version
 no longer matches. Restore the complete backup to return to the previous format.
+
+## Annotation tags (0.16)
+
+**0.16.0-dev** adds optional readable-name `tags` sequences to individual annotation
+frontmatter records. Missing tags mean untagged. Close library users, back up the
+library, and run the matching CLI's `library upgrade` command above.
+
+Upgrading a 0.14 or 0.15 library validates both pin and tag stores and advances
+the manifest without rewriting article files or creating a cache. Existing
+rename, merge, and delete transitions retain their definitions, aliases, and
+parent Entry-ID pending batches byte-for-byte. The updated runtime resumes them
+using article and annotation assignments. Recovery rebuilds derived annotation
+tag IDs; no content re-embedding is required for a tag-only difference.
+
+Invalid stores leave the target pending and the library read-only. Correct the
+reported problem and retry with the same destination CLI. Interruption preserves
+the pending target; retry neither changes tag identities nor drops unfinished
+transitions. Older applications open 0.16 libraries read-only.

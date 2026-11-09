@@ -7,6 +7,7 @@
 
 export const DOMAIN_EVENT = [
   "tags:changed", // payload: TagSnapshot; committed definitions and transition status
+  "annotation-tags:changed", // payload: AnnotationTagChange
   "entry-tags:changed", // payload: EntryTagChange; committed assignment delta
   "tag:created", // payload: Tag; emitted only for a newly committed definition
   "unread:changed", // payload: Entry (schema-minted)

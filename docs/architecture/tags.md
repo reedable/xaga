@@ -1,9 +1,9 @@
 # Tag storage
 
-`<library>/tags.yaml` owns Entry tag identities and display names. Article
+`<library>/tags.yaml` owns article and annotation tag identities and display names. Article
 frontmatter owns readable-name assignments; LanceDB's existing `tags` string-list
 column stores resolved UUIDs. Definitions are library-scoped. Feed, Topic, Site,
-Note, and Annotation tagging are not covered by this format.
+and Note tagging are not covered by this format. Annotation assignments are introduced in library format 0.16.
 
 ```yaml
 tags:
@@ -52,7 +52,7 @@ The Article Inspector's Tags view provides searchable toggle chips and creation
 with immediate assignment. Assigned chips are filled, carry a check mark, and
 expose `aria-pressed`; unassigned chips are outlined. Chip buttons support keyboard
 activation. There is no Save action. Read-only inspection shows assignments while
-disabling assignment and creation. Annotation inspection does not offer Tags.
+disabling assignment and creation. Annotation inspection shares this picker through its own assignment API.
 
 `readEntryTags(signal, id)` reads assignments from the Entry file and resolves
 them to registry IDs, independently of index readiness. `setEntryTag(id, tagId,
@@ -80,22 +80,71 @@ closing the Inspector does not cancel an assignment already requested. External
 article edits remain a recovery concern, following the existing reconciliation
 contract. This API uses the existing 0.14 storage format.
 
+## Annotation assignment API (0.16)
+
+Each annotation frontmatter record has an optional `tags` sequence of readable
+names. Missing means untagged; removing the last assignment omits the field.
+Assignments belong to that annotation, independently of its parent and siblings.
+The registry and its alias, deletion, and comparison rules are shared with articles.
+
+`readAnnotationTags(signal, entryId, annotationId)` and native
+`read_annotation_tags` read the source file without requiring a cache.
+`setAnnotationTag(entryId, annotationId, tagId, assigned)` and native
+`set_annotation_tag` require the library writer and serialize in the parent Entry
+lane. Missing, duplicate, unsafe, or malformed targets fail before mutation;
+there is no fallback to article tags and no annotation creation. The assignment
+write edits only that record's tags through lossless YAML spans, retaining other
+frontmatter and exact body bytes. Comment saves and recoloring reread and preserve
+saved tags; recoloring carries them to the replacement ID. Article refresh does
+not own annotations.
+
+Successful writes return and emit `AnnotationTagChange` (`entryId`,
+`annotationId`, `tagId`, `assigned`) through `annotation-tags:changed` and enqueue
+Interactive `SetAnnotationTag` work. Failed writes emit no assignment event.
+The cache patch changes only tags on an existing matching annotation row and
+parent reference. Missing or replaced targets are not recreated by assignment jobs.
+
+Producers resolve annotation labels through the registry writer and carry a
+separate annotation-ID-to-tag-IDs map with content jobs. Readable labels never
+become indexed UUIDs in domain objects. Synchronization compares assignments
+independently of annotation checksums and preserves vectors on tag-only changes.
+Vector completion owns only the vector on an existing matching pending row.
+Recovery discovers annotation labels, compares their resolved IDs, and carries
+those IDs through incremental and fresh-cache paths.
+
+The service retains committed annotation assignment markers and parent IDs that
+have received live annotation edits. Older queued article snapshots for these
+parents reread current annotation state before reconciliation, preserving saved
+assignments, replacement IDs, and comments. Recovery clears ordinary session
+markers before taking new source snapshots. These markers are not persisted
+assignment stores. Merge participants retain the existing source-reconciliation
+protection after transition retirement.
+
+The shared picker subscribes before reading, retains committed changes during
+that read, and ignores other targets and superseded results. Writes already
+requested continue when inspection closes. Article and Annotation tab selections,
+reading position, responsive drawers, and focus behavior remain shared Inspector
+contracts. Read-only inspection shows assignments and disables writes and creation.
+
 ## Tag query API
 
-`listTagEntries(signal, tagIds, filter)` and `countTagUnread(signal, tagIds)`
-call native `list_tag_entries` and `count_tag_unread`. Both are read operations.
+`listTagEntities(signal, tagIds, filter)` and `countTagUnread(signal, tagIds)`
+call native `list_tag_entities` and `count_tag_unread`. Both are read operations.
 Selection resolves through the library's current definitions and aliases before
 querying indexed UUIDs. A missing/deleting selected definition produces an empty
 result and zero count, preserving the caller's selected set. Query construction
 accepts canonical UUID v4 values, not interpolated tag names.
 
-Queries restrict `kind` to Entry and intersect the selected identities. During an
+Queries restrict `kind` to Entry and Annotation and intersect assignments on each
+individual row. Tags split between a parent and annotation never satisfy one result. During an
 active merge, either participant in the cache satisfies the surviving selection;
 each selected group ORs its participant IDs, and groups are ANDed. Ordinary
 single-ID selections use `array_has_all(tags, [id])`.
-Unread adds `is_unread = true`; Saved adds a nonempty color predicate. Empty
-selection omits the tags predicate. Summary reads omit vectors and article
-content, and use the existing list ordering. The unread count uses a database
+With a nonempty selection, retained Unread is treated as All. Saved includes
+annotations and color-marked articles. Empty selection omits the tags predicate
+and applies the same All/Saved/Unread membership as All items. Unread counts
+always restrict to unread Entries and never count annotations. Summary reads return mixed `ListEntity` records, omit vectors and article
+content, and use the existing mixed-list ordering. The unread count uses a database
 count of the same intersection, without materializing Entries or summing
 individual tag counts.
 
@@ -184,8 +233,8 @@ prevents a stale source snapshot from recreating an old definition after alias
 retirement, and lets queued index jobs finish without depending on retired names.
 
 The dispatcher allows four active tag workers. Each queries the existing LanceDB
-read table for Entry IDs carrying the tag UUID, ordered by ID in batches of at
-most 1,024. It reads and rewrites only those candidate files. Index false positives
+read table for parent Entry IDs whose article or annotations carry the tag UUID, ordered by
+parent ID in batches of at most 1,024. It reads and rewrites only those candidate files. Index false positives
 are harmless: each Entry lane rereads current labels and changes only the old
 spelling. Missing/deleted Entries are skipped. Other labels, metadata,
 annotations, and body bytes are preserved; rename does not rewrite indexed IDs.
@@ -232,14 +281,14 @@ transition. Unknown IDs are refused; read-only deletion uses `library:read-only`
 
 Delete appears beside Rename in both tag actions menus. Both action labels include
 the current tag name, including while renaming or deleting. One confirmation names
-the tag and says its article assignments will be removed while articles remain
-intact. Cancel/Escape performs no mutation. Read-only mode disables Delete;
+the tag and says its article and annotation assignments will be removed while articles and
+annotations remain intact. Cancel/Escape performs no mutation. Read-only mode disables Delete;
 Deleting… identifies unfinished work and both actions are disabled for that tag.
 Inspector chips disable assignments involving deleting tags; removing an ordinary
 chip assignment still retains its definition.
 
 After committing the reservation, the command enqueues typed `DeleteTag` work at
-Interactive priority. Each service turn processes at most 1,024 indexed Entry IDs,
+Interactive priority. Each service turn processes at most 1,024 indexed parent Entry IDs,
 ordered by ID, plus persisted pending work. Both file and index pending batches
 are durable before mutation. Up to eight Entry-lane file patches remove matching
 labels without replacing other metadata or body bytes. Missing files are skipped;
@@ -297,8 +346,8 @@ original definitions remain reserved in storage. Acceptance and retirement emit
 `tags:changed`; checkpoints do not emit redundant snapshots.
 
 Merge and deletion share `tags/conversion.rs`. Each step selects up to 1,024
-candidate IDs, persists pending work, and runs up to eight atomic Entry-lane
-patches. Merge patches either participant label to the destination name and
+parent Entry IDs, persists pending work, and runs up to eight atomic Entry-lane
+patches. Each patch rereads article and annotation assignments in that file. Merge patches either participant label to the destination name and
 collapses duplicate participant labels. It then changes only the cache's `tags`
 column on rows carrying the losing ID. Rows already carrying the survivor remove
 the loser; remaining rows replace it with the survivor in a second idempotent
@@ -407,3 +456,22 @@ that maintenance pruned. Maintenance failure leaves the upgrade pending.
 
 Measured scaling and extrapolation assumptions are recorded in
 [Design scale](design_scale.md#tag-migration-scaling).
+
+## Parent-file lifecycle batches (0.16)
+
+Rename, merge, and deletion query both Entry IDs and Annotation parent references.
+Each half reads at most 1,024 indexed candidate rows; their parent IDs are sorted,
+deduplicated, and capped at 1,024 files. The cursor is a parent Entry ID. A parent
+with many matching annotations is patched once, including all current matching
+assignments, rather than once per annotation. Cache conversion targets matching
+article rows and annotation rows whose reference is in the pending parent batch.
+It changes only tags. Merge survivor populations include both kinds of assignment.
+
+Persisted `files.pending` and `index.pending` remain parent Entry IDs, so existing
+unfinished transitions need no checkpoint encoding conversion. The 0.16 upgrade
+validates the registry and preserves these records. Recoloring cannot strand a
+pending file under an obsolete Annotation ID. Pending files replay after cache
+loss. Index false positives are reread safely, while missed files retain the
+existing documented stale-index consequences; no verification scan or permanent
+tombstone is added. Bounds on candidate files do not establish a whole-process
+memory or latency ceiling for arbitrarily large parent documents.

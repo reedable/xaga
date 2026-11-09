@@ -55,6 +55,8 @@ export type EntryTagChange = {
   assigned: boolean;
 };
 
+export type AnnotationTagChange = EntryTagChange & { annotationId: string };
+
 // Library-scoped organizational label; identity is independent of display name.
 export type Tag = { id: string; name: string };
 export type TagMerge = {

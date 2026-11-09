@@ -84,9 +84,10 @@ export function createFixtures() {
     feeds,
     topics,
     tags,
-    assignments: { garden: ["outdoors"], wood: ["projects"] } as Record<
-      string,
-      string[]
-    >,
+    assignments: {
+      garden: ["outdoors"],
+      wood: ["projects"],
+      observation: ["projects"],
+    } as Record<string, string[]>,
   };
 }

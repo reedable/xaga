@@ -443,7 +443,7 @@ export function EntityList({
 
       try {
         if (tagIds !== undefined) {
-          const entries = await platform.listTagEntries(
+          const entries = await platform.listTagEntities(
             signal,
             tagIds,
             filter ?? "unread"
@@ -910,7 +910,7 @@ export function EntityList({
                   </MenuItem>
                 ))}
                 <ListSubheader>Tags</ListSubheader>
-                <MenuItem value="tags:all">All Entries (Tags)</MenuItem>
+                <MenuItem value="tags:all">All items (Tags)</MenuItem>
                 {tagOptions.map((tag) => (
                   <MenuItem
                     className="TagActionRow"

@@ -22,9 +22,18 @@ vi.mock("./TopicMembership", () => ({
     <div>Topics for {entity.id}</div>
   ),
 }));
-vi.mock("./EntryTags", () => ({
-  EntryTags: ({ entryId }: { entryId: string }) => (
-    <div>Tags for {entryId}</div>
+vi.mock("./EntityTags", () => ({
+  EntityTags: ({
+    entryId,
+    annotationId,
+  }: {
+    entryId: string;
+    annotationId?: string;
+  }) => (
+    <div>
+      Tags for {entryId}
+      {annotationId ? `/${annotationId}` : ""}
+    </div>
   ),
 }));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -143,7 +152,8 @@ it("reads Annotation Topics from its parent file without substituting Article me
     )
   );
   expect(container.textContent).toContain("Related to annotation");
-  expect(tab("Tags")).toBeUndefined();
+  expect(tab("Tags")).toBeDefined();
+  expect(container.textContent).toContain("Tags for parent/annotation");
   await act(async () =>
     root.render(
       <Inspector target={target} view="topics" onViewChange={() => {}} />

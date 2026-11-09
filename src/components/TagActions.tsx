@@ -200,8 +200,8 @@ export function TagActions({ tag }: { tag: Tag }) {
         <DialogTitle id={`delete-${tag.id}`}>Delete tag</DialogTitle>
         <DialogContent>
           <DialogContentText id={`delete-description-${tag.id}`}>
-            Delete “{tag.name}” and its article assignments? Articles will
-            remain intact.
+            Delete “{tag.name}” and its article and annotation assignments?
+            Articles and annotations will remain intact.
           </DialogContentText>
         </DialogContent>
         <DialogActions>

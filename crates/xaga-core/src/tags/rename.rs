@@ -236,7 +236,13 @@ mod tests {
     struct Sink;
     impl crate::recovery::RepairSink for Sink {
         fn topic(&mut self, _: crate::types::Topic) {}
-        fn article(&mut self, _: crate::types::Article, _: Vec<String>) {}
+        fn article(
+            &mut self,
+            _: crate::types::Article,
+            _: Vec<String>,
+            _: crate::tags::AnnotationTagIds,
+        ) {
+        }
     }
     async fn recover(writer: &LibraryWriter, db: &crate::embeddings::EmbeddingsDb) {
         crate::recovery::embeddings::repair_entity_embeddings(
@@ -318,6 +324,7 @@ mod tests {
             &annotations,
             None,
             Some(&before.tags),
+            None,
         )
         .await
         .unwrap();

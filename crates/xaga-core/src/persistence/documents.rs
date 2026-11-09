@@ -36,6 +36,235 @@ pub(crate) async fn upsert(
     Ok(rendered)
 }
 
+fn yaml_tokens(
+    node: &noyalib::cst::GreenNode,
+    base: usize,
+    output: &mut Vec<(noyalib::cst::SyntaxKind, usize, usize)>,
+) {
+    let mut offset = base;
+    for child in node.children() {
+        match child {
+            noyalib::cst::GreenChild::Node(n) => yaml_tokens(n, offset, output),
+            noyalib::cst::GreenChild::Token { kind, .. } => {
+                output.push((*kind, offset, offset + child.text_len()))
+            }
+        }
+        offset += child.text_len();
+    }
+}
+
+fn annotation_mapping(
+    node: &noyalib::cst::GreenNode,
+    base: usize,
+    id: (usize, usize),
+) -> Option<(&noyalib::cst::GreenNode, usize)> {
+    if id.0 < base || id.1 > base + node.text_len() {
+        return None;
+    }
+    let mut offset = base;
+    for child in node.children() {
+        if let noyalib::cst::GreenChild::Node(inner) = child {
+            if let Some(found) = annotation_mapping(inner, offset, id) {
+                return Some(found);
+            }
+        }
+        offset += child.text_len();
+    }
+    (node.kind() == noyalib::cst::SyntaxKind::BlockMapping).then_some((node, base))
+}
+
+/// Change only one annotation's tags, retaining unrelated source bytes.
+/// The caller owns the parent Entry writer lane.
+pub(super) async fn patch_annotation_tags(
+    path: &Path,
+    index: usize,
+    tags: &[String],
+    _token: WriteToken,
+) -> Result<(), EntryError> {
+    let raw = crate::fs::read_md_capped(path).await?;
+    parse_document(&raw)?;
+    let trimmed = raw.trim_start();
+    let prefix = &raw[..raw.len() - trimmed.len()];
+    let rest = trimmed
+        .strip_prefix("---\n")
+        .ok_or(crate::md::MdError::Delimiter)?;
+    let end = rest.find("\n---\n").ok_or(crate::md::MdError::Delimiter)?;
+    let edit = || -> Result<String, noyalib::Error> {
+        let mut document = noyalib::cst::parse_document(&rest[..end])?;
+        let parent = format!("annotations[{index}]");
+        let field = format!("{parent}.tags");
+        let value = serde_json::to_string(tags).expect("string sequence serializes");
+        let parent_span = document
+            .span_at(&parent)
+            .ok_or_else(|| noyalib::Error::Parse("annotation mapping unavailable".into()))?;
+        if document.source()[parent_span.0..parent_span.1]
+            .trim_start()
+            .starts_with('{')
+        {
+            if let Some((start, end)) = document.span_at(&field) {
+                if !tags.is_empty() {
+                    document.set(&field, &value)?;
+                } else {
+                    use noyalib::cst::SyntaxKind;
+                    let mut leaves = Vec::new();
+                    yaml_tokens(document.syntax(), 0, &mut leaves);
+                    leaves.retain(|(_, a, b)| {
+                        *a >= parent_span.0
+                            && *b <= parent_span.1
+                            && !document.source()[*a..*b].trim().is_empty()
+                    });
+                    let colon = leaves
+                        .iter()
+                        .rposition(|(kind, _, b)| {
+                            *b <= start && *kind == SyntaxKind::ColonIndicator
+                        })
+                        .ok_or_else(|| noyalib::Error::Parse("tags key unavailable".into()))?;
+                    let key_start = leaves[colon - 1].1;
+                    let source = document.source();
+                    let tail = &source[end..parent_span.1];
+                    let after = tail.len() - tail.trim_start().len();
+                    if tail[after..].starts_with(',') {
+                        document.replace_span(key_start, end + after + 1, "")?;
+                    } else {
+                        let comma =
+                            source[parent_span.0..key_start].rfind(',').ok_or_else(|| {
+                                noyalib::Error::Parse("tags separator unavailable".into())
+                            })? + parent_span.0;
+                        document.replace_span(comma, end, "")?;
+                    }
+                }
+            } else if !tags.is_empty() {
+                let close = parent_span.0
+                    + document.source()[parent_span.0..parent_span.1]
+                        .rfind('}')
+                        .ok_or_else(|| {
+                            noyalib::Error::Parse("annotation mapping unavailable".into())
+                        })?;
+                let separator = if document.source()[parent_span.0..close]
+                    .trim_end()
+                    .ends_with(',')
+                {
+                    " "
+                } else {
+                    ", "
+                };
+                document.replace_span(close, close, &format!("{separator}tags: {value}"))?;
+            }
+        } else if document.span_at(&field).is_some() {
+            // Locate the direct field in the Annotation mapping. A collection's
+            // value span can include following comments, so edit only its tokens.
+            let id_span = document
+                .span_at(&format!("{parent}.id"))
+                .ok_or_else(|| noyalib::Error::Parse("annotation ID unavailable".into()))?;
+            let (mapping, base) = annotation_mapping(document.syntax(), 0, id_span)
+                .ok_or_else(|| noyalib::Error::Parse("annotation mapping unavailable".into()))?;
+            let mut offset = base;
+            let mut range = None;
+            for child in mapping.children() {
+                if let noyalib::cst::GreenChild::Node(entry) = child {
+                    if entry.kind() == noyalib::cst::SyntaxKind::MappingEntry {
+                        let source = &document.source()[offset..offset + entry.text_len()];
+                        if source
+                            .split_once(':')
+                            .and_then(|(key, _)| noyalib::from_str::<String>(key.trim()).ok())
+                            .as_deref()
+                            == Some("tags")
+                        {
+                            let mut leaves = Vec::new();
+                            yaml_tokens(entry, offset, &mut leaves);
+                            let end = leaves
+                                .iter()
+                                .rev()
+                                .find(|(kind, _, _)| {
+                                    !matches!(
+                                        kind,
+                                        noyalib::cst::SyntaxKind::Whitespace
+                                            | noyalib::cst::SyntaxKind::Newline
+                                            | noyalib::cst::SyntaxKind::Comment
+                                    )
+                                })
+                                .map(|(_, _, end)| *end)
+                                .ok_or_else(|| {
+                                    noyalib::Error::Parse("tags value unavailable".into())
+                                })?;
+                            let end = document.source()[..end]
+                                .trim_end_matches([' ', '\t', '\r', '\n'])
+                                .len();
+                            range = Some((offset, end));
+                            break;
+                        }
+                    }
+                }
+                offset += child.text_len();
+            }
+            let (start, end) =
+                range.ok_or_else(|| noyalib::Error::Parse("tags field unavailable".into()))?;
+            let fragment = if tags.is_empty() {
+                String::new()
+            } else {
+                format!("tags: {value}")
+            };
+            document.replace_span(start, end, &fragment)?;
+        } else if !tags.is_empty() {
+            let value = serde_json::to_string(tags).expect("string sequence serializes");
+            // Insert after the last value in a block mapping. Keeping the
+            // newline outside the mapping span avoids joining the next item.
+            let source = document.source();
+            let (id_start, _) = document
+                .span_at(&format!("{parent}.id"))
+                .ok_or_else(|| noyalib::Error::Parse("annotation has no ID".into()))?;
+            let line_start = source[..id_start].rfind('\n').map_or(0, |i| i + 1);
+            let line = &source[line_start..id_start];
+            let indent = if let Some(dash) = line.find("- ") {
+                dash + 2
+            } else {
+                line.len() - line.trim_start().len()
+            };
+            let (_, end) = document
+                .span_at(&parent)
+                .ok_or_else(|| noyalib::Error::Parse("annotation mapping unavailable".into()))?;
+            let end = source[end..]
+                .find('\n')
+                .map_or(source.len(), |n| end + n + 1);
+            let prefix = if end == source.len() && !source.ends_with('\n') {
+                "\n"
+            } else {
+                ""
+            };
+            document.replace_span(
+                end,
+                end,
+                &format!("{prefix}{}tags: {value}\n", " ".repeat(indent)),
+            )?;
+        }
+        Ok(format!(
+            "{prefix}---\n{}{}",
+            document.source(),
+            &rest[end..]
+        ))
+    };
+    let rendered = edit().map_err(|e| crate::md::MdError::Frontmatter(e.to_string()))?;
+    let mut expected = crate::md::frontmatter_json(&raw)?;
+    let target = expected
+        .get_mut("annotations")
+        .and_then(|a| a.get_mut(index))
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or(EntryError::NotFound)?;
+    if tags.is_empty() {
+        target.remove("tags");
+    } else {
+        target.insert("tags".into(), serde_json::json!(tags));
+    }
+    if crate::md::frontmatter_json(&rendered)? != expected {
+        return Err(crate::md::MdError::Frontmatter(
+            "annotation tag patch changed unrelated fields".into(),
+        )
+        .into());
+    }
+    crate::fs::write_markdown_async(path.to_owned(), ValidatedDocument(rendered)).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

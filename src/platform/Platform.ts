@@ -7,6 +7,7 @@ import type {
   Tag,
   TagSnapshot,
   EntryTagChange,
+  AnnotationTagChange,
   ArticleDiagnostic,
   ArticleDiagnosticOutcome,
   ArticleDiagnosticStep,
@@ -359,6 +360,20 @@ export interface Platform {
     callback: (view: HtmlReaderView) => void
   ): Promise<UnlistenFn>;
 
+  readAnnotationTags(
+    signal: AbortSignal,
+    entryId: string,
+    annotationId: string
+  ): Promise<string[]>;
+  setAnnotationTag(
+    entryId: string,
+    annotationId: string,
+    tagId: string,
+    assigned: boolean
+  ): Promise<AnnotationTagChange>;
+  onAnnotationTagsChanged(
+    callback: (change: AnnotationTagChange) => void
+  ): Promise<UnlistenFn>;
   readEntryTags(signal: AbortSignal, id: string): Promise<string[]>;
   setEntryTag(
     id: string,
@@ -368,11 +383,11 @@ export interface Platform {
   onEntryTagsChanged(
     callback: (change: EntryTagChange) => void
   ): Promise<UnlistenFn>;
-  listTagEntries(
+  listTagEntities(
     signal: AbortSignal,
     tagIds: string[],
     filter?: Filter
-  ): Promise<Entry[]>;
+  ): Promise<ListEntity[]>;
   countTagUnread(signal: AbortSignal, tagIds: string[]): Promise<number>;
   readTagStatus(signal: AbortSignal): Promise<TagSnapshot>;
   renameTag(id: string, name: string): Promise<TagSnapshot>;

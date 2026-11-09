@@ -81,7 +81,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("../../platform/Platform", () => ({ usePlatform: () => platform }));
 const platform = {
   readArticleScope: mocks.read,
-  listTagEntries: mocks.tagEntries,
+  listTagEntities: mocks.tagEntries,
 };
 vi.mock("../../providers/TagsContext", () => ({
   useTags: () => mocks.tagContext,
@@ -568,7 +568,9 @@ it.each(["feed", "topic", "site"] as const)(
   }
 );
 
-it("browses Entry intersections and retains membership through state and assignment updates", async () => {
+it("browses mixed tag intersections and retains membership through state and assignment updates", async () => {
+  const annotation = { ...article.annotations[1], url: article.url };
+  mocks.tagEntries.mockResolvedValue([article, annotation]);
   await render({ tagIds: ["tag-a", "tag-b"], filter: "unread" });
   expect(mocks.tagEntries).toHaveBeenCalledWith(
     expect.any(AbortSignal),
@@ -591,8 +593,15 @@ it("browses Entry intersections and retains membership through state and assignm
     mocks.callbacks.onEmbeddingsChanged(undefined as never);
     mocks.callbacks.onFeedsRefreshed(undefined as never);
   });
-  expect(rows()).toHaveLength(1);
+  expect(rows()).toHaveLength(2);
   expect(mocks.tagEntries).toHaveBeenCalledOnce();
+  await act(async () =>
+    rows()[0].dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })
+    )
+  );
+  expect(route.state.annotationId).toBe(annotation.id);
+  expect(route.state.tagIds).toEqual(["tag-a", "tag-b"]);
   await selectFilter("saved");
   expect(mocks.tagEntries).toHaveBeenCalledTimes(2);
   expect(mocks.tagEntries).toHaveBeenLastCalledWith(
@@ -828,7 +837,7 @@ it("shows nested shortcut headings in the hidden-sidebar header and opens descen
   expect(selected.getAttribute("aria-selected")).toBe("true");
 });
 
-for (const scope of ["article", "all", "feed", "topic"] as const) {
+for (const scope of ["article", "all", "feed", "topic", "tags"] as const) {
   it(`replaces and clears selected annotation routes without adding history in ${scope} scope`, async () => {
     const annotation = { ...article.annotations[1], url: article.url };
     const replacement = { ...annotation, id: "replacement", color: "blue" };
@@ -836,6 +845,7 @@ for (const scope of ["article", "all", "feed", "topic"] as const) {
     mocks.entries.listAllEntities.mockResolvedValue(members);
     mocks.entries.listEntries.mockResolvedValue(members);
     mocks.topics.listTopicEntities.mockResolvedValue(members);
+    mocks.tagEntries.mockResolvedValue(members);
     mocks.feeds.feeds = [
       {
         __kind: "feed",
@@ -868,7 +878,9 @@ for (const scope of ["article", "all", "feed", "topic"] as const) {
           ? { shortcutId: ALL_ENTITIES.id }
           : scope === "feed"
             ? { feedId: "feed" }
-            : { topicId: "topic" };
+            : scope === "tags"
+              ? { tagIds: ["tag-a"] }
+              : { topicId: "topic" };
     const initial = {
       ...context,
       entryId: article.id,
@@ -913,7 +925,8 @@ for (const scope of ["article", "all", "feed", "topic"] as const) {
       expect(
         mocks.entries.listAllEntities.mock.calls.length +
           mocks.entries.listEntries.mock.calls.length +
-          mocks.topics.listTopicEntities.mock.calls.length
+          mocks.topics.listTopicEntities.mock.calls.length +
+          mocks.tagEntries.mock.calls.length
       ).toBe(1);
     }
   });
@@ -925,6 +938,7 @@ for (const scope of ["article", "all", "feed", "topic"] as const) {
     mocks.entries.listAllEntities.mockResolvedValue(members);
     mocks.entries.listEntries.mockResolvedValue(members);
     mocks.topics.listTopicEntities.mockResolvedValue(members);
+    mocks.tagEntries.mockResolvedValue(members);
     mocks.feeds.feeds = [
       {
         __kind: "feed",
@@ -957,7 +971,9 @@ for (const scope of ["article", "all", "feed", "topic"] as const) {
           ? { shortcutId: ALL_ENTITIES.id }
           : scope === "feed"
             ? { feedId: "feed" }
-            : { topicId: "topic" };
+            : scope === "tags"
+              ? { tagIds: ["tag-a"] }
+              : { topicId: "topic" };
     await render({
       ...context,
       entryId: article.id,

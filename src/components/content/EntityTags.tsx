@@ -1,6 +1,6 @@
 import { Box, Button, Chip, TextField, Typography } from "@mui/material";
 import { Check } from "@mui/icons-material";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { EntryTagChange, Tag, TagMerge } from "../../domain";
 import { usePlatform } from "../../platform/Platform";
 import { useErrorSink } from "../../hooks/useErrorSink";
@@ -10,7 +10,7 @@ import {
   resolveMergedTagIds,
   retainTagMerges,
 } from "../../utils/tags";
-import css from "./EntryTags.module.css";
+import css from "./EntityTags.module.css";
 
 function applyChange(ids: Set<string>, change: EntryTagChange) {
   const next = new Set(ids);
@@ -19,8 +19,22 @@ function applyChange(ids: Set<string>, change: EntryTagChange) {
   return next;
 }
 
-export function EntryTags({ entryId }: { entryId: string }) {
+export function EntityTags({
+  entryId,
+  annotationId,
+}: {
+  entryId: string;
+  annotationId?: string;
+}) {
   const platform = usePlatform();
+  const readAssignments = useCallback(
+    (signal: AbortSignal) =>
+      annotationId !== undefined
+        ? platform.readAnnotationTags(signal, entryId, annotationId)
+        : platform.readEntryTags(signal, entryId),
+    [annotationId, entryId, platform]
+  );
+
   const { pushError } = useErrorSink();
   const readOnly = useLibraryReadOnly();
   const [tags, setTags] = useState<Tag[]>([]);
@@ -46,7 +60,7 @@ export function EntryTags({ entryId }: { entryId: string }) {
     const refreshAssignments = async () => {
       const request = ++assignmentRequest.current;
       try {
-        const ids = await platform.readEntryTags(controller.signal, entryId);
+        const ids = await readAssignments(controller.signal);
         if (
           !controller.signal.aborted &&
           request === assignmentRequest.current
@@ -95,8 +109,19 @@ export function EntryTags({ entryId }: { entryId: string }) {
         );
 
         retain(
-          await platform.onEntryTagsChanged((change) => {
-            if (change.entryId !== entryId || controller.signal.aborted) return;
+          await (
+            annotationId !== undefined
+              ? platform.onAnnotationTagsChanged.bind(platform)
+              : platform.onEntryTagsChanged.bind(platform)
+          )((change) => {
+            if (
+              change.entryId !== entryId ||
+              controller.signal.aborted ||
+              (annotationId !== undefined &&
+                (!("annotationId" in change) ||
+                  change.annotationId !== annotationId))
+            )
+              return;
             if (mergeHistory.current.length) {
               void refreshAssignments();
               return;
@@ -108,7 +133,7 @@ export function EntryTags({ entryId }: { entryId: string }) {
 
         const [definitions, ids] = await Promise.all([
           platform.readTagStatus(controller.signal),
-          platform.readEntryTags(controller.signal, entryId),
+          readAssignments(controller.signal),
         ]);
 
         if (controller.signal.aborted) return;
@@ -152,7 +177,7 @@ export function EntryTags({ entryId }: { entryId: string }) {
       controller.abort();
       cleanups.forEach((cleanup) => cleanup());
     };
-  }, [entryId, platform, pushError]);
+  }, [entryId, annotationId, platform, pushError, readAssignments]);
 
   const mutate = async (tag?: Tag) => {
     if (readOnly || pending.current || !loaded) return;
@@ -162,11 +187,16 @@ export function EntryTags({ entryId }: { entryId: string }) {
     try {
       const chosen = tag ?? (await platform.createTag(query.trim()));
       // Creating the definition does not depend on the Inspector staying open.
-      const change = await platform.setEntryTag(
-        entryId,
-        chosen.id,
-        tag ? !assigned.has(tag.id) : true
-      );
+      const nextAssigned = tag ? !assigned.has(tag.id) : true;
+      const change =
+        annotationId !== undefined
+          ? await platform.setAnnotationTag(
+              entryId,
+              annotationId,
+              chosen.id,
+              nextAssigned
+            )
+          : await platform.setEntryTag(entryId, chosen.id, nextAssigned);
 
       if (!live.current) return;
       if (
@@ -181,10 +211,7 @@ export function EntryTags({ entryId }: { entryId: string }) {
       }
       if (mergeHistory.current.length) {
         const request = ++assignmentRequest.current;
-        const ids = await platform.readEntryTags(
-          new AbortController().signal,
-          entryId
-        );
+        const ids = await readAssignments(new AbortController().signal);
         if (live.current && request === assignmentRequest.current)
           setAssigned(new Set(resolveMergedTagIds(ids, mergeHistory.current)));
       } else setAssigned((current) => applyChange(current, change));
@@ -209,20 +236,20 @@ export function EntryTags({ entryId }: { entryId: string }) {
 
   if (failed)
     return (
-      <Box className={css.EntryTags} aria-busy={busy}>
+      <Box className={css.EntityTags} aria-busy={busy}>
         <Typography>Tags couldn’t be loaded.</Typography>
       </Box>
     );
 
   if (!loaded)
     return (
-      <Box className={css.EntryTags} aria-busy={busy}>
+      <Box className={css.EntityTags} aria-busy={busy}>
         <Typography role="status">Loading tags…</Typography>
       </Box>
     );
 
   return (
-    <Box className={css.EntryTags} aria-busy={busy}>
+    <Box className={css.EntityTags} aria-busy={busy}>
       <TextField
         className={css.FilterInput}
         placeholder="Find or create a tag"
@@ -232,7 +259,13 @@ export function EntryTags({ entryId }: { entryId: string }) {
         onChange={(event) => setQuery(event.target.value)}
       />
 
-      <Box className={css.TagGroup} role="group" aria-label="Entry tags">
+      <Box
+        className={css.TagGroup}
+        role="group"
+        aria-label={
+          annotationId !== undefined ? "Annotation tags" : "Article tags"
+        }
+      >
         {matches.map((tag) => (
           <Chip
             key={tag.id}

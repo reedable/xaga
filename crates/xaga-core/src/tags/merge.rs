@@ -12,9 +12,12 @@ pub(crate) async fn begin(
     destination: String,
 ) -> Result<TagSnapshot, WriterError> {
     // No other cache job can run between these counts and the durable choice.
-    let source_count = db.count_tag_entries(&source).await.map_err(index_error)?;
+    let source_count = db
+        .count_tag_assignments(&source)
+        .await
+        .map_err(index_error)?;
     let destination_count = db
-        .count_tag_entries(&destination)
+        .count_tag_assignments(&destination)
         .await
         .map_err(index_error)?;
     Ok(writer
@@ -96,7 +99,13 @@ mod tests {
     struct Sink;
     impl crate::recovery::RepairSink for Sink {
         fn topic(&mut self, _: crate::types::Topic) {}
-        fn article(&mut self, _: crate::types::Article, _: Vec<String>) {}
+        fn article(
+            &mut self,
+            _: crate::types::Article,
+            _: Vec<String>,
+            _: crate::tags::AnnotationTagIds,
+        ) {
+        }
     }
     async fn recover(writer: &LibraryWriter, db: &EmbeddingsDb) {
         crate::recovery::embeddings::repair_entity_embeddings(
@@ -131,7 +140,7 @@ mod tests {
             assert!(snapshot.tags.iter().all(|tag| tag.name != "Research"));
             let group = vec![source.clone(), destination.clone()];
             assert_eq!(
-                db.list_tag_entry_groups(&[group.clone()], EntityFilter::All)
+                db.list_tag_entity_groups(&[group.clone()], EntityFilter::All)
                     .await
                     .unwrap()
                     .len(),
@@ -282,7 +291,7 @@ mod tests {
         assert!(
             matches!(&store.transitions[0], Transition::Merge { files, index, .. } if !files.pending.is_empty() && files.pending == index.pending)
         );
-        assert_eq!(db.count_tag_entries(&source).await.unwrap(), 2);
+        assert_eq!(db.count_tag_assignments(&source).await.unwrap(), 2);
         entry(dir.path(), "source", "Research, Other");
         conversion::resume(&writer, &db).await.unwrap();
         assert!(
@@ -383,7 +392,7 @@ mod tests {
                 .unwrap(),
             vec!["Work"]
         );
-        assert_eq!(db.count_tag_entries(&source).await.unwrap(), 0);
+        assert_eq!(db.count_tag_assignments(&source).await.unwrap(), 0);
         writer.shutdown().await;
     }
 
@@ -484,7 +493,7 @@ mod tests {
                 "merge_scale total={total} batch={batch} entries=1024 elapsed_ms={}",
                 start.elapsed().as_millis()
             );
-            let remaining = db.count_tag_entries(&destination).await.unwrap();
+            let remaining = db.count_tag_assignments(&destination).await.unwrap();
             assert_eq!(remaining, (total / 2 - (batch + 1) * 512) as u64);
         }
         assert_eq!(

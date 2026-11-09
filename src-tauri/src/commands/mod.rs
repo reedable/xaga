@@ -27,6 +27,7 @@ pub(crate) const WRITE_COMMANDS: &[&str] = &[
     "merge_tags",
     "delete_tag",
     "set_entry_tag",
+    "set_annotation_tag",
     "save_article",
     "create_article",
     "add_annotation",

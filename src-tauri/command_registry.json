@@ -102,8 +102,10 @@
     "commands::tags::merge_tags",
     "commands::tags::delete_tag",
     "commands::tags::read_entry_tags",
+    "commands::tags::read_annotation_tags",
+    "commands::tags::set_annotation_tag",
     "commands::tags::set_entry_tag",
-    "commands::tags::list_tag_entries",
+    "commands::tags::list_tag_entities",
     "commands::tags::count_tag_unread"
   ]
 }
