@@ -1,8 +1,8 @@
-use super::library_upgrade::upgrade_library;
 use crate::die;
 use clap::{Args, Subcommand};
 use std::path::Path;
 use xaga_core::library;
+use xaga_core::library::upgrade_library;
 
 #[derive(Args)]
 #[command(arg_required_else_help = true)]
@@ -57,7 +57,7 @@ pub async fn handle(command: LibraryCommand, data_dir: &Path) {
                 die("library directory does not exist");
             }
             let lock = library::acquire_lock(data_dir).unwrap_or_else(|| die("Could not acquire the library write lock. Close other Xaga instances and retry."));
-            let report = upgrade_library(data_dir, &lock).await;
+            let report = upgrade_library(data_dir, &lock, application_version(), |_| {}).await;
             println!(
                 "library upgrade: {} converted, {} unchanged, {} cache entries reconciled, {} errors",
                 report.converted,

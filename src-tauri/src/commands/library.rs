@@ -26,14 +26,27 @@ pub async fn set_library(
     app: AppHandle,
 ) -> Result<String, AppError> {
     let new_path = PathBuf::from(&path);
-
-    std::fs::create_dir_all(&new_path).map_err(|e| e.to_string())?;
-
-    match update_settings(&state, |s| {
-        s.library = Some(new_path.to_string_lossy().to_string())
-    })? {
-        SettingsOutcome::StaleView(fresh) => return Err(stale_view_error(&state, &fresh)),
-        SettingsOutcome::Written(_) => {}
+    {
+        let mut operation = state.library_upgrade.lock().unwrap();
+        if matches!(
+            *operation,
+            UpgradeState::Running { .. } | UpgradeState::Succeeded { .. }
+        ) {
+            return Err(
+                "Finish the library upgrade and restart before switching libraries."
+                    .to_string()
+                    .into(),
+            );
+        }
+        std::fs::create_dir_all(&new_path).map_err(|e| e.to_string())?;
+        match update_settings(&state, |s| {
+            s.library = Some(new_path.to_string_lossy().to_string())
+        })? {
+            SettingsOutcome::StaleView(fresh) => return Err(stale_view_error(&state, &fresh)),
+            SettingsOutcome::Written(_) => {}
+        }
+        // Serialize switching with upgrade submission through the restart.
+        *operation = UpgradeState::Running { progress: None };
     }
 
     // The new library path is now persisted.  Signal the embedding service to
@@ -65,4 +78,280 @@ pub async fn set_library(
     }
 
     Ok(new_path.to_string_lossy().to_string())
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "snake_case", tag = "state")]
+pub(crate) enum UpgradeState {
+    #[default]
+    Idle,
+    Running {
+        progress: Option<xaga_core::library::UpgradeProgress>,
+    },
+    Failed {
+        message: String,
+        errors: Vec<String>,
+    },
+    Succeeded {
+        report: xaga_core::library::UpgradeReport,
+        restarting: bool,
+    },
+}
+fn application_version(app: &AppHandle) -> xaga_core::library::LibraryVersion {
+    let version = &app.package_info().version;
+    xaga_core::library::LibraryVersion::new(version.major, version.minor)
+}
+#[tauri::command]
+pub async fn get_library_status(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<xaga_core::library::LibraryStatus, AppError> {
+    let library = state.library.read().unwrap();
+    Ok(xaga_core::library::LibraryStatus::read(
+        &library.path,
+        application_version(&app),
+        library.writer.is_some(),
+    ))
+}
+#[tauri::command]
+pub async fn get_library_upgrade(state: State<'_, AppState>) -> Result<UpgradeState, AppError> {
+    Ok(state.library_upgrade.lock().unwrap().clone())
+}
+
+/// This explicit upgrade is a separate write boundary: ordinary write commands
+/// remain refused because this process has no runtime writer. Reserve before
+/// spawning so duplicate IPC submissions cannot queue a second conversion.
+#[tauri::command]
+pub async fn start_library_upgrade(
+    path: String,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<UpgradeState, AppError> {
+    let mut operation = state.library_upgrade.lock().unwrap();
+    let selected = state.library.read().unwrap();
+    let target = application_version(&app);
+    if let Err(snapshot) = reserve_upgrade(
+        &mut operation,
+        &selected,
+        std::path::Path::new(&path),
+        target,
+    ) {
+        return Ok(snapshot);
+    }
+    let dir = selected.path.clone();
+    let snapshot = operation.clone();
+    let operation = std::sync::Arc::clone(&state.library_upgrade);
+    let reader = std::sync::Arc::clone(&state.embeddings_read);
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            tauri::async_runtime::block_on(perform_upgrade(&dir, target, &reader, |progress| {
+                *operation.lock().unwrap() = UpgradeState::Running {
+                    progress: Some(progress),
+                };
+            }))
+        }));
+        *operation.lock().unwrap() = result.unwrap_or_else(|_| UpgradeState::Failed { message: "The library upgrade was interrupted. Keep the library read-only and retry with this Xaga version.".into(), errors: vec![] });
+    });
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub async fn restart_after_library_upgrade(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<Option<String>, AppError> {
+    {
+        let mut operation = state.library_upgrade.lock().unwrap();
+        match &mut *operation {
+            UpgradeState::Succeeded { restarting, .. } if !*restarting => *restarting = true,
+            UpgradeState::Succeeded { .. } => return Ok(None),
+            _ => {
+                return Ok(Some(
+                    "Complete the library upgrade before restarting.".into(),
+                ));
+            }
+        }
+    }
+    let _restart_guard = RestartGuard(std::sync::Arc::clone(&state.library_upgrade));
+    if !xaga_core::library::LibraryManifest::read(&state.library_path())
+        .ok()
+        .flatten()
+        .is_some_and(|m| m.matches_version(application_version(&app)))
+    {
+        return Ok(Some("The library metadata changed. Close Xaga and reopen this library to check compatibility.".into()));
+    }
+    // Normal startup reads settings. Persist this selected path through the
+    // account's stale-view/lock funnel before spawning a successor.
+    let path = state.library_path().to_string_lossy().into_owned();
+    match update_settings(&state, |settings| settings.library = Some(path)) {
+        Ok(SettingsOutcome::Written(_)) => {},
+        Ok(SettingsOutcome::StaleView(_)) => return Ok(Some("The library upgrade completed, but settings changed in another Xaga process. Retry Restart Xaga to reopen this library.".into())),
+        Err(error) => { log::error!("upgrade restart settings: {error}"); return Ok(Some("The library upgrade completed, but its reopening path could not be saved. Close other Xaga processes and retry Restart Xaga.".into())); }
+    }
+    crate::drain_and_release_writer(&state.library).await;
+    match std::env::current_exe().and_then(|exe| std::process::Command::new(exe).spawn()) {
+        Ok(_) => std::process::exit(0),
+        Err(error) => {
+            log::error!("upgrade restart failed: {error}");
+            Ok(Some("The library upgrade completed, but Xaga could not restart. Try again, or close Xaga and reopen this library.".into()))
+        }
+    }
+}
+
+fn reserve_upgrade(
+    operation: &mut UpgradeState,
+    selected: &crate::LibraryHandle,
+    expected_path: &std::path::Path,
+    target: xaga_core::library::LibraryVersion,
+) -> Result<(), UpgradeState> {
+    if matches!(
+        operation,
+        UpgradeState::Running { .. } | UpgradeState::Succeeded { .. }
+    ) {
+        return Err(operation.clone());
+    }
+    if selected.path != expected_path || selected.writer.is_some() {
+        return Err(UpgradeState::Failed { message: "The selected library changed or already has write access. Reopen its library options.".into(), errors: vec![] });
+    }
+    if !xaga_core::library::LibraryStatus::read(&selected.path, target, false).can_upgrade() {
+        return Err(UpgradeState::Failed { message: "This library cannot be upgraded with this Xaga version. Reopen its library options to check its status.".into(), errors: vec![] });
+    }
+    *operation = UpgradeState::Running { progress: None };
+    Ok(())
+}
+async fn perform_upgrade(
+    dir: &std::path::Path,
+    target: xaga_core::library::LibraryVersion,
+    reader: &std::sync::Mutex<Option<xaga_core::embeddings::EmbeddingsDb>>,
+    progress: impl Fn(xaga_core::library::UpgradeProgress) + Send + Sync,
+) -> UpgradeState {
+    use xaga_core::library;
+    let Some(lock) = library::acquire_lock(dir) else {
+        return UpgradeState::Failed { message: "Could not acquire the library write lock. Close other processes using this library and retry.".into(), errors: vec![] };
+    };
+    if !library::LibraryStatus::read(dir, target, false).can_upgrade() {
+        return UpgradeState::Failed { message: "The library version changed before the upgrade started. Reopen its library options.".into(), errors: vec![] };
+    }
+    reader.lock().unwrap().take();
+    let report = library::upgrade_library(dir, &lock, target, progress).await;
+    if report.errors.is_empty() {
+        UpgradeState::Succeeded {
+            report,
+            restarting: false,
+        }
+    } else {
+        UpgradeState::Failed { message: "Library upgrade incomplete. Changes may already be applied. Resolve the reported problems and retry with this Xaga version, or restore your complete backup.".into(), errors: report.errors }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+    use xaga_core::library::{self, LibraryManifest, LibraryVersion};
+    fn fixture() -> (tempfile::TempDir, crate::LibraryHandle) {
+        let dir = tempfile::tempdir().unwrap();
+        let _lock = library::open(dir.path(), LibraryVersion::new(0, 15))
+            .unwrap()
+            .unwrap();
+        let selected = crate::LibraryHandle {
+            path: dir.path().into(),
+            writer: None,
+        };
+        (dir, selected)
+    }
+    #[tokio::test]
+    async fn app_submission_rechecks_path_lock_and_manifest_and_prevents_duplicates() {
+        let (dir, selected) = fixture();
+        let target = LibraryVersion::new(0, 16);
+        let mut operation = UpgradeState::Idle;
+        assert!(
+            reserve_upgrade(&mut operation, &selected, &dir.path().join("other"), target).is_err()
+        );
+        assert!(matches!(operation, UpgradeState::Idle));
+        assert!(reserve_upgrade(&mut operation, &selected, dir.path(), target).is_ok());
+        assert!(matches!(
+            reserve_upgrade(&mut operation, &selected, dir.path(), target),
+            Err(UpgradeState::Running { .. })
+        ));
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        let reader = Mutex::new(None);
+        assert!(matches!(
+            perform_upgrade(dir.path(), target, &reader, |_| {}).await,
+            UpgradeState::Failed { .. }
+        ));
+        assert_eq!(
+            LibraryManifest::read(dir.path())
+                .unwrap()
+                .unwrap()
+                .migration_target(),
+            None
+        );
+        drop(lock);
+        // An external converter changed the target after submission.
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        drop(
+            LibraryManifest::begin_upgrade(dir.path(), LibraryVersion::new(0, 17), &lock).unwrap(),
+        );
+        drop(lock);
+        assert!(matches!(
+            perform_upgrade(dir.path(), target, &reader, |_| {}).await,
+            UpgradeState::Failed { .. }
+        ));
+        assert_eq!(
+            LibraryManifest::read(dir.path())
+                .unwrap()
+                .unwrap()
+                .migration_target(),
+            Some(LibraryVersion::new(0, 17))
+        );
+    }
+    #[tokio::test]
+    async fn app_failure_retry_and_cli_share_results_and_reopen_through_normal_lock_checks() {
+        let (app_dir, _) = fixture();
+        let (cli_dir, _) = fixture();
+        let target = LibraryVersion::new(0, 16);
+        let reader = Mutex::new(None);
+        std::fs::write(library::pins_path(app_dir.path()), "bad: [").unwrap();
+        assert!(matches!(
+            perform_upgrade(app_dir.path(), target, &reader, |_| {}).await,
+            UpgradeState::Failed { .. }
+        ));
+        assert!(library::open(app_dir.path(), target).unwrap().is_none());
+        std::fs::remove_file(library::pins_path(app_dir.path())).unwrap();
+        let phases = Mutex::new(Vec::new());
+        let result = perform_upgrade(app_dir.path(), target, &reader, |p| {
+            phases.lock().unwrap().push(p.phase)
+        })
+        .await;
+        let UpgradeState::Succeeded { report, .. } = result else {
+            panic!("app retry failed")
+        };
+        assert!(!phases.lock().unwrap().is_empty());
+        let lock = library::acquire_lock(cli_dir.path()).unwrap();
+        let cli_report = library::upgrade_library(cli_dir.path(), &lock, target, |_| {}).await;
+        assert_eq!(
+            serde_json::to_value(report).unwrap(),
+            serde_json::to_value(cli_report).unwrap()
+        );
+        assert_eq!(
+            std::fs::read(app_dir.path().join("library.yaml")).unwrap(),
+            std::fs::read(cli_dir.path().join("library.yaml")).unwrap()
+        );
+        // Migration completion cannot bypass another writer on normal reopen.
+        let other_writer = library::acquire_lock(app_dir.path()).unwrap();
+        assert!(library::open(app_dir.path(), target).unwrap().is_none());
+        drop(other_writer);
+        assert!(library::open(app_dir.path(), target).unwrap().is_some());
+    }
+}
+
+// A failed restart can be retried; simultaneous requests spawn only one successor.
+struct RestartGuard(std::sync::Arc<std::sync::Mutex<UpgradeState>>);
+impl Drop for RestartGuard {
+    fn drop(&mut self) {
+        if let UpgradeState::Succeeded { restarting, .. } = &mut *self.0.lock().unwrap() {
+            *restarting = false;
+        }
+    }
 }

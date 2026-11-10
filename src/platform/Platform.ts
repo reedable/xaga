@@ -51,6 +51,44 @@ export type CreateTopicInput = Omit<
   | "members"
 >;
 
+export type LibraryReadOnlyCause =
+  | "older"
+  | "newer"
+  | "unversioned"
+  | "pending_upgrade"
+  | "pending_other_version"
+  | "invalid_metadata"
+  | "lock_unavailable";
+export type LibraryStatus = {
+  path: string;
+  appVersion: string;
+  storedVersion: string | null;
+  pendingTarget: string | null;
+  readOnlyCause: LibraryReadOnlyCause | null;
+  metadataError: string | null;
+};
+export type LibraryUpgrade =
+  | { state: "idle" }
+  | {
+      state: "running";
+      progress: {
+        phase: "preparing" | "converting" | "finishing";
+        converted: number;
+        unchanged: number;
+        reconciled: number;
+      } | null;
+    }
+  | { state: "failed"; message: string; errors: string[] }
+  | {
+      state: "succeeded";
+      report: {
+        converted: number;
+        unchanged: number;
+        reconciled: number;
+        errors: string[];
+      };
+    };
+
 export interface Platform {
   onError(
     callback: (error: import("./errors").AppError) => void
@@ -69,6 +107,10 @@ export interface Platform {
 
   // Library
   getLibrary(): Promise<string>;
+  getLibraryStatus(): Promise<LibraryStatus>;
+  getLibraryUpgrade(): Promise<LibraryUpgrade>;
+  startLibraryUpgrade(path: string): Promise<LibraryUpgrade>;
+  restartAfterLibraryUpgrade(): Promise<string | null>;
   setLibrary(path: string): Promise<string>;
   /** Whether this instance is read-only for the open library (another xaga
    *  instance holds the library lock). Same name as the Rust accessor, the

@@ -90,6 +90,7 @@ pub(crate) struct LibraryHandle {
 }
 
 pub(crate) struct AppState {
+    pub(crate) library_upgrade: Arc<Mutex<commands::library::UpgradeState>>,
     pub(crate) library: Arc<RwLock<LibraryHandle>>,
     /// The account-wide write right (flock on `settings.json`), shared in-process and
     /// reference-counted so settings writes and the model download never self-contend.
@@ -756,6 +757,7 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .manage(AppState {
+            library_upgrade: Arc::new(Mutex::new(Default::default())),
             library,
             account_lock,
             theme: theme.clone(),

@@ -18,6 +18,8 @@ import EditFeedDialog from "./components/dialogs/EditFeedDialog";
 import EditTopicDialog from "./components/dialogs/EditTopicDialog";
 import { EntityList } from "./components/list/EntityList";
 import { SearchResultList } from "./components/search/SearchResultList";
+import LibraryUpgradeControl from "./components/sidebar/LibraryUpgradeControl";
+import { useLibraryReadOnly } from "./hooks/useLibraryReadOnly";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { TitleBar } from "./components/titlebar/TitleBar";
 import ShortcutsMenu from "./components/ShortcutsMenu";
@@ -34,6 +36,9 @@ import { type Feed, type Topic, type Site, type Filter } from "./types";
 
 export function AppLayout() {
   useStartupFeedRefresh();
+  const isLibraryReadOnly = useLibraryReadOnly();
+  const [libraryBadgeContainer, setLibraryBadgeContainer] =
+    useState<HTMLSpanElement | null>(null);
   const { selectTopic, selectFeed, search } = useRouter();
   const [listFilter, setListFilter] = useState<Filter>("unread");
   const appRef = useRef<HTMLDivElement>(null);
@@ -203,6 +208,9 @@ export function AppLayout() {
         </Alert>
       </Snackbar>
 
+      {isLibraryReadOnly && (
+        <LibraryUpgradeControl badgeContainer={libraryBadgeContainer} />
+      )}
       <div ref={appRef} className={css.App}>
         <Collapse
           in={showSidebar && !autoHideSidebar}
@@ -210,6 +218,7 @@ export function AppLayout() {
           orientation="horizontal"
         >
           <Sidebar
+            libraryBadgeRef={setLibraryBadgeContainer}
             className={css.Sidebar}
             filter={sidebarFilter}
             onFilterChange={setSidebarFilter}

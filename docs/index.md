@@ -10,7 +10,7 @@ The map of `docs/`.
 
 1. [Installation](installation.md) — download, install, and open Xaga on macOS
 
-2. [Library upgrade](library_upgrade.md) — explicitly convert a 0.9 library for 0.10
+2. [Library upgrade](library_upgrade.md) — explicitly upgrade a library through Xaga or the CLI
 
 3. [User guide](user_guide.md) — read, save, annotate, and organize articles
 

@@ -26,6 +26,7 @@ log               = "0.4"
 scraper           = "0.22"
 futures           = "0.3"
 bytes             = "1"
+tempfile          = "3"
 
 # Embeddings pipeline
 fastembed           = "=3.14.1"
@@ -37,5 +38,4 @@ arrow-schema        = "58"
 
 [dev-dependencies]
 tokio               = { version = "1", features = ["rt-multi-thread", "macros"] }
-tempfile            = "3"
 flate2              = "1"

@@ -27,7 +27,7 @@
 
 ## The producer rule
 
-LanceDB has two permitted producers: command handlers, which apply saved user actions, and recovery, which reconciles the database with files. Adding another database write path violates this rule.
+During normal operation, LanceDB has two permitted producers: command handlers, which apply saved user actions, and recovery, which reconciles the database with files. Adding another runtime database write path violates this rule. Explicit library upgrades use the shared core converter under the exclusive library lock, with ordinary runtime writers absent. This migration boundary reconciles derived rows from authoritative files before completing the manifest; app and CLI call the same implementation.
 
 ## What follows from it
 

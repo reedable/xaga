@@ -174,3 +174,10 @@ creation with immediate assignment, recoloring, passage browsing with retained
 tag selection, and read-only assignment display and focus return in a narrow
 drawer. These fixtures do not verify native IPC, library locks, Markdown writes,
 registry transitions, or upgrades; Rust and platform tests cover those boundaries.
+
+`e2e/library-upgrade.spec.ts` covers read-only badge layout in both themes,
+confirmation/cancel, progress, failure/retry, completion/restart failure,
+unversioned and interrupted targets, metadata errors and lock-only status.
+Screenshots attached to confirmation tests support visual review. The capture
+platform owns these scenarios; no personal library is converted. Native browser
+opening, process spawning and disk locks require platform and Rust checks.

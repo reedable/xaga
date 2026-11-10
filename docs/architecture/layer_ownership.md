@@ -1,6 +1,6 @@
 # Layer Ownership
 
-**Core implements logic and file operations. Tauri command handlers coordinate writes and queued work. The CLI handles command-line presentation, migrations, and database management.**
+**Core implements logic and file operations. Tauri command handlers coordinate writes and queued work. The CLI handles command-line presentation and database management. Core owns shared library conversion.**
 
 This document records the standing layer rule.
 
@@ -8,7 +8,7 @@ This document records the standing layer rule.
 
 - **`crates/xaga-core` — logic and file API.** Core’s file operations read and write entities without choosing jobs for the embedding queue. The command handler decides which downstream work to queue.
 - **`src-tauri` command handlers — coordination.** Each handler saves the entity through core, then queues a typed job with the saved values and appropriate priority (see `docs/principles/carry_intent_end_to_end.md`).
-- **`crates/xaga-cli` — presentation, migration, database management.** The CLI does not own interactive CRUD. Its writes are bulk migrations reconciled by recovery; it also inspects and manages the database.
+- **`crates/xaga-cli` — presentation and database management.** The CLI does not own interactive CRUD. Its explicit upgrade command calls core’s shared converter; it also inspects and manages the database.
 
 ## What the rule decides
 
@@ -22,9 +22,10 @@ Code that prints per-file progress or applies CLI-specific early exits mixes log
 
 ## Library version ownership
 
-Core owns `library.yaml`, its schema, parsing, serialization and migration-state
-writes. Before 1.0, the CLI orchestrates library-format conversion through that
-core API. At 1.0, responsibility for executing these migrations will move to core.
-The app supplies its major/minor at runtime and selects read-only mode for a
-library whose completed version does not match or cannot be established. See
+Core owns `library.yaml`, its schema, parsing, serialization, migration-state
+writes, content conversion and cache reconciliation. App and CLI supply their
+runtime major/minor and hold the library lock while calling the shared converter.
+Core reports typed progress and results; dialogs, browser launching and controlled
+restart belong to the app, while terminal output belongs to the CLI. Conversion
+is explicit and is never part of normal startup. See
 [library version metadata](library_version.md).

@@ -35,6 +35,7 @@ type SidebarProps = {
   onFilterChange: (filter: string) => void;
   onAddFeed: () => void;
   onAddTopic: () => void;
+  libraryBadgeRef?: (element: HTMLSpanElement | null) => void;
 };
 
 export function Sidebar({
@@ -43,6 +44,7 @@ export function Sidebar({
   onFilterChange,
   onAddFeed,
   onAddTopic,
+  libraryBadgeRef,
 }: SidebarProps) {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [, abortControllerRef] = useAbortController();
@@ -107,11 +109,9 @@ export function Sidebar({
 
   return (
     <div className={cx(className, css.Sidebar)}>
-      <div ref={toolbarRef} className={css.Buttons}>
+      <div ref={toolbarRef} className={css.Buttons} data-library-toolbar>
         {isLibraryReadOnly && (
-          <Tooltip title="This library is open in read-only mode">
-            <span className={css.ReadOnlyBadge}>Read-only</span>
-          </Tooltip>
+          <span className={css.LibraryBadgeSlot} ref={libraryBadgeRef} />
         )}
         <SidebarSortControl
           className={css.ToolbarButton}

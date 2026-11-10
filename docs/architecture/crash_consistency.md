@@ -109,11 +109,11 @@ handlers enqueue typed `StatePatch` updates after the file mutation. LanceDB's
 Recovery compares the cached boolean with the file independently of the content
 checksum, so recovery repairs a crash between the file write and database update.
 
-The CLI performs the explicit 0.9-to-0.10 conversion under the library write lock.
-The CLI conversion code owns all legacy-format rules. It converts entries sequentially
+Core performs explicit conversion for app and CLI callers under the library write lock.
+The shared converter owns all legacy-format rules. It converts entries sequentially
 with sibling temporary files, file fsync, atomic rename and directory fsync,
 without using the runtime `LibraryWriter`. Core owns the version manifest and its migration-state writes; the legacy
-content conversion rules remain in the CLI. An existing boolean wins over a conflicting legacy `unread` tag;
+content conversion rules also belong to core. An existing boolean wins over a conflicting legacy `unread` tag;
 otherwise the tag determines state.
 The field update and removal of the legacy marker share one atomic replacement.
 Read state is represented by omission, including normalization of explicit false.
@@ -147,7 +147,7 @@ to the UI without waiting for embedding work. The cache is derived from the stor
 with pin-state differences detected independently of content checksums during recovery.
 Missing targets never cause removal of a reference.
 
-The explicit CLI conversion holds the library lock and scans legacy Entry, Topic,
+The explicit shared conversion holds the library lock and scans legacy Entry, Topic,
 and Feed files. For each marker it commits the typed central reference first,
 then atomically replaces the entity file without the legacy marker. A crash in
 between leaves redundant legacy state, never a lost pin. Retrying merges with
@@ -158,14 +158,16 @@ from legacy markers. Conversion and cache errors make the CLI exit nonzero.
 
 ### Library version transitions
 
-The core manifest API atomically records the pending target before the CLI opens
+The core manifest API atomically records the pending target before the shared converter opens
 or changes a cache or converts source files. The last completed version is
 retained while conversion is in progress; an initially unversioned library records
 null as that source version. Only successful conversion and cache reconciliation
 allows core to atomically replace the manifest with the completed target version.
 A crash or reported failure leaves the pending marker, and retry resumes the same
 target. Normal app startup opens mismatched, absent, incomplete or unreadable
-metadata read-only and never alters it. See [library version](library_version.md).
+metadata read-only and never alters it. The app keeps ordinary writes disabled
+through conversion and restart. Restart failure does not undo the completed
+manifest, and reopening always rechecks compatibility and lock ownership. See [library version](library_version.md).
 
 ### Article color markings
 

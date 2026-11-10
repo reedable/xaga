@@ -1733,7 +1733,7 @@ const TRAINING = {
           "Identify which work belongs in core, a Tauri command handler, and the CLI.",
         paragraphs: [
           "When the UI asks Rust to do something, a Tauri command handler receives the request. In Xaga, the handler coordinates the operation: call core to save the change, wait for success, then queue any database update that follows.",
-          "`xaga-core` implements file operations and shared logic. Those operations do not choose embedding jobs. The command-line interface (CLI) handles terminal input and output, database management, and explicit library upgrades. Put each part where its responsibility belongs, regardless of which caller needed it first.",
+          "`xaga-core` implements file operations and shared logic. Those operations do not choose embedding jobs. The command-line interface (CLI) handles terminal input and output, database management, and the terminal presentation of explicit library upgrades. Core implements conversion and cache reconciliation for both the CLI and app. Put each part where its responsibility belongs, regardless of which caller needed it first.",
           "The bookmark commands show the sequence. A handler gets `LibraryWriter`, waits for the color to be saved, and queues `SyncState` with that saved color. The database receives the known change without inferring it from a file event. Likewise, shared validation can belong in core while CLI progress printing remains in the CLI.",
         ],
         example:
@@ -2205,7 +2205,7 @@ const TRAINING = {
           "Explain when a library version changes and why opening a library does not upgrade it.",
         paragraphs: [
           "Xaga’s application version and a library’s stored format version are related but separate facts. Each library records its completed `major.minor` in `library.yaml`. A patch, prerelease, or build suffix does not define a new library format. Installing a new version of Xaga does not rewrite existing library versions.",
-          "Before 1.0, the CLI explicitly upgrades a library while holding its write lock. It records the target version before conversion starts and keeps the last completed version until both files and database have been reconciled. If interrupted, retry must continue toward the same target.",
+          "The app and CLI call the same core converter while holding the library write lock. In the app, choose `Upgrade Library` or `Resume Library Upgrade` from `Read-only` and explicitly confirm after backing up the complete library and closing its other users. Returning requires restoring that backup. A newer library offers `Upgrade Xaga`. Conversion progress and retry remain read-only; success restarts Xaga and normal startup checks write access again. It records the target version before conversion starts and keeps the last completed version until both files and database have been reconciled. If interrupted, retry must continue toward the same target.",
           "Xaga checks this metadata before starting a writer or embedding service. A missing, different, incomplete, or unreadable version opens read-only without rewriting the manifest, creating a cache, or running recovery. A missing manifest does not prove any particular older format. During major version 0, a storage-model change requires a minor-version increment.",
         ],
         example:

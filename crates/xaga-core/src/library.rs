@@ -11,7 +11,11 @@ use std::path::{Path, PathBuf};
 use crate::fs::FileLock;
 
 mod manifest;
+mod status;
+pub use status::{LibraryReadOnlyCause, LibraryStatus};
+mod upgrade;
 pub use manifest::{LibraryFormatError, LibraryManifest, LibraryUpgrade, LibraryVersion};
+pub use upgrade::{UpgradePhase, UpgradeProgress, UpgradeReport, upgrade_library};
 
 const MANIFEST_NAME: &str = "library.yaml";
 fn manifest_path(library_dir: &Path) -> PathBuf {

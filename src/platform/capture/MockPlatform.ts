@@ -21,6 +21,9 @@ export class MockPlatform implements Platform {
   private data = createFixtures();
   private pins: PinTarget[] = [{ type: "topic", id: "observations" }];
   private sequence = 0;
+  private upgrade: import("../Platform").LibraryUpgrade = { state: "idle" };
+  private upgradeAttempts = 0;
+  private upgradePolls = 0;
   private refreshAttempts = 0;
   private scenario = new URLSearchParams(location.search).get("scenario");
   private listeners = new Map<EventName, Set<(value: never) => void>>();
@@ -148,12 +151,92 @@ export class MockPlatform implements Platform {
     this.emit(event, value);
     return value;
   }
+  getLibraryStatus: Platform["getLibraryStatus"] = async () => {
+    const kind = this.scenario?.replace("upgrade-", "");
+    const cause: import("../Platform").LibraryReadOnlyCause | null =
+      kind === "newer"
+        ? "newer"
+        : kind === "pending-other"
+          ? "pending_other_version"
+          : kind === "resume"
+            ? "pending_upgrade"
+            : kind === "invalid"
+              ? "invalid_metadata"
+              : kind === "unversioned"
+                ? "unversioned"
+                : this.scenario?.startsWith("upgrade-")
+                  ? "older"
+                  : (await this.isLibraryReadOnly())
+                    ? "lock_unavailable"
+                    : null;
+    return {
+      path: await this.getLibrary(),
+      appVersion: "0.16",
+      storedVersion:
+        kind === "unversioned" || kind === "invalid"
+          ? null
+          : kind === "newer"
+            ? "0.17"
+            : cause === "older" || cause?.startsWith("pending")
+              ? "0.15"
+              : "0.16",
+      pendingTarget:
+        kind === "pending-other" ? "0.17" : kind === "resume" ? "0.16" : null,
+      readOnlyCause: cause,
+      metadataError:
+        kind === "invalid"
+          ? "The library version metadata is malformed."
+          : null,
+    };
+  };
+  startLibraryUpgrade: Platform["startLibraryUpgrade"] = async (path) => {
+    if (this.upgrade.state === "running" || this.upgrade.state === "succeeded")
+      return structuredClone(this.upgrade);
+    if (path !== (await this.getLibrary()))
+      throw new Error("Selected library changed");
+    this.upgradeAttempts += 1;
+    this.upgradePolls = 0;
+    this.upgrade = {
+      state: "running",
+      progress: {
+        phase: "converting",
+        converted: 2,
+        unchanged: 1,
+        reconciled: 3,
+      },
+    };
+    return structuredClone(this.upgrade);
+  };
+  getLibraryUpgrade: Platform["getLibraryUpgrade"] = async () => {
+    if (this.upgrade.state === "running" && ++this.upgradePolls >= 3) {
+      this.upgrade =
+        this.scenario === "upgrade-failure" && this.upgradeAttempts === 1
+          ? {
+              state: "failed",
+              message:
+                "Library upgrade incomplete. Resolve the reported problems and retry with this Xaga version.",
+              errors: [
+                "A library file could not be converted. Check its permissions and retry.",
+              ],
+            }
+          : {
+              state: "succeeded",
+              report: { converted: 2, unchanged: 1, reconciled: 3, errors: [] },
+            };
+    }
+    return structuredClone(this.upgrade);
+  };
+  restartAfterLibraryUpgrade: Platform["restartAfterLibraryUpgrade"] =
+    async () =>
+      "The library upgrade completed, but Xaga could not restart. Try again, or close Xaga and reopen this library.";
   getLibrary: Platform["getLibrary"] = async () => "/examples/Capture library";
   isLibraryReadOnly: Platform["isLibraryReadOnly"] = async () => {
     if (this.scenario === "read-only-delayed")
       await new Promise((resolve) => setTimeout(resolve, 500));
     return (
-      this.scenario === "read-only" || this.scenario === "read-only-delayed"
+      this.scenario === "read-only" ||
+      this.scenario === "read-only-delayed" ||
+      !!this.scenario?.startsWith("upgrade-")
     );
   };
   embeddingStartupState: Platform["embeddingStartupState"] = async () =>
@@ -225,7 +308,9 @@ export class MockPlatform implements Platform {
   readArticleScope: Platform["readArticleScope"] = async (_signal, id) =>
     this.project(this.article(id));
   readArticle: Platform["readArticle"] = async (_signal, id) =>
-    this.scenario === "read-only" || this.scenario === "read-only-delayed"
+    this.scenario === "read-only" ||
+    this.scenario === "read-only-delayed" ||
+    !!this.scenario?.startsWith("upgrade-")
       ? this.project(this.article(id))
       : this.entryChange(id, { isUnread: false }, "onUnreadChanged");
   findArticle: Platform["findArticle"] = async (_signal, url) => {

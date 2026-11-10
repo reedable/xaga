@@ -10502,14 +10502,9 @@ dependencies = [
 name = "xaga-cli"
 version = "0.16.0-dev"
 dependencies = [
- "arrow-array",
- "arrow-schema",
  "chrono",
  "clap",
  "dirs 5.0.1",
- "flume",
- "lancedb",
- "noyalib",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

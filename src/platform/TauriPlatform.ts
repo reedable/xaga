@@ -516,6 +516,20 @@ export class TauriPlatform implements Platform {
     return invoker<import("./Platform").EmbeddingStartupState>(name);
   }
 
+  async getLibraryStatus(): Promise<import("./Platform").LibraryStatus> {
+    return invoke("get_library_status");
+  }
+  async getLibraryUpgrade(): Promise<import("./Platform").LibraryUpgrade> {
+    return invoke("get_library_upgrade");
+  }
+  async startLibraryUpgrade(
+    path: string
+  ): Promise<import("./Platform").LibraryUpgrade> {
+    return invoke("start_library_upgrade", { path });
+  }
+  async restartAfterLibraryUpgrade(): Promise<string | null> {
+    return invoke("restart_after_library_upgrade");
+  }
   async getLibrary(): Promise<string> {
     const name = "get_library";
     const invoker = decorate(invoke).with(logged, { logger, name });

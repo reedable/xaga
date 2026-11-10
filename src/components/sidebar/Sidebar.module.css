@@ -44,13 +44,28 @@
   }
 
   .ReadOnlyBadge {
+    display: inline-flex;
+    align-items: center;
+    position: relative;
+    z-index: 10;
     align-self: center;
     background-color: red;
     border-radius: 0.75rem;
     color: white;
-    font-size: 0.7rem;
+    font: inherit;
+    font-size: 0.6875rem;
     margin: 0 0.5rem;
-    padding: 0.05rem 0.5rem;
+    padding: 0.0625rem 0.5rem;
+    min-height: 1.25rem;
+    line-height: 1.25rem;
+
+    &:is(button):hover {
+      background-color: #c90000;
+    }
+    &:focus-visible {
+      outline: 0.125rem solid #1976d2;
+      outline-offset: 0.125rem;
+    }
     white-space: nowrap;
   }
 
@@ -68,4 +83,17 @@
       padding: 5px 8px;
     }
   }
+}
+
+.BadgeCaret {
+  font-size: 0.875rem !important;
+  margin-left: 0.125rem;
+}
+.UpgradeParagraph {
+  margin-top: 1rem !important;
+}
+
+.LibraryBadgeSlot {
+  display: inline-flex;
+  align-items: center;
 }

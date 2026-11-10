@@ -1,9 +1,46 @@
 # Upgrading a library
 
-Use the CLI matching the application version you intend to run. The current
-0.15.0-dev CLI upgrades libraries to **0.15**, including annotation tags, nested pin groups, tag identities, color-backed
-article bookmarks, Site pin support, central pin storage, and the reading-state
-conversion below.
+Use Xaga matching the library format you want to run. The current app and CLI
+use format **0.16**. Opening a library does not upgrade it automatically.
+
+## Upgrade in Xaga
+
+1. Back up the complete library and close other processes using it. The write
+   lock excludes participating writers, but it does not exclude existing readers.
+2. Open the library in Xaga. For an older or unversioned library, choose
+   **Read-only ▾ → Upgrade Library** in the sidebar.
+3. Read the confirmation and choose **Upgrade Library**, or **Cancel** to leave
+   the library unchanged. An upgrade cannot be undone in the app. Older versions
+   may no longer use the library safely; restore the complete backup to return.
+4. Keep Xaga open while it reports conversion and cache reconciliation progress.
+   No model download is needed. Closing Xaga cannot roll back committed changes.
+5. After success, Xaga restarts and reopens the same library. Startup checks its
+   version and write lock again; another writer may still keep it read-only.
+
+If conversion fails, inspect **Upgrade problems**, resolve the reported problems,
+and choose **Retry Library Upgrade**. After interruption, the badge offers
+**Resume Library Upgrade** for this Xaga version and explains that changes are
+already partially applied. A different pending target requires the matching Xaga
+version; Xaga never changes that target to make the upgrade proceed.
+
+For a newer library, **Read-only ▾ → Upgrade Xaga** opens the
+[Xaga Releases page](https://github.com/reedable/xaga/releases) in your default
+browser. Metadata errors and unavailable write locks explain their own causes
+without offering an unsafe format upgrade. If restart fails after conversion,
+choose **Restart Xaga** again or close and reopen the same library yourself.
+
+## Upgrade from the CLI
+
+The CLI uses the same core conversion and cache reconciliation as the app.
+Close other library users, back up the complete library, and run the CLI matching
+your destination app version:
+
+```sh
+xaga-cli --data-dir /path/to/library library upgrade
+```
+
+Wait for completion before reopening the library. Failures exit nonzero; resolve
+the errors and rerun with the same destination version.
 
 ## Reading-state format (0.10)
 
@@ -15,7 +52,7 @@ version metadata, or an incomplete upgrade select read-only mode at startup.
 
 1. Close Xaga and other processes using the library.
 2. Back up the library before changing its format.
-3. Run the CLI matching your destination app version (currently 0.15.0-dev):
+3. Run the CLI matching your destination app version (currently 0.16.0-dev):
 
    ```sh
    xaga-cli --data-dir /path/to/library library upgrade
@@ -78,7 +115,7 @@ entity files or cache rows. Cache pin reconciliation applies only to Entry,
 Feed, and Topic targets. Existing Site pins are retained on interrupted retries.
 
 Site pins require library version **0.12** or later. Successful conversion
-advances the manifest to the running CLI’s major/minor version, currently **0.15**.
+advances the manifest to the running caller’s major/minor version, currently **0.16**.
 Version-mismatched libraries open read-only until explicitly upgraded; the app
 never relabels them automatically. Returning to an older app format requires
 restoring the complete backup.
@@ -124,7 +161,7 @@ historical version from file shapes. Several libraries may have different stored
 versions. App startup compares only the selected library with the app's own
 major/minor at runtime.
 
-The manifest is managed by xaga-core. Before conversion, the CLI asks core to
+The manifest is managed by xaga-core. Before conversion, the app or CLI asks core to
 record the pending target; only successful file conversion and cache reconciliation
 allows core to advance the completed version. Failure leaves the pending marker
 for a retry. A versioned library already at the target needs no conversion.
@@ -135,7 +172,7 @@ Startup never rewrites the version to make it match. Read-only opening does not
 perform recovery or initialize an absent cache. Explicit CLI upgrade errors still
 produce a nonzero exit status; close library users before upgrading.
 
-Migration targets use the running CLI’s major/minor version, currently **0.15**;
+Migration targets use the running caller’s major/minor version, currently **0.16**;
 there is no separately assigned library revision number.
 
 ## Entry tag identities (0.14)

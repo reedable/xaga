@@ -30,15 +30,35 @@ specific historical version. Opening an empty directory initializes a new librar
 the running app version while holding the library lock. Only the lock file may
 already exist; directories containing any other files remain unversioned.
 
-Before 1.0, the CLI orchestrates content conversion and cache reconciliation. It
-calls core's `begin_upgrade` while holding the library write lock, before changing
-source files or cache state. Only successful conversion and reconciliation permits
-`complete`, which atomically writes the target as the completed version and
-removes the pending marker. Interruption leaves the pending state available for
-retry. Retrying cannot silently change an in-progress target. Manifest writes
-reuse core's sibling-temporary-file, fsync and atomic-rename implementation.
-At 1.0, responsibility for executing library-format migrations will move into
-core as directed; no automatic runtime migration is implemented now.
+Core implements explicit content conversion and cache reconciliation through
+`library::upgrade_library`, shared by the app and CLI. Callers supply the runtime
+target version and retain the exclusive library lock for the entire operation.
+Core calls `begin_upgrade` before changing source files or cache state. Only
+successful conversion and reconciliation permits `complete`, which atomically
+writes the target as the completed version and removes the pending marker.
+Interruption retains the pending state; retries cannot change its target.
+Manifest writes use sibling temporary files, fsync and atomic rename.
+
+The app exposes typed library status: read-only cause, completed version, pending
+target and app version. An older or unversioned library offers **Upgrade Library**;
+a matching interrupted target offers **Resume Library Upgrade**. A newer library
+offers **Upgrade Xaga**, opening the fixed GitHub Releases page. A different
+pending target requires that matching app. Invalid metadata and lock contention
+explain the problem without offering a format upgrade for those causes.
+
+The app requires explicit confirmation after explaining full backup, restoration,
+older-app compatibility and existing readers. It reserves the operation before
+starting a blocking worker, acquires the exclusive lock and rechecks metadata.
+Progress is typed and polled without blocking the UI. Duplicate submissions and
+library switching cannot start competing operations. Ordinary writes remain
+refused: conversion does not construct a runtime writer. Failures retain read-only
+mode with retry feedback. No embedding model is needed.
+
+On success the app saves the same selected library through the account settings
+funnel, drains its writer if any, and spawns a successor. Spawn or settings failure
+is reported separately from conversion success and permits restart retry. Normal
+startup rechecks compatibility and lock ownership; completion never enables writes
+in the old process. Opening a library still never upgrades it automatically.
 
 ## Runtime opening
 

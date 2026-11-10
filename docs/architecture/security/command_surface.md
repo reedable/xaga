@@ -52,3 +52,17 @@ hashes derive persistence paths. The command checks the library writer before
 acquisition and skips recovery in read-only mode; the writer operation rechecks
 the targeted content snapshot before committing. `receive_image` is a loader
 callback only, validates bytes, and never writes to the library itself.
+
+## Explicit library upgrade
+
+`start_library_upgrade` accepts a path only as an expected-selection check. It
+compares it with the native selected library and uses that native path for all
+operations; a renderer cannot select a different filesystem target. This trusted
+command deliberately bypasses the ordinary read-only write refusal, reserves one
+conversion, requires absence of a runtime writer, acquires the library lock and
+rechecks the manifest. Normal write commands remain refused. The frontend requires
+explicit confirmation; native status and ownership checks remain authoritative.
+`restart_after_library_upgrade` requires a completed operation and matching
+manifest, persists the selected reopening path through account settings, drains
+the writer and reports successor-spawn failure. Loader windows cannot invoke any
+of these commands.

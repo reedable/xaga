@@ -128,13 +128,17 @@ lane; PDF saves leave canonical Markdown and annotations intact. A newly
 downloaded PDF requires the library writer, while validated local reads do not
 require write ownership.
 
-### Explicit 0.9-to-0.10 CLI converter
+### Explicit shared library converter
 
-`xaga-cli library upgrade` is an explicit exception to the runtime writer lane
+The shared converter, called by the app and `xaga-cli library upgrade`, is an explicit exception to the runtime writer lane
 requirement. It holds the exclusive library lock for the entire conversion and
 cache reconciliation, runs file conversions sequentially, and commits each file
 with fsync and atomic replacement. All migration-specific rules and direct cache
-updates live in the CLI; no legacy conversion API is built into core. See the
+updates live in core’s library converter. App submission reserves the operation
+before spawning; concurrent submissions and library switching are refused while
+it runs. The read-only app acquires a separate exclusive lock for conversion,
+without creating a runtime writer or enabling ordinary write commands. Existing
+readers remain possible, so the confirmation tells users to close library users. See the
 [upgrade contract](../library_upgrade.md) and [crash ordering](crash_consistency.md#article-reading-state-and-explicit-library-upgrades).
 
 ### Central pins
@@ -145,7 +149,7 @@ It drains at shutdown. Pinning no longer writes entry tags, Topic tags, or Feed
 categories. Generic `set_pin` and the existing entity pin commands all pass the
 central read-only check and require a writer. The offline converter holds the
 library lock while committing central membership before stripping legacy markers;
-its migration-specific file writes remain in the CLI.
+its migration-specific file writes belong to the shared core converter.
 
 ### Library version manifest
 
@@ -155,6 +159,6 @@ the main webview or starting the writer/service. Empty directories are initializ
 at the app version under the library lock; existing unversioned content is left
 read-only. The existing read-only command check and controls apply
 regardless of whether the cause is a version state or lock contention. An absent
-cache is not created by read-only opening. Explicit pre-1.0 CLI migrations hold
+cache is not created by read-only opening. Explicit app and CLI migrations hold
 the library lock and call the core manifest API before conversion and after
 successful reconciliation. See [library version](library_version.md).

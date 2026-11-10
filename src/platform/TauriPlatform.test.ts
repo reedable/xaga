@@ -657,3 +657,41 @@ it("maps tag browsing annotation results to their parent reference", async () =>
     },
   ]);
 });
+
+it("passes typed library status, selected upgrade path and restart through native IPC", async () => {
+  const platform = new TauriPlatform();
+  const status = {
+    path: "/tmp/selected-library",
+    appVersion: "0.16",
+    storedVersion: "0.15",
+    pendingTarget: null,
+    readOnlyCause: "older",
+    metadataError: null,
+  };
+  invokeMock.mockResolvedValueOnce(status);
+  expect(await platform.getLibraryStatus()).toEqual(status);
+  expect(invokeMock).toHaveBeenLastCalledWith("get_library_status");
+  invokeMock.mockResolvedValueOnce({ state: "running", progress: null });
+  await platform.startLibraryUpgrade(status.path);
+  expect(invokeMock).toHaveBeenLastCalledWith("start_library_upgrade", {
+    path: status.path,
+  });
+  invokeMock.mockResolvedValueOnce({
+    state: "succeeded",
+    report: { converted: 0, unchanged: 0, reconciled: 0, errors: [] },
+  });
+  expect((await platform.getLibraryUpgrade()).state).toBe("succeeded");
+  invokeMock.mockResolvedValueOnce("Restart could not be started");
+  expect(await platform.restartAfterLibraryUpgrade()).toBe(
+    "Restart could not be started"
+  );
+  expect(invokeMock).toHaveBeenLastCalledWith("restart_after_library_upgrade");
+});
+
+it("opens the fixed Xaga releases page through the native browser opener", async () => {
+  const platform = new TauriPlatform();
+  await platform.openUrl("https://github.com/reedable/xaga/releases");
+  expect(openUrlMock).toHaveBeenLastCalledWith(
+    "https://github.com/reedable/xaga/releases"
+  );
+});

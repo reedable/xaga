@@ -1,7 +1,7 @@
-//! Explicit legacy-library conversion to the running CLI’s major/minor version.
-//! All legacy-format knowledge stays in the CLI.
-//! File writes deliberately duplicate the validated atomic persistence mechanics:
-//! this offline converter holds the whole-library lock and has no concurrent writer.
+//! Explicit library conversion shared by the app and CLI.
+//! Migration file writes preserve unrelated source bytes under the whole-library
+//! lock. Unlike runtime writes they bypass current-document normalization; their
+//! strict directory-fsync failures remain reported. See docs/library_upgrade.md.
 use std::{
     collections::BTreeMap,
     fs::{self, File},
@@ -9,20 +9,19 @@ use std::{
     path::Path,
 };
 
+use crate::{embeddings::EmbeddingsDb, fs::FileLock, library};
 use noyalib::{ParserConfig, Value, policy::DenyAnchors};
-use xaga_core::{embeddings::EmbeddingsDb, fs::FileLock, library};
 
-// Matches the application boundary; duplicated for this disposable converter.
-const MAX_MD_BYTES: u64 = 12 * 1024 * 1024;
+use crate::fs::MAX_MD_BYTES;
 // Bound SQL expression size and cache commits at the multi-million-entry target.
 const CACHE_BATCH_SIZE: usize = 1024;
-// Match the service's periodic maintenance pattern, counting CLI batch operations.
+// Match the service's periodic maintenance pattern, counting conversion batch operations.
 const MAINTENANCE_BATCHES: usize = 100;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
-#[derive(Debug, Default)]
-pub(super) struct UpgradeReport {
+#[derive(Debug, Default, Clone, serde::Serialize)]
+pub struct UpgradeReport {
     pub converted: usize,
     pub unchanged: usize,
     pub reconciled: usize,
@@ -190,7 +189,7 @@ fn convert_legacy(raw: &str, convert_reading_state: bool) -> Result<Conversion, 
     let legacy_unread = convert_reading_state && tags.iter().any(|tag| tag == "unread");
     let legacy_bookmark = tags.iter().any(|tag| tag == "bookmark");
     let existing_color = match fields.get("color") {
-        Some(Value::String(value)) if xaga_core::types::COLOR_NAMES.contains(&value.as_str()) => {
+        Some(Value::String(value)) if crate::types::COLOR_NAMES.contains(&value.as_str()) => {
             Some(value.clone())
         }
         Some(Value::Null) | None => None,
@@ -295,7 +294,7 @@ type EntryState = (String, bool, Option<String>, Vec<String>);
 async fn reconcile(
     table: &lancedb::Table,
     states: &[EntryState],
-    registry: &xaga_core::tags::Tags,
+    registry: &crate::tags::Tags,
     _lock: &FileLock,
 ) -> Result<usize, Error> {
     use arrow_array::builder::{ListBuilder, StringBuilder};
@@ -312,7 +311,7 @@ async fn reconcile(
     for (id, unread, color, names) in states {
         if color
             .as_deref()
-            .is_some_and(|value| !xaga_core::types::COLOR_NAMES.contains(&value))
+            .is_some_and(|value| !crate::types::COLOR_NAMES.contains(&value))
         {
             return Err("color must be an annotation palette identifier".into());
         }
@@ -368,7 +367,7 @@ async fn reconcile(
 /// Transfer each reference durably before stripping its legacy marker. This
 /// sequencing remains safe after any individual file or store commit is interrupted.
 async fn convert_pins(dir: &Path, lock: &FileLock) -> Result<(), Error> {
-    use xaga_core::pins::{PinTarget, Pins};
+    use crate::pins::{PinTarget, Pins};
     let mut pins = Pins::read(dir).await?;
     for (folder, extension, kind) in [
         (library::entries_dir(dir), "md", "entry"),
@@ -424,7 +423,7 @@ async fn convert_pins(dir: &Path, lock: &FileLock) -> Result<(), Error> {
 }
 
 fn convert_feed_pin(raw: &str) -> Result<Option<String>, Error> {
-    let mut atom = xaga_core::atom::parse_atom(raw)?;
+    let mut atom = crate::atom::parse_atom(raw)?;
     let before = atom.categories().len();
     atom.categories.retain(|category| {
         !(category.term() == "pinned" && category.scheme() == Some("https://xaga.app/ns/tag"))
@@ -432,9 +431,7 @@ fn convert_feed_pin(raw: &str) -> Result<Option<String>, Error> {
     if atom.categories().len() == before {
         return Ok(None);
     }
-    Ok(Some(String::from_utf8(xaga_core::atom::atom_to_xml(
-        &atom,
-    )?)?))
+    Ok(Some(String::from_utf8(crate::atom::atom_to_xml(&atom)?)?))
 }
 
 fn convert_markdown_pin(raw: &str) -> Result<Option<String>, Error> {
@@ -469,7 +466,20 @@ fn convert_markdown_pin(raw: &str) -> Result<Option<String>, Error> {
     )))
 }
 
-pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeReport {
+/// Convert under the caller's exclusive lock. Progress is advisory; only an
+/// error-free report means the manifest was completed. No model is loaded.
+pub async fn upgrade_library(
+    dir: &Path,
+    lock: &FileLock,
+    target: library::LibraryVersion,
+    progress: impl Fn(UpgradeProgress) + Send + Sync,
+) -> UpgradeReport {
+    progress(UpgradeProgress {
+        phase: UpgradePhase::Preparing,
+        converted: 0,
+        unchanged: 0,
+        reconciled: 0,
+    });
     let mut report = UpgradeReport::default();
     let source_version = match library::LibraryManifest::read(dir) {
         Ok(manifest) => manifest.and_then(|m| m.format_version()),
@@ -481,11 +491,7 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
     let legacy = source_version.is_none_or(|v| v < library::LibraryVersion::new(0, 13));
     let legacy_reading = source_version.is_none_or(|v| v < library::LibraryVersion::new(0, 10));
     let legacy_pins = source_version.is_none_or(|v| v < library::LibraryVersion::new(0, 11));
-    let upgrade = match library::LibraryManifest::begin_upgrade(
-        dir,
-        crate::cmd::library::application_version(),
-        lock,
-    ) {
+    let upgrade = match library::LibraryManifest::begin_upgrade(dir, target, lock) {
         Ok(Some(upgrade)) => upgrade,
         Ok(None) => return report,
         Err(error) => {
@@ -498,13 +504,13 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
     // source bytes and parent-ID transition checkpoints. Validate both stores
     // before advancing metadata; ordinary recovery rebuilds derived assignments.
     if source_version.is_some_and(|v| v >= library::LibraryVersion::new(0, 14)) {
-        if let Err(error) = xaga_core::pins::Pins::read(dir).await {
+        if let Err(error) = crate::pins::Pins::read(dir).await {
             report
                 .errors
                 .push(format!("pin store: {error}; rerun library upgrade"));
             return report;
         }
-        if let Err(error) = xaga_core::tags::Tags::read(dir).await {
+        if let Err(error) = crate::tags::Tags::read(dir).await {
             report
                 .errors
                 .push(format!("tag store: {error}; rerun library upgrade"));
@@ -519,7 +525,7 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
     }
 
     // Use the ordinary writer-open boundary to create an absent cache. Conversion
-    // itself uses direct, narrowly-scoped cache updates owned entirely by this CLI.
+    // itself uses direct, narrowly-scoped cache updates owned by this explicit converter.
     let table = async {
         let db = EmbeddingsDb::open_writer(dir, lock).await?;
         let path = library::index_path(dir);
@@ -569,7 +575,7 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
             .push(format!("pin conversion: {error}; rerun library upgrade"));
         return report;
     }
-    let pins = match xaga_core::pins::Pins::read(dir).await {
+    let pins = match crate::pins::Pins::read(dir).await {
         Ok(pins) => pins,
         Err(error) => {
             report.errors.push(format!("pin store: {error}"));
@@ -603,7 +609,7 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
         let targets: Vec<_> = chunk
             .iter()
             .filter_map(|target| {
-                use xaga_core::pins::PinTarget;
+                use crate::pins::PinTarget;
                 let (kind, id) = match target {
                     PinTarget::Entry { id } => ("entry", id),
                     PinTarget::Feed { id } => ("feed", id),
@@ -642,7 +648,7 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
             return report;
         }
     };
-    let mut registry = match xaga_core::tags::Tags::read(dir).await {
+    let mut registry = match crate::tags::Tags::read(dir).await {
         Ok(registry) => registry,
         Err(e) => {
             report.errors.push(format!("tag store: {e}"));
@@ -655,6 +661,10 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
             .push(format!("cache maintenance: {error}; rerun library upgrade"));
         return report;
     }
+    progress(UpgradeProgress::from_report(
+        UpgradePhase::Converting,
+        &report,
+    ));
     let mut batches = 0usize;
     let mut states = Vec::with_capacity(CACHE_BATCH_SIZE);
     for entry in entries.into_iter().flatten() {
@@ -676,7 +686,7 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
                 let conversion = if legacy {
                     convert_legacy(&raw, legacy_reading)?
                 } else {
-                    let (fm, _) = xaga_core::md::parse_document(&raw)?;
+                    let (fm, _) = crate::md::parse_document(&raw)?;
                     Conversion {
                         rendered: None,
                         is_unread: fm.is_unread.unwrap_or(false),
@@ -708,6 +718,10 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
         if states.len() >= CACHE_BATCH_SIZE {
             reconcile_report(&table, &mut states, &mut registry, dir, lock, &mut report).await;
             batches += 1;
+            progress(UpgradeProgress::from_report(
+                UpgradePhase::Converting,
+                &report,
+            ));
             if batches % MAINTENANCE_BATCHES == 0 {
                 if let Err(error) = maintain_cache(&db, &table).await {
                     report
@@ -770,6 +784,10 @@ pub(super) async fn upgrade_library(dir: &Path, lock: &FileLock) -> UpgradeRepor
                 .push(format!("cache maintenance: {error}; rerun library upgrade"));
         }
     }
+    progress(UpgradeProgress::from_report(
+        UpgradePhase::Finishing,
+        &report,
+    ));
     if report.errors.is_empty() {
         if let Err(error) = upgrade.complete() {
             report
@@ -790,7 +808,7 @@ async fn maintain_cache(db: &EmbeddingsDb, table: &lancedb::Table) -> Result<(),
 async fn reconcile_report(
     table: &lancedb::Table,
     states: &mut Vec<EntryState>,
-    registry: &mut xaga_core::tags::Tags,
+    registry: &mut crate::tags::Tags,
     dir: &Path,
     lock: &FileLock,
     report: &mut UpgradeReport,
@@ -831,7 +849,7 @@ async fn reconcile_report(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xaga_core::{
+    use crate::{
         persistence::articles::read_article,
         types::{Entry, ListEntity},
     };
@@ -957,15 +975,11 @@ mod tests {
         fs::write(library::pins_path(dir.path()), raw).unwrap();
         // Interrupt after announcing the target, before metadata completion.
         drop(
-            library::LibraryManifest::begin_upgrade(
-                dir.path(),
-                crate::cmd::library::application_version(),
-                &lock,
-            )
-            .unwrap(),
+            library::LibraryManifest::begin_upgrade(dir.path(), application_version(), &lock)
+                .unwrap(),
         );
         for _ in 0..2 {
-            let report = upgrade_library(dir.path(), &lock).await;
+            let report = run_upgrade(dir.path(), &lock).await;
             assert!(report.errors.is_empty(), "{report:?}");
             assert_eq!(
                 fs::read_to_string(library::pins_path(dir.path())).unwrap(),
@@ -977,7 +991,7 @@ mod tests {
             library::LibraryManifest::read(dir.path())
                 .unwrap()
                 .unwrap()
-                .matches_version(crate::cmd::library::application_version())
+                .matches_version(application_version())
         );
     }
 
@@ -996,7 +1010,7 @@ mod tests {
         .unwrap();
         let raw = "pins: [{type: group, id: bad, title: '', children: []}]";
         fs::write(library::pins_path(dir.path()), raw).unwrap();
-        let report = upgrade_library(dir.path(), &lock).await;
+        let report = run_upgrade(dir.path(), &lock).await;
         assert!(!report.errors.is_empty());
         assert_eq!(
             fs::read_to_string(library::pins_path(dir.path())).unwrap(),
@@ -1006,15 +1020,15 @@ mod tests {
             !library::LibraryManifest::read(dir.path())
                 .unwrap()
                 .unwrap()
-                .matches_version(crate::cmd::library::application_version())
+                .matches_version(application_version())
         );
         fs::write(library::pins_path(dir.path()), "pins: []\n").unwrap();
-        assert!(upgrade_library(dir.path(), &lock).await.errors.is_empty());
+        assert!(run_upgrade(dir.path(), &lock).await.errors.is_empty());
     }
 
     #[tokio::test]
     async fn upgrade_preserves_site_pins_without_creating_site_cache_rows() {
-        use xaga_core::pins::{PinTarget, Pins};
+        use crate::pins::{PinTarget, Pins};
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
         let pins = Pins {
@@ -1026,7 +1040,7 @@ mod tests {
             ],
         };
         fs::write(library::pins_path(dir.path()), pins.serialize().unwrap()).unwrap();
-        let report = upgrade_library(dir.path(), &lock).await;
+        let report = run_upgrade(dir.path(), &lock).await;
         assert!(report.errors.is_empty(), "{report:?}");
         assert_eq!(Pins::read(dir.path()).await.unwrap(), pins);
         assert_eq!(
@@ -1148,7 +1162,7 @@ custom:
 
     #[tokio::test]
     async fn pin_conversion_retries_preserve_transferred_and_unresolved_references() {
-        use xaga_core::pins::{PinTarget, Pins};
+        use crate::pins::{PinTarget, Pins};
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
         let article = seed(
@@ -1206,7 +1220,7 @@ custom:
             values(&saved)["annotations"],
             values(&document(""))["annotations"]
         );
-        let atom = xaga_core::atom::parse_atom(&fs::read_to_string(&feed).unwrap()).unwrap();
+        let atom = crate::atom::parse_atom(&fs::read_to_string(&feed).unwrap()).unwrap();
         assert_eq!(atom.title().value, "Kept title");
         assert_eq!(atom.entries().len(), 1);
         assert_eq!(atom.categories().len(), 1); // Publisher category survives.
@@ -1226,7 +1240,7 @@ custom:
 
     #[tokio::test]
     async fn pin_conversion_reads_large_atom_and_preserves_feed_data() {
-        use xaga_core::pins::{PinTarget, Pins};
+        use crate::pins::{PinTarget, Pins};
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
         let path = library::feed_path(dir.path(), "large");
@@ -1237,11 +1251,11 @@ custom:
         );
         assert!(raw.len() as u64 > MAX_MD_BYTES);
         fs::write(&path, &raw).unwrap();
-        let mut expected = xaga_core::atom::parse_atom(&raw).unwrap();
+        let mut expected = crate::atom::parse_atom(&raw).unwrap();
         expected.categories.remove(0); // Only the app-local marker is removed.
         convert_pins(dir.path(), &lock).await.unwrap();
         let saved = fs::read_to_string(&path).unwrap();
-        let actual = xaga_core::atom::parse_atom(&saved).unwrap();
+        let actual = crate::atom::parse_atom(&saved).unwrap();
         assert!(
             actual == expected,
             "feed metadata, entries and content must survive conversion"
@@ -1324,7 +1338,7 @@ custom:
         );
         let original = fs::read_to_string(&path).unwrap();
         let article = read_article(dir.path(), "entry").await.unwrap();
-        let mut registry = xaga_core::tags::Tags::default();
+        let mut registry = crate::tags::Tags::default();
         registry
             .discover(article.meta.tags.as_deref().unwrap_or_default())
             .unwrap();
@@ -1332,13 +1346,13 @@ custom:
         let db = EmbeddingsDb::open_writer(dir.path(), &lock).await.unwrap();
         let (tx, _) = flume::unbounded::<Entry>();
         let (annotation_tx, _) = flume::unbounded::<ListEntity>();
-        xaga_core::embeddings::sync_entry_row(&article, &db, &tx, &tx, &annotation_tx)
+        crate::embeddings::sync_entry_row(&article, &db, &tx, &tx, &annotation_tx)
             .await
             .unwrap();
         seed(dir.path(), "read-entry", "color: blue");
         let mut read_article = read_article(dir.path(), "read-entry").await.unwrap();
         read_article.annotations.clear();
-        xaga_core::embeddings::sync_entry_row(&read_article, &db, &tx, &tx, &annotation_tx)
+        crate::embeddings::sync_entry_row(&read_article, &db, &tx, &tx, &annotation_tx)
             .await
             .unwrap();
         let table = table(dir.path(), &lock).await;
@@ -1385,7 +1399,7 @@ custom:
             .execute()
             .await
             .unwrap();
-        let report = upgrade_library(dir.path(), &lock).await;
+        let report = run_upgrade(dir.path(), &lock).await;
         assert!(report.errors.is_empty(), "{report:?}");
         assert_eq!(report.converted, 0);
         assert_eq!(report.unchanged, 2);
@@ -1420,7 +1434,7 @@ custom:
         assert!(row.is_unread && !row.color.is_empty() && row.is_pinned);
         assert_eq!(
             row.tags,
-            xaga_core::tags::Tags::read(dir.path())
+            crate::tags::Tags::read(dir.path())
                 .await
                 .unwrap()
                 .resolver()
@@ -1435,14 +1449,11 @@ custom:
         assert_eq!(annotation.title, "selection");
         assert_eq!(annotation.reference, "entry");
         assert_eq!(annotation.color, "yellow");
-        let report = upgrade_library(dir.path(), &lock).await;
+        let report = run_upgrade(dir.path(), &lock).await;
         assert!(report.errors.is_empty(), "{report:?}");
         assert_eq!(report.reconciled, 0);
         let manifest = library::LibraryManifest::read(dir.path()).unwrap().unwrap();
-        assert_eq!(
-            manifest.format_version(),
-            Some(crate::cmd::library::application_version())
-        );
+        assert_eq!(manifest.format_version(), Some(application_version()));
         assert_eq!(manifest.migration_target(), None);
     }
 
@@ -1457,7 +1468,7 @@ custom:
         let bad_before = fs::read_to_string(&bad).unwrap();
         let lock = library::acquire_lock(first.path()).unwrap();
         assert!(library::acquire_lock(first.path()).is_none());
-        let report = upgrade_library(first.path(), &lock).await;
+        let report = run_upgrade(first.path(), &lock).await;
         assert_eq!(report.converted, 1);
         assert_eq!(report.errors.len(), 1, "{report:?}");
         assert!(
@@ -1476,7 +1487,7 @@ custom:
                 == Some(&Value::Bool(true))
         );
         seed(first.path(), "bad", "tags: [unread]");
-        let report = upgrade_library(first.path(), &lock).await;
+        let report = run_upgrade(first.path(), &lock).await;
         assert!(report.errors.is_empty(), "{report:?}");
         assert_eq!(report.converted, 1);
         assert_eq!(report.unchanged, 1);
@@ -1484,7 +1495,7 @@ custom:
             library::LibraryManifest::read(first.path())
                 .unwrap()
                 .unwrap()
-                .matches_version(crate::cmd::library::application_version())
+                .matches_version(application_version())
         );
     }
 
@@ -1495,15 +1506,12 @@ custom:
         let original = fs::read_to_string(&path).unwrap();
         fs::write(library::index_path(dir.path()), "not a database directory").unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
-        let report = upgrade_library(dir.path(), &lock).await;
+        let report = run_upgrade(dir.path(), &lock).await;
         assert!(!report.errors.is_empty());
         assert!(report.errors[0].contains("cache"));
         let manifest = library::LibraryManifest::read(dir.path()).unwrap().unwrap();
         assert_eq!(manifest.format_version(), None);
-        assert_eq!(
-            manifest.migration_target(),
-            Some(crate::cmd::library::application_version())
-        );
+        assert_eq!(manifest.migration_target(), Some(application_version()));
 
         assert_eq!(fs::read_to_string(&path).unwrap(), original);
     }
@@ -1531,7 +1539,7 @@ custom:
         let db = EmbeddingsDb::open_writer(dir.path(), &lock).await.unwrap();
         let (events, _) = flume::unbounded();
         let (annotations, _) = flume::unbounded();
-        xaga_core::embeddings::sync_entry_row(&article, &db, &events, &events, &annotations)
+        crate::embeddings::sync_entry_row(&article, &db, &events, &events, &annotations)
             .await
             .unwrap();
         let cache = table(dir.path(), &lock).await;
@@ -1551,10 +1559,10 @@ custom:
             .unwrap();
         // A bad file leaves the manifest pending; valid-file work remains durable.
         let bad = seed(dir.path(), "bad", "tags: invalid");
-        let report = upgrade_library(dir.path(), &lock).await;
+        let report = run_upgrade(dir.path(), &lock).await;
         assert!(!report.errors.is_empty());
         assert_eq!(fs::read(&path).unwrap(), original);
-        let first = xaga_core::tags::Tags::read(dir.path()).await.unwrap();
+        let first = crate::tags::Tags::read(dir.path()).await.unwrap();
         assert_eq!(first.tags.len(), 6);
         assert!(
             library::LibraryManifest::read(dir.path())
@@ -1564,12 +1572,9 @@ custom:
                 .is_some()
         );
         fs::write(&bad, document("tags: [Research]")).unwrap();
-        let report = upgrade_library(dir.path(), &lock).await;
+        let report = run_upgrade(dir.path(), &lock).await;
         assert!(report.errors.is_empty(), "{:?}", report.errors);
-        assert_eq!(
-            xaga_core::tags::Tags::read(dir.path()).await.unwrap(),
-            first
-        );
+        assert_eq!(crate::tags::Tags::read(dir.path()).await.unwrap(), first);
         db.reload().await.unwrap();
         let row = db.get_entry("entry").await.unwrap().unwrap();
         assert_eq!(
@@ -1589,7 +1594,7 @@ custom:
         assert_eq!(row.color, "green");
         assert!(row.is_unread);
         assert_eq!(fs::read(&path).unwrap(), original);
-        assert!(upgrade_library(dir.path(), &lock).await.errors.is_empty());
+        assert!(run_upgrade(dir.path(), &lock).await.errors.is_empty());
     }
 
     #[tokio::test]
@@ -1606,13 +1611,13 @@ custom:
         .complete()
         .unwrap();
         let path = seed(dir.path(), "entry", "tags: [unread, pinned, bookmark]");
-        let report = upgrade_library(dir.path(), &lock).await;
+        let report = run_upgrade(dir.path(), &lock).await;
         assert!(report.errors.is_empty(), "{:?}", report.errors);
-        let (fm, _) = xaga_core::md::parse_document(&fs::read_to_string(path).unwrap()).unwrap();
+        let (fm, _) = crate::md::parse_document(&fs::read_to_string(path).unwrap()).unwrap();
         assert_eq!(fm.tags, vec!["unread", "pinned"]);
         assert_eq!(fm.color.as_deref(), Some("blue"));
         assert_ne!(fm.is_unread, Some(true));
-        let registry = xaga_core::tags::Tags::read(dir.path()).await.unwrap();
+        let registry = crate::tags::Tags::read(dir.path()).await.unwrap();
         assert_eq!(registry.tags.len(), 2);
     }
 
@@ -1639,9 +1644,9 @@ custom:
                 &format!("tags: [Research, RESEARCH, tag-{i}]"),
             );
         }
-        let report = upgrade_library(dir.path(), &lock).await;
+        let report = run_upgrade(dir.path(), &lock).await;
         assert!(report.errors.is_empty(), "{:?}", report.errors);
-        let tags = xaga_core::tags::Tags::read(dir.path()).await.unwrap();
+        let tags = crate::tags::Tags::read(dir.path()).await.unwrap();
         assert_eq!(tags.tags.len(), 1028);
         let research = tags.tags.iter().find(|t| t.name == "Research").unwrap();
         for i in [0, 1023, 1024, 1026] {
@@ -1665,7 +1670,7 @@ custom:
             library::LibraryManifest::read(dir.path())
                 .unwrap()
                 .unwrap()
-                .matches_version(crate::cmd::library::application_version())
+                .matches_version(application_version())
         );
     }
     async fn seed_cache_rows(cache: &lancedb::Table, start: usize, end: usize) {
@@ -1782,12 +1787,12 @@ custom:
         );
         let initial_version = cache.version().await.unwrap();
         let started = Instant::now();
-        let report = upgrade_library(lib, &lock).await;
+        let report = run_upgrade(lib, &lock).await;
         let migration_ms = started.elapsed().as_millis();
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert_eq!(report.unchanged, rows);
         assert_eq!(report.reconciled, rows);
-        let registry = xaga_core::tags::Tags::read(lib).await.unwrap();
+        let registry = crate::tags::Tags::read(lib).await.unwrap();
         assert_eq!(registry.tags.len(), 1);
         assert_eq!(registry.tags[0].name, "Research");
         let cache = table(lib, &lock).await;
@@ -1801,13 +1806,13 @@ custom:
             library::LibraryManifest::read(lib)
                 .unwrap()
                 .unwrap()
-                .matches_version(crate::cmd::library::application_version())
+                .matches_version(application_version())
         );
         let started = Instant::now();
-        let retry = upgrade_library(lib, &lock).await;
+        let retry = run_upgrade(lib, &lock).await;
         assert!(retry.errors.is_empty());
         assert_eq!(retry.reconciled, 0);
-        assert_eq!(xaga_core::tags::Tags::read(lib).await.unwrap(), registry);
+        assert_eq!(crate::tags::Tags::read(lib).await.unwrap(), registry);
         println!(
             "tag_curve rows={rows} migration_ms={migration_ms} cache_commits={commits} completed_retry_ms={}",
             started.elapsed().as_millis()
@@ -1834,29 +1839,60 @@ mod annotation_tag_upgrade_tests {
         .unwrap();
         let tag_path = dir.path().join("tags.yaml");
         fs::write(&tag_path, "tags: [invalid").unwrap();
-        let failed = upgrade_library(dir.path(), &lock).await;
+        let failed = run_upgrade(dir.path(), &lock).await;
         assert!(!failed.errors.is_empty());
         let manifest = library::LibraryManifest::read(dir.path()).unwrap().unwrap();
         assert_eq!(
             manifest.format_version(),
             Some(library::LibraryVersion::new(0, 15))
         );
-        assert_eq!(
-            manifest.migration_target(),
-            Some(crate::cmd::library::application_version())
-        );
+        assert_eq!(manifest.migration_target(), Some(application_version()));
         let transition = "tags:\n- id: 46fa4a27-1ddf-448a-a5e6-95691a29c602\n  name: Current\ntransitions:\n- type: rename\n  revision: 0\n  id: 46fa4a27-1ddf-448a-a5e6-95691a29c602\n  old_name: Previous\n  files:\n    complete: false\n    pending: [parent]\n";
         fs::write(&tag_path, transition).unwrap();
-        let report = upgrade_library(dir.path(), &lock).await;
+        let report = run_upgrade(dir.path(), &lock).await;
         assert!(report.errors.is_empty(), "{:?}", report.errors);
         assert_eq!(fs::read_to_string(&tag_path).unwrap(), transition);
         let manifest = library::LibraryManifest::read(dir.path()).unwrap().unwrap();
-        assert_eq!(
-            manifest.format_version(),
-            Some(crate::cmd::library::application_version())
-        );
+        assert_eq!(manifest.format_version(), Some(application_version()));
         assert_eq!(manifest.migration_target(), None);
         assert!(!dir.path().join("embeddings.lance").exists());
-        assert!(upgrade_library(dir.path(), &lock).await.errors.is_empty());
+        assert!(run_upgrade(dir.path(), &lock).await.errors.is_empty());
     }
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpgradePhase {
+    Preparing,
+    Converting,
+    Finishing,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UpgradeProgress {
+    pub phase: UpgradePhase,
+    pub converted: usize,
+    pub unchanged: usize,
+    pub reconciled: usize,
+}
+impl UpgradeProgress {
+    fn from_report(phase: UpgradePhase, report: &UpgradeReport) -> Self {
+        Self {
+            phase,
+            converted: report.converted,
+            unchanged: report.unchanged,
+            reconciled: report.reconciled,
+        }
+    }
+}
+#[cfg(test)]
+fn application_version() -> library::LibraryVersion {
+    library::LibraryVersion::new(
+        env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+        env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+    )
+}
+#[cfg(test)]
+async fn run_upgrade(dir: &Path, lock: &FileLock) -> UpgradeReport {
+    upgrade_library(dir, lock, application_version(), |_| {}).await
 }

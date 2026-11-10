@@ -5,6 +5,7 @@ pub(super) fn test_state(path: PathBuf) -> AppState {
         Arc::new(RwLock::new(value))
     }
     AppState {
+        library_upgrade: Arc::new(Mutex::new(Default::default())),
         library: shared(LibraryHandle { path, writer: None }),
         account_lock: Arc::new(Mutex::new(AccountLock::default())),
         theme: shared("light".into()),
