@@ -255,3 +255,21 @@ it("offers creation only once loading confirms an empty library", async () => {
     container.querySelector('[data-testid="create-topic"]')
   ).not.toBeNull();
 });
+
+it("shows unavailable memberships instead of unchecked topics, and supports retry", async () => {
+  mocks.topics = [topic("existing", "Existing fixture topic")];
+  mocks.listEntryTopics.mockResolvedValueOnce(undefined as unknown as string[]);
+  await act(async () => root.render(<TopicMembership entity={article} />));
+  expect(
+    container.querySelector('[role="alert"]')?.textContent?.trim()
+  ).toBeTruthy();
+  expect(container.querySelector('[role="checkbox"]')).toBeNull();
+  mocks.listEntryTopics.mockResolvedValueOnce(["existing"]);
+  await click(
+    container.querySelector('[data-testid="retry-topic-memberships"]')!
+  );
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(
+    container.querySelector('[role="checkbox"]')?.getAttribute("aria-checked")
+  ).toBe("true");
+});

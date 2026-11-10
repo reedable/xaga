@@ -30,6 +30,8 @@ pub(crate) enum AppError {
     /// A library write was refused because this instance has no library writer.
     #[error("this library is open in read-only mode")]
     ReadOnly,
+    #[error("library read handle unavailable")]
+    LibraryReadUnavailable,
     /// A command was invoked from a window not permitted to call it.
     #[error("command not available from this window")]
     Unauthorized,
@@ -61,6 +63,7 @@ impl AppError {
         match self {
             AppError::Domain(e) => e.code(),
             AppError::ReadOnly => "library:read-only",
+            AppError::LibraryReadUnavailable => "library:read-unavailable",
             AppError::Unauthorized => "command:unauthorized",
             AppError::UnsupportedDownload(_) => "article:unsupported-download",
             AppError::SettingsStaleView => "settings:stale-view",
@@ -77,6 +80,9 @@ impl AppError {
         match self {
             AppError::Domain(e) => e.user_message(),
             AppError::ReadOnly => "This library is open in read-only mode.",
+            AppError::LibraryReadUnavailable => {
+                "Library counts and memberships are unavailable. Retry the upgrade or reopen Xaga."
+            }
             AppError::Unauthorized => "This action isn't available here.",
             AppError::UnsupportedDownload(_) => "This download’s format isn’t supported.",
             AppError::SettingsStaleView => {
@@ -187,6 +193,7 @@ mod tests {
     /// App-layer codes, in variant order. Mirrored in `src/platform/errors.ts`.
     const APP_CODES: &[&str] = &[
         "library:read-only",
+        "library:read-unavailable",
         "command:unauthorized",
         "article:unsupported-download",
         "settings:stale-view",

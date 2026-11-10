@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ExpandMore } from "@mui/icons-material";
 import {
   Alert,
   Button,
@@ -10,9 +9,6 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  Menu,
-  MenuItem,
-  Tooltip,
   useMediaQuery,
 } from "@mui/material";
 import {
@@ -53,7 +49,6 @@ export default function LibraryUpgradeControl({
   const platform = usePlatform();
   const animate = useMediaQuery("(prefers-reduced-motion: no-preference)");
   const [status, setStatus] = useState<LibraryStatus | null>(null);
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(false);
   const [upgrade, setUpgrade] = useState<LibraryUpgrade>({ state: "idle" });
   const [error, setError] = useState<string | null>(null);
@@ -61,23 +56,29 @@ export default function LibraryUpgradeControl({
   const [restarting, setRestarting] = useState(false);
   const submitGuard = useRef(false);
   const mounted = useRef(true);
+  const continued = useRef(false);
   useEffect(() => {
     mounted.current = true;
     platform
       .getLibraryStatus()
       .then((value) => {
-        if (mounted.current) setStatus(value);
+        if (mounted.current) {
+          setStatus(value);
+          if (value.readOnlyCause && !continued.current) setOpen(true);
+        }
       })
       .catch(() => {
-        if (mounted.current)
+        if (mounted.current) {
+          setOpen(true);
           setError(
             "Library status could not be read. Close and reopen Xaga to check the library."
           );
+        }
       });
     platform
       .getLibraryUpgrade()
       .then((value) => {
-        if (mounted.current && value.state !== "idle") {
+        if (mounted.current && !continued.current && value.state !== "idle") {
           setUpgrade(value);
           setOpen(true);
         }
@@ -156,17 +157,22 @@ export default function LibraryUpgradeControl({
   const cause = status?.readOnlyCause;
   const canUpgrade =
     cause === "older" || cause === "unversioned" || cause === "pending_upgrade";
-  const actionable = canUpgrade || cause === "newer";
-  const action =
-    cause === "pending_upgrade" ? "Resume Library Upgrade" : "Upgrade Library";
+  const needsNewApp = cause === "newer" || cause === "pending_other_version";
   const busy = submitting || upgrade.state === "running" || restarting;
   const description = status
     ? explanation(status)
     : (error ?? "Checking library compatibility…");
-  const close = () => {
-    if (!busy) {
+  const close = async () => {
+    if (busy) return;
+    try {
+      await platform.continueLibraryReadOnly();
+      continued.current = true;
       setOpen(false);
       setError(null);
+    } catch {
+      setError(
+        "Read-only startup could not continue. Try again or reopen Xaga."
+      );
     }
   };
   const progress = upgrade.state === "running" ? upgrade.progress : null;
@@ -175,69 +181,33 @@ export default function LibraryUpgradeControl({
     <>
       {badgeContainer &&
         createPortal(
-          <>
-            <Tooltip
-              title={description}
-              slotProps={{ transition: { timeout: animate ? undefined : 0 } }}
-            >
-              {actionable ? (
-                <ButtonBase
-                  data-testid="library-options-trigger"
-                  className={css.ReadOnlyBadge}
-                  data-read-only-cause={cause}
-                  aria-label="Read-only library options"
-                  aria-haspopup="menu"
-                  aria-expanded={!!anchor}
-                  aria-controls={anchor ? "library-options" : undefined}
-                  onClick={(event) => setAnchor(event.currentTarget)}
-                >
-                  Read-only
-                  <ExpandMore className={css.BadgeCaret} />
-                </ButtonBase>
-              ) : (
-                <span
-                  data-testid="library-read-only"
-                  className={css.ReadOnlyBadge}
-                  data-read-only-cause={cause}
-                  tabIndex={0}
-                  aria-label={`Read-only. ${description}`}
-                >
-                  Read-only
-                </span>
-              )}
-            </Tooltip>
-          </>,
+          <ButtonBase
+            data-testid="library-options-trigger"
+            className={css.ReadOnlyBadge}
+            data-read-only-cause={cause}
+            aria-haspopup="dialog"
+            aria-label="Read-only library options"
+            onClick={() => {
+              setOpen(true);
+              setStatus(null);
+              platform
+                .getLibraryStatus()
+                .then(setStatus)
+                .catch(() => {
+                  setError(
+                    "Library status could not be read. Close and reopen Xaga to check the library."
+                  );
+                });
+              platform
+                .getLibraryUpgrade()
+                .then(setUpgrade)
+                .catch(() => {});
+            }}
+          >
+            Read-only
+          </ButtonBase>,
           badgeContainer
         )}
-      <Menu
-        id="library-options"
-        transitionDuration={animate ? "auto" : 0}
-        anchorEl={anchor}
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
-        open={!!anchor && !!badgeContainer}
-        onClose={() => setAnchor(null)}
-      >
-        <MenuItem
-          data-testid={cause === "newer" ? "upgrade-xaga" : "upgrade-library"}
-          onClick={() => {
-            setAnchor(null);
-            setOpen(true);
-            if (cause === "newer") {
-              platform
-                .openUrl(releasesUrl)
-                .then(() => setOpen(false))
-                .catch(() =>
-                  setError(
-                    "The releases page could not be opened. Try Upgrade Xaga again."
-                  )
-                );
-            }
-          }}
-        >
-          {cause === "newer" ? "Upgrade Xaga" : action}
-        </MenuItem>
-      </Menu>
       <Dialog
         open={open}
         transitionDuration={animate ? undefined : 0}
@@ -252,74 +222,88 @@ export default function LibraryUpgradeControl({
             },
           },
         }}
-        onClose={close}
+        onClose={() => void close()}
         aria-labelledby="library-upgrade-title"
+        aria-describedby="library-upgrade-description"
         maxWidth="sm"
         fullWidth
       >
         <DialogTitle id="library-upgrade-title">
           {succeeded
             ? "Library upgrade complete"
-            : cause === "newer"
-              ? "Upgrade Xaga"
-              : cause === "older" && status
-                ? `Upgrade Library from ${status.storedVersion} to ${status.appVersion}`
-                : action}
+            : upgrade.state === "running"
+              ? "Upgrading library"
+              : needsNewApp
+                ? "Upgrade Xaga"
+                : canUpgrade && status
+                  ? `Upgrade Library ${status.storedVersion ? `from ${status.storedVersion} ` : ""}to ${status.appVersion}`
+                  : "Read-only library"}
         </DialogTitle>
         <DialogContent>
-          {cause === "newer" ? (
-            <DialogContentText>{description}</DialogContentText>
-          ) : (
-            <>
-              {(cause === "unversioned" || cause === "pending_upgrade") && (
-                <DialogContentText>{description}</DialogContentText>
-              )}
-              <DialogContentText>
-                Older versions of Xaga cannot safely edit this library after the
-                upgrade.
+          <div id="library-upgrade-description">
+            {succeeded ? (
+              <DialogContentText role="status">
+                {restarting
+                  ? "Restarting Xaga to reopen this library…"
+                  : "Conversion is complete. Restart Xaga to reopen this library."}
               </DialogContentText>
-              <DialogContentText className={css.UpgradeParagraph}>
-                Back up the entire library folder and close other Xaga windows
-                before upgrading. To undo the upgrade, you must restore that
-                backup.
-              </DialogContentText>
-              {upgrade.state === "running" && (
-                <div role="status" className={css.UpgradeParagraph}>
-                  {progress?.phase === "finishing"
-                    ? "Finishing conversion and cache reconciliation…"
-                    : progress?.phase === "converting"
-                      ? "Converting library and reconciling cache…"
-                      : "Preparing library upgrade…"}
-                  {progress && (
-                    <p>
-                      {progress.converted} files converted ·{" "}
-                      {progress.unchanged} unchanged · {progress.reconciled}{" "}
-                      cache entries reconciled
-                    </p>
-                  )}
+            ) : upgrade.state === "running" ? (
+              <div role="status">
+                {progress?.phase === "finishing"
+                  ? "Finishing conversion and cache reconciliation…"
+                  : progress?.phase === "converting"
+                    ? "Converting library and reconciling cache…"
+                    : "Preparing library upgrade…"}
+                {progress && (
                   <p>
-                    Keep Xaga open until the upgrade finishes. Changes already
-                    saved cannot be rolled back by closing Xaga.
+                    {progress.converted} files converted · {progress.unchanged}{" "}
+                    unchanged · {progress.reconciled} cache entries reconciled
                   </p>
-                </div>
-              )}
-              {upgrade.state === "failed" && (
-                <Alert severity="error" className={css.UpgradeParagraph}>
-                  {upgrade.message}
-                  {upgrade.errors.length > 0 && (
-                    <details>
-                      <summary>Upgrade problems</summary>
-                      <ul>
-                        {upgrade.errors.map((message, i) => (
-                          <li key={i}>{message}</li>
-                        ))}
-                      </ul>
-                    </details>
-                  )}
-                </Alert>
-              )}
-            </>
-          )}
+                )}
+                <p>Keep Xaga open until the upgrade finishes.</p>
+              </div>
+            ) : (
+              <>
+                {(cause !== "older" || !canUpgrade) && (
+                  <DialogContentText>{description}</DialogContentText>
+                )}
+                {canUpgrade && (
+                  <>
+                    <DialogContentText>
+                      Older versions of Xaga cannot safely edit this library
+                      after the upgrade.
+                    </DialogContentText>
+                    <DialogContentText className={css.UpgradeParagraph}>
+                      Back up the entire library folder and close other Xaga
+                      windows before upgrading. To undo the upgrade, you must
+                      restore that backup.
+                    </DialogContentText>
+                  </>
+                )}
+                {upgrade.state === "failed" && (
+                  <Alert severity="error" className={css.UpgradeParagraph}>
+                    {upgrade.message}
+                    {upgrade.errors.length > 0 && (
+                      <details>
+                        <summary>Upgrade problems</summary>
+                        <ul>
+                          {upgrade.errors.map((message, i) => (
+                            <li key={i}>{message}</li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </Alert>
+                )}
+              </>
+            )}
+          </div>
+          {(upgrade.state === "failed" || upgrade.state === "succeeded") &&
+            upgrade.read_error && (
+              <Alert severity="warning" className={css.UpgradeParagraph}>
+                {upgrade.read_error}
+              </Alert>
+            )}
           {error && (
             <Alert severity="error" className={css.UpgradeParagraph}>
               {error}
@@ -329,26 +313,19 @@ export default function LibraryUpgradeControl({
         <DialogActions>
           {!busy && (
             <Button
-              data-testid={
-                upgrade.state === "idle" && cause !== "newer"
-                  ? "cancel"
-                  : "close"
-              }
-              onClick={close}
+              data-testid="continue-read-only"
+              onClick={() => void close()}
             >
-              {upgrade.state === "idle" && cause !== "newer"
-                ? "Cancel"
-                : "Close"}
+              Continue read-only
             </Button>
           )}
-          {cause === "newer" ? (
+          {needsNewApp ? (
             <Button
               data-testid="upgrade-xaga"
               onClick={() => {
                 setError(null);
                 platform
                   .openUrl(releasesUrl)
-                  .then(() => setOpen(false))
                   .catch(() =>
                     setError(
                       "The releases page could not be opened. Try Upgrade Xaga again."
@@ -366,7 +343,7 @@ export default function LibraryUpgradeControl({
             >
               Restart Xaga
             </Button>
-          ) : (
+          ) : canUpgrade ? (
             <Button
               data-testid={
                 upgrade.state === "failed"
@@ -376,9 +353,9 @@ export default function LibraryUpgradeControl({
               disabled={busy}
               onClick={() => void start()}
             >
-              {upgrade.state === "failed" ? "Retry Library Upgrade" : action}
+              {upgrade.state === "failed" ? "Retry Library Upgrade" : "Upgrade"}
             </Button>
-          )}
+          ) : null}
         </DialogActions>
       </Dialog>
     </>

@@ -42,19 +42,29 @@ retries with an older app cannot lower a pending target.
 Manifest writes use sibling temporary files, fsync and atomic rename.
 
 The app exposes typed library status: read-only cause, completed version, pending
-target and app version. An older or unversioned library offers **Upgrade Library**;
-an interrupted upgrade targeting this or an earlier version offers
-**Resume Library Upgrade**. A newer library
-offers **Upgrade Xaga**, opening the fixed GitHub Releases page. A pending target newer than the running app requires updating Xaga. Invalid metadata and lock contention
-explain the problem without offering a format upgrade for those causes.
+target and app version. Read-only startup waits for an explicit choice before
+model initialization or download. The explanation dialog is mounted outside the
+embedding readiness gate. **Continue read-only** releases startup; the sidebar
+button reopens the dialog without a tooltip or menu.
 
-The app requires explicit confirmation after explaining full backup, restoration,
-older-app compatibility and existing readers. It reserves the operation before
-starting a blocking worker, acquires the exclusive lock and rechecks metadata.
-Progress is typed and polled without blocking the UI. Duplicate submissions and
-library switching cannot start competing operations. Ordinary writes remain
-refused: conversion does not construct a runtime writer. Failures retain read-only
-mode with retry feedback. No embedding model is needed.
+Older, unversioned and resumable interrupted libraries offer **Upgrade**. A newer
+library or future pending target offers **Upgrade Xaga**, opening the fixed GitHub
+Releases page. Invalid metadata and lock contention explain the problem without
+offering a format upgrade.
+
+Explicit confirmation explains full backup, restoration and older-app
+compatibility. The app reserves the operation before starting a blocking worker,
+acquires the exclusive lock and rechecks metadata. Progress is typed and polled;
+observation failures retry without cancelling conversion. Duplicate submissions
+and library switching cannot start competing operations. Ordinary writes remain
+refused: conversion does not construct a runtime writer. No embedding model is
+needed. Local source failures are collected while independent work continues;
+failed prerequisites stop dependent work and leave the manifest pending.
+
+After conversion, including failure, the app attempts to restore the read handle
+independently of the embedding model. Restart failures retain that handle.
+Recovery failure is explicit: derived reads reject instead of inventing empty
+memberships, unknown counts are hidden, and Topic membership provides retry.
 
 On success the app saves the same selected library through the account settings
 funnel, drains its writer if any, and spawns a successor. Spawn or settings failure

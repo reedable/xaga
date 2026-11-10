@@ -66,6 +66,7 @@ pub fn embedding_startup_state(state: State<'_, AppState>) -> EmbeddingStartupSt
 pub async fn get_all_entities_counts(
     state: State<'_, AppState>,
 ) -> Result<Option<xaga_core::embeddings::AllEntitiesCounts>, AppError> {
+    crate::ensure_library_reads_available(&state)?;
     let db = state.embeddings_read.lock().unwrap().clone();
     let Some(db) = db else {
         return Ok(None);

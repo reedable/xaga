@@ -5,6 +5,7 @@ pub(super) fn test_state(path: PathBuf) -> AppState {
         Arc::new(RwLock::new(value))
     }
     AppState {
+        read_only_startup: Arc::new(tokio::sync::Notify::new()),
         library_upgrade: Arc::new(Mutex::new(Default::default())),
         library: shared(LibraryHandle { path, writer: None }),
         account_lock: Arc::new(Mutex::new(AccountLock::default())),

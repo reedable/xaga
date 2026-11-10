@@ -12,8 +12,8 @@ use crate::{AppState, get_bookmarked_ids, get_unread_ids};
 pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<Feed>, AppError> {
     let library = state.library_path();
     let (unread, bookmarked) = (
-        get_unread_ids(&state).await,
-        get_bookmarked_ids(&state).await,
+        get_unread_ids(&state).await?,
+        get_bookmarked_ids(&state).await?,
     );
     feeds::list_feeds(&library, &unread, &bookmarked)
         .await
@@ -33,8 +33,8 @@ pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, A
         *state.gzip_allowed.read().unwrap(),
     );
     let (unread, bookmarked) = (
-        get_unread_ids(&state).await,
-        get_bookmarked_ids(&state).await,
+        get_unread_ids(&state).await?,
+        get_bookmarked_ids(&state).await?,
     );
     let (feed, created) = feeds::add_feed(
         &client,
@@ -94,8 +94,8 @@ pub async fn refresh_all_feeds(
         *state.gzip_allowed.read().unwrap(),
     );
     let (unread, bookmarked) = (
-        get_unread_ids(&state).await,
-        get_bookmarked_ids(&state).await,
+        get_unread_ids(&state).await?,
+        get_bookmarked_ids(&state).await?,
     );
     let results = feeds::refresh_all_feeds(
         &client,
@@ -161,8 +161,8 @@ pub async fn rename_feed(
 ) -> Result<Feed, AppError> {
     let writer = crate::commands::require_writer(&state)?;
     let (unread, bookmarked) = (
-        get_unread_ids(&state).await,
-        get_bookmarked_ids(&state).await,
+        get_unread_ids(&state).await?,
+        get_bookmarked_ids(&state).await?,
     );
 
     let feed = writer

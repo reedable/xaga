@@ -5,29 +5,37 @@ use format **0.16**. Opening a library does not upgrade it automatically.
 
 ## Upgrade in Xaga
 
-1. Back up the complete library and close other processes using it. The write
-   lock excludes participating writers, but it does not exclude existing readers.
-2. Open the library in Xaga. For an older or unversioned library, choose
-   **Read-only ▾ → Upgrade Library** in the sidebar.
-3. Read the confirmation and choose **Upgrade Library**, or **Cancel** to leave
-   the library unchanged. An upgrade cannot be undone in the app. Older versions
-   may no longer use the library safely; restore the complete backup to return.
+1. Back up the entire library folder and close other Xaga windows.
+2. Open the library. A read-only explanation appears before model initialization
+   or download. Choose **Upgrade** to convert it, or **Continue read-only** to
+   browse without converting. The sidebar's **Read-only** button reopens this
+   dialog.
+3. Read the target version and backup instructions before choosing **Upgrade**.
+   Older versions of Xaga cannot safely edit the upgraded library. To undo the
+   upgrade, restore the complete backup.
 4. Keep Xaga open while it reports conversion and cache reconciliation progress.
-   No model download is needed. Closing Xaga cannot roll back committed changes.
+   Upgrading does not initialize or download a model. Closing Xaga cannot roll
+   back committed changes.
 5. After success, Xaga restarts and reopens the same library. Startup checks its
-   version and write lock again; another writer may still keep it read-only.
+   version and write lock again; another writer can keep it read-only.
 
 If conversion fails, inspect **Upgrade problems**, resolve the reported problems,
-and choose **Retry Library Upgrade**. After interruption, the badge offers
-**Resume Library Upgrade** for this or a newer Xaga version. The converter reapplies the required migrations
-from the original completed version and advances to the running app's format.
-Only a pending target newer than the running app requires updating Xaga.
+and choose **Retry Library Upgrade**. Independent files continue converting when
+one source fails. Required failures leave the original completed version and
+pending target recorded in `library.yaml`. This or a newer Xaga version can retry
+from that original version, including after interruption.
 
-For a newer library, **Read-only ▾ → Upgrade Xaga** opens the
-[Xaga Releases page](https://github.com/reedable/xaga/releases) in your default
-browser. Metadata errors and unavailable write locks explain their own causes
-without offering an unsafe format upgrade. If restart fails after conversion,
-choose **Restart Xaga** again or close and reopen the same library yourself.
+For a newer library or a pending target newer than this app, **Upgrade Xaga**
+opens the [Xaga Releases page](https://github.com/reedable/xaga/releases) in your
+default browser. Metadata errors and unavailable write locks explain their causes
+without offering a format upgrade.
+
+Restart failure is reported separately from conversion success. Choose
+**Restart Xaga** again or close and reopen the same library. Xaga attempts to
+restore read-only database access before restarting, so failed conversion or
+restart can retain counts and memberships. If recovery fails, it identifies the
+unavailable features; unknown counts are hidden and Topic membership offers
+**Retry** rather than displaying unchecked Topics.
 
 ## Upgrade from the CLI
 

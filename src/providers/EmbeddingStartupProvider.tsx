@@ -20,7 +20,7 @@ export function EmbeddingStartupProvider({
           const next = await platform.embeddingStartupState();
           if (cancelled) return;
           setState(next);
-          if (next !== "loading") return;
+          if (next !== "loading" && next !== "awaiting_library_choice") return;
         } catch {
           if (!cancelled) setState("unavailable");
           return;

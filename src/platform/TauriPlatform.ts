@@ -519,6 +519,9 @@ export class TauriPlatform implements Platform {
   async getLibraryStatus(): Promise<import("./Platform").LibraryStatus> {
     return invoke("get_library_status");
   }
+  async continueLibraryReadOnly(): Promise<void> {
+    return invoke("continue_library_read_only");
+  }
   async getLibraryUpgrade(): Promise<import("./Platform").LibraryUpgrade> {
     return invoke("get_library_upgrade");
   }

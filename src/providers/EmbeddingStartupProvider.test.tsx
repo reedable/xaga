@@ -63,3 +63,28 @@ it("fails open to unavailable when the startup-state command fails", async () =>
   await renderProvider();
   expect(observed).toEqual(["loading", "unavailable"]);
 });
+
+it("continues observing after the read-only choice and during initialization", async () => {
+  vi.useFakeTimers();
+  try {
+    platform.embeddingStartupState
+      .mockResolvedValueOnce("awaiting_library_choice")
+      .mockResolvedValueOnce("loading")
+      .mockResolvedValue("unavailable");
+    await renderProvider();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(observed).toEqual([
+      "loading",
+      "awaiting_library_choice",
+      "loading",
+      "unavailable",
+    ]);
+  } finally {
+    vi.useRealTimers();
+  }
+});

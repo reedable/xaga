@@ -162,7 +162,10 @@ export class MockPlatform implements Platform {
     return value;
   }
   getLibraryStatus: Platform["getLibraryStatus"] = async () => {
-    const kind = this.scenario?.replace("upgrade-", "");
+    const kind =
+      this.scenario === "upgrade-status-change" && this.readOnlyContinued
+        ? "pending-other"
+        : this.scenario?.replace("upgrade-", "");
     const cause: import("../Platform").LibraryReadOnlyCause | null =
       kind === "newer"
         ? "newer"
@@ -226,11 +229,23 @@ export class MockPlatform implements Platform {
     return structuredClone(this.upgrade);
   };
   getLibraryUpgrade: Platform["getLibraryUpgrade"] = async () => {
+    if (
+      this.scenario === "upgrade-poll-failure" &&
+      this.upgrade.state === "running" &&
+      this.upgradePolls++ === 0
+    )
+      throw new Error("fixture polling interruption");
     if (this.upgrade.state === "running" && ++this.upgradePolls >= 3) {
       this.upgrade =
-        this.scenario === "upgrade-failure" && this.upgradeAttempts === 1
+        ["upgrade-failure", "upgrade-read-failure"].includes(
+          this.scenario ?? ""
+        ) && this.upgradeAttempts === 1
           ? {
               state: "failed",
+              read_error:
+                this.scenario === "upgrade-read-failure"
+                  ? "Fixture read handle unavailable"
+                  : null,
               message:
                 "Library upgrade incomplete. Resolve the reported problems and retry with this Xaga version.",
               errors: [
@@ -257,8 +272,19 @@ export class MockPlatform implements Platform {
       !!this.scenario?.startsWith("upgrade-")
     );
   };
-  embeddingStartupState: Platform["embeddingStartupState"] = async () =>
-    "available";
+  private readOnlyContinued = false;
+  continueLibraryReadOnly: Platform["continueLibraryReadOnly"] = async () => {
+    this.readOnlyContinued = true;
+  };
+  embeddingStartupState: Platform["embeddingStartupState"] = async () => {
+    if ((await this.isLibraryReadOnly()) && !this.readOnlyContinued)
+      return "awaiting_library_choice";
+    if (this.scenario === "upgrade-model-delayed")
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    return this.scenario === "upgrade-model-unavailable"
+      ? "unavailable"
+      : "available";
+  };
   setWindowTitle: Platform["setWindowTitle"] = async (title) => {
     document.title = title;
   };
@@ -320,7 +346,9 @@ export class MockPlatform implements Platform {
       filter
     );
   getAllEntitiesCounts: Platform["getAllEntitiesCounts"] = async () =>
-    this.counts(this.data.articles.map((a) => a.id));
+    this.scenario === "upgrade-read-failure" && this.upgrade.state === "failed"
+      ? null
+      : this.counts(this.data.articles.map((a) => a.id));
   readEntry: Platform["readEntry"] = async (_signal, id) =>
     this.project(this.article(id));
   readArticleScope: Platform["readArticleScope"] = async (_signal, id) =>
@@ -477,10 +505,16 @@ export class MockPlatform implements Platform {
     this.changed();
     return this.readTopic(signal, id);
   };
-  listEntryTopics: Platform["listEntryTopics"] = async (_signal, id) =>
-    this.data.topics
+  listEntryTopics: Platform["listEntryTopics"] = async (_signal, id) => {
+    if (
+      this.scenario === "upgrade-read-failure" &&
+      this.upgrade.state === "failed"
+    )
+      throw new Error("Fixture memberships unavailable");
+    return this.data.topics
       .filter((t) => t.members.some((m) => m.id === id))
       .map((t) => t.id);
+  };
   listTopicEntities: Platform["listTopicEntities"] = async (
     _signal,
     id,

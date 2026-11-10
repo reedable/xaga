@@ -59,7 +59,10 @@ pub(crate) async fn import_feeds(
         *state.referer_allowed.read().unwrap(),
         *state.gzip_allowed.read().unwrap(),
     );
-    let (unread, bookmarked) = (get_unread_ids(state).await, get_bookmarked_ids(state).await);
+    let (unread, bookmarked) = (
+        get_unread_ids(state).await?,
+        get_bookmarked_ids(state).await?,
+    );
     let mut seen: HashSet<String> = HashSet::new();
     let mut added: Vec<Feed> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
@@ -118,7 +121,10 @@ pub(crate) async fn import_feeds(
 pub(crate) async fn export_feeds(state: &AppState, file_path: &Path) -> Result<(), AppError> {
     let library = state.library_path();
 
-    let (unread, bookmarked) = (get_unread_ids(state).await, get_bookmarked_ids(state).await);
+    let (unread, bookmarked) = (
+        get_unread_ids(state).await?,
+        get_bookmarked_ids(state).await?,
+    );
     let feed_list = feeds::list_feeds(&library, &unread, &bookmarked)
         .await
         .map_err(AppError::from)?;

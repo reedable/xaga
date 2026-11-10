@@ -7,3 +7,5 @@
 3. [Browser capture](browser_capture.md) — deterministic UI examples without Rust or native IPC
 
 4. [Browser integration tests](browser_tests.md) — local and CI workflows against the capture platform
+
+5. [Library upgrade verification](library_upgrade_verification.md) — automated boundaries and desktop smoke checklist

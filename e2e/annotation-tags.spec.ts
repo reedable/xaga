@@ -49,6 +49,11 @@ test("shows annotation assignments read-only in the narrow drawer", async ({
 }) => {
   await page.setViewportSize({ width: 700, height: 900 });
   await page.goto("/?scenario=read-only");
+  await control(
+    page.getByRole("dialog"),
+    "button",
+    "continue-read-only"
+  ).click();
   await expect(page.locator("html")).toHaveAttribute(
     "data-capture-ready",
     "true"

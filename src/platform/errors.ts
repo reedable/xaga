@@ -66,6 +66,7 @@ export const ERROR_CODE = [
   "proxy:blocked",
   // AppError (src-tauri)
   "library:read-only",
+  "library:read-unavailable",
   "command:unauthorized",
   "article:unsupported-download",
   "settings:stale-view",

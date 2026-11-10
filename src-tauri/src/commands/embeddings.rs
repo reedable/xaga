@@ -76,7 +76,7 @@ pub async fn search_by_text(
     .map_err(AppError::from)?;
 
     let (unread, bookmarked) = tokio::join!(get_unread_ids(&state), get_bookmarked_ids(&state));
-    let result = entities::enrich_embedded(&library, entries, &unread, &bookmarked).await;
+    let result = entities::enrich_embedded(&library, entries, &unread?, &bookmarked?).await;
     log::debug!("search_by_text: ok ({} entries)", result.len());
     Ok(result)
 }

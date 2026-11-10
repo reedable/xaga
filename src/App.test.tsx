@@ -5,7 +5,11 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
 
 const mocks = vi.hoisted(() => ({
-  startupState: "loading" as "loading" | "available" | "unavailable",
+  startupState: "loading" as
+    | "loading"
+    | "awaiting_library_choice"
+    | "available"
+    | "unavailable",
   platform: {
     onShutdown: vi.fn().mockResolvedValue(() => {}),
     setWindowTitle: vi.fn().mockResolvedValue(undefined),
@@ -19,6 +23,12 @@ vi.mock("./hooks/useSettings", () => ({
   useSettings: () => ({ library: "/tmp/library" }),
 }));
 vi.mock("./platform/Platform", () => ({ usePlatform: () => mocks.platform }));
+vi.mock("./hooks/useLibraryReadOnly", () => ({
+  useLibraryReadOnly: () => true,
+}));
+vi.mock("./components/sidebar/LibraryUpgradeControl", () => ({
+  default: () => <div data-testid="library-choice" />,
+}));
 vi.mock("./AppLayout", () => ({
   AppLayout: () => <div data-testid="app-layout" />,
 }));
@@ -74,9 +84,7 @@ async function renderWith(state: typeof mocks.startupState) {
 it("waits while embedding startup is loading", async () => {
   await renderWith("loading");
   expect(container.querySelector("[data-testid='app-layout']")).toBeNull();
-  expect(
-    container.querySelector("[data-sites-enabled='false']")
-  ).not.toBeNull();
+  expect(container.querySelector("[data-sites-enabled='false']")).toBeNull();
 });
 
 it("renders the main application when embeddings are available", async () => {
@@ -96,3 +104,11 @@ it("renders the main application when embeddings are unavailable", async () => {
 vi.mock("./providers/PinsProvider", () => ({
   default: ({ children }: { children: ReactNode }) => children,
 }));
+
+it("keeps the library choice mounted ahead of model startup", async () => {
+  await renderWith("awaiting_library_choice");
+  expect(
+    container.querySelector("[data-testid='library-choice']")
+  ).not.toBeNull();
+  expect(container.querySelector("[data-testid='app-layout']")).toBeNull();
+});

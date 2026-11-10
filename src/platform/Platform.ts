@@ -78,9 +78,15 @@ export type LibraryUpgrade =
         reconciled: number;
       } | null;
     }
-  | { state: "failed"; message: string; errors: string[] }
+  | {
+      state: "failed";
+      message: string;
+      errors: string[];
+      read_error?: string | null;
+    }
   | {
       state: "succeeded";
+      read_error?: string | null;
       report: {
         converted: number;
         unchanged: number;
@@ -108,6 +114,7 @@ export interface Platform {
   // Library
   getLibrary(): Promise<string>;
   getLibraryStatus(): Promise<LibraryStatus>;
+  continueLibraryReadOnly(): Promise<void>;
   getLibraryUpgrade(): Promise<LibraryUpgrade>;
   startLibraryUpgrade(path: string): Promise<LibraryUpgrade>;
   restartAfterLibraryUpgrade(): Promise<string | null>;
@@ -478,7 +485,11 @@ export interface Platform {
   ): Promise<UnlistenFn>;
 }
 
-export type EmbeddingStartupState = "loading" | "available" | "unavailable";
+export type EmbeddingStartupState =
+  | "loading"
+  | "awaiting_library_choice"
+  | "available"
+  | "unavailable";
 
 export const PlatformContext = createContext<Platform | null>(null);
 

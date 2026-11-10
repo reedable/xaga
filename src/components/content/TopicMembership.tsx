@@ -1,5 +1,6 @@
 import { Close } from "@mui/icons-material";
 import {
+  Alert,
   Box,
   Button,
   Checkbox,
@@ -99,6 +100,10 @@ export function TopicMembership({ entity }: { entity: Entry | Annotation }) {
     rankTopicsRelatedToEntity,
   } = useTopics(abortControllerRef);
 
+  const [membershipState, setMembershipState] = useState<
+    "loading" | "available" | "unavailable"
+  >("loading");
+  const [membershipRetry, setMembershipRetry] = useState(0);
   const [memberIds, setMemberIds] = useState<Set<string>>(new Set());
   const [filterText, setFilterText] = useState("");
   const [sortBy, setSortBy] = useState<"name" | "relevance">(
@@ -121,17 +126,24 @@ export function TopicMembership({ entity }: { entity: Entry | Annotation }) {
   if (lastEntityId !== entityId) {
     setLastEntityId(entityId);
     setMemberIds(new Set());
+    setMembershipState("loading");
   }
 
   useEffect(() => {
     if (!entityId) return;
     const controller = new AbortController();
+    setMembershipState("loading");
     listEntryTopics(entityId).then((ids) => {
       if (controller.signal.aborted) return;
-      setMemberIds(new Set(ids ?? []));
+      if (ids === undefined) {
+        setMembershipState("unavailable");
+      } else {
+        setMemberIds(new Set(ids));
+        setMembershipState("available");
+      }
     });
     return () => controller.abort();
-  }, [entityId, listEntryTopics, topics]);
+  }, [entityId, listEntryTopics, topics, membershipRetry]);
 
   useEffect(() => {
     if (
@@ -234,11 +246,30 @@ export function TopicMembership({ entity }: { entity: Entry | Annotation }) {
     });
   }, [sortedTopics, filterText, memberIds, sortBy, similarityMap]);
 
-  if (!hasLoaded) {
+  if (!hasLoaded || membershipState === "loading") {
     return (
       <Typography className={css.Filter} role="status" variant="body2">
         Loading Topics…
       </Typography>
+    );
+  }
+
+  if (membershipState === "unavailable") {
+    return (
+      <Alert
+        severity="warning"
+        action={
+          <Button
+            data-testid="retry-topic-memberships"
+            onClick={() => setMembershipRetry((value) => value + 1)}
+          >
+            Retry
+          </Button>
+        }
+      >
+        Topic memberships could not be read. Retry, or reopen Xaga after
+        resolving the library problem.
+      </Alert>
     );
   }
 

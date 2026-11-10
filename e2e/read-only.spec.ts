@@ -5,6 +5,11 @@ for (const scenario of ["read-only", "read-only-delayed"]) {
     page,
   }) => {
     await page.goto(`/?scenario=${scenario}`);
+    await control(
+      page.getByRole("dialog"),
+      "button",
+      "continue-read-only"
+    ).click();
     await expect(page.locator("html")).toHaveAttribute(
       "data-capture-ready",
       "true"

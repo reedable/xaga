@@ -1,3 +1,5 @@
+import LibraryUpgradeControl from "./components/sidebar/LibraryUpgradeControl";
+import { useLibraryReadOnly } from "./hooks/useLibraryReadOnly";
 import { SidebarSortProvider } from "./providers/SidebarSortProvider";
 import { useEffect, useState } from "react";
 import { NavigationProvider } from "./providers/NavigationProvider";
@@ -28,6 +30,12 @@ export default function App({ entryPoint }: { entryPoint: string }) {
   const platform = usePlatform();
   const { library } = useSettings();
   const embeddingStartupState = useEmbeddingStartupState();
+  const isLibraryReadOnly = useLibraryReadOnly();
+  const [libraryBadgeContainer, setLibraryBadgeContainer] =
+    useState<HTMLSpanElement | null>(null);
+  const startupReady =
+    embeddingStartupState === "available" ||
+    embeddingStartupState === "unavailable";
   const [shuttingDown, setShuttingDown] = useState(false);
 
   useEffect(() => {
@@ -56,43 +64,48 @@ export default function App({ entryPoint }: { entryPoint: string }) {
         </MemoryRouter>
       ) : (
         <BrowserRouter>
-          <NavigationProvider>
-            <SidebarSortProvider>
-              <ExpandedListProvider>
-                <PinsProvider>
-                  <TopicsProvider>
-                    <FeedsProvider>
-                      <SitesProvider
-                        enabled={embeddingStartupState === "available"}
-                      >
-                        <TagsProvider
+          {isLibraryReadOnly && (
+            <LibraryUpgradeControl badgeContainer={libraryBadgeContainer} />
+          )}
+          {startupReady && (
+            <NavigationProvider>
+              <SidebarSortProvider>
+                <ExpandedListProvider>
+                  <PinsProvider>
+                    <TopicsProvider>
+                      <FeedsProvider>
+                        <SitesProvider
                           enabled={embeddingStartupState === "available"}
                         >
-                          <Routes>
-                            <Route
-                              path="/"
-                              element={
-                                embeddingStartupState !== "loading" ? (
+                          <TagsProvider
+                            enabled={embeddingStartupState === "available"}
+                          >
+                            <Routes>
+                              <Route
+                                path="/"
+                                element={
                                   <AllEntitiesCountsProvider>
-                                    <AppLayout />
+                                    <AppLayout
+                                      libraryBadgeRef={setLibraryBadgeContainer}
+                                    />
                                     {isCaptureMode && <CaptureReady />}
                                   </AllEntitiesCountsProvider>
-                                ) : null
-                              }
-                            />
-                            <Route
-                              path="*"
-                              element={<Navigate to="/" replace />}
-                            />
-                          </Routes>
-                        </TagsProvider>
-                      </SitesProvider>
-                    </FeedsProvider>
-                  </TopicsProvider>
-                </PinsProvider>
-              </ExpandedListProvider>
-            </SidebarSortProvider>
-          </NavigationProvider>
+                                }
+                              />
+                              <Route
+                                path="*"
+                                element={<Navigate to="/" replace />}
+                              />
+                            </Routes>
+                          </TagsProvider>
+                        </SitesProvider>
+                      </FeedsProvider>
+                    </TopicsProvider>
+                  </PinsProvider>
+                </ExpandedListProvider>
+              </SidebarSortProvider>
+            </NavigationProvider>
+          )}
         </BrowserRouter>
       )}
     </>

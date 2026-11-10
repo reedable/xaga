@@ -57,7 +57,6 @@
     margin: 0 0.5rem;
     padding: 0 0.5rem 0.125rem 0.5rem;
     min-height: 1.25rem;
-    /* line-height: 1.25rem; */
 
     &:is(button):hover {
       background-color: #c90000;
@@ -85,11 +84,6 @@
       padding: 5px 8px;
     }
   }
-}
-
-.BadgeCaret {
-  font-size: 0.875rem !important;
-  margin-left: 0.125rem;
 }
 
 .UpgradeParagraph {

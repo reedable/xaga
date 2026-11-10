@@ -20,6 +20,28 @@ const MAINTENANCE_BATCHES: usize = 100;
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 
+// Scoped to the exact file/library path so parallel failure tests cannot affect
+// each other. Production checkpoints compile down to an infallible no-op.
+fn checkpoint(path: &Path, phase: &str) -> Result<(), Error> {
+    #[cfg(test)]
+    if faults()
+        .lock()
+        .unwrap()
+        .remove(&(path.to_owned(), phase.to_owned()))
+    {
+        return Err(format!("injected failure at {phase}").into());
+    }
+    let _ = (path, phase);
+    Ok(())
+}
+#[cfg(test)]
+fn faults() -> &'static std::sync::Mutex<std::collections::HashSet<(std::path::PathBuf, String)>> {
+    static FAULTS: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashSet<(std::path::PathBuf, String)>>,
+    > = std::sync::OnceLock::new();
+    FAULTS.get_or_init(Default::default)
+}
+
 #[derive(Debug, Default, Clone, serde::Serialize)]
 pub struct UpgradeReport {
     pub converted: usize,
@@ -282,7 +304,9 @@ fn write_atomic(path: &Path, raw: &str, _lock: &FileLock) -> Result<(), Error> {
     let mut temp = tempfile::NamedTempFile::new_in(parent)?;
     temp.write_all(raw.as_bytes())?;
     temp.as_file().sync_all()?;
+    checkpoint(path, "before_replace")?;
     temp.persist(path)?;
+    checkpoint(path, "after_replace")?;
     File::open(parent)?.sync_all()?;
     Ok(())
 }
@@ -366,7 +390,8 @@ async fn reconcile(
 
 /// Transfer each reference durably before stripping its legacy marker. This
 /// sequencing remains safe after any individual file or store commit is interrupted.
-async fn convert_pins(dir: &Path, lock: &FileLock) -> Result<(), Error> {
+async fn convert_pins(dir: &Path, lock: &FileLock) -> Result<Vec<String>, Error> {
+    let mut errors = Vec::new();
     use crate::pins::{PinTarget, Pins};
     let mut pins = Pins::read(dir).await?;
     for (folder, extension, kind) in [
@@ -377,49 +402,59 @@ async fn convert_pins(dir: &Path, lock: &FileLock) -> Result<(), Error> {
         let entries = match fs::read_dir(&folder) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(error) => return Err(error.into()),
-        };
-        for entry in entries {
-            let path = entry?.path();
-            if path.extension().is_none_or(|ext| ext != extension) {
+            Err(error) => {
+                errors.push(format!("{}: {error}", folder.display()));
                 continue;
             }
-            let id = path
-                .file_stem()
-                .and_then(|id| id.to_str())
-                .ok_or("non-UTF-8 target id")?
-                .to_owned();
-            let target = match kind {
-                "entry" => PinTarget::Entry { id },
-                "topic" => PinTarget::Topic { id },
-                _ => PinTarget::Feed { id },
-            };
-            target.validate()?;
-            if !fs::symlink_metadata(&path)?.file_type().is_file() {
-                return Err(format!("{}: expected regular file", path.display()).into());
-            }
-            let converted = (|| -> Result<Option<String>, Error> {
-                if kind == "feed" {
-                    // Stored Atom feeds use the same read contract as runtime
-                    // feed persistence; the Markdown cap does not apply to XML.
-                    convert_feed_pin(&fs::read_to_string(&path)?)
-                } else {
-                    convert_markdown_pin(&read_capped(&path)?)
+        };
+        for entry in entries {
+            let result = (|| -> Result<(), Error> {
+                let path = entry?.path();
+                if path.extension().is_none_or(|ext| ext != extension) {
+                    return Ok(());
                 }
-            })()
-            .map_err(|error| format!("{}: {error}", path.display()))?;
-            if let Some(rendered) = converted {
-                if !pins.contains(&target) {
-                    pins.pins.push(target.into());
-                    // The ordinary parser validates identities, duplicate membership and encoding.
-                    let yaml = pins.serialize()?;
-                    write_atomic(&library::pins_path(dir), &yaml, lock)?;
+                let id = path
+                    .file_stem()
+                    .and_then(|id| id.to_str())
+                    .ok_or("non-UTF-8 target id")?
+                    .to_owned();
+                let target = match kind {
+                    "entry" => PinTarget::Entry { id },
+                    "topic" => PinTarget::Topic { id },
+                    _ => PinTarget::Feed { id },
+                };
+                target.validate()?;
+                if !fs::symlink_metadata(&path)?.file_type().is_file() {
+                    return Err(format!("{}: expected regular file", path.display()).into());
                 }
-                write_atomic(&path, &rendered, lock)?;
+                let converted = (|| -> Result<Option<String>, Error> {
+                    if kind == "feed" {
+                        // Stored Atom feeds use the same read contract as runtime
+                        // feed persistence; the Markdown cap does not apply to XML.
+                        convert_feed_pin(&fs::read_to_string(&path)?)
+                    } else {
+                        convert_markdown_pin(&read_capped(&path)?)
+                    }
+                })()
+                .map_err(|error| format!("{}: {error}", path.display()))?;
+                if let Some(rendered) = converted {
+                    if !pins.contains(&target) {
+                        pins.pins.push(target.into());
+                        // The ordinary parser validates identities, duplicate membership and encoding.
+                        let yaml = pins.serialize()?;
+                        write_atomic(&library::pins_path(dir), &yaml, lock)?;
+                        checkpoint(&path, "pins_committed")?;
+                    }
+                    write_atomic(&path, &rendered, lock)?;
+                }
+                Ok(())
+            })();
+            if let Err(error) = result {
+                errors.push(error.to_string());
             }
         }
     }
-    Ok(())
+    Ok(errors)
 }
 
 fn convert_feed_pin(raw: &str) -> Result<Option<String>, Error> {
@@ -508,18 +543,20 @@ pub async fn upgrade_library(
             report
                 .errors
                 .push(format!("pin store: {error}; rerun library upgrade"));
-            return report;
         }
         if let Err(error) = crate::tags::Tags::read(dir).await {
             report
                 .errors
                 .push(format!("tag store: {error}; rerun library upgrade"));
-            return report;
         }
-        if let Err(error) = upgrade.complete() {
-            report
-                .errors
-                .push(format!("complete library upgrade: {error}"));
+        if report.errors.is_empty() {
+            if let Err(error) = checkpoint(dir, "manifest_complete")
+                .and_then(|_| upgrade.complete().map_err(Into::into))
+            {
+                report
+                    .errors
+                    .push(format!("complete library upgrade: {error}"));
+            }
         }
         return report;
     }
@@ -527,6 +564,7 @@ pub async fn upgrade_library(
     // Use the ordinary writer-open boundary to create an absent cache. Conversion
     // itself uses direct, narrowly-scoped cache updates owned by this explicit converter.
     let table = async {
+        checkpoint(dir, "cache_open")?;
         let db = EmbeddingsDb::open_writer(dir, lock).await?;
         let path = library::index_path(dir);
         let connection = lancedb::connect(path.to_str().ok_or("non-UTF-8 cache path")?)
@@ -565,15 +603,20 @@ pub async fn upgrade_library(
             .push(format!("bookmark schema conversion: {error}"));
         return report;
     }
-    if let Err(error) = if legacy_pins {
-        convert_pins(dir, lock).await
-    } else {
-        Ok(())
-    } {
-        report
-            .errors
-            .push(format!("pin conversion: {error}; rerun library upgrade"));
-        return report;
+    if legacy_pins {
+        match convert_pins(dir, lock).await {
+            Ok(errors) => report.errors.extend(
+                errors
+                    .into_iter()
+                    .map(|e| format!("pin conversion: {e}; rerun library upgrade")),
+            ),
+            Err(error) => {
+                report
+                    .errors
+                    .push(format!("pin conversion: {error}; rerun library upgrade"));
+                return report;
+            }
+        }
     }
     let pins = match crate::pins::Pins::read(dir).await {
         Ok(pins) => pins,
@@ -696,6 +739,7 @@ pub async fn upgrade_library(
                 };
                 if let Some(rendered) = conversion.rendered {
                     write_atomic(&path, &rendered, lock)?;
+                    checkpoint(&path, "source_converted")?;
                     report.converted += 1;
                 } else {
                     report.unchanged += 1;
@@ -778,7 +822,12 @@ pub async fn upgrade_library(
         }
     }
     if report.errors.is_empty() {
-        if let Err(error) = maintain_cache(&db, &table).await {
+        if let Err(error) = async {
+            checkpoint(dir, "cache_finalize")?;
+            maintain_cache(&db, &table).await
+        }
+        .await
+        {
             report
                 .errors
                 .push(format!("cache maintenance: {error}; rerun library upgrade"));
@@ -789,7 +838,9 @@ pub async fn upgrade_library(
         &report,
     ));
     if report.errors.is_empty() {
-        if let Err(error) = upgrade.complete() {
+        if let Err(error) = checkpoint(dir, "manifest_complete")
+            .and_then(|_| upgrade.complete().map_err(Into::into))
+        {
             report
                 .errors
                 .push(format!("complete library upgrade: {error}"));
@@ -836,7 +887,12 @@ async fn reconcile_report(
         states.clear();
         return;
     }
-    match reconcile(table, states, registry, lock).await {
+    match async {
+        checkpoint(dir, "cache_reconcile")?;
+        reconcile(table, states, registry, lock).await
+    }
+    .await
+    {
         Ok(count) => report.reconciled += count,
         Err(error) => report.errors.push(format!(
             "cache reconciliation for batch starting with {}: {error}; rerun library upgrade",
@@ -1283,8 +1339,10 @@ custom:
         fs::write(&path, &raw).unwrap();
         let error = convert_pins(dir.path(), &lock)
             .await
-            .unwrap_err()
-            .to_string();
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
         assert!(error.contains(path.to_str().unwrap()), "{error}");
         assert!(error.contains("12 MiB"), "{error}");
         assert!(
@@ -1307,8 +1365,10 @@ custom:
             fs::write(&path, raw).unwrap();
             let error = convert_pins(dir.path(), &lock)
                 .await
-                .unwrap_err()
-                .to_string();
+                .unwrap()
+                .into_iter()
+                .next()
+                .unwrap();
             assert!(error.contains(path.to_str().unwrap()), "{error}");
             assert_eq!(fs::read_to_string(&path).unwrap(), raw);
         }
@@ -1455,6 +1515,189 @@ custom:
         let manifest = library::LibraryManifest::read(dir.path()).unwrap().unwrap();
         assert_eq!(manifest.format_version(), Some(application_version()));
         assert_eq!(manifest.migration_target(), None);
+    }
+
+    #[tokio::test]
+    async fn interrupted_checkpoints_preserve_source_and_memberships_on_newer_retry() {
+        for phase in [
+            "before_replace",
+            "after_replace",
+            "pins_committed",
+            "source_converted",
+            "cache_open",
+            "cache_reconcile",
+            "cache_finalize",
+            "manifest_complete",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = seed(
+                dir.path(),
+                "000000000000",
+                "tags: [pinned, unread, bookmark, Research]",
+            );
+            let original = fs::read_to_string(&path).unwrap();
+            let lock = library::acquire_lock(dir.path()).unwrap();
+            // Include a real cache row: reconciliation must repair it on retry,
+            // preserving columns owned by other parts of the application.
+            let cache = table(dir.path(), &lock).await;
+            seed_cache_rows(&cache, 0, 1).await;
+            let before_row = EmbeddingsDb::open_readonly(dir.path())
+                .await
+                .unwrap()
+                .get_entry("000000000000")
+                .await
+                .unwrap()
+                .unwrap();
+            let key = if matches!(
+                phase,
+                "before_replace" | "after_replace" | "pins_committed" | "source_converted"
+            ) {
+                path.clone()
+            } else {
+                dir.path().to_owned()
+            };
+            faults().lock().unwrap().insert((key, phase.into()));
+            let report = upgrade_library(
+                dir.path(),
+                &lock,
+                library::LibraryVersion::new(0, 16),
+                |_| {},
+            )
+            .await;
+            assert!(!report.errors.is_empty(), "{phase}: {report:?}");
+            let manifest = library::LibraryManifest::read(dir.path()).unwrap().unwrap();
+            assert_eq!(manifest.format_version(), None, "{phase}");
+            assert_eq!(
+                manifest.migration_target(),
+                Some(library::LibraryVersion::new(0, 16)),
+                "{phase}"
+            );
+            let interrupted = fs::read_to_string(&path).unwrap();
+            // Every exposed source is a complete, parseable document with the
+            // exact body and annotation payload preserved.
+            let fields = values(&interrupted);
+            assert_eq!(
+                fields.get("annotations"),
+                values(&original).get("annotations"),
+                "{phase}"
+            );
+            assert_eq!(
+                interrupted.split_once("\n---\n").unwrap().1,
+                original.split_once("\n---\n").unwrap().1,
+                "{phase}"
+            );
+            if phase == "cache_open" {
+                assert_eq!(interrupted, original);
+            }
+            let retry = upgrade_library(
+                dir.path(),
+                &lock,
+                library::LibraryVersion::new(0, 17),
+                |_| {},
+            )
+            .await;
+            assert!(retry.errors.is_empty(), "{phase}: {retry:?}");
+            let final_source = fs::read_to_string(&path).unwrap();
+            let fields = values(&final_source);
+            assert_eq!(fields.get("is_unread"), Some(&Value::Bool(true)), "{phase}");
+            assert_eq!(
+                fields.get("color"),
+                Some(&Value::String("blue".into())),
+                "{phase}"
+            );
+            let pins = crate::pins::Pins::read(dir.path()).await.unwrap();
+            assert_eq!(
+                pins.targets(),
+                vec![crate::pins::PinTarget::Entry {
+                    id: "000000000000".into()
+                }],
+                "{phase}"
+            );
+            assert!(
+                library::LibraryManifest::read(dir.path())
+                    .unwrap()
+                    .unwrap()
+                    .matches_version(library::LibraryVersion::new(0, 17))
+            );
+            let db = EmbeddingsDb::open_readonly(dir.path()).await.unwrap();
+            let row = db.get_entry("000000000000").await.unwrap().unwrap();
+            assert!(row.is_unread);
+            assert_eq!(row.color, "blue");
+            assert_eq!(row.title, before_row.title);
+            assert_eq!(row.topics, before_row.topics);
+            assert_eq!(row.entities, before_row.entities);
+            assert_eq!(row.vector, before_row.vector);
+            let again = upgrade_library(
+                dir.path(),
+                &lock,
+                library::LibraryVersion::new(0, 17),
+                |_| {},
+            )
+            .await;
+            assert!(again.errors.is_empty());
+            assert_eq!(fs::read_to_string(&path).unwrap(), final_source);
+        }
+    }
+
+    #[tokio::test]
+    async fn unreadable_source_does_not_prevent_independent_conversion() {
+        let dir = tempfile::tempdir().unwrap();
+        let good = seed(dir.path(), "good", "tags: [pinned, unread]");
+        // A directory with a source extension deterministically exercises the
+        // unreadable-file path even under elevated test runners.
+        let bad = library::entry_path(dir.path(), "unreadable");
+        fs::create_dir(&bad).unwrap();
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        let report = run_upgrade(dir.path(), &lock).await;
+        assert!(!report.errors.is_empty());
+        assert!(bad.is_dir());
+        assert_eq!(
+            values(&fs::read_to_string(&good).unwrap()).get("is_unread"),
+            Some(&Value::Bool(true))
+        );
+        assert!(
+            library::LibraryManifest::read(dir.path())
+                .unwrap()
+                .unwrap()
+                .migration_target()
+                .is_some()
+        );
+        fs::remove_dir(&bad).unwrap();
+        let retry = run_upgrade(dir.path(), &lock).await;
+        assert!(retry.errors.is_empty(), "{retry:?}");
+    }
+
+    #[tokio::test]
+    async fn bad_pin_source_does_not_block_independent_files_and_store_retry_is_safe() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad = seed(dir.path(), "bad", "tags: [unfinished");
+        let before = fs::read_to_string(&bad).unwrap();
+        let good = seed(dir.path(), "good", "tags: [pinned, unread]");
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        let report = run_upgrade(dir.path(), &lock).await;
+        assert!(!report.errors.is_empty());
+        assert_eq!(fs::read_to_string(&bad).unwrap(), before);
+        assert_eq!(
+            values(&fs::read_to_string(&good).unwrap()).get("is_unread"),
+            Some(&Value::Bool(true))
+        );
+        assert!(
+            crate::pins::Pins::read(dir.path())
+                .await
+                .unwrap()
+                .contains(&crate::pins::PinTarget::Entry { id: "good".into() })
+        );
+        seed(dir.path(), "bad", "tags: [pinned, unread]");
+        let retry = run_upgrade(dir.path(), &lock).await;
+        assert!(retry.errors.is_empty(), "{retry:?}");
+        assert_eq!(
+            crate::pins::Pins::read(dir.path())
+                .await
+                .unwrap()
+                .targets()
+                .len(),
+            2
+        );
     }
 
     #[tokio::test]

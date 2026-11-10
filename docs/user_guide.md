@@ -10,15 +10,16 @@ Open Library** to select your library folder. See the
 [library upgrade instructions](library_upgrade.md) when preparing a new folder
 or opening a library from an older version. Opening a folder does not upgrade it.
 
-If **Read-only** has a dropdown caret, open it for library options. Choose
-**Upgrade Library** for an older or unversioned library, or **Resume Library
-Upgrade** after interruption. Back up the complete library and close its other
-users before confirming. An upgrade cannot be undone in the app; returning
-requires restoring that backup. Keep Xaga open for progress and retry feedback.
-After success, Xaga restarts and checks write access again. For a newer library,
-choose **Upgrade Xaga** to open the releases page. A badge without a caret explains
-a different cause, such as invalid metadata or an unavailable write lock, on
-hover or keyboard focus.
+A library that opens read-only shows an explanation before model startup. Choose
+**Upgrade** for an older library or interrupted upgrade, or **Continue read-only**
+to browse. The **Read-only** button in the sidebar reopens the explanation.
+Back up the entire library folder and close other Xaga windows before upgrading.
+To undo the upgrade, restore that backup. Keep Xaga open for progress and retry
+feedback; after success it restarts and checks write access again.
+
+For a newer library or upgrade target, **Upgrade Xaga** opens the releases page.
+Invalid metadata and unavailable write access explain their causes without
+an upgrade action. See the [upgrade guide](library_upgrade.md) for recovery.
 
 The examples below use a small fictional library: **Field notes** is a feed,
 **A garden for every season** and **Following the water** are articles, and

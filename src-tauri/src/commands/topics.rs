@@ -109,7 +109,7 @@ pub async fn list_topics(state: State<'_, AppState>) -> Result<Vec<Topic>, AppEr
         .await
         .map_err(AppError::from)?;
 
-    let unread = get_unread_ids(&state).await;
+    let unread = get_unread_ids(&state).await?;
 
     for topic in &mut topics {
         let mut all_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -231,13 +231,12 @@ pub async fn list_entry_topics(
     entry_id: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
+    crate::ensure_library_reads_available(&state)?;
     // Read the entry's topics from the LanceDB reverse index (the `topics` column,
     // maintained by the topic-membership reconcile) instead of scanning every topic file.
     let db = state.embeddings_read.lock().unwrap().clone();
     let Some(db) = db else {
-        return Err(AppError::Message(
-            "embeddings read handle unavailable".to_string(),
-        ));
+        return Err(AppError::LibraryReadUnavailable);
     };
     Ok(db
         .find_topic_ids_by_entity_id(&entry_id)

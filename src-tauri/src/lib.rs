@@ -71,8 +71,15 @@ pub(crate) const DEFAULT_IMPORT_MAX_BYTES: u64 = 64 * 1024 * 1024;
 #[serde(rename_all = "lowercase")]
 pub(crate) enum EmbeddingStartupState {
     Loading,
+    #[serde(rename = "awaiting_library_choice")]
+    AwaitingLibraryChoice,
     Available,
     Unavailable,
+}
+
+async fn await_library_choice(gate: &tokio::sync::Notify, startup: &RwLock<EmbeddingStartupState>) {
+    gate.notified().await;
+    *startup.write().unwrap() = EmbeddingStartupState::Loading;
 }
 
 /// The open library and the write right to it, guarded as ONE unit: the path and the writer
@@ -90,6 +97,7 @@ pub(crate) struct LibraryHandle {
 }
 
 pub(crate) struct AppState {
+    pub(crate) read_only_startup: Arc<tokio::sync::Notify>,
     pub(crate) library_upgrade: Arc<Mutex<commands::library::UpgradeState>>,
     pub(crate) library: Arc<RwLock<LibraryHandle>>,
     /// The account-wide write right (flock on `settings.json`), shared in-process and
@@ -227,23 +235,47 @@ impl AppState {
     }
 }
 
-/// The set of unread entry ids, read from LanceDB (the `is_unread` Bitmap index) via the shared
-/// read handle. Reloads first (handles are version-pinned); empty if the handle isn't ready.
-pub(crate) async fn get_unread_ids(state: &AppState) -> std::collections::HashSet<String> {
-    let db = state.embeddings_read.lock().unwrap().clone();
-    let Some(db) = db else {
-        return Default::default();
-    };
-    db.unread_ids().await.unwrap_or_default()
+/// Refuse derived reads while conversion has detached the handle, or if recovery
+/// could not reopen it. Never translate that condition into empty memberships.
+fn ensure_library_reads_available(state: &AppState) -> Result<(), error::AppError> {
+    use commands::library::UpgradeState;
+    if matches!(
+        &*state.library_upgrade.lock().unwrap(),
+        UpgradeState::Running { .. }
+            | UpgradeState::Failed {
+                read_error: Some(_),
+                ..
+            }
+            | UpgradeState::Succeeded {
+                read_error: Some(_),
+                ..
+            }
+    ) {
+        return Err(error::AppError::LibraryReadUnavailable);
+    }
+    Ok(())
 }
 
-/// The set of bookmarked entry ids, read from LanceDB (the `color` Bitmap index).
-pub(crate) async fn get_bookmarked_ids(state: &AppState) -> std::collections::HashSet<String> {
+pub(crate) async fn get_unread_ids(
+    state: &AppState,
+) -> Result<std::collections::HashSet<String>, error::AppError> {
+    ensure_library_reads_available(state)?;
     let db = state.embeddings_read.lock().unwrap().clone();
     let Some(db) = db else {
-        return Default::default();
+        return Ok(Default::default());
     };
-    db.get_bookmarked_ids().await.unwrap_or_default()
+    db.unread_ids().await.map_err(error::AppError::from)
+}
+
+pub(crate) async fn get_bookmarked_ids(
+    state: &AppState,
+) -> Result<std::collections::HashSet<String>, error::AppError> {
+    ensure_library_reads_available(state)?;
+    let db = state.embeddings_read.lock().unwrap().clone();
+    let Some(db) = db else {
+        return Ok(Default::default());
+    };
+    db.get_bookmarked_ids().await.map_err(error::AppError::from)
 }
 
 // ── Settings helpers ───────────────────────────────────────────────────────────
@@ -752,11 +784,14 @@ pub fn run() {
     let setup_reader_line_height = Arc::clone(&html_reader_line_height);
     let setup_svc = Arc::clone(&embedding_service);
     let setup_embedding_query_model = Arc::clone(&embedding_query_model);
+    let read_only_startup = Arc::new(tokio::sync::Notify::new());
+    let setup_read_only_startup = Arc::clone(&read_only_startup);
     let setup_embedding_startup_state = Arc::clone(&embedding_startup_state);
     let setup_settings_baseline = Arc::clone(&settings_baseline);
 
     let app = tauri::Builder::default()
         .manage(AppState {
+            read_only_startup,
             library_upgrade: Arc::new(Mutex::new(Default::default())),
             library,
             account_lock,
@@ -1257,7 +1292,13 @@ pub fn run() {
             // instance will not write to LanceDB.
             let app_handle = app.handle().clone();
             let account_settings_path = settings_path.clone();
+            if service_lock.is_none() {
+                *setup_embedding_startup_state.write().unwrap() = EmbeddingStartupState::AwaitingLibraryChoice;
+            }
             tauri::async_runtime::spawn(async move {
+                if service_lock.is_none() {
+                    await_library_choice(&setup_read_only_startup, &setup_embedding_startup_state).await;
+                }
                 // Model download (caller-acquires the account right): outer check, then take an
                 // in-process account lease held across the whole fetch (so a concurrent settings
                 // write shares the same handle instead of self-contending). Another process
@@ -1294,24 +1335,38 @@ pub fn run() {
                     // `.md` side (no live watcher; recovery-at-startup is the answer).
                     let db = EmbeddingsDb::open_readonly(&lib_path).await;
                     let model = xaga_core::embeddings::load_default_embedder().await;
-                    match (db, model) {
-                        (Ok(db), Ok(model)) => {
+                    let db_available = match db {
+                        Ok(db) => {
                             *setup_embeddings_read.lock().unwrap() = Some(db);
+                            // A subsequent normal startup can recover a handle
+                            // that the immediate post-conversion reopen lacked.
+                            use commands::library::UpgradeState;
+                            if let UpgradeState::Failed { read_error, .. }
+                                | UpgradeState::Succeeded { read_error, .. } = &mut *app_handle.state::<AppState>().library_upgrade.lock().unwrap() {
+                                *read_error = None;
+                            }
+                            true
+                        }
+                        Err(e) => {
+                            log::error!("startup: read-only embeddings open failed: {e}");
+                            false
+                        }
+                    };
+                    let model_available = match model {
+                        Ok(model) => {
                             *setup_embedding_query_model.lock().unwrap() = Some(model);
-                            *setup_embedding_startup_state.write().unwrap() =
-                                EmbeddingStartupState::Available;
+                            true
                         }
-                        (db, model) => {
-                            if let Err(e) = db {
-                                log::error!("startup: read-only embeddings open failed: {e}");
-                            }
-                            if let Err(e) = model {
-                                log::error!("startup: read-only embedding model failed: {e}");
-                            }
-                            *setup_embedding_startup_state.write().unwrap() =
-                                EmbeddingStartupState::Unavailable;
+                        Err(e) => {
+                            log::error!("startup: read-only embedding model failed: {e}");
+                            false
                         }
-                    }
+                    };
+                    *setup_embedding_startup_state.write().unwrap() = if db_available && model_available {
+                        EmbeddingStartupState::Available
+                    } else {
+                        EmbeddingStartupState::Unavailable
+                    };
                     return;
                 };
 
@@ -1886,10 +1941,49 @@ mod remote_image_setting_tests {
 mod embedding_startup_state_tests {
     use super::EmbeddingStartupState;
 
+    #[tokio::test]
+    async fn model_work_is_not_started_until_explicit_choice_even_if_it_would_fail_or_stall() {
+        use std::sync::{
+            RwLock,
+            atomic::{AtomicBool, Ordering},
+        };
+        let gate = tokio::sync::Notify::new();
+        let startup = RwLock::new(EmbeddingStartupState::AwaitingLibraryChoice);
+        let model_called = AtomicBool::new(false);
+        let initialization = async {
+            super::await_library_choice(&gate, &startup).await;
+            model_called.store(true, Ordering::SeqCst);
+            // Offline/failed initialization is independent of the choice gate.
+            Err::<(), _>("fixture offline model")
+        };
+        tokio::pin!(initialization);
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(10), &mut initialization)
+                .await
+                .is_err()
+        );
+        assert!(!model_called.load(Ordering::SeqCst));
+        assert_eq!(
+            *startup.read().unwrap(),
+            EmbeddingStartupState::AwaitingLibraryChoice
+        );
+        gate.notify_one();
+        assert!(initialization.await.is_err());
+        assert!(model_called.load(Ordering::SeqCst));
+        assert_eq!(*startup.read().unwrap(), EmbeddingStartupState::Loading);
+        // A click arriving before the task waits is retained, not lost.
+        gate.notify_one();
+        super::await_library_choice(&gate, &startup).await;
+    }
+
     #[test]
     fn states_serialize_for_the_frontend_contract() {
         for (state, expected) in [
             (EmbeddingStartupState::Loading, "\"loading\""),
+            (
+                EmbeddingStartupState::AwaitingLibraryChoice,
+                "\"awaiting_library_choice\"",
+            ),
             (EmbeddingStartupState::Available, "\"available\""),
             (EmbeddingStartupState::Unavailable, "\"unavailable\""),
         ] {
