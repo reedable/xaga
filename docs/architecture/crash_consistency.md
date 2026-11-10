@@ -163,8 +163,10 @@ or changes a cache or converts source files. The last completed version is
 retained while conversion is in progress; an initially unversioned library records
 null as that source version. Only successful conversion and cache reconciliation
 allows core to atomically replace the manifest with the completed target version.
-A crash or reported failure leaves the pending marker, and retry resumes the same
-target. Normal app startup opens mismatched, absent, incomplete or unreadable
+A crash or reported failure leaves the pending marker. The same or a newer app
+can retry, reapplying migrations from the original completed version. A newer
+retry atomically advances the pending target before mutation; older apps cannot
+lower it. Normal app startup opens mismatched, absent, incomplete or unreadable
 metadata read-only and never alters it. The app keeps ordinary writes disabled
 through conversion and restart. Restart failure does not undo the completed
 manifest, and reopening always rechecks compatibility and lock ownership. See [library version](library_version.md).

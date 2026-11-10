@@ -189,9 +189,10 @@ async function render(
   });
 }
 async function selectFilter(filter: string) {
-  const label = filter[0].toUpperCase() + filter.slice(1);
   await act(async () =>
-    container.querySelector<HTMLElement>(`[aria-label="${label}"]`)!.click()
+    container
+      .querySelector<HTMLElement>(`[data-testid="filter-${filter}"]`)!
+      .click()
   );
 }
 beforeEach(() => {
@@ -414,13 +415,13 @@ it("preserves a Site's open Saved list when article color is removed", async () 
   await render({ siteHostname: "example.org", filter: "saved" });
   expect(mocks.sites.listSiteEntries).toHaveBeenCalledOnce();
   const before = rows()[0];
-  expect(before.textContent).toContain("Bookmarked, Blue");
+  expect(before.getAttribute("data-bookmark-color")).toBe("blue");
   await act(async () =>
     mocks.callbacks.onBookmarkChanged({ ...marked, color: undefined } as never)
   );
   expect(rows()).toHaveLength(1);
   expect(rows()[0]).toBe(before);
-  expect(before.textContent).not.toContain("Bookmarked");
+  expect(before.getAttribute("data-bookmark-color") ?? "").toBe("");
   expect(mocks.sites.listSiteEntries).toHaveBeenCalledOnce();
   expect(route.state.siteHostname).toBe("example.org");
 });
@@ -428,24 +429,22 @@ it("preserves a Site's open Saved list when article color is removed", async () 
 it("updates the article bookmark label on assignment, recoloring, and removal", async () => {
   await render({ articleScopeId: article.id });
   const row = rows()[0];
-  expect(row.textContent).not.toContain("Bookmarked");
+  expect(row.getAttribute("data-bookmark-color") ?? "").toBe("");
   for (const color of ["blue", "red", "orange", "yellow", "green", "violet"]) {
     await act(async () =>
       mocks.callbacks.onBookmarkChanged({ ...article, color } as never)
     );
     expect(rows()[0]).toBe(row);
-    expect(row.textContent).toContain(
-      `Bookmarked, ${color[0].toUpperCase()}${color.slice(1)}`
-    );
+    expect(row.getAttribute("data-bookmark-color")).toBe(color);
   }
   await act(async () =>
     mocks.callbacks.onBookmarkChanged({ ...article, color: undefined } as never)
   );
   expect(rows()[0]).toBe(row);
-  expect(row.textContent).not.toContain("Bookmarked");
+  expect(row.getAttribute("data-bookmark-color") ?? "").toBe("");
   expect(rows()).toHaveLength(3);
-  expect(rows()[1].textContent).not.toContain("Bookmarked");
-  expect(rows()[2].textContent).not.toContain("Bookmarked");
+  expect(rows()[1].getAttribute("data-bookmark-color") ?? "").toBe("");
+  expect(rows()[2].getAttribute("data-bookmark-color") ?? "").toBe("");
 });
 
 it("keeps an empty Site selected when unpinned and opens its Settings", async () => {
@@ -662,7 +661,11 @@ it("updates renamed or missing labels without reloading the active list", async 
   expect(mocks.tagEntries).toHaveBeenCalledOnce();
   mocks.tagContext.tags = [];
   await selectFilter("saved");
-  expect(container.querySelector('[role="combobox"]')).not.toBeNull();
+  expect(mocks.tagEntries).toHaveBeenLastCalledWith(
+    expect.any(AbortSignal),
+    ["tag-a"],
+    "saved"
+  );
   expect(route.state.tagIds).toEqual(["tag-a"]);
 });
 
@@ -715,8 +718,8 @@ it("provides Tab access to tag actions inside the responsive selector without se
       })
     );
   });
-  expect(document.activeElement?.getAttribute("aria-label")).toBe(
-    "Actions for Research"
+  expect(document.activeElement).toBe(
+    option.closest("li")?.querySelector("[data-tag-action]")
   );
   expect(route.state.tagIds).toEqual(["tag-a"]);
 });

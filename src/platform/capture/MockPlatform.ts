@@ -54,6 +54,16 @@ export class MockPlatform implements Platform {
         members: [],
       });
     }
+    if (this.scenario === "refresh-many-failures") {
+      for (let i = 1; i < 14; i++)
+        this.data.feeds.push({
+          ...this.data.feeds[0],
+          id: `failed-${i}`,
+          title: `Additional feed ${i}`,
+          url: `https://feed-${i}.example/feed.xml`,
+          members: [],
+        });
+    }
     if (localStorage.getItem("xaga-capture-sidebar-sort") === "alphabetical")
       this.sidebarSort = "alphabetical";
   }
@@ -158,7 +168,7 @@ export class MockPlatform implements Platform {
         ? "newer"
         : kind === "pending-other"
           ? "pending_other_version"
-          : kind === "resume"
+          : kind === "resume" || kind === "resume-earlier"
             ? "pending_upgrade"
             : kind === "invalid"
               ? "invalid_metadata"
@@ -175,13 +185,21 @@ export class MockPlatform implements Platform {
       storedVersion:
         kind === "unversioned" || kind === "invalid"
           ? null
-          : kind === "newer"
-            ? "0.17"
-            : cause === "older" || cause?.startsWith("pending")
-              ? "0.15"
-              : "0.16",
+          : kind === "resume-earlier"
+            ? "0.9"
+            : kind === "newer"
+              ? "0.17"
+              : cause === "older" || cause?.startsWith("pending")
+                ? "0.15"
+                : "0.16",
       pendingTarget:
-        kind === "pending-other" ? "0.17" : kind === "resume" ? "0.16" : null,
+        kind === "pending-other"
+          ? "0.17"
+          : kind === "resume-earlier"
+            ? "0.12"
+            : kind === "resume"
+              ? "0.16"
+              : null,
       readOnlyCause: cause,
       metadataError:
         kind === "invalid"
@@ -632,6 +650,16 @@ export class MockPlatform implements Platform {
         members: [],
       });
     }
+    if (this.scenario === "refresh-many-failures") {
+      for (let i = 1; i < 14; i++)
+        this.data.feeds.push({
+          ...this.data.feeds[0],
+          id: `failed-${i}`,
+          title: `Additional feed ${i}`,
+          url: `https://feed-${i}.example/feed.xml`,
+          members: [],
+        });
+    }
     if (localStorage.getItem("xaga-capture-sidebar-sort") === "alphabetical")
       this.sidebarSort = "alphabetical";
     this.emit("onThemeChangedFromSettings", theme);
@@ -722,11 +750,14 @@ export class MockPlatform implements Platform {
         "refresh-failure",
         "startup-refresh-failure",
         "refresh-all-fail",
+        "refresh-many-failures",
       ].includes(this.scenario ?? "")
         ? this.data.feeds
             .filter(
               (_feed, index) =>
-                this.scenario === "refresh-all-fail" || index === 0
+                this.scenario === "refresh-all-fail" ||
+                this.scenario === "refresh-many-failures" ||
+                index === 0
             )
             .map((feed) => ({
               id: feed.id,

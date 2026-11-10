@@ -44,9 +44,13 @@ vi.mock("@mui/material", () => ({
     <button>{children}</button>
   ),
   Tooltip: ({ children }: { children: React.ReactNode }) => children,
-  Typography: ({ children }: { children: React.ReactNode }) => (
-    <span>{children}</span>
-  ),
+  Typography: ({
+    children,
+    role,
+  }: {
+    children: React.ReactNode;
+    role?: string;
+  }) => <span role={role}>{children}</span>,
 }));
 vi.mock("./ArticleReader", () => ({
   default: function SavedReader() {
@@ -91,7 +95,7 @@ afterEach(async () => {
 });
 it("waits for URL classification before mounting a saved entry's HTML reader", async () => {
   await act(() => root.render(<EntityView />));
-  expect(container.textContent).toContain("Loading…");
+  expect(container.querySelector('[role="status"]')).not.toBeNull();
   mocks.state = { ...mocks.state, mimeType: "application/pdf" };
   await act(async () => {
     finish();
@@ -104,7 +108,7 @@ it("resolves a history selection even when its route already carries PDF MIME", 
   mocks.state.mimeType = "application/pdf";
   await act(() => root.render(<EntityView />));
   expect(mocks.resolve).toHaveBeenCalledWith(mocks.state.url);
-  expect(container.textContent).toContain("Loading…");
+  expect(container.querySelector('[role="status"]')).not.toBeNull();
   await act(async () => {
     finish();
   });

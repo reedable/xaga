@@ -190,7 +190,9 @@ test("an annotation can be created and its passage revisited from Saved", async 
   // A real triple click selects a paragraph and sends the reader's mouseup.
   await paragraph.click({ clickCount: 3 });
   await control(page, "button", "violet").click();
-  await page.getByTestId("annotation-comment").fill("Return to this idea");
+  await control(page, "textbox", "annotation-comment").fill(
+    "Return to this idea"
+  );
   await control(page, "button", "filter-saved").click();
   const annotation = page.getByRole("button", { name: /^Small changes/ });
   await expect(annotation).toBeVisible();
@@ -205,7 +207,7 @@ test("an annotation can be created and its passage revisited from Saved", async 
     .filter({ hasText: "Small changes" });
   await expect(highlight).toBeInViewport();
   await highlight.click();
-  await expect(page.getByTestId("annotation-comment")).toHaveValue(
+  await expect(control(page, "textbox", "annotation-comment")).toHaveValue(
     "Return to this idea"
   );
   await expect(control(page, "button", "violet")).toHaveAttribute(

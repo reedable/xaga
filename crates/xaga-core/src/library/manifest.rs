@@ -193,9 +193,9 @@ impl LibraryManifest {
         let previous = Self::read(dir)?;
         if let Some(manifest) = &previous {
             if let Some(target) = manifest.migration_target() {
-                if target != target_version {
+                if target > target_version {
                     return Err(LibraryFormatError::Invalid(format!(
-                        "pending migration targets {target}; cannot change it to {target_version}"
+                        "pending migration targets {target}; cannot resume with older version {target_version}"
                     )));
                 }
             } else if manifest.format_version() == Some(target_version) {
@@ -215,7 +215,8 @@ impl LibraryManifest {
                 .and_then(|manifest| manifest.format_version),
             migration: Some(Migration { target_version }),
         };
-        // Resuming does not rewrite a marker that is already durable.
+        // Same-target retries reuse the marker. A newer app advances only the
+        // pending target, retaining the original completed source version.
         if previous.as_ref() != Some(&pending) {
             pending.write(dir, lock)?;
         }
@@ -406,7 +407,7 @@ mod tests {
     }
 
     #[test]
-    fn upgrade_preserves_previous_version_until_success_and_does_not_change_targets_on_retry() {
+    fn newer_app_resumes_from_original_version_without_allowing_downgrades() {
         let dir = tempfile::tempdir().unwrap();
         seed(dir.path(), "0.9");
         let lock = library::acquire_lock(dir.path()).unwrap();
@@ -420,16 +421,30 @@ mod tests {
                 .format_version(),
             Some(version("0.9"))
         );
-        assert!(LibraryManifest::begin_upgrade(dir.path(), version("0.11"), &lock).is_err());
-        drop(upgrade);
-        LibraryManifest::begin_upgrade(dir.path(), version("0.10"), &lock)
+        let newer = LibraryManifest::begin_upgrade(dir.path(), version("0.11"), &lock)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            LibraryManifest::read(dir.path())
+                .unwrap()
+                .unwrap()
+                .format_version(),
+            Some(version("0.9"))
+        );
+        assert!(matches!(
+            upgrade.complete(),
+            Err(LibraryFormatError::Changed)
+        ));
+        assert!(LibraryManifest::begin_upgrade(dir.path(), version("0.10"), &lock).is_err());
+        drop(newer);
+        LibraryManifest::begin_upgrade(dir.path(), version("0.11"), &lock)
             .unwrap()
             .unwrap()
             .complete()
             .unwrap();
         let raw = std::fs::read_to_string(library::manifest_path(dir.path())).unwrap();
         let encoded: serde_json::Value = noyalib::from_str(&raw).unwrap();
-        assert_eq!(encoded["format_version"].as_str(), Some("0.10"));
+        assert_eq!(encoded["format_version"].as_str(), Some("0.11"));
         assert!(!raw.contains("migration"));
     }
 

@@ -33,6 +33,10 @@ The examples below use a small fictional library: **Field notes** is a feed,
    want quick access to the feed.
 4. Click **Add**, then select the feed to browse its articles.
 
+If feeds fail to refresh, a notification shows the number of failures. Choose
+**Details** to read each feed’s name and failure reason. The list scrolls, and the
+notification stays until you dismiss it. Use **Refresh** to try again.
+
 ## Find and read an article
 
 Choose a feed, or choose **All items** above **Filter collections…** to browse across your

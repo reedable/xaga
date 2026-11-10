@@ -93,7 +93,7 @@ test("upgrade progress, failure, retry and restart failure keep writes disabled"
   ).toBeDisabled();
 });
 
-for (const scenario of ["unversioned", "resume"]) {
+for (const scenario of ["unversioned", "resume", "resume-earlier"]) {
   test(`${scenario} library offers explicit confirmation`, async ({ page }) => {
     await openOptions(page, `upgrade-${scenario}`);
     const action = "upgrade-library";
@@ -101,7 +101,7 @@ for (const scenario of ["unversioned", "resume"]) {
     const dialog = page.getByRole("dialog");
     await expect(dialog).toHaveAttribute(
       "data-read-only-cause",
-      scenario === "resume" ? "pending_upgrade" : "unversioned"
+      scenario.startsWith("resume") ? "pending_upgrade" : "unversioned"
     );
     await expect(control(dialog, "button", action)).toBeEnabled();
   });

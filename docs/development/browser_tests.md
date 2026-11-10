@@ -111,7 +111,9 @@ failed saves. Projection tests cover nested groups, count updates, and unchanged
 stored order. The native `sidebar_sort_menu` test verifies macOS menu construction,
 checkmark updates, enabled commands, and Cocoa action dispatch.
 
-Assertions use the visible controls and results. The capture API is used only to
+Assertions use visible controls and results through roles and stable control
+identities. Field names, selected state, counts and saved fixture data establish
+behavior; tests do not depend on English UI labels or explanatory copy. The capture API is used only to
 exercise its reset operation; tests do not modify mock data directly. The dataset
 and its behavior remain owned by the capture platform.
 
@@ -181,3 +183,9 @@ unversioned and interrupted targets, metadata errors and lock-only status.
 Screenshots attached to confirmation tests support visual review. The capture
 platform owns these scenarios; no personal library is converted. Native browser
 opening, process spawning and disk locks require platform and Rust checks.
+
+Feed-refresh failures use a persistent summary with a scrollable details dialog.
+The component test advances timers to verify persistence until dismissal; browser
+coverage checks fourteen failure rows, scrolling, both themes, dismissal and retry.
+The native feed-refresh fixture opens the production details dialog through the
+real refresh command and verifies the failing feed separately from saved successes.

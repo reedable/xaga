@@ -46,7 +46,7 @@ impl LibraryStatus {
                     .as_ref()
                     .and_then(LibraryManifest::migration_target);
                 status.read_only_cause = if let Some(target) = status.pending_target {
-                    Some(if target == app_version {
+                    Some(if target <= app_version {
                         LibraryReadOnlyCause::PendingUpgrade
                     } else {
                         LibraryReadOnlyCause::PendingOtherVersion
@@ -92,6 +92,10 @@ mod tests {
             ("format_version: '0.100'\n", LibraryReadOnlyCause::Newer),
             (
                 "format_version: '0.15'\nmigration:\n  target_version: '0.16'\n",
+                LibraryReadOnlyCause::PendingUpgrade,
+            ),
+            (
+                "format_version: '0.9'\nmigration:\n  target_version: '0.12'\n",
                 LibraryReadOnlyCause::PendingUpgrade,
             ),
             (

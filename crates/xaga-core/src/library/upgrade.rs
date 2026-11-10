@@ -1744,6 +1744,58 @@ custom:
             .unwrap();
     }
 
+    #[tokio::test]
+    async fn newer_app_finishes_an_interrupted_older_upgrade_from_mixed_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        library::LibraryManifest::begin_upgrade(
+            dir.path(),
+            library::LibraryVersion::new(0, 9),
+            &lock,
+        )
+        .unwrap()
+        .unwrap()
+        .complete()
+        .unwrap();
+        drop(
+            library::LibraryManifest::begin_upgrade(
+                dir.path(),
+                library::LibraryVersion::new(0, 12),
+                &lock,
+            )
+            .unwrap(),
+        );
+        let first = seed(dir.path(), "first", "tags: [unread, bookmark, Research]");
+        let second = seed(dir.path(), "second", "tags: [unread, bookmark, Research]");
+        let raw = fs::read_to_string(&first).unwrap();
+        // A prior process committed this file, then stopped before the next one.
+        fs::write(&first, convert(&raw).unwrap().rendered.unwrap()).unwrap();
+        let target = application_version();
+        let report = upgrade_library(dir.path(), &lock, target, |_| {}).await;
+        assert!(report.errors.is_empty(), "{report:?}");
+        let manifest = library::LibraryManifest::read(dir.path()).unwrap().unwrap();
+        assert!(manifest.matches_version(target));
+        let first_bytes = fs::read(&first).unwrap();
+        let second_bytes = fs::read(&second).unwrap();
+        for path in [&first, &second] {
+            let content = fs::read_to_string(path).unwrap();
+            let (article, body) = crate::md::parse_document(&content).unwrap();
+            assert_eq!(article.is_unread, Some(true));
+            assert_eq!(article.color.as_deref(), Some("blue"));
+            assert_eq!(article.tags, vec!["Research"]);
+            assert!(body.contains("Body"));
+            assert!(content.contains("Irreplaceable"));
+        }
+        assert!(
+            upgrade_library(dir.path(), &lock, target, |_| {})
+                .await
+                .errors
+                .is_empty()
+        );
+        assert_eq!(fs::read(&first).unwrap(), first_bytes);
+        assert_eq!(fs::read(&second).unwrap(), second_bytes);
+    }
+
     /// One scaling point. Run in separate processes for independent peak-memory
     /// measurements; fixture creation is excluded from migration elapsed time.
     #[tokio::test]

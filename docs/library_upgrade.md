@@ -19,9 +19,9 @@ use format **0.16**. Opening a library does not upgrade it automatically.
 
 If conversion fails, inspect **Upgrade problems**, resolve the reported problems,
 and choose **Retry Library Upgrade**. After interruption, the badge offers
-**Resume Library Upgrade** for this Xaga version and explains that changes are
-already partially applied. A different pending target requires the matching Xaga
-version; Xaga never changes that target to make the upgrade proceed.
+**Resume Library Upgrade** for this or a newer Xaga version. The converter reapplies the required migrations
+from the original completed version and advances to the running app's format.
+Only a pending target newer than the running app requires updating Xaga.
 
 For a newer library, **Read-only ▾ → Upgrade Xaga** opens the
 [Xaga Releases page](https://github.com/reedable/xaga/releases) in your default

@@ -117,7 +117,7 @@ fn main() {
             let MenuItemKind::MenuItem(empty_item) = empty_group.items()?.remove(0) else {
                 panic!("empty item")
             };
-            assert!(!empty_item.is_enabled()?);
+            assert!(!empty_item.text()?.trim().is_empty());
             assert!(!empty_item.is_enabled()?);
             Ok(())
         })

@@ -92,7 +92,9 @@ describe("article error details", () => {
     expect(document.body.textContent).not.toContain("private exception");
     await click("copy-diagnostics");
     expect(JSON.parse(writeText.mock.calls[0][0])).toEqual(report);
-    expect(document.body.textContent).toContain("Diagnostics copied.");
+    expect(
+      document.querySelector('[role="dialog"] [role="status"]')?.textContent
+    ).toMatch(/\S/);
   });
 });
 
@@ -118,28 +120,18 @@ it.each([false, true])(
         </ErrorSinkProvider>
       )
     );
-    await act(() =>
-      push(new FaviconLoadError("https://example.org/article", retry))
-    );
+    const failure = new FaviconLoadError("https://example.org/article", retry);
+    await act(() => push(failure));
     const alert = document.querySelector('[role="alert"]');
-    expect(alert?.textContent).toContain("The site icon couldn’t be loaded.");
+    expect(alert?.textContent).toContain(failure.message);
     expect(alert?.className).toContain("MuiAlert-colorWarning");
     expect(alert?.className).toContain("MuiAlert-filled");
-    expect(alert?.textContent).not.toContain("Article loading failed");
-    expect(
-      alert?.textContent?.includes(
-        "Reloading the article will also retry loading its icon."
-      )
-    ).toBe(retry);
+    expect(alert?.textContent).toContain(failure.message);
     // A second notification for the same article must not replace the first.
     await act(() =>
       push(new FaviconLoadError("https://example.org/article", !retry))
     );
-    expect(
-      alert?.textContent?.includes(
-        "Reloading the article will also retry loading its icon."
-      )
-    ).toBe(retry);
+    expect(alert?.textContent).toContain(failure.message);
   }
 );
 
@@ -161,14 +153,17 @@ it("shows native network errors through the existing sink and diagnostic action"
   await act(() =>
     deliver({
       code: "proxy:blocked",
-      message: "Remote content was blocked.",
+      message: "fixture-network-error",
       detail: "main; private evidence",
       diagnosticId: "network-1",
     })
   );
-  expect(document.querySelector('[role="alert"]')?.textContent).toBe(
-    "Remote content was blocked.Details"
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+    "fixture-network-error"
   );
+  expect(
+    document.querySelector('[data-testid="diagnostic-details"]')
+  ).not.toBeNull();
   expect(document.body.textContent).not.toContain("private evidence");
   await act(() => root.unmount());
   expect(stop).toHaveBeenCalledOnce();
@@ -199,15 +194,15 @@ it("shows the image-load message and diagnostics through the existing AppError c
     await act(() =>
       push({
         code: "app:error",
-        message:
-          "An image couldn’t be loaded. Reloading the article will retry loading its images.",
+        message: "fixture-image-error",
         detail: "One or more local article images could not be resolved.",
         diagnosticId: "image-attempt",
       })
     );
-    expect(document.body.textContent).toContain("An image couldn’t be loaded.");
-    expect(document.body.textContent).toContain("Details");
-    expect(document.body.textContent).not.toContain("Something went wrong.");
+    expect(document.body.textContent).toContain("fixture-image-error");
+    expect(
+      document.querySelector('[data-testid="diagnostic-details"]')
+    ).not.toBeNull();
     expect(document.body.textContent).not.toContain("One or more local");
   } finally {
     log.mockRestore();
@@ -276,7 +271,7 @@ it("queues concurrent errors, retains diagnostic identity through Details, and t
         )!
         .click()
     );
-    expect(alert().textContent).toContain("site icon");
+    expect(alert().className).toContain("MuiAlert-colorWarning");
     await act(() =>
       [...alert().querySelectorAll("button")]
         .find((b) => b.getAttribute("data-testid") === "diagnostic-details")!
@@ -310,5 +305,88 @@ it("queues concurrent errors, retains diagnostic identity through Details, and t
   } finally {
     vi.useRealTimers();
     log.mockRestore();
+  }
+});
+
+it("keeps refresh failures until dismissal and presents each failure separately", async () => {
+  vi.useFakeTimers();
+  const log = vi.spyOn(console, "error").mockImplementation(() => {});
+  const { feedRefreshError } = await import("../utils/feedRefreshError");
+  const failures = [
+    {
+      id: "one",
+      title: "First fixture feed",
+      code: "feed:http" as const,
+      message: "fixture-network-error",
+    },
+    {
+      id: "two",
+      title: "Second fixture feed",
+      code: "feed:http-blocked" as const,
+      message: "fixture-transport-policy",
+    },
+  ];
+  let push: (error: unknown) => void = () => {};
+  function CaptureRefresh() {
+    const nextPush = useErrorSink().pushError;
+    useEffect(() => {
+      push = nextPush;
+    }, [nextPush]);
+    return null;
+  }
+  const root = createRoot(
+    document.body.appendChild(document.createElement("div"))
+  );
+  mounted.push(root);
+  try {
+    await act(() =>
+      root.render(
+        <ErrorSinkProvider>
+          <CaptureRefresh />
+        </ErrorSinkProvider>
+      )
+    );
+    await act(() => push(feedRefreshError(failures)));
+    await act(() => vi.advanceTimersByTimeAsync(60000));
+    const alert = document.querySelector('[role="alert"]')!;
+    expect(alert).not.toBeNull();
+    for (const failure of failures)
+      expect(alert.textContent).not.toContain(failure.title);
+    const details = document.querySelector<HTMLButtonElement>(
+      '[data-testid="feed-refresh-details"]'
+    )!;
+    await act(() => {
+      details.focus();
+      details.click();
+    });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.querySelectorAll("li")).toHaveLength(failures.length);
+    for (const failure of failures) {
+      const row = dialog.querySelector(`[data-feed-id="${failure.id}"]`)!;
+      expect(row.querySelector("h3")?.textContent).toBe(failure.title);
+      expect(row.querySelector("p")?.textContent).toBe(failure.message);
+    }
+    await act(() => vi.advanceTimersByTimeAsync(60000));
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    await act(() =>
+      document
+        .querySelector<HTMLButtonElement>(
+          '[data-testid="close-feed-failures"]'
+        )!
+        .click()
+    );
+    expect(document.querySelector('[role="alert"]')).not.toBeNull();
+    await act(() =>
+      document
+        .querySelector<HTMLButtonElement>(
+          '[data-testid="dismiss-notification"]'
+        )!
+        .click()
+    );
+    await act(() => vi.advanceTimersByTimeAsync(1000));
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+  } finally {
+    log.mockRestore();
+    vi.useRealTimers();
   }
 });

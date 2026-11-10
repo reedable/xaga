@@ -314,6 +314,7 @@ export default function ShortcutTree({
       >
         {actionMenu?.node.reference.type === "group" && [
           <MenuItem
+            data-testid="add-group"
             key="add"
             disabled={readOnly || busy}
             onClick={() => {

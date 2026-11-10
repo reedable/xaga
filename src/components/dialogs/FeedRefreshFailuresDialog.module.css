@@ -1,0 +1,30 @@
+.Paper:global(.MuiDialog-paper) {
+  background-color: var(--lightest-gray, #fff);
+  color: var(--dark-gray, #333);
+
+  .Content {
+    border-color: var(--border-color, #ddd);
+  }
+
+  .Reason {
+    color: var(--text-secondary, rgba(0, 0, 0, 0.6));
+  }
+}
+
+:global(html[data-theme="dark"]) .Paper .Close {
+  color: #90caf9;
+}
+
+.Content {
+  max-height: 28rem;
+  overflow-y: auto;
+}
+
+.Failures {
+  display: grid;
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-wrap: anywhere;
+}

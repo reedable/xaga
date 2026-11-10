@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import FeedsContext, { type FeedsContextType } from "../providers/FeedsContext";
 import type { Feed } from "../types";
+import { FeedRefreshError } from "../utils/feedRefreshError";
 import { useFeeds } from "./useFeeds";
 
 const mocks = vi.hoisted(() => ({
@@ -78,9 +79,11 @@ it("retains successful feeds and consolidates safe failures with retry guidance"
   });
   await act(() => hook.refreshAllFeeds());
   expect(mocks.pushError).toHaveBeenCalledTimes(1);
-  expect(mocks.pushError.mock.calls[0][0].message).toMatch(
-    /Workshop: Couldn't reach this feed.*Other feed:.*Use Refresh to retry/
-  );
+  expect(mocks.pushError.mock.calls[0][0]).toBeInstanceOf(FeedRefreshError);
+  expect(mocks.pushError.mock.calls[0][0].failures).toEqual([
+    failure,
+    { ...failure, id: "other", title: "Other feed" },
+  ]);
   const merge = vi.mocked(context.setFeeds).mock.calls[0][0] as (
     current: (typeof feed)[]
   ) => (typeof feed)[];
@@ -108,8 +111,10 @@ it("reports whole-request refusal without exposing diagnostics", async () => {
     detail: "private diagnostic",
   });
   await act(() => hook.refreshAllFeeds());
-  expect(mocks.pushError.mock.calls[0][0].message).toBe(
-    "This library is read-only. Use Refresh to retry."
+  expect(mocks.pushError.mock.calls[0][0]).toBeInstanceOf(FeedRefreshError);
+  expect(mocks.pushError.mock.calls[0][0].code).toBe("library:read-only");
+  expect(mocks.pushError.mock.calls[0][0].message).not.toContain(
+    "private diagnostic"
   );
   expect(context.setLoadingSet).toHaveBeenLastCalledWith(new Set());
 });

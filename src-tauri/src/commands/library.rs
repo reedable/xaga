@@ -150,7 +150,7 @@ pub async fn start_library_upgrade(
                 };
             }))
         }));
-        *operation.lock().unwrap() = result.unwrap_or_else(|_| UpgradeState::Failed { message: "The library upgrade was interrupted. Keep the library read-only and retry with this Xaga version.".into(), errors: vec![] });
+        *operation.lock().unwrap() = result.unwrap_or_else(|_| UpgradeState::Failed { message: "The library upgrade was interrupted. Keep the library read-only and retry the upgrade.".into(), errors: vec![] });
     });
     Ok(snapshot)
 }
@@ -240,7 +240,7 @@ async fn perform_upgrade(
             restarting: false,
         }
     } else {
-        UpgradeState::Failed { message: "Library upgrade incomplete. Changes may already be applied. Resolve the reported problems and retry with this Xaga version, or restore your complete backup.".into(), errors: report.errors }
+        UpgradeState::Failed { message: "Library upgrade incomplete. Changes may already be applied. Resolve the reported problems and retry, or restore your complete backup.".into(), errors: report.errors }
     }
 }
 

@@ -7,6 +7,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { FeedRefreshError } from "../utils/feedRefreshError";
+import type { FeedRefreshFailure } from "../types";
+import FeedRefreshFailuresDialog from "../components/dialogs/FeedRefreshFailuresDialog";
 import ArticleDiagnosticsDialog from "../components/dialogs/ArticleDiagnosticsDialog";
 import { errorMessage, isAppError } from "../platform/errors";
 import { isAbortError } from "../types";
@@ -38,16 +41,19 @@ export default function ErrorSinkProvider({
       message: string;
       severity: "error" | "warning";
       diagnosticId: string | null;
+      feedFailures?: readonly FeedRefreshFailure[];
+      persistent: boolean;
     }[]
   >([]);
   const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [feedDetailsOpen, setFeedDetailsOpen] = useState(false);
   const nextId = useRef(0);
   const current = notifications[0];
   const diagnosticId = current?.diagnosticId;
   const message = current?.message;
   const severity = current?.severity;
   const dismiss = () => {
-    if (detailsId) return;
+    if (detailsId || feedDetailsOpen) return;
     setNotifications((queue) =>
       queue.filter((item) => item.id !== current?.id)
     );
@@ -83,6 +89,8 @@ export default function ErrorSinkProvider({
       id: nextId.current++,
       message,
       diagnosticId,
+      feedFailures: e instanceof FeedRefreshError ? e.failures : undefined,
+      persistent: !!diagnosticId || e instanceof FeedRefreshError,
       severity: favicon ? ("warning" as const) : ("error" as const),
     };
     setNotifications((queue) => [...queue, notification]);
@@ -129,7 +137,7 @@ export default function ErrorSinkProvider({
       <Snackbar
         key={current?.id ?? "empty"}
         open={!!current}
-        autoHideDuration={diagnosticId ? null : 6000}
+        autoHideDuration={current?.persistent ? null : 6000}
         onClose={(_, reason) => {
           if (reason !== "clickaway") dismiss();
         }}
@@ -144,6 +152,16 @@ export default function ErrorSinkProvider({
           onClose={dismiss}
         >
           {message}
+          {!!current?.feedFailures?.length && (
+            <Button
+              data-testid="feed-refresh-details"
+              color="inherit"
+              size="small"
+              onClick={() => setFeedDetailsOpen(true)}
+            >
+              Details
+            </Button>
+          )}
           {diagnosticId && (
             <Button
               data-testid="diagnostic-details"
@@ -156,6 +174,12 @@ export default function ErrorSinkProvider({
           )}
         </Alert>
       </Snackbar>
+      {feedDetailsOpen && current?.feedFailures && (
+        <FeedRefreshFailuresDialog
+          failures={current.feedFailures}
+          onClose={() => setFeedDetailsOpen(false)}
+        />
+      )}
       {detailsId && (
         <ArticleDiagnosticsDialog
           key={detailsId}

@@ -862,9 +862,12 @@ export function EntityList({
                 onClose={() => setHeaderOpen(false)}
                 value={headerValues}
                 renderValue={() => selectedScope.title}
+                SelectDisplayProps={{
+                  role: "combobox",
+                  ...{ "data-testid": "collection-selector" },
+                }}
                 inputProps={{
                   "aria-label": "Browse collections and tags",
-                  "data-testid": "collection-selector",
                 }}
                 onChange={handleCollectionChange}
               >

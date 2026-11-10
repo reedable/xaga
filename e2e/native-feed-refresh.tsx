@@ -104,14 +104,36 @@ try {
   const refresh = document.querySelector("button")!;
   refresh.click();
   await waitFor(visibleAlert);
-  const message = document.querySelector('[role="alert"]')!.textContent ?? "";
+  await waitFor(() =>
+    document.querySelector('[data-testid="feed-refresh-details"]')
+  );
+  (
+    document.querySelector(
+      '[data-testid="feed-refresh-details"]'
+    ) as HTMLButtonElement
+  ).click();
+  await waitFor(() =>
+    document.querySelector('[role="dialog"] [data-feed-id="bad"]')
+  );
+  const failure = document.querySelector('[data-feed-id="bad"]')!;
+  const message = failure.textContent ?? "";
   if (
-    !message.includes("Unavailable feed") ||
-    !message.includes("Use Refresh to retry.")
+    !failure.querySelector("h3")?.textContent ||
+    !failure.querySelector("p")?.textContent
   )
-    throw new Error(message);
+    throw new Error("Incomplete refresh failure details");
+  (
+    document.querySelector(
+      '[data-testid="close-feed-failures"]'
+    ) as HTMLButtonElement
+  ).click();
+  await waitFor(() => !document.querySelector('[role="dialog"]'));
   await waitFor(() => !refresh.disabled);
-  (document.querySelector('[aria-label="Close"]') as HTMLButtonElement).click();
+  (
+    document.querySelector(
+      '[data-testid="dismiss-notification"]'
+    ) as HTMLButtonElement
+  ).click();
   await waitFor(() => !document.querySelector('[role="alert"]'));
   refresh.click();
   await waitFor(() => !refresh.disabled);

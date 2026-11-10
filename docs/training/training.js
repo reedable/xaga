@@ -82,12 +82,17 @@ function updateProgress() {
   }
   if (!active) return;
   const { trackId, track } = active;
+  element("track-progress").dataset.completed = String(
+    track.lessons.filter((item) => isComplete(trackId, item)).length
+  );
+  element("track-progress").dataset.total = String(track.lessons.length);
   element("track-progress").textContent =
     `${track.lessons.filter((item) => isComplete(trackId, item)).length} / ${track.lessons.length} lessons completed`;
   document.querySelectorAll("[data-lesson-status]").forEach((node) => {
     const item = track.lessons.find(
       (candidate) => candidate.id === node.dataset.lessonStatus
     );
+    node.dataset.complete = String(isComplete(trackId, item));
     node.textContent = isComplete(trackId, item) ? "Completed" : "";
   });
 }

@@ -236,7 +236,9 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
 
         <div className={css.ReaderAndInspector}>
           {isResolving ? (
-            <div className={css.Placeholder}>Loading…</div>
+            <div role="status" className={css.Placeholder}>
+              Loading…
+            </div>
           ) : blocked ? (
             <div className={css.Placeholder}>
               <Typography variant="body2" color="text.disabled">
@@ -259,6 +261,7 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
             <div className={css.Placeholder}>
               <Typography
                 data-testid="reader-empty"
+                role={isResolving ? "status" : undefined}
                 variant="body2"
                 color="text.disabled"
               >

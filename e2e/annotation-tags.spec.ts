@@ -11,14 +11,14 @@ test("assigns Annotation tags, browses the passage, and retains tags through rec
   await reader(page).locator("article p").first().click({ clickCount: 3 });
   await control(page, "button", "violet").click();
   await control(page, "button", "annotation-details").click();
-  const drawer = control(page, "dialog", "inspector-drawer");
+  const drawer = page.getByRole("dialog");
   await control(drawer, "tab", "inspector-tags").click();
   const tags = control(drawer, "group", "annotation-tags");
   const projects = tags.getByRole("button", { name: "Projects", exact: true });
   await projects.focus();
   await page.keyboard.press("Enter");
   await expect(projects).toHaveAttribute("aria-pressed", "true");
-  await drawer.getByTestId("tag-search").fill("Passages");
+  await control(drawer, "textbox", "tag-search").fill("Passages");
   await control(drawer, "button", "create-tag").click();
   await expect(
     tags.getByRole("button", { name: "Passages", exact: true })
@@ -58,7 +58,7 @@ test("shows annotation assignments read-only in the narrow drawer", async ({
   await reader(page).locator("mark").first().click();
   const opener = control(page, "button", "annotation-details");
   await opener.click();
-  const drawer = control(page, "dialog", "inspector-drawer");
+  const drawer = page.getByRole("dialog");
   await control(drawer, "tab", "inspector-tags").click();
   const projects = control(drawer, "group", "annotation-tags").getByRole(
     "button",
@@ -66,7 +66,7 @@ test("shows annotation assignments read-only in the narrow drawer", async ({
   );
   await expect(projects).toHaveAttribute("aria-pressed", "true");
   await expect(projects).toBeDisabled();
-  await drawer.getByTestId("tag-search").fill("Read only");
+  await control(drawer, "textbox", "tag-search").fill("Read only");
   await expect(control(drawer, "button", "create-tag")).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(opener).toBeFocused();

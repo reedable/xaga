@@ -33,9 +33,9 @@ function explanation(status: LibraryStatus): string {
     case "unversioned":
       return "This library has no version metadata. An explicit upgrade is required.";
     case "pending_upgrade":
-      return `An upgrade to ${status.pendingTarget} is incomplete. Changes are already partially applied.`;
+      return `A previous upgrade was interrupted. Xaga can resume it and upgrade this library to ${status.appVersion}.`;
     case "pending_other_version":
-      return `An upgrade to ${status.pendingTarget} is incomplete. Resume it using Xaga ${status.pendingTarget}; this Xaga uses ${status.appVersion}.`;
+      return `A newer Xaga version started upgrading this library to ${status.pendingTarget}. Update Xaga to finish the upgrade.`;
     case "invalid_metadata":
       return `${status.metadataError} Correct the metadata problem before reopening the library. Xaga has left it unchanged.`;
     case "lock_unavailable":
@@ -239,14 +239,18 @@ export default function LibraryUpgradeControl({
         </MenuItem>
       </Menu>
       <Dialog
-        data-upgrade-state={upgrade.state}
-        data-library-version={status?.storedVersion ?? "unversioned"}
-        data-target-version={status?.appVersion}
-        data-read-only-cause={cause}
         open={open}
         transitionDuration={animate ? undefined : 0}
         slotProps={{
           backdrop: { transitionDuration: animate ? undefined : 0 },
+          paper: {
+            ...{
+              "data-upgrade-state": upgrade.state,
+              "data-library-version": status?.storedVersion ?? "unversioned",
+              "data-target-version": status?.appVersion,
+              "data-read-only-cause": cause,
+            },
+          },
         }}
         onClose={close}
         aria-labelledby="library-upgrade-title"

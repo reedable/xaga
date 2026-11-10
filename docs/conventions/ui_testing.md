@@ -5,7 +5,13 @@ browser integration coverage in the same change.
 
 - Update existing browser tests when intended behavior changes. Add meaningful
   coverage for new workflows or gaps exposed by the change, using visible
-  controls and user-facing assertions.
+  controls and user-facing assertions. Select controls by role, form field name,
+  existing associations, or a scoped stable test identifier where needed. Do not
+  select controls or assert behavior using hardcoded UI labels, messages, or
+  sentence fragments. Copy edits and translations must not break behavior tests.
+  Assert state, accessible relationships, enabled actions, persistence and fixture
+  data instead. Check that accessible names and descriptions exist without fixing
+  their language; user-supplied names and article content remain test data.
 - Reuse the capture platform's fixtures, reset, and readiness mechanism. Extend
   those fixtures when needed rather than creating a separate mock backend.
 - Run `npm run test:browser` before completing the change. Preserve checks for

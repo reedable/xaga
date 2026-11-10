@@ -36,14 +36,16 @@ target version and retain the exclusive library lock for the entire operation.
 Core calls `begin_upgrade` before changing source files or cache state. Only
 successful conversion and reconciliation permits `complete`, which atomically
 writes the target as the completed version and removes the pending marker.
-Interruption retains the pending state; retries cannot change its target.
+Interruption retains the pending state. A newer app can advance the pending
+target and reapply the migrations from the original completed source version;
+retries with an older app cannot lower a pending target.
 Manifest writes use sibling temporary files, fsync and atomic rename.
 
 The app exposes typed library status: read-only cause, completed version, pending
 target and app version. An older or unversioned library offers **Upgrade Library**;
-a matching interrupted target offers **Resume Library Upgrade**. A newer library
-offers **Upgrade Xaga**, opening the fixed GitHub Releases page. A different
-pending target requires that matching app. Invalid metadata and lock contention
+an interrupted upgrade targeting this or an earlier version offers
+**Resume Library Upgrade**. A newer library
+offers **Upgrade Xaga**, opening the fixed GitHub Releases page. A pending target newer than the running app requires updating Xaga. Invalid metadata and lock contention
 explain the problem without offering a format upgrade for those causes.
 
 The app requires explicit confirmation after explaining full backup, restoration,
