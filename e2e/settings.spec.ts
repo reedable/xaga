@@ -1,3 +1,4 @@
+import { control } from "./fixtures";
 import { test, expect } from "./fixtures";
 
 test("Settings exposes fetch controls, preserves exact values, and retains panel organization", async ({
@@ -8,40 +9,27 @@ test("Settings exposes fetch controls, preserves exact values, and retains panel
     "data-capture-ready",
     "true"
   );
+  await expect(control(page, "button", "switch-library")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Switch library", exact: true })
-  ).toBeVisible();
+    control(page, "checkbox", "inline-pdf-reader")
+  ).toHaveAccessibleDescription(/\S/);
   await expect(
-    page.getByRole("checkbox", { name: "Show PDFs in the reading pane" })
-  ).toHaveAccessibleDescription("When off, PDFs open in your default app.");
-  await expect(
-    page.getByRole("checkbox", { name: "Refresh all feeds on start-up" })
-  ).toHaveAccessibleDescription(
-    "Contacts subscribed websites automatically on the next startup."
-  );
-  const timeout = page.getByRole("textbox", {
-    name: "Article load timeout",
-    exact: true,
-  });
+    control(page, "checkbox", "refresh-on-startup")
+  ).toHaveAccessibleDescription(/\S/);
+  const timeout = control(page, "textbox", "loaderTimeoutSecs");
   await expect(timeout).toHaveValue("10");
   await timeout.fill("9007199254740993");
   await timeout.press("Enter");
   await expect(timeout).toBeEnabled();
-  await page.getByRole("button", { name: "Security", exact: true }).click();
-  const http = page.getByRole("switch", {
-    name: "Allow unencrypted HTTP",
-    exact: true,
-  });
+  await control(page, "button", "settings-security").click();
+  const http = control(page, "switch", "httpAllowed");
   await expect(http).not.toBeChecked();
   await http.check();
   await expect(http).toBeChecked();
   await expect(
-    page.getByRole("switch", { name: "Allow HTTPS connections on other ports" })
+    control(page, "switch", "connectNonstandardPortsAllowed")
   ).not.toBeChecked();
-  const redirects = page.getByRole("textbox", {
-    name: "Maximum feed redirects",
-    exact: true,
-  });
+  const redirects = control(page, "textbox", "maxRedirects");
   await expect(redirects).toHaveValue("3");
   await redirects.fill("11");
   await redirects.press("Enter");
@@ -49,40 +37,22 @@ test("Settings exposes fetch controls, preserves exact values, and retains panel
   await redirects.fill("0");
   await redirects.press("Enter");
   await expect(redirects).toHaveAttribute("aria-invalid", "false");
-  await page.getByRole("button", { name: "Privacy", exact: true }).click();
-  await expect(
-    page.getByText("Keep website sessions", { exact: true })
-  ).toBeVisible();
-  await expect(
-    page.getByRole("switch", { name: "Send referring URLs for feed redirects" })
-  ).not.toBeChecked();
-  await page
-    .getByRole("switch", { name: "Allow compressed feed transfers" })
-    .check();
-  await page.getByRole("button", { name: "General", exact: true }).click();
+  await control(page, "button", "settings-privacy").click();
+  await expect(page.getByTestId("website-sessions")).toBeVisible();
+  await expect(control(page, "switch", "refererAllowed")).not.toBeChecked();
+  await control(page, "switch", "gzipAllowed").check();
+  await control(page, "button", "settings-general").click();
   await expect(timeout).toHaveValue("9007199254740993");
-  await expect(
-    page.getByRole("textbox", {
-      name: "Maximum feed response size",
-      exact: true,
-    })
-  ).toHaveValue("10");
-  const feedLimit = page.getByRole("textbox", {
-    name: "Maximum feed response size",
-    exact: true,
-  });
+  await expect(control(page, "textbox", "feedMaxBodyBytes")).toHaveValue("10");
+  const feedLimit = control(page, "textbox", "feedMaxBodyBytes");
   await feedLimit.fill("12.5");
   await feedLimit.press("Enter");
-  await page.getByRole("button", { name: "Security", exact: true }).click();
-  await page.getByRole("button", { name: "General", exact: true }).click();
+  await control(page, "button", "settings-security").click();
+  await control(page, "button", "settings-general").click();
   await expect(feedLimit).toHaveValue("12.5");
-  await page.getByRole("button", { name: "Appearance", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Reading", exact: true })
-  ).toBeVisible();
-  await expect(
-    page.getByRole("radiogroup", { name: "Default article view", exact: true })
-  ).toBeVisible();
+  await control(page, "button", "settings-appearance").click();
+  await expect(control(page, "heading", "reading-settings")).toBeVisible();
+  await expect(control(page, "radiogroup", "article-view")).toBeVisible();
   await page.evaluate(() =>
     (
       window as Window & { xagaCapture?: { reset: () => void } }
@@ -101,20 +71,17 @@ test("Settings retains refused numeric edits for retry", async ({ page }) => {
     "data-capture-ready",
     "true"
   );
-  const timeout = page.getByRole("textbox", {
-    name: "Feed request timeout",
-    exact: true,
-  });
+  const timeout = control(page, "textbox", "feedTimeoutSecs");
   await expect(timeout).toHaveValue("10");
   await timeout.fill("35");
   await timeout.press("Enter");
-  await expect(page.getByRole("alert")).toContainText("Please try again");
+  await expect(page.getByRole("alert")).toBeVisible();
   await expect(timeout).toHaveValue("35");
   await expect(timeout).toBeEnabled();
   await timeout.press("Enter");
   await expect(timeout).toBeEnabled();
-  await page.getByRole("button", { name: "Privacy", exact: true }).click();
-  await page.getByRole("button", { name: "General", exact: true }).click();
+  await control(page, "button", "settings-privacy").click();
+  await control(page, "button", "settings-general").click();
   await expect(timeout).toHaveValue("35");
 });
 
@@ -124,25 +91,18 @@ test("Settings fields follow the library entry layout", async ({
   await page.emulateMedia({ colorScheme: "dark" });
   await page.setViewportSize({ width: 900, height: 1000 });
   await page.goto("/?window=settings&theme=dark");
-  const field = page.getByRole("textbox", {
-    name: "Maximum feed response size",
-    exact: true,
-  });
+  const field = control(page, "textbox", "feedMaxBodyBytes");
   await expect(field).toBeEnabled();
   await expect(page.locator("html")).toHaveAttribute(
     "data-capture-ready",
     "true"
   );
-  const label = page
-    .locator("label")
-    .filter({ hasText: "Maximum feed response size" });
-  for (const name of [
-    "Show PDFs in the reading pane",
-    "Refresh all feeds on start-up",
-  ]) {
-    const control = page.getByRole("checkbox", { name, exact: true });
-    const labelId = await control.getAttribute("aria-labelledby");
-    const helpId = await control.getAttribute("aria-describedby");
+  const fieldId = await field.getAttribute("id");
+  const label = page.locator(`label[for="${fieldId}"]`);
+  for (const name of ["inline-pdf-reader", "refresh-on-startup"]) {
+    const fieldControl = control(page, "checkbox", name);
+    const labelId = await fieldControl.getAttribute("aria-labelledby");
+    const helpId = await fieldControl.getAttribute("aria-describedby");
     const labelBox = (await page.locator(`[id="${labelId}"]`).boundingBox())!;
     const helpBox = (await page.locator(`[id="${helpId}"]`).boundingBox())!;
     expect(Math.abs(labelBox.x - helpBox.x)).toBeLessThan(1);

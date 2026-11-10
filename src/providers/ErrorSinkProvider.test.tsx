@@ -19,6 +19,7 @@ function Trigger() {
   const { pushError } = useErrorSink();
   return (
     <button
+      data-testid="fail-article"
       onClick={() =>
         pushError(
           new ArticleLoadError("test-id", "fetch", {
@@ -76,20 +77,20 @@ describe("article error details", () => {
     );
     const click = async (label: string) => {
       const button = [...document.querySelectorAll("button")].find(
-        (b) => b.textContent === label
+        (b) => b.getAttribute("data-testid") === label
       );
       expect(button, label).toBeDefined();
       await act(async () => {
         button!.click();
       });
     };
-    await click("Fail article");
-    await click("Details");
+    await click("fail-article");
+    await click("diagnostic-details");
     expect(read).toHaveBeenCalledWith("test-id");
     expect(document.body.textContent).toContain("article:timeout");
     expect(document.body.textContent).not.toContain("private technical detail");
     expect(document.body.textContent).not.toContain("private exception");
-    await click("Copy diagnostics");
+    await click("copy-diagnostics");
     expect(JSON.parse(writeText.mock.calls[0][0])).toEqual(report);
     expect(document.body.textContent).toContain("Diagnostics copied.");
   });
@@ -255,7 +256,7 @@ it("queues concurrent errors, retains diagnostic identity through Details, and t
     expect(alert().textContent).toContain("First failure");
     await act(() =>
       [...alert().querySelectorAll("button")]
-        .find((b) => b.textContent === "Details")!
+        .find((b) => b.getAttribute("data-testid") === "diagnostic-details")!
         .click()
     );
     expect(read).toHaveBeenLastCalledWith("first");
@@ -264,30 +265,34 @@ it("queues concurrent errors, retains diagnostic identity through Details, and t
     );
     await act(() =>
       [...document.querySelectorAll("button")]
-        .find((b) => b.textContent === "Close")!
+        .find((b) => b.getAttribute("data-testid") === "close")!
         .click()
     );
     expect(alert().textContent).toContain("First failure");
     await act(() =>
       alert()
-        .querySelector<HTMLButtonElement>('button[aria-label="Close"]')!
+        .querySelector<HTMLButtonElement>(
+          'button[data-testid="dismiss-notification"]'
+        )!
         .click()
     );
     expect(alert().textContent).toContain("site icon");
     await act(() =>
       [...alert().querySelectorAll("button")]
-        .find((b) => b.textContent === "Details")!
+        .find((b) => b.getAttribute("data-testid") === "diagnostic-details")!
         .click()
     );
     expect(read).toHaveBeenLastCalledWith("second");
     await act(() =>
       [...document.querySelectorAll("button")]
-        .find((b) => b.textContent === "Close")!
+        .find((b) => b.getAttribute("data-testid") === "close")!
         .click()
     );
     await act(() =>
       alert()
-        .querySelector<HTMLButtonElement>('button[aria-label="Close"]')!
+        .querySelector<HTMLButtonElement>(
+          'button[data-testid="dismiss-notification"]'
+        )!
         .click()
     );
     expect(alert().textContent).toContain("Third failure");

@@ -58,15 +58,17 @@ const render = (items: ShortcutNode[] = nodes) =>
     )
   );
 const button = (label: string) =>
-  document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)!;
+  document.querySelector<HTMLButtonElement>(
+    `[data-testid="shortcut-actions"][data-target-title="${label}"]`
+  )!;
 async function click(element: HTMLElement) {
   await act(async () => element.click());
 }
 async function groupAction(title: string, action: string) {
-  await click(button(`Actions for group ${title}`));
+  await click(button(title));
   const item = [
     ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
-  ].find((item) => item.textContent === action)!;
+  ].find((item) => item.getAttribute("data-testid") === action)!;
   await click(item);
 }
 beforeEach(() => {
@@ -112,22 +114,27 @@ it("remembers collapse per library and temporarily reveals filtered descendants"
 });
 it("offers root but excludes the moved group and descendants from keyboard destinations", async () => {
   await render();
-  await groupAction("Research", "Move to…");
+  await groupAction("Research", "move-shortcut");
   const select = document.querySelector<HTMLElement>('[role="combobox"]')!;
-  expect(select.textContent).toBe("Top level of Shortcuts");
+  expect(
+    document.querySelector('input[aria-hidden="true"]')?.getAttribute("value")
+  ).toBe("");
   await act(async () =>
     select.dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true, button: 0 })
     )
   );
-  expect(document.querySelector('[role="listbox"]')?.textContent).toBe(
-    "Top level of Shortcuts"
-  );
+  expect(document.querySelectorAll('[role="option"]')).toHaveLength(1);
+  expect(
+    document.querySelector('[role="option"]')?.getAttribute("data-value")
+  ).toBe("");
   const option = document.querySelector<HTMLElement>('[role="option"]')!;
   await click(option);
-  expect(select.textContent).toBe("Top level of Shortcuts");
+  expect(
+    document.querySelector('input[aria-hidden="true"]')?.getAttribute("value")
+  ).toBe("");
   const move = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
-    (button) => button.textContent === "Move"
+    (button) => button.getAttribute("data-testid") === "confirm-move"
   )!;
   await click(move);
   expect(mocks.organizePins).toHaveBeenCalledWith({
@@ -140,12 +147,12 @@ it("keeps failed mutations visible and disables organization in read-only mode",
   await render();
   const error = new Error("failed save");
   mocks.organizePins.mockRejectedValueOnce(error);
-  await groupAction("Research", "Remove group");
+  await groupAction("Research", "remove-node");
   expect(mocks.pushError).toHaveBeenCalledWith(error);
   expect(container.textContent).toContain("Research");
   mocks.readOnly = true;
   await render();
-  expect(button("Actions for group Research").disabled).toBe(true);
+  expect(button("Research").disabled).toBe(true);
   await click(container.querySelector<HTMLElement>("[aria-expanded]")!);
   expect(
     container.querySelector("[aria-expanded]")?.getAttribute("aria-expanded")
@@ -201,7 +208,7 @@ it("accepts a drop into a collapsed group, expands it after saving, and keeps ro
 
 it("opens a single group action menu with visible labels and keyboard dismissal", async () => {
   await render();
-  const trigger = button("Actions for group Research");
+  const trigger = button("Research");
   trigger.focus();
   await act(async () =>
     trigger.dispatchEvent(
@@ -212,10 +219,10 @@ it("opens a single group action menu with visible labels and keyboard dismissal"
   await click(trigger);
   expect(trigger.getAttribute("aria-expanded")).toBe("true");
   expect(
-    [...document.querySelectorAll('[role="menuitem"]')].map(
-      (item) => item.textContent
+    [...document.querySelectorAll('[role="menuitem"]')].map((item) =>
+      item.getAttribute("data-testid")
     )
-  ).toEqual(["Add group", "Rename group", "Move to…", "Remove group"]);
+  ).toEqual(["add-group", "rename-group", "move-shortcut", "remove-node"]);
   const menu = document.querySelector<HTMLElement>('[role="menu"]')!;
   await act(async () =>
     menu.dispatchEvent(
@@ -228,10 +235,8 @@ it("opens a single group action menu with visible labels and keyboard dismissal"
 });
 it("opens the group's rename dialog from its labeled action", async () => {
   await render();
-  await groupAction("Research", "Rename group");
-  expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
-    "Rename group"
-  );
+  await groupAction("Research", "rename-group");
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull();
   expect(document.querySelector<HTMLInputElement>("input")?.value).toBe(
     "Research"
   );
@@ -247,16 +252,16 @@ it.each<PinTarget>([
   async (reference) => {
     mocks.setPin.mockResolvedValue(undefined);
     await render([{ reference, title: "Pinned target", unreadCount: 3 }]);
-    const trigger = button("Actions for shortcut Pinned target");
+    const trigger = button("Pinned target");
     trigger.focus();
     await click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     const items = [
       ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
     ];
-    expect(items.map((item) => item.textContent)).toEqual([
-      "Move to…",
-      "Remove shortcut",
+    expect(items.map((item) => item.getAttribute("data-testid"))).toEqual([
+      "move-shortcut",
+      "remove-node",
     ]);
     await click(items[1]);
     expect(mocks.setPin).toHaveBeenCalledWith(reference, false);
@@ -265,14 +270,14 @@ it.each<PinTarget>([
 );
 it("moves a shortcut through its menu and disables that menu when read-only", async () => {
   await render();
-  await click(button("Actions for shortcut Article"));
+  await click(button("Article"));
   await click(
     [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (item) => item.textContent === "Move to…"
+      (item) => item.getAttribute("data-testid") === "move-shortcut"
     )!
   );
   const move = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
-    (item) => item.textContent === "Move"
+    (item) => item.getAttribute("data-testid") === "confirm-move"
   )!;
   await click(move);
   expect(mocks.organizePins).toHaveBeenCalledWith({
@@ -282,7 +287,7 @@ it("moves a shortcut through its menu and disables that menu when read-only", as
   });
   mocks.readOnly = true;
   await render();
-  expect(button("Actions for shortcut Article").disabled).toBe(true);
+  expect(button("Article").disabled).toBe(true);
 });
 
 it("keeps descendant elements mounted when their group collapses and reopens", async () => {

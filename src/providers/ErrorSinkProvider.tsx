@@ -135,10 +135,18 @@ export default function ErrorSinkProvider({
         }}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
-        <Alert severity={severity} variant="filled" onClose={dismiss}>
+        <Alert
+          slotProps={{
+            closeButton: { ...{ "data-testid": "dismiss-notification" } },
+          }}
+          severity={severity}
+          variant="filled"
+          onClose={dismiss}
+        >
           {message}
           {diagnosticId && (
             <Button
+              data-testid="diagnostic-details"
               color="inherit"
               size="small"
               onClick={() => setDetailsId(diagnosticId)}

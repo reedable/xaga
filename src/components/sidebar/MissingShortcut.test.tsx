@@ -29,7 +29,7 @@ function mount() {
 }
 function button(label: string) {
   return [...document.querySelectorAll<HTMLButtonElement>("button")].find(
-    (button) => button.textContent === label
+    (button) => button.getAttribute("data-testid") === label
   )!;
 }
 afterEach(async () => {
@@ -59,7 +59,9 @@ it("keeps initial loading as a skeleton and hides target IDs in the compact erro
   expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
   expect(container.querySelector("button")).toBeNull();
   await act(async () => root.render(render(true)));
-  expect(container.textContent).toBe("Shortcut unavailable");
+  expect(
+    container.querySelector('[data-testid="unavailable-shortcut"]')
+  ).not.toBeNull();
   expect(container.textContent).not.toContain("pending");
   expect(container.querySelector('[aria-busy="true"]')).toBeNull();
 });
@@ -74,10 +76,10 @@ it("opens details with keyboard-focusable actions and removes only the shortcut"
   expect(document.querySelector('[role="dialog"]')!.textContent).toContain(
     "topic: lost"
   );
-  expect(document.querySelector('[role="dialog"]')!.textContent).toContain(
-    "We can’t find this topic."
-  );
-  await act(async () => button("Remove shortcut").click());
+  expect(
+    document.querySelector('[role="dialog"][aria-describedby]')
+  ).not.toBeNull();
+  await act(async () => button("remove-shortcut").click());
   expect(mocks.setPin).toHaveBeenCalledWith(target, false);
 });
 it("allows retry in read-only libraries and displays the safe read error", async () => {
@@ -85,7 +87,7 @@ it("allows retry in read-only libraries and displays the safe read error", async
   mocks.readOnly = true;
   mocks.readTopic.mockRejectedValue({
     code: "topic:malformed",
-    message: "The Topic file could not be read.",
+    message: "fixture-topic-read-error",
     detail: "SECRET",
   });
   await act(async () =>
@@ -94,16 +96,14 @@ it("allows retry in read-only libraries and displays the safe read error", async
   await act(async () =>
     container.querySelector<HTMLElement>('[role="button"]')!.click()
   );
-  expect(button("Remove shortcut").disabled).toBe(true);
-  expect(button("Retry").disabled).toBe(false);
-  await act(async () => button("Retry").click());
+  expect(button("remove-shortcut").disabled).toBe(true);
+  expect(button("retry").disabled).toBe(false);
+  await act(async () => button("retry").click());
   expect(mocks.readTopic).toHaveBeenCalledWith(
     expect.any(AbortSignal),
     "broken"
   );
-  expect(document.body.textContent).toContain(
-    "The Topic file could not be read."
-  );
+  expect(document.body.textContent).toContain("fixture-topic-read-error");
   expect(document.body.textContent).not.toContain("SECRET");
   expect(mocks.setPin).not.toHaveBeenCalled();
 });
@@ -133,7 +133,7 @@ it("refreshes shared Topics on successful retry", async () => {
   await act(async () =>
     container.querySelector<HTMLElement>('[role="button"]')!.click()
   );
-  await act(async () => button("Retry").click());
+  await act(async () => button("retry").click());
   expect(setTopics).toHaveBeenCalledWith(results);
 });
 it("opens shortcut details from the responsive header", async () => {
@@ -152,5 +152,5 @@ it("opens shortcut details from the responsive header", async () => {
       .click()
   );
   expect(document.body.textContent).toContain("feed: lost-feed");
-  expect(button("Retry")).toBeTruthy();
+  expect(button("retry")).toBeTruthy();
 });

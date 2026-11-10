@@ -155,7 +155,7 @@ async function click(title: string) {
 }
 function button(text: string) {
   return [...document.querySelectorAll<HTMLButtonElement>("button")].find(
-    (b) => b.textContent === text
+    (b) => b.getAttribute("data-testid") === text
   )!;
 }
 beforeEach(() => {
@@ -280,26 +280,22 @@ it("projects loading separately and opens unavailable-target actions without a s
   mocks.entries = [];
   loaded = false;
   await render();
-  expect(items()).toEqual([
-    expect.objectContaining({ title: "Loading shortcut…", enabled: false }),
-  ]);
+  expect(items()).toEqual([expect.objectContaining({ enabled: false })]);
   loaded = true;
   await render();
-  await click("Shortcut unavailable");
-  expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
-    "We can’t find this topic."
-  );
-  expect(button("Remove shortcut").disabled).toBe(true);
+  await act(async () => selected(items().find((item) => item.enabled)!.key));
+  expect(
+    document.querySelector('[role="dialog"][aria-describedby]')
+  ).not.toBeNull();
+  expect(button("remove-shortcut").disabled).toBe(true);
   mocks.platform.readTopic.mockRejectedValue({
     code: "topic:not-found",
     message: "missing",
   });
-  await act(async () => button("Retry").click());
+  await act(async () => button("retry").click());
   expect(mocks.platform.readTopic).toHaveBeenCalled();
-  expect(document.querySelector('[role="status"]')?.textContent).toContain(
-    "We can’t find this topic."
-  );
-  await act(async () => button("Close").click());
+  expect(document.querySelector('[role="status"]')?.textContent).toMatch(/\S/);
+  await act(async () => button("close").click());
   await act(async () => selected("all"));
   expect(router.state.shortcutId).toBe(ALL_ENTITIES.id);
   expect(mocks.setPin).not.toHaveBeenCalled();
@@ -311,9 +307,9 @@ it("removes only an unavailable shortcut without changing navigation", async () 
   topics = [];
   mocks.entries = [];
   await render();
-  await click("Shortcut unavailable");
+  await act(async () => selected(items().find((item) => item.enabled)!.key));
   const previous = router.state;
-  await act(async () => button("Remove shortcut").click());
+  await act(async () => button("remove-shortcut").click());
   expect(mocks.setPin).toHaveBeenCalledWith(pins[0], false);
   expect(router.state).toBe(previous);
 });

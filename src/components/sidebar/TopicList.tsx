@@ -45,6 +45,7 @@ export default function TopicList({
 
   return (
     <ExpandableList
+      section="topics"
       className={css.TopicList}
       count={topics.length}
       label="Topics"

@@ -61,10 +61,11 @@ function InlineTopicForm({
     <Box component="form" onSubmit={handleSubmit} className={css.InlineForm}>
       <TopicFormFields form={form} busy={saving || readOnly} autoFocus />
       <div className={css.InlineFormActions}>
-        <Button onClick={onCancel} disabled={saving}>
+        <Button data-testid="cancel" onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
         <Button
+          data-testid="confirm-create-topic"
           type="submit"
           variant="contained"
           disabled={!form.values.title || saving || readOnly}
@@ -270,6 +271,7 @@ export function TopicMembership({ entity }: { entity: Entry | Annotation }) {
       {!creating && (
         <div className={css.Filter}>
           <TextField
+            data-testid="filter-topics"
             className={css.FilterTextInput}
             placeholder="Filter topics…"
             size="small"
@@ -342,6 +344,7 @@ export function TopicMembership({ entity }: { entity: Entry | Annotation }) {
             (filterText.trim() && filteredTopics.length === 0)) && (
             <ListItem>
               <Button
+                data-testid="create-topic"
                 onClick={startCreating}
                 disabled={readOnly}
                 fullWidth

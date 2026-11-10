@@ -67,11 +67,7 @@ afterEach(async () => {
   container.remove();
 });
 const input = () =>
-  document.getElementById(
-    Array.from(container.querySelectorAll("label")).find(
-      (label) => label.textContent === "Maximum import file size"
-    )!.htmlFor
-  ) as HTMLInputElement;
+  container.querySelector<HTMLInputElement>('input[name="importMaxBytes"]')!;
 async function blur() {
   await act(async () =>
     input().dispatchEvent(new FocusEvent("focusout", { bubbles: true }))

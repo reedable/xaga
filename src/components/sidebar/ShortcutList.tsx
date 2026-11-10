@@ -67,6 +67,7 @@ export default function ShortcutList({
 
   return (
     <ExpandableList
+      section="shortcuts"
       className={css.ShortcutList}
       count={shortcuts.length + missing.length}
       label="Shortcuts"

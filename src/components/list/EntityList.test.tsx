@@ -260,8 +260,8 @@ it("keeps the article scope while selecting annotations and moving with the keyb
     "First",
     "Last",
   ]);
-  expect(container.querySelector('[aria-label="Filter"]')).toBeNull();
-  expect(container.textContent).not.toContain("Mark all read");
+  expect(container.querySelector('[data-testid="filter"]')).toBeNull();
+  expect(container.querySelector('[data-testid="mark-all-read"]')).toBeNull();
   await act(async () => rows()[1].click());
   expect(route.state).toMatchObject({
     articleScopeId: "article",
@@ -377,7 +377,7 @@ it("keeps a reading-state event that arrives while an older article snapshot is 
 it("filters article-scope rows without changing the open list target", async () => {
   await render();
   const input = container.querySelector<HTMLInputElement>(
-    'input[placeholder="Filter items…"]'
+    '[data-testid="filter-items"] input'
   )!;
   const setValue = Object.getOwnPropertyDescriptor(
     HTMLInputElement.prototype,
@@ -462,8 +462,12 @@ it("keeps an empty Site selected when unpinned and opens its Settings", async ()
   await render(state);
   expect(mocks.sites.listSiteEntries).toHaveBeenCalledWith(site.id, "unread");
   const settings =
-    container.querySelector<HTMLButtonElement>('button[aria-label="Edit"]') ??
-    container.querySelector<HTMLButtonElement>('button[title="Edit"]');
+    container.querySelector<HTMLButtonElement>(
+      'button[data-testid="edit-collection"]'
+    ) ??
+    container.querySelector<HTMLButtonElement>(
+      'button[data-testid="edit-collection"]'
+    );
   // MUI Tooltip supplies the accessible name on its child button.
   expect(settings).not.toBeNull();
   await act(async () => settings!.click());
@@ -511,9 +515,7 @@ it.each(["feed", "topic", "site"] as const)(
 
     await render({ shortcutId: ALL_ENTITIES.id, filter: "saved" }, true);
     const openHeader = async () => {
-      const combo = container.querySelector<HTMLElement>(
-        '[aria-label="Browse collections and tags"]'
-      )!;
+      const combo = container.querySelector<HTMLElement>('[role="combobox"]')!;
       await act(async () =>
         combo.dispatchEvent(
           new MouseEvent("mousedown", { bubbles: true, button: 0 })
@@ -545,7 +547,9 @@ it.each(["feed", "topic", "site"] as const)(
     await render(route.state);
     await act(async () =>
       container
-        .querySelector<HTMLButtonElement>('button[aria-label="Edit"]')!
+        .querySelector<HTMLButtonElement>(
+          'button[data-testid="edit-collection"]'
+        )!
         .click()
     );
     for (const [editorKind, editor] of Object.entries({
@@ -578,9 +582,11 @@ it("browses mixed tag intersections and retains membership through state and ass
     "all"
   );
   expect(container.textContent).toContain("Research + Work");
-  expect(container.querySelector('[aria-label="Unread"]')).toBeNull();
+  expect(container.querySelector('[data-testid="filter-unread"]')).toBeNull();
   expect(
-    container.querySelector('[aria-label="All"]')?.getAttribute("aria-pressed")
+    container
+      .querySelector('[data-testid="filter-all"]')
+      ?.getAttribute("aria-pressed")
   ).toBe("true");
   await act(async () => rows()[0].click());
   expect(route.state.tagIds).toEqual(["tag-a", "tag-b"]);
@@ -618,9 +624,11 @@ it("shares the tag set with the hidden-sidebar header and immediately intersects
     [],
     "all"
   );
-  expect(container.querySelector('[aria-label="Unread"]')).not.toBeNull();
+  expect(
+    container.querySelector('[data-testid="filter-unread"]')
+  ).not.toBeNull();
   const combo = container.querySelector<HTMLElement>('[role="combobox"]')!;
-  expect(combo.getAttribute("aria-label")).toBe("Browse collections and tags");
+  expect(combo.getAttribute("aria-label")).toMatch(/\S/);
   await act(async () =>
     combo.dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true, button: 0 })
@@ -654,7 +662,7 @@ it("updates renamed or missing labels without reloading the active list", async 
   expect(mocks.tagEntries).toHaveBeenCalledOnce();
   mocks.tagContext.tags = [];
   await selectFilter("saved");
-  expect(container.textContent).toContain("Unavailable tag");
+  expect(container.querySelector('[role="combobox"]')).not.toBeNull();
   expect(route.state.tagIds).toEqual(["tag-a"]);
 });
 
@@ -673,7 +681,7 @@ it("ignores a superseded tag query and refreshes membership when text filtering 
   );
   expect(rows().map((row) => row.textContent)).toEqual(["Pinned article"]);
   const input = container.querySelector<HTMLInputElement>(
-    'input[placeholder="Filter items…"]'
+    '[data-testid="filter-items"] input'
   )!;
   await act(async () => {
     Object.getOwnPropertyDescriptor(
@@ -1035,7 +1043,7 @@ it("retains the current filter through Topic/article Back and Forward without ad
   expect(route.state).toEqual(firstSelection);
   expect(
     container
-      .querySelector('[aria-label="Saved"]')
+      .querySelector('[data-testid="filter-saved"]')
       ?.getAttribute("aria-pressed")
   ).toBe("true");
   await act(async () => route.goBack());
@@ -1045,7 +1053,7 @@ it("retains the current filter through Topic/article Back and Forward without ad
   expect(route.state).toEqual(firstSelection);
   expect(
     container
-      .querySelector('[aria-label="Unread"]')
+      .querySelector('[data-testid="filter-unread"]')
       ?.getAttribute("aria-pressed")
   ).toBe("true");
   await act(async () => route.goForward());

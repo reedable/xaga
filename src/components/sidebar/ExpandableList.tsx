@@ -9,6 +9,7 @@ export interface ExpandableListProps {
   className?: string;
   count: number;
   label: string;
+  section?: string;
   isExpanded: boolean;
   onClickHeader: () => void;
   renderHeaderAction?: () => ReactNode;
@@ -19,6 +20,7 @@ export default function ExpandableList({
   className,
   count,
   label,
+  section,
   isExpanded,
   onClickHeader,
   renderHeaderAction,
@@ -27,6 +29,7 @@ export default function ExpandableList({
     <>
       <div className={cx(className, css.ExpandableListHeaderWrapper)}>
         <ToggleButton
+          data-testid={section && `sidebar-${section}-toggle`}
           className={css.ExpandableListHeader}
           selected={isExpanded}
           value="checked"
@@ -62,7 +65,12 @@ export default function ExpandableList({
         )}
       >
         <Collapse in={isExpanded}>
-          <List aria-label={label} dense disablePadding>
+          <List
+            data-testid={section && `sidebar-${section}-list`}
+            aria-label={label}
+            dense
+            disablePadding
+          >
             {children}
           </List>
         </Collapse>

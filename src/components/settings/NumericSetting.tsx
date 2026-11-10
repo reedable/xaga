@@ -5,6 +5,7 @@ import css from "./GeneralSettings.module.css";
 
 export function NumericSetting({
   label,
+  name,
   savedValue,
   saveValue,
   description,
@@ -14,6 +15,7 @@ export function NumericSetting({
   conversion,
 }: {
   label: string;
+  name?: string;
   savedValue: string | null;
   saveValue: (value: string) => Promise<boolean>;
   description: string;
@@ -79,6 +81,7 @@ export function NumericSetting({
         {label}
       </Typography>
       <TextField
+        name={name}
         id={inputId}
         size="small"
         fullWidth

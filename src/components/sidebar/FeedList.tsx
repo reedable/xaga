@@ -45,6 +45,7 @@ export default function FeedList({
 
   return (
     <ExpandableList
+      section="feeds"
       className={css.FeedList}
       count={feeds.length}
       label="Feeds"
@@ -55,6 +56,7 @@ export default function FeedList({
           {/* span keeps the Tooltip working when the button is disabled */}
           <span>
             <IconButton
+              data-testid="add-feed"
               size="small"
               disabled={addDisabled}
               onClick={onAddFeed}

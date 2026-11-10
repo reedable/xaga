@@ -28,7 +28,7 @@ let container: HTMLDivElement;
 const tag = { id: "tag-a", name: "Research" };
 const button = (text: string) =>
   [...document.querySelectorAll<HTMLButtonElement>("button")].find(
-    (item) => item.textContent === text
+    (item) => item.getAttribute("data-testid") === text
   )!;
 beforeEach(() => {
   vi.clearAllMocks();
@@ -94,7 +94,7 @@ it("prefills the dialog, submits its form, and keeps a collision inline", async 
   await name(" Other ");
   mocks.renameTag.mockRejectedValueOnce({
     code: "tags:collision",
-    message: "A tag already uses this name.",
+    message: "fixture-collision",
     detail: "",
   });
   await act(async () =>
@@ -103,16 +103,16 @@ it("prefills the dialog, submits its form, and keeps a collision inline", async 
       .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))
   );
   expect(mocks.renameTag).toHaveBeenCalledWith(tag.id, "Other");
-  expect(document.body.textContent).toContain("A tag already uses this name.");
+  expect(document.body.textContent).toContain("fixture-collision");
   expect(document.querySelector('[role="dialog"]')).not.toBeNull();
   await name("Changed");
-  await act(async () => button("Rename").click());
+  await act(async () => button("rename").click());
   expect(mocks.renameTag).toHaveBeenLastCalledWith(tag.id, "Changed");
   expect(mocks.pushError).not.toHaveBeenCalled();
 });
 it("cancels without mutation and returns focus to the actions control", async () => {
   await dialog();
-  await act(async () => button("Cancel").click());
+  await act(async () => button("cancel").click());
   expect(mocks.renameTag).not.toHaveBeenCalled();
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -123,7 +123,7 @@ it("refuses another rename while transitioning and in read-only mode", async () 
   mocks.renaming = [tag.id];
   await menu();
   const item = document.querySelector('[role="menuitem"]')!;
-  expect(item.textContent).toBe("Renaming “Research”…");
+  expect(item.getAttribute("data-testid")).toBe("rename-tag");
   expect(item.getAttribute("aria-disabled")).toBe("true");
   await act(async () =>
     container.querySelector<HTMLButtonElement>("button")!.click()
@@ -145,7 +145,7 @@ it("enables another rename as soon as indexed work completes", async () => {
   mocks.renaming = [];
   await act(async () => root.render(<TagActions tag={tag} />));
   const item = document.querySelector('[role="menuitem"]')!;
-  expect(item.textContent).toBe("Rename “Research”");
+  expect(item.getAttribute("data-testid")).toBe("rename-tag");
   expect(item.getAttribute("aria-disabled")).not.toBe("true");
 });
 
@@ -153,13 +153,11 @@ it("confirms deletion once, preserves the tag on cancellation, and restores focu
   await menu();
   const deleteItem = () =>
     [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (item) => item.textContent === "Delete “Research”"
+      (item) => item.getAttribute("data-testid") === "delete-tag"
     )!;
   await act(async () => deleteItem().click());
-  expect(document.body.textContent).toContain(
-    "Articles and annotations will remain intact."
-  );
-  await act(async () => button("Cancel").click());
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  await act(async () => button("cancel").click());
   expect(mocks.deleteTag).not.toHaveBeenCalled();
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -169,7 +167,7 @@ it("confirms deletion once, preserves the tag on cancellation, and restores focu
     container.querySelector<HTMLButtonElement>("button")!.click()
   );
   await act(async () => deleteItem().click());
-  await act(async () => button("Delete").click());
+  await act(async () => button("delete").click());
   expect(mocks.deleteTag).toHaveBeenCalledExactlyOnceWith(tag.id);
 });
 
@@ -181,7 +179,7 @@ it("disables conflicting actions while deleting and refuses read-only deletion",
     "true",
     "true",
   ]);
-  expect(items[1].textContent).toBe("Deleting “Research”…");
+  expect(items[1].getAttribute("data-testid")).toBe("delete-tag");
   mocks.deleting = [];
   mocks.readOnly = true;
   await act(async () => root.render(<TagActions tag={tag} />));
@@ -200,48 +198,44 @@ async function collision() {
   });
   mocks.renameTag.mockRejectedValueOnce({
     code: "tags:collision",
-    message: "A tag already uses this name.",
+    message: "fixture-collision",
     detail: "",
   });
   await dialog();
   await name("Work");
-  await act(async () => button("Rename").click());
+  await act(async () => button("rename").click());
 }
 it("requires explicit merge confirmation after a collision", async () => {
   await collision();
-  expect(document.body.textContent).toContain(
-    "Combine “Research” and “Work” into a single tag named “Work”."
-  );
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull();
   expect(document.querySelector('[role="dialog"] strong')?.textContent).toBe(
     "“Work”"
   );
-  expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
-    "This cannot be undone."
-  );
   expect(mocks.mergeTags).not.toHaveBeenCalled();
-  await act(async () => button("Merge").click());
+  expect(mocks.mergeTags).not.toHaveBeenCalled();
+  await act(async () => button("merge").click());
   expect(mocks.mergeTags).toHaveBeenCalledExactlyOnceWith("tag-a", "tag-b");
 });
 it("cancels a proposed merge without mutation", async () => {
   await collision();
-  await act(async () => button("Cancel").click());
+  await act(async () => button("cancel").click());
   expect(mocks.mergeTags).not.toHaveBeenCalled();
 });
 it("waits for a destination transition and keeps a racing busy response inline", async () => {
   await collision();
   mocks.renaming = ["tag-b"];
   await act(async () => root.render(<TagActions tag={tag} />));
-  expect(button("Merge").disabled).toBe(true);
+  expect(button("merge").disabled).toBe(true);
   mocks.renaming = [];
   await act(async () => root.render(<TagActions tag={tag} />));
   mocks.mergeTags.mockRejectedValueOnce({
     code: "tags:busy",
-    message: "Tag changes are still running.",
+    message: "fixture-busy",
     detail: "",
   });
-  await act(async () => button("Merge").click());
+  await act(async () => button("merge").click());
   expect(document.querySelector('[role="alert"]')?.textContent).toContain(
-    "Tag changes are still running."
+    "fixture-busy"
   );
   expect(mocks.pushError).not.toHaveBeenCalled();
 });

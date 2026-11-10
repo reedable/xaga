@@ -35,6 +35,7 @@ export function Settings() {
             <List disablePadding>
               {SECTIONS.map(({ path, label }) => (
                 <ListItemButton
+                  data-testid={`settings-${path}`}
                   key={path}
                   selected={activeSection === path}
                   onClick={() => navigate(`/${path}`)}

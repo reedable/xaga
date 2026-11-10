@@ -391,8 +391,17 @@ const ArticleReader = forwardRef<ArticleReaderHandle, ArticleReaderProps>(
             </DialogContentText>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setPendingUpdate(null)}>Keep old</Button>
-            <Button onClick={handleConfirmUpdate} variant="contained">
+            <Button
+              data-testid="keep-article"
+              onClick={() => setPendingUpdate(null)}
+            >
+              Keep old
+            </Button>
+            <Button
+              data-testid="update-article"
+              onClick={handleConfirmUpdate}
+              variant="contained"
+            >
               Update
             </Button>
           </DialogActions>

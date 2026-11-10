@@ -105,6 +105,7 @@ export function TopicFormFields({
         fullWidth
       />
       <TextField
+        data-testid="topic-description"
         label="Description"
         value={form.description}
         onChange={(event) => form.setDescription(event.target.value)}
@@ -114,6 +115,7 @@ export function TopicFormFields({
         fullWidth
       />
       <FormControlLabel
+        data-testid="pin-toggle"
         control={
           <Checkbox
             checked={form.pinned}
@@ -125,6 +127,7 @@ export function TopicFormFields({
       />
       <Box>
         <Typography
+          data-testid="topic-similarity"
           variant="caption"
           color="text.secondary"
           sx={{ display: "block" }}

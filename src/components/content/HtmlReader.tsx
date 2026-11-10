@@ -472,6 +472,7 @@ export function HtmlReader({
         onLoad={handleIframeLoad}
         sandbox="allow-scripts"
         allow="autoplay 'none'"
+        data-testid="entry-reader"
         title="Entry reader"
         style={{ colorScheme: themeMode }}
       />

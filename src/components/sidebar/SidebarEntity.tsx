@@ -21,6 +21,7 @@ type SidebarSummary = {
 
 export interface SidebarEntityProps<T extends SidebarSummary> {
   className?: string;
+  testId?: string;
   collection: T;
   icon?: ElementType;
   loading?: boolean;
@@ -31,6 +32,7 @@ export interface SidebarEntityProps<T extends SidebarSummary> {
 
 export default function SidebarEntity<T extends SidebarSummary>({
   className,
+  testId,
   collection,
   icon: Icon = RssFeed,
   loading = false,
@@ -46,6 +48,7 @@ export default function SidebarEntity<T extends SidebarSummary>({
       secondaryAction={renderSecondaryAction?.(collection)}
     >
       <ListItemButton
+        data-testid={testId}
         className={cx(className)}
         selected={selected}
         onClick={() => onSelectCollection(collection)}

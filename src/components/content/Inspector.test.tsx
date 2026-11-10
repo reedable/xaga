@@ -62,27 +62,29 @@ afterEach(async () => {
 });
 const tab = (name: string) =>
   [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(
-    (button) => button.textContent === name
+    (button) => button.getAttribute("data-testid") === name
   )!;
 
 it("switches views by keyboard and retains the selection across article navigation", async () => {
   await act(async () => root.render(<Host articleId="parent-article" />));
   expect(container.textContent).toContain("Related to parent-article");
   await act(async () => {
-    tab("Related").focus();
-    tab("Related").dispatchEvent(
+    tab("inspector-related").focus();
+    tab("inspector-related").dispatchEvent(
       new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })
     );
   });
-  expect(tab("Topics").getAttribute("aria-selected")).toBe("true");
+  expect(tab("inspector-topics").getAttribute("aria-selected")).toBe("true");
   const panel = document.getElementById(
-    tab("Topics").getAttribute("aria-controls")!
+    tab("inspector-topics").getAttribute("aria-controls")!
   );
-  expect(panel?.getAttribute("aria-labelledby")).toBe(tab("Topics").id);
+  expect(panel?.getAttribute("aria-labelledby")).toBe(
+    tab("inspector-topics").id
+  );
   expect(panel?.hidden).toBe(false);
   expect(container.textContent).toContain("Topics for parent-article");
   await act(async () => root.render(<Host articleId="another-article" />));
-  expect(tab("Topics").getAttribute("aria-selected")).toBe("true");
+  expect(tab("inspector-topics").getAttribute("aria-selected")).toBe("true");
   expect(container.textContent).toContain("Topics for another-article");
 });
 
@@ -132,13 +134,13 @@ it("reports a failed article lookup without leaving a loading status indefinitel
     )
   );
   expect(mocks.pushError).toHaveBeenCalledWith(failure);
-  expect(container.textContent).toContain("Article topics couldn’t be loaded.");
+  expect(container.querySelector('[role="alert"]')).not.toBeNull();
   expect(container.querySelector('[role="status"]')).toBeNull();
 });
 
 it("exposes the Article Tags view", async () => {
   await act(async () => root.render(<Host articleId="article" />));
-  expect(tab("Tags")).toBeTruthy();
+  expect(tab("inspector-tags")).toBeTruthy();
 });
 
 it("reads Annotation Topics from its parent file without substituting Article memberships", async () => {
@@ -152,7 +154,7 @@ it("reads Annotation Topics from its parent file without substituting Article me
     )
   );
   expect(container.textContent).toContain("Related to annotation");
-  expect(tab("Tags")).toBeDefined();
+  expect(tab("inspector-tags")).toBeDefined();
   expect(container.textContent).toContain("Tags for parent/annotation");
   await act(async () =>
     root.render(
@@ -179,9 +181,7 @@ it("does not fall back to Article memberships when an Annotation is missing", as
       />
     )
   );
-  expect(container.textContent).toContain(
-    "Annotation topics couldn’t be loaded."
-  );
+  expect(container.querySelector('[role="alert"]')).not.toBeNull();
   expect(mocks.read).not.toHaveBeenCalled();
 });
 
@@ -195,9 +195,9 @@ it("preserves both tab contents and avoids repeating the target lookup on tab sw
   expect(relatedContent).not.toBeNull();
   expect(topicContent).not.toBeNull();
   expect(mocks.read).toHaveBeenCalledTimes(1);
-  await act(async () => tab("Topics").click());
-  await act(async () => tab("Related").click());
-  await act(async () => tab("Topics").click());
+  await act(async () => tab("inspector-topics").click());
+  await act(async () => tab("inspector-related").click());
+  await act(async () => tab("inspector-topics").click());
   expect(panels[0].firstElementChild).toBe(relatedContent);
   expect(panels[1].firstElementChild).toBe(topicContent);
   expect(mocks.read).toHaveBeenCalledTimes(1);

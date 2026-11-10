@@ -92,10 +92,25 @@ export function Inspector({
             },
           })}
         >
-          <Tab disableRipple value="related" label="Related" />
-          <Tab disableRipple value="topics" label="Topics" />
+          <Tab
+            data-testid="inspector-related"
+            disableRipple
+            value="related"
+            label="Related"
+          />
+          <Tab
+            data-testid="inspector-topics"
+            disableRipple
+            value="topics"
+            label="Topics"
+          />
 
-          <Tab disableRipple value="tags" label="Tags" />
+          <Tab
+            data-testid="inspector-tags"
+            disableRipple
+            value="tags"
+            label="Tags"
+          />
         </TabList>
 
         <TabPanel className={css.View} value="tags" tabIndex={0} keepMounted>
@@ -115,7 +130,7 @@ export function Inspector({
             lookup.entity ? (
               <TopicMembership key={targetKey} entity={lookup.entity} />
             ) : (
-              <Typography variant="body2">
+              <Typography role="alert" variant="body2">
                 {label} topics couldn’t be loaded.
               </Typography>
             )

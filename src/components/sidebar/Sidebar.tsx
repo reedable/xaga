@@ -129,6 +129,7 @@ export function Sidebar({
           {/* span keeps the Tooltip working when the button is disabled */}
           <span className={css.RefreshWrap}>
             <IconButton
+              data-testid="refresh"
               className={cx(css.ToolbarButton, spin && css.Loading)}
               size="small"
               aria-label="Refresh"
@@ -143,6 +144,7 @@ export function Sidebar({
 
       <List dense disablePadding className={css.AllItems}>
         <SidebarEntity
+          testId="all-items"
           icon={Newspaper}
           collection={allEntities}
           loading={loadingFeedIds.size > 0}
@@ -167,7 +169,10 @@ export function Sidebar({
         variant="standard"
         onChange={(event) => onFilterChange(event.target.value)}
         slotProps={{
-          htmlInput: { "aria-label": "Filter collections" },
+          htmlInput: {
+            "aria-label": "Filter collections",
+            "data-testid": "filter-collections",
+          },
           input: {
             endAdornment: filter ? (
               <InputAdornment position="end">
@@ -244,7 +249,7 @@ export function Sidebar({
         variant="standard"
         onChange={(event) => onFilterChange(event.target.value)}
         slotProps={{
-          htmlInput: { "aria-label": "Filter collections" },
+          htmlInput: { "aria-label": "Filter collections", "data-testid": "filter-collections" },
           input: {
             endAdornment: filter ? (
               <InputAdornment position="end">

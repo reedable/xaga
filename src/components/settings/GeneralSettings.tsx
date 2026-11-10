@@ -46,6 +46,7 @@ export function GeneralSettings() {
           />
 
           <Button
+            data-testid="switch-library"
             variant="outlined"
             onClick={switchLibrary}
             className={css.SwitchButton}
@@ -107,10 +108,12 @@ export function GeneralSettings() {
 
       <div className={css.RefreshSection}>
         <FormControlLabel
+          data-testid="inline-pdf-reader"
           control={
             <Checkbox
               slotProps={{
                 input: {
+                  name: "inline-pdf-reader",
                   "aria-labelledby": `${pdfHelpId}-label`,
                   "aria-describedby": pdfHelpId,
                 },
@@ -134,10 +137,12 @@ export function GeneralSettings() {
 
       <div className={css.RefreshSection}>
         <FormControlLabel
+          data-testid="refresh-on-startup"
           control={
             <Checkbox
               slotProps={{
                 input: {
+                  name: "refresh-on-startup",
                   "aria-labelledby": `${refreshHelpId}-label`,
                   "aria-describedby": refreshHelpId,
                 },
@@ -185,6 +190,7 @@ function ImportSizeSetting() {
   }, [platform, pushError, refreshVersion]);
   return (
     <NumericSetting
+      name="importMaxBytes"
       label="Maximum import file size"
       savedValue={savedBytes === null ? null : String(savedBytes / MIB)}
       minimum={1n}

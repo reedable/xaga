@@ -40,6 +40,7 @@ export function ColorSwatches({
         >
           <span>
             <IconButton
+              data-testid="remove-marking"
               disableRipple
               className={css.RemoveButton}
               aria-label="Remove marking"
@@ -59,6 +60,7 @@ export function ColorSwatches({
           easing="ease-in-out"
         >
           <Button
+            data-testid="confirm-remove"
             disableRipple
             sx={{ transition: "none" }}
             disabled={disabled || !pendingRemove}
@@ -75,6 +77,7 @@ export function ColorSwatches({
             <ButtonBase
               disableRipple
               className={css.SwatchButton}
+              data-color={name}
               aria-label={name}
               aria-pressed={color === name}
               autoFocus={

@@ -257,7 +257,11 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
             />
           ) : (
             <div className={css.Placeholder}>
-              <Typography variant="body2" color="text.disabled">
+              <Typography
+                data-testid="reader-empty"
+                variant="body2"
+                color="text.disabled"
+              >
                 {isResolving ? "Loading…" : "Select an article"}
               </Typography>
             </div>
@@ -311,7 +315,11 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
               {drawerTarget?.annotationId ? "Annotation" : "Article"} details
             </Typography>
             <Tooltip title="Close details">
-              <IconButton aria-label="Close details" onClick={closeInspector}>
+              <IconButton
+                data-testid="close-details"
+                aria-label="Close details"
+                onClick={closeInspector}
+              >
                 <Close />
               </IconButton>
             </Tooltip>

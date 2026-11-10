@@ -71,6 +71,7 @@ export default function EditSiteDialog({
             slotProps={{ input: { readOnly: true } }}
           />
           <FormControlLabel
+            data-testid="pin-toggle"
             label="Add to Shortcuts"
             control={
               <Checkbox
@@ -82,10 +83,11 @@ export default function EditSiteDialog({
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={onClose} disabled={saving}>
+          <Button data-testid="cancel" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
           <Button
+            data-testid="save"
             type="submit"
             variant="contained"
             disabled={readOnly || saving}

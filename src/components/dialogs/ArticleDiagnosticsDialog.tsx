@@ -83,10 +83,16 @@ export default function ArticleDiagnosticsDialog({
         </Typography>
       </DialogContent>
       <DialogActions>
-        <Button disabled={!diagnostic} onClick={handleCopy}>
+        <Button
+          data-testid="copy-diagnostics"
+          disabled={!diagnostic}
+          onClick={handleCopy}
+        >
           Copy diagnostics
         </Button>
-        <Button onClick={onClose}>Close</Button>
+        <Button data-testid="close" onClick={onClose}>
+          Close
+        </Button>
       </DialogActions>
     </Dialog>
   );

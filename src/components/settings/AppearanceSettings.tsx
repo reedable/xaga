@@ -119,6 +119,7 @@ export function AppearanceSettings() {
       </div>
 
       <Typography
+        data-testid="reading-settings"
         component="h2"
         variant="subtitle1"
         className={css.ReadingHeading}
@@ -131,6 +132,7 @@ export function AppearanceSettings() {
           Default article view
         </Typography>
         <RadioGroup
+          data-testid="article-view"
           aria-labelledby="default-article-view"
           value={view}
           onChange={(e) => changeHtmlReaderView(e.target.value as typeof view)}

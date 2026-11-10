@@ -34,6 +34,7 @@ export default function SiteList({
 
   return (
     <ExpandableList
+      section="sites"
       className={css.SiteList}
       count={sites.length}
       label="Sites"

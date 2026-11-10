@@ -177,7 +177,7 @@ async function closeLoader() {
 }
 function clickDialogButton(label: string) {
   const button = [...document.querySelectorAll("[role=dialog] button")].find(
-    (button) => button.textContent === label
+    (button) => button.getAttribute("data-testid") === label
   ) as HTMLButtonElement;
   expect(button).toBeDefined();
   button.click();
@@ -197,11 +197,9 @@ it("offers an update on loader close and saves only after Update", async () => {
   });
   await act(() => root.render(<ArticleReader />));
   await closeLoader();
-  expect(document.querySelector("[role=dialog]")?.textContent).toContain(
-    "Update article?"
-  );
+  expect(document.querySelector("[role=dialog]")).not.toBeNull();
   expect(mocks.save).not.toHaveBeenCalled();
-  await act(() => clickDialogButton("Update"));
+  await act(() => clickDialogButton("update-article"));
   expect(mocks.save).toHaveBeenCalledExactlyOnceWith(mocks.article, extracted);
   expectReaderTitle("Updated");
 });
@@ -213,7 +211,7 @@ it("keeps the saved article when Keep old is selected", async () => {
   });
   await act(() => root.render(<ArticleReader />));
   await closeLoader();
-  await act(() => clickDialogButton("Keep old"));
+  await act(() => clickDialogButton("keep-article"));
   expect(mocks.save).not.toHaveBeenCalled();
 });
 

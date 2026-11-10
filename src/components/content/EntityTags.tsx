@@ -237,7 +237,7 @@ export function EntityTags({
   if (failed)
     return (
       <Box className={css.EntityTags} aria-busy={busy}>
-        <Typography>Tags couldn’t be loaded.</Typography>
+        <Typography role="alert">Tags couldn’t be loaded.</Typography>
       </Box>
     );
 
@@ -251,6 +251,7 @@ export function EntityTags({
   return (
     <Box className={css.EntityTags} aria-busy={busy}>
       <TextField
+        data-testid="tag-search"
         className={css.FilterInput}
         placeholder="Find or create a tag"
         size="small"
@@ -260,6 +261,7 @@ export function EntityTags({
       />
 
       <Box
+        data-testid="annotation-tags"
         className={css.TagGroup}
         role="group"
         aria-label={
@@ -291,7 +293,11 @@ export function EntityTags({
       )}
 
       {canCreate && (
-        <Button disabled={readOnly || busy} onClick={() => void mutate()}>
+        <Button
+          data-testid="create-tag"
+          disabled={readOnly || busy}
+          onClick={() => void mutate()}
+        >
           Create “{query.trim()}”
         </Button>
       )}

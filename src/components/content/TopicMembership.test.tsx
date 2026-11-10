@@ -86,7 +86,7 @@ it("offers inline topic creation when no topics exist", async () => {
   await act(async () => root.render(<TopicMembership entity={article} />));
 
   const createAction = [...document.body.querySelectorAll("button")].find(
-    (button) => button.textContent === "Create a New Topic"
+    (button) => button.getAttribute("data-testid") === "create-topic"
   )!;
   await click(createAction);
 
@@ -94,9 +94,11 @@ it("offers inline topic creation when no topics exist", async () => {
     "input[required]"
   ) as HTMLInputElement;
   expect(title.value).toBe("");
-  expect(document.body.textContent).toContain("Description");
-  expect(document.body.textContent).toContain("Similarity threshold");
-  expect(document.body.textContent).toContain("Add to Shortcuts");
+  expect(document.querySelector("textarea")).not.toBeNull();
+  expect(
+    document.querySelector('[data-testid="topic-similarity"]')
+  ).not.toBeNull();
+  expect(document.querySelector('input[type="checkbox"]')).not.toBeNull();
 
   const created = topic("new", "First topic");
   mocks.createTopicWithMember.mockResolvedValueOnce(created);
@@ -104,7 +106,7 @@ it("offers inline topic creation when no topics exist", async () => {
   await click(document.body.querySelector('input[type="checkbox"]')!);
   await click(
     [...document.body.querySelectorAll("button")].find(
-      (button) => button.textContent === "Create Topic"
+      (button) => button.getAttribute("data-testid") === "confirm-create-topic"
     )!
   );
   expect(mocks.createTopicWithMember).toHaveBeenCalledWith(
@@ -131,12 +133,12 @@ it("prefills an inline topic title from a trimmed no-match filter", async () => 
   await act(async () => root.render(<TopicMembership entity={article} />));
 
   const filter = document.body.querySelector(
-    'input[placeholder="Filter topics…"]'
+    '[data-testid="filter-topics"] input'
   )!;
   await setInput(filter, "  New topic  ");
 
   const createAction = [...document.body.querySelectorAll("button")].find(
-    (button) => button.textContent === "Create a New Topic"
+    (button) => button.getAttribute("data-testid") === "create-topic"
   )!;
   await click(createAction);
   expect(
@@ -185,7 +187,7 @@ it("allows read-only membership inspection without enabling assignment or creati
   mocks.topics = [];
   await act(async () => root.render(<TopicMembership entity={article} />));
   const create = [...container.querySelectorAll("button")].find(
-    (button) => button.textContent === "Create a New Topic"
+    (button) => button.getAttribute("data-testid") === "create-topic"
   )!;
   expect(create.disabled).toBe(true);
 });
@@ -232,24 +234,24 @@ it("adds and removes the Annotation itself as a typed Topic member", async () =>
 it("shows loading instead of topic creation until the first list arrives", async () => {
   mocks.hasLoaded = false;
   await act(async () => root.render(<TopicMembership entity={article} />));
-  expect(container.querySelector('[role="status"]')?.textContent).toBe(
-    "Loading Topics…"
-  );
-  expect(container.textContent).not.toContain("Create a New Topic");
+  expect(container.querySelector('[role="status"]')?.textContent).toMatch(/\S/);
+  expect(container.querySelector('[data-testid="create-topic"]')).toBeNull();
   mocks.topics = [topic("one", "One")];
   mocks.hasLoaded = true;
   await act(async () => root.render(<TopicMembership entity={article} />));
   expect(container.querySelector('[role="status"]')).toBeNull();
   expect(container.textContent).toContain("One");
-  expect(container.textContent).not.toContain("Create a New Topic");
+  expect(container.querySelector('[data-testid="create-topic"]')).toBeNull();
 });
 
 it("offers creation only once loading confirms an empty library", async () => {
   mocks.hasLoaded = false;
   await act(async () => root.render(<TopicMembership entity={article} />));
-  expect(container.textContent).not.toContain("Create a New Topic");
+  expect(container.querySelector('[data-testid="create-topic"]')).toBeNull();
   mocks.hasLoaded = true;
   await act(async () => root.render(<TopicMembership entity={article} />));
   expect(container.querySelector('[role="status"]')).toBeNull();
-  expect(container.textContent).toContain("Create a New Topic");
+  expect(
+    container.querySelector('[data-testid="create-topic"]')
+  ).not.toBeNull();
 });

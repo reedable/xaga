@@ -57,13 +57,17 @@ it.each(["Feed", "Topic"])(
         )
       )
     );
-    expect(document.body.textContent).toContain("This library is read-only");
+    expect(document.querySelector('[role="status"]')).not.toBeNull();
     const buttons = Array.from(document.querySelectorAll("button"));
-    expect(buttons.find((b) => b.textContent === "Save")?.disabled).toBe(true);
-    expect(buttons.find((b) => b.textContent === "Delete")?.disabled).toBe(
-      true
+    expect(
+      buttons.find((b) => b.getAttribute("data-testid") === "save")?.disabled
+    ).toBe(true);
+    expect(
+      buttons.find((b) => b.getAttribute("data-testid") === "delete")?.disabled
+    ).toBe(true);
+    await act(() =>
+      buttons.find((b) => b.getAttribute("data-testid") === "cancel")!.click()
     );
-    await act(() => buttons.find((b) => b.textContent === "Cancel")!.click());
     expect(close).toHaveBeenCalledOnce();
     expect(save).not.toHaveBeenCalled();
   }

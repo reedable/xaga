@@ -40,6 +40,7 @@ export function FetchSwitch({
             disabled={!settings || saving}
             slotProps={{
               input: {
+                name: setting,
                 "aria-labelledby": `${id}-label`,
                 "aria-describedby": id,
               },
@@ -73,6 +74,7 @@ export function FetchNumber({
   return (
     <NumericSetting
       {...props}
+      name={setting}
       conversion={
         setting === "feedMaxBodyBytes"
           ? {

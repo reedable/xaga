@@ -132,6 +132,7 @@ export default function EditTopicDialog({
         <DialogActions>
           {topic && (
             <Button
+              data-testid="delete"
               onClick={handleDelete}
               color="error"
               disabled={busy || readOnly}
@@ -140,10 +141,11 @@ export default function EditTopicDialog({
               Delete
             </Button>
           )}
-          <Button onClick={onClose} disabled={busy}>
+          <Button data-testid="cancel" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
           <Button
+            data-testid="save"
             type="submit"
             variant="contained"
             disabled={!form.values.title || busy || readOnly}

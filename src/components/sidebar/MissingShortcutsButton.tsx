@@ -44,7 +44,9 @@ export default function MissingShortcutsButton({
           ))}
         </List>
         <DialogActions>
-          <Button onClick={() => setOpen(false)}>Close</Button>
+          <Button data-testid="close" onClick={() => setOpen(false)}>
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
     </>

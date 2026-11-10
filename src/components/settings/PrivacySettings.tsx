@@ -149,7 +149,11 @@ export function PrivacySettings() {
       </div>
 
       <div className={css.Section}>
-        <Typography variant="subtitle2" gutterBottom>
+        <Typography
+          data-testid="website-sessions"
+          variant="subtitle2"
+          gutterBottom
+        >
           Keep website sessions
         </Typography>
         <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -182,6 +186,7 @@ export function PrivacySettings() {
             className={css.DomainInput}
           />
           <Button
+            data-testid="add"
             variant="outlined"
             onClick={handleAdd}
             className={css.AddButton}

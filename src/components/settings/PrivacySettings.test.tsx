@@ -117,6 +117,6 @@ it("disables the switch when the saved preference cannot be read", async () => {
     )
   );
   expect(toggle().disabled).toBe(true);
-  expect(container.textContent).toContain("Could not load");
+  expect(container.querySelector('[role="alert"]')).not.toBeNull();
   expect(platform.setLoadRemoteImage).not.toHaveBeenCalled();
 });

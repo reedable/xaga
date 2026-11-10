@@ -134,6 +134,7 @@ export default function EditFeedDialog({
           {isAdding ? (
             <>
               <TextField
+                data-testid="feed-url"
                 disabled={readOnly || saving || deleting}
                 label="URL"
                 value={url}
@@ -145,6 +146,7 @@ export default function EditFeedDialog({
               />
 
               <TextField
+                data-testid="collection-name"
                 disabled={readOnly || saving || deleting}
                 label="Name (optional)"
                 value={title}
@@ -165,6 +167,7 @@ export default function EditFeedDialog({
               />
 
               <TextField
+                data-testid="feed-url"
                 label="URL"
                 value={url}
                 fullWidth
@@ -175,6 +178,7 @@ export default function EditFeedDialog({
           )}
 
           <FormControlLabel
+            data-testid="pin-toggle"
             control={
               <Checkbox
                 checked={pinnedState}
@@ -189,6 +193,7 @@ export default function EditFeedDialog({
         <DialogActions>
           {!isAdding && feed && (
             <Button
+              data-testid="delete"
               onClick={handleDelete}
               color="error"
               disabled={busy || readOnly}
@@ -198,11 +203,12 @@ export default function EditFeedDialog({
             </Button>
           )}
 
-          <Button onClick={onClose} disabled={busy}>
+          <Button data-testid="cancel" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
 
           <Button
+            data-testid={feed ? "save" : "add"}
             type="submit"
             variant="contained"
             disabled={!canSubmit || busy || readOnly}

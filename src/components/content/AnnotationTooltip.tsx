@@ -85,6 +85,7 @@ export function AnnotationTooltip({
           )}
           {color !== null && (
             <TextField
+              data-testid="annotation-comment"
               slotProps={{ input: { readOnly } }}
               multiline
               minRows={1}
@@ -117,6 +118,7 @@ export function AnnotationTooltip({
                   slotProps={{ transition: { timeout: 0 } }}
                 >
                   <IconButton
+                    data-testid="annotation-details"
                     size="small"
                     aria-label="Show annotation details"
                     onClick={(event) =>

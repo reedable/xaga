@@ -162,6 +162,7 @@ export function TagActions({ tag }: { tag: Tag }) {
         onClick={(event) => event.stopPropagation()}
       >
         <MenuItem
+          data-testid="rename-tag"
           disabled={readOnly || busy}
           onClick={() => {
             setAnchor(null);
@@ -178,6 +179,7 @@ export function TagActions({ tag }: { tag: Tag }) {
               : `Rename “${tag.name}”`}
         </MenuItem>
         <MenuItem
+          data-testid="delete-tag"
           disabled={readOnly || busy}
           onClick={() => {
             setAnchor(null);
@@ -205,10 +207,16 @@ export function TagActions({ tag }: { tag: Tag }) {
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button autoFocus disabled={saving} onClick={close}>
+          <Button
+            data-testid="cancel"
+            autoFocus
+            disabled={saving}
+            onClick={close}
+          >
             Cancel
           </Button>
           <Button
+            data-testid="delete"
             color="error"
             disabled={saving || busy || readOnly}
             onClick={() => void confirmDelete()}
@@ -270,10 +278,16 @@ export function TagActions({ tag }: { tag: Tag }) {
             )}
           </DialogContent>
           <DialogActions>
-            <Button autoFocus={!!destination} disabled={saving} onClick={close}>
+            <Button
+              data-testid="cancel"
+              autoFocus={!!destination}
+              disabled={saving}
+              onClick={close}
+            >
               Cancel
             </Button>
             <Button
+              data-testid={destination ? "merge" : "rename"}
               type="submit"
               disabled={
                 saving ||

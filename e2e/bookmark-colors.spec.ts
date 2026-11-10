@@ -1,3 +1,4 @@
+import { control } from "./fixtures";
 import {
   test,
   expect,
@@ -33,17 +34,12 @@ for (const theme of ["light", "dark"] as const) {
       "violet",
     ]) {
       await openArticle(page, garden);
-      await page
-        .getByRole("button", { name: /^(Add bookmark|Change bookmark color)$/ })
-        .click();
-      await page
-        .getByRole("dialog", { name: "Bookmark color" })
-        .getByRole("button", { name: color, exact: true })
+      await control(page, "button", "bookmark-toggle").click();
+      await control(page, "dialog", "bookmark-palette")
+        .locator(`[data-color="${color}"]`)
         .click();
       const row = articleButton(page, garden);
-      await expect(row).toHaveAccessibleName(
-        new RegExp(`Bookmarked, ${color[0].toUpperCase()}${color.slice(1)}`)
-      );
+      await expect(row).toHaveAttribute("data-bookmark-color", color);
       const checkBorder = async () => {
         const border = await row.evaluate((node) => {
           const style = getComputedStyle(node, "::before");
@@ -75,7 +71,7 @@ for (const theme of ["light", "dark"] as const) {
       await checkBorder();
       await setRootFontSize("1rem");
       await checkBorder();
-      await shareAction(page, "Mark as unread");
+      await shareAction(page, "toggle-read");
       await expect(row.locator('[data-testid="CircleIcon"]')).toBeVisible();
       await row.focus();
       await page.keyboard.press("Tab");

@@ -182,7 +182,9 @@ export default function LibraryUpgradeControl({
             >
               {actionable ? (
                 <ButtonBase
+                  data-testid="library-options-trigger"
                   className={css.ReadOnlyBadge}
+                  data-read-only-cause={cause}
                   aria-label="Read-only library options"
                   aria-haspopup="menu"
                   aria-expanded={!!anchor}
@@ -194,7 +196,9 @@ export default function LibraryUpgradeControl({
                 </ButtonBase>
               ) : (
                 <span
+                  data-testid="library-read-only"
                   className={css.ReadOnlyBadge}
+                  data-read-only-cause={cause}
                   tabIndex={0}
                   aria-label={`Read-only. ${description}`}
                 >
@@ -208,16 +212,14 @@ export default function LibraryUpgradeControl({
       <Menu
         id="library-options"
         transitionDuration={animate ? "auto" : 0}
-        anchorEl={
-          (anchor?.closest("[data-library-toolbar]") as HTMLElement) ?? anchor
-        }
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        anchorEl={anchor}
+        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
         transformOrigin={{ vertical: "top", horizontal: "left" }}
-        slotProps={{ paper: { sx: { marginLeft: "0.5rem" } } }}
         open={!!anchor && !!badgeContainer}
         onClose={() => setAnchor(null)}
       >
         <MenuItem
+          data-testid={cause === "newer" ? "upgrade-xaga" : "upgrade-library"}
           onClick={() => {
             setAnchor(null);
             setOpen(true);
@@ -237,6 +239,10 @@ export default function LibraryUpgradeControl({
         </MenuItem>
       </Menu>
       <Dialog
+        data-upgrade-state={upgrade.state}
+        data-library-version={status?.storedVersion ?? "unversioned"}
+        data-target-version={status?.appVersion}
+        data-read-only-cause={cause}
         open={open}
         transitionDuration={animate ? undefined : 0}
         slotProps={{
@@ -252,24 +258,26 @@ export default function LibraryUpgradeControl({
             ? "Library upgrade complete"
             : cause === "newer"
               ? "Upgrade Xaga"
-              : action}
+              : cause === "older" && status
+                ? `Upgrade Library from ${status.storedVersion} to ${status.appVersion}`
+                : action}
         </DialogTitle>
         <DialogContent>
           {cause === "newer" ? (
             <DialogContentText>{description}</DialogContentText>
           ) : (
             <>
-              <DialogContentText>{description}</DialogContentText>
-              <DialogContentText className={css.UpgradeParagraph}>
-                This changes your library to format {status?.appVersion}. It
-                cannot be undone in Xaga, and older Xaga versions may no longer
-                use this library safely.
+              {(cause === "unversioned" || cause === "pending_upgrade") && (
+                <DialogContentText>{description}</DialogContentText>
+              )}
+              <DialogContentText>
+                Older versions of Xaga cannot safely edit this library after the
+                upgrade.
               </DialogContentText>
               <DialogContentText className={css.UpgradeParagraph}>
-                Before continuing, back up the complete library and close all
-                other processes using it. Restoring that complete backup is the
-                way to return to the previous format. The write lock does not
-                exclude existing readers.
+                Back up the entire library folder and close other Xaga windows
+                before upgrading. To undo the upgrade, you must restore that
+                backup.
               </DialogContentText>
               {upgrade.state === "running" && (
                 <div role="status" className={css.UpgradeParagraph}>
@@ -316,7 +324,14 @@ export default function LibraryUpgradeControl({
         </DialogContent>
         <DialogActions>
           {!busy && (
-            <Button onClick={close}>
+            <Button
+              data-testid={
+                upgrade.state === "idle" && cause !== "newer"
+                  ? "cancel"
+                  : "close"
+              }
+              onClick={close}
+            >
               {upgrade.state === "idle" && cause !== "newer"
                 ? "Cancel"
                 : "Close"}
@@ -324,6 +339,7 @@ export default function LibraryUpgradeControl({
           )}
           {cause === "newer" ? (
             <Button
+              data-testid="upgrade-xaga"
               onClick={() => {
                 setError(null);
                 platform
@@ -339,11 +355,23 @@ export default function LibraryUpgradeControl({
               Upgrade Xaga
             </Button>
           ) : succeeded ? (
-            <Button disabled={busy} onClick={() => void restart()}>
+            <Button
+              data-testid="restart-xaga"
+              disabled={busy}
+              onClick={() => void restart()}
+            >
               Restart Xaga
             </Button>
           ) : (
-            <Button disabled={busy} onClick={() => void start()}>
+            <Button
+              data-testid={
+                upgrade.state === "failed"
+                  ? "retry-library-upgrade"
+                  : "upgrade-library"
+              }
+              disabled={busy}
+              onClick={() => void start()}
+            >
               {upgrade.state === "failed" ? "Retry Library Upgrade" : action}
             </Button>
           )}

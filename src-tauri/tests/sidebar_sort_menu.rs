@@ -49,8 +49,8 @@ fn main() {
             let sort = sidebar_sort::build(app.handle())?;
             assert!(sort[0].is_checked()?);
             assert!(!sort[1].is_checked()?);
-            assert_eq!(sort[0].text()?, "Sort by unread");
-            assert_eq!(sort[1].text()?, "Sort by name");
+            assert_eq!(sort[0].id().as_ref(), "sidebar_sort_unread");
+            assert_eq!(sort[1].id().as_ref(), "sidebar_sort_name");
             let show = CheckMenuItem::with_id(
                 app,
                 "show_sidebar",

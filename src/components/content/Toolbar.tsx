@@ -299,6 +299,7 @@ export function Toolbar({
     <div className={css.Toolbar}>
       <Tooltip title="Back">
         <IconButton
+          data-testid="back"
           size="small"
           onClick={back}
           disabled={!canGoBack}
@@ -310,6 +311,7 @@ export function Toolbar({
 
       <Tooltip title="Forward">
         <IconButton
+          data-testid="forward"
           size="small"
           onClick={forward}
           disabled={!canGoForward}
@@ -324,6 +326,7 @@ export function Toolbar({
           <div className={css.AddressBar}>
             <Tooltip title="Show Original Site">
               <IconButton
+                data-testid="original-site"
                 size="small"
                 onClick={handleShowOriginalSite}
                 disabled={!url}
@@ -358,6 +361,7 @@ export function Toolbar({
             >
               <span>
                 <IconButton
+                  data-testid="refresh"
                   size="small"
                   onClick={reloading ? undefined : (reload ?? undefined)}
                   disabled={!reload || isLibraryReadOnly}
@@ -377,6 +381,7 @@ export function Toolbar({
 
             <Tooltip title="Share">
               <IconButton
+                data-testid="share"
                 ref={shareButtonRef}
                 size="small"
                 onClick={(event) => setShareAnchor(event.currentTarget)}
@@ -397,16 +402,20 @@ export function Toolbar({
               transitionDuration={0}
               slotProps={{ list: { "aria-label": "Share" } }}
             >
-              <MenuItem onClick={handleOpenInBrowser}>
+              <MenuItem
+                data-testid="open-browser"
+                onClick={handleOpenInBrowser}
+              >
                 <OpenInNew fontSize="small" sx={{ mr: 1 }} />
                 Open in default browser
               </MenuItem>
-              <MenuItem onClick={handleQrOpen}>
+              <MenuItem data-testid="show-qr" onClick={handleQrOpen}>
                 <QrCode2 fontSize="small" sx={{ mr: 1 }} />
                 Show QR code
               </MenuItem>
               <Divider />
               <MenuItem
+                data-testid="pin-toggle"
                 disabled={!entry || isLibraryReadOnly || pinning}
                 onClick={() => {
                   setShareAnchor(null);
@@ -421,6 +430,7 @@ export function Toolbar({
                 {entry?.isPinned ? "Remove from Shortcuts" : "Add to Shortcuts"}
               </MenuItem>
               <MenuItem
+                data-testid="toggle-read"
                 disabled={!entry || isLibraryReadOnly}
                 title={
                   isLibraryReadOnly ? "This library is read-only" : undefined
@@ -444,6 +454,7 @@ export function Toolbar({
             >
               <span>
                 <IconButton
+                  data-testid="bookmark-toggle"
                   size="small"
                   onClick={(event) => setBookmarkAnchor(event.currentTarget)}
                   disabled={!entry || isLibraryReadOnly || marking}
@@ -472,6 +483,7 @@ export function Toolbar({
               transformOrigin={{ vertical: "top", horizontal: "center" }}
             >
               <div
+                data-testid="bookmark-palette"
                 role="dialog"
                 aria-label="Bookmark color"
                 style={{ padding: 8 }}
@@ -488,6 +500,7 @@ export function Toolbar({
             {onOpenInspector && (
               <Tooltip title="Show article details">
                 <IconButton
+                  data-testid="article-details"
                   size="small"
                   ref={inspectorOpener}
                   aria-label="Show article details"
@@ -532,6 +545,7 @@ export function Toolbar({
         >
           <span>
             <IconButton
+              data-testid="search"
               size="small"
               onClick={handleSearchToggle}
               aria-label="Show Search"

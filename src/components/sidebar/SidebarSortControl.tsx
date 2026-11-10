@@ -16,6 +16,7 @@ export default function SidebarSortControl({
     <>
       <Tooltip title="Sort collections">
         <IconButton
+          data-testid="sidebar-sort-trigger"
           className={className}
           size="small"
           aria-label="Sort collections"
@@ -43,6 +44,7 @@ export default function SidebarSortControl({
           ] as const
         ).map(([value, label]) => (
           <MenuItem
+            data-testid={`sort-${value}`}
             key={value}
             role="menuitemradio"
             aria-checked={sortMode === value}

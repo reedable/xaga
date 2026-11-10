@@ -51,7 +51,7 @@ it("disables outgoing rows immediately and restores them when reopened", async (
   }
 
   await render(true);
-  const list = container.querySelector('[aria-label="Topics"]')!;
+  const list = container.querySelector("ul")!;
   expect(list.closest("[inert]")).toBeNull();
   await render(false);
   expect(list.closest('[aria-hidden="true"][inert]')).not.toBeNull();

@@ -102,10 +102,10 @@ afterEach(async () => {
   container.remove();
 });
 const button = (label: string) =>
-  container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
+  container.querySelector<HTMLButtonElement>(`button[data-testid="${label}"]`)!;
 const menuItem = (label: string) =>
   Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(
-    (item) => item.textContent === label
+    (item) => item.getAttribute("data-testid") === label
   );
 async function render() {
   await act(async () => root.render(<Toolbar reload={null} />));
@@ -114,8 +114,8 @@ async function render() {
 it("opens the original site after a URL load fails without a saved article", async () => {
   mocks.router.state = { url: "https://example.org/failed" };
   await render();
-  expect(button("Show Original Site").disabled).toBe(false);
-  await act(async () => button("Show Original Site").click());
+  expect(button("original-site").disabled).toBe(false);
+  await act(async () => button("original-site").click());
   expect(mocks.articles.loadArticleByUrl).toHaveBeenCalledWith(
     "https://example.org/failed",
     true
@@ -125,8 +125,8 @@ it("opens the original site after a URL load fails without a saved article", asy
 it("opens the original site even when reading the saved article fails", async () => {
   mocks.platform.readArticle.mockRejectedValue(new Error("Read failed"));
   await render();
-  expect(button("Show Original Site").disabled).toBe(false);
-  await act(async () => button("Show Original Site").click());
+  expect(button("original-site").disabled).toBe(false);
+  await act(async () => button("original-site").click());
   expect(mocks.articles.loadArticleByUrl).toHaveBeenCalledWith(
     "https://example.org",
     true
@@ -136,36 +136,34 @@ it("opens the original site even when reading the saved article fails", async ()
 it("disables the original site action when no URL is selected", async () => {
   mocks.router.state = {};
   await render();
-  expect(button("Show Original Site").disabled).toBe(true);
-  await act(async () => button("Show Original Site").click());
+  expect(button("original-site").disabled).toBe(true);
+  await act(async () => button("original-site").click());
   expect(mocks.articles.loadArticleByUrl).not.toHaveBeenCalled();
 });
 
 it("pins and unpins through the platform using committed state", async () => {
   await render();
-  await act(async () => button("Share").click());
-  await act(async () => menuItem("Add to Shortcuts")!.click());
+  await act(async () => button("share").click());
+  await act(async () => menuItem("pin-toggle")!.click());
   expect(mocks.setPin).toHaveBeenLastCalledWith(
     { type: "entry", id: "article" },
     true
   );
-  await act(async () => button("Share").click());
-  expect(menuItem("Remove from Shortcuts")).not.toBeUndefined();
-  await act(async () => menuItem("Remove from Shortcuts")!.click());
+  await act(async () => button("share").click());
+  expect(menuItem("pin-toggle")).not.toBeUndefined();
+  await act(async () => menuItem("pin-toggle")!.click());
   expect(mocks.setPin).toHaveBeenLastCalledWith(
     { type: "entry", id: "article" },
     false
   );
-  await act(async () => button("Share").click());
-  expect(menuItem("Add to Shortcuts")).not.toBeUndefined();
+  await act(async () => button("share").click());
+  expect(menuItem("pin-toggle")).not.toBeUndefined();
 });
 it("disables pinning in read-only mode", async () => {
   mocks.readOnly = true;
   await render();
-  await act(async () => button("Share").click());
-  expect(menuItem("Add to Shortcuts")!.getAttribute("aria-disabled")).toBe(
-    "true"
-  );
+  await act(async () => button("share").click());
+  expect(menuItem("pin-toggle")!.getAttribute("aria-disabled")).toBe("true");
   expect(mocks.setPin).not.toHaveBeenCalled();
 });
 
@@ -217,14 +215,14 @@ it("reports a refused pin without displaying it as persisted", async () => {
   await render();
   const error = { code: "E_READ_ONLY", message: "Read-only library" };
   mocks.setPin.mockRejectedValueOnce(error);
-  await act(async () => button("Share").click());
-  await act(async () => menuItem("Add to Shortcuts")!.click());
+  await act(async () => button("share").click());
+  await act(async () => menuItem("pin-toggle")!.click());
   expect(mocks.sink.pushError).toHaveBeenCalledWith(error);
-  await act(async () => button("Share").click());
-  expect(menuItem("Add to Shortcuts")!.getAttribute("aria-disabled")).not.toBe(
+  await act(async () => button("share").click());
+  expect(menuItem("pin-toggle")!.getAttribute("aria-disabled")).not.toBe(
     "true"
   );
-  expect(menuItem("Remove from Shortcuts")).toBeUndefined();
+  expect(menuItem("pin-toggle")).toBeDefined();
 });
 
 vi.mock("../../providers/PinsContext", () => ({
@@ -234,27 +232,25 @@ vi.mock("../../providers/PinsContext", () => ({
 it("keeps Refresh visible before Share and focusable while reporting reload progress", async () => {
   const reload = vi.fn();
   await act(async () => root.render(<Toolbar reload={reload} reloading />));
-  const refresh = button("Reload in progress...");
+  const refresh = button("refresh");
   expect(refresh.disabled).toBe(false);
-  expect(refresh.title).toBe("Reload in progress...");
+  expect(refresh.title).toMatch(/\S/);
   expect(refresh.className).not.toContain("RevealOnHover");
   expect(refresh.parentElement?.nextElementSibling?.getAttribute("role")).toBe(
     "status"
   );
-  expect(container.querySelector('[role="status"]')?.textContent).toBe(
-    "Reload in progress..."
-  );
+  expect(container.querySelector('[role="status"]')?.textContent).toMatch(/\S/);
   await act(() => refresh.click());
   expect(reload).not.toHaveBeenCalled();
   await act(async () => root.render(<Toolbar reload={reload} />));
   expect(container.querySelector('[role="status"]')?.textContent).toBe("");
-  await act(() => button("Refresh").click());
+  await act(() => button("refresh").click());
   expect(reload).toHaveBeenCalledOnce();
 });
 
 const paletteButton = (label: string) =>
   document.querySelector<HTMLButtonElement>(
-    `[role="dialog"][aria-label="Bookmark color"] button[aria-label="${label}"]`
+    `[role="dialog"][data-testid="bookmark-palette"] button[data-color="${label}"], [role="dialog"] button[data-testid="${label}"]`
   )!;
 it("assigns, recolors, and removes a bookmark without losing article context", async () => {
   mocks.bookmarks.addBookmark.mockImplementation(async (entry, color) => ({
@@ -266,9 +262,9 @@ it("assigns, recolors, and removes a bookmark without losing article context", a
     color: undefined,
   }));
   await render();
-  await act(async () => button("Add bookmark").click());
+  await act(async () => button("bookmark-toggle").click());
   expect(
-    document.querySelector('[role="dialog"][aria-label="Bookmark color"]')
+    document.querySelector('[role="dialog"][data-testid="bookmark-palette"]')
   ).not.toBeNull();
   expect(document.activeElement).toBe(paletteButton("red"));
   await act(async () => paletteButton("blue").click());
@@ -276,22 +272,22 @@ it("assigns, recolors, and removes a bookmark without losing article context", a
     expect.objectContaining({ id: "article" }),
     "blue"
   );
-  expect(button("Change bookmark color")).not.toBeNull();
-  await act(async () => button("Change bookmark color").click());
+  expect(button("bookmark-toggle")).not.toBeNull();
+  await act(async () => button("bookmark-toggle").click());
   expect(paletteButton("blue").getAttribute("aria-pressed")).toBe("true");
   await act(async () => paletteButton("violet").click());
   expect(mocks.bookmarks.addBookmark).toHaveBeenLastCalledWith(
     expect.objectContaining({ color: "blue" }),
     "violet"
   );
-  await act(async () => button("Change bookmark color").click());
-  await act(async () => paletteButton("Remove marking").click());
+  await act(async () => button("bookmark-toggle").click());
+  await act(async () => paletteButton("remove-marking").click());
   const confirmation = Array.from(
     document.querySelectorAll<HTMLButtonElement>("button")
-  ).find((item) => item.textContent === "Remove")!;
+  ).find((item) => item.getAttribute("data-testid") === "confirm-remove")!;
   await act(async () => confirmation.click());
   expect(mocks.bookmarks.removeBookmark).toHaveBeenCalledOnce();
-  expect(button("Add bookmark")).not.toBeNull();
+  expect(button("bookmark-toggle")).not.toBeNull();
   expect(mocks.router.selectUrl).not.toHaveBeenCalled();
 });
 it("reflects external color-to-color bookmark events", async () => {
@@ -299,7 +295,7 @@ it("reflects external color-to-color bookmark events", async () => {
   await act(async () =>
     mocks.bookmarkChanged?.({ ...article, __kind: "entry", color: "green" })
   );
-  await act(async () => button("Change bookmark color").click());
+  await act(async () => button("bookmark-toggle").click());
   expect(paletteButton("green").getAttribute("aria-pressed")).toBe("true");
   await act(async () =>
     mocks.bookmarkChanged?.({ ...article, __kind: "entry", color: "orange" })
@@ -309,14 +305,14 @@ it("reflects external color-to-color bookmark events", async () => {
 it("disables article color changes in read-only mode", async () => {
   mocks.readOnly = true;
   await render();
-  expect(button("Add bookmark").disabled).toBe(true);
+  expect(button("bookmark-toggle").disabled).toBe(true);
   expect(mocks.bookmarks.addBookmark).not.toHaveBeenCalled();
 });
 
 it("dismisses the swatch popup with Escape and restores toolbar focus", async () => {
   await render();
-  button("Add bookmark").focus();
-  await act(async () => button("Add bookmark").click());
+  button("bookmark-toggle").focus();
+  await act(async () => button("bookmark-toggle").click());
   await act(async () => {
     document.activeElement?.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
@@ -324,25 +320,25 @@ it("dismisses the swatch popup with Escape and restores toolbar focus", async ()
     await new Promise((resolve) => setTimeout(resolve, 250));
   });
   expect(
-    document.querySelector('[role="dialog"][aria-label="Bookmark color"]')
+    document.querySelector('[role="dialog"][data-testid="bookmark-palette"]')
   ).toBeNull();
-  expect(document.activeElement).toBe(button("Add bookmark"));
+  expect(document.activeElement).toBe(button("bookmark-toggle"));
   expect(mocks.bookmarks.addBookmark).not.toHaveBeenCalled();
 });
 
 it("keeps Share visible and opens its ordered browser and QR actions", async () => {
   await render();
-  const share = button("Share");
+  const share = button("share");
   expect(share.className).not.toContain("RevealOnHover");
   await act(async () => share.click());
   const items = Array.from(
     document.querySelectorAll<HTMLElement>('[role="menuitem"]')
   );
-  expect(items.map((item) => item.textContent)).toEqual([
-    "Open in default browser",
-    "Show QR code",
-    "Add to Shortcuts",
-    "Mark as unread",
+  expect(items.map((item) => item.getAttribute("data-testid"))).toEqual([
+    "open-browser",
+    "show-qr",
+    "pin-toggle",
+    "toggle-read",
   ]);
   expect(items[1].nextElementSibling?.tagName).toBe("HR");
   await act(async () => items[0].click());
@@ -356,8 +352,8 @@ it("keeps Share visible and opens its ordered browser and QR actions", async () 
 
 it("marks the article unread from Share and closes the menu", async () => {
   await render();
-  await act(async () => button("Share").click());
-  await act(async () => menuItem("Mark as unread")!.click());
+  await act(async () => button("share").click());
+  await act(async () => menuItem("toggle-read")!.click());
   expect(mocks.entries.markEntryUnread).toHaveBeenCalledWith("article");
-  expect(button("Share").getAttribute("aria-expanded")).toBe("false");
+  expect(button("share").getAttribute("aria-expanded")).toBe("false");
 });

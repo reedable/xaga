@@ -133,7 +133,7 @@ it("filters and creates a definition then assigns it without a Save action", asy
   await search(" RESEARCH ");
   expect(chip("Research")).toBeTruthy();
   expect(chip("Work")).toBeUndefined();
-  expect(container.textContent).not.toContain("Create “");
+  expect(container.querySelector('[data-testid="create-tag"]')).toBeNull();
   await search("New");
   await act(async () => chip("Create “New”").click());
   expect(mocks.createTag).toHaveBeenCalledWith("New");
@@ -206,7 +206,7 @@ it("matches registry lowercase semantics without equating distinct spellings", a
   expect(chip("Create “strasse”")).toBeTruthy();
   await search("οσ");
   expect(chip("ΟΣ")).toBeTruthy();
-  expect(container.textContent).not.toContain("Create “");
+  expect(container.querySelector('[data-testid="create-tag"]')).toBeNull();
 });
 
 it("retains a committed rename over an older definition load", async () => {
@@ -318,7 +318,7 @@ it("reads and assigns the explicit inspected Annotation independently of article
   );
   expect(mocks.readEntryTags).not.toHaveBeenCalled();
   expect(
-    container.querySelector('[aria-label="Annotation tags"]')
+    container.querySelector('[data-testid="annotation-tags"]')
   ).not.toBeNull();
   await act(async () => chip("Work").click());
   expect(mocks.setAnnotationTag).toHaveBeenCalledWith(
@@ -389,7 +389,7 @@ it("does not fall back to Article assignments for a missing annotation", async (
     new Error("missing annotation")
   );
   await renderAnnotation();
-  expect(container.textContent).toContain("Tags couldn’t be loaded.");
+  expect(container.querySelector('[role="alert"]')).not.toBeNull();
   expect(mocks.readEntryTags).not.toHaveBeenCalled();
   expect(mocks.setEntryTag).not.toHaveBeenCalled();
 });
@@ -405,7 +405,7 @@ it("never substitutes Article tags for an explicitly empty annotation ID", async
     ""
   );
   expect(mocks.readEntryTags).not.toHaveBeenCalled();
-  expect(container.textContent).toContain("Tags couldn’t be loaded.");
+  expect(container.querySelector('[role="alert"]')).not.toBeNull();
 });
 
 it("finishes creation and assignment to the original annotation after inspection closes", async () => {

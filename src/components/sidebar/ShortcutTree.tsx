@@ -168,6 +168,8 @@ export default function ShortcutTree({
             <IconButton
               className={css.NodeActionButton}
               size="small"
+              data-testid="shortcut-actions"
+              data-target-title={node.title}
               aria-label={`Actions for ${label} ${node.title}`}
               aria-haspopup="menu"
               aria-expanded={open}
@@ -326,6 +328,7 @@ export default function ShortcutTree({
             Add group
           </MenuItem>,
           <MenuItem
+            data-testid="rename-group"
             key="rename"
             disabled={readOnly || busy}
             onClick={() => {
@@ -342,6 +345,7 @@ export default function ShortcutTree({
           </MenuItem>,
         ]}
         <MenuItem
+          data-testid="move-shortcut"
           disabled={readOnly || busy}
           onClick={() => {
             if (!actionMenu) return;
@@ -353,6 +357,7 @@ export default function ShortcutTree({
           Move to…
         </MenuItem>
         <MenuItem
+          data-testid="remove-node"
           disabled={readOnly || busy}
           onClick={() => {
             if (!actionMenu) return;
@@ -415,10 +420,15 @@ export default function ShortcutTree({
             />
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setTitleDialog(undefined)} disabled={busy}>
+            <Button
+              data-testid="cancel"
+              onClick={() => setTitleDialog(undefined)}
+              disabled={busy}
+            >
               Cancel
             </Button>
             <Button
+              data-testid="save"
               type="submit"
               disabled={readOnly || busy || !titleDialog?.title.trim()}
             >
@@ -447,7 +457,9 @@ export default function ShortcutTree({
             disabled={busy}
             onChange={(event) => setDestination(event.target.value)}
           >
-            <MenuItem value="">Top level of Shortcuts</MenuItem>
+            <MenuItem data-testid="shortcuts-root" value="">
+              Top level of Shortcuts
+            </MenuItem>
             {destinations(nodes).map((group) => (
               <MenuItem key={group.id} value={group.id}>
                 {group.title}
@@ -457,10 +469,15 @@ export default function ShortcutTree({
         </DialogContent>
 
         <DialogActions>
-          <Button disabled={busy} onClick={() => setMoveDialog(undefined)}>
+          <Button
+            data-testid="cancel"
+            disabled={busy}
+            onClick={() => setMoveDialog(undefined)}
+          >
             Cancel
           </Button>
           <Button
+            data-testid="confirm-move"
             disabled={readOnly || busy}
             onClick={() =>
               moveDialog && void move(moveDialog.reference, destination || null)

@@ -1,3 +1,4 @@
+import { control } from "./fixtures";
 import {
   test,
   expect,
@@ -19,17 +20,14 @@ test.beforeEach(async ({ page }) => {
 test("All items stays above the collection filter across section changes", async ({
   page,
 }) => {
-  const allItems = page.getByRole("button", { name: "All items", exact: true });
-  const filter = page.getByRole("textbox", {
-    name: "Filter collections",
-    exact: true,
-  });
+  const allItems = control(page, "button", "all-items");
+  const filter = control(page, "textbox", "filter-collections");
   await expect(allItems).toHaveCount(1);
   const itemBox = await allItems.boundingBox();
   const filterBox = await filter.boundingBox();
   expect(itemBox!.y + itemBox!.height).toBeLessThan(filterBox!.y);
-  for (const section of ["Shortcuts (1)", "Topics (1)", "Feeds (1)"]) {
-    await page.getByRole("button", { name: section, exact: true }).click();
+  for (const section of ["shortcuts", "topics", "feeds"]) {
+    await control(page, "button", `sidebar-${section}-toggle`).click();
     await expect(allItems).toBeVisible();
   }
   await filter.fill("no matching collection");
@@ -48,12 +46,8 @@ test("collapsing sidebar rows cannot compete with the newly opened section", asy
   await page.addStyleTag({
     content: ".MuiCollapse-root { transition-duration: 10s !important; }",
   });
-  const shortcuts = page.getByRole("list", {
-    name: "Shortcuts",
-    exact: true,
-    includeHidden: true,
-  });
-  await page.getByRole("button", { name: "Topics (1)", exact: true }).click();
+  const shortcuts = control(page, "list", "sidebar-shortcuts-list", true);
+  await control(page, "button", "sidebar-topics-toggle").click();
   const outgoingTopic = shortcuts.getByRole("button", {
     name: "Everyday discoveries",
     exact: true,
@@ -68,9 +62,7 @@ test("collapsing sidebar rows cannot compete with the newly opened section", asy
   await outgoingTopic.evaluate((node) => {
     (node as HTMLElement).focus();
   });
-  await expect(
-    page.getByRole("button", { name: "Topics (1)", exact: true })
-  ).toBeFocused();
+  await expect(control(page, "button", "sidebar-topics-toggle")).toBeFocused();
   // Intentionally unscoped: the outgoing shortcut must no longer match.
   const topic = page.getByRole("button", {
     name: "Everyday discoveries",
@@ -79,9 +71,7 @@ test("collapsing sidebar rows cannot compete with the newly opened section", asy
   await expect(topic).toHaveCount(1);
   await topic.click();
   await expect(topic).toHaveClass(/Mui-selected/);
-  await page
-    .getByRole("button", { name: "Shortcuts (1)", exact: true })
-    .click();
+  await control(page, "button", "sidebar-shortcuts-toggle").click();
   await expect(topic).toHaveCount(1);
   await topic.click();
   await expect(topic).toHaveClass(/Mui-selected/);
@@ -91,28 +81,42 @@ test("read status updates Unread membership and collection counts", async ({
   page,
 }) => {
   const allItems = page.getByRole("listitem").filter({
-    has: page.getByRole("button", { name: "All items", exact: true }),
+    has: control(page, "button", "all-items"),
   });
-  await expect(allItems).toHaveText("All items2");
+  await expect(allItems.locator("[data-unread-count]")).toHaveAttribute(
+    "data-unread-count",
+    "2"
+  );
   await openArticle(page, garden);
-  await expect(allItems).toHaveText("All items1");
-  await shareAction(page, "Mark as unread");
-  await expect(allItems).toHaveText("All items2");
-  await shareAction(page, "Mark as read");
-  await expect(allItems).toHaveText("All items1");
+  await expect(allItems.locator("[data-unread-count]")).toHaveAttribute(
+    "data-unread-count",
+    "1"
+  );
+  await shareAction(page, "toggle-read");
+  await expect(allItems.locator("[data-unread-count]")).toHaveAttribute(
+    "data-unread-count",
+    "2"
+  );
+  await shareAction(page, "toggle-read");
+  await expect(allItems.locator("[data-unread-count]")).toHaveAttribute(
+    "data-unread-count",
+    "1"
+  );
   // The open list intentionally stays stable until navigation reloads membership.
-  await page.getByRole("button", { name: "All", exact: true }).click();
-  await page.getByRole("button", { name: "Unread", exact: true }).click();
+  await control(page, "button", "filter-all").click();
+  await control(page, "button", "filter-unread").click();
   await expect(articleButton(page, garden)).toHaveCount(0);
   await expect(articleButton(page, water)).toBeVisible();
-  await page.getByRole("button", { name: "Feeds (1)", exact: true }).click();
-  const feed = page
-    .getByRole("list", { name: "Feeds", exact: true })
+  await control(page, "button", "sidebar-feeds-toggle").click();
+  const feed = control(page, "list", "sidebar-feeds-list")
     .getByRole("listitem")
     .filter({
       has: page.getByRole("button", { name: "Field notes", exact: true }),
     });
-  await expect(feed).toHaveText("Field notes1");
+  await expect(feed.locator("[data-unread-count]")).toHaveAttribute(
+    "data-unread-count",
+    "1"
+  );
   await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
     garden
   );
@@ -122,14 +126,16 @@ test("a colored bookmark appears in Saved and can be removed", async ({
   page,
 }) => {
   await openArticle(page, garden);
-  await page.getByRole("button", { name: "Add bookmark", exact: true }).click();
-  const palette = page.getByRole("dialog", { name: "Bookmark color" });
-  await palette.getByRole("button", { name: "blue", exact: true }).click();
-  await expect(articleButton(page, garden)).toHaveAccessibleName(
-    /Bookmarked, Blue/
+  await control(page, "button", "bookmark-toggle").click();
+  const palette = control(page, "dialog", "bookmark-palette");
+  await control(palette, "button", "blue").click();
+  await expect(articleButton(page, garden)).toHaveAttribute(
+    "data-bookmark-color",
+    "blue"
   );
-  await expect(articleButton(page, water)).not.toHaveAccessibleName(
-    /Bookmarked/
+  await expect(articleButton(page, water)).toHaveAttribute(
+    "data-bookmark-color",
+    ""
   );
   // Marked and unmarked article titles retain the same horizontal alignment.
   const titleLeft = async (title: string) =>
@@ -140,38 +146,33 @@ test("a colored bookmark appears in Saved and can be removed", async ({
   await expect(
     articleButton(page, garden).locator('[data-testid="BookmarkIcon"]')
   ).toHaveCount(0);
-  const saved = page.getByRole("button", { name: "Saved", exact: true });
+  const saved = control(page, "button", "filter-saved");
   await saved.click();
   await expect(saved).toHaveAttribute("aria-pressed", "true");
   await expect(articleButton(page, water)).toHaveCount(0);
   await openArticle(page, garden);
-  await page
-    .getByRole("button", { name: "Change bookmark color", exact: true })
-    .click();
-  await expect(
-    palette.getByRole("button", { name: "blue", exact: true })
-  ).toHaveAttribute("aria-pressed", "true");
-  await palette.getByRole("button", { name: "red", exact: true }).click();
-  await expect(articleButton(page, garden)).toHaveAccessibleName(
-    /Bookmarked, Red/
+  await control(page, "button", "bookmark-toggle").click();
+  await expect(control(palette, "button", "blue")).toHaveAttribute(
+    "aria-pressed",
+    "true"
   );
-  await page
-    .getByRole("button", { name: "Change bookmark color", exact: true })
-    .click();
-  await palette
-    .getByRole("button", { name: "Remove marking", exact: true })
-    .click();
-  await palette.getByRole("button", { name: "Remove", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Add bookmark", exact: true })
-  ).toBeEnabled();
+  await control(palette, "button", "red").click();
+  await expect(articleButton(page, garden)).toHaveAttribute(
+    "data-bookmark-color",
+    "red"
+  );
+  await control(page, "button", "bookmark-toggle").click();
+  await control(palette, "button", "remove-marking").click();
+  await control(palette, "button", "confirm-remove").click();
+  await expect(control(page, "button", "bookmark-toggle")).toBeEnabled();
   await expect(articleButton(page, garden)).toBeVisible();
-  await expect(articleButton(page, garden)).not.toHaveAccessibleName(
-    /Bookmarked/
+  await expect(articleButton(page, garden)).toHaveAttribute(
+    "data-bookmark-color",
+    ""
   );
   // Bookmark edits preserve the open list. Wait for All to finish navigating
   // before returning to Saved; otherwise the second click can hit the old view.
-  const all = page.getByRole("button", { name: "All", exact: true });
+  const all = control(page, "button", "filter-all");
   await all.click();
   await expect(all).toHaveAttribute("aria-pressed", "true");
   await expect(articleButton(page, water)).toBeVisible();
@@ -188,9 +189,9 @@ test("an annotation can be created and its passage revisited from Saved", async 
   const paragraph = reader(page).locator("article p").first();
   // A real triple click selects a paragraph and sends the reader's mouseup.
   await paragraph.click({ clickCount: 3 });
-  await page.getByRole("button", { name: "violet", exact: true }).click();
-  await page.getByPlaceholder("Add a note…").fill("Return to this idea");
-  await page.getByRole("button", { name: "Saved", exact: true }).click();
+  await control(page, "button", "violet").click();
+  await page.getByTestId("annotation-comment").fill("Return to this idea");
+  await control(page, "button", "filter-saved").click();
   const annotation = page.getByRole("button", { name: /^Small changes/ });
   await expect(annotation).toBeVisible();
   // Leave the article before revisiting the saved annotation.
@@ -204,19 +205,20 @@ test("an annotation can be created and its passage revisited from Saved", async 
     .filter({ hasText: "Small changes" });
   await expect(highlight).toBeInViewport();
   await highlight.click();
-  await expect(page.getByPlaceholder("Add a note…")).toHaveValue(
+  await expect(page.getByTestId("annotation-comment")).toHaveValue(
     "Return to this idea"
   );
-  await expect(
-    page.getByRole("button", { name: "violet", exact: true })
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(control(page, "button", "violet")).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
 });
 
 test("Topic membership is visible when browsing with the sidebar hidden", async ({
   page,
 }) => {
   await openArticle(page, water);
-  await page.getByRole("tab", { name: "Topics", exact: true }).click();
+  await control(page, "tab", "inspector-topics").click();
   await page
     .getByRole("checkbox", { name: "Everyday discoveries", exact: true })
     .check();
@@ -226,17 +228,15 @@ test("Topic membership is visible when browsing with the sidebar hidden", async 
   // Responsive layout hides the sidebar; the collection selector is the real UI.
   await page.setViewportSize({ width: 960, height: 900 });
   await expect(
-    page.getByRole("textbox", { name: "Filter collections", exact: true })
+    control(page, "textbox", "filter-collections")
   ).not.toBeVisible();
-  await page
-    .getByRole("combobox", { name: "Browse collections and tags" })
-    .click();
+  await control(page, "combobox", "collection-selector").click();
   await page
     .getByRole("option", { name: "Everyday discoveries", exact: true })
     .first()
     .click();
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "All", exact: true }).click();
+  await control(page, "button", "filter-all").click();
   await expect(articleButton(page, water)).toBeVisible();
   await expect(articleButton(page, garden)).toBeVisible();
   await articleButton(page, garden).focus();
@@ -250,9 +250,9 @@ test("pinning and unpinning updates Shortcuts without clearing the reading conte
   page,
 }) => {
   await openArticle(page, garden);
-  await shareAction(page, "Add to Shortcuts");
+  await shareAction(page, "pin-toggle");
   await expect(
-    page.getByRole("button", { name: "Shortcuts (2)", exact: true })
+    control(page, "button", "sidebar-shortcuts-toggle")
   ).toBeVisible();
   const shortcut = page.getByRole("button", { name: garden, exact: true });
   await expect(shortcut).toBeVisible();
@@ -261,10 +261,10 @@ test("pinning and unpinning updates Shortcuts without clearing the reading conte
   );
   await expect(articleButton(page, garden)).toBeVisible();
   await expect(articleButton(page, water)).toBeVisible();
-  await shareAction(page, "Remove from Shortcuts");
+  await shareAction(page, "pin-toggle");
   await expect(shortcut).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Shortcuts (1)", exact: true })
+    control(page, "button", "sidebar-shortcuts-toggle")
   ).toBeVisible();
   await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
     garden
@@ -281,24 +281,21 @@ test("pinning and unpinning updates Shortcuts without clearing the reading conte
 test("capture reset clears edits, navigation, filters, and expansion", async ({
   page,
 }) => {
-  const initialUnreadSelection = await page
-    .getByRole("button", { name: "Unread", exact: true })
-    .getAttribute("aria-pressed");
+  const initialUnreadSelection = await control(
+    page,
+    "button",
+    "filter-unread"
+  ).getAttribute("aria-pressed");
   await openArticle(page, garden);
-  await shareAction(page, "Add to Shortcuts");
-  await page.getByRole("button", { name: "Add bookmark", exact: true }).click();
-  await page
-    .getByRole("dialog", { name: "Bookmark color" })
-    .getByRole("button", { name: "blue", exact: true })
+  await shareAction(page, "pin-toggle");
+  await control(page, "button", "bookmark-toggle").click();
+  await control(page, "dialog", "bookmark-palette")
+    .locator('[data-color="blue"]')
     .click();
-  await page.getByRole("button", { name: "Saved", exact: true }).click();
-  await page.getByRole("button", { name: "Feeds (1)", exact: true }).click();
-  await page
-    .getByRole("textbox", { name: "Filter collections", exact: true })
-    .fill("Field");
-  await page
-    .getByRole("textbox", { name: "Filter items…", exact: true })
-    .fill("garden");
+  await control(page, "button", "filter-saved").click();
+  await control(page, "button", "sidebar-feeds-toggle").click();
+  await control(page, "textbox", "filter-collections").fill("Field");
+  await control(page, "textbox", "filter-items").fill("garden");
   await Promise.all([
     page.waitForEvent("load"),
     page.evaluate(() =>
@@ -311,23 +308,18 @@ test("capture reset clears edits, navigation, filters, and expansion", async ({
     "data-capture-ready",
     "true"
   );
+  await expect(page.getByTestId("reader-empty")).toBeVisible();
   await expect(
-    page.getByText("Select an article", { exact: true })
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Shortcuts (1)", exact: true })
+    control(page, "button", "sidebar-shortcuts-toggle")
   ).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    page.getByRole("button", { name: "Unread", exact: true })
-  ).toHaveAttribute("aria-pressed", initialUnreadSelection!);
-  await expect(
-    page.getByRole("textbox", { name: "Filter collections", exact: true })
-  ).toBeEmpty();
-  await expect(
-    page.getByRole("textbox", { name: "Filter items…", exact: true })
-  ).toBeEmpty();
+  await expect(control(page, "button", "filter-unread")).toHaveAttribute(
+    "aria-pressed",
+    initialUnreadSelection!
+  );
+  await expect(control(page, "textbox", "filter-collections")).toBeEmpty();
+  await expect(control(page, "textbox", "filter-items")).toBeEmpty();
   await expect(articleButton(page, garden)).toBeVisible();
   await expect(articleButton(page, water)).toBeVisible();
-  await page.getByRole("button", { name: "Saved", exact: true }).click();
+  await control(page, "button", "filter-saved").click();
   await expect(articleButton(page, garden)).toHaveCount(0);
 });

@@ -768,6 +768,7 @@ export function EntityList({
           {!isSelectableHeader && (
             <>
               <Typography
+                data-testid="all-items"
                 className={css.Heading}
                 component="div"
                 color="text.secondary"
@@ -779,7 +780,11 @@ export function EntityList({
 
               {handleEdit && (
                 <Tooltip title="Edit">
-                  <IconButton size="small" onClick={handleEdit}>
+                  <IconButton
+                    data-testid="edit-collection"
+                    size="small"
+                    onClick={handleEdit}
+                  >
                     <Settings sx={{ fontSize: 16 }} />
                   </IconButton>
                 </Tooltip>
@@ -803,6 +808,7 @@ export function EntityList({
                       refreshSpin && css.RefreshLoading
                     )}
                     size="small"
+                    data-testid="refresh-collection"
                     aria-label="Refresh collection"
                     disabled={
                       tagIds === undefined &&
@@ -856,7 +862,10 @@ export function EntityList({
                 onClose={() => setHeaderOpen(false)}
                 value={headerValues}
                 renderValue={() => selectedScope.title}
-                inputProps={{ "aria-label": "Browse collections and tags" }}
+                inputProps={{
+                  "aria-label": "Browse collections and tags",
+                  "data-testid": "collection-selector",
+                }}
                 onChange={handleCollectionChange}
               >
                 <ListSubheader>Shortcuts</ListSubheader>
@@ -957,6 +966,7 @@ export function EntityList({
 
         {!articleScopeId && (
           <ToggleButtonGroup
+            data-testid="filter"
             aria-label="Filter"
             className={css.FilterButtonGroup}
             exclusive
@@ -964,14 +974,29 @@ export function EntityList({
             onChange={handleFilter}
           >
             {!hasSelectedTags && (
-              <ToggleButton size="small" value="unread" aria-label="Unread">
+              <ToggleButton
+                data-testid="filter-unread"
+                size="small"
+                value="unread"
+                aria-label="Unread"
+              >
                 Unread
               </ToggleButton>
             )}
-            <ToggleButton size="small" value="saved" aria-label="Saved">
+            <ToggleButton
+              data-testid="filter-saved"
+              size="small"
+              value="saved"
+              aria-label="Saved"
+            >
               Saved
             </ToggleButton>
-            <ToggleButton size="small" value="all" aria-label="All">
+            <ToggleButton
+              data-testid="filter-all"
+              size="small"
+              value="all"
+              aria-label="All"
+            >
               All
             </ToggleButton>
           </ToggleButtonGroup>
@@ -991,6 +1016,7 @@ export function EntityList({
         )}
 
         <TextField
+          data-testid="filter-items"
           className={css.FilterInput}
           size="small"
           fullWidth
@@ -1060,6 +1086,9 @@ export function EntityList({
           itemContent={(_index, entity) => (
             <div key={entity.id} className={css.ListEntity}>
               <ListItemButton
+                data-bookmark-color={
+                  isEntry(entity) ? (entity.color ?? "") : undefined
+                }
                 ref={(node: HTMLDivElement | null) => {
                   if (node) itemRefs.current.set(entity.id, node);
                   else itemRefs.current.delete(entity.id);
@@ -1129,7 +1158,11 @@ export function EntityList({
             title={readOnly ? "This library is read-only" : "Mark all read"}
           >
             <span>
-              <Button disabled={readOnly} onClick={handleMarkEntriesRead}>
+              <Button
+                data-testid="mark-all-read"
+                disabled={readOnly}
+                onClick={handleMarkEntriesRead}
+              >
                 Mark all read
               </Button>
             </span>

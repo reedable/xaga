@@ -291,7 +291,12 @@ export function AppLayout() {
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setClearHistoryOpen(false)}>Cancel</Button>
+          <Button
+            data-testid="cancel"
+            onClick={() => setClearHistoryOpen(false)}
+          >
+            Cancel
+          </Button>
           <Button
             color="error"
             onClick={async () => {

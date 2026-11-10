@@ -90,7 +90,7 @@ export function articleButton(page: Page, title: string) {
 }
 
 export function reader(page: Page) {
-  return page.getByTitle("Entry reader", { exact: true }).contentFrame();
+  return page.frameLocator('[data-testid="entry-reader"]');
 }
 
 export async function openArticle(page: Page, title: string) {
@@ -98,12 +98,28 @@ export async function openArticle(page: Page, title: string) {
   await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
     title
   );
-  await expect(
-    page.getByRole("button", { name: "Share", exact: true })
-  ).toBeEnabled();
+  await expect(control(page, "button", "share")).toBeEnabled();
 }
 
 export async function shareAction(page: Page, name: string) {
-  await page.getByRole("button", { name: "Share", exact: true }).click();
-  await page.getByRole("menuitem", { name, exact: true }).click();
+  await control(page, "button", "share").click();
+  await control(page, "menuitem", name).click();
+}
+
+/** Resolve a control by role and stable identity, including labeled form wrappers. */
+export function control(
+  scope:
+    | Page
+    | import("@playwright/test").Locator
+    | import("@playwright/test").FrameLocator,
+  role: Parameters<Page["getByRole"]>[0],
+  identity: string,
+  includeHidden = false
+) {
+  const target = scope.locator(
+    `[data-testid="${identity}"], [name="${identity}"], [data-color="${identity}"]`
+  );
+  return scope
+    .getByRole(role, { includeHidden })
+    .and(target.or(target.getByRole(role, { includeHidden })));
 }

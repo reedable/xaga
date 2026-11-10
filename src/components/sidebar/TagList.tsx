@@ -44,6 +44,7 @@ export default function TagList({
 
   return (
     <ExpandableList
+      section="tags"
       className={css.TagList}
       label="Tags"
       count={tags.length}

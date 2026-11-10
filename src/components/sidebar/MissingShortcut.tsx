@@ -40,7 +40,10 @@ export default function MissingShortcut({ target }: { target: PinTarget }) {
   return (
     <>
       <ListItem disablePadding>
-        <ListItemButton onClick={() => setOpen(true)}>
+        <ListItemButton
+          data-testid="unavailable-shortcut"
+          onClick={() => setOpen(true)}
+        >
           <ListItemIcon className={itemCss.ListItemIcon}>
             <WarningAmberOutlined className={itemCss.Icon} />
           </ListItemIcon>

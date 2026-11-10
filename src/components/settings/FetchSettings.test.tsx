@@ -84,18 +84,10 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
 });
-function input(label: string) {
-  const node = Array.from(
-    container.querySelectorAll<HTMLElement>("label, span[id]")
-  ).find((node) => node.textContent === label)!;
-  return (
-    node instanceof HTMLLabelElement && node.htmlFor
-      ? document.getElementById(node.htmlFor)
-      : Array.from(container.querySelectorAll<HTMLInputElement>("input")).find(
-          (input) => input.getAttribute("aria-labelledby") === node.id
-        )
-  ) as HTMLInputElement;
+function input(setting: string) {
+  return container.querySelector<HTMLInputElement>(`input[name="${setting}"]`)!;
 }
+
 async function edit(label: string, value: string) {
   await act(async () => {
     Object.getOwnPropertyDescriptor(
@@ -119,8 +111,8 @@ async function close() {
 }
 
 it.each([
-  ["Article load timeout", "loaderTimeoutSecs"],
-  ["Feed request timeout", "feedTimeoutSecs"],
+  ["loaderTimeoutSecs", "loaderTimeoutSecs"],
+  ["feedTimeoutSecs", "feedTimeoutSecs"],
 ] as const)(
   "preserves the full u64 range for %s through reads and writes",
   async (label, setting) => {
@@ -144,7 +136,7 @@ it.each([
   }
 );
 it("edits feed limits in MiB and preserves exact byte values", async () => {
-  const label = "Maximum feed response size";
+  const label = "feedMaxBodyBytes";
   expect(input(label).value).toBe("10");
   for (const [mib, bytes] of [
     ["20", "20971520"],
@@ -168,19 +160,19 @@ it("edits feed limits in MiB and preserves exact byte values", async () => {
 });
 
 it("enforces the existing redirect range including zero", async () => {
-  await edit("Maximum feed redirects", "11");
+  await edit("maxRedirects", "11");
   expect(await close()).toBe(false);
   expect(platform.setFetchSetting).not.toHaveBeenCalled();
-  await edit("Maximum feed redirects", "0");
+  await edit("maxRedirects", "0");
   expect(await close()).toBe(true);
   expect(stored.maxRedirects).toBe("0");
 });
 it("retains a failed numeric draft and saves it on retry", async () => {
   platform.setFetchSetting.mockRejectedValueOnce(new Error("write failed"));
-  await edit("Feed request timeout", "9007199254740993");
+  await edit("feedTimeoutSecs", "9007199254740993");
   expect(await close()).toBe(false);
   expect(stored.feedTimeoutSecs).toBe("10");
-  expect(input("Feed request timeout").value).toBe("9007199254740993");
+  expect(input("feedTimeoutSecs").value).toBe("9007199254740993");
   expect(sink.pushError).toHaveBeenCalledOnce();
   expect(await close()).toBe(true);
   expect(stored.feedTimeoutSecs).toBe("9007199254740993");
@@ -193,9 +185,9 @@ it("uses one close handler and waits for every numeric save, including in-flight
         finish = resolve;
       })
   );
-  await edit("Article load timeout", "25");
-  await blur("Article load timeout");
-  await edit("Feed request timeout", "35");
+  await edit("loaderTimeoutSecs", "25");
+  await blur("loaderTimeoutSecs");
+  await edit("feedTimeoutSecs", "35");
   let allowed: boolean | undefined;
   let closing!: Promise<void>;
   await act(async () => {
@@ -215,10 +207,10 @@ it("uses one close handler and waits for every numeric save, including in-flight
   expect(platform.setFetchSetting).toHaveBeenCalledTimes(2);
 });
 it.each([
-  "Allow unencrypted HTTP",
-  "Allow HTTPS connections on other ports",
-  "Send referring URLs",
-  "Allow compression",
+  "httpAllowed",
+  "connectNonstandardPortsAllowed",
+  "refererAllowed",
+  "gzipAllowed",
 ])("keeps %s unchanged until persistence succeeds", async (label) => {
   let finish!: () => void;
   platform.setFetchSetting.mockImplementationOnce(

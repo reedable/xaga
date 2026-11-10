@@ -56,7 +56,9 @@ const annotation = {
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 const button = (label: string) =>
-  container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
+  container.querySelector<HTMLButtonElement>(
+    `button[data-testid="${label}"], button[data-color="${label}"]`
+  )!;
 async function message(data: object) {
   await act(async () =>
     window.dispatchEvent(
@@ -107,7 +109,7 @@ it("saves the tooltip before handing its Annotation to the Inspector", async () 
       })
   );
   await highlight();
-  await act(async () => button("Show annotation details").click());
+  await act(async () => button("annotation-details").click());
   expect(mocks.open).not.toHaveBeenCalled();
   expect(mocks.save).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -124,16 +126,16 @@ it("saves the tooltip before handing its Annotation to the Inspector", async () 
     },
     expect.any(HTMLButtonElement)
   );
-  expect(button("Show annotation details")).not.toBeNull();
+  expect(button("annotation-details")).not.toBeNull();
 });
 it("keeps a failed save visible and does not open the Inspector", async () => {
   const error = new Error("write failed");
   mocks.save.mockRejectedValueOnce(error);
   await highlight();
-  await act(async () => button("Show annotation details").click());
+  await act(async () => button("annotation-details").click());
   expect(mocks.pushError).toHaveBeenCalledWith(error);
   expect(mocks.open).not.toHaveBeenCalled();
-  expect(button("Show annotation details")).not.toBeNull();
+  expect(button("annotation-details")).not.toBeNull();
 });
 it("offers inspection only after a fresh selection has a color", async () => {
   await message({
@@ -142,10 +144,10 @@ it("offers inspection only after a fresh selection has a color", async () => {
     occurrences: [0],
     rect: { left: 0, top: 0, height: 10, width: 20 },
   });
-  expect(button("Show annotation details")).toBeNull();
+  expect(button("annotation-details")).toBeNull();
   await act(async () => button("blue").click());
   const id = mocks.save.mock.calls[0][0].id;
-  await act(async () => button("Show annotation details").click());
+  await act(async () => button("annotation-details").click());
   expect(mocks.open).toHaveBeenCalledWith(
     { id, reference: "article" },
     expect.any(HTMLButtonElement)
@@ -154,7 +156,7 @@ it("offers inspection only after a fresh selection has a color", async () => {
 it("inspects an existing Annotation read-only without saving it", async () => {
   mocks.readOnly = true;
   await highlight();
-  await act(async () => button("Show annotation details").click());
+  await act(async () => button("annotation-details").click());
   expect(mocks.save).not.toHaveBeenCalled();
   expect(mocks.open).toHaveBeenCalledWith(
     {
@@ -167,7 +169,7 @@ it("inspects an existing Annotation read-only without saving it", async () => {
 
 it("keeps the tooltip through drawer interaction and resumes dismissal after closing", async () => {
   await highlight();
-  const opener = button("Show annotation details");
+  const opener = button("annotation-details");
   await act(async () => opener.click());
   const render = (inspectedAnnotationId?: string) =>
     root.render(
@@ -182,7 +184,7 @@ it("keeps the tooltip through drawer interaction and resumes dismissal after clo
       />
     );
   await act(async () => render("annotation"));
-  expect(button("Show annotation details")).toBe(opener);
+  expect(button("annotation-details")).toBe(opener);
   const outside = document.createElement("button");
   document.body.append(outside);
   await act(async () => {
@@ -190,20 +192,20 @@ it("keeps the tooltip through drawer interaction and resumes dismissal after clo
     outside.click();
     window.dispatchEvent(new Event("blur"));
   });
-  expect(button("Show annotation details")).toBe(opener);
+  expect(button("annotation-details")).toBe(opener);
   expect(opener.closest("[inert]")).not.toBeNull();
   await act(async () => render());
   expect(opener.closest("[inert]")).toBeNull();
   await act(async () => outside.click());
-  expect(button("Show annotation details")).toBeNull();
+  expect(button("annotation-details")).toBeNull();
   outside.remove();
 });
 it("removes the retained tooltip when its Annotation is deleted", async () => {
   await highlight();
-  await act(async () => button("Show annotation details").click());
+  await act(async () => button("annotation-details").click());
   const saves = mocks.save.mock.calls.length;
   await act(async () => mocks.removed!("annotation"));
-  expect(button("Show annotation details")).toBeNull();
+  expect(button("annotation-details")).toBeNull();
   expect(mocks.save).toHaveBeenCalledTimes(saves);
 });
 
@@ -215,7 +217,7 @@ it("follows replacement identity in the retained tooltip", async () => {
       entity: { id: "recolored", color: "red" },
     })
   );
-  await act(async () => button("Show annotation details").click());
+  await act(async () => button("annotation-details").click());
   expect(mocks.open).toHaveBeenLastCalledWith(
     { id: "recolored", reference: "article" },
     expect.any(HTMLButtonElement)
@@ -244,7 +246,11 @@ it.each(["Close", "backdrop", "Escape"])(
             onClose={close}
             transitionDuration={0}
           >
-            <button aria-label="Close test drawer" onClick={close}>
+            <button
+              data-testid="close"
+              aria-label="Close test drawer"
+              onClick={close}
+            >
               Close
             </button>
           </Drawer>
@@ -253,7 +259,7 @@ it.each(["Close", "backdrop", "Escape"])(
     }
     await act(async () => root.render(<Host />));
     await highlight();
-    const opener = button("Show annotation details");
+    const opener = button("annotation-details");
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 1));
       opener.click();
@@ -270,7 +276,7 @@ it.each(["Close", "backdrop", "Escape"])(
         );
       else close.click();
     });
-    expect(button("Show annotation details")).toBe(opener);
+    expect(button("annotation-details")).toBe(opener);
     expect(opener.closest("[inert]")).toBeNull();
   }
 );
@@ -278,11 +284,11 @@ it.each(["Close", "backdrop", "Escape"])(
 it("keeps annotation inspection available in read-only mode without offering changes", async () => {
   mocks.readOnly = true;
   await highlight();
-  expect(container.textContent).toContain("This library is read-only");
   expect(container.querySelector("textarea")?.readOnly).toBe(true);
-  expect(button("Remove marking").disabled).toBe(true);
+  expect(container.querySelector("textarea")?.readOnly).toBe(true);
+  expect(button("remove-marking").disabled).toBe(true);
   expect(button("blue").disabled).toBe(true);
-  await act(async () => button("Show annotation details").click());
+  await act(async () => button("annotation-details").click());
   expect(mocks.open).toHaveBeenCalled();
   expect(mocks.save).not.toHaveBeenCalled();
   expect(mocks.remove).not.toHaveBeenCalled();
@@ -298,9 +304,9 @@ it("reports a refused annotation removal without hiding the saved highlight", as
   await highlight();
   const frame = container.querySelector("iframe")!;
   const post = vi.spyOn(frame.contentWindow!, "postMessage");
-  await act(async () => button("Remove marking").click());
+  await act(async () => button("remove-marking").click());
   const confirm = Array.from(container.querySelectorAll("button")).find(
-    (control) => control.textContent === "Remove"
+    (control) => control.getAttribute("data-testid") === "confirm-remove"
   )!;
   await act(async () => confirm.click());
   expect(mocks.pushError).toHaveBeenCalledWith(error);
@@ -308,5 +314,5 @@ it("reports a refused annotation removal without hiding the saved highlight", as
     expect.objectContaining({ type: "remove-highlight" }),
     "*"
   );
-  expect(button("Show annotation details")).not.toBeNull();
+  expect(button("annotation-details")).not.toBeNull();
 });

@@ -189,17 +189,21 @@ it("keeps every section and the filter above them visible with zero matches", as
     )
   ).toBe(true);
 
-  const input = container.querySelector('[aria-label="Filter collections"]');
+  const input = container.querySelector('[data-testid="filter-collections"]');
   expect(input).not.toBeNull();
   const allItems = [
     ...container.querySelectorAll<HTMLElement>('[role="button"]'),
-  ].filter((button) => button.textContent === "All items");
+  ].filter((button) => button.getAttribute("data-testid") === "all-items");
   expect(allItems).toHaveLength(1);
   expect(
     allItems[0].compareDocumentPosition(input!) &
       Node.DOCUMENT_POSITION_FOLLOWING
   ).toBeTruthy();
-  expect(allItems[0].parentElement!.textContent).toBe("All items2");
+  expect(
+    allItems[0]
+      .parentElement!.querySelector("[data-unread-count]")
+      ?.getAttribute("data-unread-count")
+  ).toBe("2");
   await act(async () => allItems[0].click());
   expect(mocks.selectShortcutTarget).toHaveBeenCalledWith(
     expect.objectContaining({ title: "All items", unreadCount: 2 })
@@ -256,11 +260,11 @@ it("keeps the shared sort control available in a read-only library", async () =>
   );
   expect(
     container.querySelector<HTMLButtonElement>(
-      '[aria-label="Sort collections"]'
+      '[data-testid="sidebar-sort-trigger"]'
     )?.disabled
   ).toBe(false);
   expect(
-    container.querySelector<HTMLButtonElement>('button[aria-label="Refresh"]')
+    container.querySelector<HTMLButtonElement>('button[data-testid="refresh"]')
       ?.disabled
   ).toBe(true);
   mocks.readOnly = false;

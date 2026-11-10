@@ -110,13 +110,21 @@ export default function MissingShortcutDialog({
         </div>
       </DialogContent>
       <DialogActions>
-        <Button disabled={busy} onClick={() => onClose()}>
+        <Button data-testid="close" disabled={busy} onClick={() => onClose()}>
           Close
         </Button>
-        <Button disabled={busy || readOnly} onClick={() => void remove()}>
+        <Button
+          data-testid="remove-shortcut"
+          disabled={busy || readOnly}
+          onClick={() => void remove()}
+        >
           Remove shortcut
         </Button>
-        <Button disabled={busy} onClick={() => void retry()}>
+        <Button
+          data-testid="retry"
+          disabled={busy}
+          onClick={() => void retry()}
+        >
           Retry
         </Button>
       </DialogActions>
