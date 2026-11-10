@@ -17,6 +17,9 @@ Cargo workspace and keep `cargo fmt --all --check` passing.
 
 ## Testing
 
+[Automated testing](automated_testing.md) — assert the behavior under test without
+overspecifying it; do not hardcode UI copy in behavior tests.
+
 [UI and UX testing](ui_testing.md) — review browser coverage for every UI or UX
 change, update meaningful workflow tests, and verify native behavior separately.
 

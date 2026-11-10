@@ -1,5 +1,9 @@
 # UI and UX testing
 
+Follow the [automated testing convention](automated_testing.md): test exactly the
+behavior required, without overspecifying assertions. **Do not hardcode UI
+copy** in selectors or assertions. Copy review and testing are separate work.
+
 For every change that affects UI or UX, review the affected user workflows and
 browser integration coverage in the same change.
 
