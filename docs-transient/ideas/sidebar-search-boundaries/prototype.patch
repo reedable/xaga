@@ -1,0 +1,83 @@
+diff --git a/src/AppLayout.tsx b/src/AppLayout.tsx
+index b0539e0..1680947 100644
+--- a/src/AppLayout.tsx
++++ b/src/AppLayout.tsx
+@@ -7,6 +7,7 @@ import {
+   DialogContent,
+   DialogContentText,
+   DialogTitle,
++  Drawer,
+   Snackbar,
+ } from "@mui/material";
+ import { useCallback, useEffect, useRef, useState } from "react";
+@@ -38,11 +39,22 @@ export function AppLayout({
+   libraryBadgeRef?: (element: HTMLSpanElement | null) => void;
+ }) {
+   useStartupFeedRefresh();
+-  const { selectTopic, selectFeed, search } = useRouter();
++  const { selectTopic, selectFeed, search, clearSearch } = useRouter();
+   const [listFilter, setListFilter] = useState<Filter>("unread");
+   const appRef = useRef<HTMLDivElement>(null);
+   const searchPanelRef = useRef<HTMLDivElement>(null);
+   const [autoHideSidebar, setAutoHideSidebar] = useState(false);
++  const [captureHideSidebar, setCaptureHideSidebar] = useState(false);
++  const [captureSearchDrawer, setCaptureSearchDrawer] = useState(false);
++  useEffect(() => {
++    const update = (event: Event) => {
++      const detail = (event as CustomEvent<string>).detail;
++      if (detail === "sidebar") setCaptureHideSidebar(true);
++      if (detail === "drawer") setCaptureSearchDrawer(true);
++    };
++    window.addEventListener("capture-layout-step", update);
++    return () => window.removeEventListener("capture-layout-step", update);
++  }, []);
+   const { showSidebar } = useAppearance();
+   const { library } = useSettings();
+   const embeddingStartupState = useEmbeddingStartupState();
+@@ -209,7 +221,7 @@ export function AppLayout({
+ 
+       <div ref={appRef} className={css.App}>
+         <Collapse
+-          in={showSidebar && !autoHideSidebar}
++          in={showSidebar && !autoHideSidebar && !captureHideSidebar}
+           unmountOnExit
+           orientation="horizontal"
+         >
+@@ -227,7 +239,9 @@ export function AppLayout({
+           filter={listFilter}
+           onFilterChange={setListFilter}
+           className={css.EntityList}
+-          isSelectableHeader={autoHideSidebar || !showSidebar}
++          isSelectableHeader={
++            autoHideSidebar || captureHideSidebar || !showSidebar
++          }
+           onEditFeed={setEditingFeed}
+           onEditTopic={setEditingTopic}
+           onEditSite={setEditingSite}
+@@ -240,7 +254,7 @@ export function AppLayout({
+ 
+         <Collapse
+           ref={searchPanelRef}
+-          in={search !== undefined}
++          in={search !== undefined && !captureSearchDrawer}
+           timeout={300}
+           easing="cubic-bezier(0.4, 0, 0.2, 1)"
+           unmountOnExit
+@@ -254,6 +268,17 @@ export function AppLayout({
+         </Collapse>
+       </div>
+ 
++      <Drawer
++        anchor="right"
++        open={captureSearchDrawer && search !== undefined}
++        onClose={clearSearch}
++      >
++        <SearchResultList
++          searchQuery={search ?? ""}
++          onSaveAsTopic={handleSaveSearchAsTopic}
++        />
++      </Drawer>
++
+       <EditTopicDialog
+         open={editingTopic !== null || isAddingTopic}
+         topic={editingTopic}

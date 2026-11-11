@@ -16,3 +16,8 @@ completing the story. Rerun the check if subsequent edits change checked files.
 For Rust changes, also follow [Rust formatting](rust_formatting.md), including
 `cargo fmt --all` and `cargo fmt --all --check`. The npm formatter does not
 replace these Cargo workspace checks.
+
+Perform required formatting and checks without reporting routine successful
+results in progress updates or completion messages. Report formatting only when
+there is a failure, a blocker, or a consequence requiring the user's attention,
+or when the user explicitly asks for the results.

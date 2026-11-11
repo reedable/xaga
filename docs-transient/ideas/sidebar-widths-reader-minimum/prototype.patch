@@ -1,0 +1,50 @@
+diff --git a/src/AppLayout.tsx b/src/AppLayout.tsx
+index b0539e0..2f2878e 100644
+--- a/src/AppLayout.tsx
++++ b/src/AppLayout.tsx
+@@ -43,6 +43,25 @@ export function AppLayout({
+   const appRef = useRef<HTMLDivElement>(null);
+   const searchPanelRef = useRef<HTMLDivElement>(null);
+   const [autoHideSidebar, setAutoHideSidebar] = useState(false);
++  // Temporary screenshot prototype: capture requests evaluation after layout settles.
++  const [captureReaderTooNarrow, setCaptureReaderTooNarrow] = useState(false);
++  useEffect(() => {
++    const evaluateReader = () => {
++      const sidebar = appRef.current?.querySelector('[class*="_Sidebar_"]');
++      const reader = appRef.current?.querySelector(
++        '[data-testid="entry-reader"]'
++      );
++      if (sidebar && reader && reader.getBoundingClientRect().width < 320) {
++        setCaptureReaderTooNarrow(true);
++      }
++    };
++    window.addEventListener("capture-evaluate-reader-minimum", evaluateReader);
++    return () =>
++      window.removeEventListener(
++        "capture-evaluate-reader-minimum",
++        evaluateReader
++      );
++  }, []);
+   const { showSidebar } = useAppearance();
+   const { library } = useSettings();
+   const embeddingStartupState = useEmbeddingStartupState();
+@@ -209,7 +228,7 @@ export function AppLayout({
+ 
+       <div ref={appRef} className={css.App}>
+         <Collapse
+-          in={showSidebar && !autoHideSidebar}
++          in={showSidebar && !autoHideSidebar && !captureReaderTooNarrow}
+           unmountOnExit
+           orientation="horizontal"
+         >
+@@ -227,7 +246,9 @@ export function AppLayout({
+           filter={listFilter}
+           onFilterChange={setListFilter}
+           className={css.EntityList}
+-          isSelectableHeader={autoHideSidebar || !showSidebar}
++          isSelectableHeader={
++            autoHideSidebar || captureReaderTooNarrow || !showSidebar
++          }
+           onEditFeed={setEditingFeed}
+           onEditTopic={setEditingTopic}
+           onEditSite={setEditingSite}

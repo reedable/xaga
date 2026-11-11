@@ -1,0 +1,659 @@
+<!doctype html><meta charset="utf-8" /><title>Sidebar width spike</title>
+<style>
+  body {
+    font: 16px system-ui;
+    margin: 2rem;
+    background: #eee;
+  }
+  nav {
+    display: flex;
+    gap: 1rem;
+    position: sticky;
+    top: 0;
+    background: #eee;
+    padding: 1rem;
+  }
+  section {
+    margin-bottom: 3rem;
+  }
+  article {
+    margin: 2rem 0;
+  }
+  img {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid #aaa;
+  }
+  a {
+    color: #1457a5;
+  }
+</style>
+<h1>Sidebar and EntityList width study</h1>
+<p>
+  60 Chromium captures, light theme, synthetic sidebar-height library, article
+  open, Topics expanded where available. Normal/search: height 800; short:
+  height 400. Current 980/1300 width thresholds and measured compact-height rule
+  are unchanged. Search is open with an empty query; the fixture does not
+  support search results. Widths are CSS pixels at a 16px root font size.
+  Browser captures exclude native window chrome.
+</p>
+<nav>
+  <a href="#w1512">1512px</a><a href="#w1352">1352px</a
+  ><a href="#w1147">1147px</a><a href="#w1024">1024px</a
+  ><a href="#w840">840px</a>
+</nav>
+<section id="w1512">
+  <h2>Window width 1512px</h2>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · normal · 1512 × 800</h3>
+    <p>Rendered Sidebar 240; file w1512-s240-l320-normal.png</p>
+    <a href="w1512-s240-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w1512-s240-l320-normal.png"
+        alt="w1512-s240-l320-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · search · 1512 × 800</h3>
+    <p>Rendered Sidebar 240; file w1512-s240-l320-search.png</p>
+    <a href="w1512-s240-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w1512-s240-l320-search.png"
+        alt="w1512-s240-l320-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · short · 1512 × 400</h3>
+    <p>Rendered Sidebar 240; file w1512-s240-l320-short.png</p>
+    <a href="w1512-s240-l320-short.png"
+      ><img
+        loading="lazy"
+        src="w1512-s240-l320-short.png"
+        alt="w1512-s240-l320-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · normal · 1512 × 800</h3>
+    <p>Rendered Sidebar 360; file w1512-s360-l320-normal.png</p>
+    <a href="w1512-s360-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w1512-s360-l320-normal.png"
+        alt="w1512-s360-l320-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · search · 1512 × 800</h3>
+    <p>Rendered Sidebar 360; file w1512-s360-l320-search.png</p>
+    <a href="w1512-s360-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w1512-s360-l320-search.png"
+        alt="w1512-s360-l320-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · short · 1512 × 400</h3>
+    <p>Rendered Sidebar 360; file w1512-s360-l320-short.png</p>
+    <a href="w1512-s360-l320-short.png"
+      ><img
+        loading="lazy"
+        src="w1512-s360-l320-short.png"
+        alt="w1512-s360-l320-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · normal · 1512 × 800</h3>
+    <p>Rendered Sidebar 240; file w1512-s240-l480-normal.png</p>
+    <a href="w1512-s240-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w1512-s240-l480-normal.png"
+        alt="w1512-s240-l480-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · search · 1512 × 800</h3>
+    <p>Rendered Sidebar 240; file w1512-s240-l480-search.png</p>
+    <a href="w1512-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1512-s240-l480-search.png"
+        alt="w1512-s240-l480-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · short · 1512 × 400</h3>
+    <p>Rendered Sidebar 240; file w1512-s240-l480-short.png</p>
+    <a href="w1512-s240-l480-short.png"
+      ><img
+        loading="lazy"
+        src="w1512-s240-l480-short.png"
+        alt="w1512-s240-l480-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · normal · 1512 × 800</h3>
+    <p>Rendered Sidebar 360; file w1512-s360-l480-normal.png</p>
+    <a href="w1512-s360-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w1512-s360-l480-normal.png"
+        alt="w1512-s360-l480-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · search · 1512 × 800</h3>
+    <p>Rendered Sidebar 360; file w1512-s360-l480-search.png</p>
+    <a href="w1512-s360-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1512-s360-l480-search.png"
+        alt="w1512-s360-l480-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · short · 1512 × 400</h3>
+    <p>Rendered Sidebar 360; file w1512-s360-l480-short.png</p>
+    <a href="w1512-s360-l480-short.png"
+      ><img
+        loading="lazy"
+        src="w1512-s360-l480-short.png"
+        alt="w1512-s360-l480-short.png"
+    /></a>
+  </article>
+</section>
+<section id="w1352">
+  <h2>Window width 1352px</h2>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · normal · 1352 × 800</h3>
+    <p>Rendered Sidebar 240; file w1352-s240-l320-normal.png</p>
+    <a href="w1352-s240-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w1352-s240-l320-normal.png"
+        alt="w1352-s240-l320-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · search · 1352 × 800</h3>
+    <p>Rendered Sidebar 240; file w1352-s240-l320-search.png</p>
+    <a href="w1352-s240-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w1352-s240-l320-search.png"
+        alt="w1352-s240-l320-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · short · 1352 × 400</h3>
+    <p>Rendered Sidebar 240; file w1352-s240-l320-short.png</p>
+    <a href="w1352-s240-l320-short.png"
+      ><img
+        loading="lazy"
+        src="w1352-s240-l320-short.png"
+        alt="w1352-s240-l320-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · normal · 1352 × 800</h3>
+    <p>Rendered Sidebar 360; file w1352-s360-l320-normal.png</p>
+    <a href="w1352-s360-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w1352-s360-l320-normal.png"
+        alt="w1352-s360-l320-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · search · 1352 × 800</h3>
+    <p>Rendered Sidebar 360; file w1352-s360-l320-search.png</p>
+    <a href="w1352-s360-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w1352-s360-l320-search.png"
+        alt="w1352-s360-l320-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · short · 1352 × 400</h3>
+    <p>Rendered Sidebar 360; file w1352-s360-l320-short.png</p>
+    <a href="w1352-s360-l320-short.png"
+      ><img
+        loading="lazy"
+        src="w1352-s360-l320-short.png"
+        alt="w1352-s360-l320-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · normal · 1352 × 800</h3>
+    <p>Rendered Sidebar 240; file w1352-s240-l480-normal.png</p>
+    <a href="w1352-s240-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w1352-s240-l480-normal.png"
+        alt="w1352-s240-l480-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · search · 1352 × 800</h3>
+    <p>Rendered Sidebar 240; file w1352-s240-l480-search.png</p>
+    <a href="w1352-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1352-s240-l480-search.png"
+        alt="w1352-s240-l480-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · short · 1352 × 400</h3>
+    <p>Rendered Sidebar 240; file w1352-s240-l480-short.png</p>
+    <a href="w1352-s240-l480-short.png"
+      ><img
+        loading="lazy"
+        src="w1352-s240-l480-short.png"
+        alt="w1352-s240-l480-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · normal · 1352 × 800</h3>
+    <p>Rendered Sidebar 360; file w1352-s360-l480-normal.png</p>
+    <a href="w1352-s360-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w1352-s360-l480-normal.png"
+        alt="w1352-s360-l480-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · search · 1352 × 800</h3>
+    <p>Rendered Sidebar 360; file w1352-s360-l480-search.png</p>
+    <a href="w1352-s360-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1352-s360-l480-search.png"
+        alt="w1352-s360-l480-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · short · 1352 × 400</h3>
+    <p>Rendered Sidebar 360; file w1352-s360-l480-short.png</p>
+    <a href="w1352-s360-l480-short.png"
+      ><img
+        loading="lazy"
+        src="w1352-s360-l480-short.png"
+        alt="w1352-s360-l480-short.png"
+    /></a>
+  </article>
+</section>
+<section id="w1147">
+  <h2>Window width 1147px</h2>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · normal · 1147 × 800</h3>
+    <p>Rendered Sidebar 240; file w1147-s240-l320-normal.png</p>
+    <a href="w1147-s240-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w1147-s240-l320-normal.png"
+        alt="w1147-s240-l320-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · search · 1147 × 800</h3>
+    <p>Rendered Sidebar hidden; file w1147-s240-l320-search.png</p>
+    <a href="w1147-s240-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w1147-s240-l320-search.png"
+        alt="w1147-s240-l320-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · short · 1147 × 400</h3>
+    <p>Rendered Sidebar 240; file w1147-s240-l320-short.png</p>
+    <a href="w1147-s240-l320-short.png"
+      ><img
+        loading="lazy"
+        src="w1147-s240-l320-short.png"
+        alt="w1147-s240-l320-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · normal · 1147 × 800</h3>
+    <p>Rendered Sidebar 360; file w1147-s360-l320-normal.png</p>
+    <a href="w1147-s360-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w1147-s360-l320-normal.png"
+        alt="w1147-s360-l320-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · search · 1147 × 800</h3>
+    <p>Rendered Sidebar hidden; file w1147-s360-l320-search.png</p>
+    <a href="w1147-s360-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w1147-s360-l320-search.png"
+        alt="w1147-s360-l320-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · short · 1147 × 400</h3>
+    <p>Rendered Sidebar 360; file w1147-s360-l320-short.png</p>
+    <a href="w1147-s360-l320-short.png"
+      ><img
+        loading="lazy"
+        src="w1147-s360-l320-short.png"
+        alt="w1147-s360-l320-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · normal · 1147 × 800</h3>
+    <p>Rendered Sidebar 240; file w1147-s240-l480-normal.png</p>
+    <a href="w1147-s240-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w1147-s240-l480-normal.png"
+        alt="w1147-s240-l480-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · search · 1147 × 800</h3>
+    <p>Rendered Sidebar hidden; file w1147-s240-l480-search.png</p>
+    <a href="w1147-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1147-s240-l480-search.png"
+        alt="w1147-s240-l480-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · short · 1147 × 400</h3>
+    <p>Rendered Sidebar 240; file w1147-s240-l480-short.png</p>
+    <a href="w1147-s240-l480-short.png"
+      ><img
+        loading="lazy"
+        src="w1147-s240-l480-short.png"
+        alt="w1147-s240-l480-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · normal · 1147 × 800</h3>
+    <p>Rendered Sidebar 360; file w1147-s360-l480-normal.png</p>
+    <a href="w1147-s360-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w1147-s360-l480-normal.png"
+        alt="w1147-s360-l480-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · search · 1147 × 800</h3>
+    <p>Rendered Sidebar hidden; file w1147-s360-l480-search.png</p>
+    <a href="w1147-s360-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1147-s360-l480-search.png"
+        alt="w1147-s360-l480-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · short · 1147 × 400</h3>
+    <p>Rendered Sidebar 360; file w1147-s360-l480-short.png</p>
+    <a href="w1147-s360-l480-short.png"
+      ><img
+        loading="lazy"
+        src="w1147-s360-l480-short.png"
+        alt="w1147-s360-l480-short.png"
+    /></a>
+  </article>
+</section>
+<section id="w1024">
+  <h2>Window width 1024px</h2>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · normal · 1024 × 800</h3>
+    <p>Rendered Sidebar 240; file w1024-s240-l320-normal.png</p>
+    <a href="w1024-s240-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w1024-s240-l320-normal.png"
+        alt="w1024-s240-l320-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · search · 1024 × 800</h3>
+    <p>Rendered Sidebar hidden; file w1024-s240-l320-search.png</p>
+    <a href="w1024-s240-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w1024-s240-l320-search.png"
+        alt="w1024-s240-l320-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · short · 1024 × 400</h3>
+    <p>Rendered Sidebar 240; file w1024-s240-l320-short.png</p>
+    <a href="w1024-s240-l320-short.png"
+      ><img
+        loading="lazy"
+        src="w1024-s240-l320-short.png"
+        alt="w1024-s240-l320-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · normal · 1024 × 800</h3>
+    <p>Rendered Sidebar 360; file w1024-s360-l320-normal.png</p>
+    <a href="w1024-s360-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w1024-s360-l320-normal.png"
+        alt="w1024-s360-l320-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · search · 1024 × 800</h3>
+    <p>Rendered Sidebar hidden; file w1024-s360-l320-search.png</p>
+    <a href="w1024-s360-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w1024-s360-l320-search.png"
+        alt="w1024-s360-l320-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · short · 1024 × 400</h3>
+    <p>Rendered Sidebar 360; file w1024-s360-l320-short.png</p>
+    <a href="w1024-s360-l320-short.png"
+      ><img
+        loading="lazy"
+        src="w1024-s360-l320-short.png"
+        alt="w1024-s360-l320-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · normal · 1024 × 800</h3>
+    <p>Rendered Sidebar 240; file w1024-s240-l480-normal.png</p>
+    <a href="w1024-s240-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w1024-s240-l480-normal.png"
+        alt="w1024-s240-l480-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · search · 1024 × 800</h3>
+    <p>Rendered Sidebar hidden; file w1024-s240-l480-search.png</p>
+    <a href="w1024-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1024-s240-l480-search.png"
+        alt="w1024-s240-l480-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · short · 1024 × 400</h3>
+    <p>Rendered Sidebar 240; file w1024-s240-l480-short.png</p>
+    <a href="w1024-s240-l480-short.png"
+      ><img
+        loading="lazy"
+        src="w1024-s240-l480-short.png"
+        alt="w1024-s240-l480-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · normal · 1024 × 800</h3>
+    <p>Rendered Sidebar 360; file w1024-s360-l480-normal.png</p>
+    <a href="w1024-s360-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w1024-s360-l480-normal.png"
+        alt="w1024-s360-l480-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · search · 1024 × 800</h3>
+    <p>Rendered Sidebar hidden; file w1024-s360-l480-search.png</p>
+    <a href="w1024-s360-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1024-s360-l480-search.png"
+        alt="w1024-s360-l480-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · short · 1024 × 400</h3>
+    <p>Rendered Sidebar 360; file w1024-s360-l480-short.png</p>
+    <a href="w1024-s360-l480-short.png"
+      ><img
+        loading="lazy"
+        src="w1024-s360-l480-short.png"
+        alt="w1024-s360-l480-short.png"
+    /></a>
+  </article>
+</section>
+<section id="w840">
+  <h2>Window width 840px</h2>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · normal · 840 × 800</h3>
+    <p>Rendered Sidebar hidden; file w840-s240-l320-normal.png</p>
+    <a href="w840-s240-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w840-s240-l320-normal.png"
+        alt="w840-s240-l320-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · search · 840 × 800</h3>
+    <p>Rendered Sidebar hidden; file w840-s240-l320-search.png</p>
+    <a href="w840-s240-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w840-s240-l320-search.png"
+        alt="w840-s240-l320-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 320 · short · 840 × 400</h3>
+    <p>Rendered Sidebar hidden; file w840-s240-l320-short.png</p>
+    <a href="w840-s240-l320-short.png"
+      ><img
+        loading="lazy"
+        src="w840-s240-l320-short.png"
+        alt="w840-s240-l320-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · normal · 840 × 800</h3>
+    <p>Rendered Sidebar hidden; file w840-s360-l320-normal.png</p>
+    <a href="w840-s360-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w840-s360-l320-normal.png"
+        alt="w840-s360-l320-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · search · 840 × 800</h3>
+    <p>Rendered Sidebar hidden; file w840-s360-l320-search.png</p>
+    <a href="w840-s360-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w840-s360-l320-search.png"
+        alt="w840-s360-l320-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 320 · short · 840 × 400</h3>
+    <p>Rendered Sidebar hidden; file w840-s360-l320-short.png</p>
+    <a href="w840-s360-l320-short.png"
+      ><img
+        loading="lazy"
+        src="w840-s360-l320-short.png"
+        alt="w840-s360-l320-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · normal · 840 × 800</h3>
+    <p>Rendered Sidebar hidden; file w840-s240-l480-normal.png</p>
+    <a href="w840-s240-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w840-s240-l480-normal.png"
+        alt="w840-s240-l480-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · search · 840 × 800</h3>
+    <p>Rendered Sidebar hidden; file w840-s240-l480-search.png</p>
+    <a href="w840-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w840-s240-l480-search.png"
+        alt="w840-s240-l480-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 240 · EntityList 480 · short · 840 × 400</h3>
+    <p>Rendered Sidebar hidden; file w840-s240-l480-short.png</p>
+    <a href="w840-s240-l480-short.png"
+      ><img
+        loading="lazy"
+        src="w840-s240-l480-short.png"
+        alt="w840-s240-l480-short.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · normal · 840 × 800</h3>
+    <p>Rendered Sidebar hidden; file w840-s360-l480-normal.png</p>
+    <a href="w840-s360-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w840-s360-l480-normal.png"
+        alt="w840-s360-l480-normal.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · search · 840 × 800</h3>
+    <p>Rendered Sidebar hidden; file w840-s360-l480-search.png</p>
+    <a href="w840-s360-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w840-s360-l480-search.png"
+        alt="w840-s360-l480-search.png"
+    /></a>
+  </article>
+  <article>
+    <h3>Sidebar 360 · EntityList 480 · short · 840 × 400</h3>
+    <p>Rendered Sidebar hidden; file w840-s360-l480-short.png</p>
+    <a href="w840-s360-l480-short.png"
+      ><img
+        loading="lazy"
+        src="w840-s360-l480-short.png"
+        alt="w840-s360-l480-short.png"
+    /></a>
+  </article>
+</section>

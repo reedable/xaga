@@ -1,0 +1,798 @@
+<!doctype html><meta charset="utf-8" />
+<title>Sidebar and Search boundaries</title>
+<style>
+  body {
+    font: 16px system-ui;
+    background: #eee;
+    margin: 2rem;
+  }
+  img {
+    max-width: 100%;
+    border: 1px solid #aaa;
+  }
+  article {
+    margin: 3rem 0;
+  }
+  nav {
+    position: sticky;
+    top: 0;
+    padding: 1rem;
+    background: #eee;
+    display: flex;
+    gap: 1rem;
+  }
+</style>
+<h1>Sidebar and Search boundaries</h1>
+<p>
+  All captures are 800px high. Existing Sidebar thresholds remain; Sidebar then
+  collapses below 320px reader width; if inline Search still leaves less than
+  320px, Search uses a right overlay drawer. Exactly 320px passes. Synthetic
+  library, light theme, empty Search. The drawer is 288px wide with the default
+  MUI backdrop. This is a static screenshot prototype, not a live resize
+  implementation.
+</p>
+<p>
+  <a href="../sidebar-widths/index.html">Original set</a> ·
+  <a href="../sidebar-widths-reader-minimum/index.html"
+    >Sidebar-only rule set</a
+  >
+</p>
+<nav>
+  <a href="#s240l320">Sidebar 240 / List 320</a
+  ><a href="#s360l320">Sidebar 360 / List 320</a
+  ><a href="#s240l480">Sidebar 240 / List 480</a
+  ><a href="#s360l480">Sidebar 360 / List 480</a>
+</nav>
+<section id="s240l320">
+  <h2>Sidebar 240 / EntityList 320</h2>
+  <article>
+    <h3>840 × 800 — Search drawer</h3>
+    <p>
+      Narrow-window Search reference. Sidebar hidden; reader 519px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w840-s240-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w840-s240-l320-search.png"
+        alt="w840-s240-l320-search"
+    /></a>
+  </article>
+  <article>
+    <h3>900 × 800 — Search drawer</h3>
+    <p>
+      Narrow-window Search reference. Sidebar hidden; reader 579px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w900-s240-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w900-s240-l320-search.png"
+        alt="w900-s240-l320-search"
+    /></a>
+  </article>
+  <article>
+    <h3>920 × 800 — Search drawer</h3>
+    <p>
+      Narrow-window Search reference. Sidebar hidden; reader 599px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w920-s240-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w920-s240-l320-search.png"
+        alt="w920-s240-l320-search"
+    /></a>
+  </article>
+  <article>
+    <h3>928 × 800 — Search drawer</h3>
+    <p>
+      320px reader threshold for inline Search after Sidebar collapse. Sidebar
+      hidden; reader 607px (underlying layout when drawer open).
+    </p>
+    <a href="w928-s240-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w928-s240-l320-search.png"
+        alt="w928-s240-l320-search"
+    /></a>
+  </article>
+  <article>
+    <h3>929 × 800 — Search inline</h3>
+    <p>
+      320px reader threshold for inline Search after Sidebar collapse. Sidebar
+      hidden; reader 320px (underlying layout when drawer open).
+    </p>
+    <a href="w929-s240-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w929-s240-l320-search.png"
+        alt="w929-s240-l320-search"
+    /></a>
+  </article>
+  <article>
+    <h3>930 × 800 — Search inline</h3>
+    <p>
+      320px reader threshold for inline Search after Sidebar collapse. Sidebar
+      hidden; reader 321px (underlying layout when drawer open).
+    </p>
+    <a href="w930-s240-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w930-s240-l320-search.png"
+        alt="w930-s240-l320-search"
+    /></a>
+  </article>
+  <article>
+    <h3>979 × 800 — Search closed</h3>
+    <p>
+      Existing 980px Sidebar threshold. Sidebar hidden; reader 658px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w979-s240-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w979-s240-l320-normal.png"
+        alt="w979-s240-l320-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>980 × 800 — Search closed</h3>
+    <p>
+      Existing 980px Sidebar threshold. Sidebar visible; reader 419px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w980-s240-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w980-s240-l320-normal.png"
+        alt="w980-s240-l320-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>981 × 800 — Search closed</h3>
+    <p>
+      Existing 980px Sidebar threshold. Sidebar visible; reader 420px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w981-s240-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w981-s240-l320-normal.png"
+        alt="w981-s240-l320-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>1299 × 800 — Search inline</h3>
+    <p>
+      Existing 1300px Sidebar threshold. Sidebar hidden; reader 690px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1299-s240-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w1299-s240-l320-search.png"
+        alt="w1299-s240-l320-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1300 × 800 — Search inline</h3>
+    <p>
+      Existing 1300px Sidebar threshold. Sidebar visible; reader 451px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1300-s240-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w1300-s240-l320-search.png"
+        alt="w1300-s240-l320-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1301 × 800 — Search inline</h3>
+    <p>
+      Existing 1300px Sidebar threshold. Sidebar visible; reader 452px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1301-s240-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w1301-s240-l320-search.png"
+        alt="w1301-s240-l320-search"
+    /></a>
+  </article>
+</section>
+<section id="s360l320">
+  <h2>Sidebar 360 / EntityList 320</h2>
+  <article>
+    <h3>928 × 800 — Search drawer</h3>
+    <p>
+      320px reader threshold for inline Search after Sidebar collapse. Sidebar
+      hidden; reader 607px (underlying layout when drawer open).
+    </p>
+    <a href="w928-s360-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w928-s360-l320-search.png"
+        alt="w928-s360-l320-search"
+    /></a>
+  </article>
+  <article>
+    <h3>929 × 800 — Search inline</h3>
+    <p>
+      320px reader threshold for inline Search after Sidebar collapse. Sidebar
+      hidden; reader 320px (underlying layout when drawer open).
+    </p>
+    <a href="w929-s360-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w929-s360-l320-search.png"
+        alt="w929-s360-l320-search"
+    /></a>
+  </article>
+  <article>
+    <h3>930 × 800 — Search inline</h3>
+    <p>
+      320px reader threshold for inline Search after Sidebar collapse. Sidebar
+      hidden; reader 321px (underlying layout when drawer open).
+    </p>
+    <a href="w930-s360-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w930-s360-l320-search.png"
+        alt="w930-s360-l320-search"
+    /></a>
+  </article>
+  <article>
+    <h3>979 × 800 — Search closed</h3>
+    <p>
+      Existing 980px Sidebar threshold. Sidebar hidden; reader 658px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w979-s360-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w979-s360-l320-normal.png"
+        alt="w979-s360-l320-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>980 × 800 — Search closed</h3>
+    <p>
+      Existing 980px Sidebar threshold. Sidebar hidden; reader 659px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w980-s360-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w980-s360-l320-normal.png"
+        alt="w980-s360-l320-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>981 × 800 — Search closed</h3>
+    <p>
+      Existing 980px Sidebar threshold. Sidebar hidden; reader 660px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w981-s360-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w981-s360-l320-normal.png"
+        alt="w981-s360-l320-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>1000 × 800 — Search closed</h3>
+    <p>
+      320px reader threshold with Sidebar visible. Sidebar hidden; reader 679px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1000-s360-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w1000-s360-l320-normal.png"
+        alt="w1000-s360-l320-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>1001 × 800 — Search closed</h3>
+    <p>
+      320px reader threshold with Sidebar visible. Sidebar visible; reader 320px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1001-s360-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w1001-s360-l320-normal.png"
+        alt="w1001-s360-l320-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>1002 × 800 — Search closed</h3>
+    <p>
+      320px reader threshold with Sidebar visible. Sidebar visible; reader 321px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1002-s360-l320-normal.png"
+      ><img
+        loading="lazy"
+        src="w1002-s360-l320-normal.png"
+        alt="w1002-s360-l320-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>1299 × 800 — Search inline</h3>
+    <p>
+      Existing 1300px Sidebar threshold. Sidebar hidden; reader 690px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1299-s360-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w1299-s360-l320-search.png"
+        alt="w1299-s360-l320-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1300 × 800 — Search inline</h3>
+    <p>
+      Existing 1300px Sidebar threshold. Sidebar visible; reader 331px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1300-s360-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w1300-s360-l320-search.png"
+        alt="w1300-s360-l320-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1301 × 800 — Search inline</h3>
+    <p>
+      Existing 1300px Sidebar threshold. Sidebar visible; reader 332px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1301-s360-l320-search.png"
+      ><img
+        loading="lazy"
+        src="w1301-s360-l320-search.png"
+        alt="w1301-s360-l320-search"
+    /></a>
+  </article>
+</section>
+<section id="s240l480">
+  <h2>Sidebar 240 / EntityList 480</h2>
+  <article>
+    <h3>840 × 800 — Search drawer</h3>
+    <p>
+      Narrow-window Search reference. Sidebar hidden; reader 359px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w840-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w840-s240-l480-search.png"
+        alt="w840-s240-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>900 × 800 — Search drawer</h3>
+    <p>
+      Narrow-window Search reference. Sidebar hidden; reader 419px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w900-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w900-s240-l480-search.png"
+        alt="w900-s240-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>920 × 800 — Search drawer</h3>
+    <p>
+      Narrow-window Search reference. Sidebar hidden; reader 439px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w920-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w920-s240-l480-search.png"
+        alt="w920-s240-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>979 × 800 — Search closed</h3>
+    <p>
+      Existing 980px Sidebar threshold. Sidebar hidden; reader 498px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w979-s240-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w979-s240-l480-normal.png"
+        alt="w979-s240-l480-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>980 × 800 — Search closed</h3>
+    <p>
+      Existing 980px Sidebar threshold. Sidebar hidden; reader 499px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w980-s240-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w980-s240-l480-normal.png"
+        alt="w980-s240-l480-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>981 × 800 — Search closed</h3>
+    <p>
+      Existing 980px Sidebar threshold. Sidebar hidden; reader 500px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w981-s240-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w981-s240-l480-normal.png"
+        alt="w981-s240-l480-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>1040 × 800 — Search closed</h3>
+    <p>
+      320px reader threshold with Sidebar visible. Sidebar hidden; reader 559px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1040-s240-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w1040-s240-l480-normal.png"
+        alt="w1040-s240-l480-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>1041 × 800 — Search closed</h3>
+    <p>
+      320px reader threshold with Sidebar visible. Sidebar visible; reader 320px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1041-s240-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w1041-s240-l480-normal.png"
+        alt="w1041-s240-l480-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>1042 × 800 — Search closed</h3>
+    <p>
+      320px reader threshold with Sidebar visible. Sidebar visible; reader 321px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1042-s240-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w1042-s240-l480-normal.png"
+        alt="w1042-s240-l480-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>1088 × 800 — Search drawer</h3>
+    <p>
+      320px reader threshold for inline Search after Sidebar collapse. Sidebar
+      hidden; reader 607px (underlying layout when drawer open).
+    </p>
+    <a href="w1088-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1088-s240-l480-search.png"
+        alt="w1088-s240-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1089 × 800 — Search inline</h3>
+    <p>
+      320px reader threshold for inline Search after Sidebar collapse. Sidebar
+      hidden; reader 320px (underlying layout when drawer open).
+    </p>
+    <a href="w1089-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1089-s240-l480-search.png"
+        alt="w1089-s240-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1090 × 800 — Search inline</h3>
+    <p>
+      320px reader threshold for inline Search after Sidebar collapse. Sidebar
+      hidden; reader 321px (underlying layout when drawer open).
+    </p>
+    <a href="w1090-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1090-s240-l480-search.png"
+        alt="w1090-s240-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1299 × 800 — Search inline</h3>
+    <p>
+      Existing 1300px Sidebar threshold. Sidebar hidden; reader 530px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1299-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1299-s240-l480-search.png"
+        alt="w1299-s240-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1300 × 800 — Search inline</h3>
+    <p>
+      Existing 1300px Sidebar threshold. Sidebar hidden; reader 531px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1300-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1300-s240-l480-search.png"
+        alt="w1300-s240-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1301 × 800 — Search inline</h3>
+    <p>
+      Existing 1300px Sidebar threshold. Sidebar hidden; reader 532px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1301-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1301-s240-l480-search.png"
+        alt="w1301-s240-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1328 × 800 — Search inline</h3>
+    <p>
+      320px reader threshold with Sidebar and inline Search. Sidebar hidden;
+      reader 559px (underlying layout when drawer open).
+    </p>
+    <a href="w1328-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1328-s240-l480-search.png"
+        alt="w1328-s240-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1329 × 800 — Search inline</h3>
+    <p>
+      320px reader threshold with Sidebar and inline Search. Sidebar visible;
+      reader 320px (underlying layout when drawer open).
+    </p>
+    <a href="w1329-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1329-s240-l480-search.png"
+        alt="w1329-s240-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1330 × 800 — Search inline</h3>
+    <p>
+      320px reader threshold with Sidebar and inline Search. Sidebar visible;
+      reader 321px (underlying layout when drawer open).
+    </p>
+    <a href="w1330-s240-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1330-s240-l480-search.png"
+        alt="w1330-s240-l480-search"
+    /></a>
+  </article>
+</section>
+<section id="s360l480">
+  <h2>Sidebar 360 / EntityList 480</h2>
+  <article>
+    <h3>979 × 800 — Search closed</h3>
+    <p>
+      Existing 980px Sidebar threshold. Sidebar hidden; reader 498px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w979-s360-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w979-s360-l480-normal.png"
+        alt="w979-s360-l480-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>980 × 800 — Search closed</h3>
+    <p>
+      Existing 980px Sidebar threshold. Sidebar hidden; reader 499px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w980-s360-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w980-s360-l480-normal.png"
+        alt="w980-s360-l480-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>981 × 800 — Search closed</h3>
+    <p>
+      Existing 980px Sidebar threshold. Sidebar hidden; reader 500px (underlying
+      layout when drawer open).
+    </p>
+    <a href="w981-s360-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w981-s360-l480-normal.png"
+        alt="w981-s360-l480-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>1088 × 800 — Search drawer</h3>
+    <p>
+      320px reader threshold for inline Search after Sidebar collapse. Sidebar
+      hidden; reader 607px (underlying layout when drawer open).
+    </p>
+    <a href="w1088-s360-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1088-s360-l480-search.png"
+        alt="w1088-s360-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1089 × 800 — Search inline</h3>
+    <p>
+      320px reader threshold for inline Search after Sidebar collapse. Sidebar
+      hidden; reader 320px (underlying layout when drawer open).
+    </p>
+    <a href="w1089-s360-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1089-s360-l480-search.png"
+        alt="w1089-s360-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1090 × 800 — Search inline</h3>
+    <p>
+      320px reader threshold for inline Search after Sidebar collapse. Sidebar
+      hidden; reader 321px (underlying layout when drawer open).
+    </p>
+    <a href="w1090-s360-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1090-s360-l480-search.png"
+        alt="w1090-s360-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1160 × 800 — Search closed</h3>
+    <p>
+      320px reader threshold with Sidebar visible. Sidebar hidden; reader 679px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1160-s360-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w1160-s360-l480-normal.png"
+        alt="w1160-s360-l480-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>1161 × 800 — Search closed</h3>
+    <p>
+      320px reader threshold with Sidebar visible. Sidebar visible; reader 320px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1161-s360-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w1161-s360-l480-normal.png"
+        alt="w1161-s360-l480-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>1162 × 800 — Search closed</h3>
+    <p>
+      320px reader threshold with Sidebar visible. Sidebar visible; reader 321px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1162-s360-l480-normal.png"
+      ><img
+        loading="lazy"
+        src="w1162-s360-l480-normal.png"
+        alt="w1162-s360-l480-normal"
+    /></a>
+  </article>
+  <article>
+    <h3>1299 × 800 — Search inline</h3>
+    <p>
+      Existing 1300px Sidebar threshold. Sidebar hidden; reader 530px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1299-s360-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1299-s360-l480-search.png"
+        alt="w1299-s360-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1300 × 800 — Search inline</h3>
+    <p>
+      Existing 1300px Sidebar threshold. Sidebar hidden; reader 531px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1300-s360-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1300-s360-l480-search.png"
+        alt="w1300-s360-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1301 × 800 — Search inline</h3>
+    <p>
+      Existing 1300px Sidebar threshold. Sidebar hidden; reader 532px
+      (underlying layout when drawer open).
+    </p>
+    <a href="w1301-s360-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1301-s360-l480-search.png"
+        alt="w1301-s360-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1448 × 800 — Search inline</h3>
+    <p>
+      320px reader threshold with Sidebar and inline Search. Sidebar hidden;
+      reader 679px (underlying layout when drawer open).
+    </p>
+    <a href="w1448-s360-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1448-s360-l480-search.png"
+        alt="w1448-s360-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1449 × 800 — Search inline</h3>
+    <p>
+      320px reader threshold with Sidebar and inline Search. Sidebar visible;
+      reader 320px (underlying layout when drawer open).
+    </p>
+    <a href="w1449-s360-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1449-s360-l480-search.png"
+        alt="w1449-s360-l480-search"
+    /></a>
+  </article>
+  <article>
+    <h3>1450 × 800 — Search inline</h3>
+    <p>
+      320px reader threshold with Sidebar and inline Search. Sidebar visible;
+      reader 321px (underlying layout when drawer open).
+    </p>
+    <a href="w1450-s360-l480-search.png"
+      ><img
+        loading="lazy"
+        src="w1450-s360-l480-search.png"
+        alt="w1450-s360-l480-search"
+    /></a>
+  </article>
+</section>

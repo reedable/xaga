@@ -1,0 +1,59 @@
+diff --git a/src/AppLayout.tsx b/src/AppLayout.tsx
+index b0539e0..8ec204d 100644
+--- a/src/AppLayout.tsx
++++ b/src/AppLayout.tsx
+@@ -7,6 +7,7 @@ import {
+   DialogContent,
+   DialogContentText,
+   DialogTitle,
++  Drawer,
+   Snackbar,
+ } from "@mui/material";
+ import { useCallback, useEffect, useRef, useState } from "react";
+@@ -38,11 +39,18 @@ export function AppLayout({
+   libraryBadgeRef?: (element: HTMLSpanElement | null) => void;
+ }) {
+   useStartupFeedRefresh();
+-  const { selectTopic, selectFeed, search } = useRouter();
++  const { selectTopic, selectFeed, search, clearSearch } = useRouter();
+   const [listFilter, setListFilter] = useState<Filter>("unread");
+   const appRef = useRef<HTMLDivElement>(null);
+   const searchPanelRef = useRef<HTMLDivElement>(null);
+   const [autoHideSidebar, setAutoHideSidebar] = useState(false);
++  // Temporary static screenshot prototype; the capture runner evaluates settled space.
++  const [captureSearchDrawer, setCaptureSearchDrawer] = useState(false);
++  useEffect(() => {
++    const update = () => setCaptureSearchDrawer(true);
++    window.addEventListener("capture-search-drawer", update);
++    return () => window.removeEventListener("capture-search-drawer", update);
++  }, []);
+   const { showSidebar } = useAppearance();
+   const { library } = useSettings();
+   const embeddingStartupState = useEmbeddingStartupState();
+@@ -240,7 +248,7 @@ export function AppLayout({
+ 
+         <Collapse
+           ref={searchPanelRef}
+-          in={search !== undefined}
++          in={search !== undefined && !captureSearchDrawer}
+           timeout={300}
+           easing="cubic-bezier(0.4, 0, 0.2, 1)"
+           unmountOnExit
+@@ -254,6 +262,17 @@ export function AppLayout({
+         </Collapse>
+       </div>
+ 
++      <Drawer
++        anchor="right"
++        open={captureSearchDrawer && search !== undefined}
++        onClose={clearSearch}
++      >
++        <SearchResultList
++          searchQuery={search ?? ""}
++          onSaveAsTopic={handleSaveSearchAsTopic}
++        />
++      </Drawer>
++
+       <EditTopicDialog
+         open={editingTopic !== null || isAddingTopic}
+         topic={editingTopic}

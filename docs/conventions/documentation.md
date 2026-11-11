@@ -30,7 +30,9 @@ states. There is no `done` state: delete the task when its remaining work is
 resolved rather than retaining a completion report or task history. Code and
 durable documentation must not cite transient tasks in any state.
 
-Each documentation directory has an index. Keep indexes terse and focused on navigation; detailed guidance belongs in the linked documents.
+Each durable documentation directory has an index. Transient directories under
+`docs-transient/` do not require indexes. Keep indexes terse and focused on
+navigation; detailed guidance belongs in the linked documents.
 
 ## Story completion
 
