@@ -111,7 +111,7 @@ collection captured when each article was opened, even after intervening browsin
 
 `e2e/sidebar-height.spec.ts` checks the measured height threshold, equality,
 font scaling, live resizing and focus transfer, compact selection through the
-shared list state, the all-collapsed default, section counts and creation actions,
+shared list state, the all-collapsed default, creation actions,
 empty filtered lists, read-only browsing, and scroll access in long lists and
 five- and 24-level group fixtures. Screenshots cover both themes. The opt-in
 `sidebar-height` capture scenario owns the extra fixture data; it does not alter

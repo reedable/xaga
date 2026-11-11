@@ -151,12 +151,13 @@ retaining that content; removing one chip assignment only affects its target.
 When your window is too short for the section headers and their contents, a
 **Collection list** dropdown appears below **All items**. Choose Shortcuts,
 Topics, Feeds, Sites, or Tags to use that list in the remaining sidebar space.
-The list scrolls while All items and the selector stay visible. Its count and
-available creation button appear beside the selector.
+The list scrolls while All items and the selector stay visible. The available
+creation button appears beside the selector; section counts are hidden in this
+layout.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/user-guide/sidebar-compact-dark.png">
-  <img src="images/user-guide/sidebar-compact.png" alt="A short Xaga window with Topics selected in the Collection list dropdown below All items, its count and creation button beside it, and the article still open in the reading pane.">
+  <img src="images/user-guide/sidebar-compact.png" alt="A short Xaga window with Topics selected in the Collection list dropdown below All items, its creation button beside it, and the article still open in the reading pane.">
 </picture>
 
 Making the window taller restores the expandable section headers and keeps your

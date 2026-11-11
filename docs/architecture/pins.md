@@ -128,10 +128,10 @@ metrics in compact mode, so changing layouts does not change the threshold.
 Resizing and text scaling re-evaluate it.
 
 The selector offers Shortcuts, Topics, Feeds, Sites, and Tags. Its selected list
-fills the remaining space and scrolls independently. The selected section's count
-and creation action remain beside the selector; read-only libraries disable
-creation while retaining browsing. The toolbar sorting/filtering popup and All
-items remain available. Nonselected content and measurement headers are inert
+fills the remaining space and scrolls independently. Compact mode omits section
+counts. The selected section's creation action remains beside the selector;
+read-only libraries disable creation while retaining browsing. The toolbar
+sorting/filtering popup and All items remain available. Nonselected content and measurement headers are inert
 and excluded from accessibility navigation.
 
 The selector uses the shared expanded-list view state. When all sections are

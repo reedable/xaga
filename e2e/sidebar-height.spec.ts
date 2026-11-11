@@ -69,7 +69,7 @@ test("switches at the measured threshold, including equality, and tracks font si
 });
 
 for (const theme of ["light", "dark"] as const) {
-  test(`compact lists preserve reader, selection, counts and actions in ${theme}`, async ({
+  test(`compact lists preserve reader, selection and actions in ${theme}`, async ({
     page,
   }, testInfo) => {
     await startCapture(page, theme);
@@ -95,9 +95,6 @@ for (const theme of ["light", "dark"] as const) {
       await expect(
         control(page, "list", `sidebar-${section.toLowerCase()}-list`)
       ).toBeVisible();
-      await expect(page.getByTestId("sidebar-list-count")).toHaveAccessibleName(
-        /\S/
-      );
       await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
         readingTitle!
       );
@@ -163,7 +160,6 @@ test("filtering reaches empty lists and clearing restores them in compact mode",
   await expect(
     control(page, "list", "sidebar-topics-list").getByRole("button")
   ).toHaveCount(0);
-  await expect(page.getByTestId("sidebar-list-count")).toContainText("0");
   await chooseList(page, "FEEDS");
   await expect(
     control(page, "list", "sidebar-feeds-list").getByRole("button")
@@ -206,7 +202,6 @@ test("long lists and depth five and twenty-four remain scrollable in compact mod
   await expect(last).toBeInViewport();
   const allItems = await control(page, "button", "all-items").boundingBox();
   expect(allItems!.y).toBeGreaterThanOrEqual(0);
-  await expect(page.getByTestId("sidebar-list-count")).toContainText("81");
 });
 
 test("compact read-only lists allow browsing and keep creation actions disabled", async ({
