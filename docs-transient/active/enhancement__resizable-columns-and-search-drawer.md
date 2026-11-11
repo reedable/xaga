@@ -9,8 +9,9 @@ the simplified-rule captures, without adding automatic column rearrangement.
 
 ## Requirements
 
-- Sidebar starts at and cannot be resized below `15rem`; EntityList starts at and
-  cannot be resized below `20rem`. Both right edges support pointer dragging and
+- Sidebar starts at `15rem` and can be resized from `15rem` to `22.5rem`;
+  EntityList starts at `20rem` and can be resized from `20rem` to `30rem`.
+  Both right edges support pointer dragging and
   keyboard resizing, with accessible separator names, values, and visible focus.
 - Retain the current Sidebar visibility decision based on the full app layout
   width: hide below 980 CSS pixels without Search and below 1300 CSS pixels with
@@ -41,8 +42,8 @@ the simplified-rule captures, without adding automatic column rearrangement.
 ## Remaining work
 
 - Implement the shared column-width layout and accessible resize controls.
-  Confirm any proposed maximum widths, width persistence, or reset interaction
-  with the user; these behaviors were not selected by the screenshot study.
+  Confirm any proposed width persistence or reset interaction with the user;
+  these behaviors were not selected by the screenshot study.
 - Implement conditional inline/drawer Search using actual available layout space.
 - Validate one pixel below, at, and above the existing Sidebar thresholds and the
   Search presentation boundaries for minimum and wider columns, including live
