@@ -1,7 +1,6 @@
 import {
   Alert,
   Button,
-  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -9,7 +8,14 @@ import {
   DialogTitle,
   Snackbar,
 } from "@mui/material";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useStartupFeedRefresh } from "./hooks/useStartupFeedRefresh";
 import css from "./AppLayout.module.css";
 import { EntityView } from "./components/content/EntityView";
@@ -17,6 +23,8 @@ import EditSiteDialog from "./components/dialogs/EditSiteDialog";
 import EditFeedDialog from "./components/dialogs/EditFeedDialog";
 import EditTopicDialog from "./components/dialogs/EditTopicDialog";
 import { EntityList } from "./components/list/EntityList";
+import { ColumnResizeHandle } from "./components/ColumnResizeHandle";
+import { SearchPanel } from "./components/search/SearchPanel";
 import { SearchResultList } from "./components/search/SearchResultList";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { TitleBar } from "./components/titlebar/TitleBar";
@@ -38,10 +46,13 @@ export function AppLayout({
   libraryBadgeRef?: (element: HTMLSpanElement | null) => void;
 }) {
   useStartupFeedRefresh();
-  const { selectTopic, selectFeed, search } = useRouter();
+  const { selectTopic, selectFeed, search, clearSearch } = useRouter();
   const [listFilter, setListFilter] = useState<Filter>("unread");
   const appRef = useRef<HTMLDivElement>(null);
-  const searchPanelRef = useRef<HTMLDivElement>(null);
+  const readingSpaceRef = useRef<HTMLDivElement>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(15);
+  const [listWidth, setListWidth] = useState(20);
+  const [searchDrawer, setSearchDrawer] = useState(false);
   const [autoHideSidebar, setAutoHideSidebar] = useState(false);
   const { showSidebar } = useAppearance();
   const { library } = useSettings();
@@ -174,6 +185,27 @@ export function AppLayout({
     return () => observer.disconnect();
   }, [search]);
 
+  useLayoutEffect(() => {
+    const element = readingSpaceRef.current;
+    if (!element) return;
+    const measure = () => {
+      const rootSize = parseFloat(
+        getComputedStyle(document.documentElement).fontSize
+      );
+      const style = getComputedStyle(element);
+      const available =
+        element.getBoundingClientRect().width -
+        parseFloat(style.borderLeftWidth) -
+        parseFloat(style.borderRightWidth);
+      setSearchDrawer(available < 38 * rootSize);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    observer.observe(document.documentElement);
+    measure();
+    return () => observer.disconnect();
+  }, []);
+
   useEffect(() => {
     requestFeeds();
   }, [requestFeeds]);
@@ -207,51 +239,72 @@ export function AppLayout({
         </Alert>
       </Snackbar>
 
-      <div ref={appRef} className={css.App}>
-        <Collapse
-          in={showSidebar && !autoHideSidebar}
-          unmountOnExit
-          orientation="horizontal"
-        >
-          <Sidebar
-            libraryBadgeRef={libraryBadgeRef}
-            className={css.Sidebar}
-            filter={sidebarFilter}
-            onFilterChange={setSidebarFilter}
-            onAddFeed={() => setIsAddingFeed(true)}
-            onAddTopic={() => setIsAddingTopic(true)}
+      <div
+        ref={appRef}
+        className={css.App}
+        style={
+          {
+            "--sidebar-width": `${sidebarWidth}rem`,
+            "--list-width": `${listWidth}rem`,
+          } as CSSProperties
+        }
+      >
+        {showSidebar && !autoHideSidebar && (
+          <div id="sidebar-column" className={css.SidebarColumn}>
+            <Sidebar
+              libraryBadgeRef={libraryBadgeRef}
+              filter={sidebarFilter}
+              onFilterChange={setSidebarFilter}
+              onAddFeed={() => setIsAddingFeed(true)}
+              onAddTopic={() => setIsAddingTopic(true)}
+            />
+            <ColumnResizeHandle
+              name="Sidebar width"
+              target="sidebar-column"
+              value={sidebarWidth}
+              min={15}
+              max={22.5}
+              onChange={setSidebarWidth}
+            />
+          </div>
+        )}
+
+        <div id="entity-list-column" className={css.ListColumn}>
+          <EntityList
+            filter={listFilter}
+            onFilterChange={setListFilter}
+            className={css.EntityList}
+            isSelectableHeader={autoHideSidebar || !showSidebar}
+            onEditFeed={setEditingFeed}
+            onEditTopic={setEditingTopic}
+            onEditSite={setEditingSite}
           />
-        </Collapse>
 
-        <EntityList
-          filter={listFilter}
-          onFilterChange={setListFilter}
-          className={css.EntityList}
-          isSelectableHeader={autoHideSidebar || !showSidebar}
-          onEditFeed={setEditingFeed}
-          onEditTopic={setEditingTopic}
-          onEditSite={setEditingSite}
-        />
-
-        <EntityView
-          className={css.EntityView}
-          searchPanelRef={searchPanelRef}
-        />
-
-        <Collapse
-          ref={searchPanelRef}
-          in={search !== undefined}
-          timeout={300}
-          easing="cubic-bezier(0.4, 0, 0.2, 1)"
-          unmountOnExit
-          orientation="horizontal"
-        >
-          <SearchResultList
-            className={css.SearchResultList}
-            searchQuery={search ?? ""}
-            onSaveAsTopic={handleSaveSearchAsTopic}
+          <ColumnResizeHandle
+            name="Article list width"
+            target="entity-list-column"
+            value={listWidth}
+            min={20}
+            max={30}
+            onChange={setListWidth}
           />
-        </Collapse>
+        </div>
+        <div
+          ref={readingSpaceRef}
+          className={css.ReadingSpace}
+          data-testid="reading-space"
+        >
+          <EntityView className={css.EntityView} />
+          {search !== undefined && (
+            <SearchPanel drawer={searchDrawer} onClose={clearSearch}>
+              <SearchResultList
+                className={css.SearchResultList}
+                searchQuery={search}
+                onSaveAsTopic={handleSaveSearchAsTopic}
+              />
+            </SearchPanel>
+          )}
+        </div>
       </div>
 
       <EditTopicDialog

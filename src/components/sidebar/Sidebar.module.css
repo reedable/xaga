@@ -9,7 +9,7 @@
 }
 
 .Sidebar {
-  --width: 240px;
+  --width: var(--sidebar-width, 15rem);
 
   box-sizing: border-box;
   display: flex;

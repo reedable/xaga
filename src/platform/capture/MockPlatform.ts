@@ -847,8 +847,22 @@ export class MockPlatform implements Platform {
     this.unsupported("Creating articles from URLs");
   // No similarity relationships are supplied by this fixture dataset.
   queryByEntity: Platform["queryByEntity"] = async () => [];
-  queryByText: Platform["queryByText"] = async () =>
-    this.unsupported("Text search");
+  // Deterministic title matches exercise Search presentation without a model.
+  queryByText: Platform["queryByText"] = async (
+    signal,
+    text,
+    _filter,
+    _min,
+    _max,
+    limit
+  ) => {
+    signal.throwIfAborted();
+    const query = text.trim().toLowerCase();
+    return [...this.data.articles, ...this.data.topics, ...this.data.feeds]
+      .filter((entity) => query && entity.title.toLowerCase().includes(query))
+      .slice(0, limit ?? 100)
+      .map((entity) => ({ ...entity, similarity: 1 }));
+  };
   setImportMaxBytes: Platform["setImportMaxBytes"] = async (value) => {
     this.importMaxBytes = value;
   };

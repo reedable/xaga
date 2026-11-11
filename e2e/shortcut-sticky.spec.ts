@@ -81,7 +81,7 @@ for (const [height, theme] of [
     await start(page, height, theme);
     await scrollGroup(page, "research", 300);
     await stacked(page, ["research", "background", "sources"]);
-    expect((await geometry(page, "background")).height).toBeGreaterThan(
+    expect((await geometry(page, "background")).height).toBe(
       (await geometry(page, "research")).height
     );
     const accessible = await groupButton(page, "research").ariaSnapshot();
@@ -123,24 +123,42 @@ for (const [height, theme] of [
   });
 }
 
-test("sticky offsets follow renamed wrapped headings, font scaling, and layout resizing", async ({
+test("group labels stay on one line through renaming, font scaling, and column resizing", async ({
   page,
 }) => {
   await start(page);
   await scrollGroup(page, "research", 300);
   const before = await geometry(page, "research");
   await action(page, "research", "rename-group");
-  await control(page, "textbox", "group-title").fill(
-    "Research notes with a long heading spanning several lines"
-  );
+  const title = "Research notes with a long heading spanning several lines";
+  await control(page, "textbox", "group-title").fill(title);
   await control(page.getByRole("dialog"), "button", "save").click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await scrollGroup(page, "research", 300);
   await stacked(page, ["research", "background", "sources"]);
-  expect((await geometry(page, "research")).height).toBeGreaterThan(
-    before.height
+  expect((await geometry(page, "research")).height).toBe(before.height);
+  const label = heading(page, "research").locator("span[title]");
+  await expect(groupButton(page, "research")).toHaveAccessibleName(
+    new RegExp(title)
   );
+  const singleLine = async () => {
+    const size = await label.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      lineHeight: parseFloat(getComputedStyle(element).lineHeight),
+      clipped: element.scrollWidth > element.clientWidth,
+    }));
+    expect(size.height).toBeCloseTo(size.lineHeight, 1);
+    expect(size.clipped).toBe(true);
+  };
+  await singleLine();
+  const resize = page.getByTestId("sidebar-column-resize");
+  await resize.focus();
+  await page.keyboard.press("End");
+  await singleLine();
+  await page.keyboard.press("Home");
+  await singleLine();
   await page.addStyleTag({ content: "html { font-size: 125%; }" });
+  await singleLine();
   await stacked(page, ["research", "background", "sources"]);
   await page.setViewportSize({ width: 1440, height: 600 });
   await expect(

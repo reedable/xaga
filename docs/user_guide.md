@@ -61,6 +61,21 @@ Use **↑** and **↓** while an article in the list has keyboard focus to move
 between articles. In a narrow window, use **Browse collections and tags** above
 the list to navigate when the sidebar is hidden.
 
+## Adjust the columns and Search
+
+Drag the right edge of the sidebar or article list to change its width. Each
+column resizes independently. Sidebar group labels stay on one line; hover over
+a shortened label to see its full name. The sidebar ranges from `15rem` to `22.5rem` and
+the article list from `20rem` to `30rem`. To resize with the keyboard, Tab to the
+edge, then use **←** and **→**. **Home** selects the minimum width and **End**
+selects the maximum.
+
+Choose **Show Search** in the reading pane toolbar to search your library. When
+there is room beside the article, Search appears inline. With less room, Search
+opens in a drawer on the right. Resizing the window or columns preserves your
+query, results, and open article. Press **Escape**, use the Search clear button,
+or click outside the drawer to close it and continue reading.
+
 ## Bookmark an article
 
 1. With an article open, click **Add bookmark** in the reading pane's toolbar.

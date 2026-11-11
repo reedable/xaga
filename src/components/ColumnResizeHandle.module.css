@@ -1,0 +1,15 @@
+.Handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -0.25rem;
+  width: 0.5rem;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 12;
+}
+
+.Handle:focus-visible {
+  outline: 0.125rem solid var(--mui-palette-primary-main, #1976d2);
+  outline-offset: -0.125rem;
+}

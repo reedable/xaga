@@ -11,23 +11,42 @@
 .App {
   display: flex;
   flex: 1;
-  margin-top: -38px;
+  margin-top: -2.375rem;
+  min-width: 0;
   min-height: 0;
-
-  .Sidebar {
-    content: "";
-  }
 
   .EntityList {
     border-left: var(--border);
   }
 
-  .EntityView {
-    border-left: var(--border);
-  }
-
   .SearchResultList {
-    border-left: var(--border);
-    padding-top: 10px;
+    padding-top: 0.625rem;
+    box-sizing: border-box;
+    width: 100%;
   }
+}
+
+.SidebarColumn {
+  position: relative;
+  flex: 0 0 var(--sidebar-width);
+  width: var(--sidebar-width);
+  min-width: 0;
+}
+
+.ListColumn {
+  position: relative;
+  flex: 0 0 var(--list-width);
+  width: var(--list-width);
+  min-width: 0;
+}
+
+.ReadingSpace {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  border-left: var(--border);
+}
+
+.App .EntityView {
+  border-left: 0;
 }

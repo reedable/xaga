@@ -1,0 +1,229 @@
+import {
+  test,
+  expect,
+  startCapture,
+  openArticle,
+  reader,
+  control,
+} from "./fixtures";
+import type { Page } from "@playwright/test";
+
+const garden = "A garden for every season";
+const sidebar = (page: Page) => page.getByTestId("sidebar-column-resize");
+const list = (page: Page) => page.getByTestId("entity-list-column-resize");
+const query = (page: Page) => control(page, "textbox", "search-query");
+
+async function width(page: Page, id: string) {
+  return page
+    .locator(`#${id}`)
+    .evaluate(
+      (el) =>
+        el.getBoundingClientRect().width /
+        parseFloat(getComputedStyle(document.documentElement).fontSize)
+    );
+}
+
+async function drag(page: Page, id: string, delta: number) {
+  const box = (await page.getByTestId(id).boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + delta, box.y + box.height / 2, {
+    steps: 5,
+  });
+  await page.mouse.up();
+}
+
+test("columns resize independently with pointer and keyboard within their limits", async ({
+  page,
+}) => {
+  await startCapture(page);
+  await drag(page, "sidebar-column-resize", 1000);
+  expect(await width(page, "sidebar-column")).toBe(22.5);
+  expect(await width(page, "entity-list-column")).toBe(20);
+  await drag(page, "entity-list-column-resize", 1000);
+  expect(await width(page, "entity-list-column")).toBe(30);
+  expect(await width(page, "sidebar-column")).toBe(22.5);
+  for (const [handle, min, max] of [
+    [sidebar(page), 15, 22.5],
+    [list(page), 20, 30],
+  ] as const) {
+    await expect(handle).toHaveAccessibleName(/\S/);
+    await handle.focus();
+    await page.keyboard.press("Home");
+    await expect(handle).toHaveAttribute("aria-valuenow", String(min));
+    await page.keyboard.press("ArrowLeft");
+    await expect(handle).toHaveAttribute("aria-valuenow", String(min));
+    await page.keyboard.press("ArrowRight");
+    await expect(handle).toHaveAttribute("aria-valuenow", String(min + 0.0625));
+    await page.keyboard.press("End");
+    await page.keyboard.press("ArrowRight");
+    await expect(handle).toHaveAttribute("aria-valuenow", String(max));
+    expect(
+      await handle.evaluate((el) => getComputedStyle(el).outlineStyle)
+    ).not.toBe("none");
+  }
+});
+
+test("Sidebar keeps its app-width thresholds and restores resized widths", async ({
+  page,
+}) => {
+  await startCapture(page);
+  await sidebar(page).focus();
+  await page.keyboard.press("End");
+  for (const w of [979, 980, 981]) {
+    await page.setViewportSize({ width: w, height: 800 });
+    await expect(sidebar(page)).toHaveCount(w < 980 ? 0 : 1);
+    if (w >= 980) expect(await width(page, "sidebar-column")).toBe(22.5);
+  }
+  await openArticle(page, garden);
+  await control(page, "button", "search").click();
+  for (const w of [1299, 1300, 1301]) {
+    await page.setViewportSize({ width: w, height: 800 });
+    await expect(sidebar(page)).toHaveCount(w < 1300 ? 0 : 1);
+  }
+});
+
+for (const [root, wide] of [
+  [16, false],
+  [16, true],
+  [17, true],
+  [20, false],
+  [20, true],
+] as const) {
+  test(`Search uses available space at exact boundaries, root ${root}, wider columns ${wide}`, async ({
+    page,
+  }) => {
+    await startCapture(page);
+    await openArticle(page, garden);
+    if (wide) {
+      await sidebar(page).focus();
+      await page.keyboard.press("End");
+      await list(page).focus();
+      await page.keyboard.press("End");
+    }
+    await page.evaluate((size) => {
+      document.documentElement.style.fontSize = `${size}px`;
+    }, root);
+    // Choose a boundary above the Search-open Sidebar threshold when possible;
+    // otherwise Sidebar is hidden and contributes no width.
+    const columns = wide ? 52.5 : 35;
+    const withSidebar = (columns + 38) * root + 1;
+    const boundary =
+      withSidebar >= 1300 ? withSidebar : ((wide ? 30 : 20) + 38) * root + 1;
+    await page.setViewportSize({ width: Math.ceil(boundary), height: 800 });
+    await control(page, "button", "search").click();
+    await query(page).fill("garden");
+    await expect(page).toHaveURL(/search=garden/);
+    const result = page
+      .getByTestId("search-inline")
+      .getByRole("button", { name: new RegExp(`^${garden}`) });
+    await expect(result).toBeVisible();
+    for (const delta of [-1, 0, 1, -1, 1]) {
+      await page.setViewportSize({
+        width: Math.ceil(boundary) + delta,
+        height: 800,
+      });
+      const modal = page.getByRole("dialog");
+      if (delta < 0) {
+        await expect(modal).toBeVisible();
+        await expect(query(page)).toBeFocused();
+      } else {
+        await expect(modal).not.toBeVisible();
+        await expect(page.getByTestId("search-inline")).toBeVisible();
+      }
+      await expect(query(page)).toHaveValue("garden");
+      const searchScope = delta < 0 ? modal : page.getByTestId("search-inline");
+      await expect(
+        searchScope.getByRole("button", { name: new RegExp(`^${garden}`) })
+      ).toBeVisible();
+      await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
+        garden
+      );
+      const geometry = await page.getByTestId("entry-reader").evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        const pane = document
+          .querySelector('[data-testid="reading-space"]')!
+          .getBoundingClientRect();
+        return {
+          left: box.left,
+          paneLeft: pane.left,
+          scroll: el.parentElement!.scrollLeft,
+        };
+      });
+      expect(geometry.left).toBeGreaterThanOrEqual(geometry.paneLeft);
+      expect(geometry.scroll).toBe(0);
+    }
+    await page.setViewportSize({ width: Math.ceil(boundary) - 1, height: 800 });
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.keyboard.press("Tab");
+    expect(
+      await page
+        .getByRole("dialog")
+        .evaluate((el) => el.contains(document.activeElement))
+    ).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(query(page)).toHaveCount(0);
+    await expect(control(page, "button", "search")).toBeFocused();
+    await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
+      garden
+    );
+  });
+}
+
+test("live column dragging changes Search presentation without losing results or collection", async ({
+  page,
+}) => {
+  await startCapture(page);
+  await openArticle(page, garden);
+  await control(page, "button", "search").click();
+  await query(page).fill("garden");
+  const inline = page.getByTestId("search-inline");
+  await expect(
+    inline.getByRole("button", { name: new RegExp(`^${garden}`) })
+  ).toBeVisible();
+  await drag(page, "entity-list-column-resize", 160);
+  await drag(page, "sidebar-column-resize", 120);
+  const drawer = page.getByRole("dialog");
+  await expect(drawer).toBeVisible();
+  await expect(
+    drawer.getByRole("button", { name: new RegExp(`^${garden}`) })
+  ).toBeVisible();
+  await expect(query(page)).toHaveValue("garden");
+  // A backdrop click closes Search without selecting a different collection/article.
+  await page.mouse.click(800, 700);
+  await expect(drawer).not.toBeVisible();
+  await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
+    garden
+  );
+  await expect(control(page, "button", "filter-unread")).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+  expect(await width(page, "sidebar-column")).toBe(22.5);
+  expect(await width(page, "entity-list-column")).toBe(30);
+});
+
+test("selecting a drawer result and dismissing Search preserves the selected article", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 800 });
+  await startCapture(page);
+  await openArticle(page, garden);
+  await control(page, "button", "search").click();
+  await query(page).fill("workshop");
+  const drawer = page.getByRole("dialog");
+  const title = "Making room for a workshop";
+  await drawer.getByRole("button", { name: new RegExp(`^${title}`) }).click();
+  await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
+    title
+  );
+  await page.keyboard.press("Escape");
+  await expect(drawer).not.toBeVisible();
+  await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
+    title
+  );
+  await expect(control(page, "button", "filter-unread")).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+});

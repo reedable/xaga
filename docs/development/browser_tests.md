@@ -57,6 +57,11 @@ runner configuration.
 
 ## Coverage
 
+`e2e/resizable-layout.spec.ts` verifies independent column resizing and bounds,
+keyboard separators, Sidebar thresholds, exact inline/drawer Search boundaries,
+root font scaling, live dragging, retained Search results and reading context,
+reader alignment, focus restoration, and Escape/backdrop dismissal.
+
 `e2e/workflows.spec.ts` exercises:
 
 - Keeping All items available across section changes and unmatched collection
@@ -151,7 +156,7 @@ check.
 ## Sticky group headings
 
 `e2e/shortcut-sticky.spec.ts` covers nested sticky geometry and release at sibling
-and root boundaries, variable-height renamed headings, font scaling, layout
+and root boundaries, single-line truncated labels after renaming, font scaling, column resizing, layout
 resizing, the outermost-five-level cap, both motion preferences, temporary filter
 expansion, keyboard traversal, count accessibility, actions, group creation,
 renaming, moving, drag and drop, removal with child promotion, and read-only use.

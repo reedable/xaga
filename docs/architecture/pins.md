@@ -216,13 +216,17 @@ The behavior applies in both expandable-section and compact-selector layouts.
 
 The existing heading controls are positioned directly, without duplicate
 navigation or accessible headings. A resize observer measures their actual
-heights and updates ancestor-height offsets in rem after wrapping, font changes,
+heights and updates ancestor-height offsets in rem after font changes,
 resizing, expansion, and filtering. Opaque theme backgrounds and ancestor stacking
 order prevent scrolled descendants from showing through headings. Actions and
 unread counts retain their existing visibility and accessibility contracts.
 
+Group labels stay on one line and truncate with an ellipsis. The full name
+remains in the accessible button name and is available on hover. Resizing the
+Sidebar does not wrap group labels.
+
 The five-level cap is fixed. There is no adaptive heading selection or reserved
-space for shortcuts. A sufficiently short viewport or tall wrapped headings can
+space for shortcuts. A sufficiently short viewport or enlarged heading text can
 therefore fill the list viewport and obscure shortcuts. This limitation is
 available for hands-on review before choosing further overflow behavior. The
 [browser workflow](../development/browser_tests.md#sticky-group-headings) includes

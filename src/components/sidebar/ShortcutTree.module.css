@@ -21,6 +21,15 @@
         min-width: 0;
       }
 
+      .GroupButton {
+        min-width: 0;
+
+        > svg,
+        .NodeUnreadCount {
+          flex-shrink: 0;
+        }
+      }
+
       .GroupTitle {
         flex: 1;
         font-size: 0.875rem;
@@ -28,7 +37,9 @@
         font-width: 80%;
         margin-left: 0.5rem;
         min-width: 0;
-        overflow-wrap: anywhere;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       > .NodeActions {

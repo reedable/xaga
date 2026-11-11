@@ -8,7 +8,7 @@ import {
   TextField,
   Tooltip,
 } from "@mui/material";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import useRouter from "../hooks/useRouter";
 import cx from "../utils/cx";
 import css from "./SearchInput.module.css";
@@ -33,6 +33,13 @@ export function SearchInput({
   const [isPending, setIsPending] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    },
+    []
+  );
 
   const commitSearch = useCallback(
     (value: string) => {
@@ -102,6 +109,7 @@ export function SearchInput({
         onKeyDown={handleKeyDown}
         autoComplete="off"
         slotProps={{
+          htmlInput: { "aria-label": "Search", name: "search-query" },
           input: {
             autoComplete: "off",
             autoCorrect: "off",

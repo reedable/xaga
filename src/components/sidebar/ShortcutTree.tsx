@@ -276,6 +276,7 @@ export default function ShortcutTree({
           >
             {group ? (
               <ListItemButton
+                className={css.GroupButton}
                 onClick={() => {
                   if (!filter.trim()) expand(group.id, !isOpen);
                 }}
@@ -288,7 +289,9 @@ export default function ShortcutTree({
                     fontSize: 16,
                   }}
                 />
-                <span className={css.GroupTitle}>{node.title}</span>
+                <span className={css.GroupTitle} title={node.title}>
+                  {node.title}
+                </span>
                 <span className={css.NodeUnreadCount}>
                   <UnreadCount count={node.unreadCount} />
                 </span>

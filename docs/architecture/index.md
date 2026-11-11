@@ -30,6 +30,8 @@ Architecture rules and subsystem documentation.
 
 14. [Tag storage](tags.md) — library definitions, readable assignments, indexed IDs, transition records, and the 0.14 upgrade.
 
+15. [App layout](app_layout.md) — independent column resizing, Sidebar visibility, and conditional Search presentation.
+
 ## Security
 
 Architecture of the security-critical paths, in [security/](security/). These describe how a subsystem works and why — implementation, rationale, and known limits.

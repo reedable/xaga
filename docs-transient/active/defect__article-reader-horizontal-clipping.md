@@ -33,7 +33,7 @@ This occurs with the existing layout, independently of the Search drawer prototy
 
 - [Clipped capture](../ideas/sidebar-search-boundaries/w1089-s360-l480-search.png)
 - [Capture geometry](../ideas/sidebar-search-boundaries/measurements.json)
-- [Resizable columns and Search drawer](enhancement__resizable-columns-and-search-drawer.md)
+- [App layout](../../docs/architecture/app_layout.md)
 - [Reader layout](../../src/components/content/EntityView.module.css)
 - [Article reader layout](../../src/components/content/ArticleReader.module.css)
 - [Article toolbar](../../src/components/content/Toolbar.tsx)

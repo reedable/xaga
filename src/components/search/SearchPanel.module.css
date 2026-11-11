@@ -1,0 +1,19 @@
+.Inline {
+  flex: 0 0 18rem;
+  min-width: 0;
+  border-left: var(--border);
+  box-sizing: border-box;
+}
+
+.Hidden {
+  display: none;
+}
+
+.Panel {
+  height: 100%;
+  min-height: 0;
+}
+
+.Drawer {
+  width: 18rem;
+}

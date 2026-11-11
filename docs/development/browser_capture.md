@@ -109,8 +109,9 @@ native menu synchronization and close subscriptions have no operating-system
 effect. The native app is required to verify those workflows.
 
 The fixture dataset supplies no similarity relationships: Related items and
-Topic suggestions return empty results. Text search is unsupported. There is no
-embedding model, network backend, or filesystem persistence. Browser captures
+Topic suggestions return empty results. Text search returns deterministic title
+matches from fixture articles, Topics, and feeds. There is no embedding model,
+network backend, or filesystem persistence. Browser captures
 verify presentation and in-memory interactions; they do not establish native
 behavior or backend correctness.
 
