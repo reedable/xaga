@@ -126,6 +126,7 @@ test("a colored bookmark appears in Saved and can be removed", async ({
   page,
 }) => {
   await openArticle(page, garden);
+  const unmarkedLabel = await articleButton(page, garden).ariaSnapshot();
   await control(page, "button", "bookmark-toggle").click();
   const palette = control(page, "dialog", "bookmark-palette");
   await control(palette, "button", "blue").click();
@@ -137,6 +138,10 @@ test("a colored bookmark appears in Saved and can be removed", async ({
     "data-bookmark-color",
     ""
   );
+  await expect(articleButton(page, garden)).toHaveAccessibleName(/\S/);
+  await expect
+    .poll(() => articleButton(page, garden).ariaSnapshot())
+    .not.toBe(unmarkedLabel);
   // Marked and unmarked article titles retain the same horizontal alignment.
   const titleLeft = async (title: string) =>
     articleButton(page, title)
@@ -151,6 +156,7 @@ test("a colored bookmark appears in Saved and can be removed", async ({
   await expect(saved).toHaveAttribute("aria-pressed", "true");
   await expect(articleButton(page, water)).toHaveCount(0);
   await openArticle(page, garden);
+  const blueLabel = await articleButton(page, garden).ariaSnapshot();
   await control(page, "button", "bookmark-toggle").click();
   await expect(control(palette, "button", "blue")).toHaveAttribute(
     "aria-pressed",
@@ -161,6 +167,9 @@ test("a colored bookmark appears in Saved and can be removed", async ({
     "data-bookmark-color",
     "red"
   );
+  await expect
+    .poll(() => articleButton(page, garden).ariaSnapshot())
+    .not.toBe(blueLabel);
   await control(page, "button", "bookmark-toggle").click();
   await control(palette, "button", "remove-marking").click();
   await control(palette, "button", "confirm-remove").click();
@@ -170,6 +179,9 @@ test("a colored bookmark appears in Saved and can be removed", async ({
     "data-bookmark-color",
     ""
   );
+  await expect
+    .poll(() => articleButton(page, garden).ariaSnapshot())
+    .toBe(unmarkedLabel);
   // Bookmark edits preserve the open list. Wait for All to finish navigating
   // before returning to Saved; otherwise the second click can hit the old view.
   const all = control(page, "button", "filter-all");

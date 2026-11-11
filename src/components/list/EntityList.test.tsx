@@ -430,18 +430,26 @@ it("updates the article bookmark label on assignment, recoloring, and removal", 
   await render({ articleScopeId: article.id });
   const row = rows()[0];
   expect(row.getAttribute("data-bookmark-color") ?? "").toBe("");
+  const unmarkedLabel = row.textContent!;
+  const labels = new Set([unmarkedLabel]);
   for (const color of ["blue", "red", "orange", "yellow", "green", "violet"]) {
     await act(async () =>
       mocks.callbacks.onBookmarkChanged({ ...article, color } as never)
     );
     expect(rows()[0]).toBe(row);
     expect(row.getAttribute("data-bookmark-color")).toBe(color);
+    const label = row.textContent!;
+    expect(label).toContain(article.title);
+    expect(label.length).toBeGreaterThan(unmarkedLabel.length);
+    expect(labels.has(label)).toBe(false);
+    labels.add(label);
   }
   await act(async () =>
     mocks.callbacks.onBookmarkChanged({ ...article, color: undefined } as never)
   );
   expect(rows()[0]).toBe(row);
   expect(row.getAttribute("data-bookmark-color") ?? "").toBe("");
+  expect(row.textContent).toBe(unmarkedLabel);
   expect(rows()).toHaveLength(3);
   expect(rows()[1].getAttribute("data-bookmark-color") ?? "").toBe("");
   expect(rows()[2].getAttribute("data-bookmark-color") ?? "").toBe("");

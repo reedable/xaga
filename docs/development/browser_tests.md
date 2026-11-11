@@ -65,6 +65,10 @@ runner configuration.
   aggregate/feed counts after the providers update.
 - Choosing and changing a bookmark color, verifying accessible labels and article
   text alignment, revisiting the article in Saved, and removing the bookmark.
+  The workflow compares the article button’s accessibility tree before assignment,
+  after recoloring, and after removal without prescribing announcement wording.
+  Component tests check distinct label text for all six colors; browser coverage
+  verifies that the output reaches the accessibility tree.
 - Selecting a passage with a real browser click, adding a colored annotation and
   comment, and revisiting its highlighted passage through Saved.
 - Adding an article to a Topic and browsing that Topic through the collection

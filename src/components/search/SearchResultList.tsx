@@ -138,12 +138,7 @@ export function SearchResultList({
             <ToggleButton size="small" value="entries" aria-label="Entries">
               Entries
             </ToggleButton>
-            <ToggleButton
-              data-testid="inspector-topics"
-              size="small"
-              value="topics"
-              aria-label="Topics"
-            >
+            <ToggleButton size="small" value="topics" aria-label="Topics">
               Topics
             </ToggleButton>
             <ToggleButton

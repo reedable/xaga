@@ -135,7 +135,11 @@ it("filters and creates a definition then assigns it without a Save action", asy
   expect(chip("Work")).toBeUndefined();
   expect(container.querySelector('[data-testid="create-tag"]')).toBeNull();
   await search("New");
-  await act(async () => chip("Create “New”").click());
+  await act(async () =>
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="create-tag"]')!
+      .click()
+  );
   expect(mocks.createTag).toHaveBeenCalledWith("New");
   expect(mocks.setEntryTag).toHaveBeenCalledWith("article", "new", true);
   expect(chip("New").getAttribute("aria-pressed")).toBe("true");
@@ -145,7 +149,10 @@ it("shows selection read-only and receives changes from another Inspector", asyn
   await render();
   expect(chip("Research").disabled).toBe(true);
   await search("New");
-  expect(chip("Create “New”").disabled).toBe(true);
+  expect(
+    container.querySelector<HTMLButtonElement>('[data-testid="create-tag"]')!
+      .disabled
+  ).toBe(true);
   await search("");
   await act(async () => {
     changeListener({ entryId: "another", tagId: "work", assigned: true });
@@ -418,7 +425,11 @@ it("finishes creation and assignment to the original annotation after inspection
   );
   await renderAnnotation();
   await search("New");
-  await act(async () => chip("Create “New”").click());
+  await act(async () =>
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="create-tag"]')!
+      .click()
+  );
   await act(async () => root.unmount());
   await act(async () => finish({ id: "new", name: "New" }));
   expect(mocks.setAnnotationTag).toHaveBeenCalledWith(
