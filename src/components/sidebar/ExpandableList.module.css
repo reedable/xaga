@@ -1,9 +1,11 @@
 .ExpandableListHeaderWrapper {
   align-items: center;
-  border-top: 1px solid var(--border-color);
+  border-top: 0.0625rem solid var(--border-color);
   display: flex;
+  flex-shrink: 0;
 
-  &:first-of-type {
+  &:first-of-type,
+  &[data-sidebar-section-header="shortcuts"] {
     border-top: 0;
   }
 
@@ -53,9 +55,17 @@
 .ExpanderContent {
   /* background-color: var(--lliw-semanticColor__background-color--secondary); */
   flex: 0;
+  min-height: 0;
 
   &.Expanded {
     flex: 1;
     overflow-y: auto;
   }
+}
+
+.MeasurementHeader {
+  position: absolute;
+  inset: 0 0 auto;
+  visibility: hidden;
+  pointer-events: none;
 }

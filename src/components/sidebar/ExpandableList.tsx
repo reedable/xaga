@@ -1,8 +1,10 @@
 import { ChevronRight } from "@mui/icons-material";
 import { Collapse, List, ToggleButton, Typography } from "@mui/material";
-import { type ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import cx from "../../utils/cx";
 import css from "./ExpandableList.module.css";
+import { SidebarListLayoutContext } from "./SidebarListLayoutContext";
 
 export interface ExpandableListProps {
   children?: ReactNode;
@@ -25,9 +27,21 @@ export default function ExpandableList({
   onClickHeader,
   renderHeaderAction,
 }: ExpandableListProps) {
+  const layout = useContext(SidebarListLayoutContext);
+  const compact = layout?.compact ?? false;
   return (
     <>
-      <div className={cx(className, css.ExpandableListHeaderWrapper)}>
+      <div
+        data-sidebar-section-header={section}
+        data-section-label={label}
+        inert={compact}
+        aria-hidden={compact || undefined}
+        className={cx(
+          className,
+          css.ExpandableListHeaderWrapper,
+          compact && css.MeasurementHeader
+        )}
+      >
         <ToggleButton
           data-testid={section && `sidebar-${section}-toggle`}
           className={css.ExpandableListHeader}
@@ -54,6 +68,23 @@ export default function ExpandableList({
         )}
       </div>
 
+      {compact &&
+        isExpanded &&
+        layout?.actions &&
+        createPortal(
+          <>
+            <Typography
+              component="output"
+              data-testid="sidebar-list-count"
+              aria-label={`${label}: ${count}`}
+            >
+              ({count})
+            </Typography>
+            {renderHeaderAction?.()}
+          </>,
+          layout.actions
+        )}
+
       <div
         // Keep outgoing rows out of input and accessibility queries while Collapse animates.
         inert={!isExpanded}
@@ -64,7 +95,7 @@ export default function ExpandableList({
           isExpanded && css.Expanded
         )}
       >
-        <Collapse in={isExpanded}>
+        <Collapse in={isExpanded} timeout={compact ? 0 : undefined}>
           <List
             data-testid={section && `sidebar-${section}-list`}
             aria-label={label}

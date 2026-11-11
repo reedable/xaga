@@ -91,3 +91,47 @@ export function createFixtures() {
     } as Record<string, string[]>,
   };
 }
+
+/** Long lists and valid nested groups for height-responsive sidebar workflows. */
+export function createSidebarHeightFixtures() {
+  const template = createFixtures().topics[0];
+  const topics = Array.from({ length: 80 }, (_, index) => ({
+    ...template,
+    id: `height-topic-${index}`,
+    title: `Collection ${String(index).padStart(2, "0")}`,
+    members: [],
+    entryCount: 0,
+    unreadCount: 0,
+  }));
+  const targets = topics.map((topic) => ({
+    type: "topic" as const,
+    id: topic.id,
+  }));
+  const branch = (
+    depth: number,
+    prefix: string,
+    members: import("../../pins").PinNode[]
+  ): import("../../pins").PinNode => {
+    let node: import("../../pins").PinNode = {
+      type: "group",
+      id: `${prefix}-${depth}`,
+      title: `${prefix} level ${depth}`,
+      children: members,
+    };
+    for (let level = depth - 1; level > 0; level--)
+      node = {
+        type: "group",
+        id: `${prefix}-${level}`,
+        title: `${prefix} level ${level}`,
+        children: [node],
+      };
+    return node;
+  };
+  return {
+    topics,
+    pins: [
+      branch(5, "Five", targets.slice(0, 40)),
+      branch(24, "Deep", targets.slice(40)),
+    ],
+  };
+}

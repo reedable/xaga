@@ -56,6 +56,7 @@ export default function TopicList({
           {/* span keeps the Tooltip working when the button is disabled */}
           <span>
             <IconButton
+              data-testid="add-topic"
               size="small"
               disabled={addDisabled}
               onClick={onAddTopic}

@@ -57,7 +57,7 @@ before designing adaptive overflow behavior.
 ## References
 
 - [Prototype evidence](../ideas/shortcuts-sticky-headings/index.md)
-- [Height-responsive lists](enhancement__sidebar-space--height-responsive-lists.md)
+- [Height-responsive sidebar layout](../../docs/architecture/pins.md#sidebar-height)
 - [Shortcut tree](../../src/components/sidebar/ShortcutTree.tsx)
 - [Tree styles](../../src/components/sidebar/ShortcutTree.module.css)
 - [Tree tests](../../src/components/sidebar/ShortcutTree.test.tsx)

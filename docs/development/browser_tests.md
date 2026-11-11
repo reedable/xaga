@@ -109,6 +109,15 @@ Collection browsing is checked against the complete browser history state:
 switching collections leaves it unchanged, and Back/Forward restores the
 collection captured when each article was opened, even after intervening browsing.
 
+`e2e/sidebar-height.spec.ts` checks the measured height threshold, equality,
+font scaling, live resizing and focus transfer, compact selection through the
+shared list state, the all-collapsed default, section counts and creation actions,
+empty filtered lists, read-only browsing, and scroll access in long lists and
+five- and 24-level group fixtures. Screenshots cover both themes. The opt-in
+`sidebar-height` capture scenario owns the extra fixture data; it does not alter
+the default dataset. Sticky group headings are a separate implementation and
+are not established by these checks.
+
 `e2e/sidebar-controls.spec.ts` covers the combined sorting/filtering popup in both
 themes, focus entry and return, Tab navigation, retained filtering after Escape
 and backdrop dismissal, clearing, active-filter accessible feedback, and short

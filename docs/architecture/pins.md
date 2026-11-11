@@ -118,6 +118,29 @@ Tags stay sorted by name, and All items is unaffected by collection filtering.
 Sorting remains available in read-only libraries because it changes an account
 preference rather than library data.
 
+## Sidebar height
+
+Let `A` be the sidebar height available below All items and `H` the combined
+rendered height of the five section headers. When `A < 2 * H`, a **Collection list**
+dropdown replaces the expandable headers. At equality and above, the expandable
+sections remain. Header measurements retain their normal layout width and font
+metrics in compact mode, so changing layouts does not change the threshold.
+Resizing and text scaling re-evaluate it.
+
+The selector offers Shortcuts, Topics, Feeds, Sites, and Tags. Its selected list
+fills the remaining space and scrolls independently. The selected section's count
+and creation action remain beside the selector; read-only libraries disable
+creation while retaining browsing. The toolbar sorting/filtering popup and All
+items remain available. Nonselected content and measurement headers are inert
+and excluded from accessibility navigation.
+
+The selector uses the shared expanded-list view state. When all sections are
+collapsed, compact mode displays Shortcuts without overwriting that state;
+returning to the taller layout restores the collapsed sections. Choosing a list
+updates the shared selection. Changing layouts or list sections preserves the
+current article and browsing scope. Keyboard focus moves between the selector
+and the section header when the focused control is replaced by resizing.
+
 ## Nested groups (0.15)
 
 Library format **0.15**, implemented by **0.15.0-dev**, adds group nodes:

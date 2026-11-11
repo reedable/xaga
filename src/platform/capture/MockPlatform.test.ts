@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MockPlatform } from "./MockPlatform";
+import { pinTargets } from "../../pins";
 import { additionalFeedUrl, captureDate } from "./fixtures";
 
 const signal = () => new AbortController().signal;
@@ -46,6 +47,38 @@ describe("capture platform", () => {
     expect((await platform.readEntry(signal(), "garden")).isPinned).toBe(true);
     await platform.setPin({ type: "entry", id: "garden" }, false);
     expect(await platform.listPinnedEntries(signal())).toEqual([]);
+  });
+
+  it("projects nested fixture pins and removes a nested target without losing its ancestors", async () => {
+    const previous = location.href;
+    history.replaceState(null, "", "/?scenario=sidebar-height");
+    try {
+      const platform = new MockPlatform();
+      const before = await platform.listPins(signal());
+      const target = pinTargets(before)[0];
+      expect(target.type).toBe("topic");
+      if (target.type !== "topic") throw new Error("Expected Topic fixture");
+      expect((await platform.readTopic(signal(), target.id)).isPinned).toBe(
+        true
+      );
+      await platform.setPin(target, false);
+      const after = await platform.listPins(signal());
+      expect(
+        after.map((node) => (node.type === "group" ? node.id : undefined))
+      ).toEqual(
+        before.map((node) => (node.type === "group" ? node.id : undefined))
+      );
+      expect(pinTargets(after)).toEqual(
+        pinTargets(before).filter(
+          (node) => node.type !== "topic" || node.id !== target.id
+        )
+      );
+      expect((await platform.readTopic(signal(), target.id)).isPinned).toBe(
+        false
+      );
+    } finally {
+      history.replaceState(null, "", previous);
+    }
   });
 
   it("replays generated identities, dates, and edits from a fresh instance", async () => {

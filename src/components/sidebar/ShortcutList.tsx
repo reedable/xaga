@@ -77,6 +77,7 @@ export default function ShortcutList({
         <Tooltip title="Add group">
           <span>
             <IconButton
+              data-testid="add-shortcut-group"
               aria-label="Add shortcut group"
               size="small"
               disabled={readOnly}

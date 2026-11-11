@@ -144,6 +144,25 @@ articles. Clear the selection to return to All items under your current filters.
 Deleting a tag removes its assignments from articles and annotations while
 retaining that content; removing one chip assignment only affects its target.
 
+## Use the sidebar in a short window
+
+When your window is too short for the section headers and their contents, a
+**Collection list** dropdown appears below **All items**. Choose Shortcuts,
+Topics, Feeds, Sites, or Tags to use that list in the remaining sidebar space.
+The list scrolls while All items and the selector stay visible. Its count and
+available creation button appear beside the selector.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/user-guide/sidebar-compact-dark.png">
+  <img src="images/user-guide/sidebar-compact.png" alt="A short Xaga window with Topics selected in the Collection list dropdown below All items, its count and creation button beside it, and the article still open in the reading pane.">
+</picture>
+
+Making the window taller restores the expandable section headers and keeps your
+chosen section open. Changing the displayed sidebar list does not change the
+article you are reading. If you had collapsed every section before shortening
+the window, the dropdown initially shows Shortcuts; making the window taller
+restores that collapsed state unless you choose another list.
+
 ## Sort and filter sidebar collections
 
 Click **Sort and filter collections**, immediately left of **Refresh** at the top

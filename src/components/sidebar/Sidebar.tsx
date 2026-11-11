@@ -1,7 +1,7 @@
 import SidebarSortControl from "./SidebarSortControl";
 import { Newspaper, Refresh } from "@mui/icons-material";
-import { IconButton, List, Tooltip } from "@mui/material";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { IconButton, List, MenuItem, TextField, Tooltip } from "@mui/material";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ALL_ENTITIES } from "../../Shortcuts";
 import { useAllEntitiesCounts } from "../../hooks/useAllEntitiesCounts";
 import useRouter from "../../hooks/useRouter";
@@ -22,6 +22,8 @@ import TopicList from "./TopicList";
 import TagList from "./TagList";
 import { useTags } from "../../providers/TagsContext";
 import SiteList from "./SiteList";
+import { SidebarListLayoutContext } from "./SidebarListLayoutContext";
+import type { ListType } from "../../providers/ExpandedListContext";
 
 type SidebarProps = {
   className?: string;
@@ -41,6 +43,14 @@ export function Sidebar({
   libraryBadgeRef,
 }: SidebarProps) {
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const listsRef = useRef<HTMLDivElement>(null);
+  const [compact, setCompact] = useState(false);
+  const [actions, setActions] = useState<HTMLSpanElement | null>(null);
+  const [listOptions, setListOptions] = useState<
+    { value: ListType; label: string }[]
+  >([]);
+  const compactRef = useRef(false);
+  const transferFocus = useRef(false);
   const [, abortControllerRef] = useAbortController();
   const isLibraryReadOnly = useLibraryReadOnly();
 
@@ -80,6 +90,74 @@ export function Sidebar({
   const filteredSites = useMemo(
     () => sites.filter(matchesFilter),
     [matchesFilter, sites]
+  );
+
+  const selectedList = compact ? (expandedList ?? "SHORTCUTS") : expandedList;
+
+  useLayoutEffect(() => {
+    const region = listsRef.current;
+    if (!region || typeof ResizeObserver === "undefined") return;
+    const headers = [
+      ...region.querySelectorAll<HTMLElement>("[data-sidebar-section-header]"),
+    ];
+    setListOptions(
+      headers.map((header) => ({
+        value: header.dataset.sidebarSectionHeader!.toUpperCase() as ListType,
+        label: header.dataset.sectionLabel!,
+      }))
+    );
+    const update = () => {
+      const total = headers.reduce(
+        (sum, header) => sum + header.getBoundingClientRect().height,
+        0
+      );
+      const next =
+        total > 0 && region.getBoundingClientRect().height < 2 * total;
+      if (compactRef.current !== next) {
+        const focused = document.activeElement;
+        transferFocus.current =
+          headers.some((header) => header.contains(focused)) ||
+          !!focused?.closest("[data-sidebar-compact-header]");
+        compactRef.current = next;
+        setCompact(next);
+      }
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(region);
+    headers.forEach((header) => observer.observe(header));
+    update();
+    return () => observer.disconnect();
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!transferFocus.current) return;
+    transferFocus.current = false;
+    const target = compact
+      ? listsRef.current?.querySelector<HTMLElement>(
+          '[data-testid="sidebar-list-selector"] [role="combobox"]'
+        )
+      : listsRef.current?.querySelector<HTMLElement>(
+          `[data-testid="sidebar-${(expandedList ?? "SHORTCUTS").toLowerCase()}-toggle"]`
+        );
+    target?.focus();
+  }, [compact, expandedList]);
+
+  const listSelector = (
+    <TextField
+      select
+      size="small"
+      label="Collection list"
+      data-testid="sidebar-list-selector"
+      value={selectedList ?? "SHORTCUTS"}
+      onChange={(event) => setExpandedList(event.target.value as ListType)}
+      slotProps={{ select: { MenuProps: { transitionDuration: 0 } } }}
+    >
+      {listOptions.map(({ value, label }) => (
+        <MenuItem key={value} value={value}>
+          {label}
+        </MenuItem>
+      ))}
+    </TextField>
   );
 
   const handleExpandedList = useCallback(
@@ -156,44 +234,54 @@ export function Sidebar({
         />
       </List>
 
-      <ShortcutList
-        shortcuts={pinnedTargets}
-        hierarchy={hierarchy}
-        filter={filter}
-        missing={missingPins}
-        onClickHeader={() => handleExpandedList("SHORTCUTS")}
-        isExpanded={expandedList === "SHORTCUTS"}
-      />
-
-      <TopicList
-        topics={filteredTopics}
-        addDisabled={isLibraryReadOnly}
-        onAddTopic={onAddTopic}
-        onClickHeader={() => handleExpandedList("TOPICS")}
-        isExpanded={expandedList === "TOPICS"}
-      />
-
-      <FeedList
-        feeds={filteredFeeds}
-        addDisabled={isLibraryReadOnly}
-        onAddFeed={onAddFeed}
-        onClickHeader={() => handleExpandedList("FEEDS")}
-        isExpanded={expandedList === "FEEDS"}
-      />
-
-      <SiteList
-        sites={filteredSites}
-        onClickHeader={() => handleExpandedList("SITES")}
-        isExpanded={expandedList === "SITES"}
-      />
-
-      <TagList
-        tags={tags.filter((tag) =>
-          tag.name.toLowerCase().includes(normalizedFilter)
+      <div ref={listsRef} className={css.Lists} data-testid="sidebar-lists">
+        {compact && (
+          <div className={css.CompactHeader} data-sidebar-compact-header>
+            {listSelector}
+            <span ref={setActions} className={css.CompactActions} />
+          </div>
         )}
-        isExpanded={expandedList === "TAGS"}
-        onClickHeader={() => handleExpandedList("TAGS")}
-      />
+        <SidebarListLayoutContext.Provider value={{ compact, actions }}>
+          <ShortcutList
+            shortcuts={pinnedTargets}
+            hierarchy={hierarchy}
+            filter={filter}
+            missing={missingPins}
+            onClickHeader={() => handleExpandedList("SHORTCUTS")}
+            isExpanded={selectedList === "SHORTCUTS"}
+          />
+
+          <TopicList
+            topics={filteredTopics}
+            addDisabled={isLibraryReadOnly}
+            onAddTopic={onAddTopic}
+            onClickHeader={() => handleExpandedList("TOPICS")}
+            isExpanded={selectedList === "TOPICS"}
+          />
+
+          <FeedList
+            feeds={filteredFeeds}
+            addDisabled={isLibraryReadOnly}
+            onAddFeed={onAddFeed}
+            onClickHeader={() => handleExpandedList("FEEDS")}
+            isExpanded={selectedList === "FEEDS"}
+          />
+
+          <SiteList
+            sites={filteredSites}
+            onClickHeader={() => handleExpandedList("SITES")}
+            isExpanded={selectedList === "SITES"}
+          />
+
+          <TagList
+            tags={tags.filter((tag) =>
+              tag.name.toLowerCase().includes(normalizedFilter)
+            )}
+            isExpanded={selectedList === "TAGS"}
+            onClickHeader={() => handleExpandedList("TAGS")}
+          />
+        </SidebarListLayoutContext.Provider>
+      </div>
     </div>
   );
 }

@@ -2,9 +2,10 @@ import type { FetchSettings } from "../fetchSettings";
 import type { SidebarSortMode } from "../../sidebarSort";
 import type { Platform } from "../Platform";
 import type { Entry, Filter, ListEntity, Topic, Annotation } from "../../types";
-import { pinKey, type PinTarget } from "../../pins";
+import { pinKey, pinTargets, type PinNode } from "../../pins";
 import {
   createFixtures,
+  createSidebarHeightFixtures,
   captureDate,
   additionalFeedUrl,
   captureImages,
@@ -19,7 +20,7 @@ type EventValue<K extends EventName> = Parameters<
 
 export class MockPlatform implements Platform {
   private data = createFixtures();
-  private pins: PinTarget[] = [{ type: "topic", id: "observations" }];
+  private pins: PinNode[] = [{ type: "topic", id: "observations" }];
   private sequence = 0;
   private upgrade: import("../Platform").LibraryUpgrade = { state: "idle" };
   private upgradeAttempts = 0;
@@ -45,6 +46,11 @@ export class MockPlatform implements Platform {
 
   constructor(theme: "light" | "dark" = "light") {
     this.theme = theme;
+    if (this.scenario === "sidebar-height") {
+      const fixture = createSidebarHeightFixtures();
+      this.data.topics.push(...fixture.topics);
+      this.pins = fixture.pins;
+    }
     if (["refresh-failure", "refresh-all-fail"].includes(this.scenario ?? "")) {
       this.data.feeds.push({
         ...this.data.feeds[0],
@@ -115,7 +121,7 @@ export class MockPlatform implements Platform {
   ): T {
     return structuredClone({
       ...value,
-      isPinned: this.pins.some(
+      isPinned: pinTargets(this.pins).some(
         (pin) => pin.type === value.__kind && "id" in pin && pin.id === value.id
       ),
     });
@@ -557,7 +563,16 @@ export class MockPlatform implements Platform {
     ) as Entry[];
   listPins: Platform["listPins"] = async () => structuredClone(this.pins);
   setPin: Platform["setPin"] = async (target, pinned) => {
-    this.pins = this.pins.filter((p) => pinKey(p) !== pinKey(target));
+    function remove(nodes: PinNode[]): PinNode[] {
+      return nodes.flatMap<PinNode>((node) =>
+        node.type === "group"
+          ? [{ ...node, children: remove(node.children) }]
+          : pinKey(node) === pinKey(target)
+            ? []
+            : [node]
+      );
+    }
+    this.pins = remove(this.pins);
     if (pinned) this.pins.push(structuredClone(target));
     this.emit("onPinChanged", { target, pinned });
     if (target.type === "entry")
@@ -675,6 +690,11 @@ export class MockPlatform implements Platform {
   getTheme: Platform["getTheme"] = async () => this.theme;
   setTheme: Platform["setTheme"] = async (theme) => {
     this.theme = theme;
+    if (this.scenario === "sidebar-height") {
+      const fixture = createSidebarHeightFixtures();
+      this.data.topics.push(...fixture.topics);
+      this.pins = fixture.pins;
+    }
     if (["refresh-failure", "refresh-all-fail"].includes(this.scenario ?? "")) {
       this.data.feeds.push({
         ...this.data.feeds[0],
