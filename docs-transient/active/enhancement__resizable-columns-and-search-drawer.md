@@ -55,7 +55,6 @@ the simplified-rule captures, without adding automatic column rearrangement.
 
 - [Selected simplified-rule captures](../ideas/sidebar-search-simple/index.md)
 - [Capture gallery](../ideas/sidebar-search-simple/index.html)
-- [Visual-congestion spike](spike__sidebar-visual-congestion.md)
 - [Reader clipping defect](defect__article-reader-horizontal-clipping.md)
 - [UI testing convention](../../docs/conventions/ui_testing.md)
 - [UI styling convention](../../docs/conventions/ui_styling.md)
