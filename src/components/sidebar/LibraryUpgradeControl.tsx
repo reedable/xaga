@@ -240,7 +240,10 @@ export default function LibraryUpgradeControl({
                   : "Read-only library"}
         </DialogTitle>
         <DialogContent>
-          <div id="library-upgrade-description">
+          <div
+            id="library-upgrade-description"
+            className={css.UpgradeDescription}
+          >
             {succeeded ? (
               <DialogContentText role="status">
                 {restarting
@@ -270,10 +273,10 @@ export default function LibraryUpgradeControl({
                 {canUpgrade && (
                   <>
                     <DialogContentText>
-                      Older versions of Xaga cannot safely edit this library
-                      after the upgrade.
+                      Older versions of Xaga will not be able to edit this
+                      library after the upgrade.
                     </DialogContentText>
-                    <DialogContentText className={css.UpgradeParagraph}>
+                    <DialogContentText>
                       Back up the entire library folder and close other Xaga
                       windows before upgrading. To undo the upgrade, you must
                       restore that backup.

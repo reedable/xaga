@@ -115,6 +115,24 @@ for (const scenario of ["unversioned", "resume", "resume-earlier"]) {
       scenario.startsWith("resume") ? "pending_upgrade" : "unversioned"
     );
     await expect(control(dialog, "button", "upgrade-library")).toBeEnabled();
+    const gaps = await dialog
+      .locator("#library-upgrade-description > p")
+      .evaluateAll((paragraphs) => {
+        const rootSize = parseFloat(
+          getComputedStyle(document.documentElement).fontSize
+        );
+        return paragraphs
+          .slice(1)
+          .map(
+            (paragraph, index) =>
+              (paragraph.getBoundingClientRect().top -
+                paragraphs[index].getBoundingClientRect().bottom) /
+              rootSize
+          );
+      });
+    expect(gaps).toHaveLength(2);
+    expect(gaps[0]).toBeGreaterThan(0);
+    expect(gaps[1]).toBeCloseTo(gaps[0]);
   });
 }
 

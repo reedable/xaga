@@ -11,7 +11,7 @@ use format **0.16**. Opening a library does not upgrade it automatically.
    browse without converting. The sidebar's **Read-only** button reopens this
    dialog.
 3. Read the target version and backup instructions before choosing **Upgrade**.
-   Older versions of Xaga cannot safely edit the upgraded library. To undo the
+   Older versions of Xaga will not be able to edit the upgraded library. To undo the
    upgrade, restore the complete backup.
 4. Keep Xaga open while it reports conversion and cache reconciliation progress.
    Upgrading does not initialize or download a model. Closing Xaga cannot roll

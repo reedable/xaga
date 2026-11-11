@@ -86,6 +86,10 @@
   }
 }
 
+.UpgradeDescription > p + p {
+  margin-top: 1rem;
+}
+
 .UpgradeParagraph {
   margin-top: 1rem !important;
 }
