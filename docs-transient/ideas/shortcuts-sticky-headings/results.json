@@ -1,0 +1,243 @@
+[
+  {
+    "name": "nested-sticky",
+    "scrollTop": 3737,
+    "viewport": {
+      "top": 164.59375,
+      "height": 539.78125
+    },
+    "rows": [
+      {
+        "title": "Research",
+        "top": 164.59375,
+        "bottom": 193.59375,
+        "height": 29,
+        "offset": "0"
+      },
+      {
+        "title": "Background with a long title that wraps over several lines",
+        "top": 193.59375,
+        "bottom": 264.59375,
+        "height": 71,
+        "offset": "29"
+      },
+      {
+        "title": "Methods",
+        "top": 704.59375,
+        "bottom": 733.59375,
+        "height": 29,
+        "offset": "29"
+      }
+    ]
+  },
+  {
+    "name": "sibling-transition",
+    "scrollTop": 4477,
+    "viewport": {
+      "top": 164.59375,
+      "height": 539.78125
+    },
+    "rows": [
+      {
+        "title": "Research",
+        "top": 164.59375,
+        "bottom": 193.59375,
+        "height": 29,
+        "offset": "0"
+      },
+      {
+        "title": "Background with a long title that wraps over several lines",
+        "top": -106.40625,
+        "bottom": -35.40625,
+        "height": 71,
+        "offset": "29"
+      },
+      {
+        "title": "Methods",
+        "top": 193.59375,
+        "bottom": 222.59375,
+        "height": 29,
+        "offset": "29"
+      }
+    ]
+  },
+  {
+    "name": "root-release",
+    "scrollTop": 5155,
+    "viewport": {
+      "top": 164.59375,
+      "height": 539.78125
+    },
+    "rows": [
+      {
+        "title": "Research",
+        "top": -33.40625,
+        "bottom": -4.40625,
+        "height": 29,
+        "offset": "0"
+      },
+      {
+        "title": "Work",
+        "top": 164.59375,
+        "bottom": 193.59375,
+        "height": 29,
+        "offset": "0"
+      }
+    ]
+  },
+  {
+    "name": "wrapped-parent-height",
+    "height": 71
+  },
+  {
+    "name": "focus-occlusion",
+    "top": 614.59375,
+    "height": 34,
+    "unobscured": true
+  },
+  {
+    "name": "focus-earlier-shortcut",
+    "top": 417.59375,
+    "height": 34,
+    "unobscured": true
+  },
+  {
+    "name": "menu",
+    "visible": true
+  },
+  {
+    "name": "collapsed",
+    "scrollTop": 3611,
+    "viewport": {
+      "top": 164.59375,
+      "height": 539.78125
+    },
+    "rows": [
+      {
+        "title": "Research",
+        "top": 50.59375,
+        "bottom": 79.59375,
+        "height": 29,
+        "offset": "0"
+      },
+      {
+        "title": "Work",
+        "top": 164.59375,
+        "bottom": 193.59375,
+        "height": 29,
+        "offset": "0"
+      }
+    ]
+  },
+  {
+    "name": "filtered",
+    "scrollTop": 0,
+    "viewport": {
+      "top": 165.90625,
+      "height": 538.46875
+    },
+    "rows": [
+      {
+        "title": "Research",
+        "top": 165.90625,
+        "bottom": 194.90625,
+        "height": 29,
+        "offset": "0"
+      },
+      {
+        "title": "Background with a long title that wraps over several lines",
+        "top": 194.90625,
+        "bottom": 265.90625,
+        "height": 71,
+        "offset": "29"
+      },
+      {
+        "title": "Specimen 15",
+        "top": 265.90625,
+        "bottom": 299.90625,
+        "height": 34
+      }
+    ]
+  },
+  {
+    "name": "deep-short-viewport",
+    "scrollTop": 400,
+    "viewport": {
+      "top": 164.59375,
+      "height": 139.78125
+    },
+    "rows": [
+      {
+        "title": "Level 1",
+        "top": 164.59375,
+        "bottom": 193.59375,
+        "height": 29,
+        "offset": "0"
+      },
+      {
+        "title": "Level 24",
+        "top": 2826.59375,
+        "bottom": 2981.59375,
+        "height": 155,
+        "offset": "2662"
+      },
+      {
+        "title": "Specimen 60",
+        "top": 2581.59375,
+        "bottom": 2615.59375,
+        "height": 34
+      }
+    ]
+  },
+  {
+    "name": "deep-at-shortcuts",
+    "scrollTop": 2817,
+    "viewport": {
+      "top": 164.59375,
+      "height": 139.78125
+    },
+    "rows": [
+      {
+        "title": "Level 1",
+        "top": 164.59375,
+        "bottom": 193.59375,
+        "height": 29,
+        "offset": "0"
+      },
+      {
+        "title": "Level 5",
+        "top": 280.59375,
+        "bottom": 309.59375,
+        "height": 29,
+        "offset": "116"
+      },
+      {
+        "title": "Level 24",
+        "top": 689.59375,
+        "bottom": 844.59375,
+        "height": 155,
+        "offset": "2662"
+      },
+      {
+        "title": "Specimen 60",
+        "top": 164.59375,
+        "bottom": 198.59375,
+        "height": 34
+      }
+    ]
+  },
+  {
+    "name": "animated-expand",
+    "samples": 30,
+    "first": {
+      "overflow": "hidden",
+      "height": "15.5469px",
+      "entered": false
+    },
+    "last": {
+      "overflow": "visible",
+      "height": "1460px",
+      "entered": true
+    }
+  }
+]

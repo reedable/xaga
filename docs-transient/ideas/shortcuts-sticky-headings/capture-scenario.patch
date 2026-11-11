@@ -1,0 +1,56 @@
+--- a/src/platform/capture/MockPlatform.ts
++++ b/src/platform/capture/MockPlatform.ts
+@@ -45,6 +45,13 @@
+ 
+   constructor(theme: "light" | "dark" = "light") {
+     this.theme = theme;
++    if (this.scenario === "sticky-spike") {
++      this.pins = [];
++      for (let i = 0; i < 80; i++) {
++        this.data.topics.push({ ...this.data.topics[0], id: `spike-${i}`, title: `Specimen ${String(i).padStart(2, "0")}`, members: [], entryCount: 0, unreadCount: 0 });
++        this.pins.push({ type: "topic", id: `spike-${i}` });
++      }
++    }
+     if (["refresh-failure", "refresh-all-fail"].includes(this.scenario ?? "")) {
+       this.data.feeds.push({
+         ...this.data.feeds[0],
+@@ -555,7 +562,24 @@
+         .map((a) => this.project(a)),
+       filter
+     ) as Entry[];
+-  listPins: Platform["listPins"] = async () => structuredClone(this.pins);
++  listPins: Platform["listPins"] = async () => {
++    if (this.scenario !== "sticky-spike") return structuredClone(this.pins);
++    const leaf = (i: number): import("../../pins").PinNode => ({ type: "topic", id: `spike-${i}` });
++    const group = (id: string, title: string, children: import("../../pins").PinNode[]): import("../../pins").PinNode => ({ type: "group", id, title, children });
++    if (!this.data.topics.some(t => t.id === "spike-0")) {
++      for (let i = 0; i < 80; i++) this.data.topics.push({ ...this.data.topics[0], id: `spike-${i}`, title: `Specimen ${String(i).padStart(2, "0")}`, members: [] });
++    }
++    const range = (start: number, end: number) => Array.from({ length: end - start }, (_, i) => leaf(start + i));
++    let deep = group("depth-23", "Level 24", range(60, 80));
++    for (let i = 22; i >= 0; i--) deep = group(`depth-${i}`, `Level ${i + 1}`, [deep]);
++    return [
++      group("research", "Research", [
++        group("background", "Background with a long title that wraps over several lines", range(0, 20)),
++        group("methods", "Methods", range(20, 40)),
++      ]),
++      group("work", "Work", range(40, 60)), deep,
++    ];
++  };
+   setPin: Platform["setPin"] = async (target, pinned) => {
+     this.pins = this.pins.filter((p) => pinKey(p) !== pinKey(target));
+     if (pinned) this.pins.push(structuredClone(target));
+@@ -675,6 +699,13 @@
+   getTheme: Platform["getTheme"] = async () => this.theme;
+   setTheme: Platform["setTheme"] = async (theme) => {
+     this.theme = theme;
++    if (this.scenario === "sticky-spike") {
++      this.pins = [];
++      for (let i = 0; i < 80; i++) {
++        this.data.topics.push({ ...this.data.topics[0], id: `spike-${i}`, title: `Specimen ${String(i).padStart(2, "0")}`, members: [], entryCount: 0, unreadCount: 0 });
++        this.pins.push({ type: "topic", id: `spike-${i}` });
++      }
++    }
+     if (["refresh-failure", "refresh-all-fail"].includes(this.scenario ?? "")) {
+       this.data.feeds.push({
+         ...this.data.feeds[0],

@@ -2,23 +2,19 @@
 
 ## Summary
 
-Determine the changes needed to keep containing group headings visible while
-scrolling through the Shortcuts hierarchy in the sidebar. The user has selected
-sticky group headings as the starting direction: scrolling should not require
-remembering group names that have left the viewport.
+Resolve overflowing ancestor headings and scope implementation of sticky group
+headings in the sidebar's Shortcuts hierarchy. The user has selected sticky group
+headings as the starting direction: scrolling should not require remembering
+group names that have left the viewport.
 
 ## Requirements
 
-- Investigate headings that stick while their descendants scroll beneath them,
-  with nested headings stacked below their ancestors and released when their
-  group ends.
-- Establish whether the existing scroll and MUI Collapse containers support this
-  behavior with CSS alone or require component changes. Verify in the browser
-  rather than inferring feasibility from the markup.
-- Check wrapped group titles, sibling-group transitions, expansion and collapse,
-  filtering, and reduced viewport height. Assess deep nesting against the
-  supported 24-group limit; present any required overflow decision with evidence
-  and trade-offs rather than silently choosing a depth cap.
+- Retain the selected direction of headings that stick while descendants scroll
+  beneath them, with nested headings stacked below their ancestors and released
+  when their group ends.
+- Choose overflow behavior with the user, accounting for wrapped headings,
+  reduced viewport height, and the supported 24-group limit. Use the prototype
+  evidence and trade-offs rather than silently choosing a depth cap.
 - Preserve group controls, unread counts, drag and drop, keyboard focus visibility,
   and accessible names. Identify any interference caused by overlapping headings.
 - Complete when browser evidence establishes feasibility and limitations, and a
@@ -27,16 +23,16 @@ remembering group names that have left the viewport.
 
 ## Remaining work
 
-- Inspect the scroll ancestors, collapse overflow, heading layout, and existing
-  shortcut workflow coverage.
-- Build a local prototype and exercise the required scenarios, recording the
-  observed behavior and any necessary structural changes.
-- Describe the implementation scope and remaining uncertainties based on the
-  prototype, then capture remaining implementation work in a story. Keep the
-  prototype separate from a production implementation until that work is selected.
+- Present the overflow alternatives in the linked prototype evidence for the
+  user's decision; prototype the chosen fallback to establish its limits.
+- Capture a bounded implementation story covering heading offsets, updates after
+  layout changes, stacking and backgrounds, the chosen overflow policy, and the
+  browser/native verification gaps identified by the prototype. Delete this spike
+  when its remaining work is resolved.
 
 ## References
 
+- [Prototype evidence and overflow alternatives](../ideas/shortcuts-sticky-headings/index.md)
 - [Nested shortcut groups](../../docs/architecture/pins.md#nested-groups-015)
 - [Shortcut tree](../../src/components/sidebar/ShortcutTree.tsx)
 - [Shortcut tree styles](../../src/components/sidebar/ShortcutTree.module.css)
