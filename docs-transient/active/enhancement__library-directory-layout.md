@@ -44,6 +44,20 @@ primary content visible at the library root and supporting data in a visible
   0, following the library-version contract. Upgrade existing libraries through
   the explicit shared core upgrade used by the app and CLI; opening a library
   must not silently migrate it.
+- Require successful layout conversion before opening an old-layout library
+  for browsing or ordinary operations, including read-only browsing. At app
+  startup and after selecting such a library, offer **Upgrade**, **Choose another
+  Library**, and **Quit**; do not offer **Continue read-only**. Keep the existing
+  backup explanation and explicit user confirmation before conversion. Declining
+  conversion must leave persistent library data unchanged.
+- Keep the startup gate active after an interrupted or failed layout upgrade.
+  Offer retry, choosing another library, and quitting without exposing a
+  partially relocated library to ordinary reads or writes. Metadata errors or
+  lock contention must explain the failure and permit retry or leaving the
+  library without bypassing the gate. Successful conversion uses the existing
+  restart and compatibility checks before opening the library. Read-only access
+  due to lock contention in a completed, compatible new-layout library remains
+  available under the existing contract.
 - Preserve source content, annotations, custom frontmatter, membership and
   ordering, tag identities and transitions, pins, and saved resource bytes.
   Manifest relocation must retain completed and pending migration state.
@@ -62,20 +76,27 @@ primary content visible at the library root and supporting data in a visible
   moves, duplicate manifests, and lock contention; resolve any required design
   decisions before implementation.
 - Implement the layout API and caller changes, new-library initialization,
-  explicit migration, and read-only inspection of libraries awaiting upgrade.
+  explicit migration, metadata inspection for upgrade eligibility and progress,
+  and the mandatory layout-upgrade gate. Legacy-path access is needed for
+  inspection and conversion, not ordinary old-layout browsing.
   Ensure empty-library detection accounts for the new internal directories.
 - Verify new-library creation, old-library conversion, interrupted-upgrade
   resumption, conflict handling, and app/CLI writer exclusion. Verify article
   and PDF reads, image and favicon resolution, feed refresh, Topic membership,
   tags, and pins after conversion. Verify restoration from visible contents
   without `.xaga/` rebuilds derived data and preserves user state.
-- Review affected browser workflow coverage and run the checks required by the
-  UI testing convention for any UI or UX changes. Run relevant backend and
+- Update browser workflow coverage for the mandatory gate, confirmation,
+  cancellation, library selection, failure/retry, and restart. Verify no
+  old-layout or partially relocated library can reach ordinary browsing through
+  a read-only choice. Preserve coverage for compatible-library read-only access.
+  Run `npm run test:browser` following the UI testing convention and relevant backend and
   native checks for persistence, migration, and process locking; run
   `cargo fmt --all --check` after Rust changes.
 - Update durable layout, version, locking, resource, and backup documentation,
   including instructions to close all library users before deleting `.xaga/`
-  and to preserve every visible library directory when backing up.
+  and to preserve every visible library directory when backing up. Document the
+  mandatory layout conversion and its exception to the existing option to
+  continue browsing an older library read-only.
 
 ## References
 
