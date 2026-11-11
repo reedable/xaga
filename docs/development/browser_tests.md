@@ -133,7 +133,10 @@ for both RC tags such as `v0.15.0-rc.1` and final release tags. Branch pushes an
 pull requests do not trigger the release workflow.
 
 After lint, formatting, frontend type/CSP checks, and Rust workspace checks pass,
-the macOS job installs Chromium and runs `npm run test:ci`. Browser failures
+the macOS job installs Chromium and runs `npm run test:headless` followed by
+`npm run test:browser` in separate steps, each with a 30-minute timeout. Rust test
+compilation therefore does not consume the browser suite’s time allowance. These
+commands run the same suites as `npm run test:ci`. Browser failures
 block the release build. The job uploads
 `playwright-report/` and `test-results/` as the `browser-integration` artifact,
 retained for 14 days, including when browser tests fail. Artifact upload does not

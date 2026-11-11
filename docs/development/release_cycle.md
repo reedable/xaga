@@ -185,7 +185,8 @@ The tag must point to the commit containing both the prepared version and the re
 4. Set up Rust and check workspace formatting before restoring the Rust cache
    and installing the Protocol Buffers compiler required by Lance.
 5. Check the Rust workspace with the lockfile and install Chromium.
-6. Run `npm run test:ci`: script, UI, Rust, and browser tests for both RC and final
+6. Run `npm run test:headless` and then `npm run test:browser` in separate steps,
+   each with a 30-minute timeout: script, UI, Rust, and browser tests for both RC and final
    tags. Preserve browser reports and failure diagnostics for 14 days. Any test
    failure blocks the release build. Native WebKit tests run separately through
    `npm test` on a Mac with a desktop session.

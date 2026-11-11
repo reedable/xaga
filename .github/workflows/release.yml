@@ -84,9 +84,13 @@ jobs:
       - name: Install Chromium for browser tests
         run: npx playwright install chromium
 
-      - name: Run CI tests
+      - name: Run headless tests
         timeout-minutes: 30
-        run: npm run test:ci
+        run: npm run test:headless
+
+      - name: Run browser tests
+        timeout-minutes: 30
+        run: npm run test:browser
 
       - name: Upload browser report and failure diagnostics
         if: ${{ !cancelled() }}
