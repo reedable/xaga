@@ -12,6 +12,9 @@ Conventions for code and documentation, as distinct from what the system is (arc
 
 ## Code formatting
 
+[Formatting](formatting.md) — format changes and pass the repository-wide check
+before completing every story, including documentation-only work.
+
 [Rust formatting](rust_formatting.md) — apply `rustfmt` consistently across the
 Cargo workspace and keep `cargo fmt --all --check` passing.
 

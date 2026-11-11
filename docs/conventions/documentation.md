@@ -32,6 +32,12 @@ durable documentation must not cite transient tasks in any state.
 
 Each documentation directory has an index. Keep indexes terse and focused on navigation; detailed guidance belongs in the linked documents.
 
+## Story completion
+
+Before reporting a story complete or deleting its resolved task document,
+complete the shared [formatting checks](formatting.md) after the final edits.
+These checks apply to every story without needing to be copied into each task.
+
 ## Writing style
 
 Follow the [writing style guide](writing_style.md) for shared language,

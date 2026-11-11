@@ -96,11 +96,11 @@ without that additional wrapping.
 - An overflow policy is required before unrestricted nesting can ship. Options
   below remain proposals for the user, not approved requirements.
 
-| Overflow approach | Benefit | Cost or limitation |
-| --- | --- | --- |
-| Fall back to ordinary scrolling when the ancestor stack cannot leave room for shortcuts | Keeps the initial implementation close to the prototype | Loses persistent hierarchy context in overflowing branches; the space threshold needs definition |
-| Keep the nearest containing heading sticky when the full stack cannot fit | Retains local group context with less vertical space | Hides outer ancestry; one very long heading still needs an overflow rule |
-| Compress older ancestors into a compact path while retaining the nearest heading | Retains broader hierarchy context and space for shortcuts | Adds path layout, truncation, and interaction decisions beyond the initial sticky-heading behavior |
+| Overflow approach                                                                       | Benefit                                                   | Cost or limitation                                                                                 |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Fall back to ordinary scrolling when the ancestor stack cannot leave room for shortcuts | Keeps the initial implementation close to the prototype   | Loses persistent hierarchy context in overflowing branches; the space threshold needs definition   |
+| Keep the nearest containing heading sticky when the full stack cannot fit               | Retains local group context with less vertical space      | Hides outer ancestry; one very long heading still needs an overflow rule                           |
+| Compress older ancestors into a compact path while retaining the nearest heading        | Retains broader hierarchy context and space for shortcuts | Adds path layout, truncation, and interaction decisions beyond the initial sticky-heading behavior |
 
 The nearest-heading fallback is a candidate for preserving useful local context,
 but none of these approaches has been prototyped or selected. A fixed depth cap

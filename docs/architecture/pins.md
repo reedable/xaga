@@ -228,7 +228,6 @@ available for hands-on review before choosing further overflow behavior. The
 [browser workflow](../development/browser_tests.md#sticky-group-headings) includes
 a reproduction and screenshot.
 
-
 ## Native menu
 
 The native macOS **Shortcuts** menu sits immediately right of **History**.

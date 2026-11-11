@@ -108,7 +108,7 @@
   }
 }
 
-.UpgradeDescription>p+p {
+.UpgradeDescription > p + p {
   margin-top: 1rem;
 }
 
