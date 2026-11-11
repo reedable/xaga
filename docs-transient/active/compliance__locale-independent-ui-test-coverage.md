@@ -52,4 +52,3 @@ surfaces and is separate from implementing in-app library upgrades.
 - [Search controls](../../src/components/search/SearchResultList.tsx)
 - [Native menu tests](../../src-tauri/tests/sidebar_sort_menu.rs)
 - [Training tests](../../docs/training/training.test.mjs)
-- [Library upgrade story](enhancement__in-app-library-upgrade.md)
