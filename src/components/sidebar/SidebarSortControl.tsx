@@ -30,9 +30,11 @@ export default function SidebarSortControl({
   const popupId = useId();
   const titleId = useId();
   const active = !!filter.trim();
+
   const label = active
     ? "Sort and filter collections (filter active)"
     : "Sort and filter collections";
+
   return (
     <>
       <Tooltip title={label}>
@@ -51,6 +53,7 @@ export default function SidebarSortControl({
           </Badge>
         </IconButton>
       </Tooltip>
+
       <Popover
         transitionDuration={0}
         anchorEl={() => menuAnchor() ?? anchor!}
@@ -80,6 +83,7 @@ export default function SidebarSortControl({
         <Typography id={titleId} component="h2" variant="subtitle1">
           Sort and filter collections
         </Typography>
+
         <TextField
           select
           data-testid="sidebar-sort-select"
@@ -95,6 +99,7 @@ export default function SidebarSortControl({
           <MenuItem value="unread">Sort by unread</MenuItem>
           <MenuItem value="alphabetical">Sort by name</MenuItem>
         </TextField>
+
         <TextField
           inputRef={filterRef}
           label="Filter collections"

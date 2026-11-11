@@ -71,19 +71,7 @@ export default function ExpandableList({
       {compact &&
         isExpanded &&
         layout?.actions &&
-        createPortal(
-          <>
-            <Typography
-              component="output"
-              data-testid="sidebar-list-count"
-              aria-label={`${label}: ${count}`}
-            >
-              ({count})
-            </Typography>
-            {renderHeaderAction?.()}
-          </>,
-          layout.actions
-        )}
+        createPortal(renderHeaderAction?.(), layout.actions)}
 
       <div
         // Keep outgoing rows out of input and accessibility queries while Collapse animates.

@@ -144,16 +144,18 @@ export function Sidebar({
 
   const listSelector = (
     <TextField
+      className={css.ListSelector}
       select
       size="small"
-      label="Collection list"
+      aria-label="Collection list"
       data-testid="sidebar-list-selector"
       value={selectedList ?? "SHORTCUTS"}
       onChange={(event) => setExpandedList(event.target.value as ListType)}
       slotProps={{ select: { MenuProps: { transitionDuration: 0 } } }}
+      variant="standard"
     >
       {listOptions.map(({ value, label }) => (
-        <MenuItem key={value} value={value}>
+        <MenuItem key={value} value={value} className={css.ListOption}>
           {label}
         </MenuItem>
       ))}
@@ -241,6 +243,7 @@ export function Sidebar({
             <span ref={setActions} className={css.CompactActions} />
           </div>
         )}
+
         <SidebarListLayoutContext.Provider value={{ compact, actions }}>
           <ShortcutList
             shortcuts={pinnedTargets}

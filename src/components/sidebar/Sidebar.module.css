@@ -81,6 +81,10 @@
       flex: 1;
       min-width: 0;
     }
+
+    .ListSelector :global(.MuiInputBase-root.MuiInput-root) {
+      font-size: 13px;
+    }
   }
 
   .CompactActions {
@@ -100,11 +104,11 @@
 
   .AllItems {
     flex-shrink: 0;
-    margin-bottom: 0.5rem;
+    /* margin-bottom: 0.5rem; */
   }
 }
 
-.UpgradeDescription > p + p {
+.UpgradeDescription>p+p {
   margin-top: 1rem;
 }
 
