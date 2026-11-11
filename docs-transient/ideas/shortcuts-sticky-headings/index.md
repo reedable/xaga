@@ -3,6 +3,19 @@
 The user selected sticky group headings as the starting direction. This local
 Chromium investigation establishes feasibility, not a production implementation.
 
+## Initial implementation direction
+
+Start with sticky headings at group levels one through five, counting root
+groups as level one; deeper headings scroll normally. This follows the user's
+instruction to choose the simplest initial implementation. The current recursive
+tree can determine eligibility by depth without tracking a changing set of
+nearest ancestors during scrolling. Stored group depth remains unchanged.
+
+The user has deferred adaptive overflow decisions until a working implementation
+can be seen and used. The fixed cap does not establish that wrapped headings fit
+every viewport. Preserve and report that limitation for hands-on review rather
+than requiring a speculative overflow policy before implementation.
+
 ## Reproduction and artifacts
 
 - [Capture scenario patch](capture-scenario.patch) adds an opt-in `sticky-spike`
