@@ -3,6 +3,7 @@
   border-top: 0.0625rem solid var(--border-color);
   display: flex;
   flex-shrink: 0;
+  height: 3rem;
 
   &:first-of-type,
   &[data-sidebar-section-header="shortcuts"] {
