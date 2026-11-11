@@ -51,6 +51,9 @@
 
         .RefreshControl {
           align-self: flex-end;
+          /* Keep the tooltip wrapper above the overlapping drag region. */
+          position: relative;
+          z-index: 10;
         }
 
         .RefreshButton {
