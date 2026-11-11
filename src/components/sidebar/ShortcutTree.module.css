@@ -9,6 +9,13 @@
       align-items: center;
       position: relative;
 
+      &.StickyGroup {
+        position: sticky;
+        top: var(--shortcut-heading-offset, 0);
+        z-index: calc(5 - var(--shortcut-heading-depth));
+        background-color: var(--lliw-semanticColor__background-color--primary);
+      }
+
       .TargetRow {
         flex: 1;
         min-width: 0;

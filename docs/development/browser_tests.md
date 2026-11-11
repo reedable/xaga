@@ -115,8 +115,7 @@ shared list state, the all-collapsed default, section counts and creation action
 empty filtered lists, read-only browsing, and scroll access in long lists and
 five- and 24-level group fixtures. Screenshots cover both themes. The opt-in
 `sidebar-height` capture scenario owns the extra fixture data; it does not alter
-the default dataset. Sticky group headings are a separate implementation and
-are not established by these checks.
+the default dataset. Sticky group geometry and organization are covered separately below.
 
 `e2e/sidebar-controls.spec.ts` covers the combined sorting/filtering popup in both
 themes, focus entry and return, Tab navigation, retained filtering after Escape
@@ -140,8 +139,27 @@ and its behavior remain owned by the capture platform.
 
 This suite establishes UI integration with the in-memory platform. Native IPC,
 filesystem persistence, backend correctness, and native-only workflows require
-the existing component, Rust, and GUI checks. Each suite can also be run individually. Screenshot baseline testing and nested shortcut-group organization
-are outside this suite's coverage.
+the existing component, Rust, and GUI checks. Each suite can also be run individually. Screenshot baseline testing is outside this suite's coverage.
+
+## Sticky group headings
+
+`e2e/shortcut-sticky.spec.ts` covers nested sticky geometry and release at sibling
+and root boundaries, variable-height renamed headings, font scaling, layout
+resizing, the outermost-five-level cap, both motion preferences, temporary filter
+expansion, keyboard traversal, count accessibility, actions, group creation,
+renaming, moving, drag and drop, removal with child promotion, and read-only use.
+The `sidebar-sticky` capture scenario owns the grouped data; the same fixture can
+be selected with `fixture=shortcut-groups` alongside a read-only scenario.
+Capture group edits validate and commit the in-memory tree atomically; they do
+not establish native IPC, file persistence, or core validation correctness.
+
+The fixed-cap short-window screenshot records a known limitation, not an
+accessibility pass: enough sticky headings can cover the list viewport. To see
+it interactively, start the capture server, open `/?scenario=sidebar-sticky`, set
+the browser viewport height to `15rem` at the default root font size, and scroll within the
+Five branch until its shortcuts reach the top. The test attaches heading
+measurements and `fixed-cap-short-window.png`. No adaptive overflow policy is
+implemented. Native WebKit rendering and focus require separate checks.
 
 ## Failures and CI
 

@@ -188,6 +188,19 @@ under **Shortcuts** in the sidebar.
 Choose **Share → Remove from Shortcuts** to unpin an article. Removing a shortcut
 keeps its destination and your current reading context.
 
+As you scroll through grouped shortcuts, their containing group headings stay
+visible at the top of the list. Up to the outermost five group levels stay
+visible; deeper headings scroll with their contents. You can still expand groups
+and use their actions while their headings stay in place.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/user-guide/shortcut-groups-dark.png">
+  <img src="images/user-guide/shortcut-groups.png" alt="Shortcuts scrolled through Sources, with Research and the wrapped Background group heading still visible above it.">
+</picture>
+
+In a very short window, the headings can occupy the available list space. Make
+the window taller to see the shortcuts beneath them.
+
 ## Adjust Settings
 
 Open **Xaga → Settings…**. Settings are shared across your libraries on this

@@ -2,10 +2,11 @@ import type { FetchSettings } from "../fetchSettings";
 import type { SidebarSortMode } from "../../sidebarSort";
 import type { Platform } from "../Platform";
 import type { Entry, Filter, ListEntity, Topic, Annotation } from "../../types";
-import { pinKey, pinTargets, type PinNode } from "../../pins";
+import { pinKey, pinTargets, type PinNode, type PinNodeRef } from "../../pins";
 import {
   createFixtures,
   createSidebarHeightFixtures,
+  createStickyShortcutFixtures,
   captureDate,
   additionalFeedUrl,
   captureImages,
@@ -48,6 +49,14 @@ export class MockPlatform implements Platform {
     this.theme = theme;
     if (this.scenario === "sidebar-height") {
       const fixture = createSidebarHeightFixtures();
+      this.data.topics.push(...fixture.topics);
+      this.pins = fixture.pins;
+    }
+    if (
+      this.scenario === "sidebar-sticky" ||
+      new URLSearchParams(location.search).get("fixture") === "shortcut-groups"
+    ) {
+      const fixture = createStickyShortcutFixtures();
       this.data.topics.push(...fixture.topics);
       this.pins = fixture.pins;
     }
@@ -563,16 +572,9 @@ export class MockPlatform implements Platform {
     ) as Entry[];
   listPins: Platform["listPins"] = async () => structuredClone(this.pins);
   setPin: Platform["setPin"] = async (target, pinned) => {
-    function remove(nodes: PinNode[]): PinNode[] {
-      return nodes.flatMap<PinNode>((node) =>
-        node.type === "group"
-          ? [{ ...node, children: remove(node.children) }]
-          : pinKey(node) === pinKey(target)
-            ? []
-            : [node]
-      );
-    }
-    this.pins = remove(this.pins);
+    const found = findPinPosition(this.pins, target);
+    if (!!found === pinned) return;
+    if (found) found.siblings.splice(found.index, 1);
     if (pinned) this.pins.push(structuredClone(target));
     this.emit("onPinChanged", { target, pinned });
     if (target.type === "entry")
@@ -945,8 +947,65 @@ export class MockPlatform implements Platform {
     this.subscribe("onTagsChanged", callback);
   onTagCreated: Platform["onTagCreated"] = (callback) =>
     this.subscribe("onTagCreated", callback);
-  organizePins: Platform["organizePins"] = async () =>
-    this.unsupported("Shortcut groups");
+  organizePins: Platform["organizePins"] = async (edit) => {
+    const invalid = (): never => {
+      throw { code: "app:error", message: "Invalid shortcut group edit." };
+    };
+    if (await this.isLibraryReadOnly()) invalid();
+    const pins = structuredClone(this.pins);
+    const container = (parent: string | null): PinNode[] => {
+      if (parent === null) return pins;
+      const position = findPinPosition(pins, { type: "group", id: parent });
+      const node = position?.siblings[position.index];
+      if (node?.type !== "group") return invalid();
+      return node.children;
+    };
+    if (edit.action === "createGroup") {
+      container(edit.parent).push({
+        type: "group",
+        id: edit.id,
+        title: edit.title.trim(),
+        children: [],
+      });
+    } else {
+      const reference =
+        edit.action === "move"
+          ? edit.node
+          : { type: "group" as const, id: edit.id };
+      const position = findPinPosition(pins, reference);
+      if (!position) return invalid();
+      const node = position.siblings[position.index];
+      if (edit.action === "renameGroup") {
+        if (node.type !== "group") return invalid();
+        node.title = edit.title.trim();
+      } else {
+        position.siblings.splice(position.index, 1);
+        if (edit.action === "removeGroup") {
+          if (node.type !== "group") return invalid();
+          position.siblings.splice(position.index, 0, ...node.children);
+        } else container(edit.parent).push(node);
+      }
+    }
+    const groups = new Set<string>();
+    const targets = new Set<string>();
+    const validate = (nodes: PinNode[], depth = 0) => {
+      if (depth > 24) invalid();
+      for (const node of nodes) {
+        if (node.type === "group") {
+          if (!node.id || !node.title.trim() || groups.has(node.id)) invalid();
+          groups.add(node.id);
+          validate(node.children, depth + 1);
+        } else {
+          const key = pinKey(node);
+          if (targets.has(key)) invalid();
+          targets.add(key);
+        }
+      }
+    };
+    validate(pins);
+    this.pins = pins;
+    this.emit("onPinChanged", { edit });
+  };
   onPinChanged: Platform["onPinChanged"] = (callback) =>
     this.subscribe("onPinChanged", callback);
   onEntryPinChanged: Platform["onEntryPinChanged"] = (callback) =>
@@ -972,4 +1031,17 @@ export class MockPlatform implements Platform {
   onRefreshOnStartupChanged: Platform["onRefreshOnStartupChanged"] = (
     callback
   ) => this.subscribe("onRefreshOnStartupChanged", callback);
+}
+
+function findPinPosition(
+  nodes: PinNode[],
+  reference: PinNodeRef
+): { siblings: PinNode[]; index: number } | undefined {
+  for (const [index, node] of nodes.entries()) {
+    if (pinKey(node) === pinKey(reference)) return { siblings: nodes, index };
+    if (node.type === "group") {
+      const found = findPinPosition(node.children, reference);
+      if (found) return found;
+    }
+  }
 }

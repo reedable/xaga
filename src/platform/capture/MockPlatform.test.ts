@@ -81,6 +81,53 @@ describe("capture platform", () => {
     }
   });
 
+  it("edits nested groups atomically, preserves idempotent pins, and promotes children on removal", async () => {
+    const platform = new MockPlatform();
+    await platform.organizePins({
+      action: "createGroup",
+      id: "outer",
+      title: " Research ",
+      parent: null,
+    });
+    await platform.organizePins({
+      action: "createGroup",
+      id: "inner",
+      title: "Sources",
+      parent: "outer",
+    });
+    const target = { type: "topic" as const, id: "observations" };
+    await platform.organizePins({
+      action: "move",
+      node: target,
+      parent: "inner",
+    });
+    const before = await platform.listPins(signal());
+    await platform.setPin(target, true);
+    expect(await platform.listPins(signal())).toEqual(before);
+    await expect(
+      platform.organizePins({
+        action: "move",
+        node: { type: "group", id: "outer" },
+        parent: "inner",
+      })
+    ).rejects.toMatchObject({ code: "app:error" });
+    await expect(
+      platform.organizePins({ action: "renameGroup", id: "outer", title: " " })
+    ).rejects.toMatchObject({ code: "app:error" });
+    expect(await platform.listPins(signal())).toEqual(before);
+    await platform.organizePins({
+      action: "renameGroup",
+      id: "inner",
+      title: " Background ",
+    });
+    await platform.organizePins({ action: "removeGroup", id: "outer" });
+    const pins = await platform.listPins(signal());
+    expect(pins).toEqual([
+      { type: "group", id: "inner", title: "Background", children: [target] },
+    ]);
+    expect((await platform.readTopic(signal(), target.id)).isPinned).toBe(true);
+  });
+
   it("replays generated identities, dates, and edits from a fresh instance", async () => {
     async function replay() {
       const platform = new MockPlatform();

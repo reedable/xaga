@@ -7,6 +7,7 @@ export const captureImages: Readonly<Record<string, string>> = {
   "../images/capture/water.png": waterImage,
   "../images/capture/wood.png": woodImage,
 };
+import type { PinNode } from "../../pins";
 import type { Article, Feed, Topic, Tag } from "../../types";
 
 export const captureDate = "2026-01-15T12:00:00.000Z";
@@ -92,6 +93,27 @@ export function createFixtures() {
   };
 }
 
+function nestedShortcutGroups(
+  depth: number,
+  prefix: string,
+  members: PinNode[]
+): PinNode {
+  let node: PinNode = {
+    type: "group",
+    id: `${prefix}-${depth}`,
+    title: `${prefix} level ${depth}`,
+    children: members,
+  };
+  for (let level = depth - 1; level > 0; level--)
+    node = {
+      type: "group",
+      id: `${prefix}-${level}`,
+      title: `${prefix} level ${level}`,
+      children: [node],
+    };
+  return node;
+}
+
 /** Long lists and valid nested groups for height-responsive sidebar workflows. */
 export function createSidebarHeightFixtures() {
   const template = createFixtures().topics[0];
@@ -107,31 +129,60 @@ export function createSidebarHeightFixtures() {
     type: "topic" as const,
     id: topic.id,
   }));
-  const branch = (
-    depth: number,
-    prefix: string,
-    members: import("../../pins").PinNode[]
-  ): import("../../pins").PinNode => {
-    let node: import("../../pins").PinNode = {
-      type: "group",
-      id: `${prefix}-${depth}`,
-      title: `${prefix} level ${depth}`,
-      children: members,
-    };
-    for (let level = depth - 1; level > 0; level--)
-      node = {
-        type: "group",
-        id: `${prefix}-${level}`,
-        title: `${prefix} level ${level}`,
-        children: [node],
-      };
-    return node;
-  };
   return {
     topics,
     pins: [
-      branch(5, "Five", targets.slice(0, 40)),
-      branch(24, "Deep", targets.slice(40)),
+      nestedShortcutGroups(5, "Five", targets.slice(0, 40)),
+      nestedShortcutGroups(24, "Deep", targets.slice(40)),
     ],
   };
+}
+
+/** Sibling boundaries, variable heading heights, counts, and deep stored trees. */
+export function createStickyShortcutFixtures() {
+  const { topics } = createSidebarHeightFixtures();
+  const targets = topics.map((topic) => ({
+    type: "topic" as const,
+    id: topic.id,
+  }));
+  const pins: PinNode[] = [
+    {
+      type: "group",
+      id: "research",
+      title: "Research",
+      children: [
+        {
+          type: "group",
+          id: "background",
+          title: "Background with a long title that wraps over several lines",
+          children: [
+            {
+              type: "group",
+              id: "sources",
+              title: "Sources",
+              children: [
+                { type: "topic", id: "observations" },
+                ...targets.slice(0, 20),
+              ],
+            },
+          ],
+        },
+        {
+          type: "group",
+          id: "methods",
+          title: "Methods",
+          children: targets.slice(20, 40),
+        },
+      ],
+    },
+    {
+      type: "group",
+      id: "work",
+      title: "Work",
+      children: targets.slice(40, 60),
+    },
+    nestedShortcutGroups(5, "Five", targets.slice(60, 70)),
+    nestedShortcutGroups(24, "Deep", targets.slice(70)),
+  ];
+  return { topics, pins };
 }

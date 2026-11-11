@@ -205,6 +205,30 @@ scanning article files. Interrupted upgrades can be retried. Older libraries
 still run their required conversions before completion. Version mismatch keeps
 older applications from writing upgraded libraries.
 
+### Sticky group headings
+
+In the sidebar's Shortcuts scrolling area, group headings at levels one through
+five remain visible while their descendants scroll beneath them. Root groups are
+level one. Nested headings stack below ancestors and leave as their group ends;
+sibling headings replace one another. Deeper headings scroll normally. This is a
+display cap and does not change the supported 24-level stored hierarchy or edits.
+The behavior applies in both expandable-section and compact-selector layouts.
+
+The existing heading controls are positioned directly, without duplicate
+navigation or accessible headings. A resize observer measures their actual
+heights and updates ancestor-height offsets in rem after wrapping, font changes,
+resizing, expansion, and filtering. Opaque theme backgrounds and ancestor stacking
+order prevent scrolled descendants from showing through headings. Actions and
+unread counts retain their existing visibility and accessibility contracts.
+
+The five-level cap is fixed. There is no adaptive heading selection or reserved
+space for shortcuts. A sufficiently short viewport or tall wrapped headings can
+therefore fill the list viewport and obscure shortcuts. This limitation is
+available for hands-on review before choosing further overflow behavior. The
+[browser workflow](../development/browser_tests.md#sticky-group-headings) includes
+a reproduction and screenshot.
+
+
 ## Native menu
 
 The native macOS **Shortcuts** menu sits immediately right of **History**.

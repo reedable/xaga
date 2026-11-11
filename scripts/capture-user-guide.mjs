@@ -159,6 +159,68 @@ try {
       page.getByRole("button", { name: /^A garden for every season / })
     ).toBeVisible();
 
+    // Capture compact navigation and sticky groups through the same platform.
+    await page.goto(captureURL.href);
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-capture-ready",
+      "true"
+    );
+    await page.getByRole("button", { name: "All", exact: true }).click();
+    await page
+      .getByRole("button", { name: /^A garden for every season / })
+      .click();
+    await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
+      "A garden for every season"
+    );
+    await page.getByTestId("sidebar-topics-toggle").click();
+    await page.setViewportSize({ width: 1440, height: 480 });
+    await expect(
+      page.getByTestId("sidebar-list-selector").getByRole("combobox")
+    ).toBeVisible();
+    await page.mouse.move(1000, 400);
+    await page.screenshot({
+      path: `${output}/sidebar-compact${theme === "dark" ? "-dark" : ""}.png`,
+      animations: "disabled",
+    });
+
+    const groupsURL = new URL(captureURL);
+    groupsURL.searchParams.set("scenario", "sidebar-sticky");
+    await page.goto(groupsURL.href);
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-capture-ready",
+      "true"
+    );
+    await page
+      .locator('[data-shortcut-group="research"]')
+      .evaluate((element) => {
+        let scroll = element.parentElement;
+        while (getComputedStyle(scroll).overflowY !== "auto")
+          scroll = scroll.parentElement;
+        scroll.scrollTop +=
+          element.getBoundingClientRect().top -
+          scroll.getBoundingClientRect().top +
+          300;
+      });
+    await expect
+      .poll(() =>
+        page.locator('[data-group-heading="sources"]').evaluate((element) => {
+          const previous = document
+            .querySelector('[data-group-heading="background"]')
+            .getBoundingClientRect();
+          return (
+            Math.abs(element.getBoundingClientRect().top - previous.bottom) < 1
+          );
+        })
+      )
+      .toBe(true);
+    await page
+      .getByTestId("sidebar-lists")
+      .locator("..")
+      .screenshot({
+        path: `${output}/shortcut-groups${theme === "dark" ? "-dark" : ""}.png`,
+        animations: "disabled",
+      });
+
     expect(remote, "Guide examples make no remote requests").toEqual([]);
     await context.close();
   }

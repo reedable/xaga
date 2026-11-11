@@ -17,7 +17,10 @@ import {
 import {
   useEffect,
   useId,
+  useLayoutEffect,
+  useRef,
   useState,
+  type CSSProperties,
   type DragEvent,
   type ReactNode,
 } from "react";
@@ -29,6 +32,7 @@ import { useErrorSink } from "../../hooks/useErrorSink";
 import { getViewState, setViewState } from "../../storage/viewState";
 import { filterPinTree, type ShortcutNode } from "../../utils/projectPinTree";
 import UnreadCount from "./UnreadCount";
+import cx from "../../utils/cx";
 import css from "./ShortcutTree.module.css";
 
 const DRAG_TYPE = "application/x-xaga-pin";
@@ -46,6 +50,7 @@ export default function ShortcutTree({
   createRequest,
   renderTarget,
 }: Props) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const { organizePins, setPin } = usePins();
   const platform = usePlatform();
   const readOnly = useLibraryReadOnly();
@@ -89,6 +94,46 @@ export default function ShortcutTree({
       active = false;
     };
   }, [platform, pushError]);
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const headings = [
+      ...root.querySelectorAll<HTMLElement>("[data-sticky-group-heading]"),
+    ];
+    const measure = () => {
+      const rootSize = parseFloat(
+        getComputedStyle(document.documentElement).fontSize
+      );
+      for (const heading of headings) {
+        let offset = 0;
+        let ancestor =
+          heading.parentElement?.parentElement?.closest<HTMLElement>(
+            "[data-shortcut-group]"
+          );
+        while (ancestor && root.contains(ancestor)) {
+          const parentHeading = ancestor.querySelector<HTMLElement>(
+            ":scope > [data-sticky-group-heading]"
+          );
+          if (parentHeading)
+            offset += parentHeading.getBoundingClientRect().height;
+          ancestor = ancestor.parentElement?.closest<HTMLElement>(
+            "[data-shortcut-group]"
+          );
+        }
+        heading.style.setProperty(
+          "--shortcut-heading-offset",
+          `${offset / rootSize}rem`
+        );
+      }
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    headings.forEach((heading) => observer.observe(heading));
+    return () => observer.disconnect();
+  }, [nodes, filter, expanded]);
 
   function expand(id: string, value: boolean) {
     setExpanded((current) => ({ ...current, [id]: value }));
@@ -187,7 +232,7 @@ export default function ShortcutTree({
     );
   }
 
-  function render(nodes: ShortcutNode[]): ReactNode {
+  function render(nodes: ShortcutNode[], depth = 0): ReactNode {
     return nodes.map((node) => {
       const group =
         node.reference.type === "group" ? node.reference : undefined;
@@ -197,6 +242,7 @@ export default function ShortcutTree({
         <div
           key={pinKey(node.reference)}
           className={css.TreeNode}
+          data-shortcut-group={group?.id}
           draggable={!readOnly && !busy}
           onDragStart={(event) => {
             setDragging(true);
@@ -212,7 +258,16 @@ export default function ShortcutTree({
           onDrop={group ? (event) => drop(event, group.id) : undefined}
         >
           <div
-            className={css.NodeRow}
+            className={cx(css.NodeRow, group && depth < 5 && css.StickyGroup)}
+            data-group-heading={group?.id}
+            data-sticky-group-heading={
+              group && depth < 5 ? group.id : undefined
+            }
+            style={
+              group && depth < 5
+                ? ({ "--shortcut-heading-depth": depth } as CSSProperties)
+                : undefined
+            }
             data-actions-open={
               (actionMenu &&
                 pinKey(actionMenu.node.reference) === pinKey(node.reference)) ||
@@ -260,7 +315,7 @@ export default function ShortcutTree({
               <div className={css.GroupChildrenContainer}>
                 <div className={css.GroupChildren}>
                   {node.children?.length ? (
-                    render(node.children)
+                    render(node.children, depth + 1)
                   ) : (
                     <span className={css.Empty}>Empty</span>
                   )}
@@ -294,6 +349,7 @@ export default function ShortcutTree({
   return (
     <>
       <div
+        ref={rootRef}
         className={css.RootDrop}
         onDragOver={allowDrop}
         onDrop={(event) => drop(event, null)}
@@ -408,6 +464,7 @@ export default function ShortcutTree({
           <DialogContent>
             <TextField
               autoFocus
+              name="group-title"
               label="Title"
               margin="normal"
               value={titleDialog?.title ?? ""}
@@ -447,6 +504,7 @@ export default function ShortcutTree({
         <DialogContent>
           <TextField
             select
+            data-testid="shortcut-destination"
             label="Destination"
             margin="normal"
             slotProps={{
@@ -462,7 +520,11 @@ export default function ShortcutTree({
               Top level of Shortcuts
             </MenuItem>
             {destinations(nodes).map((group) => (
-              <MenuItem key={group.id} value={group.id}>
+              <MenuItem
+                data-testid="shortcut-destination-group"
+                key={group.id}
+                value={group.id}
+              >
                 {group.title}
               </MenuItem>
             ))}
