@@ -33,7 +33,10 @@ export function TitleBar({ className }: TitleBarProps) {
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
     >
-      <div className={css.TrafficLightSpacer} />
+      <div
+        className={css.TrafficLightSpacer}
+        data-testid="traffic-light-spacer"
+      />
     </div>
   );
 }

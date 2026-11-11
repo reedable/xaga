@@ -49,9 +49,12 @@
         flex-direction: column;
         width: 100%;
 
-        .RefreshButton {
+        .RefreshControl {
           align-self: flex-end;
-          margin-right: 4px;
+        }
+
+        .RefreshButton {
+          margin-right: 0.25rem;
         }
 
         & > div {

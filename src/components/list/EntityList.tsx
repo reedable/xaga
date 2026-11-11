@@ -801,7 +801,7 @@ export function EntityList({
                     : "Refresh"
                 }
               >
-                <span>
+                <span className={css.RefreshControl}>
                   <IconButton
                     className={cx(
                       css.RefreshButton,

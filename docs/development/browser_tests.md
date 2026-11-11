@@ -141,6 +141,13 @@ This suite establishes UI integration with the in-memory platform. Native IPC,
 filesystem persistence, backend correctness, and native-only workflows require
 the existing component, Rust, and GUI checks. Each suite can also be run individually. Screenshot baseline testing is outside this suite's coverage.
 
+`e2e/titlebar-controls.spec.ts` verifies that the responsive collection refresh
+control sits to the right of the reserved macOS traffic-light space, remains
+within its list column, and accepts focus and clicks at narrow widths. It also
+checks the disabled read-only control's tooltip. Browser measurements cover the
+reserved space; actual native window-button geometry requires a separate macOS
+check.
+
 ## Sticky group headings
 
 `e2e/shortcut-sticky.spec.ts` covers nested sticky geometry and release at sibling
