@@ -21,7 +21,7 @@ pub enum LibraryCommand {
 
 /// The CLI supplies its application version at runtime; core owns no global
 /// version for the user's libraries.
-pub(super) fn application_version() -> library::LibraryVersion {
+pub(crate) fn application_version() -> library::LibraryVersion {
     library::LibraryVersion::new(
         env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
         env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),

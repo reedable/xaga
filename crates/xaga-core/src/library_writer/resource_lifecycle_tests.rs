@@ -98,7 +98,7 @@ async fn legacy_favicon_refresh_and_failed_new_destination_preserve_existing_ass
     );
     let refreshed = save(&writer, "legacy", ICON, Some(PNG)).await;
     let reference = refreshed.favicon.unwrap();
-    assert!(reference.starts_with("../favicons/"));
+    assert!(reference.starts_with("../metadata/favicons/"));
     let blocked_url = "https://example.org/new-icon.png";
     let hash = crate::util::url_hash12(&crate::util::normalize_url(blocked_url).unwrap());
     std::fs::create_dir(crate::library::favicon_path(dir.path(), &hash)).unwrap();

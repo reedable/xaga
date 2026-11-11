@@ -18,11 +18,11 @@ const CACHE_BATCH_SIZE: usize = 1024;
 // Match the service's periodic maintenance pattern, counting conversion batch operations.
 const MAINTENANCE_BATCHES: usize = 100;
 
-type Error = Box<dyn std::error::Error + Send + Sync>;
+pub(super) type Error = Box<dyn std::error::Error + Send + Sync>;
 
 // Scoped to the exact file/library path so parallel failure tests cannot affect
 // each other. Production checkpoints compile down to an infallible no-op.
-fn checkpoint(path: &Path, phase: &str) -> Result<(), Error> {
+pub(super) fn checkpoint(path: &Path, phase: &str) -> Result<(), Error> {
     #[cfg(test)]
     if faults()
         .lock()
@@ -35,7 +35,8 @@ fn checkpoint(path: &Path, phase: &str) -> Result<(), Error> {
     Ok(())
 }
 #[cfg(test)]
-fn faults() -> &'static std::sync::Mutex<std::collections::HashSet<(std::path::PathBuf, String)>> {
+pub(super) fn faults()
+-> &'static std::sync::Mutex<std::collections::HashSet<(std::path::PathBuf, String)>> {
     static FAULTS: std::sync::OnceLock<
         std::sync::Mutex<std::collections::HashSet<(std::path::PathBuf, String)>>,
     > = std::sync::OnceLock::new();
@@ -287,7 +288,7 @@ fn convert_legacy(raw: &str, convert_reading_state: bool) -> Result<Conversion, 
     })
 }
 
-fn read_capped(path: &Path) -> Result<String, Error> {
+pub(super) fn read_capped(path: &Path) -> Result<String, Error> {
     let mut bytes = Vec::new();
     File::open(path)?
         .take(MAX_MD_BYTES + 1)
@@ -298,8 +299,27 @@ fn read_capped(path: &Path) -> Result<String, Error> {
     Ok(String::from_utf8(bytes)?)
 }
 
+pub(super) fn patch_favicon(raw: &str, reference: &str) -> Result<String, Error> {
+    let trimmed = raw.strip_prefix('\u{feff}').unwrap_or(raw);
+    let rest = trimmed.strip_prefix("---\n").ok_or("missing frontmatter")?;
+    let end = rest.find("\n---").ok_or("missing closing frontmatter")?;
+    let mut fields = BTreeMap::new();
+    fields.insert("favicon".into(), Value::String(reference.into()));
+    let yaml = patch_migration_fields(&rest[..end], &fields, &["favicon"])?;
+    let prefix = if raw.starts_with('\u{feff}') {
+        "\u{feff}"
+    } else {
+        ""
+    };
+    Ok(format!(
+        "{prefix}---\n{}{tail}",
+        yaml.trim_end_matches('\n'),
+        tail = &rest[end..]
+    ))
+}
+
 /// Sibling temp + fsync + rename + directory fsync, under the library lock.
-fn write_atomic(path: &Path, raw: &str, _lock: &FileLock) -> Result<(), Error> {
+pub(super) fn write_atomic(path: &Path, raw: &str, _lock: &FileLock) -> Result<(), Error> {
     let parent = path.parent().ok_or("article has no parent directory")?;
     let mut temp = tempfile::NamedTempFile::new_in(parent)?;
     temp.write_all(raw.as_bytes())?;
@@ -501,6 +521,19 @@ fn convert_markdown_pin(raw: &str) -> Result<Option<String>, Error> {
     )))
 }
 
+fn complete_upgrade(
+    dir: &Path,
+    target: library::LibraryVersion,
+    upgrade: library::LibraryUpgrade<'_>,
+) -> Result<(), Error> {
+    checkpoint(dir, "manifest_complete")?;
+    upgrade.complete()?;
+    if target >= library::LibraryVersion::new(0, 17) {
+        super::retire_legacy_lock(dir);
+    }
+    Ok(())
+}
+
 /// Convert under the caller's exclusive lock. Progress is advisory; only an
 /// error-free report means the manifest was completed. No model is loaded.
 pub async fn upgrade_library(
@@ -535,6 +568,18 @@ pub async fn upgrade_library(
         }
     };
 
+    if target >= library::LibraryVersion::new(0, 17)
+        && source_version.is_none_or(|v| v < library::LibraryVersion::new(0, 17))
+    {
+        if let Err(error) = super::layout::convert(dir, lock) {
+            report
+                .errors
+                .push(format!("layout conversion: {error}; rerun library upgrade"));
+            return report;
+        }
+        super::layout::rewrite_favicons(dir, lock, &mut report, &progress);
+    }
+
     // Optional annotation tags (0.16) and nested pins (0.15) preserve existing
     // source bytes and parent-ID transition checkpoints. Validate both stores
     // before advancing metadata; ordinary recovery rebuilds derived assignments.
@@ -550,9 +595,7 @@ pub async fn upgrade_library(
                 .push(format!("tag store: {error}; rerun library upgrade"));
         }
         if report.errors.is_empty() {
-            if let Err(error) = checkpoint(dir, "manifest_complete")
-                .and_then(|_| upgrade.complete().map_err(Into::into))
-            {
+            if let Err(error) = complete_upgrade(dir, target, upgrade) {
                 report
                     .errors
                     .push(format!("complete library upgrade: {error}"));
@@ -838,9 +881,7 @@ pub async fn upgrade_library(
         &report,
     ));
     if report.errors.is_empty() {
-        if let Err(error) = checkpoint(dir, "manifest_complete")
-            .and_then(|_| upgrade.complete().map_err(Into::into))
-        {
+        if let Err(error) = complete_upgrade(dir, target, upgrade) {
             report
                 .errors
                 .push(format!("complete library upgrade: {error}"));
@@ -1018,6 +1059,7 @@ mod tests {
     async fn nested_pin_upgrade_preserves_flat_bytes_and_resumes_pending_metadata() {
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         library::LibraryManifest::begin_upgrade(
             dir.path(),
             library::LibraryVersion::new(0, 14),
@@ -1055,6 +1097,7 @@ mod tests {
     async fn nested_pin_upgrade_keeps_invalid_store_pending_and_can_retry() {
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         library::LibraryManifest::begin_upgrade(
             dir.path(),
             library::LibraryVersion::new(0, 14),
@@ -1087,6 +1130,7 @@ mod tests {
         use crate::pins::{PinTarget, Pins};
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         let pins = Pins {
             pins: vec![
                 PinTarget::Site {
@@ -1221,6 +1265,7 @@ custom:
         use crate::pins::{PinTarget, Pins};
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         let article = seed(
             dir.path(),
             "article",
@@ -1299,6 +1344,7 @@ custom:
         use crate::pins::{PinTarget, Pins};
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         let path = library::feed_path(dir.path(), "large");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         let content = "a".repeat(MAX_MD_BYTES as usize + 1024);
@@ -1333,6 +1379,7 @@ custom:
     async fn pin_conversion_keeps_markdown_limit_and_reports_the_source_path() {
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         let path = seed(dir.path(), "oversized", "tags: [pinned]");
         let mut raw = fs::read_to_string(&path).unwrap();
         raw.push_str(&"a".repeat(MAX_MD_BYTES as usize));
@@ -1360,7 +1407,12 @@ custom:
         ] {
             let dir = tempfile::tempdir().unwrap();
             let lock = library::acquire_lock(dir.path()).unwrap();
-            let path = dir.path().join(folder).join(name);
+            fs::create_dir_all(dir.path().join("metadata")).unwrap();
+            let path = if folder == "feeds" {
+                library::feeds_dir(dir.path()).join(name)
+            } else {
+                dir.path().join(folder).join(name)
+            };
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(&path, raw).unwrap();
             let error = convert_pins(dir.path(), &lock)
@@ -1391,6 +1443,7 @@ custom:
     async fn retry_repairs_existing_cache_preserves_other_columns_and_leaves_files_untouched() {
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         let path = seed(
             dir.path(),
             "entry",
@@ -1537,6 +1590,7 @@ custom:
             );
             let original = fs::read_to_string(&path).unwrap();
             let lock = library::acquire_lock(dir.path()).unwrap();
+            fs::create_dir_all(dir.path().join("metadata")).unwrap();
             // Include a real cache row: reconciliation must repair it on retry,
             // preserving columns owned by other parts of the application.
             let cache = table(dir.path(), &lock).await;
@@ -1648,6 +1702,7 @@ custom:
         let bad = library::entry_path(dir.path(), "unreadable");
         fs::create_dir(&bad).unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         let report = run_upgrade(dir.path(), &lock).await;
         assert!(!report.errors.is_empty());
         assert!(bad.is_dir());
@@ -1674,6 +1729,7 @@ custom:
         let before = fs::read_to_string(&bad).unwrap();
         let good = seed(dir.path(), "good", "tags: [pinned, unread]");
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         let report = run_upgrade(dir.path(), &lock).await;
         assert!(!report.errors.is_empty());
         assert_eq!(fs::read_to_string(&bad).unwrap(), before);
@@ -1747,8 +1803,10 @@ custom:
         let dir = tempfile::tempdir().unwrap();
         let path = seed(dir.path(), "entry", "tags: [unread]");
         let original = fs::read_to_string(&path).unwrap();
+        fs::create_dir_all(library::index_path(dir.path()).parent().unwrap()).unwrap();
         fs::write(library::index_path(dir.path()), "not a database directory").unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         let report = run_upgrade(dir.path(), &lock).await;
         assert!(!report.errors.is_empty());
         assert!(report.errors[0].contains("cache"));
@@ -1762,6 +1820,7 @@ custom:
     async fn tag_upgrade_013_preserves_labels_and_retries_without_rekeying() {
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         library::LibraryManifest::begin_upgrade(
             dir.path(),
             library::LibraryVersion::new(0, 13),
@@ -1844,6 +1903,7 @@ custom:
     async fn tag_upgrade_012_only_interprets_markers_owned_by_that_format() {
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         library::LibraryManifest::begin_upgrade(
             dir.path(),
             library::LibraryVersion::new(0, 12),
@@ -1868,6 +1928,7 @@ custom:
     async fn tag_upgrade_crosses_batch_boundary_and_keeps_first_discovered_spelling() {
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         library::LibraryManifest::begin_upgrade(
             dir.path(),
             library::LibraryVersion::new(0, 13),
@@ -1991,6 +2052,7 @@ custom:
     async fn newer_app_finishes_an_interrupted_older_upgrade_from_mixed_files() {
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         library::LibraryManifest::begin_upgrade(
             dir.path(),
             library::LibraryVersion::new(0, 9),
@@ -2123,6 +2185,7 @@ mod annotation_tag_upgrade_tests {
     async fn annotation_tag_upgrade_preserves_pending_transitions_and_retries_validation() {
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
+        fs::create_dir_all(dir.path().join("metadata")).unwrap();
         library::LibraryManifest::begin_upgrade(
             dir.path(),
             library::LibraryVersion::new(0, 15),
@@ -2132,7 +2195,7 @@ mod annotation_tag_upgrade_tests {
         .unwrap()
         .complete()
         .unwrap();
-        let tag_path = dir.path().join("tags.yaml");
+        let tag_path = library::tags_path(dir.path());
         fs::write(&tag_path, "tags: [invalid").unwrap();
         let failed = run_upgrade(dir.path(), &lock).await;
         assert!(!failed.errors.is_empty());
@@ -2171,7 +2234,7 @@ pub struct UpgradeProgress {
     pub reconciled: usize,
 }
 impl UpgradeProgress {
-    fn from_report(phase: UpgradePhase, report: &UpgradeReport) -> Self {
+    pub(super) fn from_report(phase: UpgradePhase, report: &UpgradeReport) -> Self {
         Self {
             phase,
             converted: report.converted,

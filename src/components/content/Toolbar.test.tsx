@@ -167,7 +167,10 @@ it("disables pinning in read-only mode", async () => {
   expect(mocks.setPin).not.toHaveBeenCalled();
 });
 
-it.each(["../favicons/0123456789ab", "../images/article/0123456789ab"])(
+it.each([
+  "../metadata/favicons/0123456789ab",
+  "../images/article/0123456789ab",
+])(
   "displays cached favicon %s through local IPC in read-only mode",
   async (reference) => {
     mocks.readOnly = true;
@@ -193,7 +196,7 @@ it.each(["../favicons/0123456789ab", "../images/article/0123456789ab"])(
 
 it.each([
   "https://example.org/icon.png",
-  "../favicons/0123456789ab",
+  "../metadata/favicons/0123456789ab",
   "../images/foreign/0123456789ab",
   "../images/article/../../private.png",
 ])(

@@ -10,9 +10,11 @@ Open Library** to select your library folder. See the
 [library upgrade instructions](library_upgrade.md) when preparing a new folder
 or opening a library from an older version. Opening a folder does not upgrade it.
 
-A library that opens read-only shows an explanation before model startup. Choose
-**Upgrade** for an older library or interrupted upgrade, or **Continue read-only**
-to browse. The **Read-only** button in the sidebar reopens the explanation.
+An old directory layout must be upgraded before you can browse it. Choose
+**Upgrade**, **Choose another Library**, or **Quit** in the startup explanation.
+Failed or interrupted layout conversion must finish before opening that library.
+For a library already using the new layout, **Continue read-only** remains
+available when applicable. The **Read-only** button reopens its explanation.
 Back up the entire library folder and close other Xaga windows before upgrading.
 To undo the upgrade, restore that backup. Keep Xaga open for progress and retry
 feedback; after success it restarts and checks write access again.

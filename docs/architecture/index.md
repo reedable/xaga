@@ -49,3 +49,5 @@ Architecture of the security-critical paths, in [security/](security/). These de
 7. [Embedding model trust](security/embedding_model_trust.md) — trust moved in time, not eliminated: every download verifies against a pinned manifest; the chain runs cryptographic → procedural → infrastructural → reputational, ending at the publisher and the app's own binary.
 
 [Feed refresh](feed_refresh.md) — partial outcomes, safe reporting, retry, and startup behavior.
+
+[Library directory layout](library_layout.md) — visible persistent data, internal runtime files, and the 0.17 conversion.

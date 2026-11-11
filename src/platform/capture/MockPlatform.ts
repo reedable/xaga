@@ -176,6 +176,8 @@ export class MockPlatform implements Platform {
     this.emit(event, value);
     return value;
   }
+  quitApp: Platform["quitApp"] = async () => {};
+
   getLibraryStatus: Platform["getLibraryStatus"] = async () => {
     const kind =
       this.scenario === "upgrade-status-change" && this.readOnlyContinued
@@ -219,6 +221,8 @@ export class MockPlatform implements Platform {
               ? "0.16"
               : null,
       readOnlyCause: cause,
+      layoutUpgradeRequired:
+        this.scenario?.startsWith("upgrade-layout") ?? false,
       metadataError:
         kind === "invalid"
           ? "The library version metadata is malformed."
@@ -252,9 +256,11 @@ export class MockPlatform implements Platform {
       throw new Error("fixture polling interruption");
     if (this.upgrade.state === "running" && ++this.upgradePolls >= 3) {
       this.upgrade =
-        ["upgrade-failure", "upgrade-read-failure"].includes(
-          this.scenario ?? ""
-        ) && this.upgradeAttempts === 1
+        [
+          "upgrade-failure",
+          "upgrade-read-failure",
+          "upgrade-layout-failure",
+        ].includes(this.scenario ?? "") && this.upgradeAttempts === 1
           ? {
               state: "failed",
               read_error:

@@ -161,6 +161,7 @@ mod tests {
         // writer of a different library), and settings/mode reads are process-local.
         for command in [
             "set_library",
+            "quit_app",
             "get_library",
             "is_library_read_only",
             "set_theme",
@@ -193,5 +194,53 @@ mod tests {
         // Its incidental mark-read write no-ops in-command on a read-only instance
         // (reading stays seamless), so gating it here would break reads.
         assert!(!WRITE_COMMANDS.contains(&"read_article"));
+    }
+}
+
+/// Only startup, settings, and explicit conversion operations are available
+/// until the old directory layout has been converted and the app restarted.
+pub(crate) fn is_layout_gate_allowed(command: &str) -> bool {
+    matches!(
+        command,
+        "quit_app"
+            | "get_library"
+            | "get_library_status"
+            | "get_library_upgrade"
+            | "is_library_read_only"
+            | "start_library_upgrade"
+            | "restart_after_library_upgrade"
+            | "set_library"
+            | "embedding_startup_state"
+            | "take_ui_errors"
+            | "set_find_enabled"
+            | "set_shortcuts_menu"
+    ) || crate::command_policy::SETTINGS_COMMANDS.contains(&command)
+}
+
+#[cfg(test)]
+mod layout_gate_tests {
+    #[test]
+    fn gate_allows_conversion_and_exit_but_refuses_library_browsing() {
+        for command in [
+            "get_library_status",
+            "start_library_upgrade",
+            "get_library_upgrade",
+            "set_library",
+            "quit_app",
+            "get_theme",
+        ] {
+            assert!(super::is_layout_gate_allowed(command), "{command}");
+        }
+        for command in [
+            "continue_library_read_only",
+            "read_article",
+            "list_feeds",
+            "list_topics",
+            "read_entry_images",
+            "list_all_entities",
+            "create_article",
+        ] {
+            assert!(!super::is_layout_gate_allowed(command), "{command}");
+        }
     }
 }

@@ -1,14 +1,15 @@
 # Upgrading a library
 
 Use Xaga matching the library format you want to run. The current app and CLI
-use format **0.16**. Opening a library does not upgrade it automatically.
+use format **0.17**. Opening a library does not upgrade it automatically.
 
 ## Upgrade in Xaga
 
 1. Back up the entire library folder and close other Xaga windows.
 2. Open the library. A read-only explanation appears before model initialization
-   or download. Choose **Upgrade** to convert it, or **Continue read-only** to
-   browse without converting. The sidebar's **Read-only** button reopens this
+   or download. For an old directory layout, choose **Upgrade**, **Choose another Library**,
+   or **Quit**. Conversion must finish before browsing; **Continue read-only**
+   remains available for compatible new-layout libraries when applicable. The sidebar's **Read-only** button reopens this
    dialog.
 3. Read the target version and backup instructions before choosing **Upgrade**.
    Older versions of Xaga will not be able to edit the upgraded library. To undo the
@@ -60,7 +61,7 @@ version metadata, or an incomplete upgrade select read-only mode at startup.
 
 1. Close Xaga and other processes using the library.
 2. Back up the library before changing its format.
-3. Run the CLI matching your destination app version (currently 0.16.0-dev):
+3. Run the CLI matching your destination app version (currently 0.17.0-dev):
 
    ```sh
    xaga-cli --data-dir /path/to/library library upgrade
@@ -123,7 +124,7 @@ entity files or cache rows. Cache pin reconciliation applies only to Entry,
 Feed, and Topic targets. Existing Site pins are retained on interrupted retries.
 
 Site pins require library version **0.12** or later. Successful conversion
-advances the manifest to the running caller’s major/minor version, currently **0.16**.
+advances the manifest to the running caller’s major/minor version, currently **0.17**.
 Version-mismatched libraries open read-only until explicitly upgraded; the app
 never relabels them automatically. Returning to an older app format requires
 restoring the complete backup.
@@ -180,7 +181,7 @@ Startup never rewrites the version to make it match. Read-only opening does not
 perform recovery or initialize an absent cache. Explicit CLI upgrade errors still
 produce a nonzero exit status; close library users before upgrading.
 
-Migration targets use the running caller’s major/minor version, currently **0.16**;
+Migration targets use the running caller’s major/minor version, currently **0.17**;
 there is no separately assigned library revision number.
 
 ## Entry tag identities (0.14)
@@ -233,3 +234,17 @@ Invalid stores leave the target pending and the library read-only. Correct the
 reported problem and retry with the same destination CLI. Interruption preserves
 the pending target; retry neither changes tag identities nor drops unfinished
 transitions. Older applications open 0.16 libraries read-only.
+
+## Library directory layout (0.17)
+
+The 0.17 upgrade moves supporting data into visible `metadata/` and runtime
+files into `.xaga/`. See [Library directory layout](architecture/library_layout.md)
+for the complete structure and backup contract. Existing database files move
+without discarding vectors. Shared favicon references are updated in Markdown;
+article body image references and primary content directory locations remain.
+
+This layout conversion is required before browsing an old-layout library,
+including read-only browsing. Failed or interrupted conversion keeps that gate
+in place; retry the upgrade, select another library, or quit. Conversion still
+requires your confirmation and never runs automatically. This requirement is
+specific to the layout transition, not every future format upgrade.

@@ -38,6 +38,17 @@ fn main() {
             "commands": { "allow": commands }
         }));
     }
+    let settings: Vec<_> = registry["trusted"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|value| value.as_str())
+        .filter(|path| path.starts_with("commands::settings::"))
+        .map(|path| path.rsplit("::").next().unwrap())
+        .collect();
+    constants.push_str(&format!(
+        "pub const SETTINGS_COMMANDS: &[&str] = &{settings:?};\n"
+    ));
     fs::write(out.join("command_policy.rs"), constants).unwrap();
     fs::write(
         out.join("command_handler.rs"),

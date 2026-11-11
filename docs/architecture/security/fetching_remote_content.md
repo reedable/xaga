@@ -339,7 +339,7 @@ thumbnails PNG/JPEG/GIF/ICO/WebP to at most 64-by-64 with preserved aspect ratio
 and PNG encoding. SVG and AVIF retain their validated original bytes because the
 Rust thumbnail decoder does not support them. Recovery always retains original
 bytes. The resulting data URI rejoins `LoaderCapture`. The library writer stores
-it at the extensionless shared path `favicons/<normalized-url-hash>` and records
+it at the extensionless shared path `metadata/favicons/<normalized-url-hash>` and records
 only that local reference in the article. A successful later remote load
 atomically replaces the same identity; acquisition failure preserves the cached
 resource. PDF validation remains separate.

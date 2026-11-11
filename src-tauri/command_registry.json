@@ -39,6 +39,7 @@
     "commands::entries::mark_entry_unread",
     "commands::entries::list_all_entities",
     "commands::library::get_library",
+    "commands::library::quit_app",
     "commands::library::get_library_status",
     "commands::library::get_library_upgrade",
     "commands::library::continue_library_read_only",

@@ -123,9 +123,25 @@ pub async fn get_library_upgrade(state: State<'_, AppState>) -> Result<UpgradeSt
 /// Only an explicit read-only choice releases model startup. Notify retains a
 /// permit if the command arrives before the startup task begins waiting.
 #[tauri::command]
-pub async fn continue_library_read_only(state: State<'_, AppState>) -> Result<(), AppError> {
+pub async fn continue_library_read_only(
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), AppError> {
+    let library = state.library.read().unwrap();
+    if xaga_core::library::LibraryStatus::read(
+        &library.path,
+        application_version(&app),
+        library.writer.is_some(),
+    )
+    .layout_upgrade_required
+    {
+        return Err(AppError::ReadOnly);
+    }
     let operation = state.library_upgrade.lock().unwrap();
-    if matches!(*operation, UpgradeState::Running { .. }) {
+    if matches!(
+        *operation,
+        UpgradeState::Running { .. } | UpgradeState::Succeeded { .. }
+    ) {
         return Err(AppError::ReadOnly);
     }
     state.read_only_startup.notify_one();
@@ -588,8 +604,8 @@ mod tests {
             serde_json::to_value(cli_report).unwrap()
         );
         assert_eq!(
-            std::fs::read(app_dir.path().join("library.yaml")).unwrap(),
-            std::fs::read(cli_dir.path().join("library.yaml")).unwrap()
+            std::fs::read(app_dir.path().join("metadata/library.yaml")).unwrap(),
+            std::fs::read(cli_dir.path().join("metadata/library.yaml")).unwrap()
         );
         // Migration completion cannot bypass another writer on normal reopen.
         let other_writer = library::acquire_lock(app_dir.path()).unwrap();
@@ -607,4 +623,9 @@ impl Drop for RestartGuard {
             *restarting = false;
         }
     }
+}
+
+#[tauri::command]
+pub fn quit_app(app: AppHandle) {
+    app.exit(0);
 }

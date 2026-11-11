@@ -63,6 +63,19 @@ async fn main() {
     let rc = settings::load();
     let data_dir = settings::resolve_data_dir(cli.data_dir, &rc);
 
+    if !matches!(&cli.command, Command::Library(_) | Command::Config(_)) {
+        let status = xaga_core::library::LibraryStatus::read(
+            &data_dir,
+            cmd::library::application_version(),
+            false,
+        );
+        if status.layout_upgrade_required {
+            die(
+                "This library must finish its directory layout upgrade before use. Back up the library, close other library users, and run library upgrade with this Xaga version.",
+            );
+        }
+    }
+
     match cli.command {
         Command::Feeds(args) => cmd::feeds::handle(args.subcommand, &data_dir).await,
         Command::Articles(args) => {

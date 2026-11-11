@@ -572,6 +572,7 @@ mod tests {
     #[tokio::test]
     async fn nested_validation_rejects_duplicate_targets_groups_and_excessive_depth() {
         let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(library::pins_path(dir.path()).parent().unwrap()).unwrap();
         for raw in [
             "pins: [{type: group, id: g, title: G, children: [{type: entry, id: a}]}, {type: entry, id: a}]",
             "pins: [{type: group, id: g, title: G, children: [{type: group, id: g, title: G, children: []}]}]",
@@ -736,6 +737,7 @@ mod tests {
     #[tokio::test]
     async fn site_metadata_rejects_normalized_duplicates_and_unknown_fields() {
         let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(library::pins_path(dir.path()).parent().unwrap()).unwrap();
         for raw in [
             "pins: [{type: site, hostname: example.com}, {type: site, hostname: EXAMPLE.COM.}]",
             "pins: [{type: site, id: example.com}]",
@@ -828,6 +830,7 @@ mod tests {
     #[tokio::test]
     async fn invalid_stores_and_targets_never_overwrite_membership() {
         let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(library::pins_path(dir.path()).parent().unwrap()).unwrap();
         let writer = LibraryWriter::start(
             dir.path().into(),
             library::acquire_lock(dir.path()).unwrap(),

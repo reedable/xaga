@@ -158,12 +158,13 @@ export default function LibraryUpgradeControl({
   const canUpgrade =
     cause === "older" || cause === "unversioned" || cause === "pending_upgrade";
   const needsNewApp = cause === "newer" || cause === "pending_other_version";
+  const mandatory = status?.layoutUpgradeRequired ?? true;
   const busy = submitting || upgrade.state === "running" || restarting;
   const description = status
     ? explanation(status)
     : (error ?? "Checking library compatibility…");
   const close = async () => {
-    if (busy) return;
+    if (busy || mandatory) return;
     try {
       await platform.continueLibraryReadOnly();
       continued.current = true;
@@ -270,6 +271,13 @@ export default function LibraryUpgradeControl({
                 {(cause !== "older" || !canUpgrade) && (
                   <DialogContentText>{description}</DialogContentText>
                 )}
+                {mandatory && (
+                  <DialogContentText>
+                    This library must finish its directory layout upgrade before
+                    it can be opened. You can upgrade it, choose another
+                    library, or quit.
+                  </DialogContentText>
+                )}
                 {canUpgrade && (
                   <>
                     <DialogContentText>
@@ -314,7 +322,31 @@ export default function LibraryUpgradeControl({
           )}
         </DialogContent>
         <DialogActions>
-          {!busy && (
+          {!busy && mandatory && (
+            <>
+              <Button
+                disabled={succeeded}
+                data-testid="choose-library"
+                onClick={async () => {
+                  try {
+                    const path = await platform.openFileDialog(true);
+                    if (path) await platform.setLibrary(path);
+                  } catch {
+                    setError("The library could not be switched. Try again.");
+                  }
+                }}
+              >
+                Choose another Library
+              </Button>
+              <Button
+                data-testid="quit-xaga"
+                onClick={() => void platform.quitApp()}
+              >
+                Quit
+              </Button>
+            </>
+          )}
+          {!busy && !mandatory && (
             <Button
               data-testid="continue-read-only"
               onClick={() => void close()}

@@ -38,7 +38,7 @@ fn info_reads_each_library_version_without_modifying_it_or_enforcing_compatibili
         .complete()
         .unwrap();
     for (path, expected) in [(dir.path(), "0.9"), (second.path(), "999.1")] {
-        let before = std::fs::read(path.join("library.yaml")).unwrap();
+        let before = std::fs::read(path.join("metadata/library.yaml")).unwrap();
         let result = cli(path, &["library", "info"]);
         assert!(result.status.success());
         assert!(
@@ -46,7 +46,10 @@ fn info_reads_each_library_version_without_modifying_it_or_enforcing_compatibili
                 .unwrap()
                 .contains(&format!("Library version: {expected}"))
         );
-        assert_eq!(std::fs::read(path.join("library.yaml")).unwrap(), before);
+        assert_eq!(
+            std::fs::read(path.join("metadata/library.yaml")).unwrap(),
+            before
+        );
         assert!(!library::index_path(path).exists());
     }
     let upgrade = LibraryManifest::begin_upgrade(dir.path(), "0.10".parse().unwrap(), &lock)
@@ -61,18 +64,17 @@ fn info_reads_each_library_version_without_modifying_it_or_enforcing_compatibili
 }
 
 #[test]
-fn normal_cli_reads_are_not_blocked_by_the_app_startup_policy() {
+fn completed_new_layout_cli_reads_are_not_blocked_by_version_mismatch() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir(library::entries_dir(dir.path())).unwrap();
     std::fs::write(library::entry_path(dir.path(), "article"), "---\nsource: https://example.org\ntitle: Kept title\ncreated: yesterday\n---\nUser content\n").unwrap();
-    for metadata in [
-        None,
-        Some("format_version: '999.1'\n"),
-        Some("format_version: null\nmigration: {target_version: '0.10'}\n"),
+    std::fs::create_dir_all(dir.path().join("metadata")).unwrap();
+    for raw in [
+        "format_version: '0.17'\n",
+        "format_version: '999.1'\n",
+        "format_version: '0.17'\nmigration: {target_version: '0.18'}\n",
     ] {
-        if let Some(raw) = metadata {
-            std::fs::write(dir.path().join("library.yaml"), raw).unwrap();
-        }
+        std::fs::write(dir.path().join("metadata/library.yaml"), raw).unwrap();
         let result = cli(dir.path(), &["articles", "read", "article"]);
         assert!(
             result.status.success(),

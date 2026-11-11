@@ -1,6 +1,6 @@
 # Library pin store
 
-`<library>/pins.yaml` owns pin membership. Its path is derived by
+`<library>/metadata/pins.yaml` owns pin membership. Its path is derived by
 `library::pins_path`; the Rust `Pins`, `PinNode`, and `PinTarget` types define the parsed format, and the platform exposes that model to the shared UI provider.
 
 ```yaml

@@ -24,6 +24,7 @@ pub struct LibraryStatus {
     pub pending_target: Option<LibraryVersion>,
     pub read_only_cause: Option<LibraryReadOnlyCause>,
     pub metadata_error: Option<String>,
+    pub layout_upgrade_required: bool,
 }
 impl LibraryStatus {
     pub fn read(dir: &Path, app_version: LibraryVersion, has_writer: bool) -> Self {
@@ -34,6 +35,7 @@ impl LibraryStatus {
             pending_target: None,
             read_only_cause: None,
             metadata_error: None,
+            layout_upgrade_required: super::layout::upgrade_required(dir),
         };
         match LibraryManifest::read(dir) {
             Err(error) => {

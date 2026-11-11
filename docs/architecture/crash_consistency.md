@@ -56,7 +56,7 @@ the next run.
 - **Local resources before Entry Markdown:** body images are saved to
   `<library>/images/<id>/<hash>.<ext>` before Markdown referring to
   `../images/<id>/<hash>`. A fetched favicon replaces
-  `<library>/favicons/<normalized-url-hash>` atomically before its reference is
+  `<library>/metadata/favicons/<normalized-url-hash>` atomically before its reference is
   saved. Failed acquisition or replacement preserves the previous reference and
   bytes. A crash before Markdown can leave unused resources; per-entry image
   cleanup runs on the next save, while shared favicon cleanup is a separate

@@ -1,6 +1,6 @@
 # Tag storage
 
-`<library>/tags.yaml` owns article and annotation tag identities and display names. Article
+`<library>/metadata/tags.yaml` owns article and annotation tag identities and display names. Article
 frontmatter owns readable-name assignments; LanceDB's existing `tags` string-list
 column stores resolved UUIDs. Definitions are library-scoped. Feed, Topic, Site,
 and Note tagging are not covered by this format. Annotation assignments are introduced in library format 0.16.

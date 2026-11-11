@@ -3,7 +3,9 @@ import { isLocalFaviconReference } from "./isLocalFaviconReference";
 
 it("accepts legacy and shared favicon references", () => {
   expect(isLocalFaviconReference("../images/entry/icon.png")).toBe(true);
-  expect(isLocalFaviconReference("../favicons/63528ce68ce9")).toBe(true);
+  expect(isLocalFaviconReference("../metadata/favicons/63528ce68ce9")).toBe(
+    true
+  );
 });
 
 it("rejects remote and unrelated references", () => {

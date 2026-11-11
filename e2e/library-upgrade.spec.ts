@@ -252,3 +252,56 @@ test("reopening checks status again after an external manifest change", async ({
     description!
   );
 });
+
+for (const theme of ["light", "dark"] as const) {
+  test(`layout conversion is required before browsing in ${theme}`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: theme });
+    const dialog = await openChoice(page, "upgrade-layout");
+    await expect(control(dialog, "button", "continue-read-only")).toHaveCount(
+      0
+    );
+    await expect(control(dialog, "button", "choose-library")).toBeEnabled();
+    await expect(control(dialog, "button", "quit-xaga")).toBeEnabled();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeVisible();
+    await expect(page.locator("html")).not.toHaveAttribute(
+      "data-capture-ready",
+      "true"
+    );
+    await control(dialog, "button", "choose-library").click();
+    // A cancelled or failed native selection keeps the current library gated.
+    await expect(dialog.getByRole("alert")).toBeVisible();
+    await expect(dialog).toBeVisible();
+    await control(dialog, "button", "upgrade-library").click();
+    await expect(dialog).toHaveAttribute("data-upgrade-state", "succeeded");
+    await expect(control(dialog, "button", "continue-read-only")).toHaveCount(
+      0
+    );
+    await expect(page.locator("html")).not.toHaveAttribute(
+      "data-capture-ready",
+      "true"
+    );
+  });
+}
+
+test("failed layout conversion remains gated through retry and restart failure", async ({
+  page,
+}) => {
+  const dialog = await openChoice(page, "upgrade-layout-failure");
+  await control(dialog, "button", "upgrade-library").click();
+  await expect(dialog).toHaveAttribute("data-upgrade-state", "failed");
+  await expect(control(dialog, "button", "continue-read-only")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await expect(control(dialog, "button", "choose-library")).toBeEnabled();
+  await control(dialog, "button", "retry-library-upgrade").click();
+  await expect(dialog).toHaveAttribute("data-upgrade-state", "succeeded");
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await expect(control(dialog, "button", "continue-read-only")).toHaveCount(0);
+  await expect(page.locator("html")).not.toHaveAttribute(
+    "data-capture-ready",
+    "true"
+  );
+});

@@ -66,6 +66,7 @@ export type LibraryStatus = {
   pendingTarget: string | null;
   readOnlyCause: LibraryReadOnlyCause | null;
   metadataError: string | null;
+  layoutUpgradeRequired: boolean;
 };
 export type LibraryUpgrade =
   | { state: "idle" }
@@ -101,6 +102,7 @@ export interface Platform {
   ): Promise<UnlistenFn>;
   // Window
   setWindowTitle(title: string): Promise<void>;
+  quitApp(): Promise<void>;
   /** Wait for pending edits before closing; false keeps the window open. */
   onWindowCloseRequested(callback: () => Promise<boolean>): Promise<UnlistenFn>;
 

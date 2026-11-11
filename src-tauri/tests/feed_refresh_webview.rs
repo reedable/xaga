@@ -15,9 +15,9 @@ fn main() {
         time::Duration,
     };
     let library = tempfile::tempdir().unwrap();
-    std::fs::create_dir(library.path().join("feeds")).unwrap();
+    std::fs::create_dir_all(xaga_core::library::feeds_dir(library.path())).unwrap();
     for (id, title) in [("good", "Working feed"), ("bad", "Unavailable feed")] {
-        std::fs::write(library.path().join("feeds").join(format!("{id}.atom")), format!(r#"<feed xmlns="http://www.w3.org/2005/Atom"><id>{id}</id><title>{title}</title><updated>2026-01-01T00:00:00Z</updated><link rel="self" href="http://publisher.invalid/{id}"/></feed>"#)).unwrap();
+        std::fs::write(xaga_core::library::feeds_dir(library.path()).join(format!("{id}.atom")), format!(r#"<feed xmlns="http://www.w3.org/2005/Atom"><id>{id}</id><title>{title}</title><updated>2026-01-01T00:00:00Z</updated><link rel="self" href="http://publisher.invalid/{id}"/></feed>"#)).unwrap();
     }
     let proxy = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = proxy.local_addr().unwrap().port();
@@ -96,8 +96,8 @@ fn main() {
                     if title.starts_with("PASS:") {
                         assert!(title.contains("Unavailable feed"), "{title}");
                         let state = handle.state::<AppState>();
-                        let good = std::fs::read_to_string(state.library_path().join("feeds/good.atom")).unwrap();
-                        let bad = std::fs::read_to_string(state.library_path().join("feeds/bad.atom")).unwrap();
+                        let good = std::fs::read_to_string(xaga_core::library::feed_path(&state.library_path(), "good")).unwrap();
+                        let bad = std::fs::read_to_string(xaga_core::library::feed_path(&state.library_path(), "bad")).unwrap();
                         assert!(!good.contains("2026-01-01T00:00:00Z"), "successful feed did not commit");
                         assert!(bad.contains("2026-01-01T00:00:00Z"), "failed feed was changed");
                         println!("PASS: production native failure displayed in shared UI; successful feed committed and retry enabled: {title}");

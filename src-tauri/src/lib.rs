@@ -759,6 +759,8 @@ pub fn run() {
     // setup_ prefixed values are consumed by Tauri's .setup() closure.
     // There is no semantic meaning here.
     let gate_library = Arc::clone(&library);
+    let gate_layout = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let setup_gate_layout = Arc::clone(&gate_layout);
     let setup_account_lock = Arc::clone(&account_lock);
     let setup_embeddings_read = Arc::clone(&embeddings_read);
     let setup_allowed_domains = Arc::clone(&allowed_domains);
@@ -1163,9 +1165,13 @@ pub fn run() {
             if let Some(error) = metadata_error {
                 log::error!("startup: library metadata could not be read: {error}");
                 use tauri_plugin_dialog::DialogExt;
-                app.dialog().message(format!("{} This library will open in read-only mode.", error.user_message()))
-                    .title("Library opened read-only").kind(tauri_plugin_dialog::MessageDialogKind::Error).blocking_show();
+                app.dialog().message(format!("{} Check the library options before opening this library.", error.user_message()))
+                    .title("Library metadata unavailable").kind(tauri_plugin_dialog::MessageDialogKind::Error).blocking_show();
             }
+            setup_gate_layout.store(
+                xaga_core::library::LibraryStatus::read(&lib_path,
+                    xaga_core::library::LibraryVersion::new(app.package_info().version.major, app.package_info().version.minor), writer.is_some()).layout_upgrade_required,
+                std::sync::atomic::Ordering::SeqCst);
             // The EmbeddingService shares the writer's lock for its lifetime.
             let service_lock = writer.as_ref().map(|w| w.lock());
             let service_writer = writer.clone();
@@ -1517,7 +1523,9 @@ pub fn run() {
                     let is_library_read_only = gate_library.read().unwrap().writer.is_none();
                     (
                         commands::is_invoke_allowed(label, command),
-                        commands::is_write_refused(command, is_library_read_only),
+                        commands::is_write_refused(command, is_library_read_only)
+                            || (gate_layout.load(std::sync::atomic::Ordering::SeqCst)
+                                && !commands::is_layout_gate_allowed(command)),
                     )
                 };
                 if !allowed {
@@ -1713,10 +1721,10 @@ mod library_mode_tests {
         assert_eq!(std::fs::read_dir(unversioned.path()).unwrap().count(), 1);
         let older = tempfile::tempdir().unwrap();
         seed_version(older.path(), "0.9");
-        let before = std::fs::read(older.path().join("library.yaml")).unwrap();
+        let before = std::fs::read(older.path().join("metadata/library.yaml")).unwrap();
         assert!(handle_for(older.path()).read().unwrap().writer.is_none());
         assert_eq!(
-            std::fs::read(older.path().join("library.yaml")).unwrap(),
+            std::fs::read(older.path().join("metadata/library.yaml")).unwrap(),
             before
         );
         assert!(!xaga_core::library::index_path(older.path()).exists());

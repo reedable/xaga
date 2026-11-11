@@ -883,7 +883,7 @@ const MAX_IMAGE_REFS_PER_CALL: usize = 256;
 
 /// Resolves an article's stored image references to `data:` URIs for rendering,
 /// index-aligned with `refs`. A reference that is not a well-formed
-/// `../images/<id>/<file>` for this entry or `../favicons/<identity>`, or whose
+/// `../images/<id>/<file>` for this entry or `../metadata/favicons/<identity>`, or whose
 /// file is missing/oversize, resolves to `null` — a bad reference is data, not
 /// a fault, so the reader simply leaves that image's `src` untouched.
 ///

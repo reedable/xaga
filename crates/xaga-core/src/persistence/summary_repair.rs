@@ -127,7 +127,7 @@ mod tests {
     fn fixture() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(library::entries_dir(dir.path())).unwrap();
-        std::fs::create_dir(library::feeds_dir(dir.path())).unwrap();
+        std::fs::create_dir_all(library::feeds_dir(dir.path())).unwrap();
         dir
     }
 

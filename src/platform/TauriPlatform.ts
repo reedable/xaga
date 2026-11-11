@@ -516,6 +516,10 @@ export class TauriPlatform implements Platform {
     return invoker<import("./Platform").EmbeddingStartupState>(name);
   }
 
+  async quitApp(): Promise<void> {
+    await invoke("quit_app");
+  }
+
   async getLibraryStatus(): Promise<import("./Platform").LibraryStatus> {
     return invoke("get_library_status");
   }

@@ -1,6 +1,6 @@
 # Library version metadata
 
-Each library stores its own version in `<library>/library.yaml`. The version uses
+Each library stores its own version in `<library>/metadata/library.yaml`. The version uses
 the application's `major.minor` convention; patch, prerelease, and build suffixes
 are excluded. Multiple libraries may have different stored versions at the same
 time. There is no independent storage counter or global current-library version.
@@ -93,7 +93,7 @@ Library switching restarts the app and checks the newly selected library again.
 
 The `library info` CLI command reports the selected library's stored version and
 pending target without taking a write lock, reading the corpus, or changing the
-manifest. These app startup checks do not add a new access restriction across all CLI commands.
+manifest. Apart from the mandatory layout conversion below, these app startup checks do not restrict CLI commands.
 
 Manifest reads are bounded to 64 KiB, use strict YAML without anchors, and reject
 nonregular manifest files, unknown fields and malformed major/minor strings.
@@ -103,3 +103,13 @@ errors; the read-only fallback applies to app startup.
 The advisory library lock excludes writers, not existing readers. Close library
 users before an explicit upgrade. Already released binaries that do not read the
 manifest cannot enforce its meaning.
+
+## Directory layout conversion
+
+The 0.17 layout transition is required before ordinary reads as well as writes.
+Legacy manifests are inspected at the root until they move to `metadata/`;
+simultaneous manifests are an error, never resolved by guessing. The pending
+source version remains authoritative across partial moves. Startup blocks
+library IPC and model startup until conversion and restart complete. A completed
+new-layout library retains the usual compatibility and read-only rules. See
+[Library directory layout](library_layout.md).

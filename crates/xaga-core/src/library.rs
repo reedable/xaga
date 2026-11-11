@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use crate::fs::FileLock;
 
+mod layout;
 mod manifest;
 mod status;
 pub use status::{LibraryReadOnlyCause, LibraryStatus};
@@ -17,9 +18,33 @@ mod upgrade;
 pub use manifest::{LibraryFormatError, LibraryManifest, LibraryUpgrade, LibraryVersion};
 pub use upgrade::{UpgradePhase, UpgradeProgress, UpgradeReport, upgrade_library};
 
+const METADATA_SUBDIR: &str = "metadata";
+const INTERNAL_SUBDIR: &str = ".xaga";
+
+fn metadata_manifest_path(library_dir: &Path) -> PathBuf {
+    library_dir.join(METADATA_SUBDIR).join(MANIFEST_NAME)
+}
+
 const MANIFEST_NAME: &str = "library.yaml";
 fn manifest_path(library_dir: &Path) -> PathBuf {
-    library_dir.join(MANIFEST_NAME)
+    let legacy = library_dir.join(MANIFEST_NAME);
+    if std::fs::symlink_metadata(&legacy).is_ok() {
+        legacy
+    } else {
+        metadata_manifest_path(library_dir)
+    }
+}
+
+// The completed manifest is already committed when the obsolete lock is retired.
+// Cleanup failure must not turn a completed conversion into an unresumable error.
+fn retire_legacy_lock(dir: &Path) {
+    let result = std::fs::remove_file(dir.join(LOCK_FILE_NAME))
+        .and_then(|_| std::fs::File::open(dir)?.sync_all());
+    if let Err(error) = result {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            log::warn!("could not retire obsolete library lock: {error}");
+        }
+    }
 }
 
 /// Select write mode, initializing a new empty directory at the app version.
@@ -37,7 +62,18 @@ pub fn open(
             Err(error) => return Err(error.into()),
         };
         for entry in entries {
-            if entry?.file_name() != LOCK_FILE_NAME {
+            let entry = entry?;
+            if (entry.file_name() == ".xaga" || entry.file_name() == "metadata")
+                && entry.file_type()?.is_dir()
+            {
+                for internal in std::fs::read_dir(entry.path())? {
+                    if internal?.file_name() != LOCK_FILE_NAME || entry.file_name() == "metadata" {
+                        return Ok(false);
+                    }
+                }
+                continue;
+            }
+            if entry.file_name() != LOCK_FILE_NAME {
                 return Ok(false);
             }
         }
@@ -53,9 +89,17 @@ pub fn open(
     };
     // Recheck inside the write right: another opener or upgrade may have raced us.
     match LibraryManifest::read(library_dir)? {
-        Some(manifest) if manifest.matches_version(app_version) => Ok(Some(lock)),
+        Some(manifest) if manifest.matches_version(app_version) => {
+            if app_version >= LibraryVersion::new(0, 17) {
+                retire_legacy_lock(library_dir);
+            }
+            Ok(Some(lock))
+        }
         None if is_empty()? => {
             LibraryManifest::initialize(library_dir, app_version, &lock)?;
+            if app_version >= LibraryVersion::new(0, 17) {
+                retire_legacy_lock(library_dir);
+            }
             Ok(Some(lock))
         }
         _ => Ok(None),
@@ -75,14 +119,14 @@ const TAGS_NAME: &str = "tags.yaml";
 
 /// The library-scoped tag definitions and transition store.
 pub fn tags_path(library_dir: &Path) -> PathBuf {
-    library_dir.join(TAGS_NAME)
+    library_dir.join(METADATA_SUBDIR).join(TAGS_NAME)
 }
 
 const PINS_NAME: &str = "pins.yaml";
 
 /// The library-scoped ordered pin store.
 pub fn pins_path(library_dir: &Path) -> PathBuf {
-    library_dir.join(PINS_NAME)
+    library_dir.join(METADATA_SUBDIR).join(PINS_NAME)
 }
 
 const INDEX_NAME: &str = "embeddings.lance";
@@ -121,13 +165,13 @@ pub fn topics_dir(library_dir: &Path) -> PathBuf {
 /// The directory holding feed `.atom` files.
 #[inline]
 pub fn feeds_dir(library_dir: &Path) -> PathBuf {
-    library_dir.join(FEEDS_SUBDIR)
+    library_dir.join(METADATA_SUBDIR).join(FEEDS_SUBDIR)
 }
 
 /// The LanceDB embeddings index directory.
 #[inline]
 pub fn index_path(library_dir: &Path) -> PathBuf {
-    library_dir.join(INDEX_NAME)
+    library_dir.join(INTERNAL_SUBDIR).join(INDEX_NAME)
 }
 
 /// Path to a single entry's `.md` file (`<library>/entries/<hash12>.md`).
@@ -149,11 +193,11 @@ pub fn topic_path(library_dir: &Path, id: &str) -> PathBuf {
     library_dir.join(format!("{TOPICS_SUBDIR}/{id}.md"))
 }
 
-/// Path to a single feed's `.atom` file (`<library>/feeds/<id>.atom`).
+/// Path to a single feed's `.atom` file (`<library>/metadata/feeds/<id>.atom`).
 /// One-allocation, like [`entry_path`].
 #[inline]
 pub fn feed_path(library_dir: &Path, id: &str) -> PathBuf {
-    library_dir.join(format!("{FEEDS_SUBDIR}/{id}.atom"))
+    library_dir.join(format!("{METADATA_SUBDIR}/{FEEDS_SUBDIR}/{id}.atom"))
 }
 
 // ── Entry image assets ────────────────────────────────────────────────────────
@@ -179,24 +223,29 @@ pub fn images_dir(library_dir: &Path) -> PathBuf {
 /// The directory holding shared favicon resources.
 #[inline]
 pub fn favicons_dir(library_dir: &Path) -> PathBuf {
-    library_dir.join(FAVICONS_SUBDIR)
+    library_dir.join(METADATA_SUBDIR).join(FAVICONS_SUBDIR)
 }
 
 /// The canonical extensionless file for a normalized favicon URL identity.
 #[inline]
 pub fn favicon_path(library_dir: &Path, hash: &str) -> PathBuf {
-    library_dir.join(format!("{FAVICONS_SUBDIR}/{hash}"))
+    library_dir.join(format!("{METADATA_SUBDIR}/{FAVICONS_SUBDIR}/{hash}"))
 }
 
 /// The reference stored in article frontmatter for a shared favicon.
 #[inline]
 pub fn favicon_ref(hash: &str) -> String {
-    format!("../{FAVICONS_SUBDIR}/{hash}")
+    format!("../{METADATA_SUBDIR}/{FAVICONS_SUBDIR}/{hash}")
 }
 
 /// Parses a shared favicon reference and rejects traversal or foreign paths.
 pub fn parse_favicon_ref(reference: &str) -> Option<&str> {
-    let hash = reference.strip_prefix("../favicons/")?;
+    let hash = reference
+        .strip_prefix("../")?
+        .strip_prefix(METADATA_SUBDIR)?
+        .strip_prefix('/')?
+        .strip_prefix(FAVICONS_SUBDIR)?
+        .strip_prefix('/')?;
     crate::persistence::entries::is_safe_id(hash).then_some(hash)
 }
 
@@ -251,7 +300,7 @@ pub fn parse_entry_image_ref(reference: &str) -> Option<(&str, &str)> {
 
 // ── Single-writer lock ──────────────────────────────────────────────────────────
 
-/// Filename of the single-writer advisory lock at a library's root. Private and
+/// Filename of the single-writer advisory lock inside a library's `.xaga/` directory. Private and
 /// single-sourced: it is the shared agreement that makes the GUI and CLI exclude
 /// each other on the same library, so it must never be duplicated into a caller.
 const LOCK_FILE_NAME: &str = "xaga.lock";
@@ -261,7 +310,22 @@ const LOCK_FILE_NAME: &str = "xaga.lock";
 /// Returns `None` if another live process already holds it. The lock is released
 /// automatically when the returned [`FileLock`] is dropped.
 pub fn acquire_lock(library_dir: &Path) -> Option<FileLock> {
-    FileLock::try_acquire(library_dir.join(LOCK_FILE_NAME))
+    let legacy_path = library_dir.join(LOCK_FILE_NAME);
+    let legacy = if legacy_path.exists()
+        || library_dir.join(MANIFEST_NAME).exists()
+        || (!metadata_manifest_path(library_dir).exists()
+            && std::fs::read_dir(library_dir)
+                .ok()?
+                .any(|entry| entry.is_ok_and(|entry| entry.file_name() != ".xaga")))
+    {
+        Some(FileLock::try_acquire(legacy_path)?)
+    } else {
+        None
+    };
+    std::fs::create_dir_all(library_dir.join(INTERNAL_SUBDIR)).ok()?;
+    let mut lock = FileLock::try_acquire(library_dir.join(INTERNAL_SUBDIR).join(LOCK_FILE_NAME))?;
+    lock.retain(legacy);
+    Some(lock)
 }
 
 #[cfg(test)]
@@ -326,7 +390,10 @@ mod tests {
     fn shared_favicon_ref_round_trips_and_rejects_traversal() {
         let reference = favicon_ref("4f2a91c3e0b7");
         assert_eq!(parse_favicon_ref(&reference), Some("4f2a91c3e0b7"));
-        assert_eq!(parse_favicon_ref("../favicons/../../entries/x.md"), None);
-        assert_eq!(parse_favicon_ref("../favicons/a/b"), None);
+        assert_eq!(
+            parse_favicon_ref("../metadata/favicons/../../entries/x.md"),
+            None
+        );
+        assert_eq!(parse_favicon_ref("../metadata/favicons/a/b"), None);
     }
 }

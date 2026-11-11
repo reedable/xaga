@@ -7,7 +7,7 @@ opens read-only.**
 
 ## The mechanism
 
-The exclusive `flock` on `<library>/xaga.lock` is acquired by `acquire_lock`
+The exclusive `flock` on `<library>/.xaga/xaga.lock` is acquired by `acquire_lock`
 (`crates/xaga-core/src/library.rs`). `FileLock` ties it to an open handle, so the
 OS releases it when the handle closes, including after a crash or forced exit.
 A lock file remaining on disk does not require cleanup.
@@ -162,3 +162,12 @@ regardless of whether the cause is a version state or lock contention. An absent
 cache is not created by read-only opening. Explicit app and CLI migrations hold
 the library lock and call the core manifest API before conversion and after
 successful reconciliation. See [library version](library_version.md).
+
+### Directory layout conversion (0.17)
+
+The layout converter holds both the root legacy lock and `.xaga/xaga.lock` while
+moving stores and the database. A live old-layout writer blocks conversion.
+Ordinary app and current-CLI library reads are also gated until this conversion
+finishes; the app restarts before opening the new layout. Completed new-layout
+libraries retain normal read-only operation when their write lock is unavailable.
+See [Library directory layout](library_layout.md) for retry and compatibility limits.

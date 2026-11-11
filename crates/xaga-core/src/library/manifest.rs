@@ -120,6 +120,19 @@ impl LibraryManifest {
     /// Missing metadata is unversioned. No source scan or inference is performed.
     pub fn read(dir: &Path) -> Result<Option<Self>, LibraryFormatError> {
         let path = super::manifest_path(dir);
+        let exists = |path: &Path| -> Result<bool, LibraryFormatError> {
+            match std::fs::symlink_metadata(path) {
+                Ok(_) => Ok(true),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+                Err(error) => Err(error.into()),
+            }
+        };
+        if exists(&dir.join(super::MANIFEST_NAME))? && exists(&super::metadata_manifest_path(dir))?
+        {
+            return Err(LibraryFormatError::Invalid(
+                "conflicting library manifests".into(),
+            ));
+        }
         match std::fs::symlink_metadata(&path) {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(error.into()),
@@ -453,6 +466,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let lock = library::acquire_lock(dir.path()).unwrap();
         let path = library::manifest_path(dir.path());
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         for raw in [
             "format_version: 1",
             "format_version: 0.10",

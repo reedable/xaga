@@ -47,8 +47,8 @@ async fn cli_process_excludes_other_writers_and_matches_shared_converter() {
             .is_empty()
     );
     assert_eq!(
-        std::fs::read(cli.path().join("library.yaml")).unwrap(),
-        std::fs::read(shared.path().join("library.yaml")).unwrap()
+        std::fs::read(cli.path().join("metadata/library.yaml")).unwrap(),
+        std::fs::read(shared.path().join("metadata/library.yaml")).unwrap()
     );
     let info = invoke("info");
     assert!(info.status.success());
@@ -60,4 +60,23 @@ async fn cli_process_excludes_other_writers_and_matches_shared_converter() {
         "completed upgrades are safe to repeat"
     );
     assert!(library::open(cli.path(), target).unwrap().is_some());
+}
+
+#[test]
+fn ordinary_commands_refuse_old_layout_without_creating_new_stores() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("library.yaml"), "format_version: '0.16'\n").unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_xaga-cli"))
+        .arg("--data-dir")
+        .arg(dir.path())
+        .args(["feeds", "list"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(!dir.path().join("metadata").exists());
+    assert!(!dir.path().join(".xaga").exists());
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("library.yaml")).unwrap(),
+        "format_version: '0.16'\n"
+    );
 }

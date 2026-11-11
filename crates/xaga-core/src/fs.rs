@@ -527,9 +527,15 @@ mod tests {
 pub struct FileLock {
     // The lock is held for as long as this handle is alive.
     _file: File,
+    // Retain the legacy library lock throughout a directory-layout transition.
+    retained_lock: Option<Box<FileLock>>,
 }
 
 impl FileLock {
+    pub(crate) fn retain(&mut self, previous: Option<FileLock>) {
+        self.retained_lock = previous.map(Box::new);
+    }
+
     /// Attempts to acquire an exclusive advisory lock on `path`.
     ///
     /// Returns `Some(FileLock)` if the lock was granted, or `None` if another
@@ -553,7 +559,10 @@ impl FileLock {
             file.try_lock_exclusive().ok()?;
 
             if is_path_inode(&file, &path) {
-                return Some(Self { _file: file });
+                return Some(Self {
+                    _file: file,
+                    retained_lock: None,
+                });
             }
             // Stale: the path was renamed-over while we acquired. Drop (which
             // releases the lock) and retry on the new inode.
@@ -606,7 +615,7 @@ pub fn try_acquire_account_lock() -> Option<FileLock> {
 /// must not be lost (a shared holder — e.g. a concurrent account-lock lease — may still need
 /// it). The caller decides whether to retry or release.
 pub fn write_locked(
-    held: FileLock,
+    mut held: FileLock,
     path: &Path,
     bytes: &[u8],
 ) -> Result<FileLock, (std::io::Error, FileLock)> {
@@ -648,6 +657,10 @@ pub fn write_locked(
         }
     }
 
+    let retained_lock = held.retained_lock.take();
     drop(held);
-    Ok(FileLock { _file: tmp })
+    Ok(FileLock {
+        _file: tmp,
+        retained_lock,
+    })
 }

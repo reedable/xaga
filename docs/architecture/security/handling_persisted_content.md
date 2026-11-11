@@ -71,7 +71,7 @@ does not imply that stored SVG bytes have been sanitized or that opening those
 bytes as a top-level document has the same protections.
 
 Favicons are shared, extensionless resources keyed by normalized source URL under
-`favicons/`. The toolbar renders them as local image data, never as inline markup
+`metadata/favicons/`. The toolbar renders them as local image data, never as inline markup
 or a remote URL. Opening a cached article performs no favicon request. A remote
 load of a new or refreshed article reacquires its current icon; successful
 validation atomically replaces the shared resource, while failure preserves the
