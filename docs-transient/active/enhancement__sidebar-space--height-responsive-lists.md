@@ -38,7 +38,6 @@ space. Integrate with the sticky-heading behavior defined in its separate story.
 
 ## Remaining work
 
-- Implement after the combined sort/filter popup removes the permanent filter row.
 - Add height measurement and the compact section selector using the shared list
   state and existing list content. Keep section actions accessible without
   restoring the full stack of headers.
@@ -49,7 +48,7 @@ space. Integrate with the sticky-heading behavior defined in its separate story.
 
 ## References
 
-- [Combined sort/filter popup](enhancement__sidebar-space--sort-and-filter-popup.md)
+- [Sidebar sorting and filtering](../../docs/architecture/pins.md#sidebar-sorting)
 - [Sticky group headings](enhancement__sidebar-space--sticky-group-headings.md)
 - [Sticky-heading browser evidence](../ideas/shortcuts-sticky-headings/index.md)
 - [Sidebar](../../src/components/sidebar/Sidebar.tsx)

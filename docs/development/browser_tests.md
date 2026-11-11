@@ -59,8 +59,9 @@ runner configuration.
 
 `e2e/workflows.spec.ts` exercises:
 
-- Keeping All items above the collection filter across section changes and
-  unmatched filters, with keyboard navigation and selected-state feedback.
+- Keeping All items available across section changes and unmatched collection
+  filters entered through the toolbar popup, with keyboard navigation and
+  selected-state feedback.
 - Opening an article, changing read status, and checking Unread membership and
   aggregate/feed counts after the providers update.
 - Choosing and changing a bookmark color, verifying accessible labels and article
@@ -108,8 +109,15 @@ Collection browsing is checked against the complete browser history state:
 switching collections leaves it unchanged, and Back/Forward restores the
 collection captured when each article was opened, even after intervening browsing.
 
+`e2e/sidebar-controls.spec.ts` covers the combined sorting/filtering popup in both
+themes, focus entry and return, Tab navigation, retained filtering after Escape
+and backdrop dismissal, clearing, active-filter accessible feedback, and short
+windows with root text scaling. Read-only workflows verify both controls remain
+usable without library write access.
+
 `e2e/sidebar-sort.spec.ts` checks the shared sort control's placement and alignment,
-menu placement beside the sidebar without covering its collections, keyboard operation, checked choice, ordering across sections, and saved preference after
+popup placement beside the sidebar without covering its collections, keyboard
+operation, dropdown selection, ordering across sections, and saved preference after
 reload. Provider tests cover native-event synchronization, startup races, and
 failed saves. Projection tests cover nested groups, count updates, and unchanged
 stored order. The native `sidebar_sort_menu` test verifies macOS menu construction,

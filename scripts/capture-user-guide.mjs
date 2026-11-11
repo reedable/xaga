@@ -143,7 +143,7 @@ try {
     await capture("topics");
 
     await page.getByRole("tab", { name: "Tags", exact: true }).click();
-    const tags = page.getByRole("group", { name: "Entry tags", exact: true });
+    const tags = page.getByRole("group", { name: "Article tags", exact: true });
     await tags.getByRole("button", { name: "Outdoors", exact: true }).click();
     await tags.getByRole("button", { name: "Projects", exact: true }).click();
     await expect(

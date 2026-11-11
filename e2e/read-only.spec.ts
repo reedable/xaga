@@ -1,3 +1,4 @@
+import { expectSidebarSort, selectSidebarSort } from "./fixtures";
 import { control } from "./fixtures";
 import { test, expect, openArticle, reader } from "./fixtures";
 for (const scenario of ["read-only", "read-only-delayed"]) {
@@ -31,7 +32,15 @@ for (const scenario of ["read-only", "read-only-delayed"]) {
     await page.keyboard.press("Escape");
     await control(page, "button", "sidebar-sort-trigger").click();
     await expect(
-      control(page, "menuitemradio", "sort-alphabetical")
+      control(page, "combobox", "sidebar-sort-select")
     ).toBeEnabled();
+    await selectSidebarSort(page, "alphabetical");
+    await expectSidebarSort(page, "alphabetical");
+    await control(page, "textbox", "filter-collections").fill("Everyday");
+    await page.keyboard.press("Escape");
+    await control(page, "button", "sidebar-sort-trigger").click();
+    await expect(control(page, "textbox", "filter-collections")).toHaveValue(
+      "Everyday"
+    );
   });
 }

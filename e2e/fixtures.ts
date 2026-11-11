@@ -123,3 +123,26 @@ export function control(
     .getByRole(role, { includeHidden })
     .and(target.or(target.getByRole(role, { includeHidden })));
 }
+
+/** Check the dropdown's accessible selected option without prescribing its copy. */
+export async function expectSidebarSort(
+  page: Page,
+  value: "unread" | "alphabetical"
+) {
+  await control(page, "combobox", "sidebar-sort-select").click();
+  await expect(
+    page.getByRole("option").and(page.locator(`[data-value="${value}"]`))
+  ).toHaveAttribute("aria-selected", "true");
+  await page.keyboard.press("Escape");
+}
+
+export async function selectSidebarSort(
+  page: Page,
+  value: "unread" | "alphabetical"
+) {
+  await control(page, "combobox", "sidebar-sort-select").click();
+  await page
+    .getByRole("option")
+    .and(page.locator(`[data-value="${value}"]`))
+    .click();
+}

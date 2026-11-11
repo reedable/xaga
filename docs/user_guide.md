@@ -40,8 +40,8 @@ notification stays until you dismiss it. Use **Refresh** to try again.
 
 ## Find and read an article
 
-Choose a feed, or choose **All items** above **Filter collections…** to browse across your
-library. Click **All** to include material you have already read; **Unread** shows
+Choose a feed, or choose **All items** at the top of the sidebar to browse across
+your library. Click **All** to include material you have already read; **Unread** shows
 articles you have not read yet. Type in **Filter items…** to narrow the current
 list, then click an article to open it in the reading pane.
 
@@ -144,11 +144,17 @@ articles. Clear the selection to return to All items under your current filters.
 Deleting a tag removes its assignments from articles and annotations while
 retaining that content; removing one chip assignment only affects its target.
 
-## Sort sidebar collections
+## Sort and filter sidebar collections
 
-Click **Sort collections**, immediately left of **Refresh** at the top of the
-sidebar. Choose **Sort by unread** or **Sort by name**. The same choices are
-available in the macOS **View** menu, beside **Show Sidebar**.
+Click **Sort and filter collections**, immediately left of **Refresh** at the top
+of the sidebar. In the **Sort collections** dropdown, choose **Sort by unread** or
+**Sort by name**. The same sorting choices are available in the macOS **View**
+menu, beside **Show Sidebar**.
+
+Type in **Filter collections** to narrow the sidebar lists. Closing the popup
+keeps your filter active; a dot on the toolbar button indicates filtering. Open
+it again to edit the filter or choose **Clear collection filter**. **All items**
+remains available regardless of the collection filter.
 
 Your choice applies to Shortcuts, Topics, Feeds, and Sites, including nested
 shortcut groups, and is remembered when you reopen Xaga. Tags stay sorted by

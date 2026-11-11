@@ -48,9 +48,8 @@ Topic/Feed loading uses skeleton rows instead of unavailable-target errors.
 Restoring a target resolves the same reference on the next target refresh.
 Removing a pin preserves the current list and reading scope.
 Article shortcuts suppress counts and contribute zero to unread sorting.
-**All items** is library-wide navigation below the sidebar toolbar and above
-**Filter collections…**, independent of shortcut expansion and collection
-filtering. Alphabetical/unread sorting is presentation state and never rewrites
+**All items** is library-wide navigation below the sidebar toolbar, independent
+of shortcut expansion and collection filtering. Alphabetical/unread sorting is presentation state and never rewrites
 the sequence.
 
 Site pins use `type: site` and a normalized `hostname`, not an entity ID:
@@ -90,13 +89,19 @@ persisted or converted, and Site references never create cache entity rows.
 
 ## Sidebar sorting
 
-The sidebar toolbar has one **Sort collections** button immediately left of
-Refresh. Its menu offers **Sort by unread** and **Sort by name**, with the current
-choice marked. The menu opens beside the sidebar so its collections remain
-visible while choosing their order. Matching checked commands in the macOS View menu are grouped with
-**Show Sidebar**. Both controls save through the same account-settings command;
-only a successful write updates the choice and menu checkmarks. Failures use the
-shared error presentation.
+The sidebar toolbar has one **Sort and filter collections** button immediately
+left of Refresh. It opens a popup beside the sidebar containing a **Sort collections**
+dropdown with **Sort by unread** and **Sort by name**, and a **Filter collections**
+text input. The filter applies immediately through the existing shared view state;
+closing the popup retains it. A dot on the toolbar button and its accessible name
+indicate an active nonblank filter. The popup includes **Clear collection filter**,
+supports keyboard dismissal, and returns focus to the trigger when closed. The
+inline sidebar filter input is removed; All items stays available above the lists.
+
+Matching checked sort commands in the macOS View menu are grouped with
+**Show Sidebar**. The dropdown and native menu save through the same account-settings
+command; only a successful write updates the choice and menu checkmarks. Failures
+use the shared error presentation.
 
 The optional `sidebar_sort` account preference stores `unread` or `alphabetical`.
 Absence defaults to unread, without an eager write. Old IndexedDB
@@ -109,7 +114,7 @@ shortcut container and its native-menu and responsive projections. Unread sortin
 uses descending unread counts with title comparison for ties; name sorting uses
 title comparison. Groups retain recursive count semantics, and article shortcuts
 contribute zero. Sorting changes presentation only, preserving `pins.yaml` order.
-Tags stay sorted by name, and All items stays above the collection filter.
+Tags stay sorted by name, and All items is unaffected by collection filtering.
 Sorting remains available in read-only libraries because it changes an account
 preference rather than library data.
 

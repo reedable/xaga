@@ -1,12 +1,6 @@
 import SidebarSortControl from "./SidebarSortControl";
-import { Clear, Newspaper, Refresh } from "@mui/icons-material";
-import {
-  IconButton,
-  InputAdornment,
-  List,
-  TextField,
-  Tooltip,
-} from "@mui/material";
+import { Newspaper, Refresh } from "@mui/icons-material";
+import { IconButton, List, Tooltip } from "@mui/material";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { ALL_ENTITIES } from "../../Shortcuts";
 import { useAllEntitiesCounts } from "../../hooks/useAllEntitiesCounts";
@@ -116,6 +110,8 @@ export function Sidebar({
         <SidebarSortControl
           className={css.ToolbarButton}
           menuAnchor={() => toolbarRef.current}
+          filter={filter}
+          onFilterChange={onFilterChange}
         />
         <Tooltip
           title={
@@ -160,43 +156,6 @@ export function Sidebar({
         />
       </List>
 
-      <TextField
-        className={css.FilterInput}
-        placeholder="Filter collections…"
-        fullWidth
-        size="small"
-        value={filter}
-        variant="standard"
-        onChange={(event) => onFilterChange(event.target.value)}
-        slotProps={{
-          htmlInput: {
-            "aria-label": "Filter collections",
-            "data-testid": "filter-collections",
-          },
-          input: {
-            endAdornment: filter ? (
-              <InputAdornment position="end">
-                <Tooltip title="Clear filter">
-                  <IconButton
-                    aria-label="Clear collection filter"
-                    edge="end"
-                    size="small"
-                    onClick={() => onFilterChange("")}
-                  >
-                    <Clear fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </InputAdornment>
-            ) : null,
-          },
-        }}
-        sx={{
-          "& .MuiInputBase-input": {
-            paddingLeft: "0px !important",
-          },
-        }}
-      />
-
       <ShortcutList
         shortcuts={pinnedTargets}
         hierarchy={hierarchy}
@@ -235,44 +194,6 @@ export function Sidebar({
         isExpanded={expandedList === "TAGS"}
         onClickHeader={() => handleExpandedList("TAGS")}
       />
-
-      {/*
-        TODO Consider placing a filter button next to refresh at the top to
-             reveal filter input. More user interaction, but more intuitive.
-      */}
-      {/* <TextField
-        className={css.FilterInput}
-        placeholder="Filter collections…"
-        fullWidth
-        size="small"
-        value={filter}
-        variant="standard"
-        onChange={(event) => onFilterChange(event.target.value)}
-        slotProps={{
-          htmlInput: { "aria-label": "Filter collections", "data-testid": "filter-collections" },
-          input: {
-            endAdornment: filter ? (
-              <InputAdornment position="end">
-                <Tooltip title="Clear filter">
-                  <IconButton
-                    aria-label="Clear collection filter"
-                    edge="end"
-                    size="small"
-                    onClick={() => onFilterChange("")}
-                  >
-                    <Clear fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </InputAdornment>
-            ) : null,
-          },
-        }}
-        sx={{
-          "& .MuiInputBase-input": {
-            paddingLeft: "0px !important",
-          },
-        }}
-      /> */}
     </div>
   );
 }

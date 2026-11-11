@@ -170,7 +170,7 @@ it("applies one trimmed, case-insensitive filter to every collection section", a
   ).toBe("Alpha Site");
 });
 
-it("keeps every section and the filter above them visible with zero matches", async () => {
+it("keeps All items and every section available with zero matches", async () => {
   await act(async () => {
     root.render(
       <Sidebar
@@ -189,16 +189,13 @@ it("keeps every section and the filter above them visible with zero matches", as
     )
   ).toBe(true);
 
-  const input = container.querySelector('[data-testid="filter-collections"]');
-  expect(input).not.toBeNull();
+  expect(
+    container.querySelector('[data-testid="filter-collections"]')
+  ).toBeNull();
   const allItems = [
     ...container.querySelectorAll<HTMLElement>('[role="button"]'),
   ].filter((button) => button.getAttribute("data-testid") === "all-items");
   expect(allItems).toHaveLength(1);
-  expect(
-    allItems[0].compareDocumentPosition(input!) &
-      Node.DOCUMENT_POSITION_FOLLOWING
-  ).toBeTruthy();
   expect(
     allItems[0]
       .parentElement!.querySelector("[data-unread-count]")
@@ -211,7 +208,7 @@ it("keeps every section and the filter above them visible with zero matches", as
   const firstSection = container.querySelector("[data-section]");
   expect(firstSection).not.toBeNull();
   expect(
-    input!.compareDocumentPosition(firstSection!) &
+    allItems[0].compareDocumentPosition(firstSection!) &
       Node.DOCUMENT_POSITION_FOLLOWING
   ).toBeTruthy();
 });

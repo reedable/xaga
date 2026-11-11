@@ -1,3 +1,4 @@
+import { expectSidebarSort, selectSidebarSort } from "./fixtures";
 import { control } from "./fixtures";
 import { test, expect, startCapture, openArticle } from "./fixtures";
 const additionalFeedUrl = "https://workshop.example/feed.xml";
@@ -24,15 +25,12 @@ test("one keyboard-accessible sidebar sort choice applies across sections and su
   ).boundingBox())!;
   await sort.focus();
   await page.keyboard.press("Enter");
-  await expect(control(page, "menuitemradio", "sort-unread")).toHaveAttribute(
-    "aria-checked",
-    "true"
-  );
+  await expectSidebarSort(page, "unread");
   await testInfo.attach("sidebar-sort-menu", {
-    body: await page.getByRole("menu").screenshot(),
+    body: await page.getByRole("dialog").screenshot(),
     contentType: "image/png",
   });
-  const menuBox = (await page.getByRole("menu").boundingBox())!;
+  const menuBox = (await page.getByRole("dialog").boundingBox())!;
   expect(menuBox.x).toBeGreaterThanOrEqual(sidebarBox.x + sidebarBox.width);
   expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(
     page.viewportSize()!.width
@@ -57,8 +55,12 @@ test("one keyboard-accessible sidebar sort choice applies across sections and su
   await expect(feedOrder).toHaveText(["Field notes", "A workshop"]);
   await sort.focus();
   await page.keyboard.press("Enter");
+  await control(page, "combobox", "sidebar-sort-select").focus();
+  await page.keyboard.press("Enter");
   await page.keyboard.press("End");
   await page.keyboard.press("Enter");
+  await expectSidebarSort(page, "alphabetical");
+  await page.keyboard.press("Escape");
   await expect(sort).toBeFocused();
   await expect(feedOrder).toHaveText(["A workshop", "Field notes"]);
   await control(page, "button", "sidebar-shortcuts-toggle").click();
@@ -74,9 +76,7 @@ test("one keyboard-accessible sidebar sort choice applies across sections and su
   await control(page, "button", "filter-all").click();
   await openArticle(page, "A garden for every season");
   await sort.click();
-  await expect(
-    control(page, "menuitemradio", "sort-alphabetical")
-  ).toHaveAttribute("aria-checked", "true");
+  await expectSidebarSort(page, "alphabetical");
   await page.keyboard.press("Escape");
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute(
@@ -84,8 +84,6 @@ test("one keyboard-accessible sidebar sort choice applies across sections and su
     "true"
   );
   await sort.click();
-  await expect(
-    control(page, "menuitemradio", "sort-alphabetical")
-  ).toHaveAttribute("aria-checked", "true");
-  await control(page, "menuitemradio", "sort-unread").click();
+  await expectSidebarSort(page, "alphabetical");
+  await selectSidebarSort(page, "unread");
 });

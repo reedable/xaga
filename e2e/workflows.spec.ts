@@ -17,25 +17,27 @@ test.beforeEach(async ({ page }) => {
   await startCapture(page);
 });
 
-test("All items stays above the collection filter across section changes", async ({
+test("All items remains available while collection filtering is in the popup", async ({
   page,
 }) => {
   const allItems = control(page, "button", "all-items");
+  const trigger = control(page, "button", "sidebar-sort-trigger");
   const filter = control(page, "textbox", "filter-collections");
   await expect(allItems).toHaveCount(1);
-  const itemBox = await allItems.boundingBox();
-  const filterBox = await filter.boundingBox();
-  expect(itemBox!.y + itemBox!.height).toBeLessThan(filterBox!.y);
+  await expect(filter).not.toBeVisible();
   for (const section of ["shortcuts", "topics", "feeds"]) {
     await control(page, "button", `sidebar-${section}-toggle`).click();
     await expect(allItems).toBeVisible();
   }
+  await trigger.click();
   await filter.fill("no matching collection");
+  await page.keyboard.press("Escape");
   await expect(allItems).toBeVisible();
   await allItems.focus();
   await page.keyboard.press("Enter");
   await expect(allItems).toHaveClass(/Mui-selected/);
   await expect(articleButton(page, water)).toBeVisible();
+  await trigger.click();
   await expect(filter).toHaveValue("no matching collection");
 });
 
@@ -242,7 +244,7 @@ test("Topic membership is visible when browsing with the sidebar hidden", async 
   // Responsive layout hides the sidebar; the collection selector is the real UI.
   await page.setViewportSize({ width: 960, height: 900 });
   await expect(
-    control(page, "textbox", "filter-collections")
+    control(page, "button", "sidebar-sort-trigger")
   ).not.toBeVisible();
   await control(page, "combobox", "collection-selector").click();
   await page
@@ -308,7 +310,9 @@ test("capture reset clears edits, navigation, filters, and expansion", async ({
     .click();
   await control(page, "button", "filter-saved").click();
   await control(page, "button", "sidebar-feeds-toggle").click();
+  await control(page, "button", "sidebar-sort-trigger").click();
   await control(page, "textbox", "filter-collections").fill("Field");
+  await page.keyboard.press("Escape");
   await control(page, "textbox", "filter-items").fill("garden");
   await Promise.all([
     page.waitForEvent("load"),
@@ -330,7 +334,9 @@ test("capture reset clears edits, navigation, filters, and expansion", async ({
     "aria-pressed",
     initialUnreadSelection!
   );
+  await control(page, "button", "sidebar-sort-trigger").click();
   await expect(control(page, "textbox", "filter-collections")).toBeEmpty();
+  await page.keyboard.press("Escape");
   await expect(control(page, "textbox", "filter-items")).toBeEmpty();
   await expect(articleButton(page, garden)).toBeVisible();
   await expect(articleButton(page, water)).toBeVisible();
