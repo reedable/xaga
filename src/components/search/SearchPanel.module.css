@@ -15,6 +15,9 @@
   min-height: 0;
 }
 
-.Drawer {
+.Drawer:global(.MuiPaper-root) {
   width: 18rem;
+  background-color: var(--background-color);
+  background-image: none;
+  border-left: var(--border);
 }

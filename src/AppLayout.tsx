@@ -290,7 +290,6 @@ export function AppLayout({
               onClose={clearSearch}
             >
               <SearchResultList
-                className={css.SearchResultList}
                 searchQuery={search ?? ""}
                 onSaveAsTopic={handleSaveSearchAsTopic}
               />

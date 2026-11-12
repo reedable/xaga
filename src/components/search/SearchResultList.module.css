@@ -1,12 +1,14 @@
 .EntityList {
   --width: 18rem;
 
+  box-sizing: border-box;
+  padding-top: 0.625rem;
   align-items: center;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   height: 100%;
-  width: var(--width);
+  width: 100%;
 
   .Placeholder {
     display: flex;

@@ -378,3 +378,54 @@ test("Search slides over the fixed-width Inspector while the Article pane remain
   await page.keyboard.press("Enter");
   await expect(query(page)).toBeFocused();
 });
+
+for (const theme of ["light", "dark"] as const) {
+  test(`drawer Search matches inline spacing, filters, and result dividers in ${theme}`, async ({
+    page,
+  }) => {
+    await startCapture(page, theme);
+    await openArticle(page, garden);
+    await control(page, "button", "search").click();
+    await query(page).fill("garden");
+    const inline = page.getByTestId("search-inline");
+    await expect(
+      inline.getByRole("button", { name: new RegExp(`^${garden}`) })
+    ).toBeVisible();
+    const inlineStyle = await inline.evaluate((element) => {
+      const content = element.firstElementChild!;
+      const filter = content.querySelector('button[value="entries"]')!;
+      const result = content.querySelector(".MuiList-root > div")!;
+      return {
+        padding: getComputedStyle(content).paddingTop,
+        filterBorder: getComputedStyle(filter).border,
+        filterPadding: getComputedStyle(filter).padding,
+        resultBorder: getComputedStyle(result).borderBottom,
+      };
+    });
+    await page.setViewportSize({ width: 1000, height: 900 });
+    const drawer = page.getByRole("dialog");
+    await expect(drawer).toBeVisible();
+    await expect(
+      drawer.getByRole("button", { name: new RegExp(`^${garden}`) })
+    ).toBeVisible();
+    const drawerStyle = await drawer.evaluate((element) => {
+      const content = element.querySelector(".MuiList-root")!.parentElement!;
+      const filter = content.querySelector('button[value="entries"]')!;
+      const result = content.querySelector(".MuiList-root > div")!;
+      return {
+        padding: getComputedStyle(content).paddingTop,
+        filterBorder: getComputedStyle(filter).border,
+        filterPadding: getComputedStyle(filter).padding,
+        resultBorder: getComputedStyle(result).borderBottom,
+      };
+    });
+    expect(drawerStyle).toEqual(inlineStyle);
+    const background = await drawer.evaluate((element) => ({
+      paper: getComputedStyle(element).backgroundColor,
+      body: getComputedStyle(document.body).backgroundColor,
+      overlay: getComputedStyle(element).backgroundImage,
+    }));
+    expect(background.paper).toBe(background.body);
+    expect(background.overlay).toBe("none");
+  });
+}
