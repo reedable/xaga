@@ -1,4 +1,4 @@
-import { control } from "./fixtures";
+import { control, setSidebarVisible } from "./fixtures";
 import {
   test,
   expect,
@@ -241,7 +241,7 @@ test("Topic membership is visible when browsing with the sidebar hidden", async 
   await expect(
     page.getByRole("checkbox", { name: "Everyday discoveries", exact: true })
   ).toBeChecked();
-  // Responsive layout hides the sidebar; the collection selector is the real UI.
+  await setSidebarVisible(page, false);
   await page.setViewportSize({ width: 960, height: 900 });
   await expect(
     control(page, "button", "sidebar-sort-trigger")

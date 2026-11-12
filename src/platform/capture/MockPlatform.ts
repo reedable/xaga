@@ -736,6 +736,7 @@ export class MockPlatform implements Platform {
     this.subscribe("onSidebarSortChanged", callback);
   getShowSidebar: Platform["getShowSidebar"] = async () => this.sidebar;
   setShowSidebar: Platform["setShowSidebar"] = async (show) => {
+    if (this.sidebar === show) return;
     this.sidebar = show;
     this.emit("onShowSidebar", show);
   };

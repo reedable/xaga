@@ -146,3 +146,18 @@ export async function selectSidebarSort(
     .and(page.locator(`[data-value="${value}"]`))
     .click();
 }
+
+/** Exercise the native Show Sidebar preference through the capture adapter. */
+export async function setSidebarVisible(page: Page, visible: boolean) {
+  await page.evaluate(async (show) => {
+    const capture = (
+      window as unknown as {
+        xagaCapture: { setShowSidebar(value: boolean): Promise<void> };
+      }
+    ).xagaCapture;
+    await capture.setShowSidebar(show);
+  }, visible);
+  await expect(page.getByTestId("sidebar-column-resize")).toHaveCount(
+    visible ? 1 : 0
+  );
+}

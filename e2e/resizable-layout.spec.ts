@@ -5,6 +5,7 @@ import {
   openArticle,
   reader,
   control,
+  setSidebarVisible,
 } from "./fixtures";
 import type { Page } from "@playwright/test";
 
@@ -64,23 +65,37 @@ test("columns resize independently with pointer and keyboard within their limits
   }
 });
 
-test("Sidebar keeps its app-width thresholds and restores resized widths", async ({
+test("Sidebar follows its preference across window resizing and restores its width", async ({
   page,
 }) => {
   await startCapture(page);
   await sidebar(page).focus();
   await page.keyboard.press("End");
-  for (const w of [979, 980, 981]) {
-    await page.setViewportSize({ width: w, height: 800 });
-    await expect(sidebar(page)).toHaveCount(w < 980 ? 0 : 1);
-    if (w >= 980) expect(await width(page, "sidebar-column")).toBe(22.5);
+  for (const width of [979, 980, 981, 1299, 1300, 1301]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect(sidebar(page)).toHaveCount(1);
+    expect(
+      await page
+        .locator("#sidebar-column")
+        .evaluate(
+          (el) =>
+            el.getBoundingClientRect().width /
+            parseFloat(getComputedStyle(document.documentElement).fontSize)
+        )
+    ).toBe(22.5);
   }
+  await page.setViewportSize({ width: 1440, height: 900 });
   await openArticle(page, garden);
   await control(page, "button", "search").click();
-  for (const w of [1299, 1300, 1301]) {
-    await page.setViewportSize({ width: w, height: 800 });
-    await expect(sidebar(page)).toHaveCount(w < 1300 ? 0 : 1);
+  for (const width of [1299, 1300, 1301]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect(sidebar(page)).toHaveCount(1);
   }
+  await page.keyboard.press("Escape");
+  await setSidebarVisible(page, false);
+  await expect(control(page, "combobox", "collection-selector")).toBeVisible();
+  await setSidebarVisible(page, true);
+  expect(await width(page, "sidebar-column")).toBe(22.5);
 });
 
 for (const [root, wide] of [
@@ -104,12 +119,13 @@ for (const [root, wide] of [
     await page.evaluate((size) => {
       document.documentElement.style.fontSize = `${size}px`;
     }, root);
-    // Choose a boundary above the Search-open Sidebar threshold when possible;
-    // otherwise Sidebar is hidden and contributes no width.
     const columns = wide ? 52.5 : 35;
-    const withSidebar = (columns + 38) * root + 1;
-    const boundary =
-      withSidebar >= 1300 ? withSidebar : ((wide ? 30 : 20) + 38) * root + 1;
+    const boundary = (columns + 45) * root + 1;
+    const drawerInput = page
+      .getByRole("dialog", { includeHidden: true })
+      .filter({ has: page.locator('input[name="search-query"]') })
+      .locator('input[name="search-query"]');
+    const drawerDraft = await drawerInput.inputValue();
     await page.setViewportSize({ width: Math.ceil(boundary), height: 800 });
     await control(page, "button", "search").click();
     await query(page).fill("garden");
@@ -131,7 +147,8 @@ for (const [root, wide] of [
         await expect(modal).not.toBeVisible();
         await expect(page.getByTestId("search-inline")).toBeVisible();
       }
-      await expect(query(page)).toHaveValue("garden");
+      await expect(page).toHaveURL(/search=garden/);
+      await expect(query(page)).toHaveValue(delta < 0 ? drawerDraft : "garden");
       const searchScope = delta < 0 ? modal : page.getByTestId("search-inline");
       await expect(
         searchScope.getByRole("button", { name: new RegExp(`^${garden}`) })
@@ -163,7 +180,10 @@ for (const [root, wide] of [
     ).toBe(true);
     await page.keyboard.press("Escape");
     await expect(query(page)).toHaveCount(0);
-    await expect(control(page, "button", "search")).toBeFocused();
+    await expect(control(page, "button", "search")).toBeEnabled();
+    await control(page, "button", "search").focus();
+    await page.keyboard.press("Enter");
+    await expect(query(page)).toBeFocused();
     await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
       garden
     );
@@ -173,6 +193,7 @@ for (const [root, wide] of [
 test("live column dragging changes Search presentation without losing results or collection", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 1550, height: 900 });
   await startCapture(page);
   await openArticle(page, garden);
   await control(page, "button", "search").click();
@@ -188,7 +209,8 @@ test("live column dragging changes Search presentation without losing results or
   await expect(
     drawer.getByRole("button", { name: new RegExp(`^${garden}`) })
   ).toBeVisible();
-  await expect(query(page)).toHaveValue("garden");
+  await expect(page).toHaveURL(/search=garden/);
+  await expect(query(page)).toBeFocused();
   // A backdrop click closes Search without selecting a different collection/article.
   await page.mouse.click(800, 700);
   await expect(drawer).not.toBeVisible();
@@ -264,9 +286,9 @@ test("a pointer burst applies its last width once per frame and cancellation ret
   await expect(handle).toHaveAttribute("aria-valuenow", "19");
   await handle.dispatchEvent("pointercancel");
   await page.mouse.up();
-  await page.setViewportSize({ width: 979, height: 800 });
+  await setSidebarVisible(page, false);
   await expect(handle).toHaveCount(0);
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await setSidebarVisible(page, true);
   await expect(handle).toHaveAttribute("aria-valuenow", "19");
   expect(await width(page, "sidebar-column")).toBe(19);
 });
@@ -346,10 +368,13 @@ test("Search slides over the fixed-width Inspector while the Article pane remain
     expect(frame.contentWidth).toBe(288);
   }
   await page.keyboard.press("Escape");
-  await expect(control(page, "button", "search")).toBeFocused();
+  await expect(control(page, "button", "search")).toBeEnabled();
   await expect
     .poll(
       async () => (await page.getByTestId("entry-reader").boundingBox())!.width
     )
     .toBeCloseTo(before!.width, 1);
+  await control(page, "button", "search").focus();
+  await page.keyboard.press("Enter");
+  await expect(query(page)).toBeFocused();
 });

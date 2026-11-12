@@ -1,4 +1,4 @@
-import { control } from "./fixtures";
+import { control, setSidebarVisible } from "./fixtures";
 import { test, expect, startCapture, openArticle, reader } from "./fixtures";
 
 const garden = "A garden for every season";
@@ -58,6 +58,7 @@ test("shows annotation assignments read-only in the narrow drawer", async ({
     "data-capture-ready",
     "true"
   );
+  await setSidebarVisible(page, false);
   await control(page, "button", "filter-all").click();
   await openArticle(page, "Making room for a workshop");
   await reader(page).locator("mark").first().click();

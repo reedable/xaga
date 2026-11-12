@@ -37,7 +37,10 @@ if (isCaptureMode) {
     `/?${new URLSearchParams({ ...(scenario ? { scenario } : {}), ...(entryPoint === "settings" ? { window: "settings" } : {}) })}`
   );
   Object.assign(window, {
-    xagaCapture: { reset: () => location.reload() },
+    xagaCapture: {
+      reset: () => location.reload(),
+      setShowSidebar: (show: boolean) => platform.setShowSidebar(show),
+    },
     __XAGA_THEME_SETTING__: captureTheme,
   });
 }

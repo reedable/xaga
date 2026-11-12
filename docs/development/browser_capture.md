@@ -34,6 +34,12 @@ its visible result; after opening an article, wait for its iframe's article text
 and for images to finish decoding. Collection counts can update through the
 existing providers' debounced event handlers.
 
+The capture-only `window.xagaCapture.setShowSidebar(boolean)` exercises the native
+Show Sidebar preference and its notification path. Browser tests use this when
+they need the collection selector with Sidebar explicitly hidden; resizing the
+window does not change that preference. Repeated saves of the same preference do
+not emit another notification.
+
 ## Reproducible captures
 
 Use the same browser version and operating system for repeated captures. Set:

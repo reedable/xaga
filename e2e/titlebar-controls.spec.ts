@@ -1,4 +1,10 @@
-import { control, expect, startCapture, test } from "./fixtures";
+import {
+  control,
+  expect,
+  startCapture,
+  test,
+  setSidebarVisible,
+} from "./fixtures";
 
 for (const width of [960, 720]) {
   test(`responsive refresh stays clear of native traffic-light space at width ${width}`, async ({
@@ -6,6 +12,7 @@ for (const width of [960, 720]) {
   }, testInfo) => {
     await page.setViewportSize({ width, height: 720 });
     await startCapture(page);
+    await setSidebarVisible(page, false);
     await expect(
       control(page, "button", "sidebar-sort-trigger")
     ).not.toBeVisible();
@@ -60,6 +67,7 @@ test("disabled responsive refresh keeps its tooltip and traffic-light clearance"
     "data-capture-ready",
     "true"
   );
+  await setSidebarVisible(page, false);
   await page.setViewportSize({ width: 720, height: 720 });
   const refresh = control(page, "button", "refresh-collection");
   await expect(refresh).toBeDisabled();
