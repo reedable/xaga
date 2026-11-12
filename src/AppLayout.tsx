@@ -55,7 +55,7 @@ export function AppLayout({
   const sidebarWidth = useRef(15);
   const listWidth = useRef(20);
   const [searchDrawer, setSearchDrawer] = useState(false);
-  const [autoHideSidebar, setAutoHideSidebar] = useState(false);
+  const [autoHideSidebar] = useState(false);
   const { showSidebar } = useAppearance();
   const { library } = useSettings();
   const embeddingStartupState = useEmbeddingStartupState();
@@ -175,19 +175,6 @@ export function AppLayout({
     },
     [deleteFeed, requestFeeds]
   );
-
-  // useEffect(() => {
-  //   const el = appRef.current;
-  //   if (!el) return;
-
-  //   const observer = new ResizeObserver(([entry]) => {
-  //     const threshold = search !== undefined ? 1300 : 980;
-  //     setAutoHideSidebar(entry.contentRect.width < threshold);
-  //   });
-
-  //   observer.observe(el);
-  //   return () => observer.disconnect();
-  // }, [search]);
 
   useLayoutEffect(() => {
     const element = readingSpaceRef.current;
