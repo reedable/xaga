@@ -314,23 +314,33 @@ test("Search slides over the fixed-width Inspector while the Article pane remain
     }[] = [];
     (window as unknown as { searchFrames: typeof frames }).searchFrames =
       frames;
-    const start = performance.now();
-    const sample = () => {
-      const article = pane.getBoundingClientRect();
-      const search = document
-        .querySelector('[data-testid="search-inline"]')
-        ?.closest(".MuiCollapse-root");
-      frames.push({
-        articleX: article.x,
-        articleWidth: article.width,
-        inspectorWidth: inspector.getBoundingClientRect().width,
-        contentWidth: content.getBoundingClientRect().width,
-        mounted: inspector.isConnected && content.isConnected,
-        searchWidth: search?.getBoundingClientRect().width ?? 0,
-      });
-      if (performance.now() - start < 650) requestAnimationFrame(sample);
+    const recording = { complete: false };
+    (
+      window as unknown as { searchRecording: typeof recording }
+    ).searchRecording = recording;
+    const record = () => {
+      const start = performance.now();
+      const sample = () => {
+        const article = pane.getBoundingClientRect();
+        const search = document
+          .querySelector('[data-testid="search-inline"]')
+          ?.closest(".MuiCollapse-root");
+        frames.push({
+          articleX: article.x,
+          articleWidth: article.width,
+          inspectorWidth: inspector.getBoundingClientRect().width,
+          contentWidth: content.getBoundingClientRect().width,
+          mounted: inspector.isConnected && content.isConnected,
+          searchWidth: search?.getBoundingClientRect().width ?? 0,
+        });
+        if (performance.now() - start < 650) requestAnimationFrame(sample);
+        else recording.complete = true;
+      };
+      sample();
     };
-    requestAnimationFrame(sample);
+    document
+      .querySelector('[data-testid="search"]')!
+      .addEventListener("click", record, { once: true, capture: true });
   });
   await control(page, "button", "search").click();
   await expect(query(page)).toBeFocused();
@@ -338,10 +348,11 @@ test("Search slides over the fixed-width Inspector while the Article pane remain
     .poll(() =>
       page.evaluate(
         () =>
-          (window as unknown as { searchFrames: unknown[] }).searchFrames.length
+          (window as unknown as { searchRecording: { complete: boolean } })
+            .searchRecording.complete
       )
     )
-    .toBeGreaterThan(20);
+    .toBe(true);
   const frames = await page.evaluate(
     () =>
       (
