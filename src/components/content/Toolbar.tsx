@@ -535,7 +535,7 @@ export function Toolbar({
         </Collapse>
       </div>
 
-      <Collapse in={!isSearchOpen} orientation="horizontal">
+      <Collapse in={!isSearchOpen} orientation="horizontal" timeout={0}>
         <Tooltip
           title={
             embeddingStartupState === "available"

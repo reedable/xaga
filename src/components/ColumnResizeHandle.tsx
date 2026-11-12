@@ -1,28 +1,59 @@
-import { useRef } from "react";
+import { useCallback, useLayoutEffect, useRef, type RefObject } from "react";
 import css from "./ColumnResizeHandle.module.css";
 
 export function ColumnResizeHandle({
   name,
   target,
-  value,
+  widthRef,
+  property,
   min,
   max,
-  onChange,
 }: {
   name: string;
   target: string;
-  value: number;
+  widthRef: RefObject<number>;
+  property: string;
   min: number;
   max: number;
-  onChange: (width: number) => void;
 }) {
+  const handle = useRef<HTMLDivElement>(null);
+  const frame = useRef<number | null>(null);
   const drag = useRef<{ x: number; width: number; rootSize: number } | null>(
     null
   );
-  const resize = (width: number) =>
-    onChange(Math.min(max, Math.max(min, Math.round(width * 16) / 16)));
+  const clamp = (value: number) =>
+    Math.min(max, Math.max(min, Math.round(value * 16) / 16));
+  // Width and accessible values are updated together without rendering the app.
+  const apply = useCallback(() => {
+    const element = handle.current;
+    if (!element) return;
+    const value = String(widthRef.current);
+    const styleValue = `${value}rem`;
+    const column = element.parentElement;
+    if (column && column.style.getPropertyValue(property) !== styleValue)
+      column.style.setProperty(property, styleValue);
+    element.setAttribute("aria-valuenow", value);
+    element.setAttribute("aria-valuetext", `${value} rem`);
+  }, [widthRef, property]);
+  const flush = useCallback(() => {
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+    frame.current = null;
+    apply();
+  }, [apply]);
+  useLayoutEffect(() => {
+    apply();
+    return () => {
+      if (frame.current !== null) cancelAnimationFrame(frame.current);
+    };
+  }, [apply]);
+  const finish = () => {
+    if (!drag.current) return;
+    drag.current = null;
+    flush();
+  };
   return (
     <div
+      ref={handle}
       role="separator"
       tabIndex={0}
       aria-label={name}
@@ -30,8 +61,8 @@ export function ColumnResizeHandle({
       aria-orientation="vertical"
       aria-valuemin={min}
       aria-valuemax={max}
-      aria-valuenow={value}
-      aria-valuetext={`${value} rem`}
+      aria-valuenow={min}
+      aria-valuetext={`${min} rem`}
       data-testid={`${target}-resize`}
       className={css.Handle}
       onPointerDown={(event) => {
@@ -41,36 +72,39 @@ export function ColumnResizeHandle({
         event.currentTarget.setPointerCapture(event.pointerId);
         drag.current = {
           x: event.clientX,
-          width: value,
+          width: widthRef.current,
           rootSize: parseFloat(
             getComputedStyle(document.documentElement).fontSize
           ),
         };
       }}
       onPointerMove={(event) => {
-        if (drag.current)
-          resize(
-            drag.current.width +
-              (event.clientX - drag.current.x) / drag.current.rootSize
-          );
+        if (!drag.current) return;
+        const next = clamp(
+          drag.current.width +
+            (event.clientX - drag.current.x) / drag.current.rootSize
+        );
+        if (next === widthRef.current) return;
+        widthRef.current = next;
+        if (frame.current === null)
+          frame.current = requestAnimationFrame(() => {
+            frame.current = null;
+            apply();
+          });
       }}
       onPointerUp={(event) => {
-        drag.current = null;
+        finish();
         if (event.currentTarget.hasPointerCapture(event.pointerId))
           event.currentTarget.releasePointerCapture(event.pointerId);
       }}
-      onLostPointerCapture={() => {
-        drag.current = null;
-      }}
-      onPointerCancel={() => {
-        drag.current = null;
-      }}
+      onLostPointerCapture={finish}
+      onPointerCancel={finish}
       onKeyDown={(event) => {
         const next =
           event.key === "ArrowLeft"
-            ? value - 0.0625
+            ? widthRef.current - 0.0625
             : event.key === "ArrowRight"
-              ? value + 0.0625
+              ? widthRef.current + 0.0625
               : event.key === "Home"
                 ? min
                 : event.key === "End"
@@ -78,7 +112,8 @@ export function ColumnResizeHandle({
                   : undefined;
         if (next === undefined) return;
         event.preventDefault();
-        resize(next);
+        widthRef.current = clamp(next);
+        flush();
       }}
     />
   );

@@ -28,7 +28,7 @@
 }
 
 .InspectorPanel {
-  overflow: clip;
+  overflow: hidden;
   width: 18rem;
   flex-shrink: 0;
   min-height: 0;
@@ -53,10 +53,4 @@
   width: 18rem;
   height: 100%;
   contain: inline-size layout;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .InspectorPanel {
-    transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1);
-  }
 }

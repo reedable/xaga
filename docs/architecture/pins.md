@@ -217,7 +217,10 @@ The behavior applies in both expandable-section and compact-selector layouts.
 The existing heading controls are positioned directly, without duplicate
 navigation or accessible headings. A resize observer measures their actual
 heights and updates ancestor-height offsets in rem after font changes,
-resizing, expansion, and filtering. Opaque theme backgrounds and ancestor stacking
+expansion, and filtering. It reads all heading heights before writing offsets,
+reuses those measurements for ancestors, and writes only changed offsets.
+ResizeObserver ignores width-only changes because group labels cannot wrap;
+height changes schedule one measurement per animation frame. Opaque theme backgrounds and ancestor stacking
 order prevent scrolled descendants from showing through headings. Actions and
 unread counts retain their existing visibility and accessibility contracts.
 

@@ -1,5 +1,6 @@
 .Inline {
-  flex: 0 0 18rem;
+  width: 18rem;
+  height: 100%;
   min-width: 0;
   border-left: var(--border);
   box-sizing: border-box;

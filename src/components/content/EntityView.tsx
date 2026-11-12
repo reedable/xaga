@@ -38,8 +38,7 @@ type EntityViewProps = {
 const logger = Logger.getLogger("EntityView");
 
 export function EntityView({ className, searchPanelRef }: EntityViewProps) {
-  const { state, search } = useRouter();
-  const searchOpen = search !== undefined;
+  const { state } = useRouter();
   const { entryId, annotationId, url, mimeType } = state;
 
   const currentRouteTarget = useRef({ entryId, annotationId });
@@ -137,7 +136,7 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
     observer.observe(element);
     return () => observer.disconnect();
   }, [searchPanelRef]);
-  const inspectorHidden = narrow || searchOpen;
+  const inspectorHidden = narrow;
   const useInspectorDrawer = inspectorHidden || !!drawerTarget?.annotationId;
   useEffect(() => {
     if (!useInspectorDrawer && inspectorOpen) {

@@ -1,6 +1,8 @@
 import {
   Alert,
   Button,
+  Collapse,
+  useMediaQuery,
   Dialog,
   DialogActions,
   DialogContent,
@@ -14,7 +16,6 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type CSSProperties,
 } from "react";
 import { useStartupFeedRefresh } from "./hooks/useStartupFeedRefresh";
 import css from "./AppLayout.module.css";
@@ -46,12 +47,13 @@ export function AppLayout({
   libraryBadgeRef?: (element: HTMLSpanElement | null) => void;
 }) {
   useStartupFeedRefresh();
+  const animate = useMediaQuery("(prefers-reduced-motion: no-preference)");
   const { selectTopic, selectFeed, search, clearSearch } = useRouter();
   const [listFilter, setListFilter] = useState<Filter>("unread");
   const appRef = useRef<HTMLDivElement>(null);
   const readingSpaceRef = useRef<HTMLDivElement>(null);
-  const [sidebarWidth, setSidebarWidth] = useState(15);
-  const [listWidth, setListWidth] = useState(20);
+  const sidebarWidth = useRef(15);
+  const listWidth = useRef(20);
   const [searchDrawer, setSearchDrawer] = useState(false);
   const [autoHideSidebar, setAutoHideSidebar] = useState(false);
   const { showSidebar } = useAppearance();
@@ -174,16 +176,18 @@ export function AppLayout({
     [deleteFeed, requestFeeds]
   );
 
-  useEffect(() => {
-    const el = appRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver(([entry]) => {
-      const threshold = search !== undefined ? 1300 : 980;
-      setAutoHideSidebar(entry.contentRect.width < threshold);
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [search]);
+  // useEffect(() => {
+  //   const el = appRef.current;
+  //   if (!el) return;
+
+  //   const observer = new ResizeObserver(([entry]) => {
+  //     const threshold = search !== undefined ? 1300 : 980;
+  //     setAutoHideSidebar(entry.contentRect.width < threshold);
+  //   });
+
+  //   observer.observe(el);
+  //   return () => observer.disconnect();
+  // }, [search]);
 
   useLayoutEffect(() => {
     const element = readingSpaceRef.current;
@@ -197,7 +201,7 @@ export function AppLayout({
         element.getBoundingClientRect().width -
         parseFloat(style.borderLeftWidth) -
         parseFloat(style.borderRightWidth);
-      setSearchDrawer(available < 38 * rootSize);
+      setSearchDrawer(available < 45 * rootSize);
     };
     const observer = new ResizeObserver(measure);
     observer.observe(element);
@@ -239,16 +243,7 @@ export function AppLayout({
         </Alert>
       </Snackbar>
 
-      <div
-        ref={appRef}
-        className={css.App}
-        style={
-          {
-            "--sidebar-width": `${sidebarWidth}rem`,
-            "--list-width": `${listWidth}rem`,
-          } as CSSProperties
-        }
-      >
+      <div ref={appRef} className={css.App}>
         {showSidebar && !autoHideSidebar && (
           <div id="sidebar-column" className={css.SidebarColumn}>
             <Sidebar
@@ -261,10 +256,10 @@ export function AppLayout({
             <ColumnResizeHandle
               name="Sidebar width"
               target="sidebar-column"
-              value={sidebarWidth}
+              widthRef={sidebarWidth}
+              property="--sidebar-width"
               min={15}
               max={22.5}
-              onChange={setSidebarWidth}
             />
           </div>
         )}
@@ -283,10 +278,10 @@ export function AppLayout({
           <ColumnResizeHandle
             name="Article list width"
             target="entity-list-column"
-            value={listWidth}
+            widthRef={listWidth}
+            property="--list-width"
             min={20}
             max={30}
-            onChange={setListWidth}
           />
         </div>
         <div
@@ -295,15 +290,25 @@ export function AppLayout({
           data-testid="reading-space"
         >
           <EntityView className={css.EntityView} />
-          {search !== undefined && (
-            <SearchPanel drawer={searchDrawer} onClose={clearSearch}>
+          <Collapse
+            className={css.SearchFrame}
+            in={search !== undefined}
+            orientation="horizontal"
+            timeout={animate ? 300 : 0}
+            easing="cubic-bezier(0.4, 0, 0.2, 1)"
+          >
+            <SearchPanel
+              drawer={searchDrawer}
+              open={search !== undefined}
+              onClose={clearSearch}
+            >
               <SearchResultList
                 className={css.SearchResultList}
-                searchQuery={search}
+                searchQuery={search ?? ""}
                 onSaveAsTopic={handleSaveSearchAsTopic}
               />
             </SearchPanel>
-          )}
+          </Collapse>
         </div>
       </div>
 

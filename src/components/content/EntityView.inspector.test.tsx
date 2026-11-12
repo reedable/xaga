@@ -388,14 +388,13 @@ it("keeps the docked Inspector mounted while responsive width hides and shows it
   expect(panel.querySelector("[data-inspector]")).toBe(inspector);
 });
 
-it("clips the mounted Inspector when Search opens and restores it when Search closes", async () => {
+it("keeps the mounted Inspector at its full width when Search opens and closes", async () => {
   const panel = container.querySelector("aside")!;
   const inspector = panel.querySelector("[data-inspector]");
   mocks.search = "";
   await act(async () => root.render(<EntityView />));
-  expect(panel.getAttribute("aria-hidden")).toBe("true");
-  expect(panel.hasAttribute("inert")).toBe(true);
-  expect(opener()).toBeDefined();
+  expect(panel.getAttribute("aria-hidden")).toBe("false");
+  expect(panel.hasAttribute("inert")).toBe(false);
   expect(panel.querySelector("[data-inspector]")).toBe(inspector);
   mocks.search = undefined;
   await act(async () => root.render(<EntityView />));

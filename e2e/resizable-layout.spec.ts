@@ -227,3 +227,129 @@ test("selecting a drawer result and dismissing Search preserves the selected art
     "true"
   );
 });
+
+test("a pointer burst applies its last width once per frame and cancellation retains it", async ({
+  page,
+}) => {
+  await startCapture(page);
+  const handle = sidebar(page);
+  const box = (await handle.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  const updates = await handle.evaluate(async (element, start) => {
+    const column = element.parentElement!;
+    let changes = 0;
+    const observer = new MutationObserver((records) => {
+      changes += records.length;
+    });
+    observer.observe(column, { attributes: true, attributeFilter: ["style"] });
+    for (let offset = 1; offset <= 64; offset++)
+      element.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          clientX: start + offset,
+          pointerId: 1,
+        })
+      );
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve())
+    );
+    observer.disconnect();
+    return changes;
+  }, x);
+  expect(updates).toBe(1);
+  expect(await width(page, "sidebar-column")).toBe(19);
+  await expect(handle).toHaveAttribute("aria-valuenow", "19");
+  await handle.dispatchEvent("pointercancel");
+  await page.mouse.up();
+  await page.setViewportSize({ width: 979, height: 800 });
+  await expect(handle).toHaveCount(0);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(handle).toHaveAttribute("aria-valuenow", "19");
+  expect(await width(page, "sidebar-column")).toBe(19);
+});
+
+test("Search slides over the fixed-width Inspector while the Article pane remains stable", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await startCapture(page);
+  await openArticle(page, garden);
+  const before = await page.getByTestId("entry-reader").boundingBox();
+  await page.evaluate(() => {
+    const pane = document.querySelector('[data-testid="entry-reader"]')!;
+    const inspector = document.querySelector("aside")!;
+    const content = inspector.firstElementChild!;
+    const frames: {
+      articleX: number;
+      articleWidth: number;
+      inspectorWidth: number;
+      contentWidth: number;
+      mounted: boolean;
+      searchWidth: number;
+    }[] = [];
+    (window as unknown as { searchFrames: typeof frames }).searchFrames =
+      frames;
+    const start = performance.now();
+    const sample = () => {
+      const article = pane.getBoundingClientRect();
+      const search = document
+        .querySelector('[data-testid="search-inline"]')
+        ?.closest(".MuiCollapse-root");
+      frames.push({
+        articleX: article.x,
+        articleWidth: article.width,
+        inspectorWidth: inspector.getBoundingClientRect().width,
+        contentWidth: content.getBoundingClientRect().width,
+        mounted: inspector.isConnected && content.isConnected,
+        searchWidth: search?.getBoundingClientRect().width ?? 0,
+      });
+      if (performance.now() - start < 650) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  await control(page, "button", "search").click();
+  await expect(query(page)).toBeFocused();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as unknown as { searchFrames: unknown[] }).searchFrames.length
+      )
+    )
+    .toBeGreaterThan(20);
+  const frames = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          searchFrames: {
+            articleX: number;
+            articleWidth: number;
+            inspectorWidth: number;
+            contentWidth: number;
+            mounted: boolean;
+            searchWidth: number;
+          }[];
+        }
+      ).searchFrames
+  );
+  expect(
+    frames.some((frame) => frame.searchWidth > 0 && frame.searchWidth < 288)
+  ).toBe(true);
+  for (const frame of frames) {
+    expect(frame.mounted).toBe(true);
+    expect(frame.articleX).toBeCloseTo(before!.x, 1);
+    expect(frame.articleWidth).toBeCloseTo(before!.width, 1);
+    expect(frame.inspectorWidth).toBe(288);
+    expect(frame.contentWidth).toBe(288);
+  }
+  await page.keyboard.press("Escape");
+  await expect(control(page, "button", "search")).toBeFocused();
+  await expect
+    .poll(
+      async () => (await page.getByTestId("entry-reader").boundingBox())!.width
+    )
+    .toBeCloseTo(before!.width, 1);
+});

@@ -78,6 +78,10 @@ to the article-toolbar opener, or to the retained tooltip opener after opening f
 a tooltip, with the reading pane iframe as fallback. Resizing an Article drawer to the
 wide layout closes it and focuses the selected panel tab.
 
+The inline Inspector stays mounted at its full content width when Search opens.
+Search slides over and clips it inside an overflow-hidden container, keeping the
+Article pane stable throughout the animation.
+
 The shared drawer slides in from the right only when
 `prefers-reduced-motion: no-preference` matches. Otherwise it opens without
 animation. The tab indicator uses the MUI theme's transition when motion is

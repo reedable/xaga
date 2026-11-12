@@ -101,11 +101,16 @@ export default function ShortcutTree({
     const headings = [
       ...root.querySelectorAll<HTMLElement>("[data-sticky-group-heading]"),
     ];
+    const heights = new Map<HTMLElement, number>();
     const measure = () => {
       const rootSize = parseFloat(
         getComputedStyle(document.documentElement).fontSize
       );
-      for (const heading of headings) {
+      // Finish all geometry reads before changing any sticky offsets.
+      headings.forEach((heading) =>
+        heights.set(heading, heading.getBoundingClientRect().height)
+      );
+      const offsets = headings.map((heading) => {
         let offset = 0;
         let ancestor =
           heading.parentElement?.parentElement?.closest<HTMLElement>(
@@ -115,24 +120,49 @@ export default function ShortcutTree({
           const parentHeading = ancestor.querySelector<HTMLElement>(
             ":scope > [data-sticky-group-heading]"
           );
-          if (parentHeading)
-            offset += parentHeading.getBoundingClientRect().height;
+          if (parentHeading) offset += heights.get(parentHeading) ?? 0;
           ancestor = ancestor.parentElement?.closest<HTMLElement>(
             "[data-shortcut-group]"
           );
         }
-        heading.style.setProperty(
-          "--shortcut-heading-offset",
-          `${offset / rootSize}rem`
-        );
-      }
+        return `${offset / rootSize}rem`;
+      });
+      headings.forEach((heading, index) => {
+        if (
+          heading.style.getPropertyValue("--shortcut-heading-offset") !==
+          offsets[index]
+        )
+          heading.style.setProperty(
+            "--shortcut-heading-offset",
+            offsets[index]
+          );
+      });
     };
     measure();
     if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(root);
+    let frame: number | undefined;
+    const observer = new ResizeObserver((entries) => {
+      // Width changes cannot wrap group labels; only a changed height affects stacking.
+      if (
+        !entries.some(
+          (entry) =>
+            (entry.borderBoxSize?.[0]?.blockSize ??
+              entry.contentRect.height) !==
+            heights.get(entry.target as HTMLElement)
+        )
+      )
+        return;
+      if (frame === undefined)
+        frame = requestAnimationFrame(() => {
+          frame = undefined;
+          measure();
+        });
+    });
     headings.forEach((heading) => observer.observe(heading));
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
   }, [nodes, filter, expanded]);
 
   function expand(id: string, value: boolean) {

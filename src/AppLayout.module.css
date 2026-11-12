@@ -27,6 +27,7 @@
 }
 
 .SidebarColumn {
+  --sidebar-width: 15rem;
   position: relative;
   flex: 0 0 var(--sidebar-width);
   width: var(--sidebar-width);
@@ -34,6 +35,7 @@
 }
 
 .ListColumn {
+  --list-width: 20rem;
   position: relative;
   flex: 0 0 var(--list-width);
   width: var(--list-width);
@@ -41,6 +43,8 @@
 }
 
 .ReadingSpace {
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex: 1;
   min-width: 0;
@@ -49,4 +53,13 @@
 
 .App .EntityView {
   border-left: 0;
+}
+
+.SearchFrame {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  background-color: var(--lliw-semanticColor__background-color--primary);
 }
