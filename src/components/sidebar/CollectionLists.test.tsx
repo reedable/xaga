@@ -8,6 +8,7 @@ import { emptySite } from "../../sites";
 import FeedList from "./FeedList";
 import SiteList from "./SiteList";
 import TopicList from "./TopicList";
+vi.mock("react-virtuoso", () => import("../../test/mockVirtuoso"));
 
 vi.mock("../../hooks/useFeeds", () => ({
   useFeeds: () => ({ loadingFeedIds: new Set<string>() }),
@@ -82,7 +83,7 @@ it.each(["feed", "topic", "site"] as const)(
       ...container.querySelectorAll<HTMLElement>(".MuiListItemButton-root"),
     ].find((item) => item.textContent?.includes(collection.title))!;
     expect(row).toBeDefined();
-    expect(row.closest("li")?.textContent).toContain("3");
+    expect(row.closest('[role="listitem"]')?.textContent).toContain("3");
     await act(async () => row.click());
     expect(router.state).toEqual({
       ...{

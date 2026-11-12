@@ -128,6 +128,16 @@ and backdrop dismissal, clearing, active-filter accessible feedback, and short
 windows with root text scaling. Read-only workflows verify both controls remain
 usable without library write access.
 
+`e2e/sidebar-virtualization.spec.ts` checks that long flat collection lists mount
+only a subset of rows, reach the last row by scrolling, retain selection, and
+handle filtering from the bottom through matching, empty, and restored results.
+It covers tall/compact resizing, root text scaling, both themes, and forward and
+reverse Tab traversal across virtual rows without trapping focus at the boundaries.
+The existing `sidebar-height` fixture supplies the long list. Component tests use
+a layout-free Virtuoso mock for row interactions; browser tests exercise the real
+virtualizer. Shortcuts remains a nonvirtual nested tree, covered by the sticky
+group and height suites.
+
 `e2e/sidebar-sort.spec.ts` checks the shared sort control's placement and alignment,
 popup placement beside the sidebar without covering its collections, keyboard
 operation, dropdown selection, ordering across sections, and saved preference after

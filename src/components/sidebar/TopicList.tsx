@@ -70,6 +70,7 @@ export default function TopicList({
     >
       {sortedTopics.map((topic) => (
         <SidebarEntity
+          component="div"
           collection={topic}
           key={topic.id}
           icon={FeedIcon}

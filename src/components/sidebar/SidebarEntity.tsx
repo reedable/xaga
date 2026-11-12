@@ -5,13 +5,19 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  type ListItemProps,
 } from "@mui/material";
 import { motion } from "framer-motion";
-import type { ElementType, ReactNode } from "react";
+import { forwardRef, type ElementType, type ReactNode } from "react";
 import cx from "../../utils/cx";
 import css from "./SidebarEntity.module.css";
 
 const MotionListItem = motion(ListItem);
+const DivListItem = forwardRef<HTMLDivElement, ListItemProps<"div">>(
+  function DivListItem(props, ref) {
+    return <ListItem {...props} component="div" ref={ref} />;
+  }
+);
 
 type SidebarSummary = {
   title: string;
@@ -20,6 +26,7 @@ type SidebarSummary = {
 };
 
 export interface SidebarEntityProps<T extends SidebarSummary> {
+  component?: "li" | "div";
   className?: string;
   testId?: string;
   collection: T;
@@ -31,6 +38,7 @@ export interface SidebarEntityProps<T extends SidebarSummary> {
 }
 
 export default function SidebarEntity<T extends SidebarSummary>({
+  component = "li",
   className,
   testId,
   collection,
@@ -40,10 +48,16 @@ export default function SidebarEntity<T extends SidebarSummary>({
   onSelectCollection,
   renderSecondaryAction,
 }: SidebarEntityProps<T>) {
+  // Virtuoso owns virtual row geometry; layout transforms would compete with it.
+  const Row = component === "li" ? MotionListItem : DivListItem;
   return (
-    <MotionListItem
-      layout
-      transition={{ duration: 0.3, ease: "easeOut" }}
+    <Row
+      {...(component === "li"
+        ? {
+            layout: true,
+            transition: { duration: 0.3, ease: "easeOut" as const },
+          }
+        : {})}
       disablePadding
       secondaryAction={renderSecondaryAction?.(collection)}
     >
@@ -70,6 +84,6 @@ export default function SidebarEntity<T extends SidebarSummary>({
           }}
         />
       </ListItemButton>
-    </MotionListItem>
+    </Row>
   );
 }

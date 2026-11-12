@@ -70,6 +70,7 @@ export default function FeedList({
     >
       {sortedFeeds.map((feed) => (
         <SidebarEntity
+          component="div"
           collection={feed}
           key={feed.id}
           icon={RssFeed}

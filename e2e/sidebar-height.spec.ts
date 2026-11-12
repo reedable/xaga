@@ -4,6 +4,7 @@ import {
   openArticle,
   reader,
   startCapture,
+  scrollSidebarList,
   test,
 } from "./fixtures";
 import type { Page } from "@playwright/test";
@@ -198,6 +199,7 @@ test("long lists and depth five and twenty-four remain scrollable in compact mod
     "button",
     { name: "Collection 79", exact: true }
   );
+  await scrollSidebarList(page, "topics", "bottom");
   await last.scrollIntoViewIfNeeded();
   await expect(last).toBeInViewport();
   const allItems = await control(page, "button", "all-items").boundingBox();

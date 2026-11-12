@@ -141,6 +141,22 @@ updates the shared selection. Changing layouts or list sections preserves the
 current article and browsing scope. Keyboard focus moves between the selector
 and the section header when the focused control is replaced by resizing.
 
+## Sidebar list rendering
+
+`ExpandableList` uses React Virtuoso for the flat Topics, Feeds, Sites, and Tags
+sections. The existing expanded content element owns scrolling in both tall and
+compact layouts; Virtuoso measures variable-height rows and renders the viewport
+plus a small overscan. React keys preserve row identity when collections reorder.
+Empty results omit the virtualizer. Mounted rows expose their position and total
+list size to assistive technology, and Tab/Shift+Tab scroll and focus adjacent rows
+as needed so keyboard traversal can reach items outside the rendered viewport.
+Multiple controls within a row keep their normal Tab order.
+
+Shortcuts opts out with `virtualized={false}`. Its nested tree retains its group
+collapse state, sticky ancestor headings, and drag-and-drop containers. Virtualizing
+that tree requires a separate design for those behaviors; wrapping it as one
+Virtuoso item would not virtualize its descendants.
+
 ## Nested groups (0.15)
 
 Library format **0.15**, implemented by **0.15.0-dev**, adds group nodes:

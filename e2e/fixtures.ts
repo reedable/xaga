@@ -68,6 +68,27 @@ export const test = base.extend<{ browserDiagnostics: void }>({
 
 export { expect };
 
+/** Scroll the actual collection viewport so virtual rows mount before locating them. */
+export async function scrollSidebarList(
+  page: Page,
+  section: string,
+  edge: "top" | "bottom"
+) {
+  const list = page.getByTestId(`sidebar-${section}-list`);
+  // Its viewport is still changing during the section's opening transition.
+  await expect(
+    list.locator('xpath=ancestor::*[contains(@class, "MuiCollapse-root")]')
+  ).toHaveClass(/MuiCollapse-entered/);
+  await list.evaluate((list, edge) => {
+    let viewport = list.parentElement;
+    while (viewport && getComputedStyle(viewport).overflowY !== "auto") {
+      viewport = viewport.parentElement;
+    }
+    if (!viewport) throw new Error("Sidebar scroll viewport not found");
+    viewport.scrollTop = edge === "top" ? 0 : viewport.scrollHeight;
+  }, edge);
+}
+
 export async function startCapture(
   page: Page,
   theme: "light" | "dark" = "light"

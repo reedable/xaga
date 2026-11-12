@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import useRouter from "../../hooks/useRouter";
 import { TagsContext } from "../../providers/TagsContext";
 import TagList from "./TagList";
+vi.mock("react-virtuoso", () => import("../../test/mockVirtuoso"));
 
 vi.mock("../TagActions", () => ({ TagActions: () => null }));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);

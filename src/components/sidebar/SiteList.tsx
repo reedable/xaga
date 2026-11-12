@@ -43,6 +43,7 @@ export default function SiteList({
     >
       {sortedSites.map((site) => (
         <SidebarEntity
+          component="div"
           collection={site}
           key={site.id}
           icon={Language}
