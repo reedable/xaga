@@ -93,6 +93,18 @@ export function createFixtures() {
   };
 }
 
+/** A full related-results list with wrapped titles, as in a populated library. */
+export function createReaderOverflowFixtures(): Article[] {
+  const template = createFixtures().articles[0];
+  return Array.from({ length: 12 }, (_, index) => ({
+    ...template,
+    id: `related-${index}`,
+    title: `Related article ${index + 1}: Investigating security incidents, recovery plans, and practical lessons from a changing software supply chain`,
+    url: `https://fieldnotes.example/related-${index}`,
+    annotations: [],
+  }));
+}
+
 function nestedShortcutGroups(
   depth: number,
   prefix: string,

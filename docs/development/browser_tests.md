@@ -66,6 +66,12 @@ main-window constraints and resizing at 320 × 256 logical pixels. It uses a bla
 webview without account settings or user libraries. Browser tests do not verify
 native WebKit focus or pointer behavior.
 
+`e2e/reader-overflow.spec.ts` uses the `reader-overflow` capture scenario's full
+Related list with wrapped titles. It verifies that the reading pane stays inside
+the window in inline and drawer presentations, that related results scroll
+without moving the outer page, and that the toolbar and column headers remain
+within the viewport. The default capture scenario has no related results.
+
 `e2e/resizable-layout.spec.ts` verifies independent column resizing and bounds,
 keyboard separators, Sidebar thresholds, exact inline/drawer Search boundaries,
 root font scaling, live dragging, retained Search results and reading context,

@@ -46,6 +46,8 @@ drawer with a `20rem` minimum and `46.5rem` maximum. Equality presents it inline
 One permanently mounted, nonportaled Modal host contains the reading pane in
 both presentations. Positioning, visibility, and modal behavior change; its
 component subtree, DOM parentage, reader state, and hooks remain in place.
+The `EntityView` flex item has a zero minimum height so a populated Inspector
+scrolls within the window rather than stretching the reading pane and outer page.
 Dismissal hides the toolbar along with the article. A visible close button,
 Escape, and backdrop click dismiss the drawer. The underlying columns are inert
 while it is open, and focus remains within the topmost modal surface.

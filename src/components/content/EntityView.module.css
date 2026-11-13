@@ -6,6 +6,7 @@
 }
 
 .LayoutContainer {
+  min-height: 0;
   min-width: 0;
   container-name: item-view;
   container-type: inline-size;

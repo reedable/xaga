@@ -5,6 +5,7 @@ import type { Entry, Filter, ListEntity, Topic, Annotation } from "../../types";
 import { pinKey, pinTargets, type PinNode, type PinNodeRef } from "../../pins";
 import {
   createFixtures,
+  createReaderOverflowFixtures,
   createSidebarHeightFixtures,
   createStickyShortcutFixtures,
   captureDate,
@@ -47,6 +48,9 @@ export class MockPlatform implements Platform {
 
   constructor(theme: "light" | "dark" = "light") {
     this.theme = theme;
+    if (this.scenario === "reader-overflow") {
+      this.data.articles.push(...createReaderOverflowFixtures());
+    }
     if (this.scenario === "sidebar-height") {
       const fixture = createSidebarHeightFixtures();
       this.data.topics.push(...fixture.topics);
@@ -846,8 +850,24 @@ export class MockPlatform implements Platform {
     this.unsupported("Downloading articles");
   createArticle: Platform["createArticle"] = async () =>
     this.unsupported("Creating articles from URLs");
-  // No similarity relationships are supplied by this fixture dataset.
-  queryByEntity: Platform["queryByEntity"] = async () => [];
+  // Deterministic related results exercise populated Inspector layout without a model.
+  queryByEntity: Platform["queryByEntity"] = async (
+    signal,
+    id,
+    _filter,
+    _min,
+    _max,
+    limit
+  ) => {
+    signal.throwIfAborted();
+    if (this.scenario !== "reader-overflow") return [];
+    return this.data.articles
+      .filter(
+        (article) => article.id.startsWith("related-") && article.id !== id
+      )
+      .slice(0, limit ?? 12)
+      .map((article) => ({ ...this.project(article), similarity: 0.9 }));
+  };
   // Deterministic title matches exercise Search presentation without a model.
   queryByText: Platform["queryByText"] = async (
     signal,
