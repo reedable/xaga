@@ -53,11 +53,14 @@ test("Settings exposes fetch controls, preserves exact values, and retains panel
   await control(page, "button", "settings-appearance").click();
   await expect(control(page, "heading", "reading-settings")).toBeVisible();
   await expect(control(page, "radiogroup", "article-view")).toBeVisible();
-  await page.evaluate(() =>
-    (
-      window as Window & { xagaCapture?: { reset: () => void } }
-    ).xagaCapture!.reset()
-  );
+  await Promise.all([
+    page.waitForEvent("load"),
+    page.evaluate(() =>
+      (
+        window as Window & { xagaCapture?: { reset: () => void } }
+      ).xagaCapture!.reset()
+    ),
+  ]);
   await expect(page.locator("html")).toHaveAttribute(
     "data-capture-ready",
     "true"
