@@ -1,0 +1,19 @@
+:root {
+  --sidebar-width-default: 15rem;
+  --sidebar-width-min: 15rem;
+  --sidebar-width-max: 22.5rem;
+  --list-width-default: 20rem;
+  --list-width-min: 20rem;
+  --list-width-max: 30rem;
+  --reader-width-min: 20rem;
+  --reader-width-max: 46.5rem;
+  --article-width-max: 42.5rem;
+  --article-padding-inline: calc(
+    (var(--reader-width-max) - var(--article-width-max)) / 2
+  );
+  --inspector-width: 18rem;
+  --inspector-drawer-width: 20rem;
+  --inspector-inline-min: 43.75rem;
+  --search-width: 18rem;
+  --search-inline-min: 45rem;
+}

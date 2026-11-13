@@ -34,6 +34,7 @@ export function AddressBar({ url, onNavigate }: AddressBarProps) {
         if (trimmed) onNavigate(trimmed);
         e.currentTarget.blur();
       } else if (e.key === "Escape") {
+        e.stopPropagation();
         e.currentTarget.blur();
       }
     },

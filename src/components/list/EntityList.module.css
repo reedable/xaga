@@ -9,7 +9,7 @@
 }
 
 .EntityList {
-  --width: var(--list-width, 20rem);
+  --width: var(--list-width, var(--list-width-default));
 
   box-sizing: border-box;
   display: flex;

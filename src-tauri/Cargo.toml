@@ -111,3 +111,7 @@ harness = false
 [[test]]
 name = "feed_refresh_webview"
 harness = false
+
+[[test]]
+name = "main_window_layout"
+harness = false

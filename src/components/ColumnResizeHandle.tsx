@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, type RefObject } from "react";
+import { getLayoutWidth } from "../utils/layoutWidth";
 import css from "./ColumnResizeHandle.module.css";
 
 export function ColumnResizeHandle({
@@ -6,23 +7,29 @@ export function ColumnResizeHandle({
   target,
   widthRef,
   property,
-  min,
-  max,
+  minProperty,
+  maxProperty,
+  defaultProperty,
 }: {
   name: string;
   target: string;
   widthRef: RefObject<number>;
   property: string;
-  min: number;
-  max: number;
+  minProperty: string;
+  maxProperty: string;
+  defaultProperty: string;
 }) {
+  const bounds = useRef({ min: 0, max: 0 });
   const handle = useRef<HTMLDivElement>(null);
   const frame = useRef<number | null>(null);
   const drag = useRef<{ x: number; width: number; rootSize: number } | null>(
     null
   );
   const clamp = (value: number) =>
-    Math.min(max, Math.max(min, Math.round(value * 16) / 16));
+    Math.min(
+      bounds.current.max,
+      Math.max(bounds.current.min, Math.round(value * 16) / 16)
+    );
   // Width and accessible values are updated together without rendering the app.
   const apply = useCallback(() => {
     const element = handle.current;
@@ -32,6 +39,8 @@ export function ColumnResizeHandle({
     const column = element.parentElement;
     if (column && column.style.getPropertyValue(property) !== styleValue)
       column.style.setProperty(property, styleValue);
+    element.setAttribute("aria-valuemin", String(bounds.current.min));
+    element.setAttribute("aria-valuemax", String(bounds.current.max));
     element.setAttribute("aria-valuenow", value);
     element.setAttribute("aria-valuetext", `${value} rem`);
   }, [widthRef, property]);
@@ -41,11 +50,19 @@ export function ColumnResizeHandle({
     apply();
   }, [apply]);
   useLayoutEffect(() => {
+    const column = handle.current?.parentElement;
+    if (!column) return;
+    bounds.current = {
+      min: getLayoutWidth(column, minProperty),
+      max: getLayoutWidth(column, maxProperty),
+    };
+    if (!widthRef.current)
+      widthRef.current = getLayoutWidth(column, defaultProperty);
     apply();
     return () => {
       if (frame.current !== null) cancelAnimationFrame(frame.current);
     };
-  }, [apply]);
+  }, [apply, minProperty, maxProperty, defaultProperty, widthRef]);
   const finish = () => {
     if (!drag.current) return;
     drag.current = null;
@@ -59,10 +76,9 @@ export function ColumnResizeHandle({
       aria-label={name}
       aria-controls={target}
       aria-orientation="vertical"
-      aria-valuemin={min}
-      aria-valuemax={max}
-      aria-valuenow={min}
-      aria-valuetext={`${min} rem`}
+      aria-valuemin={0}
+      aria-valuemax={0}
+      aria-valuenow={0}
       data-testid={`${target}-resize`}
       className={css.Handle}
       onPointerDown={(event) => {
@@ -106,9 +122,9 @@ export function ColumnResizeHandle({
             : event.key === "ArrowRight"
               ? widthRef.current + 0.0625
               : event.key === "Home"
-                ? min
+                ? bounds.current.min
                 : event.key === "End"
-                  ? max
+                  ? bounds.current.max
                   : undefined;
         if (next === undefined) return;
         event.preventDefault();

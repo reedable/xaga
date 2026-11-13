@@ -12,6 +12,7 @@ import {
   FIND_NAVIGATE,
   FIND_OPEN,
   FIND_RESULT,
+  READER_ESCAPE,
   HIGHLIGHT_CLICKED,
   OPEN_LINK_URL,
   SCROLL_TO_ANNOTATION,
@@ -448,6 +449,14 @@ export function HtmlReader({
             current: msg.current as number,
           });
           break;
+        case READER_ESCAPE:
+          if (findOpen) handleFindClose();
+          else if (tooltip) void handleCloseTooltip();
+          else
+            iframeRef.current?.dispatchEvent(
+              new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+            );
+          break;
         case FIND_CLEAR:
           setFindOpen(false);
           setFindQuery("");
@@ -463,6 +472,9 @@ export function HtmlReader({
     handleSelectionMade,
     handleClickHighlight,
     handleCloseTooltip,
+    handleFindClose,
+    findOpen,
+    tooltip,
   ]);
 
   return (

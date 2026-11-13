@@ -22,6 +22,7 @@ function nativeTest(name, env = {}) {
 }
 
 for (const name of [
+  "main_window_layout",
   "shortcuts_menu",
   "sidebar_sort_menu",
   "webview_policy",

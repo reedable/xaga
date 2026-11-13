@@ -57,6 +57,15 @@ runner configuration.
 
 ## Coverage
 
+`e2e/article-drawer.spec.ts` checks narrow and wide navigation, Entry reselection,
+annotation/shortcut/URL activation, history, responsive boundaries and font
+scaling, column resizing, toolbar access, nested dismissal, virtualized focus
+return, and retained reader DOM, document, scroll, and Find state. The native
+`cargo test -p xaga --test main_window_layout --locked` fixture checks Cocoa's
+main-window constraints and resizing at 320 × 256 logical pixels. It uses a blank
+webview without account settings or user libraries. Browser tests do not verify
+native WebKit focus or pointer behavior.
+
 `e2e/resizable-layout.spec.ts` verifies independent column resizing and bounds,
 keyboard separators, Sidebar thresholds, exact inline/drawer Search boundaries,
 root font scaling, live dragging, retained Search results and reading context,

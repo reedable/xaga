@@ -1,5 +1,5 @@
 .Inline {
-  width: 18rem;
+  width: var(--search-width);
   height: 100%;
   min-width: 0;
   border-left: var(--border);
@@ -16,7 +16,7 @@
 }
 
 .Drawer:global(.MuiPaper-root) {
-  width: 18rem;
+  width: var(--search-width);
   background-color: var(--background-color);
   background-image: none;
   border-left: var(--border);

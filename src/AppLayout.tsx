@@ -1,5 +1,11 @@
+import { Close } from "@mui/icons-material";
+import { ReadingPaneContext } from "./providers/ReadingPaneContext";
+import { getLayoutWidth } from "./utils/layoutWidth";
 import {
   Alert,
+  Modal,
+  IconButton,
+  Tooltip,
   Button,
   Collapse,
   useMediaQuery,
@@ -14,6 +20,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -48,13 +55,44 @@ export function AppLayout({
 }) {
   useStartupFeedRefresh();
   const animate = useMediaQuery("(prefers-reduced-motion: no-preference)");
-  const { selectTopic, selectFeed, search, clearSearch } = useRouter();
+  const { selectTopic, selectFeed, search, clearSearch, state } = useRouter();
   const [listFilter, setListFilter] = useState<Filter>("unread");
   const appRef = useRef<HTMLDivElement>(null);
   const readingSpaceRef = useRef<HTMLDivElement>(null);
-  const sidebarWidth = useRef(15);
-  const listWidth = useRef(20);
+  const sidebarWidth = useRef(0);
+  const listWidth = useRef(0);
   const [searchDrawer, setSearchDrawer] = useState(false);
+  const [articleDrawer, setArticleDrawer] = useState(false);
+  const [articleOpen, setArticleOpen] = useState(false);
+  const returnArticleFocus = useRef<(() => void) | null>(null);
+  const restoreArticleFocus = useRef(false);
+  const activateContent = useCallback(() => setArticleOpen(true), []);
+  const readingPane = useMemo(
+    () => ({ activate: activateContent, returnFocus: returnArticleFocus }),
+    [activateContent]
+  );
+  const dismissArticle = useCallback(() => {
+    restoreArticleFocus.current = true;
+    setArticleOpen(false);
+  }, []);
+  useEffect(() => {
+    if (articleOpen || !restoreArticleFocus.current) return;
+    restoreArticleFocus.current = false;
+    returnArticleFocus.current?.();
+  }, [articleOpen]);
+  const hasContent = !!(state.entryId || state.url);
+  const [previousPresentation, setPreviousPresentation] = useState({
+    articleDrawer,
+    hasContent,
+  });
+  if (
+    previousPresentation.articleDrawer !== articleDrawer ||
+    previousPresentation.hasContent !== hasContent
+  ) {
+    setPreviousPresentation({ articleDrawer, hasContent });
+    if (articleDrawer && hasContent) setArticleOpen(true);
+  }
+  const articleModalOpen = articleDrawer && articleOpen && hasContent;
   const [autoHideSidebar] = useState(false);
   const { showSidebar } = useAppearance();
   const { library } = useSettings();
@@ -188,7 +226,12 @@ export function AppLayout({
         element.getBoundingClientRect().width -
         parseFloat(style.borderLeftWidth) -
         parseFloat(style.borderRightWidth);
-      setSearchDrawer(available < 45 * rootSize);
+      setSearchDrawer(
+        available < getLayoutWidth(element, "--search-inline-min") * rootSize
+      );
+      setArticleDrawer(
+        available < getLayoutWidth(element, "--reader-width-min") * rootSize
+      );
     };
     const observer = new ResizeObserver(measure);
     observer.observe(element);
@@ -216,138 +259,192 @@ export function AppLayout({
   }, [platform]);
 
   return (
-    <div className={css.Root}>
-      <ShortcutsMenu />
-      <TitleBar className={css.TitleBar} />
+    <ReadingPaneContext.Provider value={readingPane}>
+      <div className={css.Root}>
+        <ShortcutsMenu />
+        <TitleBar className={css.TitleBar} />
 
-      <Snackbar
-        open={embeddingStartupState === "unavailable"}
-        anchorOrigin={{ vertical: "top", horizontal: "center" }}
-      >
-        <Alert severity="warning" variant="filled">
-          Embedding features are unavailable. Search and related items are
-          disabled. Restart Xaga to retry.
-        </Alert>
-      </Snackbar>
+        <Snackbar
+          open={embeddingStartupState === "unavailable"}
+          anchorOrigin={{ vertical: "top", horizontal: "center" }}
+        >
+          <Alert severity="warning" variant="filled">
+            Embedding features are unavailable. Search and related items are
+            disabled. Restart Xaga to retry.
+          </Alert>
+        </Snackbar>
 
-      <div ref={appRef} className={css.App}>
-        {showSidebar && !autoHideSidebar && (
-          <div id="sidebar-column" className={css.SidebarColumn}>
-            <Sidebar
-              libraryBadgeRef={libraryBadgeRef}
-              filter={sidebarFilter}
-              onFilterChange={setSidebarFilter}
-              onAddFeed={() => setIsAddingFeed(true)}
-              onAddTopic={() => setIsAddingTopic(true)}
+        <div ref={appRef} className={css.App}>
+          {showSidebar && !autoHideSidebar && (
+            <div
+              id="sidebar-column"
+              className={css.SidebarColumn}
+              inert={articleModalOpen}
+            >
+              <Sidebar
+                libraryBadgeRef={libraryBadgeRef}
+                filter={sidebarFilter}
+                onFilterChange={setSidebarFilter}
+                onAddFeed={() => setIsAddingFeed(true)}
+                onAddTopic={() => setIsAddingTopic(true)}
+              />
+              <ColumnResizeHandle
+                name="Sidebar width"
+                target="sidebar-column"
+                widthRef={sidebarWidth}
+                property="--sidebar-width"
+                minProperty="--sidebar-width-min"
+                maxProperty="--sidebar-width-max"
+                defaultProperty="--sidebar-width-default"
+              />
+            </div>
+          )}
+
+          <div
+            id="entity-list-column"
+            className={css.ListColumn}
+            inert={articleModalOpen}
+          >
+            <EntityList
+              filter={listFilter}
+              onFilterChange={setListFilter}
+              className={css.EntityList}
+              isSelectableHeader={autoHideSidebar || !showSidebar}
+              onEditFeed={setEditingFeed}
+              onEditTopic={setEditingTopic}
+              onEditSite={setEditingSite}
             />
+
             <ColumnResizeHandle
-              name="Sidebar width"
-              target="sidebar-column"
-              widthRef={sidebarWidth}
-              property="--sidebar-width"
-              min={15}
-              max={22.5}
+              name="Article list width"
+              target="entity-list-column"
+              widthRef={listWidth}
+              property="--list-width"
+              minProperty="--list-width-min"
+              maxProperty="--list-width-max"
+              defaultProperty="--list-width-default"
             />
           </div>
-        )}
-
-        <div id="entity-list-column" className={css.ListColumn}>
-          <EntityList
-            filter={listFilter}
-            onFilterChange={setListFilter}
-            className={css.EntityList}
-            isSelectableHeader={autoHideSidebar || !showSidebar}
-            onEditFeed={setEditingFeed}
-            onEditTopic={setEditingTopic}
-            onEditSite={setEditingSite}
-          />
-
-          <ColumnResizeHandle
-            name="Article list width"
-            target="entity-list-column"
-            widthRef={listWidth}
-            property="--list-width"
-            min={20}
-            max={30}
-          />
-        </div>
-        <div
-          ref={readingSpaceRef}
-          className={css.ReadingSpace}
-          data-testid="reading-space"
-        >
-          <EntityView className={css.EntityView} />
-          <Collapse
-            className={css.SearchFrame}
-            in={search !== undefined}
-            orientation="horizontal"
-            timeout={animate ? 300 : 0}
-            easing="cubic-bezier(0.4, 0, 0.2, 1)"
+          <div
+            ref={readingSpaceRef}
+            className={css.ReadingSpace}
+            data-testid="reading-space"
           >
-            <SearchPanel
-              drawer={searchDrawer}
-              open={search !== undefined}
-              onClose={clearSearch}
+            <Modal
+              disablePortal
+              keepMounted
+              disableRestoreFocus
+              container={() => readingSpaceRef.current}
+              open={articleModalOpen}
+              aria-hidden={articleDrawer && !articleModalOpen}
+              onClose={dismissArticle}
+              className={articleDrawer ? css.ArticleModal : css.InlineArticle}
+              slotProps={{
+                backdrop: {
+                  ...{ "data-testid": "article-backdrop" },
+                  transitionDuration: 0,
+                },
+              }}
             >
-              <SearchResultList
-                searchQuery={search ?? ""}
-                onSaveAsTopic={handleSaveSearchAsTopic}
-              />
-            </SearchPanel>
-          </Collapse>
+              <div
+                className={articleDrawer ? css.ArticleDrawer : css.ArticlePane}
+                data-testid="article-pane"
+                data-presentation={articleDrawer ? "drawer" : "inline"}
+                role={articleDrawer ? "dialog" : undefined}
+                aria-modal={articleModalOpen || undefined}
+                aria-label={articleDrawer ? "Article" : undefined}
+                inert={articleDrawer && !articleModalOpen}
+                tabIndex={-1}
+              >
+                <div className={css.DrawerClose} hidden={!articleDrawer}>
+                  <Tooltip title="Close article">
+                    <IconButton
+                      data-testid="close-article"
+                      aria-label="Close article"
+                      onClick={dismissArticle}
+                    >
+                      <Close />
+                    </IconButton>
+                  </Tooltip>
+                </div>
+                <EntityView className={css.EntityView} />
+              </div>
+            </Modal>
+            <Collapse
+              className={css.SearchFrame}
+              in={search !== undefined}
+              orientation="horizontal"
+              timeout={animate ? 300 : 0}
+              easing="cubic-bezier(0.4, 0, 0.2, 1)"
+            >
+              <SearchPanel
+                drawer={searchDrawer}
+                open={search !== undefined}
+                onClose={clearSearch}
+              >
+                <SearchResultList
+                  searchQuery={search ?? ""}
+                  onSaveAsTopic={handleSaveSearchAsTopic}
+                />
+              </SearchPanel>
+            </Collapse>
+          </div>
         </div>
+
+        <EditTopicDialog
+          open={editingTopic !== null || isAddingTopic}
+          topic={editingTopic}
+          initialTitle={addTopicTitle}
+          onClose={closeEditTopic}
+          onSave={handleSaveTopic}
+          onDelete={handleDeleteTopic}
+        />
+
+        <EditSiteDialog
+          site={editingSite}
+          onClose={() => setEditingSite(null)}
+        />
+
+        <EditFeedDialog
+          open={editingFeed !== null || isAddingFeed}
+          feed={editingFeed}
+          onClose={closeEditFeed}
+          onAdd={handleAddFeed}
+          onSave={handleSaveFeed}
+          onDelete={handleDeleteFeed}
+        />
+
+        <Dialog
+          open={clearHistoryOpen}
+          onClose={() => setClearHistoryOpen(false)}
+        >
+          <DialogTitle>Clear History</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              This will clear all cookies and website data from external sites
+              visited in Xaga. Xaga&apos;s feeds, entries, and settings will not
+              be affected.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button
+              data-testid="cancel"
+              onClick={() => setClearHistoryOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="error"
+              onClick={async () => {
+                await platform.clearWebviewHistory();
+                setClearHistoryOpen(false);
+              }}
+            >
+              Clear History
+            </Button>
+          </DialogActions>
+        </Dialog>
       </div>
-
-      <EditTopicDialog
-        open={editingTopic !== null || isAddingTopic}
-        topic={editingTopic}
-        initialTitle={addTopicTitle}
-        onClose={closeEditTopic}
-        onSave={handleSaveTopic}
-        onDelete={handleDeleteTopic}
-      />
-
-      <EditSiteDialog site={editingSite} onClose={() => setEditingSite(null)} />
-
-      <EditFeedDialog
-        open={editingFeed !== null || isAddingFeed}
-        feed={editingFeed}
-        onClose={closeEditFeed}
-        onAdd={handleAddFeed}
-        onSave={handleSaveFeed}
-        onDelete={handleDeleteFeed}
-      />
-
-      <Dialog
-        open={clearHistoryOpen}
-        onClose={() => setClearHistoryOpen(false)}
-      >
-        <DialogTitle>Clear History</DialogTitle>
-        <DialogContent>
-          <DialogContentText>
-            This will clear all cookies and website data from external sites
-            visited in Xaga. Xaga&apos;s feeds, entries, and settings will not
-            be affected.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            data-testid="cancel"
-            onClick={() => setClearHistoryOpen(false)}
-          >
-            Cancel
-          </Button>
-          <Button
-            color="error"
-            onClick={async () => {
-              await platform.clearWebviewHistory();
-              setClearHistoryOpen(false);
-            }}
-          >
-            Clear History
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </div>
+    </ReadingPaneContext.Provider>
   );
 }

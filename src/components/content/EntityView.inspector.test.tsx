@@ -1,7 +1,10 @@
+import { readFileSync } from "node:fs";
 import { act, useEffect, type RefObject } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { EntityView } from "./EntityView";
+
+const layoutCss = readFileSync("src/layout.css", "utf8");
 
 const mocks = vi.hoisted(() => ({
   state: {
@@ -142,6 +145,11 @@ beforeEach(async () => {
     url: "https://example.org/article",
     mimeType: undefined,
   };
+  const layout = document.createElement("style");
+  layout.textContent = layoutCss;
+  layout.dataset.layoutTest = "";
+  document.head.appendChild(layout);
+  document.documentElement.style.fontSize = "16px";
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -151,12 +159,14 @@ afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
   observers.clear();
+  document.querySelector("[data-layout-test]")?.remove();
+  document.documentElement.style.fontSize = "";
 });
 async function resize(width: number) {
   const element = container.firstElementChild!;
   await act(async () =>
     observers.get(element)!(
-      [{ contentRect: { width } } as ResizeObserverEntry],
+      [{ target: element, contentRect: { width } } as ResizeObserverEntry],
       {} as ResizeObserver
     )
   );

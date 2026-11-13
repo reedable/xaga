@@ -36,6 +36,7 @@ export function FindBar({
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Escape") {
+      e.stopPropagation();
       onClose();
     } else if (e.key === "Enter") {
       e.preventDefault();
@@ -53,7 +54,7 @@ export function FindBar({
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="Find in article…"
-        inputProps={{ "aria-label": "Find in article" }}
+        inputProps={{ "aria-label": "Find in article", name: "article-find" }}
         className={cx(css.Input, noResults && css.InputNoResults)}
       />
 

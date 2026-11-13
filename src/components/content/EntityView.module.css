@@ -29,20 +29,20 @@
 
 .InspectorPanel {
   overflow: hidden;
-  width: 18rem;
+  width: var(--inspector-width);
   flex-shrink: 0;
   min-height: 0;
 }
 
 .InspectorDrawer {
-  width: min(320px, 100vw);
+  width: min(var(--inspector-drawer-width), 100vw);
 }
 
 .InspectorHeader {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 16px;
+  padding: 0.5rem 1rem;
 }
 
 .InspectorPanelHidden {
@@ -50,7 +50,7 @@
 }
 
 .InspectorPanelContent {
-  width: 18rem;
+  width: var(--inspector-width);
   height: 100%;
   contain: inline-size layout;
 }

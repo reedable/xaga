@@ -6,6 +6,7 @@ import {
   useRef,
 } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useReadingPane } from "../providers/ReadingPaneContext";
 import { useNavigationState } from "../providers/NavigationContext";
 import {
   isAnnotation,
@@ -51,6 +52,8 @@ function isSameNavigation(a: NavigationState, b: NavigationState) {
 
 export default function useRouter() {
   const navigate = useNavigate();
+  const readingPane = useReadingPane();
+  const activateContent = readingPane?.activate;
   const { state, selectCollectionState } = useNavigationState();
   const [searchParams] = useSearchParams();
   const rawSearch = searchParams.get("search");
@@ -154,6 +157,7 @@ export default function useRouter() {
 
   const selectArticleScope = useCallback(
     (entry: Entry) => {
+      activateContent?.();
       const next: NavigationState = {
         articleScopeId: entry.id,
         entryId: entry.id,
@@ -162,7 +166,7 @@ export default function useRouter() {
       if (isSameNavigation(state, next)) return;
       return logged_navigate(`/?${searchParams.toString()}`, { state: next });
     },
-    [logged_navigate, searchParams, state]
+    [logged_navigate, searchParams, state, activateContent]
   );
 
   const selectShortcutTarget = useCallback(
@@ -177,6 +181,7 @@ export default function useRouter() {
 
   const selectEntry = useCallback(
     (entry: Entry) => {
+      activateContent?.();
       const next: NavigationState = {
         ...state,
         entryId: entry.id,
@@ -187,11 +192,12 @@ export default function useRouter() {
       if (isSameNavigation(state, next)) return;
       return logged_navigate(`/?${searchParams.toString()}`, { state: next });
     },
-    [logged_navigate, searchParams, state]
+    [logged_navigate, searchParams, state, activateContent]
   );
 
   const selectAnnotation = useCallback(
     (annotation: Pick<Annotation, "id" | "reference"> & { url?: string }) => {
+      activateContent?.();
       const sameArticle = state.entryId === annotation.reference;
       const next: NavigationState = {
         ...state,
@@ -205,7 +211,7 @@ export default function useRouter() {
       if (isSameNavigation(state, next)) return;
       return logged_navigate(`/?${searchParams.toString()}`, { state: next });
     },
-    [logged_navigate, searchParams, state]
+    [logged_navigate, searchParams, state, activateContent]
   );
 
   const replaceAnnotationSelection = useCallback(
@@ -225,6 +231,7 @@ export default function useRouter() {
 
   const selectUrl = useCallback(
     (url: string) => {
+      activateContent?.();
       const next: NavigationState = {
         ...state,
         url,
@@ -235,7 +242,7 @@ export default function useRouter() {
       if (isSameNavigation(state, next)) return;
       logged_navigate(`/?${searchParams.toString()}`, { state: next });
     },
-    [logged_navigate, searchParams, state]
+    [logged_navigate, searchParams, state, activateContent]
   );
 
   // History-replaces the current route so it points at a saved Entry, without

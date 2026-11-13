@@ -1,3 +1,4 @@
+import layoutCss from "../layout.css?inline";
 import readerCss from "@reedable/lliwio-css/index.css?inline";
 import { type ThemeMode } from "../providers/AppearanceContext";
 import { FONT_FAMILY_CSS, type FontFamily } from "../utils/FontFamily";
@@ -50,6 +51,9 @@ export const FIND_NAVIGATE = "find-navigate";
 
 /** Parent → iframe: clear all find highlights. */
 export const FIND_CLEAR = "find-clear";
+
+/** Iframe → parent: dismiss the topmost reader surface. */
+export const READER_ESCAPE = "reader-escape";
 
 /** Parent → iframe: scroll the first mark with the given annotationId into view. */
 export const SCROLL_TO_ANNOTATION = "scroll-to-annotation";
@@ -111,6 +115,7 @@ export function buildEntryHtml(
     <meta charset="utf-8">
     <style>
       ${readerCss}
+      ${layoutCss}
       :root {
         color-scheme: ${themeMode};
         ${fontFamilyOverride}
@@ -139,10 +144,10 @@ export function buildEntryHtml(
       }
       body{
         margin:0 0 4.5rem 0;
-        padding: 0 2rem;
+        padding: 0 var(--article-padding-inline);
       }
       body>header {
-        max-width: calc(680px + 2rem);
+        max-width: calc(var(--article-width-max) + var(--article-padding-inline));
         margin: 0 auto;
 
         @media (prefers-reduced-motion: no-preference) {
@@ -200,7 +205,7 @@ export function buildEntryHtml(
         }
       }
       article {
-        max-width: 680px;
+        max-width: var(--article-width-max);
         margin: 1rlh auto;
       }
       img {
@@ -584,7 +589,7 @@ export function buildEntryHtml(
         e.preventDefault();
         window.parent.postMessage({ type: '${FIND_OPEN}' }, '*');
       } else if (e.key === 'Escape') {
-        window.parent.postMessage({ type: '${FIND_CLEAR}' }, '*');
+        window.parent.postMessage({ type: '${READER_ESCAPE}' }, '*');
       }
     });
 

@@ -1,3 +1,4 @@
+import { useReadingPane } from "../../providers/ReadingPaneContext";
 import { useShortcutTargets } from "../../hooks/useShortcutTargets";
 import { pinKey } from "../../pins";
 import {
@@ -105,6 +106,8 @@ export function EntityList({
   onEditTopic,
   onEditSite,
 }: EntityListProps) {
+  const readingPane = useReadingPane();
+  const headerRef = useRef<HTMLDivElement>(null);
   const readOnly = useLibraryReadOnly();
   const location = useLocation();
   const navigationType = useNavigationType();
@@ -354,6 +357,35 @@ export function EntityList({
       entityMatchesTextFilter(entity, filterText)
     );
   }, [entities, filterText]);
+
+  const returnFocus = readingPane?.returnFocus;
+  useEffect(() => {
+    if (!returnFocus) return;
+    const restore = () => {
+      const index = displayEntities.findIndex(
+        (entity) => entity.id === state.entryId
+      );
+      if (index < 0) {
+        headerRef.current?.focus({ preventScroll: true });
+        return;
+      }
+      const focus = () =>
+        (
+          itemRefs.current.get(displayEntities[index].id) ?? headerRef.current
+        )?.focus({ preventScroll: true });
+      if (itemRefs.current.has(displayEntities[index].id)) focus();
+      else
+        virtuosoRef.current?.scrollIntoView({
+          index,
+          behavior: "auto",
+          done: focus,
+        });
+    };
+    returnFocus.current = restore;
+    return () => {
+      if (returnFocus.current === restore) returnFocus.current = null;
+    };
+  }, [returnFocus, displayEntities, state.entryId]);
 
   // Up/Down move the selection to the adjacent visible entity, clamped at both
   // ends (no wrap). Selecting reuses selectEntity, so it loads the entity's content
@@ -763,7 +795,12 @@ export function EntityList({
 
   return (
     <div className={cx(className, css.EntityList)}>
-      <div className={css.Header}>
+      <div
+        ref={headerRef}
+        className={css.Header}
+        tabIndex={-1}
+        data-testid="entity-list-header"
+      >
         <div className={cx(css.HeadingWrapper)}>
           {!isSelectableHeader && (
             <>

@@ -5,14 +5,16 @@
 
 .AddressBarContainer {
   flex: 1;
+  min-width: 0;
 }
 
 .AddressBar {
   align-items: center;
-  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-bottom: 0.0625rem solid
+    color-mix(in srgb, currentColor 12%, transparent);
   display: flex;
   flex: 1;
-  height: 28px;
+  height: 1.75rem;
   min-width: 0;
 
   input {
@@ -39,20 +41,20 @@
 
 :global(.MuiButtonBase-root.MuiMenuItem-root),
 :global(.MuiButtonBase-root.MuiMenuItem-root) svg {
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 .Favicon {
   background-color: white;
-  border-radius: 4px;
-  height: 20px;
-  padding: 1px 0 0 0;
-  width: 20px;
+  border-radius: 0.25rem;
+  height: 1.25rem;
+  padding: 0.0625rem 0 0 0;
+  width: 1.25rem;
 }
 
 .QrPopover {
   background: #ffffff;
-  padding: 12px;
+  padding: 0.75rem;
   line-height: 0;
 }
 
@@ -63,10 +65,10 @@
 
 .ScreenReaderOnly {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  width: 0.0625rem;
+  height: 0.0625rem;
   padding: 0;
-  margin: -1px;
+  margin: -0.0625rem;
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;

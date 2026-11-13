@@ -1,3 +1,4 @@
+import { getLayoutWidth } from "../../utils/layoutWidth";
 import { Close } from "@mui/icons-material";
 import {
   Drawer,
@@ -126,14 +127,25 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
   useEffect(() => {
     const element = containerRef.current;
     if (!element) return;
-    const observer = new ResizeObserver(([entry]) => {
+    const measure: ResizeObserverCallback = (entries) => {
       // Include Search’s current width so its animation does not flip
       // the responsive breakpoint halfway through the transition.
       const searchWidth =
         searchPanelRef?.current?.getBoundingClientRect().width ?? 0;
-      setNarrow(entry.contentRect.width + searchWidth < 700);
-    });
+      const rootSize = parseFloat(
+        getComputedStyle(document.documentElement).fontSize
+      );
+      const width =
+        entries.find((entry) => entry.target === element)?.contentRect.width ??
+        element.getBoundingClientRect().width;
+      setNarrow(
+        width + searchWidth <
+          getLayoutWidth(element, "--inspector-inline-min") * rootSize
+      );
+    };
+    const observer = new ResizeObserver(measure);
     observer.observe(element);
+    observer.observe(document.documentElement);
     return () => observer.disconnect();
   }, [searchPanelRef]);
   const inspectorHidden = narrow;

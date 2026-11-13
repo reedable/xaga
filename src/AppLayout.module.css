@@ -21,7 +21,7 @@
 }
 
 .SidebarColumn {
-  --sidebar-width: 15rem;
+  --sidebar-width: var(--sidebar-width-default);
   position: relative;
   flex: 0 0 var(--sidebar-width);
   width: var(--sidebar-width);
@@ -29,7 +29,7 @@
 }
 
 .ListColumn {
-  --list-width: 20rem;
+  --list-width: var(--list-width-default);
   position: relative;
   flex: 0 0 var(--list-width);
   width: var(--list-width);
@@ -38,7 +38,6 @@
 
 .ReadingSpace {
   position: relative;
-  overflow: hidden;
   display: flex;
   flex: 1;
   min-width: 0;
@@ -56,4 +55,48 @@
   bottom: 0;
   z-index: 1;
   background-color: var(--lliw-semanticColor__background-color--primary);
+}
+
+/* The modal host never moves. Only its positioning and visibility change. */
+.InlineArticle:global(.MuiModal-root) {
+  position: relative;
+  inset: auto;
+  visibility: visible;
+  z-index: auto;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.ArticleModal:global(.MuiModal-root) {
+  z-index: 1200;
+}
+
+.ArticlePane,
+.ArticleDrawer {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  outline: none;
+  background-color: var(--background-color);
+}
+
+.ArticlePane {
+  flex: 1;
+}
+
+.ArticleDrawer {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: min(100%, var(--reader-width-max));
+  min-width: var(--reader-width-min);
+  border-inline-start: var(--border);
+  box-shadow: -0.25rem 0 1rem rgb(0 0 0 / 0.2);
+}
+
+.DrawerClose {
+  flex-shrink: 0;
+  text-align: end;
 }
