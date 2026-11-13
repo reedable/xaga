@@ -78,9 +78,9 @@ test("only history restoration scrolls the selected entity into view", async ({
   const wood = "Making room for a workshop";
   // Constrain the list so the small shared fixture requires scrolling.
   await page.addStyleTag({
-    content: "[data-virtuoso-scroller] { max-height: 6rem; }",
+    content: '[data-testid="entity-list-scroller"] { max-height: 6rem; }',
   });
-  const scroller = page.locator("[data-virtuoso-scroller]");
+  const scroller = page.getByTestId("entity-list-scroller");
   await scroller.evaluate((node) => node.scrollTo({ top: node.scrollHeight }));
   const woodButton = articleButton(page, wood);
   await woodButton.scrollIntoViewIfNeeded();
@@ -89,7 +89,7 @@ test("only history restoration scrolls the selected entity into view", async ({
       "click",
       () => {
         document.documentElement.dataset.listScrollAtClick = String(
-          node.closest("[data-virtuoso-scroller]")!.scrollTop
+          node.closest('[data-testid="entity-list-scroller"]')!.scrollTop
         );
       },
       { once: true }

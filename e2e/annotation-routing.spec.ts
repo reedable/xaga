@@ -57,7 +57,8 @@ for (const scope of ["article", "all", "topic", "feed"] as const) {
     const listButton =
       scope === "feed" ? articleButton(page, garden) : annotation;
     const membersBefore = await page
-      .locator("[data-virtuoso-scroller] .MuiListItemButton-root")
+      .getByTestId("entity-list-scroller")
+      .locator(".MuiListItemButton-root")
       .allTextContents();
     await reader(page)
       .locator("mark")
@@ -69,7 +70,9 @@ for (const scope of ["article", "all", "topic", "feed"] as const) {
       garden
     );
     await expect(
-      page.locator("[data-virtuoso-scroller] .MuiListItemButton-root")
+      page
+        .getByTestId("entity-list-scroller")
+        .locator(".MuiListItemButton-root")
     ).toHaveText(membersBefore);
     await reader(page)
       .locator("mark")

@@ -1083,6 +1083,7 @@ export function EntityList({
 
       {displayEntities.length > 0 && (
         <Virtuoso
+          data-testid="entity-list-scroller"
           ref={virtuosoRef}
           className={css.List}
           data={displayEntities}
