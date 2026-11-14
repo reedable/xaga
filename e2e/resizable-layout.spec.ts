@@ -300,84 +300,101 @@ test("Search slides over the fixed-width Inspector while the Article pane remain
   await startCapture(page);
   await openArticle(page, garden);
   const before = await page.getByTestId("entry-reader").boundingBox();
-  await page.evaluate(() => {
-    const pane = document.querySelector('[data-testid="entry-reader"]')!;
-    const inspector = document.querySelector("aside")!;
-    const content = inspector.firstElementChild!;
-    const frames: {
-      articleX: number;
-      articleWidth: number;
-      inspectorWidth: number;
-      contentWidth: number;
-      mounted: boolean;
-      searchWidth: number;
-    }[] = [];
-    (window as unknown as { searchFrames: typeof frames }).searchFrames =
-      frames;
-    const recording = { complete: false };
-    (
-      window as unknown as { searchRecording: typeof recording }
-    ).searchRecording = recording;
-    const record = () => {
-      const start = performance.now();
-      const sample = () => {
+  const inspectorBefore = await page.locator("aside").boundingBox();
+  const contentBefore = await page.locator("aside > div").boundingBox();
+  const searchWidth = await page
+    .getByTestId("search-inline")
+    .evaluate((element) => element.getBoundingClientRect().width);
+  const rootSize = await page
+    .locator("html")
+    .evaluate((element) => parseFloat(getComputedStyle(element).fontSize));
+  expect(inspectorBefore!.width / rootSize).toBe(18);
+  expect(contentBefore!.width / rootSize).toBe(18);
+  expect(searchWidth / rootSize).toBe(18);
+
+  // Hold MUI's completion timer while inspecting the real CSS width transition.
+  // Wall-clock frame sampling can miss the entire animation on a busy runner.
+  const now = Date.now();
+  await page.clock.install({ time: now });
+  await page.clock.pauseAt(now + 1000);
+  const transition = await page
+    .getByTestId("search-inline")
+    .evaluateHandle((element) => {
+      const frame = element.closest(".MuiCollapse-root")!;
+      const pane = document.querySelector('[data-testid="entry-reader"]')!;
+      const inspector = document.querySelector("aside")!;
+      const content = inspector.firstElementChild!;
+      const state = {
+        frame,
+        pane,
+        inspector,
+        content,
+        animation: null as Animation | null,
+      };
+      const observer = new MutationObserver(() => {
+        const animation = frame
+          .getAnimations()
+          .find(
+            (animation) =>
+              animation instanceof CSSTransition &&
+              animation.transitionProperty === "width"
+          );
+        if (!animation) return;
+        animation.pause();
+        state.animation = animation;
+        observer.disconnect();
+      });
+      observer.observe(frame, {
+        attributes: true,
+        attributeFilter: ["style", "class"],
+      });
+      return state;
+    });
+  await control(page, "button", "search").click();
+  await expect(query(page)).toBeFocused();
+  await expect
+    .poll(() => transition.evaluate(({ animation }) => animation !== null))
+    .toBe(true);
+  const duration = await transition.evaluate(async ({ animation }) => {
+    await animation!.ready;
+    return Number(animation!.effect!.getComputedTiming().duration);
+  });
+  expect(duration).toBeGreaterThan(0);
+  const frames = await transition.evaluate(
+    ({ frame, pane, inspector, content, animation }) => {
+      const duration = Number(animation!.effect!.getComputedTiming().duration);
+      return [0, 0.25, 0.5, 0.75, 1].map((progress) => {
+        animation!.currentTime = duration * progress;
         const article = pane.getBoundingClientRect();
-        const search = document
-          .querySelector('[data-testid="search-inline"]')
-          ?.closest(".MuiCollapse-root");
-        frames.push({
+        return {
           articleX: article.x,
           articleWidth: article.width,
           inspectorWidth: inspector.getBoundingClientRect().width,
           contentWidth: content.getBoundingClientRect().width,
-          mounted: inspector.isConnected && content.isConnected,
-          searchWidth: search?.getBoundingClientRect().width ?? 0,
-        });
-        if (performance.now() - start < 650) requestAnimationFrame(sample);
-        else recording.complete = true;
-      };
-      sample();
-    };
-    document
-      .querySelector('[data-testid="search"]')!
-      .addEventListener("click", record, { once: true, capture: true });
-  });
-  await control(page, "button", "search").click();
-  await expect(query(page)).toBeFocused();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window as unknown as { searchRecording: { complete: boolean } })
-            .searchRecording.complete
-      )
-    )
-    .toBe(true);
-  const frames = await page.evaluate(
-    () =>
-      (
-        window as unknown as {
-          searchFrames: {
-            articleX: number;
-            articleWidth: number;
-            inspectorWidth: number;
-            contentWidth: number;
-            mounted: boolean;
-            searchWidth: number;
-          }[];
-        }
-      ).searchFrames
+          mounted:
+            pane.isConnected && inspector.isConnected && content.isConnected,
+          searchWidth: frame.getBoundingClientRect().width,
+        };
+      });
+    }
   );
+  expect(frames[0].searchWidth).toBe(0);
+  expect(frames.at(-1)!.searchWidth).toBe(searchWidth);
   expect(
-    frames.some((frame) => frame.searchWidth > 0 && frame.searchWidth < 288)
+    frames.some(
+      (frame) => frame.searchWidth > 0 && frame.searchWidth < searchWidth
+    )
   ).toBe(true);
   for (const frame of frames) {
     expect(frame.mounted).toBe(true);
     expect(frame.articleX).toBeCloseTo(before!.x, 1);
     expect(frame.articleWidth).toBeCloseTo(before!.width, 1);
-    expect(frame.inspectorWidth).toBe(288);
-    expect(frame.contentWidth).toBe(288);
+    expect(frame.inspectorWidth).toBe(inspectorBefore!.width);
+    expect(frame.contentWidth).toBe(contentBefore!.width);
   }
+  await page.clock.runFor(duration + 1);
+  await page.clock.resume();
+  await transition.dispose();
   await page.keyboard.press("Escape");
   await expect(control(page, "button", "search")).toBeEnabled();
   await expect

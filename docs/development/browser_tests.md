@@ -75,7 +75,11 @@ within the viewport. The default capture scenario has no related results.
 `e2e/resizable-layout.spec.ts` verifies independent column resizing and bounds,
 keyboard separators, Sidebar thresholds, exact inline/drawer Search boundaries,
 root font scaling, live dragging, retained Search results and reading context,
-reader alignment, focus restoration, and Escape/backdrop dismissal.
+reader alignment, focus restoration, and Escape/backdrop dismissal. The Search
+slide check pauses the production CSS width transition and samples its start,
+intermediate progress, and end while holding MUI's completion timer. It verifies
+motion and retained layout without requiring a runner to deliver intermediate
+frames within a wall-clock recording window.
 
 `e2e/workflows.spec.ts` exercises:
 
@@ -117,7 +121,10 @@ through the existing capture URL parameter.
 annotations in article, All items, and Topic lists, and editing an unselected
 annotation while browsing a Feed. It checks selection and retained reading/list
 context. Component tests cover selected annotation routes in all four contexts,
-history replacement, and late events; Feed lists expose article items in the UI.
+history replacement, and late events; Feed lists expose article items in the UI. The complete
+creation, browsing, recoloring, and removal workflows have a 60-second total test
+budget; individual assertion deadlines and the suite's no-retry policy remain
+unchanged.
 
 `e2e/filter-history.spec.ts` checks Topic/article Back and Forward after filter
 changes and read-status updates. It verifies that filters do not add history

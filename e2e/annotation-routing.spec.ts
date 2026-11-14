@@ -16,6 +16,9 @@ for (const scope of ["article", "all", "topic", "feed"] as const) {
   test(`annotation edits preserve selection and context in ${scope} list`, async ({
     page,
   }) => {
+    // This full create → browse → recolor → remove workflow exceeds 30 seconds
+    // under CPU throttling. Keep the individual assertion deadlines unchanged.
+    test.setTimeout(60_000);
     await startCapture(page);
     await openArticle(page, garden);
     await reader(page).locator("article p").first().click({ clickCount: 3 });
