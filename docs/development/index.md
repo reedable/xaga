@@ -9,3 +9,5 @@
 4. [Browser integration tests](browser_tests.md) — local and CI workflows against the capture platform
 
 5. [Library upgrade verification](library_upgrade_verification.md) — automated boundaries and desktop smoke checklist
+
+6. [Verification workflow](verification.md) — discover shared requirements and verify completion; analysis of the November 13 formatting failure
