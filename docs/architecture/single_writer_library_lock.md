@@ -30,7 +30,8 @@ use the same name (`src/hooks/useLibraryReadOnly.tsx`).
   (`src-tauri/src/shutdown.rs`).
 - **`LibraryWriter`:** `LibraryWriter::start(dir, lock)` owns the lock and handles
   runtime `.md` writes (`crates/xaga-core/src/library_writer/mod.rs`). Restart
-  and shutdown drain it before dropping it.
+  and shutdown drain it before releasing its shared lock hold. Retained command
+  handles refuse new writes and do not keep the lock held after shutdown.
 - **`EmbeddingService`:** receives a shared `Arc` of the writer’s lock through
   `writer.lock()` and retains it for the service’s lifetime. The service runs
   only read-write and owns LanceDB writes, recovery, and the embedding queue.
@@ -79,7 +80,8 @@ from the source file.
   may be dropped; admit only content that can be recreated from its source.
 - **Shutdown:** `drain_and_release_writer` drains Interactive backlog, rejects
   queued Regular work with `ShuttingDown`, and waits for in-flight writes before
-  dropping the writer and releasing the lock. The `shutting_down` flag rejects
+  releasing the writer's lock hold. Concurrent shutdown callers wait for the same
+  drain and task joins. The `shutting_down` flag rejects
   late submissions immediately rather than leaving them in an unserviced queue.
 - **Application termination:** main-window close hides the window and claims the
   same termination coordinator as Quit and library-switch restart. Repeated

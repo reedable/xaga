@@ -36,3 +36,28 @@ Questions to investigate:
 Whether to integrate uBlock Origin itself or support compatible filtering
 remains an open question; no implementation approach or priority has been
 selected.
+
+Alternatives and supporting components to investigate, without ranking or
+recommendation:
+
+- [DuckDuckGo Tracker Radar](https://github.com/duckduckgo/tracker-radar): a
+  third-party domain dataset with ownership and tracking metadata.
+- [Disconnect tracking protection lists](https://github.com/disconnectme/disconnect-tracking-protection):
+  curated tracking services and categories.
+- [EasyPrivacy](https://easylist.to/): filtering rules targeting tracking
+  requests.
+- [AdGuard filters](https://github.com/AdguardTeam/AdguardFilters): filtering
+  lists that include tracking protection.
+- [Brave's adblock-rust](https://github.com/brave/adblock-rust): an embeddable
+  Rust filtering engine that consumes lists.
+- [AdGuard's SafariConverterLib](https://github.com/AdguardTeam/SafariConverterLib):
+  a converter from AdGuard rules to Safari content-blocking rules; applicability
+  to Xaga's embedded webviews remains to be verified.
+
+Tracker identification data, filtering rules, matching engines, and WebKit
+integration components serve different roles and may be combined. Evaluate
+licensing, integration model, upstream trust and governance, update control,
+security implications, coverage, and user control for each candidate and any
+proposed combination. Technical compatibility alone does not determine the
+choice. Identifying a known tracker and deciding whether to block a particular
+request are separate questions.

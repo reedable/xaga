@@ -444,6 +444,36 @@ async fn shutdown_preserves_committed_interactive_writes() {
     );
 }
 
+#[tokio::test]
+async fn concurrent_shutdown_waits_for_tasks_before_releasing_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let writer = start_writer(dir.path());
+    let retained = writer.clone();
+    let (release, pending) = tokio::sync::oneshot::channel();
+    writer.rename_tasks.lock().unwrap().insert(
+        "pending".into(),
+        tokio::spawn(async move { pending.await.unwrap() }),
+    );
+    let closing = async { tokio::join!(writer.shutdown(), retained.shutdown()) };
+    tokio::pin!(closing);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(20), &mut closing)
+            .await
+            .is_err()
+    );
+    assert!(crate::library::acquire_lock(dir.path()).is_none());
+    release.send(()).unwrap();
+    closing.await;
+    let successor = crate::library::acquire_lock(dir.path()).unwrap();
+    assert!(matches!(
+        retained
+            .save_pdf("https://example.com/late.pdf".into(), None)
+            .await,
+        Err(WriterError::ShuttingDown)
+    ));
+    drop(successor);
+}
+
 /// After shutdown begins, new submits are refused synchronously with a typed error —
 /// never accepted-then-abandoned (which would hang the caller). This is the exact
 /// failure mode that motivated the shutdown flag + channel drain.

@@ -152,7 +152,8 @@ pub struct LibraryWriter {
     pub(crate) rename_tasks: Arc<std::sync::Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>,
     pub(crate) tag_updates: flume::Sender<Result<crate::tags::TagSnapshot, WriterError>>,
     tag_updates_rx: flume::Receiver<Result<crate::tags::TagSnapshot, WriterError>>,
-    lock: Arc<FileLock>,
+    lock: Arc<std::sync::Mutex<Option<Arc<FileLock>>>>,
+    shutdown_guard: Arc<tokio::sync::Mutex<()>>,
     library_dir: PathBuf,
     /// Set once `shutdown()` begins; makes `submit` refuse new work synchronously so
     /// nothing lands in the channel after the dispatcher stops draining it.
@@ -188,7 +189,8 @@ impl LibraryWriter {
             tag_updates,
             tag_updates_rx,
             tx,
-            lock,
+            lock: Arc::new(std::sync::Mutex::new(Some(lock))),
+            shutdown_guard: Default::default(),
             library_dir,
             shutting_down: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
@@ -196,8 +198,15 @@ impl LibraryWriter {
 
     /// The held library lock — shared with the `EmbeddingService`, which keeps its own
     /// `Arc` for its lifetime.
+    ///
+    /// Panics if called after the writer has completed shutdown.
     pub fn lock(&self) -> Arc<FileLock> {
-        Arc::clone(&self.lock)
+        self.lock
+            .lock()
+            .unwrap()
+            .as_ref()
+            .expect("library writer has shut down")
+            .clone()
     }
 
     pub(crate) fn library_dir(&self) -> &std::path::Path {
@@ -206,8 +215,12 @@ impl LibraryWriter {
 
     /// Graceful shutdown: Interactive backlog drains to disk, Regular backlog is refused
     /// (re-derivable by tier contract), in-flight writes complete. Resolves when the
-    /// last write is durable.
+    /// last write is durable and the writer's lock hold is released, even if command
+    /// handles remain alive. Independent service/database lock holds remain valid.
     pub async fn shutdown(&self) {
+        // Concurrent callers must wait for the same drain and rename-task join before
+        // any of them can release the lock or report shutdown complete.
+        let _shutdown = self.shutdown_guard.lock().await;
         // Close the inflow FIRST (submit now fast-fails), so the set of messages the
         // dispatcher must drain is bounded and it can reach a quiescent channel.
         self.shutting_down
@@ -220,6 +233,7 @@ impl LibraryWriter {
         for (_, task) in tasks {
             let _ = task.await;
         }
+        self.lock.lock().unwrap().take();
     }
 }
 

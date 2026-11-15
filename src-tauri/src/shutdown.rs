@@ -94,17 +94,16 @@ async fn finish_library_shutdown(
 }
 
 /// Drains the library writer (Interactive backlog to disk, Regular dropped — the tier
-/// contract) and drops it, releasing this process's hold on the library flock. Must run
+/// contract) and releases its hold on the library flock. Must run
 /// before [`restart_process`] spawns the successor: the successor acquires the lock at ITS
 /// startup, and if the (still-living) predecessor's writer held it, the new instance would
 /// come up read-only. Caller must have already shut the `EmbeddingService` down (its Arc of
-/// the same lock must be gone) so that dropping the writer releases the flock. No-op in a
+/// the same lock must be gone) so that shutting down the writer releases the flock. No-op in a
 /// read-only instance (no writer).
 pub(crate) async fn drain_and_release_writer(library: &Arc<RwLock<LibraryHandle>>) {
     let writer = library.write().unwrap().writer.take();
     if let Some(writer) = writer {
         writer.shutdown().await;
-        // `writer` drops here: its lock Arc is the last one, so the flock releases.
     }
 }
 
@@ -350,6 +349,12 @@ mod retained_command_lock_probe {
             ));
         let command_handle = crate::commands::require_writer(&state).unwrap();
         shutdown_library(&state, false).await;
+        assert!(matches!(
+            command_handle
+                .save_pdf("https://example.com/late.pdf".into(), None)
+                .await,
+            Err(xaga_core::library_writer::WriterError::ShuttingDown)
+        ));
         assert!(
             xaga_core::library::acquire_lock(dir.path()).is_some(),
             "a successor must acquire the lock after shutdown, even while a command retains its refused writer handle"

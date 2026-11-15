@@ -18,8 +18,18 @@ and qualify completion. Passing checks establish only what those checks cover.
 
 ## Completion gate
 
-Run `npm run verify:completion` after the final edits and before claiming
-completion or deleting a resolved task. This required command runs lint with
+For prose-only documentation changes, including ideas, task documents, and
+repository instructions, review the content against the request and applicable
+requirements and follow the shared [formatting requirements](../conventions/formatting.md).
+That is the completion gate for these changes; do not run compilation,
+behavioral tests, or `npm run verify:completion`. Determine scope from the work
+being completed, not unrelated changes already present in the working tree.
+Changes to executable examples, doctests, generated inputs, or configuration
+that affects builds or runtime behavior are not prose-only changes.
+
+For changes beyond prose-only documentation, run `npm run verify:completion`
+after the final edits and before claiming completion or deleting a resolved
+task. This required command runs lint with
 warnings rejected, repository formatting, TypeScript, reader CSP verification,
 Rust formatting, all-target workspace compilation, and the full headless,
 browser, and native test suites. Rust compiler and documentation warnings are
