@@ -10,4 +10,4 @@
 
 5. [Library upgrade verification](library_upgrade_verification.md) — automated boundaries and desktop smoke checklist
 
-6. [Verification workflow](verification.md) — discover shared requirements and verify completion; analysis of the November 13 formatting failure
+6. [Verification workflow](verification.md) — discover requirements, independently review story readiness, and verify completion

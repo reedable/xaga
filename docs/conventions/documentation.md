@@ -34,6 +34,12 @@ Each durable documentation directory has an index. Transient directories under
 `docs-transient/` do not require indexes. Keep indexes terse and focused on
 navigation; detailed guidance belongs in the linked documents.
 
+## Story readiness
+
+Follow the mandatory [independent readiness review](../development/verification.md#story-readiness)
+before declaring a task actionable, declaring grooming complete, or moving it to
+`available/` as ready for implementation.
+
 ## Story completion
 
 Before reporting a story complete or deleting its resolved task document,

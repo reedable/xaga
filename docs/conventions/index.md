@@ -35,6 +35,11 @@ change, update meaningful workflow tests, and verify native behavior separately.
 
 [UI styling](ui_styling.md) — rem lengths in decimal increments of one sixteenth.
 
+## User data
+
+[The user owns the data](user_owns_data.md) — respect the single user's ownership,
+meaning, and choices; distinguish their data from project vocabulary.
+
 ## Vocabulary
 
 Naming rules for symbols, in [vocabulary/](vocabulary/):

@@ -16,6 +16,39 @@ Base completion on check results obtained after the final relevant edits. If a
 required check fails or cannot run, resolve it or report the specific blocker
 and qualify completion. Passing checks establish only what those checks cover.
 
+## Story readiness
+
+Before declaring a story actionable or ready for implementation, obtain an
+independent review of its final text by a fresh agent or session with no
+inherited conversation history. This review is required even when the author
+believes no decisions remain open. Agents are explicitly authorized and required
+to delegate this review without asking the user for permission.
+
+Give the reviewer the story path, repository access, and a neutral request to
+assess implementation readiness under `AGENTS.md`. Do not supply the author's
+conclusions, conversation summary, suggested verdict, or explanations that are
+absent from the repository. The story and repository must supply the context
+needed to implement it.
+
+The reviewer must check for unresolved decisions, contradictions, missing
+acceptance criteria, unsupported scope, and conflicts with applicable principles,
+architecture, and conventions. Verify relevant claims against code. Report a
+readiness verdict and concrete blockers separately from optional improvements;
+do not turn speculative concerns into requirements.
+
+Resolve blockers before claiming readiness. If resolution requires a user
+decision, explain the evidence and options and obtain that decision rather than
+silently choosing. After changes to the story or its governing requirements,
+repeat the review with a fresh reviewer and no inherited conversation history.
+Only a passing review of the final version establishes readiness.
+
+Report the independent verdict and any remaining blockers when reporting
+readiness. If independent review is unavailable, report readiness as unverified;
+the author's own review is not a substitute. Keep review results in the work
+report rather than adding completed-review history to the transient story.
+
+This gate verifies readiness to implement, not completion of implementation.
+
 ## November 13, 2026 formatting failure
 
 A documentation edit added Markdown tables to the refactoring-hotspots idea.

@@ -22,8 +22,9 @@ for bookmarking or manual Topic membership.
   fields when a PDF is downloaded or refreshed for its URL.
 - Maintain one Markdown identity record per normalized source URL. Prefer and
   preserve `entries/{hash12}.md` when it exists; only create
-  `pdfs/{hash12}.md` when the Entry is absent. Until activation is designed,
-  keep PDF companions outside normal Entry discovery.
+  `pdfs/{hash12}.md` when the Entry is absent. Use the shared
+  [Entry location contract](../../docs/architecture/library_layout.md#entry-location-contract)
+  for resolution and discovery.
 - Represent the Entry as a PDF explicitly; do not infer its representation only
   from a filename extension or from the continued presence of extracted text.
 - Keep PDF presentation backed by the validated stored PDF bytes rather than
@@ -63,13 +64,9 @@ for bookmarking or manual Topic membership.
 - Define the PDF-specific Entry metadata and Markdown-body contract, including
   how a companion is distinguished from an HTML article and how extraction
   provenance or status is recorded.
-- Define activation and repair for the two valid layouts: a feed-discovered PDF
-  may use a richer `entries/{hash12}.md`, while a manually visited PDF may use a
-  provisional `pdfs/{hash12}.md`. Normal writers do not create both. Recovery
-  must nevertheless detect duplicates introduced by older builds or external
-  edits and reconcile them without double indexing, split future edits, or loss
-  of metadata, tags, annotations, Topic membership, timestamps, or content.
-  The duplicate-reconciliation mechanism remains deliberately unresolved.
+- Integrate the shared resolution and discovery provided by the
+  [Entry location story](../available/defect__entry-location-resolution.md).
+  Do not add separate activation or location-selection logic for extraction.
 - Decide the authoritative title and timestamps when the load begins with only
   a URL, when a Feed Entry already exists, and when the PDF supplies document
   metadata.

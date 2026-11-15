@@ -19,6 +19,31 @@ Library/
 └── images/
 ```
 
+## Entry location contract
+
+The `library` API must provide the complete ordered collection of Entry scan
+directories, including `entries/` and `pdfs/`. Entry discovery must use that
+collection rather than assume that Entries occupy one directory. Only Markdown
+Entry records are included; PDF bytes and other resources are not Entries to
+parse as Markdown.
+
+Entry lookup and selection of an existing write destination must share one
+resolver using those locations. An existing `entries/{id}.md` takes precedence
+over `pdfs/{id}.md`; otherwise the PDF companion is the Entry record. Discovery
+must apply the same precedence and return each ID once. A lookup failure due to
+unreadable storage must not be treated as absence or authorize a competing file.
+Resolving a record does not move, merge, or delete it.
+
+All library paths, scan roots, and stored resource references must come from the
+owning `library` API. Callers, including tests, must not hardcode library paths,
+repeat the directory list, or implement their own location precedence. Keep
+new-file destination construction distinct from resolution of an existing Entry
+so creation does not bypass an existing PDF companion. See
+[DRY](../principles/dry.md).
+
+This is the required contract. Updating callers that still assume a single
+Entry directory is implementation work; the directory layout itself is unchanged.
+
 Back up every visible directory. `metadata/` contains authoritative format
 metadata, subscriptions and feed membership, pins, and tag definitions and pending
 transitions, as well as shared website icons. Article Markdown retains annotations
