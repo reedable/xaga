@@ -89,7 +89,7 @@ function fixture(t, version = "0.17.3-dev") {
   git("config", "user.email", "fixture@example.test");
   git("add", ".");
   git("commit", "-m", "Initial source");
-  git("init", "--bare", remote);
+  git("init", "--bare", "--initial-branch=main", remote);
   git("remote", "add", "origin", remote);
   git("push", "origin", "main");
   const start = git("rev-parse", "HEAD");
