@@ -7,6 +7,45 @@ import {
   openArticle,
 } from "./fixtures";
 
+for (const [section, title] of [
+  ["topics", "Everyday discoveries"],
+  ["feeds", "Field notes"],
+]) {
+  for (const rootSize of [16, 20]) {
+    test(`collection Edit receives pointer input across its button for ${section} at root size ${rootSize}`, async ({
+      page,
+    }) => {
+      await startCapture(page);
+      await page.evaluate((size) => {
+        document.documentElement.style.fontSize = `${size}px`;
+      }, rootSize);
+      await control(page, "button", `sidebar-${section}-toggle`).click();
+      await control(page, "list", `sidebar-${section}-list`)
+        .getByRole("button", { name: title, exact: true })
+        .click();
+      const edit = control(page, "button", "edit-collection");
+      await expect(edit).toBeVisible();
+      expect(
+        await edit.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return [0.2, 0.5, 0.8].map((y) =>
+            element.contains(
+              document.elementFromPoint(
+                box.x + box.width / 2,
+                box.y + box.height * y
+              )
+            )
+          );
+        })
+      ).toEqual([true, true, true]);
+      await edit.click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByRole("textbox").first()).toHaveValue(title);
+    });
+  }
+}
+
 for (const width of [960, 720]) {
   test(`responsive refresh stays clear of native traffic-light space at width ${width}`, async ({
     page,

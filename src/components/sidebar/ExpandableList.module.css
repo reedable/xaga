@@ -3,7 +3,7 @@
   border-top: 0.0625rem solid var(--border-color);
   display: flex;
   flex-shrink: 0;
-  height: 3rem;
+  height: 3.0625rem;
 
   &:first-of-type,
   &[data-sidebar-section-header="shortcuts"] {
@@ -16,6 +16,7 @@
     border-radius: 0;
     color: var(--gray);
     flex: 1;
+    height: 3rem;
     justify-content: flex-start;
     letter-spacing: 0.1em;
     padding: 0.5rem 0.75rem;

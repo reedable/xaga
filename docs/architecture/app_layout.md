@@ -100,6 +100,7 @@ their own pointer behavior. `TitleBar.test.tsx` checks these native API requests
 and their exclusions.
 
 `e2e/titlebar-controls.spec.ts` checks pointer access over each column at wide and
-narrow widths, resize handles, and responsive Refresh controls. Browser checks
+narrow widths, resize handles, responsive Refresh controls, and collection Edit
+buttons at default and enlarged root text sizes. Browser checks
 establish hit targets; actual macOS movement and maximize behavior require native
 verification.

@@ -134,6 +134,7 @@ export function EntityListHeader({
             {handleEdit && (
               <Tooltip title="Edit">
                 <IconButton
+                  className={css.EditButton}
                   data-testid="edit-collection"
                   size="small"
                   onClick={handleEdit}
