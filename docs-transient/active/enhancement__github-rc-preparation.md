@@ -29,15 +29,10 @@ build does not consume a candidate number.
 
 ## Remaining work
 
-- Implement the workflow and test success, failures before and after the push,
-  and competing branch or tag updates. Verify GitHub-specific behavior in a
-  controlled repository, including starting an RC from GitHub Mobile; identify
-  anything that remains unverified.
-- Make GitHub Actions the primary RC procedure in the durable release-cycle
-  documentation, covering web/mobile invocation, branch selection, failure and
-  recovery, and draft inspection/publication. Move local version commands, beta
-  builds, and manual tagging to supplemental guidance; remove the local beta
-  prerequisite for automated RCs while retaining the native verification boundary.
+- User verification on GitHub: Mobile invocation, token and repository
+  permissions, artifact handoff, and recovery after a failed draft upload.
+  Resolve any reported failures.
+- Obtain a passing completion gate after the final changes.
 
 ## References
 

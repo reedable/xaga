@@ -207,9 +207,10 @@ implemented. Native WebKit rendering and focus require separate checks.
 
 ## Failures and CI
 
-The **Verify release** job in `.github/workflows/release.yml` runs browser tests
-for both RC tags such as `v0.15.0-rc.1` and final release tags. Branch pushes and
-pull requests do not trigger the release workflow.
+The **Verify and build macOS Apple Silicon** job in
+`.github/workflows/release-pipeline.yml` runs browser tests for RC and Release
+manual dispatches and Manual release build tag pushes. Ordinary branch pushes
+and pull requests do not trigger these workflows.
 
 After lint, formatting, frontend type/CSP checks, and Rust workspace checks pass,
 the macOS job installs Chromium and runs `npm run test:headless` followed by
@@ -217,7 +218,7 @@ the macOS job installs Chromium and runs `npm run test:headless` followed by
 compilation therefore does not consume the browser suite’s time allowance. These
 commands run the same suites as `npm run test:ci`. Browser failures
 block the release build. The job uploads
-`playwright-report/` and `test-results/` as the `browser-integration` artifact,
+`playwright-report/` and `test-results/` as the `browser-integration-<attempt>` artifact,
 retained for 14 days, including when browser tests fail. Artifact upload does not
 clear the failure.
 

@@ -77,7 +77,7 @@ function cargoLockVersion(name) {
   throw new Error(`Could not read ${name} version from Cargo.lock.`);
 }
 
-function versionRecords() {
+export function readVersionRecords() {
   return [
     {
       label: "src-tauri/tauri.conf.json",
@@ -109,7 +109,7 @@ function main() {
   });
   validateCleanStatus(status);
 
-  const records = versionRecords();
+  const records = readVersionRecords();
   const version = validateVersionRecords(records.slice(0, 5));
   const tag = releaseTagName(version);
   validateVersionRecords(records);

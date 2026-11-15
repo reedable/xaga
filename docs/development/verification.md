@@ -7,7 +7,7 @@ applicable to the work. The absence of a requirement in an individual task does
 not waive the shared rules.
 
 Choose checks using `package.json`, the relevant development documentation, and
-the release workflow in `.github/workflows/release.yml`. A generic Git whitespace
+the shared release pipeline in `.github/workflows/release-pipeline.yml`. A generic Git whitespace
 check does not establish compliance with the repository formatter. Follow the
 shared [formatting requirements](../conventions/formatting.md) for every edit,
 and run behavior checks appropriate to the change.

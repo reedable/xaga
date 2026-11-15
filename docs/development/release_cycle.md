@@ -113,90 +113,138 @@ npm run build:alpha -- --no-bundle
 
 Rust compilation requires the Protocol Buffers compiler because Lance generates
 code during its build. On macOS, install it with `brew install protobuf` and
-verify it is available with `protoc --version`. The release workflow installs
-this prerequisite explicitly in both its verification and build jobs.
+verify it is available with `protoc --version`. The shared release pipeline installs
+this prerequisite before verification and building.
 
-## Release candidates
+## Prepare releases with GitHub Actions
 
-From `x.y.z-dev`, prepare the first candidate with:
+Use **RC** or **Release** in the repository's Actions view. Both support
+**Run workflow** on GitHub's website and in GitHub Mobile. Select the branch to
+release, including an emergency patch branch when needed, then start the run.
+Tag refs are rejected. You need repository write access and permission to run
+Actions. The dispatch workflows must be present on the default branch, and the
+selected branch must contain the workflow and supporting scripts.
 
-```sh
-npm run version:rc
-```
+| Workflow | Starting version            | Prepared version |
+| -------- | --------------------------- | ---------------- |
+| RC       | `x.y.z-dev`                 | `x.y.z-rc.1`     |
+| RC       | `x.y.z-rc.N`                | `x.y.z-rc.(N+1)` |
+| Release  | `x.y.z-dev` or `x.y.z-rc.N` | `x.y.z`          |
 
-This command requires a clean working tree and changes `x.y.z-dev` to `x.y.z-rc.1` in every source version file and in the three corresponding `Cargo.lock` package entries. Repeating it from `x.y.z-rc.N` increments the candidate to `x.y.z-rc.(N+1)`. Review and commit the version files and refreshed lockfile before building or tagging.
+Both refuse an already-final starting version. Starting the next development
+cycle remains a separate choice of major, minor, or patch increment.
 
-After committing an untagged RC or final version, create its local validation build with:
+### Verification, build, and commit order
 
-```sh
-npm run build:beta
-```
+The workflows share `.github/workflows/release-pipeline.yml`:
 
-The beta build does not edit version files, commit, tag, push, or publish anything. It supplies `x.y.z-rc.N+beta.<commit>` or `x.y.z+beta.<commit>` to Tauri for this invocation and uses the Alpha application icon. It requires a clean working tree and a committed numbered RC or final version so that the artifact corresponds exactly to a commit. Development versions are refused.
+1. Check out the selected starting commit and run the existing version command
+   on the clean tree. Stage the synchronized version files without committing.
+2. Run lint with warnings rejected, repository formatting, TypeScript, reader CSP,
+   Rust formatting and all-target workspace compilation, headless tests, and
+   browser tests. Headless and browser suites each have a 30-minute timeout.
+3. Build the Apple Silicon macOS distributable with the plain RC or final version
+   and committed standard icons, then verify its ad-hoc code signature. Release
+   builds do not regenerate tracked icon files. Intel, Linux, and
+   Windows builds are not currently supported.
+4. Check that the source tree still matches the prepared tree. Create the version
+   commit and annotated tag only after successful verification and building.
+5. Retain the already-built app archive and disk image, their checksums, and the
+   exact commit/tag identity in a workflow artifact for 14 days.
+6. Push the branch and tag together atomically. The branch must still equal the
+   starting commit and the tag must be absent at the update itself. Competing RC
+   and final-release runs cannot overwrite each other's work.
+7. Create a draft GitHub Release and upload the retained artifacts. RC drafts are
+   prereleases; final drafts are not. Inspect the draft before publishing it.
 
-Beta builds require that the matching release tag (`vX.Y.Z-rc.N` or `vX.Y.Z`) does not exist locally, regardless of which commit it points to. An untagged final version is allowed; a final version with its release tag is refused, just like a tagged RC. The check uses local tags and does not fetch remote tags. Published tags remain immutable; a beta build does not delete or move them.
+A local beta build is not a prerequisite for this flow. Native WebKit and bundled
+macOS smoke checks still require the documented desktop environment; the CI
+headless/browser checks do not establish those results. See
+[verification](verification.md) and [resource verification](resource_verification.md).
 
-Commit the version change before tagging a candidate. Do not tag a candidate that has not been committed and validated. A matching `vX.Y.Z-rc.N` tag starts GitHub release automation and creates a draft marked as a prerelease.
+### Permissions and repository rules
 
-## Finalizing a release
+GitHub supplies `GITHUB_TOKEN`; no personal token or additional App credentials
+are needed. Only the publication job requests `contents: write`. Commits use
+`github-actions[bot]`. Branch and tag protection still apply: a denied update
+fails rather than bypassing repository rules. Repositories requiring signed
+commits or pull requests need a compatible release policy before using direct
+bot pushes; these workflows do not change those settings.
 
-From either `x.y.z-dev` or `x.y.z-rc.N`, prepare the final version with:
+Token-created tag pushes do not trigger another push workflow. The shared
+pipeline explicitly performs draft creation after pushing, avoiding a second
+build. See [GitHub token behavior](https://docs.github.com/en/actions/concepts/security/github_token).
 
-```sh
-npm run version:release
-```
+### Failures and recovery
 
-This command requires a clean working tree, removes the prerelease identifier, and synchronizes the final `x.y.z` version across the source version files and `Cargo.lock`. It is rejected when the current version is already final. Review and commit the changes before tagging.
+- Verification, build, signature, or artifact-retention failure leaves the remote
+  branch and tags unchanged. Start a fresh run after correcting the cause. An
+  unchanged starting version produces the same candidate number.
+- If the branch moves or the tag conflicts, the atomic update rejects both refs.
+  Start a fresh run from the current branch; do not rebase the already-built
+  changes or move a tag.
+- If the push or draft upload fails, use **Re-run failed jobs** on the original
+  run (or rerun only **Push and create draft**). It downloads the successful build
+  job's package, recognizes an already-pushed identical tag, and finishes that
+  same draft. It does not bump or rebuild. Existing published releases are not
+  modified. The run summary records the remote tag and commit once known.
+- Do not use **Re-run all jobs** to recover an interrupted draft: that rebuilds
+  and prepares another local commit. Retained packages expire after 14 days;
+  download the package beforehand if recovery must be delayed. With an intact
+  saved package, `node scripts/publish-release.mjs` can be run from the original source
+  checkout with `RELEASE_PACKAGE` set to its absolute directory and
+  `GITHUB_REPOSITORY` set to `owner/repository`, using authenticated Git and
+  GitHub CLI access. Without that package, the exact-artifact recovery path is
+  unavailable; do not move the existing tag or claim a rebuild is the original.
 
-## Tagging a release
+Browser reports and failure diagnostics are also retained for 14 days. The
+manual GitHub acceptance checks cover Mobile dispatch, token and
+repository rules, a successful draft, and recovery after a failed upload.
 
-Version preparation never commits, tags, pushes, or performs the distributable build. After preparing an RC:
+## Supplemental: local preparation and manual release builds
 
-1. Review and commit the synchronized version changes, including the automatically refreshed `Cargo.lock`.
-2. Run `npm run build:beta` to validate the committed RC locally.
-3. Run `npm run release:tag` from the clean committed tree.
-4. Push the commit and tag to GitHub.
+The local commands remain available when preparing a release manually. They do
+not replace the primary GitHub Actions procedure above.
 
-For a final version, review and commit the synchronized version files and `Cargo.lock` after `npm run version:release`, then tag the clean committed tree.
+### Release candidates
 
-For a final release, for example:
+Run `npm run version:rc` from a clean working tree, review and commit the
+synchronized version files and `Cargo.lock`, then run `npm run build:beta` for
+local validation before tagging. The version command advances development to
+RC 1 or increments an existing RC; it never commits, tags, pushes, or builds.
 
-```sh
-git add package.json Cargo.lock \
-  src-tauri/tauri.conf.json src-tauri/Cargo.toml \
-  crates/xaga-core/Cargo.toml crates/xaga-cli/Cargo.toml
-git commit -m "Release v0.8.5"
-npm run release:tag
-git push origin <branch> --follow-tags
-```
+### Finalizing a release
 
-`release:tag` requires a clean tree; verifies the versions in `package.json`, `tauri.conf.json`, the three workspace manifests, and their `Cargo.lock` entries; rejects `-dev`; accepts final and positive-numbered RC versions; and refuses to replace an existing local tag. It creates an annotated `v<version>` tag on `HEAD` but never commits or pushes.
+Run `npm run version:release` from a clean working tree to remove `-dev` or
+`-rc.N`. It rejects an already-final version. Review and commit the synchronized
+version files and `Cargo.lock` before tagging.
 
-The tag must point to the commit containing both the prepared version and the release workflow. Pushing it delegates tests, the distributable build, and draft GitHub Release creation to GitHub Actions.
+### Local beta builds
 
-## GitHub release automation
+`npm run build:beta` validates an untagged, committed RC or final version locally.
+It uses the Alpha icon and invocation-only `+beta.<commit>` metadata. It requires
+an entirely clean tree, rejects development versions, and refuses an existing
+matching local release tag. It does not fetch remote tags, edit version files,
+commit, tag, push, or publish. Published tags remain immutable.
 
-`.github/workflows/release.yml` handles final `vX.Y.Z` tags and release-candidate `vX.Y.Z-rc.N` tags. It rejects development tags, including a `vX.Y.Z-dev` tag that matches the committed application version. An accepted tag starts this sequence:
+### Tagging a release
 
-1. Check out the tagged commit.
-2. Require a final or numbered-RC tag whose version equals `src-tauri/tauri.conf.json`.
-3. Install JavaScript dependencies, then run lint, formatting, frontend type,
-   and reader CSP checks.
-4. Set up Rust and check workspace formatting before restoring the Rust cache
-   and installing the Protocol Buffers compiler required by Lance.
-5. Check the Rust workspace with the lockfile and install Chromium.
-6. Run `npm run test:headless` and then `npm run test:browser` in separate steps,
-   each with a 30-minute timeout: script, UI, Rust, and browser tests for both RC and final
-   tags. Preserve browser reports and failure diagnostics for 14 days. Any test
-   failure blocks the release build. Native WebKit tests run separately through
-   `npm test` on a Mac with a desktop session.
-7. Build the macOS application for Apple Silicon (`aarch64`). Intel Macs are not currently supported.
-8. Create a draft GitHub Release and upload the build artifacts.
-9. Verify that the macOS application bundle has a valid code signature.
+Run `npm run release:tag` from the clean committed tree, then push the commit
+and annotated tag with `git push origin <branch> --follow-tags`. The command
+checks all source versions and Xaga lockfile entries, rejects development
+versions, and refuses an existing local tag. It never commits or pushes.
 
-The draft must be inspected before it is published. RC drafts are marked as GitHub prereleases; final drafts are not. The workflow intentionally has no form inputs: the committed version and pushed tag identify the release.
+### GitHub release automation
 
-The build matrix contains only Apple Silicon macOS while that is the only supported platform and architecture. Linux and Windows belong in the same matrix after the application supports and is tested on those platforms. Intel macOS can be added as a separate artifact if the project later chooses to support it; releases are not universal binaries.
+**Manual release build** (`.github/workflows/release.yml`) starts automatically
+when someone pushes a final `vX.Y.Z` or RC `vX.Y.Z-rc.N` tag. The name distinguishes
+manual preparation/tagging from the RC and Release dispatch workflows; it is
+still a tag-push trigger, not a Run workflow control.
+
+It shares verification, build, signature checking, artifact retention, and draft
+creation with the primary workflows, but does not prepare a version or change
+refs. The tag must match the checked-out application version; development tags
+are rejected. Failed draft uploads use the same retained-package recovery.
 
 ## Distribution boundary
 

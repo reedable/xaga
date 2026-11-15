@@ -31,15 +31,10 @@ succeed. Rename the existing tag-triggered workflow to Manual release build.
 
 ## Remaining work
 
-- Implement alongside the RC preparation story, testing supported and rejected
-  transitions, failures before and after push, and competing ref updates.
-- Verify invocation from GitHub Mobile, token permissions, and draft recovery in
-  a controlled repository; report any unverified behavior.
-- Make GitHub Actions the primary final-release procedure in the durable
-  release-cycle documentation, covering web/mobile invocation, branch selection,
-  failure and recovery, and draft inspection/publication. Move local preparation
-  and manual tagging to supplemental guidance, identify Manual release build as
-  the tag-triggered alternative, and retain the native verification boundary.
+- User verification on GitHub: final-release invocation from Mobile, token
+  permissions, draft recovery, and the renamed manual tag-build workflow.
+  Resolve any reported failures.
+- Obtain a passing completion gate after the final changes.
 
 ## References
 
