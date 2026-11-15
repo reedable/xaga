@@ -20,7 +20,7 @@ Commands and queries call `EmbeddingsDb` directly even though durable files are 
 
 ## References
 
-- `crates/xaga-core/src/embeddings/db.rs`
+- `crates/xaga-core/src/embeddings/db/mod.rs`
 - `crates/xaga-core/src/query/items.rs`
 - `src-tauri/src/lib.rs`
 - `src-tauri/src/commands`

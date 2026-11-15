@@ -1,9 +1,11 @@
+pub(crate) mod annotations;
 pub mod articles;
 pub mod bookmarks;
 pub mod embeddings;
 pub mod entries;
 pub mod feeds;
 pub mod library;
+pub(crate) mod loader_capture;
 pub mod pins;
 pub mod settings;
 pub mod sites;

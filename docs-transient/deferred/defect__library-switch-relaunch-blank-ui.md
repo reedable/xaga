@@ -30,5 +30,8 @@ frontend-load and development relaunch path without assuming a confirmed cause.
 ## References
 
 - `src-tauri/src/lib.rs`
+- `src-tauri/src/startup.rs`
+- `src-tauri/src/shutdown.rs`
+- `src-tauri/src/menus.rs`
 - `src-tauri/src/commands/library.rs`
 - `docs/architecture/single_writer_library_lock.md`

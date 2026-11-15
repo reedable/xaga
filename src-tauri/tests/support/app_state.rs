@@ -5,6 +5,8 @@ pub(super) fn test_state(path: PathBuf) -> AppState {
         Arc::new(RwLock::new(value))
     }
     AppState {
+        shutdown_started: std::sync::atomic::AtomicBool::new(false),
+        embedding_initialization: Mutex::new(None),
         read_only_startup: Arc::new(tokio::sync::Notify::new()),
         library_upgrade: Arc::new(Mutex::new(Default::default())),
         library: shared(LibraryHandle { path, writer: None }),

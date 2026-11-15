@@ -22,6 +22,6 @@ Backfill computes vectors one object at a time, retrieves the existing row, repl
 
 - `crates/xaga-core/src/embeddings/pipeline.rs`
 - `crates/xaga-core/src/embeddings/service.rs`
-- `crates/xaga-core/src/embeddings/db.rs`
+- `crates/xaga-core/src/embeddings/db/mod.rs`
 - `docs/architecture/design_scale.md`
 - [Bound fresh-reindex memory](defect__fresh-reindex-memory-ceiling.md)

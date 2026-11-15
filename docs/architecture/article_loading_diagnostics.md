@@ -30,7 +30,7 @@ frontend attempt; its completion cannot reset another article's reload status.
 ## Collecting and storing diagnostic records
 
 `src-tauri/src/article_diagnostics.rs` maintains native history and writes diagnostic logs.
-Its command adapters live in `src-tauri/src/commands/articles.rs`.
+Its command adapters live in `src-tauri/src/commands/loader_capture.rs`.
 `src/utils/ArticleLoadAttempt.ts` carries an attempt through frontend work;
 shared diagnostic payloads live in `src/types.ts`, and the `Platform` interface exposes
 `createArticleDiagnostic`, `getArticleDiagnostic`, and `addArticleDiagnosticEvent`.

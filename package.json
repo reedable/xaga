@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "verify:completion": "node scripts/verify-completion.mjs",
     "clean": "rm -rf dist target",
     "dev": "node scripts/dev.mjs",
     "dev:debug": "RUST_LOG=xaga=debug npm run dev",

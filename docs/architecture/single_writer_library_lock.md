@@ -27,7 +27,7 @@ use the same name (`src/hooks/useLibraryReadOnly.tsx`).
   can run. Acquiring the lock selects read-write mode; failure selects read-only.
   `set_library` saves the new path and restarts. Before starting the successor,
   `drain_and_release_writer` finishes required writes and releases the old writer
-  (`src-tauri/src/lib.rs`).
+  (`src-tauri/src/shutdown.rs`).
 - **`LibraryWriter`:** `LibraryWriter::start(dir, lock)` owns the lock and handles
   runtime `.md` writes (`crates/xaga-core/src/library_writer/mod.rs`). Restart
   and shutdown drain it before dropping it.
@@ -81,6 +81,14 @@ from the source file.
   queued Regular work with `ShuttingDown`, and waits for in-flight writes before
   dropping the writer and releasing the lock. The `shutting_down` flag rejects
   late submissions immediately rather than leaving them in an unserviced queue.
+- **Application termination:** main-window close hides the window and claims the
+  same termination coordinator as Quit and library-switch restart. Repeated
+  close/quit requests cannot exit while that coordinator is running. Startup
+  initialization finishes first if it holds a writer; then the embedding service
+  shuts down, then `drain_and_release_writer` drains and releases the writer.
+  Only afterward may the process exit or start its successor. Read-only close
+  cancels pending model initialization without creating a writer. Signals use
+  the same coordination but always exit instead of honoring a restart outcome.
 - **Database work:** the writer serializes `.md` writes; `EmbeddingService`
   serializes LanceDB writes. Commands wait for the file write before queuing
   database sync. The files remain authoritative.

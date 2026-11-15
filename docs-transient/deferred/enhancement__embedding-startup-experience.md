@@ -74,7 +74,7 @@ polling with event-driven delivery of the existing terminal transitions.
 - `src/AppLayout.tsx`
 - `src/providers/EmbeddingStartupProvider.tsx`
 - `src/hooks/useEmbeddingStartupState.ts`
-- `src-tauri/src/lib.rs`
+- `src-tauri/src/startup.rs`
 - `src-tauri/src/events.rs`
 - `src-tauri/src/commands/entries.rs`
 - `src/platform/events.ts`

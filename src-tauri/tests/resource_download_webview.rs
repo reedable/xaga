@@ -208,6 +208,9 @@ fn main() {
         }
         true
     }).setup(move |app| {
+        let ui = webview_policy::ui_configuration().expect("UI WebView policy");
+        let loader = webview_policy::loader_configuration(None).expect("loader WebView policy");
+        assert_ne!(unsafe { ui.websiteDataStore() }, unsafe { loader.websiteDataStore() }, "UI and download stores must remain isolated");
         let handle = app.handle().clone();
         let watchdog = handle.clone();
         let render_handle = handle.clone();

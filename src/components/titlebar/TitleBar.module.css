@@ -7,6 +7,9 @@
   margin: 0 0 14px 0;
   padding: 0 8px 0 0;
   position: relative;
+  /* Above overlapping positioned columns; header controls and resize handles
+     retain their higher stacking order. */
+  z-index: 2;
   user-select: none;
 }
 

@@ -60,6 +60,7 @@ without reloading membership; article-scoped lists retain their authoritative
 refresh and passage ordering.
 
 Relevant code: `src/components/list/EntityList.tsx`,
+`src/components/list/useEntityListData.ts`,
 `src/hooks/useRouter.tsx`, and `src/components/sidebar/ShortcutList.tsx`.
 
 ## Tag browsing

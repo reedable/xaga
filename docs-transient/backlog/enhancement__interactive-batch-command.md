@@ -30,6 +30,7 @@ Feed refresh, feed import, bookmark import, bulk state changes, and rapid Topic 
 - `src-tauri/src/commands/feeds.rs`
 - `src-tauri/src/commands/topics.rs`
 - `src-tauri/src/commands/articles.rs`
+- `src-tauri/src/commands/annotations.rs`
 - `src-tauri/src/native/feeds.rs`
 - `src-tauri/src/native/bookmarks.rs`
 - `docs/architecture/design_scale.md`

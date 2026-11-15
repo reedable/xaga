@@ -27,6 +27,7 @@ The loader selects one `rel="icon"` URL and falls back to `/favicon.ico`. It doe
 
 - `src-tauri/src/article_loader.js`
 - `src-tauri/src/commands/articles.rs`
+- `src-tauri/src/commands/loader_capture.rs`
 - `src-tauri/src/loader_download.rs`
 - `crates/xaga-core/src/persistence/articles.rs`
 - `crates/xaga-core/src/persistence/images.rs`

@@ -115,3 +115,11 @@ harness = false
 [[test]]
 name = "main_window_layout"
 harness = false
+
+[[test]]
+name = "window_shutdown"
+harness = false
+
+[[test]]
+name = "app_menus_theme"
+harness = false

@@ -16,6 +16,24 @@ Base completion on check results obtained after the final relevant edits. If a
 required check fails or cannot run, resolve it or report the specific blocker
 and qualify completion. Passing checks establish only what those checks cover.
 
+## Completion gate
+
+Run `npm run verify:completion` after the final edits and before claiming
+completion or deleting a resolved task. This required command runs lint with
+warnings rejected, repository formatting, TypeScript, reader CSP verification,
+Rust formatting, all-target workspace compilation, and the full headless,
+browser, and native test suites. Rust compiler and documentation warnings are
+errors throughout the command. It stops at the first failure; fix the failure
+and rerun the gate. It requires the documented macOS desktop test environment.
+Do not substitute an earlier or partial run for a passing final run.
+
+This command executes the shared automated checks. Also verify each task's
+acceptance criteria, documentation, native smoke procedures, and the
+[least-visibility checklist](../principles/least_visibility_principle.md#operating-checklist).
+Compiler success alone cannot establish that a public symbol needs its visibility.
+Report any unmet requirement or unavailable check; do not claim completion when
+the gate fails or task-specific verification remains outstanding.
+
 ## Story readiness
 
 Before declaring a story actionable or ready for implementation, obtain an
@@ -81,3 +99,19 @@ the agent offered unsupported explanations for its behavior and changed its
 interpretation of the user's question. Root-cause explanations should distinguish
 the observable sequence, documented requirements, and supported causal findings
 from speculation about internal motives.
+
+## Native shutdown verification
+
+`cargo test -p xaga --test window_shutdown --locked` runs the production
+main-window close and Quit handlers in isolated native child processes. It holds
+startup open while a write is pending, repeats close and Quit, verifies the saved
+article, and checks that a restarted successor acquires the library lock.
+Read-only close must leave the fixture directory untouched. The test uses blank
+webviews and temporary libraries, without opening account settings or user data.
+It is included in `npm run test:gui` and requires a macOS desktop session.
+
+`app_menus_theme` exercises the production menu builder and theme event routing,
+checks native theme checkmarks, and applies shared theme helpers to existing and
+new fixture windows without reading or writing account settings. It is included
+in the native suite. It verifies native coordination; frontend theme rendering
+is covered separately by UI and browser checks.

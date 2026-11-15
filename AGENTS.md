@@ -7,5 +7,7 @@ Start with [engineering principles](docs/principles/index.md), then read the
 apply the documents relevant to the task before acting.
 
 Keep rules in their authoritative documents rather than duplicating them here.
-Before reporting completion, verify the work against the applicable requirements
-and report any unmet requirements or blockers.
+Before reporting completion, follow the required
+[completion gate](docs/development/verification.md#completion-gate), verify the
+work against the applicable requirements, and report any unmet requirements or
+blockers.

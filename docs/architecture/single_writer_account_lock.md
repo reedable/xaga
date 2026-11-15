@@ -28,7 +28,7 @@ the same lock.
 ## In-process sharing
 
 `AccountLock` shares a single reference-counted handle inside the process
-(`src-tauri/src/lib.rs`). Reacquiring a separate `FileLock` for each operation
+(`src-tauri/src/settings.rs`). Reacquiring a separate `FileLock` for each operation
 previously made the process contend with itself: a model download held one
 handle while a settings write attempted another.
 
@@ -47,7 +47,7 @@ handle while a settings write attempted another.
 
 ## Writing settings.json: the rotation protocol
 
-Every app settings write calls `update_settings` (`src-tauri/src/lib.rs`). Build
+Every app settings write calls `update_settings` (`src-tauri/src/settings.rs`). Build
 its payload from settings read while holding the lock plus the requested change,
 not from a snapshot read before acquisition. `fs::write_locked` then:
 

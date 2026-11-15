@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,10 +9,11 @@ import { test } from "node:test";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const oxlint = path.join(root, "node_modules/.bin/oxlint");
 
-function lint(source) {
+function lint(source, relativePath = "fixture.tsx") {
   const directory = mkdtempSync(path.join(tmpdir(), "xaga-lint-"));
   try {
-    const fixture = path.join(directory, "fixture.tsx");
+    const fixture = path.join(directory, relativePath);
+    mkdirSync(path.dirname(fixture), { recursive: true });
     writeFileSync(fixture, source);
     const result = spawnSync(
       oxlint,
@@ -98,3 +99,121 @@ test("module parsing rejects legacy octal literals", () => {
   const diagnostics = lint("export const example = 0123;");
   assert.ok(diagnostics.length > 0);
 });
+
+for (const [name, filename, source, count] of [
+  [
+    "JavaScript bridge",
+    "src/platform/bridge.js",
+    'export * from "./native/payloads";',
+    1,
+  ],
+  [
+    "export before import",
+    "src/platform/TauriPlatform.ts",
+    'export { EntrySchema }; import { EntrySchema } from "./native/payloads";',
+    1,
+  ],
+  [
+    "directory import",
+    "src/components/View.ts",
+    'import type { Value } from "../platform/native"; export type Example = Value;',
+    1,
+  ],
+  [
+    "namespace reexport",
+    "src/platform/TauriPlatform.ts",
+    'export * as payloads from "./native/payloads";',
+    1,
+  ],
+  [
+    "default reexport",
+    "src/platform/TauriPlatform.ts",
+    'import { EntrySchema } from "./native/payloads"; export default EntrySchema;',
+    1,
+  ],
+  [
+    "adapter",
+    "src/platform/TauriPlatform.ts",
+    'import { EntrySchema } from "./native/payloads"; void EntrySchema;',
+    0,
+  ],
+  [
+    "adapter tests",
+    "src/platform/TauriPlatform.test.ts",
+    'import { EntrySchema } from "./native/payloads.ts"; void EntrySchema;',
+    0,
+  ],
+  [
+    "internal tests",
+    "src/platform/native/payloads.test.ts",
+    'import { EntrySchema } from "./payloads"; void EntrySchema;',
+    0,
+  ],
+  [
+    "domain contract",
+    "src/components/View.ts",
+    'import type { Entry } from "../types"; export type Value = Entry;',
+    0,
+  ],
+  [
+    "UI import",
+    "src/components/View.ts",
+    'import { EntrySchema } from "../platform/native/payloads"; void EntrySchema;',
+    1,
+  ],
+  [
+    "UI test",
+    "src/components/View.test.ts",
+    'import { EntrySchema } from "../platform/native/payloads"; void EntrySchema;',
+    1,
+  ],
+  [
+    "type only",
+    "src/components/View.ts",
+    'import type { EntrySchema } from "../platform/native/payloads"; export type Value = typeof EntrySchema;',
+    1,
+  ],
+  [
+    "dynamic",
+    "src/components/View.ts",
+    'void import("../platform/native/payloads");',
+    1,
+  ],
+  [
+    "dynamic template",
+    "src/components/View.ts",
+    "void import(`../platform/native/payloads`);",
+    1,
+  ],
+  [
+    "traversal",
+    "src/components/View.ts",
+    'void import("../platform/native/../native/payloads.ts");',
+    1,
+  ],
+  [
+    "named reexport",
+    "src/platform/TauriPlatform.ts",
+    'export { EntrySchema } from "./native/payloads";',
+    1,
+  ],
+  [
+    "star reexport",
+    "src/platform/bridge.ts",
+    'export * from "./native/payloads";',
+    1,
+  ],
+  [
+    "import then reexport",
+    "src/platform/TauriPlatform.ts",
+    'import { EntrySchema } from "./native/payloads"; export { EntrySchema };',
+    1,
+  ],
+]) {
+  test(`native adapter boundary: ${name}`, () => {
+    const diagnostics = lint(source, filename).filter((d) =>
+      /native-adapter-boundary/.test(d.code)
+    );
+    assert.equal(diagnostics.length, count, JSON.stringify(diagnostics));
+  });
+}

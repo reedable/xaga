@@ -20,7 +20,7 @@ Embedding status performs filtered counts per kind. Feed and Topic summaries mat
 
 ## References
 
-- `crates/xaga-core/src/embeddings/db.rs`
+- `crates/xaga-core/src/embeddings/db/mod.rs`
 - `crates/xaga-cli/src/cmd/embeddings.rs`
 - `src-tauri/src/commands/feeds.rs`
 - `src-tauri/src/commands/topics.rs`

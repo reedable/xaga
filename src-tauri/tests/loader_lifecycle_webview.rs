@@ -345,12 +345,12 @@ fn main() {
         .manage(article_diagnostics::ArticleDiagnostics::default())
         .manage(loader_identity::LoaderSessions::default())
         .invoke_handler(tauri::generate_handler![
-            commands::articles::receive_html,
-            commands::articles::receive_favicon,
-            commands::articles::receive_image,
-            commands::articles::add_loader_diagnostic_event,
-            commands::articles::loader_will_unload,
-            commands::articles::loader_page_loaded,
+            commands::loader_capture::receive_html,
+            commands::loader_capture::receive_favicon,
+            commands::loader_capture::receive_image,
+            commands::loader_capture::add_loader_diagnostic_event,
+            commands::loader_capture::loader_will_unload,
+            commands::loader_capture::loader_page_loaded,
         ])
         .setup(move |app| {
             let app = app.handle().clone();

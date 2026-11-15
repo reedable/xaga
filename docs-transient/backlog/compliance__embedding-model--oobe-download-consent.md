@@ -26,7 +26,7 @@ A fresh install (or wiped model dir) contacts Hugging Face at app startup, unpro
 ## References
 
 - `crates/xaga-core/src/embeddings/model.rs`
-- `src-tauri/src/lib.rs`
+- `src-tauri/src/startup.rs`
 - `crates/xaga-core/src/events.rs`
 - `src-tauri/src/events.rs`
 - `src/platform/events.ts`

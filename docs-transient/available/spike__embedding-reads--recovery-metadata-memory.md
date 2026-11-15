@@ -34,7 +34,7 @@ projection through the multi-million-entry design target.
 
 ## References
 
-- [Metadata query](../../crates/xaga-core/src/embeddings/db.rs)
+- [Metadata query](../../crates/xaga-core/src/embeddings/db/queries.rs)
 - [Recovery](../../crates/xaga-core/src/recovery/embeddings.rs)
 - [Design scale and measurements](../../docs/architecture/design_scale.md)
 - [Crash consistency](../../docs/architecture/crash_consistency.md)

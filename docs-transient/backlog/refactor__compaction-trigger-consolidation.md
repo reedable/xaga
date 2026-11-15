@@ -21,5 +21,5 @@ The service triggers compaction through separate Interactive intervals, Regular 
 ## References
 
 - `crates/xaga-core/src/embeddings/service.rs`
-- `crates/xaga-core/src/embeddings/db.rs`
+- `crates/xaga-core/src/embeddings/db/mod.rs`
 - `crates/xaga-core/src/recovery/dispatch.rs`

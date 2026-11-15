@@ -22,7 +22,7 @@ List-all and collection reads materialize complete result sets. Feed reads build
 
 ## References
 
-- `crates/xaga-core/src/embeddings/db.rs`
+- `crates/xaga-core/src/embeddings/db/mod.rs`
 - `crates/xaga-core/src/query/items.rs`
 - `crates/xaga-core/src/query/topics.rs`
 - `src/components/list/EntityList.tsx`

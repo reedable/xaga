@@ -242,7 +242,7 @@ The proxy controls _where_ requests can go; the loader adds controls on _what_ g
 - **Ephemeral state by default**: loader windows are incognito — no cookies written to disk. Only user-allow-listed domains (the `allowed_domains` setting) get a persistent, per-domain `WKWebsiteDataStore` whose identifier is derived by hashing the domain (`domain_store_id`), so sites cannot correlate visits through shared storage.
 - **Injection-safe bootstrap**: the values prepended to the init script are emitted via `serde_json::to_string`, so special characters in the URL cannot break out of the script context (`article_loader.rs:69-78`).
 - **Hidden means hidden**: a hidden loader window re-hides itself on any focus event the remote page manages to trigger (`article_loader.rs:154-168`).
-- **Kill after capture (hidden loaders)**: once the page's HTML is delivered, the hidden webview is closed immediately so untrusted scripts cannot keep running or spam IPC (`receive_html`, `commands/articles.rs:98-120`).
+- **Kill after capture (hidden loaders)**: once the page's HTML is delivered, the hidden webview is closed immediately so untrusted scripts cannot keep running or spam IPC (`receive_html`, `commands/loader_capture.rs`).
 - **Per-request timeout**: the whole load is bounded by the configurable `loader_timeout_secs`.
 - **PDF format validation**: the article download consumer requires a `%PDF-` prefix before persistence or presentation. Other formats produce `article:unsupported-download`; rejection does not imply a deceptive server.
 

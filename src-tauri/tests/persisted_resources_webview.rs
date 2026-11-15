@@ -78,7 +78,7 @@ async fn verify(app: tauri::AppHandle) {
         }],
     };
     async fn recover(app: &tauri::AppHandle, recovery: ImageRecovery) -> xaga_core::types::Article {
-        commands::articles::recover_entry_images(
+        commands::loader_capture::recover_entry_images(
             "article".into(),
             recovery,
             None,
@@ -287,10 +287,10 @@ fn main() {
         .manage(article_diagnostics::ArticleDiagnostics::default())
         .manage(loader_identity::LoaderSessions::default())
         .invoke_handler(tauri::generate_handler![
-            commands::articles::receive_html,
-            commands::articles::receive_image,
-            commands::articles::receive_favicon,
-            commands::articles::add_loader_diagnostic_event
+            commands::loader_capture::receive_html,
+            commands::loader_capture::receive_image,
+            commands::loader_capture::receive_favicon,
+            commands::loader_capture::add_loader_diagnostic_event
         ])
         .setup(move |app| {
             let app = app.handle().clone();

@@ -20,7 +20,7 @@ Application reads share the embedding service's cloned LanceDB handle while the 
 
 ## References
 
-- `crates/xaga-core/src/embeddings/db.rs`
+- `crates/xaga-core/src/embeddings/db/mod.rs`
 - `crates/xaga-core/src/embeddings/service.rs`
 - `src-tauri/src/lib.rs`
 - `docs/architecture/design_scale.md`

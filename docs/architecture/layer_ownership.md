@@ -29,3 +29,27 @@ Core reports typed progress and results; dialogs, browser launching and controll
 restart belong to the app, while terminal output belongs to the CLI. Conversion
 is explicit and is never part of normal startup. See
 [library version metadata](library_version.md).
+
+## Internal implementation modules
+
+- `src-tauri/src/lib.rs` composes the app and owns shared application state.
+  `settings.rs` owns settings persistence and the shared account-lock registry;
+  `menus.rs` owns menu construction and routing; `theme.rs` owns native theme
+  helpers; `startup.rs` initializes resources; `shutdown.rs` coordinates service
+  shutdown, writer draining, and termination.
+- `commands/loader_capture.rs` owns loader callbacks, diagnostics, and image
+  recovery. `commands/annotations.rs` coordinates annotation operations.
+  `commands/articles.rs` retains article loading, saving, reading, and PDF access.
+- `embeddings/db/` retains the `EmbeddingsDb` API. Private modules separate
+  lifecycle, Arrow schema/encoding/decoding, queries, mutations, and similarity.
+  This changes implementation organization, not cache ownership or write paths.
+- `library_writer/operations.rs`, `submission.rs`, and `scheduler.rs` separate
+  operation execution, submissions, and per-file dispatch. `mod.rs` retains the
+  single writer, lock ownership, and private write-token constructor.
+- `EntityList` owns selection, history, virtualization, and focus.
+  `useEntityListData` owns loading and event reconciliation; `EntityListHeader`
+  and `EntityListRow` render controls and entities.
+- `TauriPlatform` owns native calls and subscriptions. `platform/native/payloads.ts`
+  owns native schemas and domain conversion. The local native-adapter-boundary
+  lint rule restricts imports to that directory, `TauriPlatform`, and its tests,
+  and rejects re-exports from the adapter.

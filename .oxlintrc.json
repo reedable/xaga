@@ -11,6 +11,9 @@
       "specifier": "eslint-plugin-react-hooks"
     }
   ],
+  "rules": {
+    "local/native-adapter-boundary": "error"
+  },
   "categories": {
     "correctness": "off"
   },

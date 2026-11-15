@@ -477,7 +477,7 @@ mod fetch_setting_tests {
         ] {
             change.validate().unwrap();
             let (outcome, next) =
-                crate::update_settings_file(&registry, &path, baseline, |settings| {
+                crate::settings::update_settings_file(&registry, &path, baseline, |settings| {
                     change.apply(settings)
                 })
                 .unwrap();
@@ -505,7 +505,7 @@ mod fetch_setting_tests {
             *state.feed_max_body_bytes.read().unwrap(),
             9_007_199_254_740_993
         );
-        crate::refresh_state_from_settings(&state, &crate::UserSettings::default());
+        crate::settings::refresh_state_from_settings(&state, &crate::UserSettings::default());
         assert!(!*http_proxy_handle.read().unwrap());
         assert!(!*connect_proxy_handle.read().unwrap());
         assert_eq!(*state.max_redirects.read().unwrap(), 3);

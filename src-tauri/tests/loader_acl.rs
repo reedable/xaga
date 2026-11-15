@@ -22,6 +22,11 @@ fn check_matrix(with_native_gate: bool) {
         .build(tauri::generate_context!())
         .unwrap();
 
+    for command in command_policy::SETTINGS_COMMANDS {
+        assert!(command_policy::TRUSTED_COMMANDS.contains(command));
+        assert!(!command_policy::LOADER_COMMANDS.contains(command));
+    }
+
     for label in ["loader-7", "main", "settings", "unknown"] {
         let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::default())
             .build()

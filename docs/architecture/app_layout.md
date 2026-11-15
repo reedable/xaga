@@ -87,3 +87,19 @@ drawer bounds, toolbar access, dismissal, focus return, and reader DOM identity.
 access, Search transitions, results and reading context, alignment, and dismissal.
 Capture Search uses fixture title matches; browser checks do not verify native
 IPC, embedding ranking, or native WebKit focus and pointer behavior.
+
+## Titlebar pointer access
+
+Application columns overlap the titlebar through the app's negative top margin.
+The titlebar uses stacking level 2 to receive pointer input above the positioned
+columns and inline article modal. Header controls and column resize handles
+retain their higher stacking levels; modal drawers and their backdrops remain
+above the titlebar. Blank titlebar areas invoke native dragging on primary mouse
+down and native maximize toggling on double click. Interactive controls retain
+their own pointer behavior. `TitleBar.test.tsx` checks these native API requests
+and their exclusions.
+
+`e2e/titlebar-controls.spec.ts` checks pointer access over each column at wide and
+narrow widths, resize handles, and responsive Refresh controls. Browser checks
+establish hit targets; actual macOS movement and maximize behavior require native
+verification.

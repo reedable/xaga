@@ -22,5 +22,5 @@ Fresh recovery walks source files and inserts rows in fixed batches of 1,024. Th
 
 - `crates/xaga-core/src/recovery/dispatch.rs`
 - `crates/xaga-core/src/recovery/embeddings.rs`
-- `crates/xaga-core/src/embeddings/db.rs`
+- `crates/xaga-core/src/embeddings/db/mod.rs`
 - `docs/architecture/design_scale.md`

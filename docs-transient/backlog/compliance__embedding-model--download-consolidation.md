@@ -64,7 +64,7 @@ remain after migration.
 ## References
 
 - [Model acquisition and manifest](../../../crates/xaga-core/src/embeddings/model.rs)
-- [App startup](../../../src-tauri/src/lib.rs)
+- [App startup](../../src-tauri/src/startup.rs)
 - [CLI model commands](../../../crates/xaga-cli/src/cmd/embeddings.rs)
 - [Loader download consumers](../../../src-tauri/src/loader_download.rs)
 - [Injectable validation and staging](../../../src-tauri/src/resource_download.rs)

@@ -1,5 +1,41 @@
+import {
+  isNativeAppError,
+  ArticleDiagnosticSchema,
+  FeedRefreshOutcomeSchema,
+  DiagnosticIdSchema,
+  EntriesSchema,
+  ListEntitiesSchema,
+  TagsSchema,
+  FeedSchema,
+  toFeed,
+  EntrySchema,
+  ReadEntryImagesSchema,
+  AllEntitiesCountsSchema,
+  SitesSchema,
+  toEntry,
+  TopicSchema,
+  toTopic,
+  toTopicEntity,
+  ListEntitySchema,
+  toListEntity,
+  PartialAnnotationSchema,
+  toPartialAnnotation,
+  ArticleSchema,
+  toArticle,
+  AnyEmbeddedEntitySchema,
+  toAnyEmbeddedEntity,
+  entryTagChangeSchema,
+  annotationTagChangeSchema,
+  tagSchema,
+  tagSnapshotSchema,
+  PinsSchema,
+  AnnotationReplacementSchema,
+  SidebarSortSchema,
+  TagIdsSchema,
+  CountSchema,
+} from "./native/payloads";
 import type { FetchSettings, FetchSettingChange } from "./fetchSettings";
-import { SIDEBAR_SORT_MODES, type SidebarSortMode } from "../sidebarSort";
+import { type SidebarSortMode } from "../sidebarSort";
 import type {
   AnnotationTagChange,
   EntryTagChange,
@@ -14,17 +50,12 @@ import type {
   ShortcutMenuItem,
 } from "../pins";
 import type { ImageRecovery } from "../text/imageReferences";
-import {
-  ERROR_CODE,
-  isAppError,
-  type AppError as SerializedAppError,
-} from "./errors";
+import type { AppError as SerializedAppError } from "./errors";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { z } from "zod";
 
 import type { AppEvent, DomainEvent } from "./events";
 import type {
@@ -57,367 +88,8 @@ import type { CreateTopicInput, Platform } from "./Platform";
 
 const logger = Logger.getLogger("TauriPlatform");
 
-const ArticleDiagnosticOutcomeSchema = z.enum([
-  "started",
-  "succeeded",
-  "failed",
-  "warning",
-  "skipped",
-  "cancelled",
-]);
-
-const ArticleDiagnosticSchema: z.ZodType<ArticleDiagnostic> = z.object({
-  id: z.string(),
-  startedAtMs: z.number(),
-  mode: z.string(),
-  outcome: ArticleDiagnosticOutcomeSchema.nullable(),
-  events: z.array(
-    z.object({
-      elapsedMs: z.number(),
-      source: z.string(),
-      step: z.string(),
-      outcome: ArticleDiagnosticOutcomeSchema,
-      code: z.string(),
-      detail: z.string(),
-      download: z
-        .object({
-          loaderLabel: z.string(),
-          sourceUrl: z.string(),
-          currentUrl: z.string().nullable(),
-          downloadUrl: z.string(),
-          destination: z.string().nullable(),
-          success: z.boolean().nullable(),
-        })
-        .optional(),
-    })
-  ),
-  droppedEvents: z.number(),
-});
-
-const ManagedEntitySchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  created_at: z.string(),
-  updated_at: z.string().nullable(),
-});
-
-const toManagedEntity = (
-  data: z.infer<typeof ManagedEntitySchema>
-): ManagedEntity => ({
-  id: data.id,
-  title: data.title,
-  createdAt: data.created_at,
-  updatedAt: data.updated_at ?? undefined,
-});
-
-const FeedSchema = ManagedEntitySchema.extend({
-  url: z.string(),
-  entry_count: z.number(),
-  unread_count: z.number(),
-  is_pinned: z.boolean(),
-});
-
-const ReferenceSchema = z.object({
-  __kind: z.enum(["entry", "annotation", "note"]),
-  id: z.string(),
-  articleId: z.string().optional(),
-});
-
-const toFeed = (data: z.infer<typeof FeedSchema>): Feed => {
-  return {
-    ...toManagedEntity(data),
-    __kind: "feed",
-    url: data.url,
-    entryCount: data.entry_count,
-    unreadCount: data.unread_count,
-    isPinned: data.is_pinned,
-    members: [],
-  };
-};
-
-const EntrySchema = ManagedEntitySchema.extend({
-  url: z.string(),
-  published_at: z.string().nullable(),
-  description: z.string().nullable(),
-  is_unread: z.boolean(),
-  is_pinned: z.boolean().optional(),
-  color: z.string().nullable().optional(),
-});
-
-// read_entry_images returns a positional array aligned with the requested refs:
-// a resolved `data:` URI, or null where the reference did not resolve.
-const ReadEntryImagesSchema = z.array(z.string().nullable());
-
-const AllEntitiesCountsSchema = z.object({
-  entry_count: z.number(),
-  unread_count: z.number(),
-});
-
-const SiteSchema = z.object({
-  hostname: z.string(),
-  entry_count: z.number(),
-  unread_count: z.number(),
-});
-
-const toSite = (data: z.infer<typeof SiteSchema>): Site => ({
-  __kind: "site",
-  id: data.hostname,
-  title: data.hostname,
-  entryCount: data.entry_count,
-  unreadCount: data.unread_count,
-});
-
-const toEntry = (data: z.infer<typeof EntrySchema>): Entry => {
-  return {
-    ...toManagedEntity(data),
-    __kind: "entry",
-    url: data.url,
-    publishedAt: data.published_at ?? undefined,
-    description: data.description ?? undefined,
-    isUnread: data.is_unread,
-    isPinned: data.is_pinned ?? false,
-    color: data.color ?? undefined,
-  };
-};
-
-const TopicSchema = ManagedEntitySchema.extend({
-  description: z.string().nullable().optional(),
-  threshold: z.number().nullable().optional(),
-  entry_count: z.number(),
-  unread_count: z.number(),
-  is_pinned: z.boolean(),
-  members: z.array(ReferenceSchema).optional(),
-});
-
-const toTopic = (data: z.infer<typeof TopicSchema>): Topic => ({
-  ...toManagedEntity(data),
-  __kind: "topic",
-  description: data.description ?? undefined,
-  threshold: data.threshold ?? undefined,
-  entryCount: data.entry_count,
-  unreadCount: data.unread_count,
-  isPinned: data.is_pinned,
-  members: data.members ?? [],
-});
-
-const toTopicEntity = (entity: Entry | Annotation) =>
-  entity.__kind === "annotation"
-    ? { __kind: "annotation", id: entity.id, articleId: entity.reference }
-    : { __kind: "entry", id: entity.id };
-
-const AnnotationSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  reference: z.string(),
-  text: z.array(z.string()),
-  occurrence: z.array(z.number()),
-  color: z.string(),
-  content: z.string(),
-  created_at: z.string(),
-});
-
-const toAnnotation = (data: z.infer<typeof AnnotationSchema>): Annotation => ({
-  __kind: "annotation",
-  id: data.id,
-  title: data.title,
-  reference: data.reference,
-  text: data.text,
-  occurrence: data.occurrence,
-  color: data.color,
-  content: data.content,
-  createdAt: data.created_at,
-});
-
-const ListEntitySchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  created_at: z.string(),
-  url: z.string(),
-  is_unread: z.boolean(),
-  is_pinned: z.boolean().optional(),
-  reference: z.string().optional(),
-  color: z.string().optional(),
-});
-
-const toListEntity = (data: z.infer<typeof ListEntitySchema>): ListEntity =>
-  data.reference !== undefined
-    ? // annotation row -> PartialAnnotation
-      {
-        id: data.id,
-        reference: data.reference,
-        title: data.title,
-        color: data.color ?? "",
-        createdAt: data.created_at,
-        url: data.url,
-      }
-    : // bookmark row -> Entry
-      {
-        __kind: "entry",
-        id: data.id,
-        title: data.title,
-        createdAt: data.created_at,
-        url: data.url,
-        isUnread: data.is_unread,
-        isPinned: data.is_pinned ?? false,
-        color: data.color || undefined,
-      };
-
-const PartialAnnotationSchema = z.object({
-  id: z.string(),
-  reference: z.string(),
-  title: z.string(),
-  color: z.string(),
-  created_at: z.string(),
-  url: z.string(),
-});
-
-const toPartialAnnotation = (
-  data: z.infer<typeof PartialAnnotationSchema>
-): PartialAnnotation => ({
-  id: data.id,
-  reference: data.reference,
-  title: data.title,
-  color: data.color,
-  createdAt: data.created_at,
-  url: data.url,
-});
-
-// Schema for annotation rows returned from embedding queries.
-// These carry only the fields stored in LanceDB — no text[] or occurrence[].
-// `url` is the row's `source` column (the parent article url), flattened from the
-// EmbeddedEntry `entry.url` by the Rust query path.
-const EmbeddedAnnotationResultSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  created_at: z.string(),
-  updated_at: z.string().nullable().optional(),
-  color: z.string(),
-  reference: z.string(),
-  url: z.string(),
-  kind: z.string(), // the row brand (RowKind::as_str); "annotation" — used to dispatch below
-  similarity: z.number(),
-});
-
-const toEmbeddedAnnotationResult = (
-  data: z.infer<typeof EmbeddedAnnotationResultSchema>
-) => ({
-  id: data.id,
-  title: data.title,
-  createdAt: data.created_at,
-  updatedAt: data.updated_at ?? undefined,
-  color: data.color,
-  reference: data.reference,
-  url: data.url,
-  similarity: data.similarity,
-});
-
-const ArticleSchema = EntrySchema.extend({
-  content: z.string(),
-  annotations: z.array(AnnotationSchema).default([]),
-  favicon: z.string().nullable().optional(),
-});
-
-const toArticle = (data: z.infer<typeof ArticleSchema>): Article => ({
-  ...toEntry(data),
-  content: data.content,
-  annotations: data.annotations.map(toAnnotation),
-  favicon: data.favicon ?? undefined,
-});
-
-const EmbeddedSchema = z.object({
-  similarity: z.number(),
-});
-
-function toEmbedded(data: z.infer<typeof EmbeddedSchema>): {
-  similarity: number;
-} {
-  return { similarity: data.similarity };
-}
-
-// `kind` is the backend discriminator (RowKind::as_str); minted into `__kind` by
-// toEntry/toFeed at this boundary.
-const EmbeddedEntrySchema = EntrySchema.extend(EmbeddedSchema.shape).extend({
-  kind: z.string(),
-});
-const EmbeddedFeedSchema = FeedSchema.extend(EmbeddedSchema.shape).extend({
-  kind: z.string(),
-});
-const EmbeddedTopicSchema = TopicSchema.extend(EmbeddedSchema.shape).extend({
-  kind: z.string(),
-});
-const EmbeddedEntitySchema = ManagedEntitySchema.extend(EmbeddedSchema.shape);
-// Detection order (each branch identified by brand AND shape together):
-// 1. Annotation: `kind === "annotation"`; shape guaranteed by the schema's required `reference`
-//    (entries/feeds/topics never serialize it, so coloring an entry can't collide here)
-// 2. Feed: `kind === "feed"` (feed/entry share shape — only the brand separates them)
-// 3. Topic: `kind === "topic"` (a Topic has no url/is_unread/content — only the brand is reliable)
-// 4. Entry: has `is_unread` (topics don't — they have no url/is_unread fields)
-// 5. Generic ManagedEntity: fallback
-const AnyEmbeddedEntitySchema = EmbeddedAnnotationResultSchema.or(
-  EmbeddedFeedSchema
-)
-  .or(EmbeddedEntrySchema)
-  .or(EmbeddedTopicSchema)
-  .or(EmbeddedEntitySchema);
-
-const toAnyEmbeddedEntity = (data: z.infer<typeof AnyEmbeddedEntitySchema>) => {
-  if ("kind" in data && data.kind === "annotation") {
-    return toEmbeddedAnnotationResult(
-      data as z.infer<typeof EmbeddedAnnotationResultSchema>
-    );
-  }
-  if ("kind" in data && data.kind === "feed") {
-    return {
-      ...toFeed(data as z.infer<typeof EmbeddedFeedSchema>),
-      ...toEmbedded(data as z.infer<typeof EmbeddedSchema>),
-    };
-  }
-  if ("kind" in data && data.kind === "topic") {
-    return {
-      ...toTopic(data as z.infer<typeof TopicSchema>),
-      ...toEmbedded(data as z.infer<typeof EmbeddedSchema>),
-    };
-  }
-  if ("is_unread" in data) {
-    return {
-      ...toEntry(data as z.infer<typeof EmbeddedEntrySchema>),
-      ...toEmbedded(data as z.infer<typeof EmbeddedSchema>),
-    };
-  }
-  return {
-    ...toManagedEntity(data as z.infer<typeof EmbeddedEntitySchema>),
-    ...toEmbedded(data as z.infer<typeof EmbeddedSchema>),
-  };
-};
-
 listen<string>("loader:will-unload" satisfies AppEvent, (e) => {
   console.log("[diagnostic] loader:will-unload", e.payload);
-});
-
-const entryTagChangeSchema = z.object({
-  entryId: z.string(),
-  tagId: z.uuid({ version: "v4" }),
-  assigned: z.boolean(),
-});
-const annotationTagChangeSchema = entryTagChangeSchema.extend({
-  annotationId: z.string(),
-});
-const tagSchema = z.object({
-  id: z.uuid({ version: "v4" }),
-  name: z.string().min(1),
-});
-const tagSnapshotSchema = z.object({
-  tags: z.array(tagSchema),
-  renaming: z.array(z.uuid({ version: "v4" })),
-  deleting: z.array(z.uuid({ version: "v4" })),
-  merging: z.array(
-    z.object({
-      sourceId: z.uuid({ version: "v4" }),
-      destinationId: z.uuid({ version: "v4" }),
-      survivorId: z.uuid({ version: "v4" }),
-      destinationName: z.string(),
-    })
-  ),
 });
 
 export class TauriPlatform implements Platform {
@@ -426,17 +98,7 @@ export class TauriPlatform implements Platform {
   ): Promise<UnlistenFn> {
     const seen = new Set<string>();
     const deliver = (error: unknown) => {
-      if (
-        !isAppError(error) ||
-        typeof error.message !== "string" ||
-        typeof error.detail !== "string"
-      )
-        return;
-      if (
-        error.diagnosticId !== undefined &&
-        typeof error.diagnosticId !== "string"
-      )
-        return;
+      if (!isNativeAppError(error)) return;
       if (error.diagnosticId) {
         if (seen.has(error.diagnosticId)) return;
         seen.add(error.diagnosticId);
@@ -582,19 +244,7 @@ export class TauriPlatform implements Platform {
       .with(abortable, { signal })
       .with(logged, { logger, name: "refresh_all_feeds" });
     const result = await invoker("refresh_all_feeds", {});
-    return z
-      .object({
-        feeds: z.array(FeedSchema.transform(toFeed)),
-        failures: z.array(
-          z.object({
-            id: z.string(),
-            title: z.string(),
-            code: z.enum(ERROR_CODE),
-            message: z.string(),
-          })
-        ),
-      })
-      .parse(result);
+    return FeedRefreshOutcomeSchema.parse(result);
   }
 
   async renameFeed(
@@ -623,9 +273,7 @@ export class TauriPlatform implements Platform {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "list_sites" });
-    return z
-      .array(SiteSchema.transform(toSite))
-      .parse(await invoker("list_sites"));
+    return SitesSchema.parse(await invoker("list_sites"));
   }
 
   async listSiteEntries(
@@ -720,7 +368,7 @@ export class TauriPlatform implements Platform {
     const invoker = decorate(invoke).with(logged, { logger, name });
 
     const result = await invoker<unknown>(name, { mode });
-    return z.string().parse(result);
+    return DiagnosticIdSchema.parse(result);
   }
 
   addArticleDiagnosticEvent(
@@ -847,7 +495,7 @@ export class TauriPlatform implements Platform {
     const result = await decorate(invoke).with(abortable, { signal })<unknown>(
       "list_pinned_entries"
     );
-    return z.array(EntrySchema.transform(toEntry)).parse(result);
+    return EntriesSchema.parse(result);
   }
 
   async readArticleScope(signal: AbortSignal, id: string): Promise<Article> {
@@ -1382,12 +1030,7 @@ export class TauriPlatform implements Platform {
   ): Promise<UnlistenFn> {
     const name: DomainEvent = "annotation:replaced";
     const listener = decorate((e) => {
-      const payload = z
-        .object({
-          oldId: z.string(),
-          entity: ListEntitySchema.transform(toListEntity),
-        })
-        .safeParse(e.payload);
+      const payload = AnnotationReplacementSchema.safeParse(e.payload);
       if (payload.success) callback(payload.data);
     }).with(logged, { logger, name });
     return listen<unknown>(name, listener);
@@ -1497,7 +1140,7 @@ export class TauriPlatform implements Platform {
   }
 
   async getSidebarSort(): Promise<SidebarSortMode> {
-    return z.enum(SIDEBAR_SORT_MODES).parse(await invoke("get_sidebar_sort"));
+    return SidebarSortSchema.parse(await invoke("get_sidebar_sort"));
   }
   async setSidebarSort(value: SidebarSortMode): Promise<void> {
     return invoke("set_sidebar_sort", { value });
@@ -1507,7 +1150,7 @@ export class TauriPlatform implements Platform {
   ): Promise<UnlistenFn> {
     const name: AppEvent = "settings:sidebar-sort";
     return listen<unknown>(name, (event) => {
-      const result = z.enum(SIDEBAR_SORT_MODES).safeParse(event.payload);
+      const result = SidebarSortSchema.safeParse(event.payload);
       if (result.success) callback(result.data);
       else logger.warn("Invalid sidebar sort event", result.error);
     });
@@ -1674,7 +1317,7 @@ export class TauriPlatform implements Platform {
       annotationId,
     });
     signal.throwIfAborted();
-    return z.array(z.uuid({ version: "v4" })).parse(result);
+    return TagIdsSchema.parse(result);
   }
 
   async setAnnotationTag(
@@ -1705,7 +1348,7 @@ export class TauriPlatform implements Platform {
   async readEntryTags(signal: AbortSignal, id: string): Promise<string[]> {
     const result = await invoke("read_entry_tags", { id });
     signal.throwIfAborted();
-    return z.array(z.uuid({ version: "v4" })).parse(result);
+    return TagIdsSchema.parse(result);
   }
 
   async setEntryTag(
@@ -1737,13 +1380,13 @@ export class TauriPlatform implements Platform {
       entityFilter: filter,
     });
     signal.throwIfAborted();
-    return z.array(ListEntitySchema.transform(toListEntity)).parse(result);
+    return ListEntitiesSchema.parse(result);
   }
 
   async countTagUnread(signal: AbortSignal, tagIds: string[]): Promise<number> {
     const result = await invoke("count_tag_unread", { tagIds });
     signal.throwIfAborted();
-    return z.number().int().nonnegative().parse(result);
+    return CountSchema.parse(result);
   }
 
   async readTagStatus(signal: AbortSignal): Promise<TagSnapshot> {
@@ -1780,7 +1423,7 @@ export class TauriPlatform implements Platform {
   async listTags(signal: AbortSignal): Promise<Tag[]> {
     const result = await invoke("list_tags");
     signal.throwIfAborted();
-    return z.array(tagSchema).parse(result);
+    return TagsSchema.parse(result);
   }
 
   async createTag(name: string): Promise<Tag> {
@@ -1795,31 +1438,9 @@ export class TauriPlatform implements Platform {
   }
 
   async listPins(signal: AbortSignal): Promise<PinNode[]> {
-    const target = z.union([
-      z
-        .object({ type: z.enum(["entry", "feed", "topic"]), id: z.string() })
-        .strict(),
-      z.object({ type: z.literal("site"), hostname: z.string() }).strict(),
-    ]);
-    const node: z.ZodType<PinNode> = z.lazy(() =>
-      z.union([
-        z
-          .object({
-            type: z.literal("group"),
-            id: z.string(),
-            title: z.string(),
-            children: z.array(node),
-          })
-          .strict(),
-        target,
-      ])
-    );
     const result = await invoke("list_pins");
     signal.throwIfAborted();
-    return z
-      .object({ pins: z.array(node) })
-      .strict()
-      .parse(result).pins;
+    return PinsSchema.parse(result).pins;
   }
 
   organizePins(edit: PinEdit): Promise<void> {

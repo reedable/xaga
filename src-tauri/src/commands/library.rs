@@ -1,10 +1,9 @@
 use std::path::PathBuf;
 
 use tauri::{AppHandle, State};
-use xaga_core::embeddings::ShutdownReason;
 
 use crate::error::AppError;
-use crate::{AppState, SettingsOutcome, restart_process, stale_view_error, update_settings};
+use crate::{AppState, SettingsOutcome, stale_view_error, update_settings};
 
 #[tauri::command]
 pub async fn get_library(state: State<'_, AppState>) -> Result<String, AppError> {
@@ -54,28 +53,7 @@ pub async fn set_library(
     // write and exit cleanly, then spawn a fresh process which boots against
     // the updated settings.json.  We do not update state.library here — the
     // new process will read it from disk on startup.
-    if let Some(svc) = state.embedding_service.lock().unwrap().take() {
-        svc.request_restart();
-        crate::events::emit_domain(&app, xaga_core::events::DomainEvent::EmbeddingShutdown);
-        let library = std::sync::Arc::clone(&state.library);
-        tauri::async_runtime::spawn(async move {
-            let reason = svc.shutdown().await;
-            // Drain and drop the writer (Interactive backlog to disk) to release the
-            // (old) library's flock before the successor tries to acquire the new one.
-            crate::drain_and_release_writer(&library).await;
-            match reason {
-                ShutdownReason::Restart => restart_process(),
-                ShutdownReason::Exit => std::process::exit(0),
-            }
-        });
-    } else {
-        // Read-only instance: no service to drain (and no writer to release). Restart
-        // directly so the successor attempts the NEW library's lock at its startup — a
-        // read-only instance may become the writer of a different library. (Without this,
-        // a read-only instance would keep running against the old library path.)
-        crate::drain_and_release_writer(&state.library).await;
-        restart_process();
-    }
+    crate::begin_shutdown(&app, true, true);
 
     Ok(new_path.to_string_lossy().to_string())
 }
@@ -461,7 +439,8 @@ mod tests {
         let settings: crate::UserSettings =
             serde_json::from_slice(&std::fs::read(&settings_path).unwrap()).unwrap();
         let path = PathBuf::from(settings.library.unwrap());
-        let (writer, error) = crate::library_writer_for_startup(&path, LibraryVersion::new(0, 16));
+        let (writer, error) =
+            crate::startup::library_writer_for_startup(&path, LibraryVersion::new(0, 16));
         assert!(error.is_none());
         let result = serde_json::json!({"path": path, "writable": writer.is_some()});
         std::fs::write(
@@ -492,7 +471,7 @@ mod tests {
                     &state,
                     target,
                     || {
-                        let (outcome, fresh) = crate::update_settings_file(
+                        let (outcome, fresh) = crate::settings::update_settings_file(
                             &state.account_lock,
                             &settings_path,
                             baseline,

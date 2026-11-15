@@ -53,7 +53,7 @@ anyway.
 - [Organization model](../../docs/architecture/organization_model.md)
 - [The user owns the data](../../docs/conventions/user_owns_data.md)
 - [Semantic search commands](../../src-tauri/src/commands/embeddings.rs)
-- [Similarity search defaults](../../crates/xaga-core/src/embeddings/db.rs)
+- [Similarity search defaults](../../crates/xaga-core/src/embeddings/db/similarity.rs)
 - [Topic embeddings](../../crates/xaga-core/src/embeddings/pipeline.rs)
 - [Topic creation commands](../../src-tauri/src/commands/topics.rs)
 - [Topic form coordination](../../src/AppLayout.tsx)

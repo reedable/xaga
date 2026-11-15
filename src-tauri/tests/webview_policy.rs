@@ -39,6 +39,10 @@ fn main() {
     for (config, blocked) in [
         (control, false),
         (
+            webview_policy::ui_configuration().expect("UI WebRTC policy"),
+            true,
+        ),
+        (
             webview_policy::loader_configuration(None).expect("WebRTC disabled"),
             true,
         ),

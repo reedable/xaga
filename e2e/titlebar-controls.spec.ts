@@ -4,6 +4,7 @@ import {
   startCapture,
   test,
   setSidebarVisible,
+  openArticle,
 } from "./fixtures";
 
 for (const width of [960, 720]) {
@@ -79,3 +80,49 @@ test("disabled responsive refresh keeps its tooltip and traffic-light clearance"
   await refresh.locator("..").hover();
   await expect(page.getByRole("tooltip")).toBeVisible();
 });
+
+for (const width of [1440, 720]) {
+  test(`titlebar receives blank-area clicks over every column at width ${width}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await startCapture(page);
+    if (width === 720) await setSidebarVisible(page, false);
+    await openArticle(page, "A garden for every season");
+    const bar = page.getByTestId("traffic-light-spacer").locator("..");
+    expect(
+      await bar.evaluate((element) => {
+        const barBox = element.getBoundingClientRect();
+        const columns = [
+          document.getElementById("sidebar-column"),
+          document.getElementById("entity-list-column"),
+          document.querySelector('[data-testid="reading-space"]'),
+        ].filter(
+          (column): column is HTMLElement => column instanceof HTMLElement
+        );
+        return columns
+          .filter((column) => column.getBoundingClientRect().width > 0)
+          .map((column) => {
+            const box = column.getBoundingClientRect();
+            return element.contains(
+              document.elementFromPoint(box.x + box.width / 2, barBox.y + 8)
+            );
+          });
+      })
+    ).toEqual(width === 1440 ? [true, true, true] : [true, true]);
+    // Positioned resize handles must stay above the drag surface.
+    for (const id of width === 1440
+      ? ["sidebar-column-resize", "entity-list-column-resize"]
+      : ["entity-list-column-resize"]) {
+      const handle = page.getByTestId(id);
+      expect(
+        await handle.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return element.contains(
+            document.elementFromPoint(box.x + box.width / 2, box.y + 8)
+          );
+        })
+      ).toBe(true);
+    }
+  });
+}

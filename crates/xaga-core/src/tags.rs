@@ -541,6 +541,7 @@ impl Tags {
         Self::discover_write_inner(dir, Some(entry), names, token).await
     }
 
+    #[cfg(test)]
     pub(crate) async fn discover_write(
         dir: &Path,
         names: &[String],
