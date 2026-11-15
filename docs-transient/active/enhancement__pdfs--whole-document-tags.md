@@ -8,7 +8,7 @@ story.
 
 ## Requirements
 
-- Depends on [shared Entry location resolution](../available/defect__entry-location-resolution.md)
+- Depends on [shared Entry location resolution](defect__entry-location-resolution.md)
   providing a discoverable, writable Entry for each supported stored PDF. The
   PDF's existing URL-derived Entry identity owns its assignments. Do not create
   a separate PDF tag store or require text extraction for tagging.

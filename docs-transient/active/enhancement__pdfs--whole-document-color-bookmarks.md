@@ -8,7 +8,7 @@ are outside this story.
 
 ## Requirements
 
-- Depends on [shared Entry location resolution](../available/defect__entry-location-resolution.md)
+- Depends on [shared Entry location resolution](defect__entry-location-resolution.md)
   providing a discoverable, writable Entry for each supported stored PDF. Store
   color on that Entry through the existing bookmark API, without a separate PDF
   bookmark store or a text-extraction requirement.

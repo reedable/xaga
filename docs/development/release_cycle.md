@@ -63,6 +63,10 @@ npm run version:major
 
 Only one command is used. For example, `patch` changes `0.8.4` to `0.8.5-dev`; `minor` changes it to `0.9.0-dev`; and `major` changes it to `1.0.0-dev`.
 
+When entering `x.y.0-dev`, follow the
+[maintenance review trigger](../maintenance/index.md#review-trigger) and remind
+the user to select recurring maintenance work for the new development cycle.
+
 Commit the synchronized version files and refreshed `Cargo.lock` as the start of the new development cycle. A major, minor, or patch command may retarget an existing `-dev` version. It is rejected for an `-rc.N` version because a release candidate must be finalized before the next cycle begins.
 
 ## Development and local builds

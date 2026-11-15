@@ -18,6 +18,17 @@ occupy one of four directories:
 - **`available/`** — bounded items ready to be picked up without further grooming or unresolved prerequisite decisions.
 - **`active/`** — the small set of items currently selected for implementation or investigation.
 
+Recurring maintenance procedures live permanently under
+[`docs/maintenance/`](../maintenance/index.md). Follow its
+[review trigger](../maintenance/index.md#review-trigger) when entering `x.y.0-dev`:
+remind the user to review and select maintenance work for the new cycle.
+They define repeatable work and are retained after each run. Each procedure states
+its purpose, scope, cadence or trigger (explicitly undecided until agreed), steps,
+and completion criteria. Keep procedures current without accumulating run history;
+report each run's results in the work report. Create transient tasks for findings
+requiring separate decisions or follow-up work. Maintenance runs follow the
+applicable verification and completion gate.
+
 Task documents live directly in their state directory; do not subdivide lifecycle
 directories by architecture, subsystem, or work area.
 

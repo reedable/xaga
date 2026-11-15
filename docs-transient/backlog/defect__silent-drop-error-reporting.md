@@ -8,6 +8,16 @@ validation failures as genuinely empty collections.
 
 ## Requirements
 
+- Include persisted-record identity validation failures, where a document's
+  saved ID disagrees with the filename lookup ID. These records fail to load;
+  define their user-facing reporting alongside other rejected results. Cover
+  backend failures and omissions as well as payload validation in the adapter,
+  so rejection before IPC does not disappear from the reporting contract.
+- Before this story is ready for implementation, obtain the user's decision on
+  the UI presentation and record it here. Define where and how partial-result
+  status, all-invalid results, and request failures appear, including retry
+  controls and what remains visible after notifications disappear. The outcome
+  table below does not settle that presentation.
 - Use one shared validation/reporting path. Log each rejected payload's operation
   or event name, schema diagnostics, and identity when safely available, without
   dumping document content.
@@ -28,6 +38,13 @@ validation failures as genuinely empty collections.
 
 ## Remaining work
 
+- Define presentation for identity-conflict failures in direct loads, list/search
+  results, and recovery reporting. Preserve the distinction between an absent
+  record and a rejected record. Diagnostics must identify the file and both IDs
+  without dumping content; keep technical details out of primary UI copy.
+- Groom the UI presentation with the user: present alternatives for the affected
+  list and search views, agree on placement and behavior for each outcome, and
+  record the chosen design and its verification criteria before implementation.
 - Replace silent list/search and event parse failures with shared reporting,
   carrying result status through platform consumers to list presentation.
 - Test valid, empty, mixed, all-invalid, and rejected requests; verify omitted
@@ -39,6 +56,7 @@ validation failures as genuinely empty collections.
 
 ## References
 
+- [Persisted identity remediation](../active/defect__persisted-entity-identity.md)
 - [Platform adapters](../../src/platform/TauriPlatform.ts)
 - [Shared error sink](../../src/providers/ErrorSinkProvider.tsx)
 - [Logger](../../src/utils/Logger.ts)
