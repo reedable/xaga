@@ -9,11 +9,16 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   build:
     name: Verify and build macOS Apple Silicon
     runs-on: macos-26
+    permissions:
+      # GitHub hides draft release evidence from read-only tokens.
+      contents: write
+      actions: read
     outputs:
       artifact: ${{ steps.package.outputs.artifact }}
     env:
@@ -25,7 +30,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -35,6 +40,7 @@ jobs:
 
       - name: Prepare version on clean source
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_MODE: ${{ inputs.mode }}
           RELEASE_STATE: ${{ runner.temp }}/release-state.json
         run: node scripts/prepare-release.mjs prepare "$RELEASE_MODE"
@@ -130,6 +136,7 @@ jobs:
     runs-on: macos-26
     permissions:
       contents: write
+      pull-requests: write
     concurrency:
       group: release-publish-${{ github.ref }}
       cancel-in-progress: false

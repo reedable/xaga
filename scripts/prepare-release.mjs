@@ -47,7 +47,7 @@ function outside(name) {
 }
 function validatePreparedSource(state) {
   if (
-    git("rev-parse", "HEAD") !== state.start ||
+    git("rev-parse", "HEAD") !== state.commit ||
     git("write-tree") !== state.tree ||
     git("ls-files", "--others", "--exclude-standard")
   ) {
@@ -64,11 +64,24 @@ function prepare(mode, statePath) {
     throw new Error("Release preparation requires a clean checkout");
   const start = git("rev-parse", "HEAD");
   const ref = process.env.GITHUB_REF || "";
-  if (mode !== "tag" && !ref.startsWith("refs/heads/"))
-    throw new Error("Select a repository branch for release preparation");
-  if (mode === "tag" && !ref.startsWith("refs/tags/"))
-    throw new Error("Manual release builds require a tag");
-  if (mode !== "tag") run("npm", ["run", `version:${mode}`]);
+  const current = validateVersionRecords(readVersionRecords());
+  const base = current.replace(/-(?:dev|rc\.[0-9]+)$/, "");
+  const branch = mode === "tag" ? null : `refs/heads/release/${base}`;
+  let expectedBranch = start;
+  if (mode === "tag") {
+    if (!ref.startsWith("refs/tags/")) throw new Error("Manual release builds require a tag");
+  } else {
+    const first = mode === "rc" && current.endsWith("-dev");
+    if (first) {
+      if (ref !== "refs/heads/main") throw new Error("Start an RC from main with a development version");
+      if (git("ls-remote", "origin", branch)) throw new Error(`Release branch already exists; select release/${base}`);
+      expectedBranch = "";
+    } else {
+      if (ref !== branch || !/-rc\.[1-9][0-9]*$/.test(current)) throw new Error("Select the matching release/x.y.z branch with an RC version");
+      if (git("ls-remote", "origin", branch).split(/\s+/)[0] !== start) throw new Error("Release branch moved; start a fresh run");
+    }
+    run("npm", ["run", `version:${mode}`]);
+  }
   const version = validateVersionRecords(readVersionRecords());
   const tag = releaseTagName(version);
   if (mode === "tag" && ref !== `refs/tags/${tag}`)
@@ -81,11 +94,23 @@ function prepare(mode, statePath) {
     )
       throw new Error("Unexpected version preparation changes");
     git("add", "--", ...versionFiles);
+    git("config", "user.name", "github-actions[bot]");
+    git("config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com");
+    git("commit", "-m", `Prepare ${tag}`);
+    if (mode === "rc") {
+      git("push", `--force-with-lease=${branch}:${expectedBranch}`, "origin", `HEAD:${branch}`);
+      expectedBranch = git("rev-parse", "HEAD");
+    }
   }
   write(statePath, {
     mode,
     start,
-    branch: mode === "tag" ? null : ref,
+    commit: git("rev-parse", "HEAD"),
+    branch,
+    expectedBranch,
+    sourceRef: ref,
+    runId: process.env.GITHUB_RUN_ID,
+    runAttempt: process.env.GITHUB_RUN_ATTEMPT,
     version,
     tag,
     tree: git("write-tree"),
@@ -119,13 +144,6 @@ function seal(statePath, directory) {
   copyFileSync(join(bundle, "dmg", dmgs[0]), join(directory, dmgs[0]));
   validatePreparedSource(state);
   if (state.mode !== "tag") {
-    git("config", "user.name", "github-actions[bot]");
-    git(
-      "config",
-      "user.email",
-      "41898282+github-actions[bot]@users.noreply.github.com"
-    );
-    git("commit", "-m", `Release ${state.tag}`);
     // The existing tag command rechecks clean status and every version record.
     run("npm", ["run", "release:tag"]);
     git(
