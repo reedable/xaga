@@ -17,6 +17,8 @@ import {
   validateVersionRecords,
 } from "./release-tag.mjs";
 
+import { readVerifiedRelease } from "./release-evidence.mjs";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const versionFiles = [
   "package.json",
@@ -68,6 +70,37 @@ function prepare(mode, statePath) {
     throw new Error("Select a repository branch for release preparation");
   if (mode === "tag" && !ref.startsWith("refs/tags/"))
     throw new Error("Manual release builds require a tag");
+  const current = validateVersionRecords(readVersionRecords());
+  const base = current.replace(/-(?:dev|rc\.[0-9]+)$/, "");
+  const releaseBranch = `refs/heads/release/${base}`;
+  const branch = mode === "tag" ? null : releaseBranch;
+  let expectedBranch = start;
+  if (mode !== "tag") {
+    if (mode === "rc" && ref === "refs/heads/develop") {
+      if (!current.endsWith("-dev"))
+        throw new Error(
+          "The first RC on develop requires a development version"
+        );
+      if (git("ls-remote", "origin", releaseBranch))
+        throw new Error(
+          `Release branch already exists; select release/${base} for subsequent RCs`
+        );
+      expectedBranch = "";
+    } else {
+      if (
+        ref !== releaseBranch ||
+        (!(mode === "rc" && current.endsWith("-dev")) &&
+          !/-rc\.[1-9][0-9]*$/.test(current))
+      )
+        throw new Error(
+          "Select the matching release/x.y.z branch with an RC version"
+        );
+      const remote = git("ls-remote", "origin", releaseBranch).split(/\s+/)[0];
+      if (remote !== start)
+        throw new Error("Release branch moved; start a fresh run");
+      if (mode === "release") readVerifiedRelease(current, start, branch, root);
+    }
+  }
   if (mode !== "tag") run("npm", ["run", `version:${mode}`]);
   const version = validateVersionRecords(readVersionRecords());
   const tag = releaseTagName(version);
@@ -85,7 +118,11 @@ function prepare(mode, statePath) {
   write(statePath, {
     mode,
     start,
-    branch: mode === "tag" ? null : ref,
+    branch,
+    expectedBranch,
+    sourceRef: ref,
+    runId: process.env.GITHUB_RUN_ID,
+    runAttempt: process.env.GITHUB_RUN_ATTEMPT,
     version,
     tag,
     tree: git("write-tree"),

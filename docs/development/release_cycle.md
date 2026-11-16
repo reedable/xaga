@@ -122,88 +122,138 @@ this prerequisite before verification and building.
 
 ## Prepare releases with GitHub Actions
 
-Use **RC** or **Release** in the repository's Actions view. Both support
-**Run workflow** on GitHub's website and in GitHub Mobile. Select the branch to
-release, including an emergency patch branch when needed, then start the run.
-Tag refs are rejected. You need repository write access and permission to run
-Actions. The dispatch workflows must be present on the default branch, and the
-selected branch must contain the workflow and supporting scripts.
+`develop` is the integration branch and accepts direct development pushes.
+`release/x.y.z` holds the fixes and candidates for one release. Protected `main`
+receives final releases through pull requests; RCs are never merged there.
+Keep release branches after merging. Bring release fixes back into `develop`
+through the normal development process; these workflows do not synchronize them.
 
-| Workflow | Starting version            | Prepared version |
-| -------- | --------------------------- | ---------------- |
-| RC       | `x.y.z-dev`                 | `x.y.z-rc.1`     |
-| RC       | `x.y.z-rc.N`                | `x.y.z-rc.(N+1)` |
-| Release  | `x.y.z-dev` or `x.y.z-rc.N` | `x.y.z`          |
+Use **RC** or **Release** in Actions, then **Run workflow** on the website or in
+GitHub Mobile. The branch picker selects the source; tag refs and arbitrary
+branches are rejected. Both the default branch and selected source branch must
+contain the workflow and supporting scripts.
 
-Both refuse an already-final starting version. Starting the next development
-cycle remains a separate choice of major, minor, or patch increment.
+| Workflow | Selected branch | Starting version            | Result                                  |
+| -------- | --------------- | --------------------------- | --------------------------------------- |
+| RC       | `develop`       | `x.y.z-dev`                 | Create `release/x.y.z` and `x.y.z-rc.1` |
+| RC       | `release/x.y.z` | `x.y.z-dev` or `x.y.z-rc.N` | First or next RC on that branch         |
+| Release  | `release/x.y.z` | Verified `x.y.z-rc.N`       | Final `x.y.z` and PR to `main`          |
+
+The first RC captures the selected `develop` commit. New development arriving
+while it builds is left for another release. If `release/x.y.z` already exists,
+RC on `develop` refuses to run: select the release branch instead. Subsequent
+release fixes go to that branch, never implicitly import changes from `develop`.
+For an emergency release, prepare a matching `release/x.y.z` branch and
+`x.y.z-dev` version from the appropriate released source, then run RC there.
+
+Release requires its branch HEAD to match the RC tag and the build record
+attached as `release.json` to the candidate's GitHub prerelease. It checks the
+record's commit, tree, tag, parent, source branch, and successful RC workflow
+attempt in the same repository. A manually created tag or an extra fix commit
+is not sufficient: run RC again before finalization. Existing RCs created before
+this evidence was recorded likewise need a new RC run. The local version command
+still supports development-to-final preparation; the automated Release workflow
+does not.
 
 ### Verification, build, and commit order
 
-The workflows share `.github/workflows/release-pipeline.yml`:
+All three build entry points share `.github/workflows/release-pipeline.yml`:
 
-1. Check out the selected starting commit and run the existing version command
-   on the clean tree. Stage the synchronized version files without committing.
-2. Run lint with warnings rejected, repository formatting, TypeScript, reader CSP,
-   Rust formatting and all-target workspace compilation, headless tests, and
-   browser tests. Headless and browser suites each have a 30-minute timeout.
-3. Build the Apple Silicon macOS distributable with the plain RC or final version
-   and committed standard icons, then verify its ad-hoc code signature. Release
-   builds do not regenerate tracked icon files. Intel, Linux, and
-   Windows builds are not currently supported.
-4. Check that the source tree still matches the prepared tree. Create the version
-   commit and annotated tag only after successful verification and building.
-5. Retain the already-built app archive and disk image, their checksums, and the
-   exact commit/tag identity in a workflow artifact for 14 days.
-6. Push the branch and tag together atomically. The branch must still equal the
-   starting commit and the tag must be absent at the update itself. Competing RC
-   and final-release runs cannot overwrite each other's work.
-7. Create a draft GitHub Release and upload the retained artifacts. RC drafts are
-   prereleases; final drafts are not. Inspect the draft before publishing it.
+1. Start with a clean checkout, validate the selected branch and lifecycle, and
+   stage synchronized version changes without committing.
+2. Run lint, formatting, TypeScript, CSP, Rust formatting and all-target workspace
+   checks, then headless and browser tests. Each test step has a 30-minute timeout.
+3. Build the Apple Silicon distributable with its plain RC or final version and
+   committed standard icons, and verify its ad-hoc signature. Source files must
+   still match the prepared tree. Local beta builds are not a prerequisite.
+4. Commit and annotate the release tag after success. Retain the already-built
+   artifacts, checksums, and Git identity in a workflow package for 14 days.
+5. Atomically push the release branch and tag. For branch creation, both refs
+   must be absent; for an existing branch, its HEAD must still equal the starting
+   commit and the tag must be absent. Never push version changes to `main` or
+   `develop`.
+6. Upload the artifacts and build record to a draft release. RC drafts are
+   prereleases and have no PR to `main`. Final preparation creates or reuses a
+   release-branch PR to `main` and requests auto-merge for the exact built commit.
 
-A local beta build is not a prerequisite for this flow. Native WebKit and bundled
-macOS smoke checks still require the documented desktop environment; the CI
-headless/browser checks do not establish those results. See
-[verification](verification.md) and [resource verification](resource_verification.md).
+The final tag stays on the release-branch commit. The **Verify release PR**
+workflow checks that the proposed merge tree equals the verified final build's
+source tree, without recompiling. It runs from trusted `main` code and never
+executes the candidate's code. It checks PR events and completion of the Release
+workflow; the **Release PR verification** status cannot pass while the matching
+final workflow is incomplete or unsuccessful. Other required reviews/checks
+still apply. Use merge commits to preserve the retained release branch's ancestry.
 
-### Permissions and repository rules
+If `main` moves and changes the proposed merge content, the release must be
+reconciled and verified again before merging. Do not edit or move a final tag to
+reuse its number. Publish the final draft manually after the PR has merged and
+its artifacts have been inspected. Native WebKit and bundled macOS smoke checks
+remain separate desktop verification; see [verification](verification.md) and
+[resource verification](resource_verification.md).
 
-GitHub supplies `GITHUB_TOKEN`; no personal token or additional App credentials
-are needed. Only the publication job requests `contents: write`. Commits use
-`github-actions[bot]`. Branch and tag protection still apply: a denied update
-fails rather than bypassing repository rules. Repositories requiring signed
-commits or pull requests need a compatible release policy before using direct
-bot pushes; these workflows do not change those settings.
+### Repository setup
 
-Token-created tag pushes do not trigger another push workflow. The shared
-pipeline explicitly performs draft creation after pushing, avoiding a second
-build. See [GitHub token behavior](https://docs.github.com/en/actions/concepts/security/github_token).
+Install the workflows and verification scripts on `main` before using the new
+release process, and keep `main` as the default branch. Create `develop` for
+ongoing work. To adopt this flow with an existing RC on `main`, create its matching
+release branch from that RC and run RC there to establish fresh build evidence.
+Choose the next development version separately; the workflows do not advance it.
+
+No personal token or separate GitHub App credential is required. `GITHUB_TOKEN`
+uses read access for build evidence and write access for publishing refs and PRs.
+The trusted PR verifier has permission to write commit statuses. GitHub settings
+must permit:
+
+- **Allow GitHub Actions to create and approve pull requests** under Actions
+  settings. The workflow creates PRs; it does not approve its own reviews.
+- **Allow auto-merge** and merge commits in repository settings.
+- Retained release branches: disable **Automatically delete head branches**.
+- On the existing classic `main` branch protection rule, require status checks,
+  **Release PR verification**, and **Require branches to be up to date before
+  merging**. Keep the PR requirement and any required reviews. The verifier emits
+  the status on a PR so it can be selected in the protection settings. If it is
+  not listed yet, open a temporary PR to `main` to emit the status, select it as
+  required, and close the temporary PR. Non-release PRs fail this check.
+- Bot creation/update of `release/*` and creation of release tags. Main does not
+  need a bot bypass. The workflow does not modify protection settings.
+
+Final publication refuses to push if auto-merge, branch retention, or the required
+classic protection settings are missing. Ruleset-only configurations are not
+currently recognized by this check. Repository policy remains authoritative.
+
+Token-created tag pushes do not trigger another push workflow, so draft creation
+is explicit. The separate `workflow_run` check verifies the final PR once the
+Release run completes, including when token-created PR events are suppressed.
 
 ### Failures and recovery
 
-- Verification, build, signature, or artifact-retention failure leaves the remote
-  branch and tags unchanged. Start a fresh run after correcting the cause. An
-  unchanged starting version produces the same candidate number.
-- If the branch moves or the tag conflicts, the atomic update rejects both refs.
-  Start a fresh run from the current branch; do not rebase the already-built
-  changes or move a tag.
-- If the push or draft upload fails, use **Re-run failed jobs** on the original
-  run (or rerun only **Push and create draft**). It downloads the successful build
-  job's package, recognizes an already-pushed identical tag, and finishes that
-  same draft. It does not bump or rebuild. Existing published releases are not
-  modified. The run summary records the remote tag and commit once known.
-- Do not use **Re-run all jobs** to recover an interrupted draft: that rebuilds
-  and prepares another local commit. Retained packages expire after 14 days;
-  download the package beforehand if recovery must be delayed. With an intact
-  saved package, `node scripts/publish-release.mjs` can be run from the original source
-  checkout with `RELEASE_PACKAGE` set to its absolute directory and
-  `GITHUB_REPOSITORY` set to `owner/repository`, using authenticated Git and
-  GitHub CLI access. Without that package, the exact-artifact recovery path is
-  unavailable; do not move the existing tag or claim a rebuild is the original.
+Failed verification, build, signature, or artifact retention changes no remote
+refs. A branch/tag conflict rejects the whole atomic push; start a fresh run on
+the correct branch. Do not rebase the already-built changes or move a tag.
 
-Browser reports and failure diagnostics are also retained for 14 days. The
-manual GitHub acceptance checks cover Mobile dispatch, token and
-repository rules, a successful draft, and recovery after a failed upload.
+For a failed draft upload, PR creation, or auto-merge request, choose **Re-run
+failed jobs** on the original run, or rerun only **Push and create draft**. It uses
+the successful build job's retained package, recognizes the existing identical
+refs, and finishes the same release without another bump or build. It refuses to
+alter published releases or open a PR for a newer unverified branch head.
+After an interrupted final PR step, recover that run rather than launching
+Release on the now-final branch, which is deliberately rejected.
+
+Do not use **Re-run all jobs** for draft recovery. Packages and browser diagnostics
+expire after 14 days; save the package first if recovery must be delayed.
+`node scripts/publish-release.mjs` can recover a saved package from the original
+source checkout with `RELEASE_PACKAGE` set to its absolute directory and
+`GITHUB_REPOSITORY` set to `owner/repository`, using authenticated Git and GitHub
+CLI access. The uploaded `release.json` persists with the GitHub release for
+promotion checks, but its referenced workflow run must remain available. A successful retry of
+failed publication jobs qualifies the original build record; the latest run
+attempt must have completed successfully.
+Without the package, exact-artifact recovery is unavailable.
+
+Manual GitHub acceptance covers Mobile branch selection, branch protection,
+first/subsequent RCs, final evidence validation, PR auto-merge, retained branches,
+and failure recovery. Local tests use isolated repositories and simulated GitHub
+responses; they do not establish those live results.
 
 ## Supplemental: local preparation and manual release builds
 

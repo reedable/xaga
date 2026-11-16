@@ -6,6 +6,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { releaseTagName } from "./release-tag.mjs";
 
+import { validateMainProtection } from "./release-evidence.mjs";
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 function run(command, args) {
   return execFileSync(command, args, { cwd: root, encoding: "utf8" }).trim();
@@ -42,11 +44,24 @@ function main() {
     if (hash !== asset.sha256)
       throw new Error(`Artifact checksum mismatch: ${asset.name}`);
   }
+  if (state.mode === "release") validateMainProtection(root);
   const tagRef = `refs/tags/${state.tag}`;
   if (state.mode !== "tag") {
-    if (!state.branch?.startsWith("refs/heads/"))
+    if (
+      state.branch !==
+      `refs/heads/release/${state.version.replace(/-rc\.[0-9]+$/, "")}`
+    )
       throw new Error("Invalid branch");
     git("check-ref-format", state.branch);
+    if (
+      state.expectedBranch !== state.start &&
+      !(
+        state.mode === "rc" &&
+        state.sourceRef === "refs/heads/develop" &&
+        state.expectedBranch === ""
+      )
+    )
+      throw new Error("Invalid release branch update expectation");
     git("fetch", join(directory, "release.bundle"), tagRef);
     if (
       git("rev-parse", "FETCH_HEAD") !== state.tagObject ||
@@ -85,7 +100,7 @@ function main() {
     if (
       state.mode === "tag" ||
       remote.has(tagRef) ||
-      remote.get(state.branch) !== state.start
+      (remote.get(state.branch) || "") !== state.expectedBranch
     )
       throw new Error(
         "Branch moved or tag conflicts; no refs updated. Start a fresh run."
@@ -102,7 +117,7 @@ function main() {
     git(
       "push",
       "--atomic",
-      `--force-with-lease=${state.branch}:${state.start}`,
+      `--force-with-lease=${state.branch}:${state.expectedBranch}`,
       `--force-with-lease=${tagRef}:`,
       "origin",
       `${state.commit}:${state.branch}`,
@@ -149,10 +164,65 @@ function main() {
     "upload",
     state.tag,
     ...state.assets.map((asset) => join(directory, asset.name)),
+    join(directory, "release.json"),
     "--repo",
     repo,
     "--clobber",
   ]);
+  if (state.mode === "release") {
+    const branch = state.branch.replace("refs/heads/", "");
+    // Never direct a PR at a newer, unverified release-branch head during recovery.
+    const head = git("ls-remote", "origin", state.branch).split(/\s+/)[0];
+    if (head !== state.commit)
+      throw new Error(
+        "Release branch advanced; artifacts recovered, but refusing to create a PR for unverified changes"
+      );
+    const prs = JSON.parse(
+      run("gh", [
+        "pr",
+        "list",
+        "--repo",
+        repo,
+        "--base",
+        "main",
+        "--head",
+        branch,
+        "--state",
+        "open",
+        "--json",
+        "number",
+      ])
+    );
+    if (prs.length === 0)
+      run("gh", [
+        "pr",
+        "create",
+        "--repo",
+        repo,
+        "--base",
+        "main",
+        "--head",
+        branch,
+        "--title",
+        `Release ${state.tag}`,
+        "--body",
+        `Verified final release: ${state.tag}. The Release PR verification status must pass before merging. Retain this release branch.`,
+      ]);
+    run("gh", [
+      "pr",
+      "merge",
+      branch,
+      "--repo",
+      repo,
+      "--auto",
+      "--merge",
+      "--match-head-commit",
+      state.commit,
+    ]);
+    report(
+      `Release PR targets main from ${branch}. Main is updated only through its protected merge process.`
+    );
+  }
   report(
     `Draft ${state.tag} contains the verified artifacts. Inspect it before publishing.`
   );

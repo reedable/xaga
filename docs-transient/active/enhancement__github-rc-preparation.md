@@ -2,41 +2,33 @@
 
 ## Summary
 
-Prepare an RC through GitHub's Run workflow control. Commit and push the version
-change and tag only after verification and the RC build succeed, so a failed
-build does not consume a candidate number.
+Prepare RCs from GitHub Mobile using a Gitflow release branch. Commit and push
+only after verification and building succeed; keep RCs out of protected `main`.
 
 ## Requirements
 
-- Support GitHub Mobile's Run workflow control via `workflow_dispatch`. Run on a
-  selected repository branch using `GITHUB_TOKEN` and a shared bot identity; no
-  additional credential is required.
-- Apply the existing RC version rules in the temporary checkout. Run the existing
-  release checks, build the distributable, and verify its signature before
-  creating the version commit and annotated tag. The tagged source tree must
-  match the verified build's source tree.
-- Push the commit and tag atomically, only if the remote branch still equals the
-  starting commit and the tag does not exist. Enforce this at push time, including
-  concurrent runs. Otherwise leave both refs unchanged and require a fresh run;
-  do not rebase or overwrite changes.
-- Create a draft prerelease from the already-built artifacts after the push.
-  Invoke this explicitly: a `GITHUB_TOKEN` tag push will not trigger the existing
-  release workflow. Publication remains manual.
-- If draft creation or upload fails after the push, report that the commit and
-  tag exist and allow completing the same draft without another version bump.
-- Reuse version, verification, and build logic. Preserve manual tagging and
-  final-release behavior.
+- RC on `develop` captures a fixed `x.y.z-dev` snapshot and creates
+  `release/x.y.z`. Reject an existing destination and direct the user to select it.
+- RC on `release/x.y.z` prepares its first or next candidate using the existing
+  version rules. Release fixes belong there; never merge `develop` implicitly.
+- Verify and build before committing. Atomically create/update the release branch
+  and immutable RC tag, rejecting concurrent destination changes. Never update
+  `develop` or `main`, or open an RC PR to `main`.
+- Retain artifacts for retry and record the verified commit, tree, tag, and GitHub
+  workflow attempt for final promotion. Preserve draft-prerelease publication and
+  recovery without rebuilding or consuming another number.
+- Share build/version logic, use `GITHUB_TOKEN`, and keep GitHub Actions primary in
+  durable documentation, with local release instructions supplemental.
 
 ## Remaining work
 
-- User verification on GitHub: Mobile invocation, token and repository
-  permissions, artifact handoff, and recovery after a failed draft upload.
-  Resolve any reported failures.
-- Obtain a passing completion gate after the final changes.
+- User verification on GitHub: Mobile branch selection, first/subsequent RCs,
+  branch retention, build evidence, permissions, and failure recovery.
+- Resolve reported failures and obtain a passing final completion gate.
 
 ## References
 
 - [Release lifecycle](../../docs/development/release_cycle.md)
-- [Release workflow](../../.github/workflows/release.yml)
-- [Version preparation](../../scripts/bump-version.mjs)
-- [Tag validation](../../scripts/release-tag.mjs)
+- [Shared pipeline](../../.github/workflows/release-pipeline.yml)
+- [Preparation](../../scripts/prepare-release.mjs)
+- [Publication](../../scripts/publish-release.mjs)
