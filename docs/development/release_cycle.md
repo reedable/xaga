@@ -128,23 +128,28 @@ receives final releases through pull requests; RCs are never merged there.
 Keep release branches after merging. Bring release fixes back into `develop`
 through the normal development process; these workflows do not synchronize them.
 
-Use **RC** or **Release** in Actions, then **Run workflow** on the website or in
+Use **Start release**, **RC build**, or **Release** in Actions, then **Run workflow** on the website or in
 GitHub Mobile. The branch picker selects the source; tag refs and arbitrary
 branches are rejected. Both the default branch and selected source branch must
 contain the workflow and supporting scripts.
 
-| Workflow | Selected branch | Starting version            | Result                                  |
-| -------- | --------------- | --------------------------- | --------------------------------------- |
-| RC       | `develop`       | `x.y.z-dev`                 | Create `release/x.y.z` and `x.y.z-rc.1` |
-| RC       | `release/x.y.z` | `x.y.z-dev` or `x.y.z-rc.N` | First or next RC on that branch         |
-| Release  | `release/x.y.z` | Verified `x.y.z-rc.N`       | Final `x.y.z` and PR to `main`          |
+| Workflow      | Selected branch | Starting version            | Result                                  |
+| ------------- | --------------- | --------------------------- | --------------------------------------- |
+| Start release | `develop`       | `x.y.z-dev`                 | Create `release/x.y.z` and `x.y.z-rc.1` |
+| RC build      | `release/x.y.z` | `x.y.z-dev` or `x.y.z-rc.N` | First or next RC on that branch         |
+| Release       | `release/x.y.z` | Verified `x.y.z-rc.N`       | Final `x.y.z` and PR to `main`          |
+
+**Start release** accepts only `develop`; **RC build** and **Release** accept
+only matching `release/x.y.z` branches. After a successful first RC, you can
+proceed directly to **Release**. Use **RC build** when further changes need a
+new candidate.
 
 The first RC captures the selected `develop` commit. New development arriving
 while it builds is left for another release. If `release/x.y.z` already exists,
-RC on `develop` refuses to run: select the release branch instead. Subsequent
+**Start release** refuses to run: use **RC build** on the release branch instead. Subsequent
 release fixes go to that branch, never implicitly import changes from `develop`.
 For an emergency release, prepare a matching `release/x.y.z` branch and
-`x.y.z-dev` version from the appropriate released source, then run RC there.
+`x.y.z-dev` version from the appropriate released source, then run **RC build** there.
 
 Release requires its branch HEAD to match the RC tag and the build record
 attached as `release.json` to the candidate's GitHub prerelease. It checks the
@@ -157,7 +162,7 @@ does not.
 
 ### Verification, build, and commit order
 
-All three build entry points share `.github/workflows/release-pipeline.yml`:
+All four build entry points share `.github/workflows/release-pipeline.yml`:
 
 1. Start with a clean checkout, validate the selected branch and lifecycle, and
    stage synchronized version changes without committing.

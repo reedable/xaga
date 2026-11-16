@@ -60,8 +60,8 @@ function validatePreparedSource(state) {
   git("diff", "--exit-code");
 }
 function prepare(mode, statePath) {
-  if (!["rc", "release", "tag"].includes(mode))
-    throw new Error("Expected rc, release, or tag mode");
+  if (!["start", "rc", "release", "tag"].includes(mode))
+    throw new Error("Expected start, rc, release, or tag mode");
   if (git("status", "--porcelain=v1", "--untracked-files=all"))
     throw new Error("Release preparation requires a clean checkout");
   const start = git("rev-parse", "HEAD");
@@ -76,14 +76,16 @@ function prepare(mode, statePath) {
   const branch = mode === "tag" ? null : releaseBranch;
   let expectedBranch = start;
   if (mode !== "tag") {
-    if (mode === "rc" && ref === "refs/heads/develop") {
+    if (mode === "start") {
+      if (ref !== "refs/heads/develop")
+        throw new Error("Start release accepts only develop");
       if (!current.endsWith("-dev"))
         throw new Error(
           "The first RC on develop requires a development version"
         );
       if (git("ls-remote", "origin", releaseBranch))
         throw new Error(
-          `Release branch already exists; select release/${base} for subsequent RCs`
+          `Release branch already exists; run RC build on release/${base}`
         );
       expectedBranch = "";
     } else {
@@ -101,7 +103,8 @@ function prepare(mode, statePath) {
       if (mode === "release") readVerifiedRelease(current, start, branch, root);
     }
   }
-  if (mode !== "tag") run("npm", ["run", `version:${mode}`]);
+  const versionMode = mode === "start" ? "rc" : mode;
+  if (mode !== "tag") run("npm", ["run", `version:${versionMode}`]);
   const version = validateVersionRecords(readVersionRecords());
   const tag = releaseTagName(version);
   if (mode === "tag" && ref !== `refs/tags/${tag}`)
@@ -116,7 +119,8 @@ function prepare(mode, statePath) {
     git("add", "--", ...versionFiles);
   }
   write(statePath, {
-    mode,
+    mode: versionMode,
+    preparation: mode,
     start,
     branch,
     expectedBranch,

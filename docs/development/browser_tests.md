@@ -208,7 +208,7 @@ implemented. Native WebKit rendering and focus require separate checks.
 ## Failures and CI
 
 The **Verify and build macOS Apple Silicon** job in
-`.github/workflows/release-pipeline.yml` runs browser tests for RC and Release
+`.github/workflows/release-pipeline.yml` runs browser tests for Start release, RC build, and Release
 manual dispatches and Manual release build tag pushes. Ordinary branch pushes
 and pull requests do not trigger these workflows.
 

@@ -47,7 +47,12 @@ export function readVerifiedRelease(version, commit, branch, cwd) {
   const result = JSON.parse(
     run("gh", ["api", `repos/${repo}/actions/runs/${record.runId}`])
   );
-  const workflow = mode === "rc" ? "prepare-rc.yml" : "prepare-release.yml";
+  const workflow =
+    mode === "rc"
+      ? record.preparation === "start"
+        ? "start-release.yml"
+        : "prepare-rc.yml"
+      : "prepare-release.yml";
   if (
     !Number.isInteger(result.run_attempt) ||
     result.run_attempt < Number(record.runAttempt) ||

@@ -134,7 +134,7 @@ else if (args[1] === 'upload') {
  state.uploads.push(args[2]);
  const record = JSON.parse(fs.readFileSync(args.find(a=>a.endsWith('/release.json'))));
  state.records[args[2]]=record;
- state.runs[record.runId]={run_attempt:Number(record.runAttempt),conclusion:'success',status:'completed',event:'workflow_dispatch',path:record.mode==='rc'?'.github/workflows/prepare-rc.yml':'.github/workflows/prepare-release.yml',head_sha:record.start,head_branch:record.sourceRef.replace('refs/heads/',''),repository:{full_name:'fixture/xaga'}};
+ state.runs[record.runId]={run_attempt:Number(record.runAttempt),conclusion:'success',status:'completed',event:'workflow_dispatch',path:record.mode==='rc'?(record.preparation==='start'?'.github/workflows/start-release.yml':'.github/workflows/prepare-rc.yml'):'.github/workflows/prepare-release.yml',head_sha:record.start,head_branch:record.sourceRef.replace('refs/heads/',''),repository:{full_name:'fixture/xaga'}};
 }
 else process.exit(19);
 fs.writeFileSync(path, JSON.stringify(state));
@@ -168,7 +168,7 @@ fs.writeFileSync(path, JSON.stringify(state));
       env: { ...env, ...extra },
       encoding: "utf8",
     });
-  const prepare = (mode = "rc", extra) =>
+  const prepare = (mode = branch === "develop" ? "start" : "rc", extra) =>
     command("prepare-release.mjs", ["prepare", mode], extra);
   const build = () => {
     write(
@@ -255,7 +255,7 @@ function fails(result) {
 }
 
 for (const [before, mode, after] of [
-  ["0.17.3-dev", "rc", "0.17.3-rc.1"],
+  ["0.17.3-dev", "start", "0.17.3-rc.1"],
   ["0.17.3-rc.2", "rc", "0.17.3-rc.3"],
 
   ["0.17.3-rc.2", "release", "0.17.3"],
@@ -799,4 +799,26 @@ test("Release accepts a successful publication retry of the original RC build", 
     s.runs[90].conclusion = "success";
   });
   succeeds(f.prepare("release"));
+});
+
+test("entry points reject the wrong branches before changing versions", (t) => {
+  const developing = fixture(t);
+  fails(developing.prepare("rc"));
+  fails(developing.prepare("release"));
+  fails(developing.prepare("start", { GITHUB_REF: "refs/heads/main" }));
+  assert.equal(developing.git("status", "--porcelain"), "");
+  const candidate = fixture(t, "0.17.3-rc.1");
+  fails(candidate.prepare("start"));
+  assert.equal(candidate.git("status", "--porcelain"), "");
+});
+
+test("Start release evidence permits direct final promotion", (t) => {
+  const f = fixture(t);
+  succeeds(f.prepare("start"));
+  f.build();
+  succeeds(f.seal());
+  succeeds(f.publish());
+  f.git("switch", "-c", "release/0.17.3");
+  succeeds(f.prepare("release", { GITHUB_REF: "refs/heads/release/0.17.3" }));
+  assert.equal(JSON.parse(readFileSync(f.env.RELEASE_STATE)).version, "0.17.3");
 });

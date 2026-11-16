@@ -27,22 +27,32 @@ being completed, not unrelated changes already present in the working tree.
 Changes to executable examples, doctests, generated inputs, or configuration
 that affects builds or runtime behavior are not prose-only changes.
 
-For changes beyond prose-only documentation, run `npm run verify:completion`
-after the final edits and before claiming completion or deleting a resolved
-task. This required command runs lint with
-warnings rejected, repository formatting, TypeScript, reader CSP verification,
-Rust formatting, all-target workspace compilation, and the full headless,
-browser, and native test suites. Rust compiler and documentation warnings are
-errors throughout the command. It stops at the first failure; fix the failure
-and rerun the gate. It requires the documented macOS desktop test environment.
-Do not substitute an earlier or partial run for a passing final run.
+For changes that affect behavior, choose verification proportionate to what the
+change can affect. Identify the affected behavior and dependencies, then run the
+checks that establish those requirements. Include relevant checks for each part
+of a mixed change; accompanying documentation does not expand the behavioral
+testing scope. Determine scope from the work being completed, not unrelated
+changes already present in the working tree.
 
-This command executes the shared automated checks. Also verify each task's
-acceptance criteria, documentation, native smoke procedures, and the
+Broaden verification when affected dependencies, failures, or unresolved
+uncertainty provide a concrete reason. Do not run unrelated suites merely because
+a change includes executable code or configuration. Use `npm run verify:completion`
+when the affected scope warrants the full repository suite or another applicable
+requirement explicitly calls for it.
+
+The full command runs lint with warnings rejected, repository formatting,
+TypeScript, reader CSP verification, Rust formatting, all-target workspace
+compilation, and the headless, browser, and native test suites. Rust compiler and
+documentation warnings are errors throughout the command. It stops at the first
+failure and requires the documented macOS desktop test environment.
+
+Run the selected checks after the final relevant edits and before claiming
+completion or deleting a resolved task. Verify each task's acceptance criteria,
+documentation, applicable native smoke procedures, and the
 [least-visibility checklist](../principles/least_visibility_principle.md#operating-checklist).
 Compiler success alone cannot establish that a public symbol needs its visibility.
-Report any unmet requirement or unavailable check; do not claim completion when
-the gate fails or task-specific verification remains outstanding.
+Report what was verified and any unmet requirement or unavailable check; do not
+claim completion when required verification fails or remains outstanding.
 
 ## Story readiness
 
