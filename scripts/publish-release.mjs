@@ -50,7 +50,10 @@ function main() {
     )
       throw new Error("Invalid branch");
     git("check-ref-format", state.branch);
-    if (state.expectedBranch !== (state.mode === "rc" ? state.commit : state.start))
+    if (
+      state.expectedBranch !==
+      (state.mode === "rc" ? state.commit : state.start)
+    )
       throw new Error("Invalid release branch update expectation");
     git("fetch", join(directory, "release.bundle"), tagRef);
     if (
@@ -198,7 +201,9 @@ function main() {
         "--body",
         `Built release: ${state.tag}. Merge into main through the normal pull request process.`,
       ]);
-    report(`Release PR targets main from ${branch}. Merging remains a separate action subject to branch protection.`);
+    report(
+      `Release PR targets main from ${branch}. Merging remains a separate action subject to branch protection.`
+    );
   }
   report(
     `Draft ${state.tag} contains the verified artifacts. Inspect it before publishing.`

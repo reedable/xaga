@@ -69,16 +69,25 @@ function prepare(mode, statePath) {
   const branch = mode === "tag" ? null : `refs/heads/release/${base}`;
   let expectedBranch = start;
   if (mode === "tag") {
-    if (!ref.startsWith("refs/tags/")) throw new Error("Manual release builds require a tag");
+    if (!ref.startsWith("refs/tags/"))
+      throw new Error("Manual release builds require a tag");
   } else {
     const first = mode === "rc" && current.endsWith("-dev");
     if (first) {
-      if (ref !== "refs/heads/main") throw new Error("Start an RC from main with a development version");
-      if (git("ls-remote", "origin", branch)) throw new Error(`Release branch already exists; select release/${base}`);
+      if (ref !== "refs/heads/main")
+        throw new Error("Start an RC from main with a development version");
+      if (git("ls-remote", "origin", branch))
+        throw new Error(
+          `Release branch already exists; select release/${base}`
+        );
       expectedBranch = "";
     } else {
-      if (ref !== branch || !/-rc\.[1-9][0-9]*$/.test(current)) throw new Error("Select the matching release/x.y.z branch with an RC version");
-      if (git("ls-remote", "origin", branch).split(/\s+/)[0] !== start) throw new Error("Release branch moved; start a fresh run");
+      if (ref !== branch || !/-rc\.[1-9][0-9]*$/.test(current))
+        throw new Error(
+          "Select the matching release/x.y.z branch with an RC version"
+        );
+      if (git("ls-remote", "origin", branch).split(/\s+/)[0] !== start)
+        throw new Error("Release branch moved; start a fresh run");
     }
     run("npm", ["run", `version:${mode}`]);
   }
@@ -95,10 +104,19 @@ function prepare(mode, statePath) {
       throw new Error("Unexpected version preparation changes");
     git("add", "--", ...versionFiles);
     git("config", "user.name", "github-actions[bot]");
-    git("config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com");
+    git(
+      "config",
+      "user.email",
+      "41898282+github-actions[bot]@users.noreply.github.com"
+    );
     git("commit", "-m", `Prepare ${tag}`);
     if (mode === "rc") {
-      git("push", `--force-with-lease=${branch}:${expectedBranch}`, "origin", `HEAD:${branch}`);
+      git(
+        "push",
+        `--force-with-lease=${branch}:${expectedBranch}`,
+        "origin",
+        `HEAD:${branch}`
+      );
       expectedBranch = git("rev-parse", "HEAD");
     }
   }
