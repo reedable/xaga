@@ -1,0 +1,15 @@
+name: Start release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  release:
+    uses: ./.github/workflows/release-pipeline.yml
+    with:
+      mode: start

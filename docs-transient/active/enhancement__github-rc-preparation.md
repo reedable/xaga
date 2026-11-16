@@ -7,9 +7,9 @@ only after verification and building succeed; keep RCs out of protected `main`.
 
 ## Requirements
 
-- RC on `develop` captures a fixed `x.y.z-dev` snapshot and creates
-  `release/x.y.z`. Reject an existing destination and direct the user to select it.
-- RC on `release/x.y.z` prepares its first or next candidate using the existing
+- **Start release** accepts only `develop`, captures a fixed `x.y.z-dev` snapshot and creates
+  `release/x.y.z`. Reject an existing destination and direct the user to **RC build**.
+- **RC build** accepts only existing `release/x.y.z` branches and prepares its first or next candidate using the existing
   version rules. Release fixes belong there; never merge `develop` implicitly.
 - Verify and build before committing. Atomically create/update the release branch
   and immutable RC tag, rejecting concurrent destination changes. Never update
