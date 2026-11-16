@@ -200,9 +200,12 @@ release branch from that RC and run RC there to establish fresh build evidence.
 Choose the next development version separately; the workflows do not advance it.
 
 No personal token or separate GitHub App credential is required. `GITHUB_TOKEN`
-uses read access for build evidence and write access for publishing refs and PRs.
-The trusted PR verifier has permission to write commit statuses. GitHub settings
-must permit:
+needs `contents: write` in the build and trusted PR verification jobs to read
+build evidence from draft releases. GitHub hides drafts from callers without
+push access, so `contents: read` can report `release not found` even when the
+draft exists. The publisher also needs write access for refs and PRs; the trusted
+PR verifier needs permission to write commit statuses. GitHub settings must
+permit:
 
 - **Allow GitHub Actions to create and approve pull requests** under Actions
   settings. The workflow creates PRs; it does not approve its own reviews.
@@ -226,6 +229,13 @@ is explicit. The separate `workflow_run` check verifies the final PR once the
 Release run completes, including when token-created PR events are suppressed.
 
 ### Failures and recovery
+
+If Release reports `release not found` while downloading `release.json`, confirm
+the RC workflow finished uploading its draft and that the build job has
+`contents: write`. Keep the RC draft unpublished. Install workflow fixes on both
+`main` and the release branch; after changing the release branch, run RC again
+before starting a new Release run. Rerunning the old failed run uses its original
+workflow revision.
 
 Failed verification, build, signature, or artifact retention changes no remote
 refs. A branch/tag conflict rejects the whole atomic push; start a fresh run on

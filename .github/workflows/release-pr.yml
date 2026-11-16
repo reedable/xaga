@@ -9,7 +9,8 @@ on:
     types: [completed]
 
 permissions:
-  contents: read
+  # Final build evidence remains on a draft until after the PR merges.
+  contents: write
   actions: read
   pull-requests: read
   statuses: write

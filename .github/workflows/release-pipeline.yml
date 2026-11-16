@@ -15,6 +15,10 @@ jobs:
   build:
     name: Verify and build macOS Apple Silicon
     runs-on: macos-26
+    permissions:
+      # GitHub hides draft release evidence from read-only tokens.
+      contents: write
+      actions: read
     outputs:
       artifact: ${{ steps.package.outputs.artifact }}
     env:
