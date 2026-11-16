@@ -6,8 +6,6 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { releaseTagName } from "./release-tag.mjs";
 
-import { validateMainProtection } from "./release-evidence.mjs";
-
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 function run(command, args) {
   return execFileSync(command, args, { cwd: root, encoding: "utf8" }).trim();
@@ -44,7 +42,6 @@ function main() {
     if (hash !== asset.sha256)
       throw new Error(`Artifact checksum mismatch: ${asset.name}`);
   }
-  if (state.mode === "release") validateMainProtection(root);
   const tagRef = `refs/tags/${state.tag}`;
   if (state.mode !== "tag") {
     if (
@@ -53,14 +50,7 @@ function main() {
     )
       throw new Error("Invalid branch");
     git("check-ref-format", state.branch);
-    if (
-      state.expectedBranch !== state.start &&
-      !(
-        state.mode === "rc" &&
-        state.sourceRef === "refs/heads/develop" &&
-        state.expectedBranch === ""
-      )
-    )
+    if (state.expectedBranch !== (state.mode === "rc" ? state.commit : state.start))
       throw new Error("Invalid release branch update expectation");
     git("fetch", join(directory, "release.bundle"), tagRef);
     if (
@@ -169,7 +159,7 @@ function main() {
     repo,
     "--clobber",
   ]);
-  if (state.mode === "release") {
+  if (state.mode !== "tag") {
     const branch = state.branch.replace("refs/heads/", "");
     // Never direct a PR at a newer, unverified release-branch head during recovery.
     const head = git("ls-remote", "origin", state.branch).split(/\s+/)[0];
@@ -206,22 +196,9 @@ function main() {
         "--title",
         `Release ${state.tag}`,
         "--body",
-        `Verified final release: ${state.tag}. The Release PR verification status must pass before merging. Retain this release branch.`,
+        `Built release: ${state.tag}. Merge into main through the normal pull request process.`,
       ]);
-    run("gh", [
-      "pr",
-      "merge",
-      branch,
-      "--repo",
-      repo,
-      "--auto",
-      "--merge",
-      "--match-head-commit",
-      state.commit,
-    ]);
-    report(
-      `Release PR targets main from ${branch}. Main is updated only through its protected merge process.`
-    );
+    report(`Release PR targets main from ${branch}. Merging remains a separate action subject to branch protection.`);
   }
   report(
     `Draft ${state.tag} contains the verified artifacts. Inspect it before publishing.`

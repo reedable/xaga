@@ -17,8 +17,6 @@ import {
   validateVersionRecords,
 } from "./release-tag.mjs";
 
-import { readVerifiedRelease } from "./release-evidence.mjs";
-
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const versionFiles = [
   "package.json",
@@ -49,7 +47,7 @@ function outside(name) {
 }
 function validatePreparedSource(state) {
   if (
-    git("rev-parse", "HEAD") !== state.start ||
+    git("rev-parse", "HEAD") !== state.commit ||
     git("write-tree") !== state.tree ||
     git("ls-files", "--others", "--exclude-standard")
   ) {
@@ -60,51 +58,30 @@ function validatePreparedSource(state) {
   git("diff", "--exit-code");
 }
 function prepare(mode, statePath) {
-  if (!["start", "rc", "release", "tag"].includes(mode))
-    throw new Error("Expected start, rc, release, or tag mode");
+  if (!["rc", "release", "tag"].includes(mode))
+    throw new Error("Expected rc, release, or tag mode");
   if (git("status", "--porcelain=v1", "--untracked-files=all"))
     throw new Error("Release preparation requires a clean checkout");
   const start = git("rev-parse", "HEAD");
   const ref = process.env.GITHUB_REF || "";
-  if (mode !== "tag" && !ref.startsWith("refs/heads/"))
-    throw new Error("Select a repository branch for release preparation");
-  if (mode === "tag" && !ref.startsWith("refs/tags/"))
-    throw new Error("Manual release builds require a tag");
   const current = validateVersionRecords(readVersionRecords());
   const base = current.replace(/-(?:dev|rc\.[0-9]+)$/, "");
-  const releaseBranch = `refs/heads/release/${base}`;
-  const branch = mode === "tag" ? null : releaseBranch;
+  const branch = mode === "tag" ? null : `refs/heads/release/${base}`;
   let expectedBranch = start;
-  if (mode !== "tag") {
-    if (mode === "start") {
-      if (ref !== "refs/heads/develop")
-        throw new Error("Start release accepts only develop");
-      if (!current.endsWith("-dev"))
-        throw new Error(
-          "The first RC on develop requires a development version"
-        );
-      if (git("ls-remote", "origin", releaseBranch))
-        throw new Error(
-          `Release branch already exists; run RC build on release/${base}`
-        );
+  if (mode === "tag") {
+    if (!ref.startsWith("refs/tags/")) throw new Error("Manual release builds require a tag");
+  } else {
+    const first = mode === "rc" && current.endsWith("-dev");
+    if (first) {
+      if (ref !== "refs/heads/main") throw new Error("Start an RC from main with a development version");
+      if (git("ls-remote", "origin", branch)) throw new Error(`Release branch already exists; select release/${base}`);
       expectedBranch = "";
     } else {
-      if (
-        ref !== releaseBranch ||
-        (!(mode === "rc" && current.endsWith("-dev")) &&
-          !/-rc\.[1-9][0-9]*$/.test(current))
-      )
-        throw new Error(
-          "Select the matching release/x.y.z branch with an RC version"
-        );
-      const remote = git("ls-remote", "origin", releaseBranch).split(/\s+/)[0];
-      if (remote !== start)
-        throw new Error("Release branch moved; start a fresh run");
-      if (mode === "release") readVerifiedRelease(current, start, branch, root);
+      if (ref !== branch || !/-rc\.[1-9][0-9]*$/.test(current)) throw new Error("Select the matching release/x.y.z branch with an RC version");
+      if (git("ls-remote", "origin", branch).split(/\s+/)[0] !== start) throw new Error("Release branch moved; start a fresh run");
     }
+    run("npm", ["run", `version:${mode}`]);
   }
-  const versionMode = mode === "start" ? "rc" : mode;
-  if (mode !== "tag") run("npm", ["run", `version:${versionMode}`]);
   const version = validateVersionRecords(readVersionRecords());
   const tag = releaseTagName(version);
   if (mode === "tag" && ref !== `refs/tags/${tag}`)
@@ -117,11 +94,18 @@ function prepare(mode, statePath) {
     )
       throw new Error("Unexpected version preparation changes");
     git("add", "--", ...versionFiles);
+    git("config", "user.name", "github-actions[bot]");
+    git("config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com");
+    git("commit", "-m", `Prepare ${tag}`);
+    if (mode === "rc") {
+      git("push", `--force-with-lease=${branch}:${expectedBranch}`, "origin", `HEAD:${branch}`);
+      expectedBranch = git("rev-parse", "HEAD");
+    }
   }
   write(statePath, {
-    mode: versionMode,
-    preparation: mode,
+    mode,
     start,
+    commit: git("rev-parse", "HEAD"),
     branch,
     expectedBranch,
     sourceRef: ref,
@@ -160,13 +144,6 @@ function seal(statePath, directory) {
   copyFileSync(join(bundle, "dmg", dmgs[0]), join(directory, dmgs[0]));
   validatePreparedSource(state);
   if (state.mode !== "tag") {
-    git("config", "user.name", "github-actions[bot]");
-    git(
-      "config",
-      "user.email",
-      "41898282+github-actions[bot]@users.noreply.github.com"
-    );
-    git("commit", "-m", `Release ${state.tag}`);
     // The existing tag command rechecks clean status and every version record.
     run("npm", ["run", "release:tag"]);
     git(
