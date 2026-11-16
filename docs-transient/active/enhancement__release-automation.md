@@ -33,10 +33,13 @@ Implement the new release workflow.
 
 ## Remaining work
 
-- Implement the release workflow according to the requirements recorded here.
+- Verify the installed GitHub workflows: first and subsequent RCs, failed builds,
+  final Release, PR reuse, branch/tag permissions, and failed-publication retry.
 
 ## References
 
 - [Release lifecycle](../../docs/development/release_cycle.md)
 - [Manual release build](../../.github/workflows/release.yml)
+- [Release Candidate](../../.github/workflows/prepare-rc.yml)
+- [Release](../../.github/workflows/prepare-release.yml)
 - [Shared release pipeline](../../.github/workflows/release-pipeline.yml)
