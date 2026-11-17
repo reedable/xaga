@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { reportReleaseStatus } from "./release-status.mjs";
 import {
   releaseTagName,
   readVersionRecords,
@@ -120,7 +121,7 @@ function prepare(mode, statePath) {
       expectedBranch = git("rev-parse", "HEAD");
     }
   }
-  write(statePath, {
+  const identity = {
     mode,
     start,
     commit: git("rev-parse", "HEAD"),
@@ -132,7 +133,9 @@ function prepare(mode, statePath) {
     version,
     tag,
     tree: git("write-tree"),
-  });
+  };
+  write(statePath, identity);
+  reportReleaseStatus(identity, "pending");
 }
 function seal(statePath, directory) {
   const state = read(statePath);

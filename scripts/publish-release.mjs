@@ -5,6 +5,7 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { releaseTagName } from "./release-tag.mjs";
+import { reportReleaseStatus } from "./release-status.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 function run(command, args) {
@@ -117,6 +118,7 @@ function main() {
       `${state.tagObject}:${tagRef}`
     );
   }
+  reportReleaseStatus(state, "pending");
   report(
     `Remote ${state.tag} exists at ${state.commit}. If draft upload fails, re-run only the failed publication job; do not start another preparation run.`
   );
@@ -205,6 +207,7 @@ function main() {
       `Release PR targets main from ${branch}. Merging remains a separate action subject to branch protection.`
     );
   }
+  reportReleaseStatus(state, "success");
   report(
     `Draft ${state.tag} contains the verified artifacts. Inspect it before publishing.`
   );

@@ -159,11 +159,49 @@ release builds; resolve any merge conflicts through the normal PR process.
 
 Both the default branch and selected branch must contain the workflow and its
 supporting scripts. The workflows use `GITHUB_TOKEN` with `contents: write` and
-`pull-requests: write`; enable **Allow GitHub Actions to create and approve pull
+`pull-requests: write` and `statuses: write`; enable **Allow GitHub Actions to create and approve pull
 requests** in repository Actions settings. The workflows create PRs but do not
 approve them. Branch and tag rules must permit the bot to create/update
 `release/*` and create release tags. Protect `main` by requiring PRs. No bot
 bypass of `main`, auto-merge setting, or administrative-read credential is needed.
+
+### Required release status
+
+The workflows report a commit status named **Release build** on the prepared
+RC or final commit, rather than on the commit selected for workflow dispatch.
+RC preparation reports pending after pushing the version commit. A final commit
+remains local during building, so its status starts after the atomic push.
+Success is reported only after build, artifact retention, draft upload, and PR
+creation or reuse succeed. Failure/cancellation cleanup reports failure when the
+prepared commit is available remotely. If the runner cannot execute cleanup,
+a missing or pending required status continues to block merging. Publication
+retries report pending and then success on the same prepared commit.
+
+To require this status for `main`:
+
+1. Install these workflows on the default and selected source branches, then run
+   Release Candidate or Release successfully once to register **Release build**.
+2. Open repository **Settings → Branches** and click **Edit** beside the branch
+   protection rule for `main`.
+3. Enable **Require status checks to pass before merging**. In the search field
+   beneath that option, enter `Release build` and select the matching result.
+4. Click **Save changes**. GitHub then requires this status on each PR's latest
+   commit; an earlier RC's success does not satisfy a newer RC or final commit.
+
+The workflows do not edit repository protection settings. GitHub applies this
+required status to all PRs into `main`. The development-PR workflow automatically
+reports **Release build** as successful with the description “Release build not
+required for development PR” for ordinary PRs. Their other required checks and
+reviews still apply. PRs from `release/*` receive no exemption and require the
+actual release workflow result. An ordinary PR pointing at the same commit as a
+release branch cannot overwrite that commit's release-build result.
+
+The exemption workflow runs on PR creation, updates, reopening, and edits. It
+executes only trusted base-branch code and reads PR metadata; it does not check
+out or execute PR code, including code from forks. It needs `contents: read` to
+identify release-branch heads and `statuses: write` to report the exemption.
+Install this workflow on `main` before requiring **Release build**. For an
+already-open ordinary PR, push another commit or reopen it to trigger reporting.
 
 ## Prepare releases locally
 
