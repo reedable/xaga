@@ -1,0 +1,29 @@
+name: Release build exemption for development PRs
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  exempt:
+    name: Mark release build unnecessary for development
+    runs-on: ubuntu-latest
+    steps:
+      # GITHUB_SHA is the trusted base commit for pull_request_target. Never
+      # check out or execute code from the PR head, including fork branches.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Report release-only status for ordinary PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-status.mjs development-pr
