@@ -69,6 +69,52 @@ the user to select recurring maintenance work for the new development cycle.
 
 Commit the synchronized version files and refreshed `Cargo.lock` as the start of the new development cycle. A major, minor, or patch command may retarget an existing `-dev` version. It is rejected for an `-rc.N` version because a release candidate must be finalized before the next cycle begins.
 
+### Start development with GitHub Actions
+
+The manually executable **Bump major version**, **Bump minor version**, and
+**Bump patch version** workflows prepare a development-version PR into `main`.
+In GitHub **Actions**, select the appropriate workflow, choose **Run workflow**,
+select `main`, and run it. Choose the increment explicitly: library storage-model
+changes require a minor increment while the major version is 0; major increments
+remain a product decision.
+
+These wrappers call `.github/workflows/version-bump.yml` with a `bump` input of
+`major`, `minor`, or `patch`. Other workflows can call that reusable workflow
+with the same input and `contents: write` and `pull-requests: write` permissions.
+The selected source must be the current remote `main` commit with synchronized
+versions. A stale run fails rather than silently using newer source. Runs share
+a concurrency group and do not cancel an in-progress bump.
+
+The workflow runs the existing `npm run version:<increment>` command, commits
+the synchronized version files and `Cargo.lock` on `version/<new-version>`, and
+opens a PR into `main`. It supports final and development versions, including
+retargeting a development version, and rejects RC versions according to the same
+CLI lifecycle rules. It does not push to `main`, merge PRs, create tags, or build
+packages. It does not run automatically when cutting or merging a release.
+
+The workflows and scripts must be installed on the default branch before manual
+execution is available. Enable **Allow GitHub Actions to create and approve pull
+requests** in repository Actions settings; the workflow creates PRs but does not
+approve or merge them. Branch rules must permit creation of `version/*`.
+
+Review the generated PR and let its required checks pass before merging. GitHub
+may show **Approve workflows to run** for a PR created by `GITHUB_TOKEN`; approve
+those runs when prompted. If required checks do not start, close and reopen the
+PR manually. See [GitHub's workflow-trigger behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
+When entering `x.y.0-dev`, the run summary reminds you to review and select
+recurring maintenance work.
+
+If PR creation fails after the branch push, rerun the original workflow while
+`main` is unchanged. It reuses an existing branch only when its parent and source
+tree match the prepared bump, and reuses an open PR. It refuses to overwrite
+additional branch work. If `main` has moved or the branch differs, inspect the
+existing version PR before starting fresh work.
+
+Local tests use temporary Git repositories and simulated GitHub responses. They
+verify version synchronization, branch isolation, rejection paths, and PR
+recovery, but do not establish live dispatch, permissions, or required-check
+triggering. Verify those when installing the workflows.
+
 ## Development and local builds
 
 Use the normal development command while changing the application:

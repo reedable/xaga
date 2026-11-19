@@ -1,0 +1,39 @@
+name: Shared version bump
+
+on:
+  workflow_call:
+    inputs:
+      bump:
+        description: Development version increment (major, minor, or patch)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: version-bump-main
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Prepare version bump PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out selected source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Prepare version bump PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_BUMP: ${{ inputs.bump }}
+        run: node scripts/prepare-version-bump.mjs "$VERSION_BUMP"
