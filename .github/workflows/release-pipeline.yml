@@ -17,6 +17,7 @@ jobs:
     runs-on: macos-26
     permissions:
       # GitHub hides draft release evidence from read-only tokens.
+      statuses: write
       contents: write
       actions: read
     outputs:
@@ -130,11 +131,19 @@ jobs:
           retention-days: 14
           compression-level: 0
 
+      - name: Report failed or cancelled release build
+        if: ${{ !success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_STATE: ${{ runner.temp }}/release-state.json
+        run: node scripts/release-status.mjs "$RELEASE_STATE" failure
+
   publish:
     name: Push and create draft
     needs: build
     runs-on: macos-26
     permissions:
+      statuses: write
       contents: write
       pull-requests: write
     concurrency:
@@ -163,3 +172,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_PACKAGE: ${{ runner.temp }}/release-package
         run: node scripts/publish-release.mjs
+
+      - name: Report failed or cancelled publication
+        if: ${{ !success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PACKAGE: ${{ runner.temp }}/release-package
+        run: node scripts/release-status.mjs "$RELEASE_PACKAGE/release.json" failure
