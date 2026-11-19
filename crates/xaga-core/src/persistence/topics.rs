@@ -5,9 +5,7 @@ use thiserror::Error;
 
 use crate::{
     library_writer::WriteToken,
-    md::parse_frontmatter,
-    md::{Markdown, md_to_topic, parse_document},
-    persistence::walk::for_each_md,
+    md::{Markdown, md_to_topic},
     types::{Reference, Topic},
 };
 
@@ -54,6 +52,13 @@ impl TopicsError {
     }
 }
 
+fn validate_lookup(id: &str) -> Result<(), TopicsError> {
+    if !super::entries::is_safe_id(id) {
+        return Err(crate::md::MdError::Frontmatter("invalid lookup identity".into()).into());
+    }
+    Ok(())
+}
+
 /// Creates or updates a topic at `topics/{id}.md`.
 /// Preserves the original `created_at` if the file already exists.
 /// Always sets `updated_at` to the current UTC time.
@@ -66,13 +71,15 @@ pub(crate) async fn save_topic(
     entities: Vec<Reference>,
     _token: WriteToken,
 ) -> Result<Topic, TopicsError> {
+    validate_lookup(id)?;
     let dir = crate::library::topics_dir(library_dir);
     tokio::fs::create_dir_all(&dir).await?;
+    validate_lookup(id)?;
     let path = crate::library::topic_path(library_dir, id);
 
     let existing = if tokio::fs::try_exists(&path).await? {
         let raw = crate::fs::read_md_capped(&path).await?;
-        let fm = parse_frontmatter(&raw)?;
+        let fm = crate::md::parse_indexed(&raw, &path)?.0;
         Some((raw, fm))
     } else {
         None
@@ -120,12 +127,24 @@ pub(crate) async fn save_topic(
 
 /// Returns the topic for the given id.
 pub async fn read_topic(library_dir: &Path, id: &str) -> Result<Topic, TopicsError> {
+    read_topic_with_writer(library_dir, id, None).await
+}
+
+/// Read with optional serialized identity repair; no writer means no storage mutation.
+pub async fn read_topic_with_writer(
+    library_dir: &Path,
+    id: &str,
+    writer: Option<&crate::library_writer::LibraryWriter>,
+) -> Result<Topic, TopicsError> {
+    validate_lookup(id)?;
     let path = crate::library::topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
-    let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, body) = parse_document(&raw)?;
+    let raw = super::identity::read_markdown(&path, writer, super::identity::Record::Topic)
+        .await
+        .map_err(document_error)?;
+    let (fm, body) = crate::md::parse_indexed(&raw, &path)?;
     let mut topic = md_to_topic(Markdown {
         id: crate::util::entity_id(&path),
         fm,
@@ -143,12 +162,13 @@ pub async fn read_topic_entities(
     library_dir: &Path,
     id: &str,
 ) -> Result<Vec<Reference>, TopicsError> {
+    validate_lookup(id)?;
     let path = crate::library::topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
     let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, _body) = parse_document(&raw)?;
+    let (fm, _body) = crate::md::parse_indexed(&raw, &path)?;
     Ok(fm.entities)
 }
 
@@ -158,21 +178,38 @@ pub(crate) async fn delete_topic(
     id: &str,
     _token: WriteToken,
 ) -> Result<(), TopicsError> {
+    validate_lookup(id)?;
     let path = crate::library::topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
+    let raw = crate::fs::read_md_capped(&path).await?;
+    crate::md::parse_indexed(&raw, &path)?;
     tokio::fs::remove_file(&path).await?;
     Ok(())
 }
 
 /// Returns all topics, sorted by id.
 pub async fn list_topics(library_dir: &Path) -> Result<Vec<Topic>, TopicsError> {
+    list_topics_with_writer(library_dir, None).await
+}
+
+pub async fn list_topics_with_writer(
+    library_dir: &Path,
+    writer: Option<&crate::library_writer::LibraryWriter>,
+) -> Result<Vec<Topic>, TopicsError> {
     let topics_dir = crate::library::topics_dir(library_dir);
     let mut topics: Vec<Topic> = Vec::new();
 
     // for_each_md handles the missing dir and skips any file that fails to read or parse.
-    for_each_md(&topics_dir, &md_to_topic, |t| topics.push(t)).await;
+    super::walk::for_each_md_with_writer(
+        &topics_dir,
+        &md_to_topic,
+        |t| topics.push(t),
+        writer,
+        super::identity::Record::Topic,
+    )
+    .await;
 
     let pins = crate::pins::Pins::read(library_dir)
         .await
@@ -194,12 +231,13 @@ pub(crate) async fn add_topic_entity(
     entity: Reference,
     token: WriteToken,
 ) -> Result<Topic, TopicsError> {
+    validate_lookup(topic_id)?;
     let path = crate::library::topic_path(library_dir, topic_id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
     let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, body) = parse_document(&raw)?;
+    let (fm, body) = crate::md::parse_indexed(&raw, &path)?;
     if fm.entities.iter().any(|i| i.id() == entity.id()) {
         return read_topic(library_dir, topic_id).await;
     }
@@ -229,12 +267,13 @@ pub(crate) async fn replace_topic_entity(
     new_entity: Reference,
     token: WriteToken,
 ) -> Result<Topic, TopicsError> {
+    validate_lookup(topic_id)?;
     let path = crate::library::topic_path(library_dir, topic_id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
     let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, body) = parse_document(&raw)?;
+    let (fm, body) = crate::md::parse_indexed(&raw, &path)?;
     let Some(pos) = fm.entities.iter().position(|i| i.id() == old_id) else {
         return read_topic(library_dir, topic_id).await;
     };
@@ -261,12 +300,13 @@ pub(crate) async fn remove_topic_entity(
     entity_id: &str,
     token: WriteToken,
 ) -> Result<Topic, TopicsError> {
+    validate_lookup(topic_id)?;
     let path = crate::library::topic_path(library_dir, topic_id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
     let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, body) = parse_document(&raw)?;
+    let (fm, body) = crate::md::parse_indexed(&raw, &path)?;
     if !fm.entities.iter().any(|i| i.id() == entity_id) {
         return read_topic(library_dir, topic_id).await;
     }
@@ -289,6 +329,7 @@ pub(crate) async fn remove_topic_entity(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::md::parse_frontmatter;
 
     const ORIGINAL: &str = "---\ntitle: Original\ncreated: '2026-01-01T00:00:00Z'\ntags: [pinned, research]\n# User metadata\ncustom: {keep: true}\n---\n\nUser-authored body\n\n";
 
@@ -386,7 +427,7 @@ mod tests {
     }
 }
 
-fn document_error(error: super::entries::EntryError) -> TopicsError {
+pub(crate) fn document_error(error: super::entries::EntryError) -> TopicsError {
     use super::entries::EntryError;
     match error {
         EntryError::Io(e) => TopicsError::Io(e),

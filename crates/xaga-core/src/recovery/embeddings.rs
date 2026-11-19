@@ -12,7 +12,7 @@ use crate::embeddings::{EmbeddingsDb, EmbeddingsError};
 use crate::fs::WalkOutcome;
 use crate::library;
 use crate::md::{md_to_article, md_to_topic};
-use crate::persistence::walk::for_each_md;
+use crate::persistence::walk::for_each_md_with_writer;
 use crate::types::{Article, Feed, Kind};
 
 use super::{RepairResidue, RepairSink};
@@ -82,7 +82,7 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
     let mut fs_ids: HashSet<String> = HashSet::new();
 
     // Topics first so they index before articles.
-    let topics_outcome = for_each_md(
+    let topics_outcome = for_each_md_with_writer(
         &library::topics_dir(library_dir),
         &md_to_topic,
         |mut topic| {
@@ -96,6 +96,8 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
                 sink.topic(topic);
             }
         },
+        writer,
+        crate::persistence::identity::Record::Topic,
     )
     .await;
 
@@ -111,114 +113,129 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
     let mut resolver = tags.resolver();
     let mut observed_transitions = HashSet::new();
     let mut entries_outcome = WalkOutcome::Enumerated;
-    let mut entries = match tokio::fs::read_dir(library::entries_dir(library_dir)).await {
-        Ok(entries) => Some(entries),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(_) => {
-            entries_outcome = WalkOutcome::Unreadable;
-            None
-        }
-    };
-    while let Some(entries) = &mut entries {
-        let path = match entries.next_entry().await {
-            Ok(Some(entry)) => entry.path(),
-            Ok(None) => break,
+    for directory in library::entry_scan_dirs(library_dir) {
+        let mut entries = match tokio::fs::read_dir(directory).await {
+            Ok(entries) => Some(entries),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(_) => {
                 entries_outcome = WalkOutcome::Unreadable;
-                break;
+                None
             }
         };
-        if path.extension().is_none_or(|ext| ext != "md") {
-            continue;
-        }
-        let raw = match crate::fs::read_md_capped(&path).await {
-            Ok(raw) => raw,
-            Err(_) => {
-                entries_outcome = WalkOutcome::Unreadable;
+        while let Some(entries) = &mut entries {
+            let path = match entries.next_entry().await {
+                Ok(Some(entry)) => entry.path(),
+                Ok(None) => break,
+                Err(_) => {
+                    entries_outcome = WalkOutcome::Unreadable;
+                    break;
+                }
+            };
+            if path.extension().is_none_or(|ext| ext != "md") {
                 continue;
             }
-        };
-        let Ok((fm, body)) = crate::md::parse_document(&raw) else {
-            continue;
-        };
-        let mut article = md_to_article(crate::md::Markdown {
-            id: crate::util::entity_id(&path),
-            fm,
-            body,
-        });
-        let names = article.meta.tags.as_deref().unwrap_or_default();
-        let observations = tags.observation_ids(names);
-        let mut resolved_tags = resolver.resolve(names).ok();
-        if resolved_tags.is_none()
-            || observations
+            match library::resolve_entry_path(library_dir, &crate::util::entity_id(&path)).await {
+                Ok(Some(selected)) if selected == path => {}
+                Ok(_) => continue,
+                Err(error) => {
+                    log::warn!("recovery could not resolve {}: {error}", path.display());
+                    entries_outcome = WalkOutcome::Unreadable;
+                    continue;
+                }
+            }
+            let raw = match crate::persistence::identity::read_markdown(
+                &path,
+                writer,
+                crate::persistence::identity::Record::Entry,
+            )
+            .await
+            {
+                Ok(raw) => raw,
+                Err(_) => {
+                    entries_outcome = WalkOutcome::Unreadable;
+                    continue;
+                }
+            };
+            let (fm, body) = crate::md::parse_indexed(&raw, &path).expect("validated read");
+            let mut article = md_to_article(crate::md::Markdown {
+                id: crate::util::entity_id(&path),
+                fm,
+                body,
+            });
+            let names = article.meta.tags.as_deref().unwrap_or_default();
+            let observations = tags.observation_ids(names);
+            let mut resolved_tags = resolver.resolve(names).ok();
+            if resolved_tags.is_none()
+                || observations
+                    .iter()
+                    .any(|id| !observed_transitions.contains(id))
+            {
+                let writer = writer.ok_or_else(|| {
+                    std::io::Error::other("unknown article labels require a library writer")
+                })?;
+                let (current_store, current_ids) = writer
+                    .resolve_entry_tags(article.meta.id.clone())
+                    .await
+                    .map_err(std::io::Error::other)?;
+                tags = current_store;
+                resolved_tags = Some(current_ids);
+                resolver = tags.resolver();
+                observed_transitions.extend(observations);
+            }
+            let resolved_tags = resolved_tags.expect("resolved above or through the writer");
+            let mut annotation_tag_ids = article
+                .annotations
                 .iter()
-                .any(|id| !observed_transitions.contains(id))
-        {
-            let writer = writer.ok_or_else(|| {
-                std::io::Error::other("unknown article labels require a library writer")
-            })?;
-            let (current_store, current_ids) = writer
-                .resolve_entry_tags(article.meta.id.clone())
-                .await
-                .map_err(std::io::Error::other)?;
-            tags = current_store;
-            resolved_tags = Some(current_ids);
-            resolver = tags.resolver();
-            observed_transitions.extend(observations);
-        }
-        let resolved_tags = resolved_tags.expect("resolved above or through the writer");
-        let mut annotation_tag_ids = article
-            .annotations
-            .iter()
-            .map(|a| resolver.resolve(&a.tags).map(|ids| (a.id.clone(), ids)))
-            .collect::<Result<crate::tags::AnnotationTagIds, _>>()
-            .ok();
-        let annotation_observations = article
-            .annotations
-            .iter()
-            .flat_map(|a| tags.observation_ids(&a.tags))
-            .collect::<Vec<_>>();
-        if annotation_tag_ids.is_none() || !annotation_observations.is_empty() {
-            let writer = writer.ok_or_else(|| {
-                std::io::Error::other("annotation label discovery requires a library writer")
-            })?;
-            let (store, ids) = writer
-                .resolve_annotation_tags(article.meta.id.clone())
-                .await
-                .map_err(std::io::Error::other)?;
-            tags = store;
-            resolver = tags.resolver();
-            annotation_tag_ids = Some(ids);
-        }
-        let annotation_tag_ids = annotation_tag_ids.expect("resolved above");
-        let annotation_tags_differ = annotation_tag_ids.iter().any(|(id, tags)| {
-            db_meta
-                .get(id)
-                .is_none_or(|(_, _, _, _, _, _, _, stored)| stored != tags)
-        });
-        article.meta.is_pinned = pin_targets.contains(&crate::pins::PinTarget::Entry {
-            id: article.meta.id.clone(),
-        });
-        fs_ids.insert(article.meta.id.clone());
-        fs_ids.extend(article.annotations.iter().map(|a| a.id.clone()));
-        let needs_embed = needs_embedding(
-            &article.meta.id,
-            &checksum(&article.meta.title, article_embed_text(&article)),
-        );
-        let state_differs = db_meta.get(&article.meta.id).is_some_and(
-            |(_, _, _, _, _, unread, color, stored_tags)| {
-                *unread != article.meta.is_unread
-                    || color.as_str() != article.meta.color.as_deref().unwrap_or("")
-                    || stored_tags != &resolved_tags
-            },
-        );
-        if needs_embed
-            || state_differs
-            || annotations_differ(&article)
-            || annotation_tags_differ
-            || pinned_ids.contains(&article.meta.id) != article.meta.is_pinned
-        {
-            sink.article(article, resolved_tags, annotation_tag_ids);
+                .map(|a| resolver.resolve(&a.tags).map(|ids| (a.id.clone(), ids)))
+                .collect::<Result<crate::tags::AnnotationTagIds, _>>()
+                .ok();
+            let annotation_observations = article
+                .annotations
+                .iter()
+                .flat_map(|a| tags.observation_ids(&a.tags))
+                .collect::<Vec<_>>();
+            if annotation_tag_ids.is_none() || !annotation_observations.is_empty() {
+                let writer = writer.ok_or_else(|| {
+                    std::io::Error::other("annotation label discovery requires a library writer")
+                })?;
+                let (store, ids) = writer
+                    .resolve_annotation_tags(article.meta.id.clone())
+                    .await
+                    .map_err(std::io::Error::other)?;
+                tags = store;
+                resolver = tags.resolver();
+                annotation_tag_ids = Some(ids);
+            }
+            let annotation_tag_ids = annotation_tag_ids.expect("resolved above");
+            let annotation_tags_differ = annotation_tag_ids.iter().any(|(id, tags)| {
+                db_meta
+                    .get(id)
+                    .is_none_or(|(_, _, _, _, _, _, _, stored)| stored != tags)
+            });
+            article.meta.is_pinned = pin_targets.contains(&crate::pins::PinTarget::Entry {
+                id: article.meta.id.clone(),
+            });
+            fs_ids.insert(article.meta.id.clone());
+            fs_ids.extend(article.annotations.iter().map(|a| a.id.clone()));
+            let needs_embed = needs_embedding(
+                &article.meta.id,
+                &checksum(&article.meta.title, article_embed_text(&article)),
+            );
+            let state_differs = db_meta.get(&article.meta.id).is_some_and(
+                |(_, _, _, _, _, unread, color, stored_tags)| {
+                    *unread != article.meta.is_unread
+                        || color.as_str() != article.meta.color.as_deref().unwrap_or("")
+                        || stored_tags != &resolved_tags
+                },
+            );
+            if needs_embed
+                || state_differs
+                || annotations_differ(&article)
+                || annotation_tags_differ
+                || pinned_ids.contains(&article.meta.id) != article.meta.is_pinned
+            {
+                sink.article(article, resolved_tags, annotation_tag_ids);
+            }
         }
     }
 
@@ -227,9 +244,20 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
 
     let empty = HashSet::new();
 
-    let all_feeds = crate::persistence::feeds::list_feeds(library_dir, &empty, &empty)
-        .await
-        .unwrap_or_default();
+    let (all_feeds, feeds_outcome) = match crate::persistence::feeds::discover_feeds(
+        library_dir,
+        &empty,
+        &empty,
+        writer,
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(error) => {
+            log::warn!("recovery Feed discovery failed: {}", error.code());
+            (Vec::new(), WalkOutcome::Unreadable)
+        }
+    };
 
     let feed_ids: HashSet<String> = all_feeds.iter().map(|f| f.id.clone()).collect();
 
@@ -248,8 +276,9 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
     // a false "empty." The entity walks proxy whole-library readability: entries/topics/feeds share
     // one library root, so an access denial hits them together. Embeds/upserts for whatever *was*
     // read still proceed, and deletes self-heal on the next recovery once the source is readable.
-    let source_reliable =
-        topics_outcome == WalkOutcome::Enumerated && entries_outcome == WalkOutcome::Enumerated;
+    let source_reliable = topics_outcome == WalkOutcome::Enumerated
+        && entries_outcome == WalkOutcome::Enumerated
+        && feeds_outcome == WalkOutcome::Enumerated;
 
     // Compare each cached identity with source identities, including annotations.
     // A surviving parent file does not authorize an annotation absent from it.
@@ -321,6 +350,65 @@ mod tests {
             is_unread: false,
             is_pinned: false,
             vector: Some(vec![0.5f32; 384]),
+        }
+    }
+
+    #[tokio::test]
+    async fn identity_rejection_in_each_source_withholds_all_absence_deletions() {
+        for kind in [Kind::Entry, Kind::Topic, Kind::Feed] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = match kind {
+                Kind::Entry => library::entry_path(dir.path(), "indexed"),
+                Kind::Topic => library::topic_path(dir.path(), "indexed"),
+                _ => library::feed_path(dir.path(), "indexed"),
+            };
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let raw = if kind == Kind::Feed {
+                format!(
+                    r#"<feed xmlns="http://www.w3.org/2005/Atom" xmlns:x="{}"><id>publisher</id><title>Feed</title><updated>2026-01-01T00:00:00Z</updated><x:id>conflicting</x:id></feed>"#,
+                    crate::atom::XAGA_NAMESPACE
+                )
+            } else {
+                "---\nid: conflicting\ntitle: Saved\n---\n\nBody\n".into()
+            };
+            std::fs::write(&path, &raw).unwrap();
+            let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+            let row = EmbeddingEntry::from_article(
+                &Article {
+                    meta: crate::types::Entry {
+                        id: "absent".into(),
+                        url: "https://example.org/a".into(),
+                        title: "Cached".into(),
+                        created_at: "2026-01-01".into(),
+                        published_at: None,
+                        updated_at: None,
+                        description: None,
+                        is_unread: false,
+                        is_pinned: false,
+                        color: None,
+                        tags: None,
+                    },
+                    content: "Body".into(),
+                    annotations: vec![],
+                    favicon: None,
+                },
+                Some(vec![0.5; 384]),
+                vec![],
+            );
+            db.upsert(row).await.unwrap();
+            let mut sink = CollectingSink { articles: vec![] };
+            let residue = repair_entity_embeddings(dir.path(), &db, &mut sink, None)
+                .await
+                .unwrap();
+            assert!(residue.to_delete.is_empty());
+            assert!(residue.to_embed_feeds.is_empty());
+            assert!(sink.articles.is_empty());
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), raw);
+            std::fs::remove_file(&path).unwrap();
+            let residue = repair_entity_embeddings(dir.path(), &db, &mut sink, None)
+                .await
+                .unwrap();
+            assert_eq!(residue.to_delete, vec!["absent"]);
         }
     }
 
@@ -785,7 +873,7 @@ mod tag_tests {
         assert_eq!(row.vector, Some(vec![0.5; 384]));
         assert_eq!(
             tokio::fs::read_to_string(&path).await.unwrap(),
-            document("Other")
+            document("Other").replacen("---\n", "---\nid: \"entry\"\n", 1)
         );
         db.reset().await.unwrap();
         sink.articles.clear();

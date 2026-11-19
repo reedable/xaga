@@ -22,13 +22,287 @@ use atom_parser::model::Feed as IncomingAtom;
 pub(crate) use atom_persistence::Entry as AtomEntry;
 pub(crate) use atom_persistence::Feed as Atom;
 
+/// Namespace for Xaga-owned fields in locally persisted Atom documents.
+pub(crate) const XAGA_NAMESPACE: &str = "urn:xaga:atom";
+
+fn get_local_id(atom: &Atom) -> Result<Option<&str>, String> {
+    let mut ids = atom
+        .extensions
+        .iter()
+        .filter(|(prefix, _)| {
+            atom.namespaces
+                .get(*prefix)
+                .is_some_and(|uri| uri == XAGA_NAMESPACE)
+        })
+        .flat_map(|(_, fields)| fields.get("id").into_iter().flatten());
+    let Some(field) = ids.next() else {
+        return Ok(None);
+    };
+    let id = field.value.as_deref().ok_or("empty local Feed identity")?;
+    if ids.next().is_some()
+        || !field.children.is_empty()
+        || !crate::persistence::entries::is_safe_id(id)
+    {
+        return Err("invalid local Feed identity".into());
+    }
+    Ok(Some(id))
+}
+
+pub(crate) fn resolve_local_id(atom: &Atom, path: &std::path::Path) -> Result<String, String> {
+    crate::persistence::identity::resolve(get_local_id(atom)?, path)
+}
+
+pub(crate) fn ensure_local_id(atom: &mut Atom, path: &std::path::Path) -> Result<bool, String> {
+    let id = resolve_local_id(atom, path)?;
+    if get_local_id(atom)?.is_some() {
+        return Ok(false);
+    }
+    set_local_id(atom, &id);
+    Ok(true)
+}
+
+fn set_local_id(atom: &mut Atom, id: &str) {
+    let prefix = atom
+        .namespaces
+        .iter()
+        .find(|(_, uri)| uri.as_str() == XAGA_NAMESPACE)
+        .map(|(prefix, _)| prefix.clone())
+        .unwrap_or_else(|| {
+            let mut prefix = "xaga".to_owned();
+            while atom.namespaces.contains_key(&prefix) {
+                prefix.push('_');
+            }
+            atom.namespaces
+                .insert(prefix.clone(), XAGA_NAMESPACE.into());
+            prefix
+        });
+    let field = atom_persistence::extension::Extension {
+        name: format!("{prefix}:id"),
+        value: Some(id.into()),
+        ..Default::default()
+    };
+    atom.extensions
+        .entry(prefix)
+        .or_default()
+        .insert("id".into(), vec![field]);
+}
+
 // ── raw → Atom (parse) ─────────────────────────────────────────────────────────
 
 /// Parse locally stored Atom XML file into an `Atom`. Returns the parse error message as a `String`
 /// so this layer stays free of the persistence error type; the caller maps it into its own error.
 pub fn parse_atom(xml: &str) -> Result<Atom, String> {
     let sanitized = fix_bare_ampersands(xml);
-    sanitized.parse::<Atom>().map_err(|e| e.to_string())
+    let (normalized, saved_id) = normalize_local_namespaces(&sanitized)?;
+    let mut atom = normalized.parse::<Atom>().map_err(|e| e.to_string())?;
+    // The storage library trims extension text. Local IDs retain their exact
+    // saved characters, including whitespace, just as Markdown IDs do.
+    if let Some(saved_id) = saved_id {
+        for (prefix, fields) in &mut atom.extensions {
+            if atom
+                .namespaces
+                .get(prefix)
+                .is_some_and(|uri| uri == XAGA_NAMESPACE)
+            {
+                if let Some(ids) = fields.get_mut("id") {
+                    for id in ids {
+                        id.value = Some(saved_id.clone());
+                    }
+                }
+            }
+        }
+    }
+    get_local_id(&atom)?;
+    Ok(atom)
+}
+
+/// The storage library groups extensions by prefix and does not resolve local
+/// namespace declarations. Normalize Xaga element names at the XML boundary so
+/// prefix aliases and shadowing cannot change ownership or overwrite foreign fields.
+fn normalize_local_namespaces(xml: &str) -> Result<(String, Option<String>), String> {
+    use quick_xml::{Writer, events::Event, name::ResolveResult, reader::NsReader};
+    use std::collections::BTreeMap;
+    const ATOM_NAMESPACE: &[u8] = b"http://www.w3.org/2005/Atom";
+    // NsReader exposes raw namespace attribute bytes, including character references.
+    let decode_namespace = |namespace: &[u8]| -> Result<String, String> {
+        let namespace = std::str::from_utf8(namespace).map_err(|e| e.to_string())?;
+        Ok(quick_xml::escape::unescape(namespace)
+            .map_err(|e| e.to_string())?
+            .into_owned())
+    };
+    let mut declarations = BTreeMap::<String, HashSet<String>>::new();
+    let mut used = BTreeMap::<String, String>::new();
+    let mut scan = NsReader::from_str(xml);
+    loop {
+        let (namespace, event) = scan.read_resolved_event().map_err(|e| e.to_string())?;
+        if matches!(namespace, ResolveResult::Unknown(_)) {
+            return Err("unbound XML namespace prefix".into());
+        }
+        if let Event::Start(element) | Event::Empty(element) = &event {
+            if let ResolveResult::Bound(namespace) = namespace {
+                let namespace = decode_namespace(namespace.as_ref())?;
+                if namespace.as_bytes() != ATOM_NAMESPACE {
+                    let name = element.name();
+                    let prefix = name
+                        .prefix()
+                        .map(|p| String::from_utf8_lossy(p.as_ref()).into_owned())
+                        .unwrap_or_else(|| "ext".into());
+                    used.entry(namespace).or_insert(prefix);
+                }
+            }
+            for attr in element.attributes() {
+                let attr = attr.map_err(|e| e.to_string())?;
+                if let Some(prefix) = attr.key.as_ref().strip_prefix(b"xmlns:") {
+                    declarations
+                        .entry(String::from_utf8_lossy(prefix).into_owned())
+                        .or_default()
+                        .insert(
+                            attr.decode_and_unescape_value(scan.decoder())
+                                .map_err(|e| e.to_string())?
+                                .into_owned(),
+                        );
+                }
+            }
+        }
+        if matches!(event, Event::Eof) {
+            break;
+        }
+    }
+    used.insert(XAGA_NAMESPACE.into(), "xaga".into());
+    let mut prefixes = BTreeMap::<String, String>::new();
+    for (uri, mut prefix) in used {
+        while declarations
+            .get(&prefix)
+            .is_some_and(|uris| uris.iter().any(|other| other != &uri))
+            || prefixes.values().any(|existing| existing == &prefix)
+        {
+            prefix.push('_');
+        }
+        prefixes.insert(uri, prefix);
+    }
+    let mut reader = NsReader::from_str(xml);
+    let mut writer = Writer::new(Vec::new());
+    let mut depth = 0usize;
+    let mut extension = false;
+    let mut ids = 0usize;
+    let mut reading_id = false;
+    let mut saved_id: Option<String> = None;
+    loop {
+        let (ns, event) = reader.read_resolved_event().map_err(|e| e.to_string())?;
+        let uri = match ns {
+            ResolveResult::Bound(n) => Some(decode_namespace(n.as_ref())?),
+            _ => None,
+        };
+        let owned = uri.as_deref() == Some(XAGA_NAMESPACE);
+        let empty = matches!(event, Event::Empty(_));
+        let event = match event {
+            Event::Start(element) | Event::Empty(element) => {
+                if reading_id {
+                    return Err("local Feed identity must contain only text".into());
+                }
+                if depth == 1 {
+                    extension = uri
+                        .as_deref()
+                        .is_some_and(|uri| uri.as_bytes() != ATOM_NAMESPACE);
+                }
+                if owned && depth == 1 && element.local_name().as_ref() == b"id" {
+                    ids += 1;
+                    if ids > 1 || empty {
+                        return Err("invalid or duplicate local Feed identity".into());
+                    }
+                    reading_id = true;
+                    saved_id = Some(String::new());
+                }
+                let mut element = element.into_owned();
+                if extension {
+                    // Resolved element names now use root declarations. The storage
+                    // parser otherwise turns xmlns declarations into ordinary attributes.
+                    let attributes = element
+                        .attributes()
+                        .map(|attribute| {
+                            let attribute = attribute.map_err(|e| e.to_string())?;
+                            Ok((
+                                attribute.key.as_ref().to_vec(),
+                                attribute.value.into_owned(),
+                            ))
+                        })
+                        .collect::<Result<Vec<_>, String>>()?;
+                    element.clear_attributes();
+                    for (key, value) in &attributes {
+                        if key != b"xmlns" && !key.starts_with(b"xmlns:") {
+                            element.push_attribute((key.as_slice(), value.as_slice()));
+                        }
+                    }
+                    if let Some(prefix) = uri.as_ref().and_then(|uri| prefixes.get(uri)) {
+                        let name = format!(
+                            "{prefix}:{}",
+                            String::from_utf8_lossy(element.local_name().as_ref())
+                        );
+                        element.set_name(name.as_bytes());
+                    }
+                }
+                if depth == 0 {
+                    for (uri, prefix) in &prefixes {
+                        let attr = format!("xmlns:{prefix}");
+                        if !element
+                            .attributes()
+                            .any(|a| a.is_ok_and(|a| a.key.as_ref() == attr.as_bytes()))
+                        {
+                            // The string attribute API escapes values; the byte API does not.
+                            element.push_attribute((attr.as_str(), uri.as_str()));
+                        }
+                    }
+                }
+                if empty {
+                    Event::Empty(element)
+                } else {
+                    depth += 1;
+                    Event::Start(element)
+                }
+            }
+            Event::End(element) => {
+                depth = depth.saturating_sub(1);
+                let event = if extension {
+                    if let Some(prefix) = uri.as_ref().and_then(|uri| prefixes.get(uri)) {
+                        Event::End(quick_xml::events::BytesEnd::new(format!(
+                            "{prefix}:{}",
+                            String::from_utf8_lossy(element.local_name().as_ref())
+                        )))
+                    } else {
+                        Event::End(element.into_owned())
+                    }
+                } else {
+                    Event::End(element.into_owned())
+                };
+                if depth == 1 {
+                    extension = false;
+                    reading_id = false;
+                }
+                event
+            }
+            Event::Text(text) if reading_id => {
+                saved_id
+                    .as_mut()
+                    .expect("identity element")
+                    .push_str(&text.unescape().map_err(|e| e.to_string())?);
+                Event::Text(text.into_owned())
+            }
+            Event::CData(text) if reading_id => {
+                saved_id
+                    .as_mut()
+                    .expect("identity element")
+                    .push_str(std::str::from_utf8(text.as_ref()).map_err(|e| e.to_string())?);
+                Event::CData(text.into_owned())
+            }
+            Event::Eof => break,
+            event => event.into_owned(),
+        };
+        writer.write_event(event).map_err(|e| e.to_string())?;
+    }
+    Ok((
+        String::from_utf8(writer.into_inner()).map_err(|e| e.to_string())?,
+        saved_id,
+    ))
 }
 
 /// Parse a freshly-fetched feed (any format) via `atom_parser`.
@@ -134,7 +408,21 @@ fn now_fixed() -> DateTime<FixedOffset> {
 /// does *not* write anything to the disc. It merely "writes" them in memory.
 pub fn atom_to_xml(feed: &Atom) -> Result<Vec<u8>, String> {
     let mut buf = Vec::new();
-    feed.write_to(&mut buf).map_err(|e| e.to_string())?;
+    // atom_syndication writes namespace attribute values verbatim. Keep decoded
+    // URIs in memory for ownership checks, encoding only the serialization copy.
+    if feed
+        .namespaces
+        .values()
+        .any(|uri| uri.contains(['&', '<', '>', '\"', '\'']))
+    {
+        let mut encoded = feed.clone();
+        for uri in encoded.namespaces.values_mut() {
+            *uri = quick_xml::escape::escape(uri.as_str()).into_owned();
+        }
+        encoded.write_to(&mut buf).map_err(|e| e.to_string())?;
+    } else {
+        feed.write_to(&mut buf).map_err(|e| e.to_string())?;
+    }
     Ok(buf)
 }
 
@@ -157,6 +445,7 @@ pub(crate) fn feed_to_atom(feed: &Feed) -> Atom {
 
     let mut atom = Atom::default();
     atom.set_id(feed.id.clone());
+    set_local_id(&mut atom, &feed.id);
     atom.set_updated(now_fixed());
     atom.set_links(vec![self_link]);
     if !feed.title.is_empty() {
@@ -268,7 +557,10 @@ pub(crate) fn atom_to_feed(
         .count();
 
     Feed {
-        id: id.to_string(),
+        id: get_local_id(feed)
+            .expect("validated local Feed identity")
+            .unwrap_or(id)
+            .to_owned(),
         url: self_link_url(feed).unwrap_or_default(),
         title: feed.title().value.clone(),
         description: feed.subtitle().map(|s| s.value.clone()),

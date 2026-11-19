@@ -1,6 +1,11 @@
 use super::*;
 
 pub(super) enum Op {
+    RepairIdentity {
+        path: PathBuf,
+        kind: crate::persistence::identity::Record,
+        resp: oneshot::Sender<Result<(), WriterError>>,
+    },
     CreateTag {
         name: String,
         resp: oneshot::Sender<Result<crate::tags::TagCreation, WriterError>>,
@@ -221,6 +226,7 @@ impl Op {
     /// topic sharing an id string can never collide onto one lane.
     pub(super) fn lane_key(&self) -> String {
         match self {
+            Op::RepairIdentity { path, kind, .. } => kind.lane(path),
             #[cfg(test)]
             Op::DiscoverTags { .. } => "tags".into(),
             Op::ResolveEntityTags { .. }
@@ -264,6 +270,7 @@ impl Op {
     /// Short name for shutdown-drop logging.
     pub(super) fn label(&self) -> &'static str {
         match self {
+            Op::RepairIdentity { .. } => "repair_identity",
             Op::CreateTag { .. } => "create_tag",
             Op::MutateTags { .. } => "mutate_tags",
             Op::ResolveEntityTags { .. } => "resolve_entry_tags",
@@ -302,6 +309,7 @@ impl Op {
     /// Refuse without executing (Regular backlog at shutdown).
     pub(super) fn refuse(self) {
         match self {
+            Op::RepairIdentity { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::CreateTag { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::MutateTags { resp, .. } => drop(resp.send(Err(WriterError::ShuttingDown))),
             Op::ResolveAnnotationTags { resp, .. } => {
@@ -347,6 +355,11 @@ impl Op {
     /// Runs inside the op's lane: nothing else touches this file concurrently.
     pub(super) async fn execute(self, library_dir: &std::path::Path, token: WriteToken) {
         match self {
+            Op::RepairIdentity { path, kind, resp } => {
+                let _ = resp.send(
+                    crate::persistence::identity::repair(library_dir, &path, kind, token).await,
+                );
+            }
             Op::CreateTag { name, resp } => {
                 let result = crate::tags::Tags::create_write(library_dir, &name, token)
                     .await
@@ -503,10 +516,12 @@ impl Op {
                 .await
                 .map_err(WriterError::from);
                 let r = match r {
-                    Ok(article) => crate::persistence::pdfs::save(library_dir, &url, None, token)
-                        .await
-                        .map(|_| article)
-                        .map_err(WriterError::from),
+                    Ok(article) => {
+                        crate::persistence::pdfs::remove_after_html(library_dir, &url, token)
+                            .await
+                            .map(|_| article)
+                            .map_err(WriterError::from)
+                    }
                     Err(error) => Err(error),
                 };
                 let _ = resp.send(r);
@@ -624,7 +639,7 @@ impl Op {
                 // bookmark color is never silently dropped.
                 let r = async {
                     let id = crate::util::url_hash12(&crate::util::normalize_url(&url)?);
-                    let outcome = if entries::find_entry_path(library_dir, &id).await.is_some() {
+                    let outcome = if entries::find_entry_path(library_dir, &id).await?.is_some() {
                         let color = color.or_else(|| Some("blue".into()));
                         let entry =
                             entries::set_entry_color(library_dir, &id, color, token).await?;
@@ -814,7 +829,8 @@ impl Op {
                 // data if a creation caller encounters an existing file.
                 let r = async {
                     let id = crate::util::url_hash12(&crate::util::normalize_url(&url)?);
-                    if entries::find_entry_path(library_dir, &id).await.is_some() {
+                    if let Some(path) = entries::find_entry_path(library_dir, &id).await? {
+                        crate::persistence::documents::repair_identity(&path, token).await?;
                         Ok(None)
                     } else {
                         entries::write_entry(

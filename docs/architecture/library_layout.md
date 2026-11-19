@@ -19,6 +19,9 @@ Library/
 └── images/
 ```
 
+Saved records own identity; filenames provide lookup indexes validated against
+the record. See [persisted entity identity](persisted_entity_identity.md).
+
 ## Entry location contract
 
 The `library` API must provide the complete ordered collection of Entry scan

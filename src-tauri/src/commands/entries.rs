@@ -12,7 +12,7 @@ use crate::{AppState, EmbeddingStartupState};
 #[tauri::command]
 pub async fn read_entry(id: String, state: State<'_, AppState>) -> Result<Entry, AppError> {
     let data_dir = state.library_path();
-    entries::read_entry(&data_dir, &id)
+    entries::read_entry_with_writer(&data_dir, &id, state.writer().as_ref())
         .await
         .map_err(AppError::from)
 }
@@ -100,7 +100,9 @@ pub async fn set_entry_pinned(
 ) -> Result<Entry, AppError> {
     // Read before committing so a missing article cannot report a failed mutation
     // after successfully creating a pin. Generic set_pin also permits unresolved references.
-    let mut entry = entries::read_entry(&state.library_path(), &id).await?;
+    let mut entry =
+        entries::read_entry_with_writer(&state.library_path(), &id, state.writer().as_ref())
+            .await?;
     super::pins::set_pin(
         xaga_core::pins::PinTarget::Entry { id },
         pinned,
@@ -129,7 +131,11 @@ pub async fn read_article_scope(
     id: String,
     state: State<'_, AppState>,
 ) -> Result<xaga_core::types::Article, AppError> {
-    xaga_core::persistence::articles::read_article(&state.library_path(), &id)
-        .await
-        .map_err(AppError::from)
+    xaga_core::persistence::articles::read_article_with_writer(
+        &state.library_path(),
+        &id,
+        state.writer().as_ref(),
+    )
+    .await
+    .map_err(AppError::from)
 }

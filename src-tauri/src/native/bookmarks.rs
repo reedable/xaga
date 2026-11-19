@@ -77,7 +77,7 @@ pub(crate) async fn import_bookmarks(
 
 pub(crate) async fn export_bookmarks(state: &AppState, file_path: &Path) -> Result<(), AppError> {
     let data_dir = state.library_path();
-    bookmarks::export_bookmarks(&data_dir, file_path)
+    bookmarks::export_bookmarks_with_writer(&data_dir, file_path, state.writer().as_ref())
         .await
         .map_err(AppError::from)
 }

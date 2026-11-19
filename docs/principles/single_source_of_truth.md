@@ -25,6 +25,13 @@
   See [Tag storage](../architecture/tags.md).
 - **LanceDB** is the queryable read layer that mirrors the above. Every column must be reconstructible from the files. This makes LanceDB a cache rather than an independent source of saved data.
 
+## Persisted identity
+
+Entry and Topic Markdown IDs and local Feed `xaga:id` own record identity.
+Filenames index those identities for direct lookup. Validate saved IDs before
+using a record; repair missing IDs through the serialized writer and preserve
+conflicting records unchanged. See the [identity contract](../architecture/persisted_entity_identity.md).
+
 ## The producer rule
 
 During normal operation, LanceDB has two permitted producers: command handlers, which apply saved user actions, and recovery, which reconciles the database with files. Adding another runtime database write path violates this rule. Explicit library upgrades use the shared core converter under the exclusive library lock, with ordinary runtime writers absent. This migration boundary reconciles derived rows from authoritative files before completing the manifest; app and CLI call the same implementation.

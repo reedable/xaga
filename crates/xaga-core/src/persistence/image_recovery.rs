@@ -38,10 +38,10 @@ pub(crate) async fn apply(
         return Err(EntryError::InvalidId);
     }
     let path = find_entry_path(library, id)
-        .await
+        .await?
         .ok_or(EntryError::NotFound)?;
     let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, body) = parse_document(&raw)?;
+    let (fm, body) = crate::md::parse_indexed(&raw, &path)?;
     let source = if recovery.summary {
         fm.summary.as_deref().unwrap_or("")
     } else {

@@ -68,7 +68,10 @@ async function waitFor(predicate: () => unknown) {
   while (!predicate()) {
     if (Date.now() > deadline)
       throw new Error(
-        "Native UI condition timed out: " + document.body.innerText
+        "Native UI condition timed out: " +
+          predicate.toString() +
+          "\n" +
+          document.body.innerText
       );
     await new Promise((resolve) => setTimeout(resolve, 25));
   }

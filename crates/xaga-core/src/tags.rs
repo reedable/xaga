@@ -715,7 +715,7 @@ pub(crate) async fn patch_file(
     new: Option<&str>,
     token: crate::library_writer::WriteToken,
 ) -> Result<(), crate::library_writer::WriterError> {
-    let Some(path) = crate::persistence::entries::find_entry_path(dir, id).await else {
+    let Some(path) = crate::persistence::entries::find_entry_path(dir, id).await? else {
         return Ok(());
     };
     let raw = match crate::fs::read_md_capped(&path).await {
@@ -725,6 +725,7 @@ pub(crate) async fn patch_file(
         }
         Err(e) => return Err(crate::persistence::entries::EntryError::from(e).into()),
     };
+    crate::md::parse_indexed(&raw, &path).map_err(crate::persistence::entries::EntryError::from)?;
     let fields =
         crate::md::frontmatter_json(&raw).map_err(crate::persistence::entries::EntryError::from)?;
     let old: HashSet<_> = old.iter().map(|name| key(name)).collect();

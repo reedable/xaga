@@ -137,6 +137,24 @@ pub fn entries_dir(library_dir: &Path) -> PathBuf {
     library_dir.join(ENTRIES_SUBDIR)
 }
 
+/// Ordered Markdown Entry discovery roots, matching direct lookup precedence.
+pub(crate) fn entry_scan_dirs(library_dir: &Path) -> [PathBuf; 2] {
+    [entries_dir(library_dir), pdfs_dir(library_dir)]
+}
+
+pub(crate) async fn resolve_entry_path(
+    library_dir: &Path,
+    id: &str,
+) -> std::io::Result<Option<PathBuf>> {
+    for dir in entry_scan_dirs(library_dir) {
+        let path = dir.join(format!("{id}.md"));
+        if tokio::fs::try_exists(&path).await? {
+            return Ok(Some(path));
+        }
+    }
+    Ok(None)
+}
+
 /// The directory holding stored PDFs and their dormant Markdown companions.
 #[inline]
 pub fn pdfs_dir(library_dir: &Path) -> PathBuf {

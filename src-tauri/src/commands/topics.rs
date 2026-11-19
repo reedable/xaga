@@ -105,7 +105,7 @@ pub async fn set_topic_pinned(
 #[tauri::command]
 pub async fn list_topics(state: State<'_, AppState>) -> Result<Vec<Topic>, AppError> {
     let data_dir = state.library_path();
-    let mut topics = topics::list_topics(&data_dir)
+    let mut topics = topics::list_topics_with_writer(&data_dir, state.writer().as_ref())
         .await
         .map_err(AppError::from)?;
 
@@ -147,7 +147,7 @@ pub async fn list_topics(state: State<'_, AppState>) -> Result<Vec<Topic>, AppEr
 #[tauri::command]
 pub async fn read_topic(id: String, state: State<'_, AppState>) -> Result<Topic, AppError> {
     let data_dir = state.library_path();
-    topics::read_topic(&data_dir, &id)
+    topics::read_topic_with_writer(&data_dir, &id, state.writer().as_ref())
         .await
         .map_err(AppError::from)
 }
@@ -221,9 +221,15 @@ pub async fn list_topic_entities(
     let data_dir = state.library_path();
     let entity_filter = parse_entity_filter(entity_filter)?;
     let sort = parse_entity_sort(sort)?;
-    xaga_core::query::topics::list_topic_entities(&data_dir, &id, entity_filter, sort)
-        .await
-        .map_err(AppError::from)
+    xaga_core::query::topics::list_topic_entities_with_writer(
+        &data_dir,
+        &id,
+        entity_filter,
+        sort,
+        state.writer().as_ref(),
+    )
+    .await
+    .map_err(AppError::from)
 }
 
 #[tauri::command]
