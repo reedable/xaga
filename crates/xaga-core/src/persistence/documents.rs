@@ -30,10 +30,78 @@ pub(crate) async fn upsert(
         }
         Err(e) => return Err(e.into()),
     };
-    let rendered = patch_document(&raw, updates, body)?;
-    parse_document(&rendered)?;
+    let fm = parse_document(&raw)?.0;
+    let id = crate::md::resolve_identity(&fm, path)?;
+    if updates
+        .iter()
+        .any(|(key, value)| *key == "id" && value.as_str() != Some(id.as_str()))
+    {
+        return Err(
+            crate::md::MdError::Frontmatter("cannot replace document identity".into()).into(),
+        );
+    }
+    let mut updates = updates.to_vec();
+    if fm.id.is_none() {
+        updates.push(("id", serde_json::json!(id)));
+    }
+    let rendered = patch_document(&raw, &updates, body)?;
+    crate::md::parse_indexed(&rendered, path)?;
     crate::fs::write_markdown_async(path.to_owned(), ValidatedDocument(rendered.clone())).await?;
     Ok(rendered)
+}
+
+/// Identity repair only: preserve every other field and the exact body bytes.
+fn identity_document(raw: &str, path: &Path) -> Result<String, EntryError> {
+    let fm = parse_document(raw)?.0;
+    let id = crate::md::resolve_identity(&fm, path)?;
+    if fm.id.is_some() {
+        return Ok(raw.to_owned());
+    }
+    let trimmed = raw.trim_start();
+    let start = raw.len() - trimmed.len() + 4;
+    // JSON strings are valid YAML strings, including numeric-looking IDs.
+    let field = format!(
+        "id: {}\n",
+        serde_json::to_string(&id).expect("string serializes")
+    );
+    // Flow mappings accept the new key inside their opening brace.
+    let rest = &raw[start..];
+    let end = rest.find("\n---\n").ok_or(crate::md::MdError::Delimiter)?;
+    let header = &rest[..end];
+    let rendered = if header.trim_start().starts_with('{') {
+        let open = header.find('{').expect("flow mapping");
+        let tail = &header[open + 1..];
+        let separator = if tail.trim_start().starts_with('}') {
+            ""
+        } else {
+            ", "
+        };
+        format!(
+            "{}{}{}{}{}",
+            &raw[..start],
+            &header[..open + 1],
+            field.trim_end(),
+            separator,
+            &rest[open + 1..]
+        )
+    } else {
+        format!("{}{}{}", &raw[..start], field, rest)
+    };
+    if crate::md::parse_indexed(&rendered, path).is_err() {
+        // A flow mapping preceded by comments cannot accept an inserted block key.
+        // Use the shared serializer without ordinary-save cleanup in that case.
+        return Ok(crate::md::patch_identity(raw, &id)?);
+    }
+    Ok(rendered)
+}
+
+pub(crate) async fn repair_identity(path: &Path, _token: WriteToken) -> Result<(), EntryError> {
+    let raw = crate::fs::read_md_capped(path).await?;
+    let rendered = identity_document(&raw, path)?;
+    if raw != rendered {
+        crate::fs::write_markdown_async(path.to_owned(), ValidatedDocument(rendered)).await?;
+    }
+    Ok(())
 }
 
 fn yaml_tokens(
@@ -82,7 +150,8 @@ pub(super) async fn patch_annotation_tags(
     _token: WriteToken,
 ) -> Result<(), EntryError> {
     let raw = crate::fs::read_md_capped(path).await?;
-    parse_document(&raw)?;
+    crate::md::parse_indexed(&raw, path)?;
+    let raw = identity_document(&raw, path)?;
     let trimmed = raw.trim_start();
     let prefix = &raw[..raw.len() - trimmed.len()];
     let rest = trimmed
@@ -378,6 +447,7 @@ mod tests {
         .unwrap();
         let saved = std::fs::read_to_string(&path).unwrap();
         let mut expected = crate::md::test_frontmatter_values(ORIGINAL);
+        expected.insert("id".into(), noyalib::Value::String("entry".into()));
         expected.insert("title".into(), noyalib::Value::String("Updated".into()));
         assert_eq!(crate::md::test_frontmatter_values(&saved), expected);
         assert!(saved.ends_with("---\n\nOriginal body\n\n"));

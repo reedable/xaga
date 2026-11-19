@@ -100,7 +100,7 @@ pub fn read_source_entry(
     };
     let raw = String::from_utf8(bytes)
         .map_err(|error| invalid(format!("PDF companion is not UTF-8: {error}")))?;
-    let (frontmatter, body) = crate::md::parse_document(&raw)?;
+    let (mut frontmatter, body) = crate::md::parse_indexed(&raw, &path)?;
     if !body.is_empty() {
         return Err(invalid("PDF identity companion must have an empty body"));
     }
@@ -115,6 +115,7 @@ pub fn read_source_entry(
     if crate::util::url_hash12(&frontmatter.source) != stem {
         return Err(invalid("PDF companion source does not match its filename"));
     }
+    frontmatter.id = Some(crate::md::resolve_identity(&frontmatter, &path)?);
     Ok(Some(frontmatter))
 }
 
@@ -127,7 +128,40 @@ pub fn read(library: &Path, url: &str) -> Result<Option<(PathBuf, Vec<u8>)>, Ent
         return Ok(None);
     };
     validate(&bytes).map_err(invalid)?;
+    let canonical = crate::library::entry_path(library, &paths.stem);
+    if let Some(document) = read_capped_regular_file(&canonical, crate::fs::MAX_MD_BYTES)? {
+        let raw = String::from_utf8(document).map_err(|e| invalid(e.to_string()))?;
+        crate::md::parse_indexed(&raw, &canonical)?;
+    } else if let Some(document) =
+        read_capped_regular_file(&paths.companion, crate::fs::MAX_MD_BYTES)?
+    {
+        let raw = String::from_utf8(document).map_err(|e| invalid(e.to_string()))?;
+        let (_, body) = crate::md::parse_indexed(&raw, &paths.companion)?;
+        if body.is_empty() {
+            read_source_entry(library, &paths.stem)?;
+        }
+    }
     Ok(Some((paths.pdf, bytes)))
+}
+
+/// Read PDF bytes and optionally repair the selected Markdown record through its Entry lane.
+pub async fn read_with_writer(
+    library: &Path,
+    url: &str,
+    writer: Option<&crate::library_writer::LibraryWriter>,
+) -> Result<Option<(PathBuf, Vec<u8>)>, EntryError> {
+    let directory = library.to_owned();
+    let source = url.to_owned();
+    let result = tokio::task::spawn_blocking(move || read(&directory, &source))
+        .await
+        .map_err(|e| std::io::Error::other(e.to_string()))??;
+    if result.is_some() {
+        let paths = pdf_paths(library, url)?;
+        if let Some(path) = super::entries::find_entry_path(library, &paths.stem).await? {
+            super::identity::read_markdown(&path, writer, super::identity::Record::Entry).await?;
+        }
+    }
+    Ok(result)
 }
 
 fn remove_if_exists(path: &Path) -> Result<(), EntryError> {
@@ -156,7 +190,9 @@ pub(crate) async fn save(
         // entries/ takes precedence because it may already contain feed metadata
         // and user-authored state. Only otherwise create a dormant PDF companion.
         let entry_path = crate::library::entry_path(library, &paths.stem);
-        if !tokio::fs::try_exists(&entry_path).await? {
+        if tokio::fs::try_exists(&entry_path).await? {
+            super::documents::repair_identity(&entry_path, token).await?;
+        } else {
             if !tokio::fs::try_exists(&paths.companion).await? {
                 let updates = [
                     ("source", serde_json::json!(paths.normalized_url)),
@@ -168,7 +204,12 @@ pub(crate) async fn save(
                 super::documents::upsert(&paths.companion, &updates, None, token).await?;
             } else {
                 // Refuse to place bytes behind malformed or mismatched identity.
-                read_source_entry(library, &paths.stem)?;
+                let raw = crate::fs::read_md_capped(&paths.companion).await?;
+                let (_, body) = crate::md::parse_indexed(&raw, &paths.companion)?;
+                if body.is_empty() {
+                    read_source_entry(library, &paths.stem)?;
+                }
+                super::documents::repair_identity(&paths.companion, token).await?;
             }
         }
 
@@ -176,11 +217,40 @@ pub(crate) async fn save(
         // state, but never newly committed PDF bytes without reversible identity.
         crate::fs::write_atomic_async(paths.pdf, bytes).await?;
     } else if check_directory(library)? {
+        if let Some(path) = super::entries::find_entry_path(library, &paths.stem).await? {
+            let raw = crate::fs::read_md_capped(&path).await?;
+            crate::md::parse_indexed(&raw, &path)?;
+        }
+        // A stale or conflicting companion must not be removed under another identity.
+        if let Some(bytes) = read_capped_regular_file(&paths.companion, crate::fs::MAX_MD_BYTES)? {
+            let raw = String::from_utf8(bytes).map_err(|e| invalid(e.to_string()))?;
+            crate::md::parse_indexed(&raw, &paths.companion)?;
+        }
         // Bytes disappear first. A hard kill may leave a harmless companion-only state.
         remove_if_exists(&paths.pdf)?;
         remove_if_exists(&paths.companion)?;
     }
     Ok(())
+}
+
+/// HTML can replace a PDF companion's body in place. Remove the PDF resource,
+/// retaining that selected Markdown source; only a redundant companion is removed.
+pub(crate) async fn remove_after_html(
+    library: &Path,
+    url: &str,
+    token: WriteToken,
+) -> Result<(), EntryError> {
+    let paths = pdf_paths(library, url)?;
+    let selected = super::entries::find_entry_path(library, &paths.stem).await?;
+    if selected.as_ref() == Some(&paths.companion) {
+        let raw = crate::fs::read_md_capped(&paths.companion).await?;
+        crate::md::parse_indexed(&raw, &paths.companion)?;
+        if check_directory(library)? {
+            remove_if_exists(&paths.pdf)?;
+        }
+        return Ok(());
+    }
+    save(library, url, None, token).await
 }
 
 #[cfg(test)]
@@ -273,7 +343,10 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(std::fs::read_to_string(entry).unwrap(), original);
+        assert_eq!(
+            std::fs::read_to_string(entry).unwrap(),
+            original.replacen("---\n", &format!("---\nid: {:?}\n", stem(url)), 1)
+        );
         assert!(!companion_path(dir.path(), url).exists());
         assert!(read(dir.path(), url).unwrap().is_some());
     }
@@ -349,7 +422,11 @@ mod tests {
             .await
             .is_err()
         );
-        assert_eq!(read(dir.path(), url).unwrap().unwrap().1, b"%PDF-existing");
+        assert!(read(dir.path(), url).is_err());
+        assert_eq!(
+            std::fs::read(pdf_path(dir.path(), url)).unwrap(),
+            b"%PDF-existing"
+        );
     }
 
     #[test]

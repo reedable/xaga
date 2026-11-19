@@ -1,0 +1,54 @@
+name: Verify source
+description: Run the shared release and pull request verification checks
+runs:
+  using: composite
+  steps:
+    - name: Install JavaScript dependencies
+      run: npm ci
+      shell: bash
+
+    - name: Run linter
+      run: npm run lint -- --deny-warnings
+      shell: bash
+
+    - name: Check formatting
+      run: npm run format:check
+      shell: bash
+
+    - name: Check frontend types
+      run: npm run typecheck
+      shell: bash
+
+    - name: Check reader CSP
+      run: node scripts/csp-hash.mjs --check
+      shell: bash
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt
+        targets: aarch64-apple-darwin
+
+    - name: Check Rust formatting
+      run: cargo fmt --all --check
+      shell: bash
+
+    - name: Cache Rust dependencies and build output
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: . -> target
+        key: aarch64-apple-darwin
+
+    - name: Install Protocol Buffers compiler
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+      run: brew install protobuf && protoc --version
+      shell: bash
+
+    - name: Check Rust workspace
+      run: cargo check --workspace --all-targets --locked
+      shell: bash
+
+    - name: Install Chromium for browser tests
+      run: npx playwright install chromium
+      shell: bash

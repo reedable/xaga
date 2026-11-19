@@ -1,53 +1,157 @@
-//! Walking the library's `.md` and `.atom` files into domain objects. The filesystem traversal is
-//! the floor's job (`fs::for_each_file`); this layer adds the file-format interpretation — stem-as-id
-//! and frontmatter parsing for `.md`, and a caller-injected parse for `.atom`.
+//! Shared validated discovery. Filenames index saved identity; rejected records
+//! make discovery unreliable for absence-based deletion.
+use crate::{fs::WalkOutcome, library_writer::LibraryWriter, md::Markdown};
+use std::{
+    path::{Path, PathBuf},
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
-use std::path::{Path, PathBuf};
-
-use crate::fs::WalkOutcome;
-use crate::md::{Markdown, parse_document};
-
-/// Walks `dir` for `.md` files, builds the `Markdown` IR for each (id from the file stem), maps it
-/// into a domain object via `parse`, and hands the result to `visit`. The caller decides what to do
-/// with each object — collect, fold, or filter — so a large scan need not be materialized. Malformed
-/// documents are skipped. Traversal yields between files (see `fs::for_each_file`), so this never
-/// starves higher-priority tasks.
-///
-/// Returns whether the directory was reliably observed ([`WalkOutcome`]); callers that prune based
-/// on a stem being *absent* must honor it — a malformed `.md` is skipped (a real observation), but
-/// an unreadable directory or file is not "empty."
-pub(crate) async fn for_each_md<T, P, V>(dir: &Path, parse: &P, mut visit: V) -> WalkOutcome
+pub(crate) async fn for_each_md_with_writer<T, P, V>(
+    dir: &Path,
+    parse: &P,
+    visit: V,
+    writer: Option<&LibraryWriter>,
+    kind: super::identity::Record,
+) -> WalkOutcome
 where
     P: Fn(Markdown) -> T,
     V: FnMut(T),
 {
-    crate::fs::for_each_file(dir, "md", |path, raw| {
-        if let Ok((fm, body)) = parse_document(&raw) {
-            visit(parse(Markdown {
-                id: crate::util::entity_id(&path),
-                fm,
-                body,
-            }));
-        }
-    })
-    .await
+    walk_markdown(dir, parse, visit, writer, kind, None).await
 }
 
-/// Walks `dir` for `.atom` files, parses each via the caller-supplied `parse`, and hands
-/// `(path, parsed)` to `visit`; files that fail to read or whose `parse` returns `Err` are skipped.
-/// Unlike [`for_each_md`], the path is handed through — the `.atom` → domain conversion needs it for
-/// a later async `created_at` stat, which the sync visitor can't do, so a caller collects here and
-/// runs that pass afterward. Extension matching also excludes `.atom.tmp`. `parse` is injected (not
-/// hardcoded like `parse_document`) so this stays free of the atom parser, which is private to feeds.
-pub(crate) async fn for_each_atom<T, E, P, V>(dir: &Path, parse: &P, mut visit: V) -> WalkOutcome
+async fn walk_markdown<T, P, V>(
+    dir: &Path,
+    parse: &P,
+    visit: V,
+    writer: Option<&LibraryWriter>,
+    kind: super::identity::Record,
+    library: Option<&Path>,
+) -> WalkOutcome
 where
-    P: Fn(&str) -> Result<T, E>,
-    V: FnMut(PathBuf, T),
+    P: Fn(Markdown) -> T,
+    V: FnMut(T),
 {
-    crate::fs::for_each_file(dir, "atom", |path, raw| {
-        if let Ok(parsed) = parse(&raw) {
-            visit(path, parsed);
+    let rejected = AtomicBool::new(false);
+    let visit = Mutex::new(visit);
+    let outcome = crate::fs::for_each_file_async(dir, "md", |path, raw| {
+        let rejected = &rejected;
+        let visit = &visit;
+        async move {
+            let result = async {
+                if let Some(library) = library {
+                    let id = crate::util::entity_id(&path);
+                    if crate::library::resolve_entry_path(library, &id)
+                        .await?
+                        .as_ref()
+                        != Some(&path)
+                    {
+                        return Ok(None);
+                    }
+                }
+                let (fm, _) = crate::md::parse_indexed(&raw, &path)?;
+                let raw = if fm.id.is_none() && writer.is_some() {
+                    super::identity::read_markdown(&path, writer, kind).await?
+                } else {
+                    raw
+                };
+                let (fm, body) = crate::md::parse_indexed(&raw, &path)?;
+                let id = crate::md::resolve_identity(&fm, &path)?;
+                Ok::<_, super::entries::EntryError>(Some(Markdown { id, fm, body }))
+            }
+            .await;
+            match result {
+                Ok(Some(md)) => visit.lock().unwrap()(parse(md)),
+                Ok(None) => {}
+                Err(_) => {
+                    // The identity resolver reports conflicts without document content.
+                    rejected.store(true, Ordering::Relaxed);
+                }
+            }
         }
     })
-    .await
+    .await;
+    if rejected.load(Ordering::Relaxed) {
+        WalkOutcome::Unreadable
+    } else {
+        outcome
+    }
+}
+
+pub(crate) async fn for_each_atom_with_writer<E, P, V>(
+    dir: &Path,
+    parse: &P,
+    visit: V,
+    writer: Option<&LibraryWriter>,
+) -> WalkOutcome
+where
+    P: Fn(&str) -> Result<crate::atom::Atom, E>,
+    V: FnMut(PathBuf, crate::atom::Atom),
+{
+    let rejected = AtomicBool::new(false);
+    let visit = Mutex::new(visit);
+    let outcome = crate::fs::for_each_file_async(dir, "atom", |path, raw| {
+        let rejected = &rejected;
+        let visit = &visit;
+        async move {
+            let result = async {
+                let mut atom = parse(&raw).map_err(|_| "malformed Atom".to_owned())?;
+                let missing = crate::atom::ensure_local_id(&mut atom, &path)?;
+                if missing && writer.is_some() {
+                    atom = super::identity::read_atom(&path, writer)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                }
+                Ok::<_, String>(atom)
+            }
+            .await;
+            match result {
+                Ok(atom) => visit.lock().unwrap()(path, atom),
+                Err(_) => {
+                    // The identity resolver reports conflicts without document content.
+                    rejected.store(true, Ordering::Relaxed);
+                }
+            }
+        }
+    })
+    .await;
+    if rejected.load(Ordering::Relaxed) {
+        WalkOutcome::Unreadable
+    } else {
+        outcome
+    }
+}
+
+/// Discover each filename index once, including PDF companions. A rejected
+/// canonical record never authorizes falling back to a competing companion.
+pub(crate) async fn for_each_entry<T, P, V>(
+    library: &Path,
+    parse: &P,
+    visit: V,
+    writer: Option<&LibraryWriter>,
+) -> WalkOutcome
+where
+    P: Fn(Markdown) -> T,
+    V: FnMut(T),
+{
+    let mut visit = visit;
+    let mut outcome = WalkOutcome::Enumerated;
+    for dir in crate::library::entry_scan_dirs(library) {
+        let current = walk_markdown(
+            &dir,
+            parse,
+            &mut visit,
+            writer,
+            super::identity::Record::Entry,
+            Some(library),
+        )
+        .await;
+        if current == WalkOutcome::Unreadable {
+            outcome = current;
+        }
+    }
+    outcome
 }

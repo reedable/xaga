@@ -32,6 +32,8 @@ Architecture rules and subsystem documentation.
 
 15. [App layout](app_layout.md) — independent column resizing, Sidebar visibility, and conditional Search presentation.
 
+[Persisted entity identity](persisted_entity_identity.md) — saved local IDs, filename lookup indexes, validation, and serialized incremental repair.
+
 ## Security
 
 Architecture of the security-critical paths, in [security/](security/). These describe how a subsystem works and why — implementation, rationale, and known limits.

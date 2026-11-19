@@ -56,7 +56,7 @@ validation failures as genuinely empty collections.
 
 ## References
 
-- [Persisted identity remediation](../active/defect__persisted-entity-identity.md)
+- [Persisted entity identity](../../docs/architecture/persisted_entity_identity.md)
 - [Platform adapters](../../src/platform/TauriPlatform.ts)
 - [Shared error sink](../../src/providers/ErrorSinkProvider.tsx)
 - [Logger](../../src/utils/Logger.ts)

@@ -42,4 +42,4 @@ waiting for user-facing error-reporting work.
 - [Feed discovery](../../crates/xaga-core/src/persistence/feeds.rs)
 - [Persisted content](../../docs/architecture/security/handling_persisted_content.md)
 - [Error reporting](../backlog/defect__silent-drop-error-reporting.md)
-- [Identity remediation](defect__persisted-entity-identity.md)
+- [Persisted entity identity](../../docs/architecture/persisted_entity_identity.md)

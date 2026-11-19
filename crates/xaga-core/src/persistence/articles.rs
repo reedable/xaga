@@ -44,7 +44,7 @@ pub(crate) async fn save_article(
     }
     let normalized = normalize_url(url)?;
 
-    let (path, file_exists) = match find_entry_path(library_dir, id).await {
+    let (path, file_exists) = match find_entry_path(library_dir, id).await? {
         Some(p) => (p, true),
         None => {
             // No existing file (e.g. bookmark with no synced entry) — create in entries/.
@@ -57,7 +57,7 @@ pub(crate) async fn save_article(
     // Fail closed before writing images or replacing any existing document.
     let existing = if file_exists {
         let raw = crate::fs::read_md_capped(&path).await?;
-        let (fm, _) = parse_document(&raw)?;
+        let (fm, _) = crate::md::parse_indexed(&raw, &path)?;
         Some((raw, fm))
     } else {
         None
@@ -155,9 +155,17 @@ pub(crate) async fn save_article(
 /// Returns the article for the given URL if it exists, or `None` if not found.
 /// The ID is derived from the normalised URL hash, matching `create_article`.
 pub async fn find_article(library_dir: &Path, url: &str) -> Result<Option<Article>, EntryError> {
+    find_article_with_writer(library_dir, url, None).await
+}
+
+pub async fn find_article_with_writer(
+    library_dir: &Path,
+    url: &str,
+    writer: Option<&crate::library_writer::LibraryWriter>,
+) -> Result<Option<Article>, EntryError> {
     let normalized = normalize_url(url)?;
     let id = url_hash12(&normalized);
-    match read_article(library_dir, &id).await {
+    match read_article_with_writer(library_dir, &id, writer).await {
         Ok(article) => Ok(Some(article)),
         Err(EntryError::NotFound) => Ok(None),
         Err(e) => Err(e),
@@ -174,12 +182,21 @@ pub(crate) fn article_from_document(id: &str, fm: Frontmatter, body: String) -> 
 
 /// Returns the article for the given id, searching all entry directories.
 pub async fn read_article(library_dir: &Path, id: &str) -> Result<Article, EntryError> {
+    read_article_with_writer(library_dir, id, None).await
+}
+
+/// Read with optional serialized identity repair; no writer means no storage mutation.
+pub async fn read_article_with_writer(
+    library_dir: &Path,
+    id: &str,
+    writer: Option<&crate::library_writer::LibraryWriter>,
+) -> Result<Article, EntryError> {
     let path = find_entry_path(library_dir, id)
-        .await
+        .await?
         .ok_or(EntryError::NotFound)?;
 
-    let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, body) = parse_document(&raw)?;
+    let raw = super::identity::read_markdown(&path, writer, super::identity::Record::Entry).await?;
+    let (fm, body) = crate::md::parse_indexed(&raw, &path)?;
     project_pin(library_dir, article_from_document(id, fm, body)).await
 }
 
@@ -189,8 +206,17 @@ pub async fn read_annotation_tags(
     article_id: &str,
     annotation_id: &str,
 ) -> Result<Vec<String>, EntryError> {
+    read_annotation_tags_with_writer(library_dir, article_id, annotation_id, None).await
+}
+
+pub async fn read_annotation_tags_with_writer(
+    library_dir: &Path,
+    article_id: &str,
+    annotation_id: &str,
+    writer: Option<&crate::library_writer::LibraryWriter>,
+) -> Result<Vec<String>, EntryError> {
     let (_, annotations, index) =
-        annotation_tag_target(library_dir, article_id, annotation_id).await?;
+        annotation_tag_target(library_dir, article_id, annotation_id, writer).await?;
     Ok(annotations[index].tags.clone())
 }
 
@@ -198,6 +224,7 @@ async fn annotation_tag_target(
     library_dir: &Path,
     article_id: &str,
     annotation_id: &str,
+    writer: Option<&crate::library_writer::LibraryWriter>,
 ) -> Result<(std::path::PathBuf, Vec<Annotation>, usize), EntryError> {
     if !crate::persistence::entries::is_safe_id(article_id)
         || !crate::persistence::entries::is_safe_id(annotation_id)
@@ -205,10 +232,10 @@ async fn annotation_tag_target(
         return Err(EntryError::InvalidId);
     }
     let path = find_entry_path(library_dir, article_id)
-        .await
+        .await?
         .ok_or(EntryError::NotFound)?;
-    let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, _) = parse_document(&raw)?;
+    let raw = super::identity::read_markdown(&path, writer, super::identity::Record::Entry).await?;
+    let (fm, _) = crate::md::parse_indexed(&raw, &path)?;
     let mut matches = fm
         .annotations
         .iter()
@@ -231,7 +258,7 @@ pub(crate) async fn set_annotation_tag(
 ) -> Result<crate::tags::AnnotationTagChange, crate::library_writer::WriterError> {
     let registry = crate::tags::Tags::read(library_dir).await?;
     let (path, annotations, index) =
-        annotation_tag_target(library_dir, article_id, annotation_id).await?;
+        annotation_tag_target(library_dir, article_id, annotation_id, None).await?;
     let mut labels = annotations[index].tags.clone();
     let canonical_id = registry.set_assignment(&mut labels, tag_id, assigned)?;
     super::documents::patch_annotation_tags(&path, index, &labels, token).await?;
@@ -255,10 +282,10 @@ pub(crate) async fn add_annotation(
     _token: WriteToken,
 ) -> Result<Article, EntryError> {
     let path = find_entry_path(library_dir, article_id)
-        .await
+        .await?
         .ok_or(EntryError::NotFound)?;
     let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, body) = parse_document(&raw)?;
+    let (fm, body) = crate::md::parse_indexed(&raw, &path)?;
 
     let mut annotations = fm.annotations.clone();
     if let Some(pos) = annotations.iter().position(|a| a.id == annotation.id) {
@@ -315,10 +342,10 @@ pub(crate) async fn replace_annotation(
     _token: WriteToken,
 ) -> Result<Article, EntryError> {
     let path = find_entry_path(library_dir, article_id)
-        .await
+        .await?
         .ok_or(EntryError::NotFound)?;
     let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, body) = parse_document(&raw)?;
+    let (fm, body) = crate::md::parse_indexed(&raw, &path)?;
 
     let mut annotations = fm.annotations.clone();
     if let Some(pos) = annotations.iter().position(|a| a.id == old_id) {
@@ -365,10 +392,10 @@ pub(crate) async fn remove_annotation(
     _token: WriteToken,
 ) -> Result<Article, EntryError> {
     let path = find_entry_path(library_dir, article_id)
-        .await
+        .await?
         .ok_or(EntryError::NotFound)?;
     let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, body) = parse_document(&raw)?;
+    let (fm, body) = crate::md::parse_indexed(&raw, &path)?;
 
     let annotations: Vec<Annotation> = fm
         .annotations
@@ -1255,14 +1282,15 @@ fn article_from_fm(
     favicon: Option<String>,
     body: String,
 ) -> Article {
+    let article_id = fm.id.as_deref().unwrap_or(article_id).to_owned();
     Article {
         meta: md_to_entry(Markdown {
-            id: article_id.to_string(),
+            id: article_id.clone(),
             fm,
             body: String::new(),
         }),
         content: body,
-        annotations: with_reference(annotations, article_id),
+        annotations: with_reference(annotations, &article_id),
         favicon,
     }
 }

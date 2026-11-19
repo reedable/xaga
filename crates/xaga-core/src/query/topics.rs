@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use crate::{library, md::parse_document, persistence::topics::TopicsError, types::Reference};
+use crate::{library, persistence::topics::TopicsError, types::Reference};
 
 /// Returns the union of embedding-matched entities and manually curated entities for a topic,
 /// with the given filter applied and ordered by `sort`. Deduplicates by ID.
@@ -11,12 +11,31 @@ pub async fn list_topic_entities(
     entity_filter: crate::types::EntityFilter,
     sort: crate::types::EntitySort,
 ) -> Result<Vec<crate::types::ListEntity>, TopicsError> {
+    list_topic_entities_with_writer(library_dir, id, entity_filter, sort, None).await
+}
+
+pub async fn list_topic_entities_with_writer(
+    library_dir: &Path,
+    id: &str,
+    entity_filter: crate::types::EntityFilter,
+    sort: crate::types::EntitySort,
+    writer: Option<&crate::library_writer::LibraryWriter>,
+) -> Result<Vec<crate::types::ListEntity>, TopicsError> {
+    if !crate::persistence::entries::is_safe_id(id) {
+        return Err(crate::md::MdError::Frontmatter("invalid lookup identity".into()).into());
+    }
     let path = library::topic_path(library_dir, id);
     if !tokio::fs::try_exists(&path).await? {
         return Err(TopicsError::NotFound);
     }
-    let raw = crate::fs::read_md_capped(&path).await?;
-    let (fm, _body) = parse_document(&raw)?;
+    let raw = crate::persistence::identity::read_markdown(
+        &path,
+        writer,
+        crate::persistence::identity::Record::Topic,
+    )
+    .await
+    .map_err(crate::persistence::topics::document_error)?;
+    let (fm, _body) = crate::md::parse_indexed(&raw, &path)?;
     let threshold = fm.threshold.unwrap_or(0.8);
 
     // Ungated similarity lookup: every embedded entity ranked by similarity to the topic.

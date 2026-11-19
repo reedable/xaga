@@ -249,7 +249,8 @@ and the Markdown body. This framing is accepted; YAML field syntax, quoting,
 indentation, and collections are delegated to the serializer. The framing code
 is `crates/xaga-core/src/md.rs::patch_document`.
 
-Existing entry and topic documents are validated before modification. Malformed
+Existing entry and topic documents are validated before modification, including
+saved identity against the filename lookup index. See [persisted entity identity](../persisted_entity_identity.md). Malformed
 frontmatter aborts the operation; a parse failure must not trigger replacement
 with fresh defaults. Article saves validate before storing images as well.
 
@@ -259,19 +260,21 @@ retained by serialization. Block scalars are disabled in noyalib serialization
 so embedded carriage returns are escaped in quoted strings and survive a
 round trip; noyalib 0.0.15 block scalar output fails on these summaries. Article body saves preserve the values of tags, aliases,
 annotations, and other omitted fields. The unsupported `images` frontmatter field is
-removed on every save, as required by `crash_consistency.md`. Omitted summary, publication dates, and favicon
+removed on ordinary saves, as required by `crash_consistency.md`. Omitted summary, publication dates, and favicon
 values preserve their existing values. Annotation changes edit the annotations
 field; tag changes edit tags. Pin changes atomically replace the separate
 `pins.yaml` store without changing entity content. Reading-state changes patch `is_unread`
 and leave tags untouched; the serializer omits `is_unread: false`. Metadata-only operations preserve the
 exact Markdown body. Topic edits preserve unrelated frontmatter and body.
-All Markdown persistence operations go through `persistence::documents::upsert`.
+The `persistence::documents` module owns Markdown write validation. Ordinary
+field updates use `upsert`; identity-only repair and lossless Annotation tag
+patches use that same controlled write boundary.
 It reads the existing file, or starts with empty frontmatter if the file is absent,
 and applies the supplied fields through the same patch operation. Omitted fields
 remain untouched; supplied values (including empty values) are stored as supplied.
 Read and validation failures abort the operation.
 The generic atomic writer rejects `.md` paths. Its Markdown counterpart accepts
-only a validated document constructed inside the upsert module.
+only a validated document constructed inside the document persistence module.
 
 Edits remain inside the existing library-writer lanes and use atomic file
 replacement. The same strict parser policy validates both input and output.
@@ -326,7 +329,8 @@ frontmatter-only `pdfs/{hash12}.md` companion using the standard Entry document
 format. Companion reads treat the file as untrusted: they reject
 unsafe stems, symlinks, nonregular or oversized files, malformed Markdown,
 non-HTTP(S) or non-normalized source URLs, nonempty bodies, and URLs that do not
-hash back to the filename stem. The companion is migration evidence, not
+hash back to the filename stem, and conflicting saved local IDs. Missing local IDs
+are inferred on read and repaired only through the library writer. The companion is migration evidence, not
 authorization to open an arbitrary path. Legacy PDFs without one remain
 readable through the existing URL-keyed API.
 

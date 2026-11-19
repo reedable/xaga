@@ -296,7 +296,15 @@ pub(super) fn read_capped(path: &Path) -> Result<String, Error> {
     if bytes.len() as u64 > MAX_MD_BYTES {
         return Err("article exceeds the 12 MiB read limit".into());
     }
-    Ok(String::from_utf8(bytes)?)
+    let raw = String::from_utf8(bytes)?;
+    let rest = raw
+        .trim_start_matches('\u{feff}')
+        .trim_start()
+        .strip_prefix("---\n")
+        .ok_or("missing frontmatter")?;
+    let end = rest.find("\n---").ok_or("missing closing frontmatter")?;
+    crate::md::validate_identity_yaml(&rest[..end], path)?;
+    Ok(raw)
 }
 
 pub(super) fn patch_favicon(raw: &str, reference: &str) -> Result<String, Error> {
@@ -451,7 +459,16 @@ async fn convert_pins(dir: &Path, lock: &FileLock) -> Result<Vec<String>, Error>
                     if kind == "feed" {
                         // Stored Atom feeds use the same read contract as runtime
                         // feed persistence; the Markdown cap does not apply to XML.
-                        convert_feed_pin(&fs::read_to_string(&path)?)
+                        let raw = fs::read_to_string(&path)?;
+                        let saved = crate::atom::parse_atom(&raw)?;
+                        crate::atom::resolve_local_id(&saved, &path)?;
+                        convert_feed_pin(&raw)?
+                            .map(|rendered| {
+                                let mut atom = crate::atom::parse_atom(&rendered)?;
+                                crate::atom::ensure_local_id(&mut atom, &path)?;
+                                Ok(String::from_utf8(crate::atom::atom_to_xml(&atom)?)?)
+                            })
+                            .transpose()
                     } else {
                         convert_markdown_pin(&read_capped(&path)?)
                     }
@@ -1355,6 +1372,7 @@ custom:
         fs::write(&path, &raw).unwrap();
         let mut expected = crate::atom::parse_atom(&raw).unwrap();
         expected.categories.remove(0); // Only the app-local marker is removed.
+        crate::atom::ensure_local_id(&mut expected, &path).unwrap();
         convert_pins(dir.path(), &lock).await.unwrap();
         let saved = fs::read_to_string(&path).unwrap();
         let actual = crate::atom::parse_atom(&saved).unwrap();

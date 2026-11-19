@@ -59,54 +59,15 @@ function writeStatus(commit, state, description, fallbackRunId) {
   );
 }
 
-function reportDevelopmentPrStatus(event) {
-  const repo = process.env.GITHUB_REPOSITORY;
-  const pr = event.pull_request;
-  if (
-    event.repository?.full_name !== repo ||
-    pr?.state !== "open" ||
-    pr.base?.ref !== "main"
-  )
-    return;
-  // Branch names reserve release/* for actual release builds, including forks.
-  if (pr.head.ref.startsWith("release/")) return;
-  // Commit statuses are shared by all PRs pointing at a SHA. An ordinary PR
-  // must not overwrite the build result for a release branch at the same SHA.
-  const pages = JSON.parse(
-    execFileSync(
-      "gh",
-      [
-        "api",
-        `repos/${repo}/git/matching-refs/heads/release/`,
-        "--paginate",
-        "--slurp",
-      ],
-      { encoding: "utf8" }
-    )
-  );
-  if (pages.flat().some((ref) => ref.object.sha === pr.head.sha)) return;
-  writeStatus(
-    pr.head.sha,
-    "success",
-    "Release build not required for development PR"
-  );
-}
-
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   try {
     const [path, state] = process.argv.slice(2);
-    if (path === "development-pr") {
-      reportDevelopmentPrStatus(
-        JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, "utf8"))
-      );
-    } else {
-      // Preparation/download can fail before a commit identity is available.
-      if (path && existsSync(path))
-        reportReleaseStatus(JSON.parse(readFileSync(path, "utf8")), state);
-    }
+    // Preparation/download can fail before a commit identity is available.
+    if (path && existsSync(path))
+      reportReleaseStatus(JSON.parse(readFileSync(path, "utf8")), state);
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

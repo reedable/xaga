@@ -133,8 +133,9 @@ the normalized URL's entry lane, alongside Markdown operations. Validation
 precedes mutation; a missing companion is atomically created before the PDF.
 An existing canonical Entry remains untouched and suppresses creation of a
 duplicate companion. Successful HTML Markdown saves remove the associated PDF
-before its dormant companion in that
-lane; PDF saves leave canonical Markdown and annotations intact. A newly
+before a redundant companion in that
+lane; it retains a selected Markdown source under `pdfs/`. PDF saves preserve
+existing article content and annotations in either Entry location. A newly
 downloaded PDF requires the library writer, while validated local reads do not
 require write ownership.
 

@@ -48,11 +48,14 @@ fn error_chain(error: &(dyn std::error::Error + 'static)) -> String {
     parts.join("; caused by: ")
 }
 
-fn stored_pdf_result(
+async fn stored_pdf_result(
     library: &std::path::Path,
     url: &str,
+    writer: Option<&xaga_core::library_writer::LibraryWriter>,
 ) -> Result<Option<LoadArticleResult>, AppError> {
-    let Some((_, bytes)) = xaga_core::persistence::pdfs::read(library, url)? else {
+    let Some((_, bytes)) =
+        xaga_core::persistence::pdfs::read_with_writer(library, url, writer).await?
+    else {
         return Ok(None);
     };
     Ok(Some(LoadArticleResult {
@@ -70,9 +73,7 @@ pub async fn read_stored_pdf(
     state: State<'_, AppState>,
 ) -> Result<Option<LoadArticleResult>, AppError> {
     let library = state.library_path();
-    tauri::async_runtime::spawn_blocking(move || stored_pdf_result(&library, &url))
-        .await
-        .map_err(|e| AppError::Message(e.to_string()))?
+    stored_pdf_result(&library, &url, state.writer().as_ref()).await
 }
 
 /// The renderer supplies a source URL, never a local path. Revalidate at opening.
@@ -83,12 +84,11 @@ pub async fn open_stored_pdf(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let library = state.library_path();
-    let path = tauri::async_runtime::spawn_blocking(move || {
-        xaga_core::persistence::pdfs::read(&library, &url).map(|value| value.map(|(path, _)| path))
-    })
-    .await
-    .map_err(|e| AppError::Message(e.to_string()))??
-    .ok_or_else(|| AppError::Message("stored PDF is missing".into()))?;
+    let path =
+        xaga_core::persistence::pdfs::read_with_writer(&library, &url, state.writer().as_ref())
+            .await?
+            .map(|(path, _)| path)
+            .ok_or_else(|| AppError::Message("stored PDF is missing".into()))?;
     use tauri_plugin_opener::OpenerExt;
     app.opener()
         .open_path(path.to_string_lossy().into_owned(), None::<&str>)
@@ -199,9 +199,8 @@ pub async fn load_article(
                 .save_pdf(url.clone(), Some(bytes))
                 .await?;
             attempt.add_succeeded_event("pdf_persist");
-            return tauri::async_runtime::spawn_blocking(move || stored_pdf_result(&library, &url))
-                .await
-                .map_err(|e| AppError::Message(e.to_string()))??
+            return stored_pdf_result(&library, &url, writer.as_ref())
+                .await?
                 .ok_or_else(|| AppError::Message("saved PDF is missing".into()));
         }
         if capture.mime_type == "application/pdf" {
@@ -343,7 +342,7 @@ pub async fn find_article(
 ) -> Result<Option<Article>, AppError> {
     let result: Result<_, AppError> = async {
         let data_dir = state.library_path();
-        articles::find_article(&data_dir, &url)
+        articles::find_article_with_writer(&data_dir, &url, state.writer().as_ref())
             .await
             .map_err(AppError::from)
     }
@@ -368,7 +367,7 @@ pub async fn read_article(
 ) -> Result<Article, AppError> {
     let result: Result<_, AppError> = async {
         let data_dir = state.library_path();
-        let article = articles::read_article(&data_dir, &id)
+        let article = articles::read_article_with_writer(&data_dir, &id, state.writer().as_ref())
             .await
             .map_err(AppError::from)?;
 

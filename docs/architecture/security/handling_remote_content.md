@@ -16,6 +16,10 @@ Code: `crates/xaga-core/src/atom.rs`, `crates/xaga-core/src/persistence/feeds.rs
 
 We defend against path traversal by never using remote data as a filename. Feeds and entries are stored as `{hash12}.atom` / `{hash12}.md`, where `hash12` is the first 12 hex characters of SHA-256 over the normalized URL (`url_hash12`, `util.rs`) — the filename alphabet is lowercase hex only. Entry ids from the feed (`<entry><id>`) are used as _logical_ ids only; when absent, the id falls back to the hashed link (`feed_entry_id`).
 
+Local Feed identity is stored separately in the `urn:xaga:atom` namespace
+(`xaga:id`). Publisher refresh cannot change it. Filenames index saved local
+identity and must agree with it; see [persisted entity identity](../persisted_entity_identity.md).
+
 `normalize_url` also upgrades `http://` to `https://` at add time, so a feed's canonical fetch URL is https.
 
 ### What a hostile feed cannot rewrite

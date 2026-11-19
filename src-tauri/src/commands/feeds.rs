@@ -15,7 +15,7 @@ pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<Feed>, AppErro
         get_unread_ids(&state).await?,
         get_bookmarked_ids(&state).await?,
     );
-    feeds::list_feeds(&library, &unread, &bookmarked)
+    feeds::list_feeds_with_writer(&library, &unread, &bookmarked, state.writer().as_ref())
         .await
         .map_err(AppError::from)
 }
@@ -206,7 +206,7 @@ pub async fn list_entries(
     // The .atom is the source of truth for feed membership (the id-set); LanceDB
     // returns those entries with their state. Reload the read handle so state reflects the
     // service's latest writes, then filter/sort as before.
-    let ids = feeds::list_entry_ids(&library, url.as_deref())
+    let ids = feeds::list_entry_ids_with_writer(&library, url.as_deref(), state.writer().as_ref())
         .await
         .map_err(AppError::from)?;
 

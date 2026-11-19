@@ -119,9 +119,13 @@ pub async fn read_annotation_tags(
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     let dir = state.library_path();
-    let labels =
-        xaga_core::persistence::articles::read_annotation_tags(&dir, &entry_id, &annotation_id)
-            .await?;
+    let labels = xaga_core::persistence::articles::read_annotation_tags_with_writer(
+        &dir,
+        &entry_id,
+        &annotation_id,
+        state.writer().as_ref(),
+    )
+    .await?;
     Ok(Tags::read(&dir).await?.resolver().resolve(&labels)?)
 }
 
@@ -155,7 +159,12 @@ pub async fn read_entry_tags(
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     let dir = state.library_path();
-    let names = xaga_core::persistence::entries::read_entry_tags(&dir, &id).await?;
+    let names = xaga_core::persistence::entries::read_entry_tags_with_writer(
+        &dir,
+        &id,
+        state.writer().as_ref(),
+    )
+    .await?;
     Ok(Tags::read(&dir).await?.resolver().resolve(&names)?)
 }
 

@@ -1,29 +1,54 @@
-name: Release build exemption for development PRs
+name: Pull request verification
 
 on:
-  pull_request_target:
+  pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, edited, ready_for_review]
 
 permissions:
   contents: read
-  statuses: write
+
+concurrency:
+  group: verification-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  exempt:
-    name: Mark release build unnecessary for development
-    runs-on: ubuntu-latest
+  verify:
+    name: Verification
+    runs-on: macos-26
+    env:
+      RUSTFLAGS: -D warnings
+      RUSTDOCFLAGS: -D warnings
     steps:
-      # GITHUB_SHA is the trusted base commit for pull_request_target. Never
-      # check out or execute code from the PR head, including fork branches.
-      - uses: actions/checkout@v7
+      - name: Check out proposed merge
+        uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
         with:
           node-version: 24
-      - name: Report release-only status for ordinary PRs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node scripts/release-status.mjs development-pr
+          cache: npm
+
+      - name: Verify source
+        uses: ./.github/actions/verify
+
+      - name: Run headless tests
+        timeout-minutes: 30
+        run: npm run test:headless
+
+      - name: Run browser tests
+        timeout-minutes: 30
+        run: npm run test:browser
+
+      - name: Upload browser report and failure diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-integration-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14

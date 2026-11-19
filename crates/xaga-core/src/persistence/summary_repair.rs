@@ -16,15 +16,18 @@ pub struct RepairReport {
 }
 
 pub async fn repair_summaries(writer: &LibraryWriter, dry_run: bool) -> RepairReport {
+    use std::sync::Mutex;
     let dir = writer.library_dir();
-    let mut report = RepairReport::default();
-    let mut summaries = HashMap::new();
-    let outcome =
-        fs::for_each_file(
-            &library::feeds_dir(dir),
-            "atom",
-            |path, raw| match atom::parse_atom(&raw) {
+    let repair_writer = if dry_run { None } else { Some(writer) };
+    let report = Mutex::new(RepairReport::default());
+    let summaries = Mutex::new(HashMap::new());
+    let outcome = fs::for_each_file_async(&library::feeds_dir(dir), "atom", |path, _| {
+        let report = &report;
+        let summaries = &summaries;
+        async move {
+            match super::identity::read_atom(&path, repair_writer).await {
                 Ok(feed) => {
+                    let mut summaries = summaries.lock().unwrap();
                     for entry in feed.entries() {
                         let entry = atom::atom_to_entry(entry);
                         if let Some(summary) = entry.description.filter(|s| !s.trim().is_empty()) {
@@ -34,56 +37,87 @@ pub async fn repair_summaries(writer: &LibraryWriter, dry_run: bool) -> RepairRe
                         }
                     }
                 }
-                Err(e) => report.errors.push(format!("{}: {e}", path.display())),
-            },
-        )
-        .await;
-    if outcome == fs::WalkOutcome::Unreadable {
-        report
-            .errors
-            .push("Could not read all local Atom files".into());
-    }
-
-    let mut candidates = Vec::new();
-    let outcome = fs::for_each_file(&library::entries_dir(dir), "md", |path, raw| {
-        let result = (|| -> Result<(), EntryError> {
-            if md::has_summary_field(&raw)? {
-                report.skipped += 1;
-                return Ok(());
+                Err(error) => report
+                    .lock()
+                    .unwrap()
+                    .errors
+                    .push(format!("{}: {error}", path.display())),
             }
-            let (fm, _) = md::parse_document(&raw)?;
-            let url = util::normalize_url(&fm.source)?;
-            if let Some(summary) = summaries.get(&url) {
-                if dry_run {
-                    // Exercise the same serializer and output parser as the write path.
-                    md::patch_document(&raw, &[("summary", serde_json::json!(summary))], None)?;
-                    report.would_repair += 1;
-                } else {
-                    candidates.push((util::entity_id(&path), summary.clone()));
-                }
-            } else {
-                report.unavailable += 1;
-            }
-            Ok(())
-        })();
-        if let Err(e) = result {
-            report.errors.push(format!("{}: {e}", path.display()));
         }
     })
     .await;
     if outcome == fs::WalkOutcome::Unreadable {
         report
+            .lock()
+            .unwrap()
             .errors
-            .push("Could not read all saved article files".into());
+            .push("Could not read all local Atom files".into());
     }
-    if dry_run {
-        return report;
+    let candidates = Mutex::new(Vec::new());
+    for directory in library::entry_scan_dirs(dir) {
+        let outcome = fs::for_each_file_async(&directory, "md", |path, _| {
+            let report = &report;
+            let summaries = &summaries;
+            let candidates = &candidates;
+            async move {
+                let result = async {
+                    let id = util::entity_id(&path);
+                    if library::resolve_entry_path(dir, &id).await?.as_ref() != Some(&path) {
+                        return Ok(());
+                    }
+                    let raw = super::identity::read_markdown(
+                        &path,
+                        repair_writer,
+                        super::identity::Record::Entry,
+                    )
+                    .await?;
+                    if md::has_summary_field(&raw)? {
+                        report.lock().unwrap().skipped += 1;
+                        return Ok(());
+                    }
+                    let (fm, _) = md::parse_indexed(&raw, &path)?;
+                    let url = util::normalize_url(&fm.source)?;
+                    if let Some(summary) = summaries.lock().unwrap().get(&url) {
+                        if dry_run {
+                            md::patch_document(
+                                &raw,
+                                &[("summary", serde_json::json!(summary))],
+                                None,
+                            )?;
+                            report.lock().unwrap().would_repair += 1;
+                        } else {
+                            candidates.lock().unwrap().push((id, summary.clone()));
+                        }
+                    } else {
+                        report.lock().unwrap().unavailable += 1;
+                    }
+                    Ok::<_, EntryError>(())
+                }
+                .await;
+                if let Err(error) = result {
+                    report
+                        .lock()
+                        .unwrap()
+                        .errors
+                        .push(format!("{}: {error}", path.display()));
+                }
+            }
+        })
+        .await;
+        if outcome == fs::WalkOutcome::Unreadable {
+            report
+                .lock()
+                .unwrap()
+                .errors
+                .push("Could not read all saved article files".into());
+        }
     }
-    for (id, summary) in candidates {
+    let mut report = report.into_inner().unwrap();
+    for (id, summary) in candidates.into_inner().unwrap() {
         match writer.repair_summary(id.clone(), summary).await {
             Ok(true) => report.repaired += 1,
             Ok(false) => report.skipped += 1,
-            Err(e) => report.errors.push(format!("{id}: {e}")),
+            Err(error) => report.errors.push(format!("{id}: {error}")),
         }
     }
     report
@@ -98,9 +132,12 @@ pub(crate) async fn repair_summary(
     if !super::entries::is_safe_id(id) {
         return Err(EntryError::InvalidId);
     }
-    let path = library::entry_path(dir, id);
+    let path = super::entries::find_entry_path(dir, id)
+        .await?
+        .ok_or(EntryError::NotFound)?;
     // Read and check inside the writer's entry lane. Never create a missing article.
     let raw = fs::read_md_capped(&path).await?;
+    md::parse_indexed(&raw, &path)?;
     if md::has_summary_field(&raw)? || summary.trim().is_empty() {
         return Ok(false);
     }
@@ -156,6 +193,7 @@ Last line</summary></entry></feed>"#).unwrap();
         assert!(report.errors.is_empty(), "{report:?}");
         let saved = std::fs::read_to_string(&path).unwrap();
         let mut expected = md::test_frontmatter_values(&original);
+        expected.insert("id".into(), noyalib::Value::String("saved".into()));
         expected.insert(
             "summary".into(),
             noyalib::Value::String(
@@ -229,7 +267,10 @@ Last line</summary></entry></feed>"#).unwrap();
                 .is_err()
         );
         assert!(!library::entry_path(dir.path(), "missing").exists());
-        assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+        assert_eq!(
+            std::fs::read_to_string(path).unwrap(),
+            original.replacen("---\n", "---\nid: \"saved\"\n", 1)
+        );
         assert_eq!(
             std::fs::read_to_string(broken_path).unwrap(),
             "---\ntags: [broken\n---\nBody"
