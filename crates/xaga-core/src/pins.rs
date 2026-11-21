@@ -1,7 +1,10 @@
 //! The library's ordered pin membership. Entity files and query rows do not own pins.
 use noyalib::{ParserConfig, policy::DenyAnchors};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
@@ -151,14 +154,44 @@ pub enum PinsError {
     Format(String),
     #[error("invalid pin target")]
     InvalidTarget,
+    #[error("duplicate shortcut group path")]
+    DuplicateGroupPath(Vec<String>),
 }
 impl PinsError {
     pub fn code(&self) -> &'static str {
-        "pins:invalid-store"
+        match self {
+            Self::DuplicateGroupPath(_) => "pins:duplicate-group-path",
+            _ => "pins:invalid-store",
+        }
     }
     pub fn user_message(&self) -> &'static str {
         "Couldn't read or save Shortcuts."
     }
+}
+
+fn group_paths(nodes: &[PinNode]) -> HashMap<&str, Vec<&str>> {
+    fn visit<'a>(
+        nodes: &'a [PinNode],
+        path: &mut Vec<&'a str>,
+        paths: &mut HashMap<&'a str, Vec<&'a str>>,
+    ) {
+        for node in nodes {
+            if let PinNode::Group {
+                id,
+                title,
+                children,
+            } = node
+            {
+                path.push(title.trim());
+                paths.insert(id, path.clone());
+                visit(children, path, paths);
+                path.pop();
+            }
+        }
+    }
+    let mut paths = HashMap::new();
+    visit(nodes, &mut Vec::new(), &mut paths);
+    paths
 }
 
 impl Pins {
@@ -298,7 +331,45 @@ impl Pins {
         _token: crate::library_writer::WriteToken,
     ) -> Result<Self, PinsError> {
         let mut store = Self::read(dir).await?;
-        store.edit(edit)?;
+        if matches!(
+            &edit,
+            PinEdit::Move {
+                node: PinNodeRef::Target(_),
+                ..
+            }
+        ) {
+            store.edit(edit)?;
+        } else {
+            let mut updated = store.clone();
+            let edited_group = match &edit {
+                PinEdit::CreateGroup { id, .. }
+                | PinEdit::RenameGroup { id, .. }
+                | PinEdit::Move {
+                    node: PinNodeRef::Group { id },
+                    ..
+                } => Some(id.clone()),
+                _ => None,
+            };
+            updated.edit(edit)?;
+            let previous = group_paths(&store.pins);
+            let current = group_paths(&updated.pins);
+            let mut first_at_path = HashMap::new();
+            for (id, path) in &current {
+                if let Some(first_id) = first_at_path.insert(path, *id) {
+                    // A collision is grandfathered only if the same groups already
+                    // shared a path before the edit and neither is the edited group.
+                    if previous.get(*id) != previous.get(first_id)
+                        || edited_group.as_deref() == Some(*id)
+                        || edited_group.as_deref() == Some(first_id)
+                    {
+                        return Err(PinsError::DuplicateGroupPath(
+                            path.iter().map(|title| (*title).to_owned()).collect(),
+                        ));
+                    }
+                }
+            }
+            store = updated;
+        }
         let yaml = store.serialize()?;
         crate::fs::write_atomic_async(crate::library::pins_path(dir), yaml.into_bytes()).await?;
         Ok(store)
@@ -394,6 +465,145 @@ impl Pins {
 mod tests {
     use super::*;
     use crate::{library, library_writer::LibraryWriter};
+
+    fn group(id: &str, title: &str, children: Vec<PinNode>) -> PinNode {
+        PinNode::Group {
+            id: id.into(),
+            title: title.into(),
+            children,
+        }
+    }
+
+    fn create_group(id: &str, title: &str, parent: Option<&str>) -> PinEdit {
+        PinEdit::CreateGroup {
+            id: id.into(),
+            title: title.into(),
+            parent: parent.map(str::to_owned),
+        }
+    }
+
+    fn rename_group(id: &str, title: &str) -> PinEdit {
+        PinEdit::RenameGroup {
+            id: id.into(),
+            title: title.into(),
+        }
+    }
+
+    fn move_group(id: &str, parent: Option<&str>) -> PinEdit {
+        PinEdit::Move {
+            node: PinNodeRef::Group { id: id.into() },
+            parent: parent.map(str::to_owned),
+        }
+    }
+
+    #[tokio::test]
+    async fn group_path_conflicts_are_checked_without_rewriting_legacy_duplicates() {
+        use crate::library_writer::WriterError;
+
+        let dir = tempfile::tempdir().unwrap();
+        let lock = library::acquire_lock(dir.path()).unwrap();
+        let path = library::pins_path(dir.path());
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let legacy = Pins {
+            pins: vec![
+                group(
+                    "work",
+                    "Work",
+                    vec![
+                        group("first", "Research", vec![]),
+                        group("second", "Research", vec![]),
+                        group(
+                            "drafts",
+                            "Drafts",
+                            vec![group("promoted", "Research", vec![])],
+                        ),
+                    ],
+                ),
+                group(
+                    "personal",
+                    "Personal",
+                    vec![group("other", "Research", vec![])],
+                ),
+            ],
+        };
+        std::fs::write(&path, legacy.serialize().unwrap()).unwrap();
+        assert_eq!(Pins::read(dir.path()).await.unwrap(), legacy);
+        let writer = LibraryWriter::start(dir.path().into(), lock);
+        let before = std::fs::read(&path).unwrap();
+
+        for (edit, expected) in [
+            (create_group("new", " Work ", None), vec!["Work"]),
+            (
+                create_group("new", " Research ", Some("work")),
+                vec!["Work", "Research"],
+            ),
+            (rename_group("first", "Research"), vec!["Work", "Research"]),
+            (move_group("first", Some("work")), vec!["Work", "Research"]),
+            (move_group("other", Some("work")), vec!["Work", "Research"]),
+            (
+                PinEdit::RemoveGroup {
+                    id: "drafts".into(),
+                },
+                vec!["Work", "Research"],
+            ),
+        ] {
+            let error = writer.organize_pins(edit).await.unwrap_err();
+            assert!(
+                matches!(error, WriterError::Pins(PinsError::DuplicateGroupPath(path)) if path == expected)
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), before);
+        }
+        writer
+            .organize_pins(create_group("slash", "Work / Research", None))
+            .await
+            .unwrap();
+        writer
+            .organize_pins(rename_group("work", "Projects"))
+            .await
+            .unwrap();
+        writer
+            .organize_pins(move_group("work", Some("personal")))
+            .await
+            .unwrap();
+        writer
+            .organize_pins(rename_group("first", "Notes"))
+            .await
+            .unwrap();
+        writer
+            .organize_pins(move_group("second", Some("work")))
+            .await
+            .unwrap();
+        assert!(matches!(
+            writer.organize_pins(PinEdit::RemoveGroup { id: "work".into() }).await,
+            Err(WriterError::Pins(PinsError::DuplicateGroupPath(path))) if path == ["Personal", "Research"]
+        ));
+        writer.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn concurrent_group_creates_cannot_save_the_same_path() {
+        use crate::library_writer::WriterError;
+
+        let dir = tempfile::tempdir().unwrap();
+        let writer = LibraryWriter::start(
+            dir.path().into(),
+            library::acquire_lock(dir.path()).unwrap(),
+        );
+        let (first, second) = tokio::join!(
+            writer.organize_pins(create_group("first", "Research", None)),
+            writer.organize_pins(create_group("second", "Research", None))
+        );
+        let (saved, rejected) = match (first, second) {
+            (Ok(saved), Err(rejected)) | (Err(rejected), Ok(saved)) => (saved, rejected),
+            outcomes => panic!("expected one successful write, got {outcomes:?}"),
+        };
+        assert!(
+            matches!(rejected, WriterError::Pins(PinsError::DuplicateGroupPath(path)) if path == ["Research"])
+        );
+        assert_eq!(Pins::read(dir.path()).await.unwrap(), saved);
+        assert_eq!(saved.pins.len(), 1);
+        writer.shutdown().await;
+    }
 
     #[tokio::test]
     async fn groups_move_promote_and_unpin_through_the_serialized_writer() {
@@ -542,7 +752,7 @@ mod tests {
                 writer
                     .organize_pins(PinEdit::CreateGroup {
                         id: format!("g{i}"),
-                        title: "Group".into(),
+                        title: format!("Group {i}"),
                         parent: None,
                     })
                     .await

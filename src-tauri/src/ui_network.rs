@@ -96,7 +96,7 @@ pub(crate) fn start(
         let error = SerializedError {
             diagnostic_id: Some(attempt.get_id()),
             code: "proxy:blocked",
-            message: "Remote content was blocked.",
+            message: "Remote content was blocked.".into(),
             detail: format!("{label}: {code}; {detail}"),
         };
         drop(current);
@@ -119,7 +119,7 @@ mod tests {
                 "main",
                 SerializedError {
                     code: "proxy:blocked",
-                    message: "Remote content was blocked.",
+                    message: "Remote content was blocked.".into(),
                     detail: n.to_string(),
                     diagnostic_id: None,
                 },
@@ -129,7 +129,7 @@ mod tests {
             "settings",
             SerializedError {
                 code: "proxy:blocked",
-                message: "Remote content was blocked.",
+                message: "Remote content was blocked.".into(),
                 detail: "settings".into(),
                 diagnostic_id: None,
             },

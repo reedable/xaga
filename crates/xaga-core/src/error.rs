@@ -105,6 +105,7 @@ mod tests {
         "tags:invalid-name",
         "tags:deleting",
         "pins:invalid-store",
+        "pins:duplicate-group-path",
         // EntryError
         "entry:io",
         "entry:invalid-url",

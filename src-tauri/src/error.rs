@@ -153,7 +153,7 @@ pub(crate) struct SerializedError {
     #[serde(rename = "diagnosticId", skip_serializing_if = "Option::is_none")]
     pub(crate) diagnostic_id: Option<String>,
     pub(crate) code: &'static str,
-    pub(crate) message: &'static str,
+    pub(crate) message: std::borrow::Cow<'static, str>,
     pub(crate) detail: String,
 }
 
@@ -168,10 +168,25 @@ impl AppError {
 
     /// The owned wire shape, for event payloads that need `Clone`.
     pub(crate) fn serialized(&self) -> SerializedError {
+        use xaga_core::pins::PinsError::DuplicateGroupPath;
+        let message = match self {
+            Self::Domain(
+                DomainError::Pins(DuplicateGroupPath(path))
+                | DomainError::Writer(WriterError::Pins(DuplicateGroupPath(path))),
+            ) => {
+                let path = path
+                    .iter()
+                    .map(|title| format!("{title:?}"))
+                    .collect::<Vec<_>>()
+                    .join(" / ");
+                format!("A shortcut group already uses the path {path}.").into()
+            }
+            _ => self.user_message().into(),
+        };
         SerializedError {
             diagnostic_id: None,
             code: self.code(),
-            message: self.user_message(),
+            message,
             detail: self.to_string(),
         }
     }
@@ -229,6 +244,20 @@ mod tests {
         }
         let unique: std::collections::HashSet<&&str> = APP_CODES.iter().collect();
         assert_eq!(unique.len(), APP_CODES.len(), "duplicate app code");
+    }
+
+    #[test]
+    fn shortcut_conflict_reports_the_path_to_the_ui() {
+        let error = AppError::from(WriterError::Pins(
+            xaga_core::pins::PinsError::DuplicateGroupPath(vec![
+                "Work / Research".into(),
+                "Notes".into(),
+            ]),
+        ));
+        let payload = error.serialized();
+        assert_eq!(payload.code, "pins:duplicate-group-path");
+        assert!(payload.message.contains(r#""Work / Research" / "Notes""#));
+        assert!(!payload.detail.contains("Work / Research"));
     }
 
     #[test]

@@ -393,6 +393,7 @@ const TRAINING = {
           "Explain what a shortcut saves and what happens when its destination is unavailable.",
         paragraphs: [
           "A shortcut can open an article, Feed, Topic, or the list of saved articles from a website. It points to existing content rather than making a copy. The library stores these references in `pins.yaml`.",
+          "Shortcut groups can have the same title in different locations. When an edit would create a duplicate group path, Xaga shows the conflicting path and leaves the tree as it was. Existing duplicates stay visible so the user can resolve them.",
           "If Xaga cannot read a shortcut’s destination, it keeps the shortcut and offers Retry and Remove shortcut. A failed read does not establish that the content was deleted. Keeping the shortcut lets it work again if the content becomes available.",
           "A shortcut to example.com can still open an empty article list after all saved articles from that website are removed. That is different from an unreadable Topic. In a read-only library, viewing is allowed but saved changes are refused: you can open shortcuts and retry unavailable ones, but cannot remove a shortcut.",
         ],
