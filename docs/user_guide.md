@@ -206,6 +206,13 @@ under **Shortcuts** in the sidebar.
 Choose **Share → Remove from Shortcuts** to unpin an article. Removing a shortcut
 keeps its destination and your current reading context.
 
+Shortcut groups can share a title in different locations. For example, you can
+have a **Research** group under both **Work** and **Personal**. If creating,
+renaming, moving, or removing a group would cause a path conflict, Xaga shows
+the conflicting path and keeps the groups in place. You can revise the title or
+choose a different destination. If your library already contains duplicate group
+paths, you can rename or move a group to resolve them.
+
 As you scroll through grouped shortcuts, their containing group headings stay
 visible at the top of the list. Up to the outermost five group levels stay
 visible; deeper headings scroll with their contents. You can still expand groups

@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { control, expect, test } from "./fixtures";
+import { control, expect, openArticle, reader, test } from "./fixtures";
 
 const heading = (page: Page, id: string) =>
   page.locator(`[data-group-heading="${id}"]`);
@@ -315,6 +315,76 @@ test("sticky group actions support creation, moving, drag and drop, and removal"
   await action(page, "work", "remove-node");
   await expect(node(page, "work")).toHaveCount(0);
   await expect(node(page, "methods")).toHaveCount(1);
+});
+
+test("shortcut path conflicts preserve input and browsing context", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/?scenario=sidebar-sticky&legacyGroupPaths=true");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-capture-ready",
+    "true"
+  );
+  const article = "A garden for every season";
+  await openArticle(page, article);
+  const context = await page.evaluate(() => window.history.state);
+  const dialog = page.getByRole("dialog");
+  const title = control(dialog, "textbox", "group-title");
+  const save = control(dialog, "button", "save");
+
+  await action(page, "work", "rename-group");
+  await title.fill("Research");
+  await save.click();
+  await expect(dialog.getByRole("alert")).toContainText("Research");
+  await expect(title).toHaveValue("Research");
+  await title.fill("Projects");
+  await save.click();
+  await expect(dialog).not.toBeVisible();
+  await expect(groupButton(page, "work")).toHaveAccessibleName(/Projects/);
+  for (const id of ["legacy-one", "legacy-two"]) {
+    await expect(
+      node(page, "work").locator(`[data-shortcut-group="${id}"]`)
+    ).toHaveCount(1);
+  }
+
+  await action(page, "legacy-one", "rename-group");
+  await save.click();
+  await expect(dialog.getByRole("alert")).toContainText("Notes");
+  await title.fill("Research notes");
+  await save.click();
+  await expect(dialog).not.toBeVisible();
+  await expect(groupButton(page, "legacy-one")).toHaveAccessibleName(
+    /Research notes/
+  );
+
+  await action(page, "research", "add-group");
+  await title.fill("Notes");
+  await save.click();
+  await expect(dialog).not.toBeVisible();
+  await action(page, "legacy-two", "move-shortcut");
+  const destination = control(dialog, "combobox", "shortcut-destination");
+  await destination.click();
+  await page
+    .getByRole("option")
+    .and(page.locator('[data-value="research"]'))
+    .click();
+  await control(dialog, "button", "confirm-move").click();
+  await expect(dialog.getByRole("alert")).toContainText(/Research.*Notes/);
+  await expect(destination).toContainText("Research");
+  await destination.click();
+  await control(page, "option", "shortcuts-root").click();
+  await control(dialog, "button", "confirm-move").click();
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    node(page, "work").locator('[data-shortcut-group="legacy-two"]')
+  ).toHaveCount(0);
+  await expect(node(page, "legacy-two")).toBeAttached();
+
+  await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
+    article
+  );
+  expect(await page.evaluate(() => window.history.state)).toEqual(context);
 });
 
 test("read-only shortcut groups retain expansion and sticky context", async ({

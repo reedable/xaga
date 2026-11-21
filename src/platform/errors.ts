@@ -18,6 +18,7 @@ export const ERROR_CODE = [
   "tags:invalid-name",
   "tags:deleting",
   "pins:invalid-store",
+  "pins:duplicate-group-path",
   // DomainError — EntryError
   "entry:io",
   "entry:invalid-url",

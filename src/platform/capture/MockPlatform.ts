@@ -60,7 +60,9 @@ export class MockPlatform implements Platform {
       this.scenario === "sidebar-sticky" ||
       new URLSearchParams(location.search).get("fixture") === "shortcut-groups"
     ) {
-      const fixture = createStickyShortcutFixtures();
+      const fixture = createStickyShortcutFixtures(
+        new URLSearchParams(location.search).get("legacyGroupPaths") === "true"
+      );
       this.data.topics.push(...fixture.topics);
       this.pins = fixture.pins;
     }
@@ -1044,6 +1046,37 @@ export class MockPlatform implements Platform {
       }
     };
     validate(pins);
+    if (edit.action !== "move" || edit.node.type === "group") {
+      let editedGroup: string | undefined;
+      if (edit.action === "createGroup" || edit.action === "renameGroup") {
+        editedGroup = edit.id;
+      } else if (edit.action === "move" && edit.node.type === "group") {
+        editedGroup = edit.node.id;
+      }
+      const previous = groupPaths(this.pins);
+      const firstAtPath = new Map<string, string>();
+      for (const [id, titles] of groupPaths(pins)) {
+        const path = JSON.stringify(titles);
+        const first = firstAtPath.get(path);
+        if (
+          first !== undefined &&
+          (JSON.stringify(previous.get(first)) !==
+            JSON.stringify(previous.get(id)) ||
+            editedGroup === first ||
+            editedGroup === id)
+        ) {
+          const displayPath = titles
+            .map((title) => JSON.stringify(title))
+            .join(" / ");
+          throw {
+            code: "pins:duplicate-group-path",
+            message: `A shortcut group already uses the path ${displayPath}.`,
+            detail: "duplicate shortcut group path",
+          };
+        }
+        firstAtPath.set(path, id);
+      }
+    }
     this.pins = pins;
     this.emit("onPinChanged", { edit });
   };
@@ -1072,6 +1105,21 @@ export class MockPlatform implements Platform {
   onRefreshOnStartupChanged: Platform["onRefreshOnStartupChanged"] = (
     callback
   ) => this.subscribe("onRefreshOnStartupChanged", callback);
+}
+
+function groupPaths(nodes: PinNode[]) {
+  const paths = new Map<string, string[]>();
+  function visit(nodes: PinNode[], parent: string[]) {
+    for (const node of nodes) {
+      if (node.type === "group") {
+        const path = [...parent, node.title.trim()];
+        paths.set(node.id, path);
+        visit(node.children, path);
+      }
+    }
+  }
+  visit(nodes, []);
+  return paths;
 }
 
 function findPinPosition(

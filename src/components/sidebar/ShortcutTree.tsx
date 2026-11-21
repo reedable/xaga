@@ -1,5 +1,6 @@
 import { ChevronRight, MoreVert } from "@mui/icons-material";
 import {
+  Alert,
   Button,
   Collapse,
   useMediaQuery,
@@ -26,6 +27,7 @@ import {
 } from "react";
 import { pinKey, type PinEdit, type PinNodeRef } from "../../pins";
 import { usePins } from "../../providers/PinsContext";
+import { errorCode, errorMessage } from "../../platform/errors";
 import { usePlatform } from "../../platform/Platform";
 import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import { useErrorSink } from "../../hooks/useErrorSink";
@@ -68,6 +70,7 @@ export default function ShortcutTree({
   }>();
 
   const [moveDialog, setMoveDialog] = useState<ShortcutNode>();
+  const [conflict, setConflict] = useState<string>();
   const [destination, setDestination] = useState("");
   const actionMenuId = useId();
 
@@ -77,7 +80,10 @@ export default function ShortcutTree({
   }>();
 
   useEffect(() => {
-    if (createRequest) setTitleDialog({ parent: null, title: "" });
+    if (createRequest) {
+      setConflict(undefined);
+      setTitleDialog({ parent: null, title: "" });
+    }
   }, [createRequest]);
 
   useEffect(() => {
@@ -173,27 +179,37 @@ export default function ShortcutTree({
     if (storageKey) void setViewState(storageKey, expanded).catch(pushError);
   }, [storageKey, expanded, pushError]);
 
-  async function execute(operation: () => Promise<void>): Promise<boolean> {
+  async function execute(
+    operation: () => Promise<void>,
+    inDialog = false
+  ): Promise<boolean> {
     if (busy || readOnly) return false;
     setBusy(true);
+    if (inDialog) setConflict(undefined);
 
     try {
       await operation();
       return true;
     } catch (error) {
-      pushError(error);
+      if (inDialog && errorCode(error) === "pins:duplicate-group-path") {
+        setConflict(errorMessage(error));
+      } else pushError(error);
       return false;
     } finally {
       setBusy(false);
     }
   }
 
-  async function edit(edit: PinEdit) {
-    return execute(() => organizePins(edit));
+  async function edit(edit: PinEdit, inDialog = false) {
+    return execute(() => organizePins(edit), inDialog);
   }
 
-  async function move(node: PinNodeRef, parent: string | null) {
-    if (await edit({ action: "move", node, parent })) {
+  async function move(
+    node: PinNodeRef,
+    parent: string | null,
+    inDialog = false
+  ) {
+    if (await edit({ action: "move", node, parent }, inDialog)) {
       if (parent) expand(parent, true);
       setMoveDialog(undefined);
     }
@@ -408,6 +424,7 @@ export default function ShortcutTree({
             disabled={readOnly || busy}
             onClick={() => {
               if (actionMenu?.node.reference.type !== "group") return;
+              setConflict(undefined);
               setTitleDialog({
                 parent: actionMenu.node.reference.id,
                 title: "",
@@ -423,6 +440,7 @@ export default function ShortcutTree({
             disabled={readOnly || busy}
             onClick={() => {
               if (actionMenu?.node.reference.type !== "group") return;
+              setConflict(undefined);
               setTitleDialog({
                 id: actionMenu.node.reference.id,
                 parent: null,
@@ -439,6 +457,7 @@ export default function ShortcutTree({
           disabled={readOnly || busy}
           onClick={() => {
             if (!actionMenu) return;
+            setConflict(undefined);
             setMoveDialog(actionMenu.node);
             setDestination("");
             setActionMenu(undefined);
@@ -485,7 +504,8 @@ export default function ShortcutTree({
                     id: crypto.randomUUID(),
                     title: dialog.title.trim(),
                     parent: dialog.parent,
-                  }
+                  },
+              true
             ).then((saved) => {
               if (saved) setTitleDialog(undefined);
             });
@@ -502,13 +522,17 @@ export default function ShortcutTree({
               margin="normal"
               value={titleDialog?.title ?? ""}
               disabled={busy}
-              onChange={(event) =>
+              onChange={(event) => {
+                setConflict(undefined);
                 setTitleDialog(
                   (current) =>
                     current && { ...current, title: event.target.value }
-                )
-              }
+                );
+              }}
             />
+            {titleDialog && conflict && (
+              <Alert severity="error">{conflict}</Alert>
+            )}
           </DialogContent>
           <DialogActions>
             <Button
@@ -547,7 +571,10 @@ export default function ShortcutTree({
             value={destination}
             fullWidth
             disabled={busy}
-            onChange={(event) => setDestination(event.target.value)}
+            onChange={(event) => {
+              setConflict(undefined);
+              setDestination(event.target.value);
+            }}
           >
             <MenuItem data-testid="shortcuts-root" value="">
               Top level of Shortcuts
@@ -562,6 +589,7 @@ export default function ShortcutTree({
               </MenuItem>
             ))}
           </TextField>
+          {moveDialog && conflict && <Alert severity="error">{conflict}</Alert>}
         </DialogContent>
 
         <DialogActions>
@@ -576,7 +604,8 @@ export default function ShortcutTree({
             data-testid="confirm-move"
             disabled={readOnly || busy}
             onClick={() =>
-              moveDialog && void move(moveDialog.reference, destination || null)
+              moveDialog &&
+              void move(moveDialog.reference, destination || null, true)
             }
           >
             Move

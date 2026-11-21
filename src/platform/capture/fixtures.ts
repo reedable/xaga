@@ -151,7 +151,7 @@ export function createSidebarHeightFixtures() {
 }
 
 /** Sibling boundaries, variable heading heights, counts, and deep stored trees. */
-export function createStickyShortcutFixtures() {
+export function createStickyShortcutFixtures(legacyGroupPaths = false) {
   const { topics } = createSidebarHeightFixtures();
   const targets = topics.map((topic) => ({
     type: "topic" as const,
@@ -191,7 +191,17 @@ export function createStickyShortcutFixtures() {
       type: "group",
       id: "work",
       title: "Work",
-      children: targets.slice(40, 60),
+      children: [
+        ...(legacyGroupPaths
+          ? (["legacy-one", "legacy-two"] as const).map((id) => ({
+              type: "group" as const,
+              id,
+              title: "Notes",
+              children: [],
+            }))
+          : []),
+        ...targets.slice(40, 60),
+      ],
     },
     nestedShortcutGroups(5, "Five", targets.slice(60, 70)),
     nestedShortcutGroups(24, "Deep", targets.slice(70)),

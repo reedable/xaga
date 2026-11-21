@@ -176,8 +176,9 @@ pins:
 ```
 
 Group IDs are unique across the tree and survive renames and moves. Titles are
-trimmed and must be nonempty; duplicate titles are allowed. Typed targets remain
-unique across the entire tree. Strict YAML parsing bounds structural depth to 64;
+trimmed and must be nonempty. A group's full path is the sequence of trimmed
+titles from the root through that group. Compare each title exactly, including
+any slash within a title. Typed targets remain unique across the entire tree. Strict YAML parsing bounds structural depth to 64;
 the typed model also refuses more than 24 nested groups, including edits received
 through IPC. The existing 12 MiB bound and unknown-field/anchor rejection remain.
 
@@ -187,6 +188,15 @@ store replacement; destinations inside the moved subtree are refused. New pins
 append at root; new groups and moved nodes append in their destination. Removing
 a group replaces it with its children at the same stored position, preserving
 child order and all target pins. Toolbar unpin finds its target at any depth.
+
+The pin writer checks path conflicts against the current tree before replacing
+the file. Creating, renaming, or moving a group requires a unique path for the
+edited group. A descendant path change or promotion may preserve an existing
+collision between the same group IDs, but may not introduce one. Existing
+duplicates remain readable, and unrelated changes can still be saved. Rejected
+edits leave the stored tree untouched and report the conflicting path.
+Browser capture mirrors this check in `src/platform/capture/MockPlatform.ts`
+so it can exercise conflict handling without the native writer.
 Recovery, entity projections, and article resolution flatten target references
 from this same tree; groups have no entity or cache rows.
 
