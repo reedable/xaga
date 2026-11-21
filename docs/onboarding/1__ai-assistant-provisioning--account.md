@@ -24,10 +24,6 @@ cd Development
 
 **Step 4:** Set up `~/.zshrc` in the AI assistant account home, for example,
 
-In the command below, substitute:
-
-- `alpha`: the AI assistant account name.
-
 ```
 cat > ~/.zshrc <<'EOF'
 set -o vi
