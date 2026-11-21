@@ -265,9 +265,7 @@ async fn atom_writes_repair_missing_local_identity_and_reject_stale_conflicting_
     put(&path, &feed(""));
     let writer = writer(dir.path());
     let empty = HashSet::new();
-    let feeds = super::feeds::list_feeds(dir.path(), &empty, &empty)
-        .await
-        .unwrap();
+    let feeds = super::feeds::list_feeds(dir.path(), &empty).await.unwrap();
     assert_eq!(feeds[0].id, "local");
     assert_eq!(std::fs::read_to_string(&path).unwrap(), feed(""));
     writer
@@ -311,12 +309,10 @@ async fn atom_discovery_repairs_only_when_given_a_writer() {
     let path = library::feed_path(dir.path(), "local");
     put(&path, &feed(""));
     let empty = HashSet::new();
-    super::feeds::list_feeds(dir.path(), &empty, &empty)
-        .await
-        .unwrap();
+    super::feeds::list_feeds(dir.path(), &empty).await.unwrap();
     assert_eq!(std::fs::read_to_string(&path).unwrap(), feed(""));
     let writer = writer(dir.path());
-    super::feeds::list_feeds_with_writer(dir.path(), &empty, &empty, Some(&writer))
+    super::feeds::list_feeds_with_writer(dir.path(), &empty, Some(&writer))
         .await
         .unwrap();
     let mut atom = atom::parse_atom(&std::fs::read_to_string(&path).unwrap()).unwrap();

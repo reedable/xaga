@@ -11,11 +11,8 @@ use crate::{AppState, get_bookmarked_ids, get_unread_ids};
 #[tauri::command]
 pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<Feed>, AppError> {
     let library = state.library_path();
-    let (unread, bookmarked) = (
-        get_unread_ids(&state).await?,
-        get_bookmarked_ids(&state).await?,
-    );
-    feeds::list_feeds_with_writer(&library, &unread, &bookmarked, state.writer().as_ref())
+    let unread = get_unread_ids(&state).await?;
+    feeds::list_feeds_with_writer(&library, &unread, state.writer().as_ref())
         .await
         .map_err(AppError::from)
 }

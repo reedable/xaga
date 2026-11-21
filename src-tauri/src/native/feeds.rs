@@ -121,14 +121,10 @@ pub(crate) async fn import_feeds(
 pub(crate) async fn export_feeds(state: &AppState, file_path: &Path) -> Result<(), AppError> {
     let library = state.library_path();
 
-    let (unread, bookmarked) = (
-        get_unread_ids(state).await?,
-        get_bookmarked_ids(state).await?,
-    );
-    let feed_list =
-        feeds::list_feeds_with_writer(&library, &unread, &bookmarked, state.writer().as_ref())
-            .await
-            .map_err(AppError::from)?;
+    let unread = get_unread_ids(state).await?;
+    let feed_list = feeds::list_feeds_with_writer(&library, &unread, state.writer().as_ref())
+        .await
+        .map_err(AppError::from)?;
 
     let pairs: Vec<(&str, &str)> = feed_list
         .iter()

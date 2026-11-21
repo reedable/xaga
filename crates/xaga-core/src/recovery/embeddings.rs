@@ -242,22 +242,14 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
     // Feeds: diff like entities — re-embed a feed only when its row is absent, its checksum changed,
     // or its vector is pending. A feed row is stale when its feed is gone from disk.
 
-    let empty = HashSet::new();
-
-    let (all_feeds, feeds_outcome) = match crate::persistence::feeds::discover_feeds(
-        library_dir,
-        &empty,
-        &empty,
-        writer,
-    )
-    .await
-    {
-        Ok(result) => result,
-        Err(error) => {
-            log::warn!("recovery Feed discovery failed: {}", error.code());
-            (Vec::new(), WalkOutcome::Unreadable)
-        }
-    };
+    let (all_feeds, feeds_outcome) =
+        match crate::persistence::feeds::discover_feeds(library_dir, None, writer).await {
+            Ok(result) => result,
+            Err(error) => {
+                log::warn!("recovery Feed discovery failed: {}", error.code());
+                (Vec::new(), WalkOutcome::Unreadable)
+            }
+        };
 
     let feed_ids: HashSet<String> = all_feeds.iter().map(|f| f.id.clone()).collect();
 

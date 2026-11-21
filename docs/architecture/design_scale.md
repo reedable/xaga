@@ -15,6 +15,64 @@ Use the design target, rather than expected intake alone, when choosing and eval
 - **Performance analysis runs at the design target.** Costs that round to zero at the average do not at the target (a full-corpus embed takes hours; an unbounded in-memory queue of content-carrying jobs reaches tens of GB at the million scale).
 - **Record unverified choices.** Identify the assumption and its code location, such as an unmeasured batch size or sequential read loop. Leave severity and scheduling for an explicit decision instead of silently accepting or changing the choice.
 
+## Feed conversion during recovery
+
+The measured implementation called `discover_feeds` with empty unread and
+bookmark ID sets. The shared `atom_to_feed` selected a link, normalized and
+hashed its URL, and collected an ID for every stored membership. It then scanned
+the IDs for both counts. Recovery always received an unread count of zero,
+and the computed bookmark count was discarded.
+[Recovery](../../crates/xaga-core/src/recovery/embeddings.rs) ·
+[Discovery](../../crates/xaga-core/src/persistence/feeds.rs) ·
+[Atom conversion](../../crates/xaga-core/src/atom.rs)
+
+The measurement used a debug Rust build on an Apple M1 Max running macOS
+27.2.1. Each synthetic library contains two million Atom entry memberships.
+Feed counts and membership distributions are fixture assumptions. Each Atom
+document has a local ID, self link, and subtitle. Each entry has a title,
+timestamp, ID, and alternate HTTPS link with a `www.` host, query, and
+fragment. The harness builds XML outside the timed intervals, calls the
+production parser once per document, and times the production conversion.
+A second conversion pass times ID construction, both empty-set scans, and
+vector cleanup separately. The measurements exclude filesystem I/O, Atom
+destruction, pin lookup, database work, and embedding. They are single runs
+and do not establish release-build or end-to-end recovery latency.
+
+| Feed layout                 | XML parse (s) | Production conversion (s) | Build IDs (s) | Scan both sets (s) | Drop IDs (s) |
+| --------------------------- | ------------: | ------------------------: | ------------: | -----------------: | -----------: |
+| 200 × 10,000                |        97.579 |                    36.307 |        37.027 |              0.040 |        0.035 |
+| 1,000 × 2,000               |       123.128 |                    47.056 |        46.625 |              0.062 |        0.032 |
+| 499 × 2,000 + 1 × 1,002,000 |        88.613 |                    33.120 |        32.854 |              0.035 |        0.027 |
+
+Conversion accounted for about 27–28% of the combined parse and conversion
+time. Building the ID list accounted for almost all of the measured conversion
+cost. The separately timed ID pass can take longer than the production
+conversion because the measurements come from separate executions.
+
+Recovery and the feed embedding pipeline need the local ID, title, description,
+and pin state to reconcile rows. The row projection also uses the feed URL as
+its source. Counts, timestamps, and members from the `Feed` value do not contribute
+to the row. Pin state still comes from the library pin store.
+[Pipeline](../../crates/xaga-core/src/embeddings/pipeline.rs) ·
+[Row projection](../../crates/xaga-core/src/embeddings/row.rs)
+
+The options considered below could reuse the parsed Atom document and the
+discovery outcome. Normal discovery reads and parses each file once. The existing
+identity-repair path may reread a legacy file whose local ID needs stamping.
+[Atom walk](../../crates/xaga-core/src/persistence/walk.rs)
+
+| Option considered                         | Implementation and maintenance trade-off                                                                                                                                                                                                                                                                  |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Recovery-specific projection              | Makes the fields recovery consumes explicit. Reuse the Atom walk and share field extraction, or the recovery and listing paths can diverge on local IDs, self links, descriptions, and pin projection.                                                                                                    |
+| Shared conversion with conditional counts | Keeps field extraction and discovery shared. A fast path for two empty sets preserves the result at every caller and needs no new API. An explicit projection mode would express recovery intent but adds an option callers must select. Both retain the broad `Feed` result unless its type changes too. |
+| Retain the current conversion             | Requires no API or code changes. The link selection, URL normalization, hashing, and temporary ID allocations continue to scale with total stored memberships.                                                                                                                                            |
+
+Feed discovery now shares the Atom walk, metadata conversion, and pin projection.
+The feed list supplies a visitor that counts unread entries directly from each
+parsed feed. Recovery omits the visitor. Pin state comes from the same
+`pins.yaml` lookup for both callers. The timings above describe the baseline
+before this change.
+
 ## Article color query measurement
 
 On 2026-10-31, the `color_queries_at_design_scale` Rust test passed on macOS

@@ -524,38 +524,29 @@ pub(crate) fn entry_ids(feed: &Atom) -> Vec<String> {
 
 // ── Atom → domain (convert) ────────────────────────────────────────────────────
 
-pub(crate) fn atom_to_feed(
-    id: &str,
-    feed: &Atom,
+pub(crate) fn count_unread_feed_entries(
+    entries: &[AtomEntry],
     unread_ids: &HashSet<String>,
-    bookmarked_ids: &HashSet<String>,
-) -> Feed {
-    let entry_ids: Vec<String> = feed
-        .entries()
+) -> usize {
+    entries
         .iter()
-        .map(|e| {
-            let url = e
+        .filter(|entry| {
+            let url = entry
                 .links()
                 .iter()
-                .find(|l| l.rel() == "alternate")
-                .or_else(|| e.links().first())
-                .map(|l| l.href())
+                .find(|link| link.rel() == "alternate")
+                .or_else(|| entry.links().first())
+                .map(|link| link.href())
                 .unwrap_or("");
-            normalize_url(url)
-                .map(|n| url_hash12(&n))
-                .unwrap_or_else(|_| url_hash12(url))
+            let id = normalize_url(url)
+                .map(|normalized| url_hash12(&normalized))
+                .unwrap_or_else(|_| url_hash12(url));
+            unread_ids.contains(&id)
         })
-        .collect();
+        .count()
+}
 
-    let unread_count = entry_ids
-        .iter()
-        .filter(|id| unread_ids.contains(*id))
-        .count();
-    let _bookmarked_count = entry_ids
-        .iter()
-        .filter(|id| bookmarked_ids.contains(*id))
-        .count();
-
+pub(crate) fn atom_to_feed(id: &str, feed: &Atom, unread_count: usize) -> Feed {
     Feed {
         id: get_local_id(feed)
             .expect("validated local Feed identity")
