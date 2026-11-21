@@ -5,10 +5,8 @@ use scraper::{ElementRef, Html, Selector};
 use thiserror::Error;
 
 use crate::{
-    library,
     library_writer::{BookmarkOutcome, LibraryWriter, Tier as WriteTier},
     md::md_to_entry,
-    persistence::walk::for_each_md,
     types::{Article, Entry},
     util::{normalize_url, url_hash12},
 };
@@ -254,12 +252,17 @@ pub async fn import_bookmarks(
 
 /// Exports all bookmarked entries as a Netscape bookmark file to `dest_path`.
 pub async fn export_bookmarks(library_dir: &Path, dest_path: &Path) -> Result<(), BookmarksError> {
+    export_bookmarks_with_writer(library_dir, dest_path, None).await
+}
+
+pub async fn export_bookmarks_with_writer(
+    library_dir: &Path,
+    dest_path: &Path,
+    writer: Option<&LibraryWriter>,
+) -> Result<(), BookmarksError> {
     let mut entries: Vec<Entry> = Vec::new();
 
-    for_each_md(&library::entries_dir(library_dir), &md_to_entry, |e| {
-        entries.push(e)
-    })
-    .await;
+    super::walk::for_each_entry(library_dir, &md_to_entry, |e| entries.push(e), writer).await;
 
     entries.retain(|e| e.color.is_some());
 

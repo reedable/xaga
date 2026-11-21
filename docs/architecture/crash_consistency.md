@@ -93,7 +93,9 @@ A failed companion commit prevents PDF replacement, while a failed PDF commit
 leaves the complete identity record and previous PDF bytes.
 
 A successful HTML Markdown save removes the URL-associated PDF first and its
-companion second, under the same writer lane. A crash between removals can leave
+companion second when the saved Entry is canonical, under the same writer lane.
+When the HTML save updates the selected Markdown record under `pdfs/`, cleanup
+retains that record and removes only the PDF bytes. A crash between removals can leave
 only the companion. Markdown persistence and PDF-resource removal are not one transaction:
 a crash before removal can still leave both representations, and local lookup
 prefers the PDF. A successful HTML refresh removes those stale PDF resources.

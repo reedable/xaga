@@ -58,6 +58,19 @@ pub(crate) fn patch_document(
     updates: &[(&str, serde_json::Value)],
     body: Option<&str>,
 ) -> Result<String, MdError> {
+    patch_fields(raw, updates, body, true)
+}
+
+pub(crate) fn patch_identity(raw: &str, id: &str) -> Result<String, MdError> {
+    patch_fields(raw, &[("id", serde_json::json!(id))], None, false)
+}
+
+fn patch_fields(
+    raw: &str,
+    updates: &[(&str, serde_json::Value)],
+    body: Option<&str>,
+    cleanup: bool,
+) -> Result<String, MdError> {
     parse_document(raw)?;
     let trimmed = raw.trim_start();
     let prefix = &raw[..raw.len() - trimmed.len()];
@@ -72,14 +85,16 @@ pub(crate) fn patch_document(
             noyalib::to_value(value).map_err(|e| MdError::Frontmatter(e.to_string()))?,
         );
     }
-    if fields.get("is_unread") == Some(&noyalib::Value::Bool(false)) {
+    if cleanup && fields.get("is_unread") == Some(&noyalib::Value::Bool(false)) {
         fields.remove("is_unread");
     }
-    if fields.get("color") == Some(&noyalib::Value::Null) {
+    if cleanup && fields.get("color") == Some(&noyalib::Value::Null) {
         fields.remove("color");
     }
     // Unsupported image-map storage is omitted on every save (crash_consistency.md).
-    fields.remove("images");
+    if cleanup {
+        fields.remove("images");
+    }
     // Block scalars in noyalib 0.0.15 do not preserve embedded carriage returns.
     // Let the library escape them in quoted strings instead.
     let config = noyalib::SerializerConfig::new().block_scalars(false);
@@ -130,7 +145,7 @@ pub(crate) fn md_to_topic(md: Markdown) -> Topic {
     let is_pinned = false;
 
     Topic {
-        id: md.id.to_string(),
+        id: md.fm.id.unwrap_or(md.id),
         title: md.fm.title,
         created_at: md.fm.created_at,
         updated_at: md.fm.updated_at,
@@ -145,7 +160,7 @@ pub(crate) fn md_to_topic(md: Markdown) -> Topic {
 
 /// Converts .md storage format to Article domain object
 pub(crate) fn md_to_article(md: Markdown) -> Article {
-    let article_id = md.id.clone();
+    let article_id = md.fm.id.as_ref().unwrap_or(&md.id).clone();
     let annotations = md.fm.annotations.clone();
     let content = md.body.clone();
     let favicon = md.fm.favicon.clone();
@@ -172,7 +187,7 @@ pub(crate) fn md_to_entry(md: Markdown) -> Entry {
     let is_unread = md.fm.is_unread.unwrap_or(false);
 
     Entry {
-        id: md.id,
+        id: md.fm.id.unwrap_or(md.id),
         url: md.fm.source,
         title: md.fm.title,
         created_at: md.fm.created_at,
@@ -190,6 +205,7 @@ pub(crate) fn md_to_entry(md: Markdown) -> Entry {
 
 /// The parsed header fields of a `.md` document.
 pub struct Frontmatter {
+    pub id: Option<String>,
     pub source: String,
     pub title: String,
     pub created_at: String,
@@ -206,6 +222,7 @@ pub struct Frontmatter {
 }
 
 /// Parses only the header fields from a `---`-delimited document.
+#[cfg(test)]
 pub(crate) fn parse_frontmatter(raw: &str) -> Result<Frontmatter, MdError> {
     Ok(split_document(raw)?.0)
 }
@@ -261,6 +278,8 @@ impl From<&Annotation> for FrontmatterAnnotation {
 
 #[derive(serde::Deserialize, Default)]
 struct FrontmatterRaw {
+    #[serde(default, deserialize_with = "deserialize_identity")]
+    id: Option<String>,
     #[serde(default)]
     source: String,
     #[serde(default)]
@@ -287,6 +306,48 @@ struct FrontmatterRaw {
     favicon: Option<String>,
     #[serde(default, rename = "items", deserialize_with = "deserialize_references")]
     entities: Vec<Reference>,
+}
+
+// Absence is repairable; a present null, nonstring or empty value is malformed.
+fn deserialize_identity<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<String>, D::Error> {
+    use serde::Deserialize;
+    let id = String::deserialize(d)?;
+    if !crate::persistence::entries::is_safe_id(&id) {
+        return Err(serde::de::Error::custom("invalid document identity"));
+    }
+    Ok(Some(id))
+}
+
+pub(crate) fn resolve_identity(
+    fm: &Frontmatter,
+    path: &std::path::Path,
+) -> Result<String, MdError> {
+    crate::persistence::identity::resolve(fm.id.as_deref(), path).map_err(MdError::Frontmatter)
+}
+
+/// Offline converters accept legacy fields, but use the same local identity rules.
+pub(crate) fn validate_identity_yaml(yaml: &str, path: &std::path::Path) -> Result<(), MdError> {
+    #[derive(serde::Deserialize)]
+    struct Identity {
+        #[serde(default, deserialize_with = "deserialize_identity")]
+        id: Option<String>,
+    }
+    let header: Identity = noyalib::from_str_with_config(yaml, &FM_PARSER)
+        .map_err(|e| MdError::Frontmatter(e.to_string()))?;
+    crate::persistence::identity::resolve(header.id.as_deref(), path)
+        .map_err(MdError::Frontmatter)?;
+    Ok(())
+}
+
+pub(crate) fn parse_indexed(
+    raw: &str,
+    path: &std::path::Path,
+) -> Result<(Frontmatter, String), MdError> {
+    let (fm, body) = parse_document(raw)?;
+    resolve_identity(&fm, path)?;
+    Ok((fm, body))
 }
 
 // Translate the existing frontmatter encoding into the shared domain Reference.
@@ -365,6 +426,7 @@ pub(crate) fn split_document(raw: &str) -> Result<(Frontmatter, String), MdError
 
     Ok((
         Frontmatter {
+            id: fm.id,
             source: fm.source,
             title: fm.title,
             created_at: fm.created,

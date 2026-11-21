@@ -48,7 +48,7 @@ pub(crate) fn feed_entry_id(atom_id: &str, link_href: &str) -> String {
         .unwrap_or_else(|_| url_hash12(link_href))
 }
 
-/// Returns the canonical ID for any library entity: the file stem.
+/// Returns the filename lookup index. Persisted identity must be validated separately.
 pub(crate) fn entity_id(path: &std::path::Path) -> String {
     path.file_stem()
         .and_then(|s| s.to_str())

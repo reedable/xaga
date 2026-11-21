@@ -69,6 +69,52 @@ the user to select recurring maintenance work for the new development cycle.
 
 Commit the synchronized version files and refreshed `Cargo.lock` as the start of the new development cycle. A major, minor, or patch command may retarget an existing `-dev` version. It is rejected for an `-rc.N` version because a release candidate must be finalized before the next cycle begins.
 
+### Start development with GitHub Actions
+
+The manually executable **Bump major version**, **Bump minor version**, and
+**Bump patch version** workflows prepare a development-version PR into `main`.
+In GitHub **Actions**, select the appropriate workflow, choose **Run workflow**,
+select `main`, and run it. Choose the increment explicitly: library storage-model
+changes require a minor increment while the major version is 0; major increments
+remain a product decision.
+
+These wrappers call `.github/workflows/version-bump.yml` with a `bump` input of
+`major`, `minor`, or `patch`. Other workflows can call that reusable workflow
+with the same input and `contents: write` and `pull-requests: write` permissions.
+The selected source must be the current remote `main` commit with synchronized
+versions. A stale run fails rather than silently using newer source. Runs share
+a concurrency group and do not cancel an in-progress bump.
+
+The workflow runs the existing `npm run version:<increment>` command, commits
+the synchronized version files and `Cargo.lock` on `version/<new-version>`, and
+opens a PR into `main`. It supports final and development versions, including
+retargeting a development version, and rejects RC versions according to the same
+CLI lifecycle rules. It does not push to `main`, merge PRs, create tags, or build
+packages. It does not run automatically when cutting or merging a release.
+
+The workflows and scripts must be installed on the default branch before manual
+execution is available. Enable **Allow GitHub Actions to create and approve pull
+requests** in repository Actions settings; the workflow creates PRs but does not
+approve or merge them. Branch rules must permit creation of `version/*`.
+
+Review the generated PR and let its required checks pass before merging. GitHub
+may show **Approve workflows to run** for a PR created by `GITHUB_TOKEN`; approve
+those runs when prompted. If required checks do not start, close and reopen the
+PR manually. See [GitHub's workflow-trigger behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
+When entering `x.y.0-dev`, the run summary reminds you to review and select
+recurring maintenance work.
+
+If PR creation fails after the branch push, rerun the original workflow while
+`main` is unchanged. It reuses an existing branch only when its parent and source
+tree match the prepared bump, and reuses an open PR. It refuses to overwrite
+additional branch work. If `main` has moved or the branch differs, inspect the
+existing version PR before starting fresh work.
+
+Local tests use temporary Git repositories and simulated GitHub responses. They
+verify version synchronization, branch isolation, rejection paths, and PR
+recovery, but do not establish live dispatch, permissions, or required-check
+triggering. Verify those when installing the workflows.
+
 ## Development and local builds
 
 Use the normal development command while changing the application:
@@ -165,7 +211,7 @@ approve them. Branch and tag rules must permit the bot to create/update
 `release/*` and create release tags. Protect `main` by requiring PRs. No bot
 bypass of `main`, auto-merge setting, or administrative-read credential is needed.
 
-### Required release status
+### Release status
 
 The workflows report a commit status named **Release build** on the prepared
 RC or final commit, rather than on the commit selected for workflow dispatch.
@@ -174,34 +220,51 @@ remains local during building, so its status starts after the atomic push.
 Success is reported only after build, artifact retention, draft upload, and PR
 creation or reuse succeed. Failure/cancellation cleanup reports failure when the
 prepared commit is available remotely. If the runner cannot execute cleanup,
-a missing or pending required status continues to block merging. Publication
-retries report pending and then success on the same prepared commit.
+the status can remain missing or pending. Publication retries report pending
+and then success on the same prepared commit.
 
-To require this status for `main`:
+### Required pull request verification
 
-1. Install these workflows on the default and selected source branches, then run
-   Release Candidate or Release successfully once to register **Release build**.
-2. Open repository **Settings → Branches** and click **Edit** beside the branch
-   protection rule for `main`.
-3. Enable **Require status checks to pass before merging**. In the search field
-   beneath that option, enter `Release build` and select the matching result.
-4. Click **Save changes**. GitHub then requires this status on each PR's latest
-   commit; an earlier RC's success does not satisfy a newer RC or final commit.
+Every PR into `main`, including a release-branch PR, runs **Pull request
+verification** (`.github/workflows/development-pr.yml`). Its **Verification** job
+checks the proposed merge on macOS Apple Silicon with Rust compiler and
+documentation warnings treated as errors. It runs lint, repository formatting,
+TypeScript, reader CSP, Rust formatting, all-target workspace compilation,
+headless tests, and browser tests. It does not prepare versions, package the
+application, push refs, or create releases. Native WebKit and bundled macOS smoke
+checks remain separate desktop verification.
 
-The workflows do not edit repository protection settings. GitHub applies this
-required status to all PRs into `main`. The development-PR workflow automatically
-reports **Release build** as successful with the description “Release build not
-required for development PR” for ordinary PRs. Their other required checks and
-reviews still apply. PRs from `release/*` receive no exemption and require the
-actual release workflow result. An ordinary PR pointing at the same commit as a
-release branch cannot overwrite that commit's release-build result.
+PR and release workflows use `.github/actions/verify/action.yml` for shared
+setup and static checks. Headless and browser test steps remain in both
+`.github/workflows/development-pr.yml` and
+`.github/workflows/release-pipeline.yml` because composite actions do not support
+per-step timeouts; both call the same npm test scripts with 30-minute limits.
+Keep these test invocations and diagnostic upload settings synchronized. Releases
+verify after preparing the release commit and before packaging.
 
-The exemption workflow runs on PR creation, updates, reopening, and edits. It
-executes only trusted base-branch code and reads PR metadata; it does not check
-out or execute PR code, including code from forks. It needs `contents: read` to
-identify release-branch heads and `statuses: write` to report the exemption.
-Install this workflow on `main` before requiring **Release build**. For an
-already-open ordinary PR, push another commit or reopen it to trigger reporting.
+The PR workflow uses `pull_request` with `contents: read` and
+does not persist checkout credentials. It also runs for fork PRs, subject to
+GitHub's approval settings. New PR updates cancel obsolete verification runs.
+
+To require verification before merging into `main`:
+
+1. Install the PR workflow and shared action, then run a PR successfully to
+   register **Verification**.
+2. In repository **Settings → Branches**, edit the protection rule for `main`.
+3. Under **Require status checks to pass before merging**, add **Verification**
+   and remove **Release build**. Save the changes. Apply the equivalent change
+   if required checks are managed through a ruleset.
+
+The former release-build exemption is removed. **Release build** still reports
+release verification, packaging, and publication outcomes on prepared release
+commits, but must no longer be required for all PRs: feature PRs do not package
+releases. Workflow changes do not update repository protection settings.
+
+PRs created by release automation using `GITHUB_TOKEN` do not trigger the PR
+workflow. Close and reopen the release PR manually to start verification; a
+human-pushed update also triggers it. For ordinary PRs already open when the
+workflow is installed, reopen them or push an update. A missing **Verification**
+check blocks merging when configured as required.
 
 ## Prepare releases locally
 
@@ -245,7 +308,8 @@ when someone pushes a final `vX.Y.Z` or RC `vX.Y.Z-rc.N` tag. It is a tag-push
 trigger, not a Run workflow control. The tag must match the checked-out
 application version; development tags are rejected.
 
-It calls `.github/workflows/release-pipeline.yml` to run lint, formatting,
+It calls `.github/workflows/release-pipeline.yml`, which uses the shared verification
+action to run lint, formatting,
 TypeScript, CSP, Rust formatting and all-target workspace checks, headless tests,
 and browser tests. Each test step has a 30-minute timeout. It then builds the
 Apple Silicon distributable with the committed standard icons, verifies its

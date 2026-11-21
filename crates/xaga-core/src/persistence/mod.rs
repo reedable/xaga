@@ -19,3 +19,8 @@ pub(crate) mod documents;
 pub mod summary_repair;
 
 pub mod image_recovery;
+
+pub(crate) mod identity;
+
+#[cfg(test)]
+mod identity_tests;

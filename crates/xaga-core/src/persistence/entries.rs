@@ -5,7 +5,6 @@ use thiserror::Error;
 
 use crate::{
     library_writer::WriteToken,
-    md::parse_frontmatter,
     md::{Markdown, md_to_entry},
     types::{Article, Entry},
     util::{normalize_url, url_hash12},
@@ -85,17 +84,14 @@ pub(crate) fn is_safe_id(id: &str) -> bool {
 }
 
 /// Finds the current path of an entry by id, or `None` if the file does not exist.
-pub(crate) async fn find_entry_path(library_dir: &Path, id: &str) -> Option<PathBuf> {
+pub(crate) async fn find_entry_path(
+    library_dir: &Path,
+    id: &str,
+) -> Result<Option<PathBuf>, EntryError> {
     if !is_safe_id(id) {
-        return None;
+        return Err(EntryError::InvalidId);
     }
-
-    let path = crate::library::entry_path(library_dir, id);
-
-    tokio::fs::try_exists(&path)
-        .await
-        .unwrap_or(false)
-        .then_some(path)
+    Ok(crate::library::resolve_entry_path(library_dir, id).await?)
 }
 
 /// Writes an Entry to `entries/{hash12}.md` with `is_unread: true`, returning its [`Article`].
@@ -174,7 +170,9 @@ async fn write_initial_entry(
     validate_color(color)?;
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
-    let path = crate::library::entry_path(library_dir, &hash12);
+    let path = find_entry_path(library_dir, &hash12)
+        .await?
+        .unwrap_or_else(|| crate::library::entry_path(library_dir, &hash12));
 
     // Feed discovery and bookmark import leave already-saved entries untouched.
     if !tokio::fs::try_exists(&path).await? {
@@ -198,12 +196,31 @@ async fn write_initial_entry(
         }
         super::documents::upsert(&path, &updates, None, _token).await?;
     }
+    super::documents::repair_identity(&path, _token).await?;
     super::articles::read_article(library_dir, &hash12).await
 }
 
 /// Reads an entry by id and returns its metadata. Does not modify the file.
 pub async fn read_entry(library_dir: &Path, id: &str) -> Result<Entry, EntryError> {
-    let mut entry = read_entry_metadata(library_dir, id).await?;
+    read_entry_with_writer(library_dir, id, None).await
+}
+
+/// Read with optional serialized identity repair; no writer means no storage mutation.
+pub async fn read_entry_with_writer(
+    library_dir: &Path,
+    id: &str,
+    writer: Option<&crate::library_writer::LibraryWriter>,
+) -> Result<Entry, EntryError> {
+    let path = find_entry_path(library_dir, id)
+        .await?
+        .ok_or(EntryError::NotFound)?;
+    let raw = super::identity::read_markdown(&path, writer, super::identity::Record::Entry).await?;
+    let fm = crate::md::parse_indexed(&raw, &path)?.0;
+    let mut entry = md_to_entry(Markdown {
+        id: id.into(),
+        fm,
+        body: String::new(),
+    });
     entry.is_pinned = crate::pins::Pins::read(library_dir)
         .await
         .map_err(std::io::Error::other)?
@@ -213,10 +230,10 @@ pub async fn read_entry(library_dir: &Path, id: &str) -> Result<Entry, EntryErro
 
 pub(crate) async fn read_entry_metadata(library_dir: &Path, id: &str) -> Result<Entry, EntryError> {
     let path = find_entry_path(library_dir, id)
-        .await
+        .await?
         .ok_or(EntryError::NotFound)?;
     let raw = crate::fs::read_md_capped(&path).await?;
-    let fm = parse_frontmatter(&raw)?;
+    let fm = crate::md::parse_indexed(&raw, &path)?.0;
     let entry = md_to_entry(Markdown {
         id: id.to_string(),
         fm,
@@ -227,11 +244,19 @@ pub(crate) async fn read_entry_metadata(library_dir: &Path, id: &str) -> Result<
 
 /// Returns an entry's frontmatter tags — a persistence detail, not on the domain `Entry`.
 pub async fn read_entry_tags(library_dir: &Path, id: &str) -> Result<Vec<String>, EntryError> {
+    read_entry_tags_with_writer(library_dir, id, None).await
+}
+
+pub async fn read_entry_tags_with_writer(
+    library_dir: &Path,
+    id: &str,
+    writer: Option<&crate::library_writer::LibraryWriter>,
+) -> Result<Vec<String>, EntryError> {
     let path = find_entry_path(library_dir, id)
-        .await
+        .await?
         .ok_or(EntryError::NotFound)?;
-    let raw = crate::fs::read_md_capped(&path).await?;
-    let fm = parse_frontmatter(&raw)?;
+    let raw = super::identity::read_markdown(&path, writer, super::identity::Record::Entry).await?;
+    let fm = crate::md::parse_indexed(&raw, &path)?.0;
     Ok(fm.tags)
 }
 
@@ -262,7 +287,7 @@ pub(crate) async fn set_entry_tags(
     token: WriteToken,
 ) -> Result<(), EntryError> {
     let path = find_entry_path(library_dir, id)
-        .await
+        .await?
         .ok_or(EntryError::NotFound)?;
     super::documents::upsert(&path, &[("tags", serde_json::json!(tags))], None, token).await?;
     Ok(())
@@ -284,7 +309,7 @@ pub(crate) async fn set_entry_color(
 ) -> Result<Entry, EntryError> {
     validate_color(color.as_deref())?;
     let path = find_entry_path(library_dir, id)
-        .await
+        .await?
         .ok_or(EntryError::NotFound)?;
     super::documents::upsert(&path, &[("color", serde_json::json!(color))], None, token).await?;
     read_entry(library_dir, id).await
@@ -298,7 +323,7 @@ pub(crate) async fn set_entry_unread(
     token: WriteToken,
 ) -> Result<Entry, EntryError> {
     let path = find_entry_path(library_dir, id)
-        .await
+        .await?
         .ok_or(EntryError::NotFound)?;
     let rendered = super::documents::upsert(
         &path,
@@ -307,7 +332,7 @@ pub(crate) async fn set_entry_unread(
         token,
     )
     .await?;
-    let fm = parse_frontmatter(&rendered)?;
+    let fm = crate::md::parse_indexed(&rendered, &path)?.0;
     let mut entry = md_to_entry(Markdown {
         id: id.to_owned(),
         fm,
@@ -441,6 +466,7 @@ mod tests {
             assert!(entry.is_unread);
             let saved = std::fs::read_to_string(&path).unwrap();
             let mut expected = crate::md::test_frontmatter_values(original);
+            expected.insert("id".into(), noyalib::Value::String("marked".into()));
             if let Some(color) = color {
                 expected.insert("color".into(), noyalib::Value::String(color.into()));
             }
@@ -476,6 +502,7 @@ mod tests {
             assert!(entry.color.is_some());
             let saved = std::fs::read_to_string(&path).unwrap();
             let mut expected = crate::md::test_frontmatter_values(original);
+            expected.insert("id".into(), noyalib::Value::String("saved".into()));
             if unread {
                 expected.insert("is_unread".into(), noyalib::Value::Bool(true));
             }
@@ -552,7 +579,10 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            original.replacen("---\n", &format!("---\nid: {id:?}\n"), 1)
+        );
         assert_eq!(result.meta.description.as_deref(), Some("Saved summary"));
         assert_eq!(result.content, "Saved body");
         let result = write_read_entry(
@@ -568,7 +598,10 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            original.replacen("---\n", &format!("---\nid: {id:?}\n"), 1)
+        );
         assert_eq!(result.meta.description.as_deref(), Some("Saved summary"));
         assert!(result.meta.color.is_some());
     }

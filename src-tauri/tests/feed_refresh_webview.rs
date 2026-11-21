@@ -75,6 +75,11 @@ fn main() {
             commands::feeds::refresh_all_feeds
         ])
         .setup(|app| {
+            let library = app.state::<AppState>().library_path();
+            let original_updated = ["good", "bad"].map(|id| {
+                let raw = std::fs::read_to_string(xaga_core::library::feed_path(&library, id)).unwrap();
+                xaga_core::atom::parse_atom(&raw).unwrap().updated().to_owned()
+            });
             let window = WebviewWindowBuilder::new(
                 app,
                 "main",
@@ -98,8 +103,10 @@ fn main() {
                         let state = handle.state::<AppState>();
                         let good = std::fs::read_to_string(xaga_core::library::feed_path(&state.library_path(), "good")).unwrap();
                         let bad = std::fs::read_to_string(xaga_core::library::feed_path(&state.library_path(), "bad")).unwrap();
-                        assert!(!good.contains("2026-01-01T00:00:00Z"), "successful feed did not commit");
-                        assert!(bad.contains("2026-01-01T00:00:00Z"), "failed feed was changed");
+                        let good = xaga_core::atom::parse_atom(&good).unwrap();
+                        let bad = xaga_core::atom::parse_atom(&bad).unwrap();
+                        assert_ne!(good.updated(), &original_updated[0], "successful feed did not commit");
+                        assert_eq!(bad.updated(), &original_updated[1], "failed refresh changed the publisher timestamp");
                         println!("PASS: production native failure displayed in shared UI; successful feed committed and retry enabled: {title}");
                         handle.exit(0);
                         return;

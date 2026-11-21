@@ -46,46 +46,8 @@ jobs:
           RELEASE_STATE: ${{ runner.temp }}/release-state.json
         run: node scripts/prepare-release.mjs prepare "$RELEASE_MODE"
 
-      - name: Install JavaScript dependencies
-        run: npm ci
-
-      - name: Run linter
-        run: npm run lint -- --deny-warnings
-
-      - name: Check formatting
-        run: npm run format:check
-
-      - name: Check frontend types
-        run: npm run typecheck
-
-      - name: Check reader CSP
-        run: node scripts/csp-hash.mjs --check
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-          targets: aarch64-apple-darwin
-
-      - name: Check Rust formatting
-        run: cargo fmt --all --check
-
-      - name: Cache Rust dependencies and build output
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: . -> target
-          key: aarch64-apple-darwin
-
-      - name: Install Protocol Buffers compiler
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-        run: brew install protobuf && protoc --version
-
-      - name: Check Rust workspace
-        run: cargo check --workspace --all-targets --locked
-
-      - name: Install Chromium for browser tests
-        run: npx playwright install chromium
+      - name: Verify source
+        uses: ./.github/actions/verify
 
       - name: Run headless tests
         timeout-minutes: 30

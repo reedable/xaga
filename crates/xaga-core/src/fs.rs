@@ -234,9 +234,22 @@ pub(crate) async fn read_md_capped(path: &Path) -> Result<String, ReadMdError> {
 /// `(path, contents)` to `visit`. Yields between files so a large scan never starves higher-priority
 /// tasks. A missing directory, an unreadable entry, a file that fails to read (e.g. non-UTF-8), or a
 /// `.md` over [`MAX_MD_BYTES`] is skipped. Pure traversal — no knowledge of file format or contents.
+#[cfg(test)]
 pub(crate) async fn for_each_file<F>(dir: &Path, ext: &str, mut visit: F) -> WalkOutcome
 where
     F: FnMut(PathBuf, String),
+{
+    for_each_file_async(dir, ext, |path, raw| {
+        visit(path, raw);
+        std::future::ready(())
+    })
+    .await
+}
+
+pub(crate) async fn for_each_file_async<F, Fut>(dir: &Path, ext: &str, mut visit: F) -> WalkOutcome
+where
+    F: FnMut(PathBuf, String) -> Fut,
+    Fut: std::future::Future<Output = ()>,
 {
     // A missing directory is a trustworthy empty; any *other* open error (permission denied, etc.)
     // leaves the contents unknown. `exists()` is deliberately not used here — it also returns false
@@ -283,7 +296,7 @@ where
             }
         };
 
-        visit(path, raw);
+        visit(path, raw).await;
 
         tokio::task::yield_now().await;
     }

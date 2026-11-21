@@ -1,6 +1,20 @@
 use super::*;
 
 impl LibraryWriter {
+    pub(crate) async fn repair_identity(
+        &self,
+        path: PathBuf,
+        kind: crate::persistence::identity::Record,
+    ) -> Result<(), WriterError> {
+        let (resp, rx) = oneshot::channel();
+        self.submit(
+            Tier::Interactive,
+            Op::RepairIdentity { path, kind, resp },
+            rx,
+        )
+        .await
+    }
+
     pub async fn save_pdf(&self, url: String, bytes: Option<Vec<u8>>) -> Result<(), WriterError> {
         let (resp, rx) = oneshot::channel();
         self.submit(Tier::Interactive, Op::SavePdf { url, bytes, resp }, rx)

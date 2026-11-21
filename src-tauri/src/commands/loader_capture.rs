@@ -561,7 +561,8 @@ pub(crate) async fn recover_entry_images(
         let library = state.library.read().unwrap();
         (library.path.clone(), library.writer.clone())
     };
-    let current = articles::read_article(&library, &id).await?;
+    let current =
+        articles::read_article_with_writer(&library, &id, state.writer().as_ref()).await?;
     let expected = if recovery.summary {
         current.meta.description.as_deref().unwrap_or("")
     } else {

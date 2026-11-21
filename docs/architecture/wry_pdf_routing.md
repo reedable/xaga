@@ -29,15 +29,17 @@ first creates an Entry-format, frontmatter-only identity companion at
 can reverse the otherwise one-way filename; its initial title is that URL. The
 PDF companion-file loader validates that the URL is normalized HTTP(S), hashes back to the
 companion's stem, and has an empty body. These operations share the entry's
-writer lane. A successful HTML save removes the PDF and dormant companion. A
+writer lane. A successful HTML save removes the PDF, retaining a selected
+Markdown source under `pdfs/` and deleting a companion only when a canonical
+Entry is the selected source. A
 failed PDF validation leaves all previous files intact.
 
 Local lookup precedes article ingestion. Stored PDFs are size-bounded and their
 signature is rechecked before use. Explicit refresh bypasses local lookup.
 New downloads require a writable library; cached files remain readable in a
 read-only library. Legacy PDFs without companions remain readable when the caller
-already knows their URL. Companions under `pdfs/` remain dormant until entry
-discovery is deliberately expanded beyond `entries/`.
+already knows their URL. Entry discovery includes companions under `pdfs/`, with canonical Entry precedence
+and saved-ID validation. See [persisted entity identity](persisted_entity_identity.md).
 
 The General setting **Show PDFs in the reading pane** controls presentation.
 When enabled, the frontend displays validated bytes through a local Blob URL.

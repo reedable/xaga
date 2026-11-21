@@ -13,3 +13,5 @@
 5. [Library upgrade verification](library_upgrade_verification.md) — automated boundaries and desktop smoke checklist
 
 6. [Verification workflow](verification.md) — discover requirements, independently review story readiness, and verify completion
+
+[Onboarding](../onboarding/index.md) — human operator instructions for provisioning AI assistant accounts. Read only for account provisioning or signing setup tasks.

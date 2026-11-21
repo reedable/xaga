@@ -16,8 +16,6 @@ use crate::{
     util::{normalize_url, url_hash12},
 };
 
-use super::walk::for_each_atom;
-
 // ── Shared error + result ────────────────────────────────────────────────────
 
 /// Status code the app shell's network proxy answers with when it refuses a
@@ -90,6 +88,13 @@ impl FeedError {
 
 /// FIXME Untangle FeedError for least visibility
 pub(crate) type Result<T> = std::result::Result<T, FeedError>;
+
+fn validate_lookup(id: &str) -> Result<()> {
+    if !super::entries::is_safe_id(id) {
+        return Err(FeedError::AtomParse("invalid lookup identity".into()));
+    }
+    Ok(())
+}
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -210,14 +215,14 @@ async fn refresh_feed(
     timeout_secs: u64,
     max_body_bytes: u64,
 ) -> Result<(Feed, Vec<Article>)> {
+    validate_lookup(id)?;
     let path = crate::library::feed_path(library_dir, id);
 
     if !path.exists() {
         return Err(FeedError::NotFound(id.to_string()));
     }
 
-    let mut existing =
-        parse_atom(&tokio::fs::read_to_string(&path).await?).map_err(FeedError::AtomParse)?;
+    let mut existing = super::identity::read_atom(&path, Some(writer)).await?;
     crate::atom::set_self_link_url(&mut existing, url);
 
     let new_entries =
@@ -327,12 +332,13 @@ pub async fn refresh_all_feeds(
     // never re-read the file it was just walked from.
     let mut feeds: Vec<(String, Atom)> = Vec::new();
 
-    for_each_atom(
+    super::walk::for_each_atom_with_writer(
         &crate::library::feeds_dir(library_dir),
         &parse_atom,
         |path, feed| {
             feeds.push((crate::util::entity_id(&path), feed));
         },
+        Some(writer),
     )
     .await;
 
@@ -366,15 +372,36 @@ pub async fn list_feeds(
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
 ) -> Result<Vec<Feed>> {
+    list_feeds_with_writer(library_dir, unread, bookmarked, None).await
+}
+
+pub async fn list_feeds_with_writer(
+    library_dir: &Path,
+    unread: &HashSet<String>,
+    bookmarked: &HashSet<String>,
+    writer: Option<&LibraryWriter>,
+) -> Result<Vec<Feed>> {
+    Ok(discover_feeds(library_dir, unread, bookmarked, writer)
+        .await?
+        .0)
+}
+
+pub(crate) async fn discover_feeds(
+    library_dir: &Path,
+    unread: &HashSet<String>,
+    bookmarked: &HashSet<String>,
+    writer: Option<&LibraryWriter>,
+) -> Result<(Vec<Feed>, crate::fs::WalkOutcome)> {
     let mut feeds: Vec<Feed> = Vec::new();
 
-    for_each_atom(
+    let outcome = super::walk::for_each_atom_with_writer(
         &crate::library::feeds_dir(library_dir),
         &parse_atom,
         |path, atom_feed| {
             let id = crate::util::entity_id(&path);
             feeds.push(atom_to_feed(&id, &atom_feed, unread, bookmarked));
         },
+        writer,
     )
     .await;
 
@@ -389,7 +416,7 @@ pub async fn list_feeds(
         });
     }
     feeds.sort_by(|a, b| a.id.cmp(&b.id));
-    Ok(feeds)
+    Ok((feeds, outcome))
 }
 
 /// Read one feed from its authoritative Atom file and derive its current state.
@@ -399,8 +426,11 @@ pub(crate) async fn read_feed(
     unread: &HashSet<String>,
     bookmarked: &HashSet<String>,
 ) -> Result<Feed> {
+    validate_lookup(id)?;
     let xml = tokio::fs::read_to_string(crate::library::feed_path(library_dir, id)).await?;
     let feed = parse_atom(&xml).map_err(FeedError::AtomParse)?;
+    crate::atom::resolve_local_id(&feed, &crate::library::feed_path(library_dir, id))
+        .map_err(FeedError::AtomParse)?;
     project_pin(library_dir, atom_to_feed(id, &feed, unread, bookmarked)).await
 }
 
@@ -413,12 +443,14 @@ pub(crate) async fn rename_feed(
     bookmarked: &HashSet<String>,
     _token: WriteToken,
 ) -> Result<Feed> {
+    validate_lookup(id)?;
     let path = crate::library::feed_path(library_dir, id);
     if !path.exists() {
         return Err(FeedError::NotFound(id.to_string()));
     }
     let xml = tokio::fs::read_to_string(&path).await?;
     let mut feed = parse_atom(&xml).map_err(FeedError::AtomParse)?;
+    crate::atom::resolve_local_id(&feed, &path).map_err(FeedError::AtomParse)?;
     set_title(&mut feed, new_title);
     write_atom_atomic(library_dir, id, &feed).await?;
     project_pin(library_dir, atom_to_feed(id, &feed, unread, bookmarked)).await
@@ -426,10 +458,14 @@ pub(crate) async fn rename_feed(
 
 /// Remove a feed (deletes `{id}.atom`).
 pub(crate) async fn remove_feed(library_dir: &Path, id: &str, _token: WriteToken) -> Result<()> {
+    validate_lookup(id)?;
     let path = crate::library::feed_path(library_dir, id);
     if !path.exists() {
         return Err(FeedError::NotFound(id.to_string()));
     }
+    let atom =
+        parse_atom(&tokio::fs::read_to_string(&path).await?).map_err(FeedError::AtomParse)?;
+    crate::atom::resolve_local_id(&atom, &path).map_err(FeedError::AtomParse)?;
     tokio::fs::remove_file(&path).await?;
     Ok(())
 }
@@ -438,6 +474,14 @@ pub(crate) async fn remove_feed(library_dir: &Path, id: &str, _token: WriteToken
 /// deduplicated. The `.atom` is the source of truth for feed membership; entry data
 /// and state are fetched from LanceDB by the caller (see the `list_entries` command).
 pub async fn list_entry_ids(library_dir: &Path, url: Option<&str>) -> Result<Vec<String>> {
+    list_entry_ids_with_writer(library_dir, url, None).await
+}
+
+pub async fn list_entry_ids_with_writer(
+    library_dir: &Path,
+    url: Option<&str>,
+    writer: Option<&LibraryWriter>,
+) -> Result<Vec<String>> {
     let feeds_dir = crate::library::feeds_dir(library_dir);
     let mut ids = Vec::new();
     let mut seen = HashSet::new();
@@ -452,8 +496,8 @@ pub async fn list_entry_ids(library_dir: &Path, url: Option<&str>) -> Result<Vec
                 return Err(FeedError::NotFound(id));
             }
 
-            let xml = tokio::fs::read_to_string(&path).await?;
-            let feed = parse_atom(&xml).map_err(FeedError::AtomParse)?;
+            let feed = super::identity::read_atom(&path, writer).await?;
+            crate::atom::resolve_local_id(&feed, &path).map_err(FeedError::AtomParse)?;
             for id in entry_ids(&feed) {
                 if seen.insert(id.clone()) {
                     ids.push(id);
@@ -461,13 +505,18 @@ pub async fn list_entry_ids(library_dir: &Path, url: Option<&str>) -> Result<Vec
             }
         }
         None => {
-            for_each_atom(&feeds_dir, &parse_atom, |_path, feed| {
-                for id in entry_ids(&feed) {
-                    if seen.insert(id.clone()) {
-                        ids.push(id);
+            super::walk::for_each_atom_with_writer(
+                &feeds_dir,
+                &parse_atom,
+                |_path, feed| {
+                    for id in entry_ids(&feed) {
+                        if seen.insert(id.clone()) {
+                            ids.push(id);
+                        }
                     }
-                }
-            })
+                },
+                writer,
+            )
             .await;
         }
     }
@@ -530,7 +579,19 @@ async fn fetch_xml(
 }
 
 async fn write_atom_atomic(library_dir: &Path, id: &str, atom: &Atom) -> Result<()> {
-    let buf = atom_to_xml(atom).map_err(FeedError::AtomParse)?;
+    validate_lookup(id)?;
+    let path = crate::library::feed_path(library_dir, id);
+    match tokio::fs::read_to_string(&path).await {
+        Ok(raw) => {
+            let saved = parse_atom(&raw).map_err(FeedError::AtomParse)?;
+            crate::atom::resolve_local_id(&saved, &path).map_err(FeedError::AtomParse)?;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
+    let mut atom = atom.clone();
+    crate::atom::ensure_local_id(&mut atom, &path).map_err(FeedError::AtomParse)?;
+    let buf = atom_to_xml(&atom).map_err(FeedError::AtomParse)?;
     crate::fs::write_atomic_async(crate::library::feed_path(library_dir, id), buf).await?;
     Ok(())
 }

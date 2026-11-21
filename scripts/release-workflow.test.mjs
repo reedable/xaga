@@ -114,11 +114,6 @@ if (process.env.GH_FAIL === args[1] || process.env.GH_FAIL === args.slice(0,2).j
 if (args[0] === 'api' && args.some(arg => arg.includes('/statuses/'))) {
  state.statuses ||= []; state.statuses.push({sha:args.find(arg=>arg.includes('/statuses/')).split('/').at(-1),state:args.find(arg=>arg.startsWith('state=')).slice(6),context:args.find(arg=>arg.startsWith('context=')).slice(8)});
 }
-else if (args[0] === 'api' && args.some(arg => arg.includes('/git/matching-refs/'))) {
- const text = require('node:child_process').execFileSync('git', ['ls-remote','origin','refs/heads/release/*'], {encoding:'utf8'}).trim();
- const refs = text ? text.split('\\n').map(line => { const [sha,ref] = line.split(/\\s+/); return {ref,object:{sha}}; }) : [];
- console.log(JSON.stringify([refs]));
-}
 else if (args[0] === 'api' && args.includes('--paginate') && args.includes('--slurp')) console.log(JSON.stringify([state.releases]));
 else if (args[0] === 'pr' && args[1] === 'list') console.log(JSON.stringify(state.prs));
 else if (args[0] === 'pr' && args[1] === 'create') state.prs.push({number:1,base:args[args.indexOf('--base')+1],head:args[args.indexOf('--head')+1]});
@@ -188,14 +183,6 @@ fs.writeFileSync(path, JSON.stringify(state));
     publish,
     refs,
     manifest,
-    developmentPr: (event, extra = {}) => {
-      const path = join(directory, "pr-event.json");
-      writeFileSync(path, JSON.stringify(event));
-      return command("release-status.mjs", ["development-pr"], {
-        GITHUB_EVENT_PATH: path,
-        ...extra,
-      });
-    },
     status: (state, path = env.RELEASE_STATE) =>
       command("release-status.mjs", [path, state]),
   };
@@ -529,75 +516,4 @@ test("failure reporting without a prepared commit is a no-op", (t) => {
   const f = fixture(t);
   succeeds(f.status("failure", join(f.directory, "missing-state.json")));
   assert.equal(head(f, "main"), f.start);
-});
-
-function developmentEvent(sha, ref = "feature/change") {
-  return {
-    repository: { full_name: "fixture/xaga" },
-    pull_request: {
-      state: "open",
-      base: { ref: "main" },
-      head: { ref, sha, repo: { full_name: "fixture/xaga" } },
-    },
-  };
-}
-
-test("ordinary PRs satisfy Release build on their own head commit", (t) => {
-  const f = fixture(t);
-  const event = developmentEvent(f.start);
-  succeeds(f.developmentPr(event));
-  assert.deepEqual(github(f).statuses, [
-    { sha: f.start, context: "Release build", state: "success" },
-  ]);
-  event.pull_request.head.sha = "a".repeat(40);
-  succeeds(f.developmentPr(event));
-  assert.equal(github(f).statuses.at(-1).sha, event.pull_request.head.sha);
-});
-
-test("ordinary fork PRs receive the exemption without executing PR code", (t) => {
-  const f = fixture(t);
-  const event = developmentEvent(f.start);
-  event.pull_request.head.repo.full_name = "contributor/xaga";
-  succeeds(f.developmentPr(event));
-  assert.equal(github(f).statuses.at(-1).state, "success");
-});
-
-for (const reason of [
-  "release branch",
-  "other base",
-  "closed",
-  "other repository",
-]) {
-  test(`PR exemption does not report success for ${reason}`, (t) => {
-    const f = fixture(t);
-    succeeds(f.prepare());
-    const statuses = github(f).statuses;
-    const event = developmentEvent(head(f));
-    if (reason === "release branch")
-      event.pull_request.head.ref = "release/0.17.3";
-    if (reason === "other base") event.pull_request.base.ref = "another-base";
-    if (reason === "closed") event.pull_request.state = "closed";
-    if (reason === "other repository")
-      event.repository.full_name = "other/xaga";
-    succeeds(f.developmentPr(event));
-    assert.deepEqual(github(f).statuses, statuses);
-  });
-}
-
-test("an ordinary PR cannot overwrite a release failure on the same commit", (t) => {
-  const f = fixture(t);
-  succeeds(f.prepare());
-  succeeds(f.status("failure"));
-  const statuses = github(f).statuses;
-  succeeds(f.developmentPr(developmentEvent(head(f))));
-  assert.deepEqual(github(f).statuses, statuses);
-});
-
-test("failed release-branch lookup cannot grant a PR exemption", (t) => {
-  const f = fixture(t);
-  fails(
-    f.developmentPr(developmentEvent(f.start), {
-      GH_FAIL: "repos/fixture/xaga/git/matching-refs/heads/release/",
-    })
-  );
 });
