@@ -77,5 +77,5 @@ pub use model::{
     DEFAULT_MODEL_REPO, DownloadOutcome, Embedder, default_model_dir, download_model,
     load_default_embedder, model_files_present, model_present,
 };
-pub use pipeline::{embed_entry_vector, embed_topic_vector, sync_entry_row, sync_topic_row};
+pub use pipeline::{embed_topic_vector, sync_entry_row, sync_topic_row};
 pub use service::{EmbeddingService, EntityRef, Job, ShutdownReason, StatePatch, Tier};

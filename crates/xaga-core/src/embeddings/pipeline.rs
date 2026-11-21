@@ -429,19 +429,24 @@ pub async fn sync_topic_row(topic: &Topic, db: &EmbeddingsDb) -> Result<(), Embe
 
 /// Slow path (entry): computes and stores the entry's embedding vector when missing or stale,
 /// then fills any pending annotation vectors. Runs the embedder.
-pub async fn embed_entry_vector(
+pub(crate) async fn embed_entry_vector(
     article: &Article,
     embedder: &Arc<Embedder>,
     db: &EmbeddingsDb,
+    should_embed_entry: bool,
 ) -> Result<(), EmbeddingsError> {
     let id = article.meta.id.clone();
 
-    let existing = db.get_entry(&id).await?;
-    let new_checksum = checksum(&article.meta.title, article_embed_text(article));
-    let needs_vector = match &existing {
-        None => true,
-        Some(e) => e.vector.is_none() || e.checksum != new_checksum,
+    let existing = if should_embed_entry {
+        db.get_entry(&id).await?
+    } else {
+        None
     };
+    let needs_vector = should_embed_entry
+        && existing.as_ref().is_none_or(|row| {
+            row.vector.is_none()
+                || row.checksum != checksum(&article.meta.title, article_embed_text(article))
+        });
 
     if needs_vector {
         log::debug!(

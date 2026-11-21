@@ -32,8 +32,8 @@ formalizes existing identity authority and repairs deficiencies incrementally.
 Entry lookup and discovery use the library's ordered roots. An existing
 `entries/{id}.md` takes precedence over `pdfs/{id}.md`, including when the canonical
 record is rejected or unreadable. PDF companions follow the same identity rules
-and retain their additional source-URL validation while dormant. HTML saves retain
-a selected Markdown source under `pdfs/`; PDF cleanup removes a companion only
+and their additional source-URL validation when PDF persistence uses them to
+identify the PDF. HTML saves retain a selected Markdown source under `pdfs/`; PDF cleanup removes a companion only
 when the selected source is canonical. Later PDF saves preserve existing article
 content and annotations in either location. See [library layout](library_layout.md).
 

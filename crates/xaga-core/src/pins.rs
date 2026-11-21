@@ -630,7 +630,12 @@ mod tests {
         );
         assert_eq!(Pins::read(second.path()).await.unwrap(), Pins::default());
         assert!(!library::index_path(first.path()).exists());
-        assert!(!library::entries_dir(first.path()).exists());
+        assert!(
+            !library::entry_path(first.path(), "fixture")
+                .parent()
+                .unwrap()
+                .exists()
+        );
         for hostname in [
             "",
             "../escape",

@@ -59,54 +59,57 @@ pub(super) fn convert(dir: &Path, _lock: &FileLock) -> Result<(), super::upgrade
     Ok(())
 }
 
-pub(super) fn rewrite_favicons(
+pub(super) async fn rewrite_favicons(
     dir: &Path,
     lock: &FileLock,
     report: &mut super::UpgradeReport,
     progress: &impl Fn(super::UpgradeProgress),
 ) {
-    for directory in [
-        super::entries_dir(dir),
-        super::topics_dir(dir),
-        super::pdfs_dir(dir),
-    ] {
-        let entries = match fs::read_dir(&directory) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+    use futures::StreamExt;
+
+    let topics = super::topics_dir(dir);
+    let topic_paths = match fs::read_dir(&topics) {
+        Ok(entries) => Some(entries),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => {
+            report.errors.push(format!(
+                "favicon references in {}: {error}",
+                topics.display()
+            ));
+            None
+        }
+    };
+    let paths = super::scan_entry_paths(dir).chain(futures::stream::iter(
+        topic_paths
+            .into_iter()
+            .flatten()
+            .map(|entry| entry.map(|entry| entry.path())),
+    ));
+    futures::pin_mut!(paths);
+    while let Some(path) = paths.next().await {
+        let path = match path {
+            Ok(path) => path,
             Err(error) => {
-                report.errors.push(format!(
-                    "favicon references in {}: {error}",
-                    directory.display()
-                ));
+                report
+                    .errors
+                    .push(format!("favicon reference discovery: {error}"));
                 continue;
             }
         };
-        for entry in entries {
-            let path = match entry {
-                Ok(entry) => entry.path(),
-                Err(error) => {
-                    report.errors.push(format!(
-                        "favicon references in {}: {error}",
-                        directory.display()
-                    ));
-                    continue;
-                }
-            };
-            if path.extension().is_none_or(|ext| ext != "md") {
-                continue;
-            }
-            match rewrite_favicon(&path, lock) {
-                Ok(true) => report.converted += 1,
-                Ok(false) => {}
-                Err(error) => report
-                    .errors
-                    .push(format!("favicon reference in {}: {error}", path.display())),
-            }
-            progress(super::UpgradeProgress::from_report(
-                super::UpgradePhase::Converting,
-                report,
-            ));
+        if path.extension().is_none_or(|ext| ext != "md") {
+            continue;
         }
+        match rewrite_favicon(&path, lock) {
+            Ok(true) => report.converted += 1,
+            Ok(false) => {}
+            Err(error) => report
+                .errors
+                .push(format!("favicon reference in {}: {error}", path.display())),
+        }
+        progress(super::UpgradeProgress::from_report(
+            super::UpgradePhase::Converting,
+            report,
+        ));
     }
 }
 
@@ -138,7 +141,7 @@ mod tests {
 
     fn legacy(dir: &Path) {
         fs::write(dir.join("library.yaml"), "format_version: '0.16'\n").unwrap();
-        for directory in ["feeds", "favicons", "embeddings.lance", "entries"] {
+        for directory in ["feeds", "favicons", "embeddings.lance"] {
             fs::create_dir(dir.join(directory)).unwrap();
         }
         fs::write(dir.join("pins.yaml"), "pins: [{type: entry, id: e}]\n").unwrap();
@@ -146,7 +149,8 @@ mod tests {
         fs::write(dir.join("feeds/f.atom"), "feed bytes").unwrap();
         fs::write(dir.join("favicons/icon"), "icon bytes").unwrap();
         fs::write(dir.join("embeddings.lance/retained"), "database bytes").unwrap();
-        fs::write(dir.join("entries/e.md"), "---\nsource: https://example.com/\ntitle: Article\nfavicon: ../favicons/icon\ncustom: keep\n---\n\nExact body.\n").unwrap();
+        fs::create_dir(library::entry_path(dir, "e").parent().unwrap()).unwrap();
+        fs::write(library::entry_path(dir, "e"), "---\nsource: https://example.com/\ntitle: Article\nfavicon: ../favicons/icon\ncustom: keep\n---\n\nExact body.\n").unwrap();
     }
 
     #[tokio::test]

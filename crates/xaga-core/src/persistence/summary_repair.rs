@@ -53,67 +53,59 @@ pub async fn repair_summaries(writer: &LibraryWriter, dry_run: bool) -> RepairRe
             .errors
             .push("Could not read all local Atom files".into());
     }
-    let candidates = Mutex::new(Vec::new());
-    for directory in library::entry_scan_dirs(dir) {
-        let outcome = fs::for_each_file_async(&directory, "md", |path, _| {
-            let report = &report;
-            let summaries = &summaries;
-            let candidates = &candidates;
-            async move {
-                let result = async {
-                    let id = util::entity_id(&path);
-                    if library::resolve_entry_path(dir, &id).await?.as_ref() != Some(&path) {
-                        return Ok(());
-                    }
-                    let raw = super::identity::read_markdown(
-                        &path,
-                        repair_writer,
-                        super::identity::Record::Entry,
-                    )
-                    .await?;
-                    if md::has_summary_field(&raw)? {
-                        report.lock().unwrap().skipped += 1;
-                        return Ok(());
-                    }
-                    let (fm, _) = md::parse_indexed(&raw, &path)?;
-                    let url = util::normalize_url(&fm.source)?;
-                    if let Some(summary) = summaries.lock().unwrap().get(&url) {
-                        if dry_run {
-                            md::patch_document(
-                                &raw,
-                                &[("summary", serde_json::json!(summary))],
-                                None,
-                            )?;
-                            report.lock().unwrap().would_repair += 1;
-                        } else {
-                            candidates.lock().unwrap().push((id, summary.clone()));
-                        }
-                    } else {
-                        report.lock().unwrap().unavailable += 1;
-                    }
-                    Ok::<_, EntryError>(())
-                }
-                .await;
-                if let Err(error) = result {
-                    report
-                        .lock()
-                        .unwrap()
-                        .errors
-                        .push(format!("{}: {error}", path.display()));
-                }
+    let mut candidates = Vec::new();
+    let paths = library::scan_entry_paths(dir);
+    futures::pin_mut!(paths);
+    while let Some(path) = futures::StreamExt::next(&mut paths).await {
+        let path = match path {
+            Ok(path) => path,
+            Err(error) => {
+                report
+                    .lock()
+                    .unwrap()
+                    .errors
+                    .push(format!("Entry discovery: {error}"));
+                continue;
             }
-        })
+        };
+        let result = async {
+            let id = util::entity_id(&path);
+            let raw = super::identity::read_markdown(
+                &path,
+                repair_writer,
+                super::identity::Record::Entry,
+            )
+            .await?;
+            if md::has_summary_field(&raw)? {
+                report.lock().unwrap().skipped += 1;
+                return Ok(());
+            }
+            let (fm, _) = md::parse_indexed(&raw, &path)?;
+            let url = util::normalize_url(&fm.source)?;
+            if let Some(summary) = summaries.lock().unwrap().get(&url) {
+                if dry_run {
+                    md::patch_document(&raw, &[("summary", serde_json::json!(summary))], None)?;
+                    report.lock().unwrap().would_repair += 1;
+                } else {
+                    candidates.push((id, summary.clone()));
+                }
+            } else {
+                report.lock().unwrap().unavailable += 1;
+            }
+            Ok::<_, EntryError>(())
+        }
         .await;
-        if outcome == fs::WalkOutcome::Unreadable {
+        if let Err(error) = result {
             report
                 .lock()
                 .unwrap()
                 .errors
-                .push("Could not read all saved article files".into());
+                .push(format!("{}: {error}", path.display()));
         }
     }
+
     let mut report = report.into_inner().unwrap();
-    for (id, summary) in candidates.into_inner().unwrap() {
+    for (id, summary) in candidates {
         match writer.repair_summary(id.clone(), summary).await {
             Ok(true) => report.repaired += 1,
             Ok(false) => report.skipped += 1,
@@ -163,7 +155,7 @@ mod tests {
 
     fn fixture() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir(library::entries_dir(dir.path())).unwrap();
+        std::fs::create_dir(library::entry_path(dir.path(), "fixture").parent().unwrap()).unwrap();
         std::fs::create_dir_all(library::feeds_dir(dir.path())).unwrap();
         dir
     }

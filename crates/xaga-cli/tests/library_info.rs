@@ -66,7 +66,7 @@ fn info_reads_each_library_version_without_modifying_it_or_enforcing_compatibili
 #[test]
 fn completed_new_layout_cli_reads_are_not_blocked_by_version_mismatch() {
     let dir = tempfile::tempdir().unwrap();
-    std::fs::create_dir(library::entries_dir(dir.path())).unwrap();
+    std::fs::create_dir(library::entry_path(dir.path(), "fixture").parent().unwrap()).unwrap();
     std::fs::write(library::entry_path(dir.path(), "article"), "---\nsource: https://example.org\ntitle: Kept title\ncreated: yesterday\n---\nUser content\n").unwrap();
     std::fs::create_dir_all(dir.path().join("metadata")).unwrap();
     for raw in [

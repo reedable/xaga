@@ -10,6 +10,7 @@ use std::{
 };
 
 use crate::{embeddings::EmbeddingsDb, fs::FileLock, library};
+use futures::StreamExt;
 use noyalib::{ParserConfig, Value, policy::DenyAnchors};
 
 use crate::fs::MAX_MD_BYTES;
@@ -423,21 +424,26 @@ async fn convert_pins(dir: &Path, lock: &FileLock) -> Result<Vec<String>, Error>
     use crate::pins::{PinTarget, Pins};
     let mut pins = Pins::read(dir).await?;
     for (folder, extension, kind) in [
-        (library::entries_dir(dir), "md", "entry"),
-        (library::topics_dir(dir), "md", "topic"),
-        (library::feeds_dir(dir), "atom", "feed"),
+        (None, "md", "entry"),
+        (Some(library::topics_dir(dir)), "md", "topic"),
+        (Some(library::feeds_dir(dir)), "atom", "feed"),
     ] {
-        let entries = match fs::read_dir(&folder) {
-            Ok(entries) => entries,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(error) => {
-                errors.push(format!("{}: {error}", folder.display()));
-                continue;
-            }
+        let mut paths = if let Some(folder) = folder {
+            let entries = match fs::read_dir(&folder) {
+                Ok(entries) => entries,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    errors.push(format!("{}: {error}", folder.display()));
+                    continue;
+                }
+            };
+            futures::stream::iter(entries.map(|entry| entry.map(|entry| entry.path()))).boxed()
+        } else {
+            library::scan_entry_paths(dir).boxed()
         };
-        for entry in entries {
+        while let Some(path) = paths.next().await {
             let result = (|| -> Result<(), Error> {
-                let path = entry?.path();
+                let path = path?;
                 if path.extension().is_none_or(|ext| ext != extension) {
                     return Ok(());
                 }
@@ -594,7 +600,7 @@ pub async fn upgrade_library(
                 .push(format!("layout conversion: {error}; rerun library upgrade"));
             return report;
         }
-        super::layout::rewrite_favicons(dir, lock, &mut report, &progress);
+        super::layout::rewrite_favicons(dir, lock, &mut report, &progress).await;
     }
 
     // Optional annotation tags (0.16) and nested pins (0.15) preserve existing
@@ -740,17 +746,6 @@ pub async fn upgrade_library(
                 .push(format!("pin cache reconciliation: {error}"));
         }
     }
-    let entries_dir = library::entries_dir(dir);
-    let entries = match fs::read_dir(&entries_dir) {
-        Ok(entries) => Some(entries),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => {
-            report
-                .errors
-                .push(format!("{}: {error}", entries_dir.display()));
-            return report;
-        }
-    };
     let mut registry = match crate::tags::Tags::read(dir).await {
         Ok(registry) => registry,
         Err(e) => {
@@ -770,15 +765,13 @@ pub async fn upgrade_library(
     ));
     let mut batches = 0usize;
     let mut states = Vec::with_capacity(CACHE_BATCH_SIZE);
-    for entry in entries.into_iter().flatten() {
+    let paths = library::scan_entry_paths(dir);
+    futures::pin_mut!(paths);
+    while let Some(path) = paths.next().await {
         let result = (|| -> Result<(), Error> {
-            let entry = entry?;
-            let path = entry.path();
-            if path.extension().is_none_or(|ext| ext != "md") {
-                return Ok(());
-            }
+            let path = path?;
             let process = (|| -> Result<(), Error> {
-                if !entry.file_type()?.is_file() {
+                if !fs::symlink_metadata(&path)?.file_type().is_file() {
                     return Err("expected a regular article file".into());
                 }
                 let id = path
@@ -1419,18 +1412,17 @@ custom:
 
     #[tokio::test]
     async fn pin_conversion_parse_errors_report_the_source_path() {
-        for (folder, name, raw) in [
-            ("feeds", "bad.atom", "<feed><broken"),
-            ("entries", "bad.md", "missing frontmatter"),
+        for (record_path, raw) in [
+            (
+                library::feed_path as fn(&Path, &str) -> std::path::PathBuf,
+                "<feed><broken",
+            ),
+            (library::entry_path, "missing frontmatter"),
         ] {
             let dir = tempfile::tempdir().unwrap();
             let lock = library::acquire_lock(dir.path()).unwrap();
             fs::create_dir_all(dir.path().join("metadata")).unwrap();
-            let path = if folder == "feeds" {
-                library::feeds_dir(dir.path()).join(name)
-            } else {
-                dir.path().join(folder).join(name)
-            };
+            let path = record_path(dir.path(), "bad");
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(&path, raw).unwrap();
             let error = convert_pins(dir.path(), &lock)
@@ -2138,7 +2130,7 @@ custom:
             .unwrap()
             .complete()
             .unwrap();
-        fs::create_dir_all(library::entries_dir(lib)).unwrap();
+        fs::create_dir_all(library::entry_path(lib, "fixture").parent().unwrap()).unwrap();
         let raw = document("tags: [Research, RESEARCH]\nis_unread: true\ncolor: green");
         let cache = table(lib, &lock).await;
         let setup = Instant::now();

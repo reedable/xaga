@@ -8,8 +8,8 @@ story.
 
 ## Requirements
 
-- Depends on [shared Entry location resolution](defect__entry-location-resolution.md)
-  providing a discoverable, writable Entry for each supported stored PDF. The
+- Use [shared Entry location resolution](../../docs/architecture/library_layout.md#entry-location-contract)
+  to find the writable Entry for each supported stored PDF. The
   PDF's existing URL-derived Entry identity owns its assignments. Do not create
   a separate PDF tag store or require text extraction for tagging.
 - Make the shared Entry tag picker available for the selected PDF through the
@@ -28,7 +28,7 @@ story.
 
 ## Remaining work
 
-- Verify the prerequisite's Entry resolution, discovery, tag mutation, and
+- Verify shared Entry resolution, discovery, tag mutation, and
   recovery paths support both feed-backed PDFs and activated PDF companions.
 - Connect PDF inspection to the shared tag picker and existing Entry assignment
   APIs; extend capture fixtures and tag-result navigation for PDFs.

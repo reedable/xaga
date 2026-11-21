@@ -17,8 +17,8 @@ use crate::types::{Article, Feed, Kind};
 
 use super::{RepairResidue, RepairSink};
 
-/// Walks `{library_dir}/topics/` and `{library_dir}/entries/`, comparing each against LanceDB and
-/// streaming the entities that need embedding to `sink` (topics before articles, so they index first).
+/// Walks Topics and both Entry locations, comparing each against LanceDB and streaming records
+/// that need reconciliation to `sink` (Topics first).
 /// Returns the residue that can only be computed after the full walk: feed embeds and deletes.
 pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
     library_dir: &Path,
@@ -113,129 +113,125 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
     let mut resolver = tags.resolver();
     let mut observed_transitions = HashSet::new();
     let mut entries_outcome = WalkOutcome::Enumerated;
-    for directory in library::entry_scan_dirs(library_dir) {
-        let mut entries = match tokio::fs::read_dir(directory).await {
-            Ok(entries) => Some(entries),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(_) => {
+    let paths = library::scan_entry_paths(library_dir);
+    futures::pin_mut!(paths);
+    while let Some(path) = futures::StreamExt::next(&mut paths).await {
+        let path = match path {
+            Ok(path) => path,
+            Err(error) => {
+                log::warn!("Entry discovery failed during recovery: {error}");
                 entries_outcome = WalkOutcome::Unreadable;
-                None
-            }
-        };
-        while let Some(entries) = &mut entries {
-            let path = match entries.next_entry().await {
-                Ok(Some(entry)) => entry.path(),
-                Ok(None) => break,
-                Err(_) => {
-                    entries_outcome = WalkOutcome::Unreadable;
-                    break;
-                }
-            };
-            if path.extension().is_none_or(|ext| ext != "md") {
                 continue;
             }
-            match library::resolve_entry_path(library_dir, &crate::util::entity_id(&path)).await {
-                Ok(Some(selected)) if selected == path => {}
-                Ok(_) => continue,
-                Err(error) => {
-                    log::warn!("recovery could not resolve {}: {error}", path.display());
-                    entries_outcome = WalkOutcome::Unreadable;
-                    continue;
-                }
+        };
+        let raw = match crate::persistence::identity::read_markdown(
+            &path,
+            writer,
+            crate::persistence::identity::Record::Entry,
+        )
+        .await
+        {
+            Ok(raw) => raw,
+            Err(_) => {
+                entries_outcome = WalkOutcome::Unreadable;
+                continue;
             }
-            let raw = match crate::persistence::identity::read_markdown(
-                &path,
-                writer,
-                crate::persistence::identity::Record::Entry,
-            )
-            .await
-            {
-                Ok(raw) => raw,
-                Err(_) => {
+        };
+        let (fm, body) = crate::md::parse_indexed(&raw, &path).expect("validated read");
+        let mut article = md_to_article(crate::md::Markdown {
+            id: crate::util::entity_id(&path),
+            fm,
+            body,
+        });
+        let names = article.meta.tags.as_deref().unwrap_or_default();
+        let observations = tags.observation_ids(names);
+        let mut resolved_tags = resolver.resolve(names).ok();
+        if resolved_tags.is_none()
+            || observations
+                .iter()
+                .any(|id| !observed_transitions.contains(id))
+        {
+            let writer = writer.ok_or_else(|| {
+                std::io::Error::other("unknown article labels require a library writer")
+            })?;
+            let (current_store, current_ids) = writer
+                .resolve_entry_tags(article.meta.id.clone())
+                .await
+                .map_err(std::io::Error::other)?;
+            tags = current_store;
+            resolved_tags = Some(current_ids);
+            resolver = tags.resolver();
+            observed_transitions.extend(observations);
+        }
+        let resolved_tags = resolved_tags.expect("resolved above or through the writer");
+        let mut annotation_tag_ids = article
+            .annotations
+            .iter()
+            .map(|a| resolver.resolve(&a.tags).map(|ids| (a.id.clone(), ids)))
+            .collect::<Result<crate::tags::AnnotationTagIds, _>>()
+            .ok();
+        let annotation_observations = article
+            .annotations
+            .iter()
+            .flat_map(|a| tags.observation_ids(&a.tags))
+            .collect::<Vec<_>>();
+        if annotation_tag_ids.is_none() || !annotation_observations.is_empty() {
+            let writer = writer.ok_or_else(|| {
+                std::io::Error::other("annotation label discovery requires a library writer")
+            })?;
+            let (store, ids) = writer
+                .resolve_annotation_tags(article.meta.id.clone())
+                .await
+                .map_err(std::io::Error::other)?;
+            tags = store;
+            resolver = tags.resolver();
+            annotation_tag_ids = Some(ids);
+        }
+        let annotation_tag_ids = annotation_tag_ids.expect("resolved above");
+        let annotation_tags_differ = annotation_tag_ids.iter().any(|(id, tags)| {
+            db_meta
+                .get(id)
+                .is_none_or(|(_, _, _, _, _, _, _, stored)| stored != tags)
+        });
+        article.meta.is_pinned = pin_targets.contains(&crate::pins::PinTarget::Entry {
+            id: article.meta.id.clone(),
+        });
+        fs_ids.insert(article.meta.id.clone());
+        fs_ids.extend(article.annotations.iter().map(|a| a.id.clone()));
+        let article_checksum = checksum(&article.meta.title, article_embed_text(&article));
+        let metadata_only =
+            match crate::persistence::pdfs::is_metadata_only(library_dir, &article).await {
+                Ok(metadata_only) => metadata_only,
+                Err(error) => {
+                    log::warn!(
+                        "Could not determine PDF representation for {}: {error}",
+                        path.display()
+                    );
                     entries_outcome = WalkOutcome::Unreadable;
                     continue;
                 }
             };
-            let (fm, body) = crate::md::parse_indexed(&raw, &path).expect("validated read");
-            let mut article = md_to_article(crate::md::Markdown {
-                id: crate::util::entity_id(&path),
-                fm,
-                body,
-            });
-            let names = article.meta.tags.as_deref().unwrap_or_default();
-            let observations = tags.observation_ids(names);
-            let mut resolved_tags = resolver.resolve(names).ok();
-            if resolved_tags.is_none()
-                || observations
-                    .iter()
-                    .any(|id| !observed_transitions.contains(id))
-            {
-                let writer = writer.ok_or_else(|| {
-                    std::io::Error::other("unknown article labels require a library writer")
-                })?;
-                let (current_store, current_ids) = writer
-                    .resolve_entry_tags(article.meta.id.clone())
-                    .await
-                    .map_err(std::io::Error::other)?;
-                tags = current_store;
-                resolved_tags = Some(current_ids);
-                resolver = tags.resolver();
-                observed_transitions.extend(observations);
-            }
-            let resolved_tags = resolved_tags.expect("resolved above or through the writer");
-            let mut annotation_tag_ids = article
-                .annotations
-                .iter()
-                .map(|a| resolver.resolve(&a.tags).map(|ids| (a.id.clone(), ids)))
-                .collect::<Result<crate::tags::AnnotationTagIds, _>>()
-                .ok();
-            let annotation_observations = article
-                .annotations
-                .iter()
-                .flat_map(|a| tags.observation_ids(&a.tags))
-                .collect::<Vec<_>>();
-            if annotation_tag_ids.is_none() || !annotation_observations.is_empty() {
-                let writer = writer.ok_or_else(|| {
-                    std::io::Error::other("annotation label discovery requires a library writer")
-                })?;
-                let (store, ids) = writer
-                    .resolve_annotation_tags(article.meta.id.clone())
-                    .await
-                    .map_err(std::io::Error::other)?;
-                tags = store;
-                resolver = tags.resolver();
-                annotation_tag_ids = Some(ids);
-            }
-            let annotation_tag_ids = annotation_tag_ids.expect("resolved above");
-            let annotation_tags_differ = annotation_tag_ids.iter().any(|(id, tags)| {
-                db_meta
-                    .get(id)
-                    .is_none_or(|(_, _, _, _, _, _, _, stored)| stored != tags)
-            });
-            article.meta.is_pinned = pin_targets.contains(&crate::pins::PinTarget::Entry {
-                id: article.meta.id.clone(),
-            });
-            fs_ids.insert(article.meta.id.clone());
-            fs_ids.extend(article.annotations.iter().map(|a| a.id.clone()));
-            let needs_embed = needs_embedding(
-                &article.meta.id,
-                &checksum(&article.meta.title, article_embed_text(&article)),
-            );
-            let state_differs = db_meta.get(&article.meta.id).is_some_and(
-                |(_, _, _, _, _, unread, color, stored_tags)| {
-                    *unread != article.meta.is_unread
-                        || color.as_str() != article.meta.color.as_deref().unwrap_or("")
-                        || stored_tags != &resolved_tags
-                },
-            );
-            if needs_embed
-                || state_differs
-                || annotations_differ(&article)
-                || annotation_tags_differ
-                || pinned_ids.contains(&article.meta.id) != article.meta.is_pinned
-            {
-                sink.article(article, resolved_tags, annotation_tag_ids);
-            }
+        let needs_row = if metadata_only {
+            db_meta
+                .get(&article.meta.id)
+                .is_none_or(|(stored, ..)| stored != &article_checksum)
+        } else {
+            needs_embedding(&article.meta.id, &article_checksum)
+        };
+        let state_differs = db_meta.get(&article.meta.id).is_some_and(
+            |(_, _, _, _, _, unread, color, stored_tags)| {
+                *unread != article.meta.is_unread
+                    || color.as_str() != article.meta.color.as_deref().unwrap_or("")
+                    || stored_tags != &resolved_tags
+            },
+        );
+        if needs_row
+            || state_differs
+            || annotations_differ(&article)
+            || annotation_tags_differ
+            || pinned_ids.contains(&article.meta.id) != article.meta.is_pinned
+        {
+            sink.article(article, resolved_tags, annotation_tag_ids);
         }
     }
 
@@ -727,6 +723,53 @@ mod tests {
         writer.shutdown().await;
     }
 
+    #[tokio::test]
+    async fn recovery_tracks_metadata_only_pdfs_and_withholds_deletes_on_scan_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = dir.path();
+        let url = "https://example.org/paper";
+        let id = crate::util::url_hash12(url);
+        crate::persistence::pdfs::save(
+            library,
+            url,
+            Some(b"%PDF-paper".to_vec()),
+            crate::library_writer::WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+
+        let db = EmbeddingsDb::open(library).await.unwrap();
+        let mut sink = CollectingSink { articles: vec![] };
+        repair_entity_embeddings(library, &db, &mut sink, None)
+            .await
+            .unwrap();
+        assert_eq!(sink.articles, [id.clone()]);
+
+        let article = read_article(library, &id).await.unwrap();
+        db.upsert(EmbeddingEntry::from_article(&article, None, Vec::new()))
+            .await
+            .unwrap();
+        sink.articles.clear();
+        let residue = repair_entity_embeddings(library, &db, &mut sink, None)
+            .await
+            .unwrap();
+        assert!(sink.articles.is_empty());
+        assert!(residue.to_delete.is_empty());
+
+        let root = crate::library::pdfs_dir(library);
+        std::fs::rename(&root, dir.path().join("unavailable")).unwrap();
+        let missing = repair_entity_embeddings(library, &db, &mut sink, None)
+            .await
+            .unwrap();
+        assert_eq!(missing.to_delete, [id]);
+
+        std::fs::write(root, []).unwrap();
+        let unreadable = repair_entity_embeddings(library, &db, &mut sink, None)
+            .await
+            .unwrap();
+        assert!(unreadable.to_delete.is_empty());
+    }
+
     /// The regression guard: when the entries directory cannot be read (e.g. macOS TCC denying a
     /// bundled app access to the library), recovery must NOT read that as "the library is empty"
     /// and delete every mirror row. An unreadable source withholds all deletes.
@@ -766,7 +809,8 @@ mod tests {
         .unwrap();
 
         // Deny enumeration on the entries dir so the walk cannot observe the source.
-        let entries = crate::library::entries_dir(lib);
+        let fixture = crate::library::entry_path(lib, "fixture");
+        let entries = fixture.parent().unwrap();
         let original = std::fs::metadata(&entries).unwrap().permissions();
         std::fs::set_permissions(&entries, std::fs::Permissions::from_mode(0o000)).unwrap();
 
@@ -817,7 +861,7 @@ mod tag_tests {
     #[tokio::test]
     async fn tag_only_drift_discovers_definitions_and_preserves_vectors_on_rebuild() {
         let dir = tempfile::tempdir().unwrap();
-        tokio::fs::create_dir(library::entries_dir(dir.path()))
+        tokio::fs::create_dir(library::entry_path(dir.path(), "fixture").parent().unwrap())
             .await
             .unwrap();
         let path = library::entry_path(dir.path(), "entry");
@@ -893,7 +937,7 @@ mod tag_tests {
     #[tokio::test]
     async fn tag_unknown_discovery_requires_writer_and_does_not_write_on_readonly_path() {
         let dir = tempfile::tempdir().unwrap();
-        tokio::fs::create_dir(library::entries_dir(dir.path()))
+        tokio::fs::create_dir(library::entry_path(dir.path(), "fixture").parent().unwrap())
             .await
             .unwrap();
         tokio::fs::write(

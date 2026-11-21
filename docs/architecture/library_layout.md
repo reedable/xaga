@@ -44,8 +44,9 @@ new-file destination construction distinct from resolution of an existing Entry
 so creation does not bypass an existing PDF companion. See
 [DRY](../principles/dry.md).
 
-This is the required contract. Updating callers that still assume a single
-Entry directory is implementation work; the directory layout itself is unchanged.
+Recovery, bookmark export, summary repair, and library conversions use the
+same streaming traversal. Missing roots are empty. Errors leave the scan
+incomplete, so recovery withholds deletions based on absent records.
 
 Back up every visible directory. `metadata/` contains authoritative format
 metadata, subscriptions and feed membership, pins, and tag definitions and pending

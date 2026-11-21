@@ -1318,7 +1318,12 @@ mod annotation_tag_tests {
     #[tokio::test]
     async fn assignment_preserves_other_bytes_and_latest_tags_through_edits() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir(dir.path().join("entries")).unwrap();
+        std::fs::create_dir(
+            crate::library::entry_path(dir.path(), "fixture")
+                .parent()
+                .unwrap(),
+        )
+        .unwrap();
         let path = crate::library::entry_path(dir.path(), "a");
         std::fs::write(&path, SOURCE).unwrap();
         let writer = LibraryWriter::start(
@@ -1407,7 +1412,12 @@ mod annotation_tag_tests {
     #[tokio::test]
     async fn missing_invalid_and_unknown_targets_do_not_mutate_source() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir(dir.path().join("entries")).unwrap();
+        std::fs::create_dir(
+            crate::library::entry_path(dir.path(), "fixture")
+                .parent()
+                .unwrap(),
+        )
+        .unwrap();
         let path = crate::library::entry_path(dir.path(), "a");
         std::fs::write(&path, SOURCE).unwrap();
         let writer = LibraryWriter::start(
@@ -1442,7 +1452,12 @@ mod annotation_tag_index_tests {
 
     async fn setup() -> (tempfile::TempDir, LibraryWriter, EmbeddingsDb) {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir(dir.path().join("entries")).unwrap();
+        std::fs::create_dir(
+            crate::library::entry_path(dir.path(), "fixture")
+                .parent()
+                .unwrap(),
+        )
+        .unwrap();
         std::fs::write(crate::library::entry_path(dir.path(), "parent"), "---\nsource: https://example.org/a\nannotations:\n- id: first\n  text: [First]\n  occurrence: [0]\n  color: blue\n  created_at: yesterday\n- id: second\n  text: [Second]\n  occurrence: [0]\n  color: yellow\n  created_at: yesterday\n---\n\nBody\n").unwrap();
         let writer = LibraryWriter::start(
             dir.path().into(),
@@ -1707,7 +1722,7 @@ mod annotation_tag_layout_tests {
             "annotations:\n- id: note\n  text: [text]\n  occurrence: [0]\n  color: blue\n  created_at: today\n  tags:\n  - Research\n  # retain sibling\ncustom_nested: retained\n",
         ]) {
             let dir = tempfile::tempdir().unwrap();
-            std::fs::create_dir(dir.path().join("entries")).unwrap();
+            std::fs::create_dir(crate::library::entry_path(dir.path(), "fixture").parent().unwrap()).unwrap();
             let path = crate::library::entry_path(dir.path(), "parent");
             let original = format!(
                 "---\nsource: https://example.org/a\n{layout}custom: '001' # retain\n---\n\nExact body\n"

@@ -173,7 +173,7 @@ mod library_mode_tests {
         release.send(()).unwrap();
         assert!(matches!(closing.await, ShutdownReason::Exit));
         assert!(
-            std::fs::read_to_string(dir.path().join("entries/abcdef123456.md"))
+            std::fs::read_to_string(xaga_core::library::entry_path(dir.path(), "abcdef123456"))
                 .unwrap()
                 .contains("saved before close")
         );
