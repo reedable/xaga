@@ -1,7 +1,7 @@
 # AI assistant provisioning
 
->**NOTE:**
-Start in the human operator's account.
+> **NOTE:**
+> Start in the human operator's account.
 
 **Step 1:** Create a new standard macOS account for the new AI assistant, e.g. `alpha`. **WARNING:** Do _not_ grant administrator access.
 

@@ -1,10 +1,10 @@
 # AI assistant provisioning — GPG
 
 > **WARNING:**
-Ed25519 is not quantum-resistant. A sufficiently capable quantum computer could recover the private keys from their public keys and forge signatures. Keeping the primary key offline does not prevent this. Plan to migrate to post-quantum signing.
+> Ed25519 is not quantum-resistant. A sufficiently capable quantum computer could recover the private keys from their public keys and forge signatures. Keeping the primary key offline does not prevent this. Plan to migrate to post-quantum signing.
 
->**NOTE:**
-Start in the human operator's account. GPG must be installed and the human's certification key available.
+> **NOTE:**
+> Start in the human operator's account. GPG must be installed and the human's certification key available.
 
 **Step 1:** Generate the AI assistant's certification-only primary key. Protect it with a passphrase.
 

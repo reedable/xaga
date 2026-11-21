@@ -1,7 +1,7 @@
 # AI assistant provisioning — Git signing
 
 > **NOTE:**
-Start in the AI assistant's shell (`su - alpha`, substituting the actual account name for `alpha`).
+> Start in the AI assistant's shell (`su - alpha`, substituting the actual account name for `alpha`).
 
 **Step 1:** Open [GitHub email settings](https://github.com/settings/emails) on the account receiving the key. Add the AI assistant's email and follow the verification link sent to that address.
 

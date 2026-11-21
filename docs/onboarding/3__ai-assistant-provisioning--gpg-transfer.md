@@ -1,7 +1,7 @@
 # AI assistant provisioning — GPG backup and transfer
 
 > **NOTE:**
-Start in the human operator's account.
+> Start in the human operator's account.
 
 **Step 1:** Back up the private keys to secure offline storage.
 
