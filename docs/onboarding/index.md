@@ -6,3 +6,5 @@ These guides are for human operators provisioning AI assistant accounts. AI sess
 2. [GPG keys](2__ai-assistant-provisioning--gpg.md)
 3. [GPG backup and transfer](3__ai-assistant-provisioning--gpg-transfer.md)
 4. [Git signing](4__ai-assistant-provisioning--git-signing.md)
+
+5. [Codex CLI](5__ai-assistant-provisioning--codex.md)
