@@ -1,8 +1,9 @@
 # AI assistant provisioning
 
-Start in the human operator's account.
+> **NOTE:**
+> Start in the human operator's account.
 
-**Step 1:** Create a new standard macOS account for the new AI assistant, e.g. `alpha`. WARNING: Do _not_ grant administrator access.
+**Step 1:** Create a new standard macOS account for the new AI assistant, e.g. `alpha`. **WARNING:** Do _not_ grant administrator access.
 
 **Step 2:** Open Terminal. Log into the AI assistant account,
 
@@ -23,14 +24,10 @@ cd Development
 
 **Step 4:** Set up `~/.zshrc` in the AI assistant account home, for example,
 
-In the command below, substitute:
-
-- `alpha`: the AI assistant account name.
-
 ```
 cat > ~/.zshrc <<'EOF'
 set -o vi
-PS1='[alpha] $ '
+PS1='%n$ '
 export PATH="/opt/homebrew/bin:${PATH}"
 export GPG_TTY=$(tty)
 EOF
@@ -62,4 +59,4 @@ cat ~/.ssh/id_ed25519.pub
 git clone git@github.com:reedable/xaga.git
 ```
 
-WARNING: Before accepting GitHub's host key, verify the fingerprint against [GitHub's published fingerprints](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints). The Ed25519 fingerprint is `SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`. Enter `yes` only if it matches.
+**WARNING:** Before accepting GitHub's host key, verify the fingerprint against [GitHub's published fingerprints](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints). The Ed25519 fingerprint is `SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU`. Enter `yes` only if it matches.

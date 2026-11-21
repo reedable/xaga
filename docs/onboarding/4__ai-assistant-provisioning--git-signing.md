@@ -1,6 +1,7 @@
 # AI assistant provisioning — Git signing
 
-Start in the AI assistant's shell (`su - alpha`, substituting the actual account name for `alpha`).
+> **NOTE:**
+> Start in the AI assistant's shell (`su - alpha`, substituting the actual account name for `alpha`).
 
 **Step 1:** Open [GitHub email settings](https://github.com/settings/emails) on the account receiving the key. Add the AI assistant's email and follow the verification link sent to that address.
 
@@ -55,7 +56,7 @@ git config --global commit.gpgsign true
 
 **Step 6:** Create and verify a signed test commit. Enter the passphrase when prompted.
 
-WARNING: Any staged changes will be included in this commit.
+**WARNING:** Any staged changes will be included in this commit.
 
 ```
 cd ~/Development/xaga
