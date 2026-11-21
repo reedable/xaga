@@ -64,9 +64,8 @@ for bookmarking or manual Topic membership.
 - Define the PDF-specific Entry metadata and Markdown-body contract, including
   how a companion is distinguished from an HTML article and how extraction
   provenance or status is recorded.
-- Integrate the shared resolution and discovery provided by the
-  [Entry location story](../available/defect__entry-location-resolution.md).
-  Do not add separate activation or location-selection logic for extraction.
+- Use [shared Entry resolution and discovery](../../docs/architecture/library_layout.md#entry-location-contract)
+  when enriching a PDF Entry with extracted text.
 - Decide the authoritative title and timestamps when the load begins with only
   a URL, when a Feed Entry already exists, and when the PDF supplies document
   metadata.

@@ -170,12 +170,12 @@ async fn write_initial_entry(
     validate_color(color)?;
     let normalized = normalize_url(url)?;
     let hash12 = url_hash12(&normalized);
-    let path = find_entry_path(library_dir, &hash12)
-        .await?
-        .unwrap_or_else(|| crate::library::entry_path(library_dir, &hash12));
-
-    // Feed discovery and bookmark import leave already-saved entries untouched.
-    if !tokio::fs::try_exists(&path).await? {
+    let existing = find_entry_path(library_dir, &hash12).await?;
+    let path = if let Some(path) = existing {
+        path
+    } else {
+        // Feed discovery and bookmark import leave already-saved entries untouched.
+        let path = crate::library::entry_path(library_dir, &hash12);
         let mut updates = vec![
             ("source", serde_json::json!(normalized)),
             ("title", serde_json::json!(title)),
@@ -195,7 +195,8 @@ async fn write_initial_entry(
             }
         }
         super::documents::upsert(&path, &updates, None, _token).await?;
-    }
+        path
+    };
     super::documents::repair_identity(&path, _token).await?;
     super::articles::read_article(library_dir, &hash12).await
 }

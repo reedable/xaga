@@ -847,7 +847,12 @@ async fn color_queries_survive_cache_rebuild_and_index_creation() {
         .discover_tags(vec!["research".into(), "bookmark".into()])
         .await
         .unwrap();
-    std::fs::create_dir_all(crate::library::entries_dir(dir.path())).unwrap();
+    std::fs::create_dir_all(
+        crate::library::entry_path(dir.path(), "fixture")
+            .parent()
+            .unwrap(),
+    )
+    .unwrap();
     for color in ["", "red", "orange", "yellow", "green", "blue", "violet"] {
         let id = if color.is_empty() { "unmarked" } else { color };
         let marking = if color.is_empty() {

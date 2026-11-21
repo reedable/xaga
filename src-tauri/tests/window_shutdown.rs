@@ -10,7 +10,7 @@ fn main() {
         if directory.join("predecessor").exists() {
             let lock = xaga_core::library::acquire_lock(&directory).expect("successor write mode");
             assert!(
-                std::fs::read_to_string(directory.join("entries/abcdef123456.md"))
+                std::fs::read_to_string(xaga_core::library::entry_path(&directory, "abcdef123456"))
                     .unwrap()
                     .contains("pending edit")
             );
@@ -44,9 +44,12 @@ fn main() {
             assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
         } else {
             assert!(
-                std::fs::read_to_string(directory.path().join("entries/abcdef123456.md"))
-                    .unwrap()
-                    .contains("pending edit")
+                std::fs::read_to_string(xaga_core::library::entry_path(
+                    directory.path(),
+                    "abcdef123456"
+                ))
+                .unwrap()
+                .contains("pending edit")
             );
             while mode == "restart" && !directory.path().join("successor").exists() {
                 assert!(std::time::Instant::now() < deadline, "successor failed");

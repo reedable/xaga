@@ -133,12 +133,12 @@ const INDEX_NAME: &str = "embeddings.lance";
 
 /// The directory holding entry `.md` files.
 #[inline]
-pub fn entries_dir(library_dir: &Path) -> PathBuf {
+fn entries_dir(library_dir: &Path) -> PathBuf {
     library_dir.join(ENTRIES_SUBDIR)
 }
 
 /// Ordered Markdown Entry discovery roots, matching direct lookup precedence.
-pub(crate) fn entry_scan_dirs(library_dir: &Path) -> [PathBuf; 2] {
+fn entry_scan_dirs(library_dir: &Path) -> [PathBuf; 2] {
     [entries_dir(library_dir), pdfs_dir(library_dir)]
 }
 
@@ -146,16 +146,94 @@ pub(crate) async fn resolve_entry_path(
     library_dir: &Path,
     id: &str,
 ) -> std::io::Result<Option<PathBuf>> {
+    let library_dir = library_dir.to_owned();
+    let id = id.to_owned();
+    tokio::task::spawn_blocking(move || resolve_entry_path_sync(&library_dir, &id)).await?
+}
+
+pub(crate) fn resolve_entry_path_sync(
+    library_dir: &Path,
+    id: &str,
+) -> std::io::Result<Option<PathBuf>> {
     for dir in entry_scan_dirs(library_dir) {
         let path = dir.join(format!("{id}.md"));
-        if tokio::fs::try_exists(&path).await? {
-            return Ok(Some(path));
+        match std::fs::symlink_metadata(&path) {
+            Ok(_) => return Ok(Some(path)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(std::io::Error::new(
+                    error.kind(),
+                    format!("{}: {error}", path.display()),
+                ));
+            }
         }
     }
     Ok(None)
 }
 
-/// The directory holding stored PDFs and their dormant Markdown companions.
+/// Walk filename indexes in lookup order without buffering the library.
+pub(crate) fn scan_entry_paths(
+    library_dir: &Path,
+) -> impl futures::Stream<Item = std::io::Result<PathBuf>> {
+    let roots = entry_scan_dirs(library_dir).into_iter().enumerate();
+    let library_dir = library_dir.to_owned();
+    futures::stream::unfold(
+        (roots, None, library_dir),
+        |(mut roots, mut current, library_dir)| async move {
+            loop {
+                let (root_index, entries): &mut (usize, tokio::fs::ReadDir) = match current.as_mut()
+                {
+                    Some(current) => current,
+                    None => {
+                        let (index, root) = roots.next()?;
+                        match tokio::fs::read_dir(&root).await {
+                            Ok(entries) => {
+                                current = Some((index, entries));
+                                continue;
+                            }
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                            Err(error) => {
+                                let error = std::io::Error::new(
+                                    error.kind(),
+                                    format!("{}: {error}", root.display()),
+                                );
+                                return Some((Err(error), (roots, current, library_dir)));
+                            }
+                        }
+                    }
+                };
+                let path = match entries.next_entry().await {
+                    Ok(Some(entry)) => entry.path(),
+                    Ok(None) => {
+                        current = None;
+                        continue;
+                    }
+                    Err(error) => return Some((Err(error), (roots, None, library_dir))),
+                };
+                if path.extension().is_none_or(|extension| extension != "md") {
+                    continue;
+                }
+                if *root_index != 0 {
+                    let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
+                        let error = std::io::Error::other(format!(
+                            "invalid Entry filename: {}",
+                            path.display()
+                        ));
+                        return Some((Err(error), (roots, current, library_dir)));
+                    };
+                    match resolve_entry_path(&library_dir, id).await {
+                        Ok(Some(selected)) if selected == path => {}
+                        Ok(_) => continue,
+                        Err(error) => return Some((Err(error), (roots, current, library_dir))),
+                    }
+                }
+                return Some((Ok(path), (roots, current, library_dir)));
+            }
+        },
+    )
+}
+
+/// The directory holding stored PDFs and their Markdown companions.
 #[inline]
 pub fn pdfs_dir(library_dir: &Path) -> PathBuf {
     library_dir.join(PDFS_SUBDIR)
@@ -167,7 +245,7 @@ pub fn pdf_path(library_dir: &Path, hash12: &str) -> PathBuf {
     library_dir.join(format!("{PDFS_SUBDIR}/{hash12}.pdf"))
 }
 
-/// Path to a stored PDF's dormant Entry-format companion
+/// Path to a stored PDF's Entry-format companion
 /// (`<library>/pdfs/<hash12>.md`).
 #[inline]
 pub fn pdf_entry_path(library_dir: &Path, hash12: &str) -> PathBuf {
@@ -348,6 +426,61 @@ pub fn acquire_lock(library_dir: &Path) -> Option<FileLock> {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn entry_discovery_matches_lookup_and_excludes_pdf_bytes() {
+        use futures::StreamExt;
+
+        let library = tempfile::tempdir().unwrap();
+        let dir = library.path();
+        let canonical = entry_path(dir, "shared");
+        let duplicate = pdf_entry_path(dir, "shared");
+        let companion = pdf_entry_path(dir, "companion");
+        for root in entry_scan_dirs(dir) {
+            std::fs::create_dir(root).unwrap();
+        }
+        for path in [
+            &canonical,
+            &duplicate,
+            &companion,
+            &pdf_path(dir, "companion"),
+        ] {
+            std::fs::write(path, []).unwrap();
+        }
+
+        let mut paths = scan_entry_paths(dir)
+            .map(Result::unwrap)
+            .collect::<Vec<_>>()
+            .await;
+        paths.sort();
+        assert_eq!(paths, [canonical.clone(), companion.clone()]);
+        assert_eq!(
+            resolve_entry_path(dir, "shared").await.unwrap(),
+            Some(canonical)
+        );
+        assert_eq!(
+            resolve_entry_path(dir, "companion").await.unwrap(),
+            Some(companion)
+        );
+    }
+
+    #[tokio::test]
+    async fn entry_discovery_distinguishes_missing_and_unreadable_roots() {
+        use futures::StreamExt;
+
+        let library = tempfile::tempdir().unwrap();
+        let dir = library.path();
+        assert!(scan_entry_paths(dir).collect::<Vec<_>>().await.is_empty());
+
+        let [canonical, companions] = entry_scan_dirs(dir);
+        std::fs::write(canonical, []).unwrap();
+        std::fs::create_dir(companions).unwrap();
+        std::fs::write(pdf_entry_path(dir, "companion"), []).unwrap();
+        assert!(resolve_entry_path(dir, "companion").await.is_err());
+        let paths = scan_entry_paths(dir).collect::<Vec<_>>().await;
+        assert!(!paths.is_empty());
+        assert!(paths.iter().all(Result::is_err));
+    }
+
     use super::*;
 
     #[test]

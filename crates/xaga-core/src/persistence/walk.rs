@@ -1,6 +1,7 @@
 //! Shared validated discovery. Filenames index saved identity; rejected records
 //! make discovery unreliable for absence-based deletion.
 use crate::{fs::WalkOutcome, library_writer::LibraryWriter, md::Markdown};
+use futures::StreamExt;
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -20,21 +21,6 @@ where
     P: Fn(Markdown) -> T,
     V: FnMut(T),
 {
-    walk_markdown(dir, parse, visit, writer, kind, None).await
-}
-
-async fn walk_markdown<T, P, V>(
-    dir: &Path,
-    parse: &P,
-    visit: V,
-    writer: Option<&LibraryWriter>,
-    kind: super::identity::Record,
-    library: Option<&Path>,
-) -> WalkOutcome
-where
-    P: Fn(Markdown) -> T,
-    V: FnMut(T),
-{
     let rejected = AtomicBool::new(false);
     let visit = Mutex::new(visit);
     let outcome = crate::fs::for_each_file_async(dir, "md", |path, raw| {
@@ -42,16 +28,6 @@ where
         let visit = &visit;
         async move {
             let result = async {
-                if let Some(library) = library {
-                    let id = crate::util::entity_id(&path);
-                    if crate::library::resolve_entry_path(library, &id)
-                        .await?
-                        .as_ref()
-                        != Some(&path)
-                    {
-                        return Ok(None);
-                    }
-                }
                 let (fm, _) = crate::md::parse_indexed(&raw, &path)?;
                 let raw = if fm.id.is_none() && writer.is_some() {
                     super::identity::read_markdown(&path, writer, kind).await?
@@ -60,12 +36,11 @@ where
                 };
                 let (fm, body) = crate::md::parse_indexed(&raw, &path)?;
                 let id = crate::md::resolve_identity(&fm, &path)?;
-                Ok::<_, super::entries::EntryError>(Some(Markdown { id, fm, body }))
+                Ok::<_, super::entries::EntryError>(Markdown { id, fm, body })
             }
             .await;
             match result {
-                Ok(Some(md)) => visit.lock().unwrap()(parse(md)),
-                Ok(None) => {}
+                Ok(md) => visit.lock().unwrap()(parse(md)),
                 Err(_) => {
                     // The identity resolver reports conflicts without document content.
                     rejected.store(true, Ordering::Relaxed);
@@ -139,18 +114,21 @@ where
 {
     let mut visit = visit;
     let mut outcome = WalkOutcome::Enumerated;
-    for dir in crate::library::entry_scan_dirs(library) {
-        let current = walk_markdown(
-            &dir,
-            parse,
-            &mut visit,
-            writer,
-            super::identity::Record::Entry,
-            Some(library),
-        )
+    let paths = crate::library::scan_entry_paths(library);
+    futures::pin_mut!(paths);
+    while let Some(path) = paths.next().await {
+        let result = async {
+            let path = path?;
+            let raw = super::identity::read_markdown(&path, writer, super::identity::Record::Entry)
+                .await?;
+            let (fm, body) = crate::md::parse_indexed(&raw, &path)?;
+            let id = crate::md::resolve_identity(&fm, &path)?;
+            Ok::<_, super::entries::EntryError>(Markdown { id, fm, body })
+        }
         .await;
-        if current == WalkOutcome::Unreadable {
-            outcome = current;
+        match result {
+            Ok(markdown) => visit(parse(markdown)),
+            Err(_) => outcome = WalkOutcome::Unreadable,
         }
     }
     outcome

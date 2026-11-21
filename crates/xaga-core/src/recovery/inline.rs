@@ -63,7 +63,7 @@ pub async fn run_full_recovery(
     let mut sink = InlineSink::default();
 
     match repair_entity_embeddings(library_dir, db, &mut sink, Some(writer)).await {
-        Ok(residue) => process_inline(sink, residue, embedder, db, &mut report).await,
+        Ok(residue) => process_inline(library_dir, sink, residue, embedder, db, &mut report).await,
         Err(e) => report
             .errors
             .push(format!("repair_entity_embeddings failed: {e}")),
@@ -75,6 +75,7 @@ pub async fn run_full_recovery(
 // Unlike `dispatch`, this processes the corrections inline (synchronously), after the walk.
 // Intended for use in CLI, not GUI.
 async fn process_inline(
+    library_dir: &Path,
     sink: InlineSink,
     residue: RepairResidue,
     embedder: &Arc<Embedder>,
@@ -127,8 +128,19 @@ async fn process_inline(
             continue;
         }
 
-        match embed_entry_vector(article, embedder, db).await {
-            Ok(()) => report.embedded += 1,
+        let metadata_only =
+            match crate::persistence::pdfs::is_metadata_only(library_dir, article).await {
+                Ok(value) => value,
+                Err(error) => {
+                    report
+                        .errors
+                        .push(format!("resolve article {}: {error}", article.meta.id));
+                    continue;
+                }
+            };
+        match embed_entry_vector(article, embedder, db, !metadata_only).await {
+            Ok(()) if !metadata_only || !article.annotations.is_empty() => report.embedded += 1,
+            Ok(()) => {}
             Err(e) => report
                 .errors
                 .push(format!("embed article {}: {e}", article.meta.id)),

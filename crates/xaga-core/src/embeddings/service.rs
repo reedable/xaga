@@ -898,7 +898,14 @@ async fn handle_job(
             senders.enqueue(Tier::Interactive, Job::EmbedTopic { topic });
         }
         Job::EmbedEntry { article } => {
-            if let Err(e) = embed_entry_vector(&article, embedder, db).await {
+            let result = async {
+                let metadata_only =
+                    crate::persistence::pdfs::is_metadata_only(writer.library_dir(), &article)
+                        .await?;
+                embed_entry_vector(&article, embedder, db, !metadata_only).await
+            }
+            .await;
+            if let Err(e) = result {
                 log::error!("embed_entry failed id={}: {e}", article.meta.id);
             }
         }

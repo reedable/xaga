@@ -8,8 +8,8 @@ are outside this story.
 
 ## Requirements
 
-- Depends on [shared Entry location resolution](defect__entry-location-resolution.md)
-  providing a discoverable, writable Entry for each supported stored PDF. Store
+- Use [shared Entry location resolution](../../docs/architecture/library_layout.md#entry-location-contract)
+  to find the writable Entry for each supported stored PDF. Store
   color on that Entry through the existing bookmark API, without a separate PDF
   bookmark store or a text-extraction requirement.
 - Enable the existing toolbar color palette for the selected PDF. Use the same
@@ -29,7 +29,7 @@ are outside this story.
 
 ## Remaining work
 
-- Verify the prerequisite's Entry resolution, discovery, color mutation, and
+- Verify shared Entry resolution, discovery, color mutation, and
   recovery paths support both feed-backed PDFs and activated PDF companions.
 - Connect the PDF toolbar to existing color-bookmark operations and verify
   Saved queries, list indicators, and PDF navigation; extend capture fixtures.

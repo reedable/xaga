@@ -38,8 +38,10 @@ Local lookup precedes article ingestion. Stored PDFs are size-bounded and their
 signature is rechecked before use. Explicit refresh bypasses local lookup.
 New downloads require a writable library; cached files remain readable in a
 read-only library. Legacy PDFs without companions remain readable when the caller
-already knows their URL. Entry discovery includes companions under `pdfs/`, with canonical Entry precedence
-and saved-ID validation. See [persisted entity identity](persisted_entity_identity.md).
+already knows their URL. Entry discovery includes companions under `pdfs/`, with
+canonical Entry precedence and saved-ID validation. Recovery indexes metadata-only
+PDF Entries for browsing without computing an Entry vector from their title or
+source URL. See [persisted entity identity](persisted_entity_identity.md).
 
 The General setting **Show PDFs in the reading pane** controls presentation.
 When enabled, the frontend displays validated bytes through a local Blob URL.

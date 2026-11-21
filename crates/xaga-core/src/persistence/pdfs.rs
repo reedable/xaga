@@ -30,6 +30,28 @@ fn invalid(message: impl Into<String>) -> EntryError {
     Error::new(ErrorKind::InvalidData, message.into()).into()
 }
 
+/// A metadata-only PDF record remains listable without embedding its placeholder title.
+pub(crate) async fn is_metadata_only(
+    library: &Path,
+    article: &crate::types::Article,
+) -> std::io::Result<bool> {
+    if !article.content.trim().is_empty()
+        || article
+            .meta
+            .description
+            .as_deref()
+            .is_some_and(|summary| !summary.trim().is_empty())
+    {
+        return Ok(false);
+    }
+    let id = &article.meta.id;
+    let selected = crate::library::resolve_entry_path(library, id).await?;
+    if selected.as_deref() == Some(crate::library::pdf_entry_path(library, id).as_path()) {
+        return Ok(true);
+    }
+    tokio::fs::try_exists(crate::library::pdf_path(library, id)).await
+}
+
 fn pdf_paths(library: &Path, url: &str) -> Result<PdfPaths, EntryError> {
     let normalized_url = crate::util::normalize_url(url)?;
     let parsed = url::Url::parse(&normalized_url)?;
@@ -128,16 +150,12 @@ pub fn read(library: &Path, url: &str) -> Result<Option<(PathBuf, Vec<u8>)>, Ent
         return Ok(None);
     };
     validate(&bytes).map_err(invalid)?;
-    let canonical = crate::library::entry_path(library, &paths.stem);
-    if let Some(document) = read_capped_regular_file(&canonical, crate::fs::MAX_MD_BYTES)? {
+    if let Some(path) = crate::library::resolve_entry_path_sync(library, &paths.stem)? {
+        let document = read_capped_regular_file(&path, crate::fs::MAX_MD_BYTES)?
+            .ok_or(EntryError::NotFound)?;
         let raw = String::from_utf8(document).map_err(|e| invalid(e.to_string()))?;
-        crate::md::parse_indexed(&raw, &canonical)?;
-    } else if let Some(document) =
-        read_capped_regular_file(&paths.companion, crate::fs::MAX_MD_BYTES)?
-    {
-        let raw = String::from_utf8(document).map_err(|e| invalid(e.to_string()))?;
-        let (_, body) = crate::md::parse_indexed(&raw, &paths.companion)?;
-        if body.is_empty() {
+        let (_, body) = crate::md::parse_indexed(&raw, &path)?;
+        if path == paths.companion && body.is_empty() {
             read_source_entry(library, &paths.stem)?;
         }
     }
@@ -186,14 +204,19 @@ pub(crate) async fn save(
             check_directory(library)?;
         }
 
-        // One normalized URL has one Markdown identity record. A document in
-        // entries/ takes precedence because it may already contain feed metadata
-        // and user-authored state. Only otherwise create a dormant PDF companion.
-        let entry_path = crate::library::entry_path(library, &paths.stem);
-        if tokio::fs::try_exists(&entry_path).await? {
-            super::documents::repair_identity(&entry_path, token).await?;
-        } else {
-            if !tokio::fs::try_exists(&paths.companion).await? {
+        match super::entries::find_entry_path(library, &paths.stem).await? {
+            Some(path) => {
+                if path == paths.companion {
+                    // Refuse to place bytes behind malformed or mismatched identity.
+                    let raw = crate::fs::read_md_capped(&path).await?;
+                    let (_, body) = crate::md::parse_indexed(&raw, &path)?;
+                    if body.is_empty() {
+                        read_source_entry(library, &paths.stem)?;
+                    }
+                }
+                super::documents::repair_identity(&path, token).await?;
+            }
+            None => {
                 let updates = [
                     ("source", serde_json::json!(paths.normalized_url)),
                     ("title", serde_json::json!(paths.normalized_url)),
@@ -202,14 +225,6 @@ pub(crate) async fn save(
                     ("tags", serde_json::json!([])),
                 ];
                 super::documents::upsert(&paths.companion, &updates, None, token).await?;
-            } else {
-                // Refuse to place bytes behind malformed or mismatched identity.
-                let raw = crate::fs::read_md_capped(&paths.companion).await?;
-                let (_, body) = crate::md::parse_indexed(&raw, &paths.companion)?;
-                if body.is_empty() {
-                    read_source_entry(library, &paths.stem)?;
-                }
-                super::documents::repair_identity(&paths.companion, token).await?;
             }
         }
 
@@ -332,7 +347,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let url = "https://example.org/paper";
         let entry = crate::library::entry_path(dir.path(), &stem(url));
-        std::fs::create_dir_all(crate::library::entries_dir(dir.path())).unwrap();
+        std::fs::create_dir_all(
+            crate::library::entry_path(dir.path(), "fixture")
+                .parent()
+                .unwrap(),
+        )
+        .unwrap();
         let original = "---\nsource: https://example.org/paper\ntitle: Authored\ncreated: '2026-01-01'\ntags: [bookmark]\nannotations: []\n---\n\nBody\n";
         std::fs::write(&entry, original).unwrap();
         save(
@@ -349,6 +369,56 @@ mod tests {
         );
         assert!(!companion_path(dir.path(), url).exists());
         assert!(read(dir.path(), url).unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn companion_remains_the_entry_through_creation_color_and_html_refresh() {
+        use super::super::{articles, entries};
+
+        let dir = tempfile::tempdir().unwrap();
+        let library = dir.path();
+        let url = "https://example.org/paper";
+        let id = stem(url);
+        let token = WriteToken::for_test();
+        save(library, url, Some(b"%PDF-valid".to_vec()), token)
+            .await
+            .unwrap();
+        let existing = entries::write_entry(library, url, "Feed title", None, None, None, token)
+            .await
+            .unwrap();
+        assert_eq!(existing.meta.title, url);
+        assert!(is_metadata_only(library, &existing).await.unwrap());
+
+        entries::set_entry_color(library, &id, Some("blue".into()), token)
+            .await
+            .unwrap();
+        assert!(!crate::library::entry_path(library, &id).exists());
+        assert!(pdf_path(library, url).exists());
+
+        let html = articles::save_article(
+            library,
+            &id,
+            url,
+            "Updated title",
+            None,
+            None,
+            None,
+            None,
+            "Saved HTML body",
+            &std::collections::HashMap::new(),
+            token,
+        )
+        .await
+        .unwrap();
+        remove_after_html(library, url, token).await.unwrap();
+
+        let saved = articles::read_article(library, &id).await.unwrap();
+        assert_eq!(saved.content, html.content);
+        assert_eq!(saved.meta.color.as_deref(), Some("blue"));
+        assert!(!pdf_path(library, url).exists());
+        assert!(companion_path(library, url).exists());
+        assert!(!crate::library::entry_path(library, &id).exists());
+        assert!(!is_metadata_only(library, &saved).await.unwrap());
     }
 
     #[tokio::test]
