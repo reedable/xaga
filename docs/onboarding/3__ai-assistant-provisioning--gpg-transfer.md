@@ -1,10 +1,11 @@
 # AI assistant provisioning — GPG backup and transfer
 
+> **NOTE:**
 Start in the human operator's account.
 
 **Step 1:** Back up the private keys to secure offline storage.
 
-WARNING: Keep these backups and the primary private key out of the AI assistant's account.
+**WARNING:** Keep these backups and the primary private key out of the AI assistant's account.
 
 In the command below, substitute:
 
@@ -59,7 +60,7 @@ printf '%s\n' 'pinentry-mode loopback' >> "${GNUPGHOME:-$HOME/.gnupg}/gpg.conf"
 
 **Step 6:** Import the signing subkey file.
 
-WARNING: Import the transfer file from Step 3, not the full private-key backup from Step 1.
+**WARNING:** Import the transfer file from Step 3, not the full private-key backup from Step 1.
 
 In the command below, substitute:
 
@@ -76,7 +77,7 @@ gpg --import '/Volumes/KEY_TRANSFER/AI_ASSISTANT_IDENTITY.asc'
 gpg --list-secret-keys --with-subkey-fingerprint
 ```
 
-WARNING: The primary key must show `sec#` (private key unavailable); the signing subkey must show `ssb`.
+**WARNING:** The primary key must show `sec#` (private key unavailable); the signing subkey must show `ssb`.
 
 **Step 8:** Return to the human operator's shell and delete the transfer file.
 
