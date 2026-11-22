@@ -201,7 +201,7 @@ function main() {
     repo,
     "--clobber",
   ]);
-  if (state.mode !== "tag") {
+  if (state.mode === "release") {
     const branch = state.branch.replace("refs/heads/", "");
     // Never direct a PR at a newer, unverified release-branch head during recovery.
     const head = git("ls-remote", "origin", state.branch).split(/\s+/)[0];
