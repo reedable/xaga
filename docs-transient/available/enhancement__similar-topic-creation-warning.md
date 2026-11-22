@@ -24,9 +24,11 @@ anyway.
   operation, including the requested member for inline creation and the chosen
   pin state for the new Topic. Never silently reuse or merge an existing Topic.
 - If no matches are found, continue normal creation. If similarity search fails
-  or the model is unavailable, explain that the check could not be completed
-  and allow creation. Missing or pending embeddings can omit Topics; do not
-  claim that no duplicates exist or block creation until indexing completes.
+  or the model is unavailable, pause creation and explain that the check could
+  not be completed. Save only if the user explicitly chooses **Create anyway**.
+  Dismissing the notice preserves the draft. Missing or pending embeddings can
+  omit Topics; do not claim that no duplicates exist or block creation until
+  indexing completes.
 - A check and its confirmation apply to the submitted draft. Editing the title
   or description requires checking the revised draft; stale results must not
   replace newer results. Prevent repeated submission while checking or saving,
@@ -43,7 +45,9 @@ anyway.
 - Add focused search coverage for Topic filtering, ranking, and result limits.
   Add browser workflows for matches, no matches, opening a match, revising,
   dismissing, creating anyway, unavailable search, stale results, repeated
-  submission, and save failure. Verify inline membership and new-Topic pin state
+  submission, and save failure. For unavailable search, verify that creation
+  waits for explicit confirmation and dismissal preserves the draft. Verify
+  inline membership and new-Topic pin state
   without modifying existing Topics, plus read-only refusal.
 - Update the User Guide and affected training to explain the advisory check and
   its indexing limitations.
