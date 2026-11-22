@@ -25,7 +25,10 @@ import useAbortController from "../../hooks/useAbortController";
 import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import { useTopics } from "../../hooks/useTopics";
 import { useEmbeddingStartupState } from "../../hooks/useEmbeddingStartupState";
-import type { Annotation, Entry } from "../../types";
+import { useTopicCreationCheck } from "../../hooks/useTopicCreationCheck";
+import useRouter from "../../hooks/useRouter";
+import SimilarTopicsDialog from "../dialogs/SimilarTopicsDialog";
+import type { Annotation, Entry, Topic } from "../../types";
 import { TopicFormFields, useTopicForm } from "../dialogs/TopicFormFields";
 import css from "./TopicMembership.module.css";
 
@@ -35,50 +38,81 @@ function InlineTopicForm({
   initialTitle,
   onCancel,
   onCreate,
+  onOpenTopic,
   readOnly,
 }: {
   initialTitle: string;
   readOnly: boolean;
   onCancel: () => void;
+  onOpenTopic: (topic: Topic) => void;
   onCreate: (
     values: ReturnType<typeof useTopicForm>["values"]
   ) => Promise<boolean>;
 }) {
   const form = useTopicForm({ title: initialTitle });
-  const [saving, setSaving] = useState(false);
+  const creation = useTopicCreationCheck(!readOnly, async (draft) => {
+    if (await onCreate(draft)) onCancel();
+  });
 
-  const handleSubmit = async (event: React.SubmitEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!form.values.title || readOnly) return;
-    setSaving(true);
-    try {
-      if (await onCreate(form.values)) onCancel();
-    } finally {
-      setSaving(false);
-    }
+    if (form.values.title && !readOnly) creation.submit(form.values);
   };
 
   return (
-    <Box component="form" onSubmit={handleSubmit} className={css.InlineForm}>
-      <TopicFormFields form={form} busy={saving || readOnly} autoFocus />
-      <div className={css.InlineFormActions}>
-        <Button data-testid="cancel" onClick={onCancel} disabled={saving}>
-          Cancel
-        </Button>
-        <Button
-          data-testid="confirm-create-topic"
-          type="submit"
-          variant="contained"
-          disabled={!form.values.title || saving || readOnly}
-        >
-          Create Topic
-        </Button>
-      </div>
-    </Box>
+    <>
+      <Box component="form" onSubmit={handleSubmit} className={css.InlineForm}>
+        {creation.busy && (
+          <p role="status">
+            {creation.phase === "checking"
+              ? "Checking for similar Topics…"
+              : "Saving Topic…"}
+          </p>
+        )}
+        {creation.saveError && (
+          <Alert severity="error">{creation.saveError}</Alert>
+        )}
+        <TopicFormFields
+          form={form}
+          busy={creation.busy || readOnly}
+          autoFocus
+        />
+        <div className={css.InlineFormActions}>
+          <Button
+            data-testid="cancel"
+            onClick={onCancel}
+            disabled={creation.busy}
+          >
+            Cancel
+          </Button>
+          <Button
+            data-testid="confirm-create-topic"
+            type="submit"
+            variant="contained"
+            disabled={!form.values.title || creation.busy || readOnly}
+          >
+            Create Topic
+          </Button>
+        </div>
+      </Box>
+      {creation.warning && (
+        <SimilarTopicsDialog
+          matches={creation.warning.matches}
+          onDismiss={creation.dismiss}
+          onConfirm={creation.confirm}
+          onOpenTopic={(match) => {
+            creation.dismiss();
+            onCancel();
+            onOpenTopic(match);
+          }}
+        />
+      )}
+    </>
   );
 }
 
 export function TopicMembership({ entity }: { entity: Entry | Annotation }) {
+  const { selectTopic } = useRouter();
   const [, abortControllerRef] = useAbortController();
   const readOnly = useLibraryReadOnly();
   const animate = useMediaQuery("(prefers-reduced-motion: no-preference)");
@@ -337,10 +371,12 @@ export function TopicMembership({ entity }: { entity: Entry | Annotation }) {
 
       {creating ? (
         <InlineTopicForm
+          key={entityId}
           readOnly={readOnly}
           initialTitle={createInitialTitle}
           onCancel={stopCreating}
           onCreate={handleCreate}
+          onOpenTopic={selectTopic}
         />
       ) : (
         <List className={css.List} disablePadding>

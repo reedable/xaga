@@ -39,21 +39,17 @@ export function useTopics(abortControllerRef: RefObject<AbortController>) {
   const createTopicWithMember = useCallback(
     async (topicInput: CreateTopicInput, member: Entry | Annotation) => {
       const signal = abortControllerRef.current.signal;
-      try {
-        const topic = await platform.createTopicWithMember(
-          signal,
-          topicInput,
-          member
-        );
-        setMembership(topic.id, member.id, true);
-        setTopics((prev) => [...prev, topic].sort(sortByUnreadCount));
-        emitTopicEntityAdded({ topicId: topic.id, entityId: member.id });
-        return topic;
-      } catch (e) {
-        pushError(e);
-      }
+      const topic = await platform.createTopicWithMember(
+        signal,
+        topicInput,
+        member
+      );
+      setMembership(topic.id, member.id, true);
+      setTopics((prev) => [...prev, topic].sort(sortByUnreadCount));
+      emitTopicEntityAdded({ topicId: topic.id, entityId: member.id });
+      return topic;
     },
-    [abortControllerRef, platform, pushError, setTopics, setMembership]
+    [abortControllerRef, platform, setTopics, setMembership]
   );
 
   const saveTopic = useCallback(

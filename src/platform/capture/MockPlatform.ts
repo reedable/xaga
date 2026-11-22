@@ -27,6 +27,7 @@ export class MockPlatform implements Platform {
   private data = createFixtures();
   private pins: PinNode[] = [{ type: "topic", id: "observations" }];
   private sequence = 0;
+  private refuseNextTopic = true;
   private upgrade: import("../Platform").LibraryUpgrade = { state: "idle" };
   private upgradeAttempts = 0;
   private upgradePolls = 0;
@@ -523,7 +524,16 @@ export class MockPlatform implements Platform {
   readTopic: Platform["readTopic"] = async (signal, id) =>
     (await this.listTopics(signal)).find((t) => t.id === id) ??
     this.unsupported("Unknown Topic");
-  createTopic: Platform["createTopic"] = async (_signal, input) => {
+  createTopic: Platform["createTopic"] = async (signal, input) => {
+    signal.throwIfAborted();
+    if (this.scenario === "topic-save-failure" && this.refuseNextTopic) {
+      this.refuseNextTopic = false;
+      throw {
+        code: "topic:io",
+        message: "Couldn’t save the Topic.",
+        detail: "Capture refusal",
+      };
+    }
     const topic: Topic = {
       ...input,
       __kind: "topic",
@@ -954,6 +964,38 @@ export class MockPlatform implements Platform {
       .filter((entity) => query && entity.title.toLowerCase().includes(query))
       .slice(0, limit ?? 100)
       .map((entity) => ({ ...entity, similarity: 1 }));
+  };
+  searchSimilarTopics: Platform["searchSimilarTopics"] = async (
+    signal,
+    title,
+    description
+  ) => {
+    signal.throwIfAborted();
+    if (this.scenario === "topic-check-unavailable") {
+      throw new Error("Embedding model unavailable");
+    }
+    if (
+      this.scenario === "topic-check-pending" &&
+      title === "Everyday discoveries"
+    ) {
+      await new Promise<void>((resolve) => {
+        window.addEventListener(
+          "xaga-capture-complete-topic-check",
+          () => resolve(),
+          {
+            once: true,
+          }
+        );
+      });
+    }
+    const draft = [title, description].map((text) => text.trim().toLowerCase());
+    return this.data.topics
+      .filter((topic) =>
+        [topic.title, topic.description].some(
+          (text) => text && draft.includes(text.trim().toLowerCase())
+        )
+      )
+      .slice(0, 5);
   };
   setImportMaxBytes: Platform["setImportMaxBytes"] = async (value) => {
     this.importMaxBytes = value;
