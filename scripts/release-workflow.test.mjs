@@ -258,10 +258,7 @@ test("first RC retries the same version and publishes only after building", (t) 
   );
   assert.deepEqual(
     github(f).prs.map(({ base, head }) => [base, head]),
-    [
-      ["main", "version/0.17.4-dev"],
-      ["main", "release/0.17.3"],
-    ]
+    [["main", "version/0.17.4-dev"]]
   );
   f.git("fetch", "origin", "refs/heads/version/0.17.4-dev");
   assert.equal(f.git("rev-parse", "FETCH_HEAD^"), f.start);
@@ -290,16 +287,29 @@ test("next RC retries without advancing the release branch before publication", 
   succeeds(f.publish());
   assert.equal(head(f), f.manifest().commit);
   assert.equal(f.git("ls-remote", "origin", "refs/heads/version/*"), "");
+  assert.deepEqual(github(f).prs, []);
 });
 
-test("RC publication reuses its existing open PR and never requests auto-merge", (t) => {
-  const f = fixture(t, "0.17.3-rc.1");
+test("the final publication opens and reuses the release PR after RC publication", (t) => {
+  const f = fixture(t);
   built(f);
   succeeds(f.publish());
-  assert.equal(github(f).prs.length, 1);
-  built(f);
+  assert.deepEqual(
+    github(f).prs.map(({ head }) => head),
+    ["version/0.17.4-dev"]
+  );
+  succeeds(f.prepare("release", { GITHUB_REF: "refs/heads/release/0.17.3" }));
+  f.build();
+  succeeds(f.seal());
   succeeds(f.publish());
-  assert.equal(github(f).prs.length, 1);
+  succeeds(f.publish());
+  assert.deepEqual(
+    github(f).prs.map(({ base, head }) => [base, head]),
+    [
+      ["main", "version/0.17.4-dev"],
+      ["main", "release/0.17.3"],
+    ]
+  );
   assert.equal(github(f).merges.length, 0);
 });
 
@@ -363,10 +373,7 @@ test("first RC publication retries bump PR creation using the same refs", (t) =>
   built(f);
   fails(f.publish({ GH_FAIL_PR_HEAD: "version/0.17.4-dev" }));
   assert.equal(head(f), f.manifest().commit);
-  assert.deepEqual(
-    github(f).prs.map(({ head }) => head),
-    ["release/0.17.3"]
-  );
+  assert.deepEqual(github(f).prs, []);
   assert.equal(github(f).releases[0].tag_name, f.manifest().tag);
   f.git("checkout", "--detach", f.start);
   f.git("commit", "--allow-empty", "-m", "Advance main during recovery");
@@ -377,7 +384,7 @@ test("first RC publication retries bump PR creation using the same refs", (t) =>
   assert.equal(f.refs(), refs);
   assert.deepEqual(
     github(f).prs.map(({ head }) => head),
-    ["release/0.17.3", "version/0.17.4-dev"]
+    ["version/0.17.4-dev"]
   );
 });
 
