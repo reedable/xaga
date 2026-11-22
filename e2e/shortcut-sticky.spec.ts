@@ -317,9 +317,7 @@ test("sticky group actions support creation, moving, drag and drop, and removal"
   await expect(node(page, "methods")).toHaveCount(1);
 });
 
-test("shortcut path conflicts preserve input and browsing context", async ({
-  page,
-}) => {
+async function startLegacyShortcutGroups(page: Page) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/?scenario=sidebar-sticky&legacyGroupPaths=true");
   await expect(page.locator("html")).toHaveAttribute(
@@ -328,7 +326,13 @@ test("shortcut path conflicts preserve input and browsing context", async ({
   );
   const article = "A garden for every season";
   await openArticle(page, article);
-  const context = await page.evaluate(() => window.history.state);
+  return { article, history: await page.evaluate(() => window.history.state) };
+}
+
+test("shortcut rename conflicts preserve input and browsing context", async ({
+  page,
+}) => {
+  const context = await startLegacyShortcutGroups(page);
   const dialog = page.getByRole("dialog");
   const title = control(dialog, "textbox", "group-title");
   const save = control(dialog, "button", "save");
@@ -358,10 +362,22 @@ test("shortcut path conflicts preserve input and browsing context", async ({
     /Research notes/
   );
 
-  await action(page, "research", "add-group");
-  await title.fill("Notes");
-  await save.click();
-  await expect(dialog).not.toBeVisible();
+  await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
+    context.article
+  );
+  expect(await page.evaluate(() => window.history.state)).toEqual(
+    context.history
+  );
+});
+
+test("shortcut move conflicts preserve the destination and browsing context", async ({
+  page,
+}) => {
+  const context = await startLegacyShortcutGroups(page);
+  const dialog = page.getByRole("dialog");
+  const originalLocation = node(page, "work").locator(
+    '[data-shortcut-group="legacy-two"]'
+  );
   await action(page, "legacy-two", "move-shortcut");
   const destination = control(dialog, "combobox", "shortcut-destination");
   await destination.click();
@@ -372,19 +388,20 @@ test("shortcut path conflicts preserve input and browsing context", async ({
   await control(dialog, "button", "confirm-move").click();
   await expect(dialog.getByRole("alert")).toContainText(/Research.*Notes/);
   await expect(destination).toContainText("Research");
+  await expect(originalLocation).toHaveCount(1);
   await destination.click();
   await control(page, "option", "shortcuts-root").click();
   await control(dialog, "button", "confirm-move").click();
   await expect(dialog).not.toBeVisible();
-  await expect(
-    node(page, "work").locator('[data-shortcut-group="legacy-two"]')
-  ).toHaveCount(0);
+  await expect(originalLocation).toHaveCount(0);
   await expect(node(page, "legacy-two")).toBeAttached();
 
   await expect(reader(page).getByRole("heading", { level: 1 })).toHaveText(
-    article
+    context.article
   );
-  expect(await page.evaluate(() => window.history.state)).toEqual(context);
+  expect(await page.evaluate(() => window.history.state)).toEqual(
+    context.history
+  );
 });
 
 test("read-only shortcut groups retain expansion and sticky context", async ({
