@@ -18,6 +18,12 @@ and qualify completion. Passing checks establish only what those checks cover.
 
 ## Completion gate
 
+Before the final formatting check for each story, review affected documentation
+against the implementation. Search the relevant architecture and development
+docs, User Guide, and training for names, controls, or behavior the story
+changed. Check each match in context and update descriptions that no longer
+match the implementation.
+
 For prose-only documentation changes, including ideas, task documents, and
 repository instructions, review the content against the request and applicable
 requirements and follow the shared [formatting requirements](../conventions/formatting.md).
