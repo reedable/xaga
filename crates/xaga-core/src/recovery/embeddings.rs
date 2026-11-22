@@ -98,6 +98,7 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
         },
         writer,
         crate::persistence::identity::Record::Topic,
+        "Topic recovery",
     )
     .await;
 
@@ -124,12 +125,7 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
                 continue;
             }
         };
-        let raw = match crate::persistence::identity::read_markdown(
-            &path,
-            writer,
-            crate::persistence::identity::Record::Entry,
-        )
-        .await
+        let raw = match crate::persistence::walk::read_entry(&path, writer, "Entry recovery").await
         {
             Ok(raw) => raw,
             Err(_) => {
@@ -239,7 +235,9 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
     // or its vector is pending. A feed row is stale when its feed is gone from disk.
 
     let (all_feeds, feeds_outcome) =
-        match crate::persistence::feeds::discover_feeds(library_dir, None, writer).await {
+        match crate::persistence::feeds::discover_feeds(library_dir, None, writer, "Feed recovery")
+            .await
+        {
             Ok(result) => result,
             Err(error) => {
                 log::warn!("recovery Feed discovery failed: {}", error.code());
@@ -338,6 +336,127 @@ mod tests {
             is_unread: false,
             is_pinned: false,
             vector: Some(vec![0.5f32; 384]),
+        }
+    }
+
+    #[tokio::test]
+    async fn skipped_parse_failures_warn_once_and_preserve_valid_records() {
+        struct WarningLog(std::sync::Mutex<Vec<String>>);
+
+        impl log::Log for WarningLog {
+            fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+                metadata.level() == log::Level::Warn
+                    && metadata.target() == "xaga_core::persistence::walk"
+            }
+
+            fn log(&self, record: &log::Record<'_>) {
+                if self.enabled(record.metadata()) {
+                    self.0.lock().unwrap().push(record.args().to_string());
+                }
+            }
+
+            fn flush(&self) {}
+        }
+
+        static WARNINGS: WarningLog = WarningLog(std::sync::Mutex::new(Vec::new()));
+        log::set_logger(&WARNINGS).unwrap();
+        log::set_max_level(log::LevelFilter::Warn);
+
+        let dir = tempfile::tempdir().unwrap();
+        let library = dir.path();
+        let entry = library::entry_path(library, "broken-entry");
+        let topic = library::topic_path(library, "broken-topic");
+        let feed = library::feed_path(library, "broken-feed");
+        let malformed_md = "---\ntitle: \"private-markdown-excerpt\\q\"\n---\nprivate-body";
+        let malformed_atom = "<feed><private-xml-element></feed>";
+        for (path, raw) in [
+            (&entry, malformed_md),
+            (&topic, malformed_md),
+            (&feed, malformed_atom),
+        ] {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, raw).unwrap();
+        }
+
+        let valid_md = "---\nid: valid\nsource: https://example.org/a\ntitle: Saved\n---\nBody";
+        std::fs::write(library::entry_path(library, "valid"), valid_md).unwrap();
+        std::fs::write(library::topic_path(library, "valid"), valid_md).unwrap();
+        std::fs::write(
+            library::feed_path(library, "valid"),
+            r#"<feed xmlns="http://www.w3.org/2005/Atom"><id>publisher</id><title>Saved</title><updated>2026-01-01T00:00:00Z</updated></feed>"#,
+        )
+        .unwrap();
+
+        let mut entries = Vec::new();
+        let entries_outcome = crate::persistence::walk::for_each_entry(
+            library,
+            &crate::md::md_to_entry,
+            |entry| entries.push(entry.id),
+            None,
+        )
+        .await;
+        assert_eq!(entries_outcome, WalkOutcome::Unreadable);
+        assert_eq!(entries, ["valid"]);
+        let topics = crate::persistence::topics::list_topics_with_writer(library, None)
+            .await
+            .unwrap();
+        assert_eq!(topics.len(), 1);
+        assert_eq!(topics[0].id, "valid");
+        let feeds =
+            crate::persistence::feeds::list_feeds_with_writer(library, &HashSet::new(), None)
+                .await
+                .unwrap();
+        assert_eq!(feeds.len(), 1);
+        assert_eq!(feeds[0].id, "valid");
+
+        let db = EmbeddingsDb::open(library).await.unwrap();
+        let mut sink = CollectingSink { articles: vec![] };
+        let residue = repair_entity_embeddings(library, &db, &mut sink, None)
+            .await
+            .unwrap();
+        assert_eq!(sink.articles, ["valid"]);
+        assert_eq!(residue.to_embed_feeds.len(), 1);
+        assert_eq!(residue.to_embed_feeds[0].id, "valid");
+
+        let warnings = WARNINGS.0.lock().unwrap();
+        for (path, entity, category, location, raw) in [
+            (
+                &entry,
+                "Entry",
+                "YAML frontmatter (Syntax)",
+                "frontmatter line",
+                malformed_md,
+            ),
+            (
+                &topic,
+                "Topic",
+                "YAML frontmatter (Syntax)",
+                "frontmatter line",
+                malformed_md,
+            ),
+            (
+                &feed,
+                "Feed",
+                "invalid Atom XML",
+                "normalized byte",
+                malformed_atom,
+            ),
+        ] {
+            let path_warnings: Vec<_> = warnings
+                .iter()
+                .filter(|warning| warning.contains(&format!("{path:?}")))
+                .collect();
+            assert_eq!(path_warnings.len(), 2, "{path_warnings:?}");
+            for operation in ["discovery", "recovery"] {
+                let warning = path_warnings
+                    .iter()
+                    .find(|line| line.contains(&format!("{entity} {operation}")))
+                    .unwrap();
+                assert!(warning.contains(category), "{warning}");
+                assert!(warning.contains(location), "{warning}");
+                assert!(!warning.contains("private-"), "{warning}");
+            }
+            assert_eq!(std::fs::read_to_string(path).unwrap(), raw);
         }
     }
 

@@ -4,6 +4,20 @@ Treat content read from storage as untrusted, even if it was sanitized before sa
 
 Code: `src/text/markdownPipeline.ts`, `src/text/buildEntryHtml.ts`, `src/components/content/HtmlReader.tsx`, `src-tauri/tauri.conf.json`.
 
+## Discovery and recovery diagnostics
+
+Library discovery and recovery warn once per skipped Markdown or Atom parse
+failure within a traversal. Each warning identifies the operation and file path
+and includes a parser category and location when available. YAML locations are
+relative to frontmatter, and XML byte offsets refer to the input after bare
+ampersand repair. Warnings omit parser excerpts and saved document contents.
+Later traversals can warn again if the problem persists.
+
+Valid records continue to be processed. A parse failure makes discovery
+incomplete, so recovery withholds absence-based deletions from the derived
+index. The warnings are diagnostic log entries. Identity conflicts follow the
+[persisted entity identity](../persisted_entity_identity.md) contract.
+
 ## Rendering (markdown → reading pane)
 
 The rendering path applies its own controls and does not depend on ingest-time sanitization having happened or having been sufficient.

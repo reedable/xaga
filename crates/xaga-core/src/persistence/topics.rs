@@ -208,6 +208,7 @@ pub async fn list_topics_with_writer(
         |t| topics.push(t),
         writer,
         super::identity::Record::Topic,
+        "Topic discovery",
     )
     .await;
 

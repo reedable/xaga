@@ -332,7 +332,7 @@ pub async fn refresh_all_feeds(
 
     super::walk::for_each_atom_with_writer(
         &crate::library::feeds_dir(library_dir),
-        &parse_atom,
+        "Feed refresh discovery",
         |path, feed| {
             feeds.push((crate::util::entity_id(&path), feed));
         },
@@ -375,9 +375,14 @@ pub async fn list_feeds_with_writer(
     writer: Option<&LibraryWriter>,
 ) -> Result<Vec<Feed>> {
     let summarize_unread = |entries: &[AtomEntry]| count_unread_feed_entries(entries, unread);
-    Ok(discover_feeds(library_dir, Some(&summarize_unread), writer)
-        .await?
-        .0)
+    Ok(discover_feeds(
+        library_dir,
+        Some(&summarize_unread),
+        writer,
+        "Feed discovery",
+    )
+    .await?
+    .0)
 }
 
 fn atom_to_feed_with_unread(id: &str, atom: &Atom, unread: &HashSet<String>) -> Feed {
@@ -390,12 +395,13 @@ pub(crate) async fn discover_feeds(
     library_dir: &Path,
     summarize_unread: Option<&FeedUnreadVisitor<'_>>,
     writer: Option<&LibraryWriter>,
+    operation: &str,
 ) -> Result<(Vec<Feed>, crate::fs::WalkOutcome)> {
     let mut feeds: Vec<Feed> = Vec::new();
 
     let outcome = super::walk::for_each_atom_with_writer(
         &crate::library::feeds_dir(library_dir),
-        &parse_atom,
+        operation,
         |path, atom_feed| {
             let id = crate::util::entity_id(&path);
             let unread_count = summarize_unread.map_or(0, |visit| visit(atom_feed.entries()));
@@ -507,7 +513,7 @@ pub async fn list_entry_ids_with_writer(
         None => {
             super::walk::for_each_atom_with_writer(
                 &feeds_dir,
-                &parse_atom,
+                "Feed membership discovery",
                 |_path, feed| {
                     for id in entry_ids(&feed) {
                         if seen.insert(id.clone()) {
@@ -637,7 +643,9 @@ mod tests {
         let listed = list_feeds_with_writer(lib, &unread, Some(&writer))
             .await
             .unwrap();
-        let (recovered, outcome) = discover_feeds(lib, None, Some(&writer)).await.unwrap();
+        let (recovered, outcome) = discover_feeds(lib, None, Some(&writer), "Feed recovery")
+            .await
+            .unwrap();
         assert_eq!(outcome, WalkOutcome::Enumerated);
         let [listed] = listed.as_slice() else {
             panic!("expected one listed feed")

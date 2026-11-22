@@ -92,9 +92,25 @@ fn set_local_id(atom: &mut Atom, id: &str) {
 /// Parse locally stored Atom XML file into an `Atom`. Returns the parse error message as a `String`
 /// so this layer stays free of the persistence error type; the caller maps it into its own error.
 pub fn parse_atom(xml: &str) -> Result<Atom, String> {
+    parse_atom_with_diagnostic(xml).map_err(|(error, _)| error)
+}
+
+/// The second error field describes the parser stage without quoting XML.
+pub(crate) fn parse_atom_with_diagnostic(xml: &str) -> Result<Atom, (String, String)> {
     let sanitized = fix_bare_ampersands(xml);
     let (normalized, saved_id) = normalize_local_namespaces(&sanitized)?;
-    let mut atom = normalized.parse::<Atom>().map_err(|e| e.to_string())?;
+    let mut atom = normalized.parse::<Atom>().map_err(|error| {
+        use atom_syndication::Error;
+        let diagnostic = match &error {
+            Error::Xml(_) => "invalid Atom XML",
+            Error::InvalidStartTag => "missing Atom feed opening tag",
+            Error::Eof => "unexpected end of Atom feed",
+            Error::WrongDatetime(_) => "invalid Atom timestamp (expected RFC 3339)",
+            Error::WrongAttribute { .. } => "invalid Atom attribute value",
+            _ => "invalid Atom feed structure",
+        };
+        (error.to_string(), diagnostic.into())
+    })?;
     // The storage library trims extension text. Local IDs retain their exact
     // saved characters, including whitespace, just as Markdown IDs do.
     if let Some(saved_id) = saved_id {
@@ -112,14 +128,28 @@ pub fn parse_atom(xml: &str) -> Result<Atom, String> {
             }
         }
     }
-    get_local_id(&atom)?;
+    get_local_id(&atom).map_err(|error| (error, "invalid local Feed identity".into()))?;
     Ok(atom)
 }
 
 /// The storage library groups extensions by prefix and does not resolve local
 /// namespace declarations. Normalize Xaga element names at the XML boundary so
 /// prefix aliases and shadowing cannot change ownership or overwrite foreign fields.
-fn normalize_local_namespaces(xml: &str) -> Result<(String, Option<String>), String> {
+fn normalize_local_namespaces(xml: &str) -> Result<(String, Option<String>), (String, String)> {
+    let mut position = None;
+    normalize_local_namespaces_at(xml, &mut position).map_err(|error| {
+        let diagnostic = match position {
+            Some(byte) => format!("invalid Atom XML at normalized byte {byte}"),
+            None => "invalid Atom XML or local namespace data".into(),
+        };
+        (error, diagnostic)
+    })
+}
+
+fn normalize_local_namespaces_at(
+    xml: &str,
+    position: &mut Option<u64>,
+) -> Result<(String, Option<String>), String> {
     use quick_xml::{Writer, events::Event, name::ResolveResult, reader::NsReader};
     use std::collections::BTreeMap;
     const ATOM_NAMESPACE: &[u8] = b"http://www.w3.org/2005/Atom";
@@ -134,7 +164,13 @@ fn normalize_local_namespaces(xml: &str) -> Result<(String, Option<String>), Str
     let mut used = BTreeMap::<String, String>::new();
     let mut scan = NsReader::from_str(xml);
     loop {
-        let (namespace, event) = scan.read_resolved_event().map_err(|e| e.to_string())?;
+        let (namespace, event) = match scan.read_resolved_event() {
+            Ok(event) => event,
+            Err(error) => {
+                *position = Some(scan.error_position());
+                return Err(error.to_string());
+            }
+        };
         if matches!(namespace, ResolveResult::Unknown(_)) {
             return Err("unbound XML namespace prefix".into());
         }
@@ -188,7 +224,13 @@ fn normalize_local_namespaces(xml: &str) -> Result<(String, Option<String>), Str
     let mut reading_id = false;
     let mut saved_id: Option<String> = None;
     loop {
-        let (ns, event) = reader.read_resolved_event().map_err(|e| e.to_string())?;
+        let (ns, event) = match reader.read_resolved_event() {
+            Ok(event) => event,
+            Err(error) => {
+                *position = Some(reader.error_position());
+                return Err(error.to_string());
+            }
+        };
         let uri = match ns {
             ResolveResult::Bound(n) => Some(decode_namespace(n.as_ref())?),
             _ => None,
