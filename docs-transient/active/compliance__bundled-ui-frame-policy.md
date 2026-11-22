@@ -16,7 +16,6 @@ enforcement. The article reader and inline PDF viewer use Blob URLs.
 
 ## Remaining work
 
-- Remove `https:` from `frame-src` in the shared bundled policy.
 - In a bundled macOS build, attempt to load a controlled HTTPS frame from
   each window and observe a CSP violation for the attempted URL with
   `effectiveDirective` equal to `frame-src`. A failed load alone could come
@@ -24,6 +23,58 @@ enforcement. The article reader and inline PDF viewer use Blob URLs.
   path. Broader network containment is covered by the loopback remediation.
 - Verify normal IPC in both windows, article rendering, and inline PDF
   viewing. Record any platform coverage limits.
+
+## Bundled macOS smoke check
+
+In a logged-in macOS desktop session, run
+`npm run tauri -- build --debug --bundles app` and open the resulting
+`Xaga.app`. Use a disposable library with a saved article and PDF. In Web
+Inspector, run the following in the top-frame console of the main window and
+again in Settings:
+
+```js
+(async () => {
+  const url = new URL("https://xaga-frame-policy.invalid/probe");
+  const frame = document.createElement("iframe");
+  let timeout;
+  let onViolation;
+  try {
+    const violation = new Promise((resolve, reject) => {
+      onViolation = (event) => {
+        if (
+          event.effectiveDirective === "frame-src" &&
+          event.disposition === "enforce" &&
+          [url.origin, url.href].includes(event.blockedURI)
+        ) {
+          resolve(event);
+        }
+      };
+      document.addEventListener("securitypolicyviolation", onViolation);
+      timeout = setTimeout(
+        () => reject(new Error("No frame-src violation")),
+        5000
+      );
+    });
+    frame.src = url.href;
+    document.body.append(frame);
+    const event = await violation;
+    return {
+      directive: event.effectiveDirective,
+      blockedURI: event.blockedURI,
+      theme: await window.__TAURI_INTERNALS__.invoke("get_theme"),
+    };
+  } finally {
+    clearTimeout(timeout);
+    document.removeEventListener("securitypolicyviolation", onViolation);
+    frame.remove();
+  }
+})();
+```
+
+Confirm that both calls return a `frame-src` violation and the current
+theme. Open the saved article in Reader and use Find to locate a phrase in
+its rendered body. Enable **Show PDFs in the reading pane** in Settings and
+confirm the saved PDF page appears inside Xaga.
 
 ## References
 
