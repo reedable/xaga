@@ -90,7 +90,8 @@ the synchronized version files and `Cargo.lock` on `version/<new-version>`, and
 opens a PR into `main`. It supports final and development versions, including
 retargeting a development version, and rejects RC versions according to the same
 CLI lifecycle rules. It does not push to `main`, merge PRs, create tags, or build
-packages. It does not run automatically when cutting or merging a release.
+packages. First RC publication also uses the patch-bump script after pushing
+the release branch.
 
 The workflows and scripts must be installed on the default branch before manual
 execution is available. Enable **Allow GitHub Actions to create and approve pull
@@ -185,9 +186,9 @@ this prerequisite before verification and building.
 
 ## Prepare releases with GitHub Actions
 
-All development targets `main` through pull requests. Release workflows write
-only to `release/x.y.z` and release tags; they do not push to `main`, merge PRs,
-or inspect administrative branch-protection settings.
+All development targets `main` through pull requests. Release workflows push
+`release/x.y.z`, release tags, and the first RC's `version/*` bump branch.
+Branch protection governs both PRs.
 
 ### Release Candidate
 
@@ -198,6 +199,13 @@ select `release/x.y.z` at `x.y.z-rc.N` to prepare the next candidate.
 The workflow commits the RC version locally before verification and building.
 After a successful build, publication atomically pushes the release branch and
 RC tag, uploads the draft prerelease, and creates or reuses the PR to `main`.
+Immediately after the first push of the release branch, publication uses the
+current `main` to open a separate patch-bump PR. It reuses an existing bump PR
+and skips the bump if `main` already has a different major, minor, or patch version.
+Both PRs may merge in either order under normal review and baseline checks.
+Later RCs leave the bump PR alone. If opening the bump PR fails, publication
+still attempts the draft and release PR. Rerun the publication job to retry
+the bump using the retained package.
 If verification or building fails, **Re-run failed jobs** prepares the same RC
 version from the original source. The failed build leaves the remote branch and
 tag untouched. If another run publishes in the meantime, the branch and tag

@@ -14,25 +14,63 @@ function git(...args) {
   return run("git", args);
 }
 function main() {
-  const bump = process.argv[2];
+  const [bump, releaseVersion] = process.argv.slice(2);
   if (!["major", "minor", "patch"].includes(bump))
     throw new Error("Expected major, minor, or patch bump");
   if (process.env.GITHUB_REF !== "refs/heads/main")
     throw new Error("Run version bumps on main");
   if (git("status", "--porcelain=v1", "--untracked-files=all"))
     throw new Error("Version bump requires a clean checkout");
-  const start = git("rev-parse", "HEAD");
-  if (git("ls-remote", "origin", "refs/heads/main").split(/\s+/)[0] !== start)
+  const main = git("rev-parse", "HEAD");
+  if (git("ls-remote", "origin", "refs/heads/main").split(/\s+/)[0] !== main)
     throw new Error("main moved; start a fresh run on main");
   const current = validateVersionRecords(readVersionRecords());
+  if (
+    releaseVersion &&
+    current.replace(/-(?:dev|rc\.[0-9]+)$/, "") !== releaseVersion
+  ) {
+    console.log(
+      `Skipping the patch bump for release ${releaseVersion} because main is at ${current}.`
+    );
+    return;
+  }
   const next = nextVersion(current, bump);
   const branch = `version/${next}`;
   const ref = `refs/heads/${branch}`;
   const title = `Start ${next} development`;
+  const listPRs = () =>
+    JSON.parse(
+      run("gh", [
+        "pr",
+        "list",
+        "--state",
+        "open",
+        "--base",
+        "main",
+        "--head",
+        branch,
+        "--json",
+        "url",
+      ])
+    );
+  if (releaseVersion) {
+    const existingPR = listPRs()[0]?.url;
+    if (existingPR) {
+      console.log(`Version bump PR: ${existingPR}`);
+      return;
+    }
+  }
 
+  const existing = git("ls-remote", "origin", ref);
+  if (existing) git("fetch", "--no-tags", "origin", ref);
+  // A retry can reopen the prepared branch after main gains more commits.
+  const start =
+    releaseVersion && existing ? git("rev-parse", "FETCH_HEAD^") : main;
+  if (start !== main) git("merge-base", "--is-ancestor", start, main);
   git("switch", "--detach", start);
   run("npm", ["run", `version:${bump}`]);
-  validateVersionRecords(readVersionRecords());
+  if (validateVersionRecords(readVersionRecords()) !== next)
+    throw new Error(`Version bump did not produce ${next}`);
   git(
     "add",
     "--",
@@ -51,10 +89,8 @@ function main() {
   );
   git("commit", "-m", title);
 
-  const existing = git("ls-remote", "origin", ref);
   if (existing) {
     // Recover PR creation after a successful push, without replacing branch work.
-    git("fetch", "--no-tags", "origin", ref);
     if (
       git("rev-parse", "FETCH_HEAD^", "FETCH_HEAD^{tree}") !==
       `${start}\n${git("rev-parse", "HEAD^{tree}")}`
@@ -65,20 +101,7 @@ function main() {
   } else {
     git("push", `--force-with-lease=${ref}:`, "origin", `HEAD:${ref}`);
   }
-  const prs = JSON.parse(
-    run("gh", [
-      "pr",
-      "list",
-      "--state",
-      "open",
-      "--base",
-      "main",
-      "--head",
-      branch,
-      "--json",
-      "url",
-    ])
-  );
+  const prs = listPRs();
   const body = `Advance the development version from ${current} to ${next} using npm run version:${bump}.\n\nReview and merge after the required checks pass.`;
   const url =
     prs[0]?.url ||

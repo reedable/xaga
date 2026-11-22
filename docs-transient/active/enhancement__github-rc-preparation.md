@@ -15,6 +15,8 @@ subsequent candidates.
   prerelease, and create or reuse a pull request into `main`.
 - A failed build leaves remote refs unchanged so rerunning the build prepares
   the same RC version from the original source.
+- First RC publication opens a separate patch-bump PR against current `main`
+  after pushing the release branch. Verify recovery of both PRs on GitHub.
 
 ## Remaining work
 
