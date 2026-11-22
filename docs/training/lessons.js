@@ -1254,7 +1254,7 @@ const TRAINING = {
         objective:
           "Distinguish what is being inspected from where the Inspector appears.",
         paragraphs: [
-          "The Inspector shows information about the selected article or annotation. Related and Topics are available for both; Tags is available for articles. Choosing an annotation in the reading pane does not open a closed Inspector. Opening Inspect is a separate action.",
+          "The Inspector offers Related, Topics, and Tags for articles, stored PDFs with an Entry, and annotations. A PDF's tags and Topic memberships apply to the whole document. Choosing an annotation in the reading pane does not open a closed Inspector. Opening Inspect is a separate action.",
           "For an article, the Inspector uses a 280-pixel side panel when the reading pane’s container is at least 700 CSS pixels wide. With less space it opens as a drawer over the window. Measure the reading pane’s container, not the whole browser window. An Annotation Inspector always uses the drawer, even on a wide layout.",
           "Opening and closing inspection must preserve the reading position. The drawer needs an accessible name, a Close action, Escape dismissal, and focus kept inside while it is open. On closing, return focus to its opener or the reading pane if the opener is gone. Article and Annotation tab choices remain separate for the session.",
         ],

@@ -235,7 +235,7 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
           reloading={reloading}
           inspectorOpener={inspectorOpener}
           onOpenInspector={
-            inspectorHidden && entryId && !isPdf
+            inspectorHidden && entryId && !blocked
               ? () => {
                   inspectorReturnFocus.current = inspectorOpener.current;
                   setInspectorOpen(true);
@@ -282,7 +282,7 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
               </Typography>
             </div>
           )}
-          {entryId && !isPdf && !blocked && (
+          {entryId && !blocked && (
             <aside
               ref={inspectorPanel}
               inert={inspectorHidden}
@@ -307,13 +307,7 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
           data-inspector-drawer
           disableRestoreFocus
           anchor="right"
-          open={
-            useInspectorDrawer &&
-            inspectorOpen &&
-            !!entryId &&
-            !isPdf &&
-            !blocked
-          }
+          open={useInspectorDrawer && inspectorOpen && !!entryId && !blocked}
           onClose={closeInspector}
           transitionDuration={animate ? undefined : 0}
           slotProps={{
