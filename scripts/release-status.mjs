@@ -4,8 +4,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 export function reportReleaseStatus(identity, state) {
-  // A final commit exists only locally until the successful atomic push. Do
-  // not report against its RC parent or ask GitHub to annotate an unknown SHA.
+  // Prepared commits stay local until publication pushes the branch and tag.
+  // Report only when the prepared commit is available remotely.
   const refs = execFileSync(
     "git",
     [

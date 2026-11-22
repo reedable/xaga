@@ -111,15 +111,6 @@ function prepare(mode, statePath) {
       "41898282+github-actions[bot]@users.noreply.github.com"
     );
     git("commit", "-m", `Prepare ${tag}`);
-    if (mode === "rc") {
-      git(
-        "push",
-        `--force-with-lease=${branch}:${expectedBranch}`,
-        "origin",
-        `HEAD:${branch}`
-      );
-      expectedBranch = git("rev-parse", "HEAD");
-    }
   }
   const identity = {
     mode,

@@ -32,6 +32,7 @@ function fixture(t, version = "0.17.3-dev") {
     "release-tag.mjs",
     "release-status.mjs",
     "prepare-release.mjs",
+    "prepare-version-bump.mjs",
     "publish-release.mjs",
   ]) {
     mkdirSync(join(root, "scripts"), { recursive: true });
@@ -46,6 +47,8 @@ function fixture(t, version = "0.17.3-dev") {
           "check:uncommitted": "git diff --quiet && git diff --cached --quiet",
           "version:rc":
             "npm run check:uncommitted && node scripts/bump-version.mjs rc",
+          "version:patch":
+            "npm run check:uncommitted && node scripts/bump-version.mjs patch",
           "version:release":
             "npm run check:uncommitted && node scripts/bump-version.mjs release",
           "release:tag": "node scripts/release-tag.mjs",
@@ -115,8 +118,18 @@ if (args[0] === 'api' && args.some(arg => arg.includes('/statuses/'))) {
  state.statuses ||= []; state.statuses.push({sha:args.find(arg=>arg.includes('/statuses/')).split('/').at(-1),state:args.find(arg=>arg.startsWith('state=')).slice(6),context:args.find(arg=>arg.startsWith('context=')).slice(8)});
 }
 else if (args[0] === 'api' && args.includes('--paginate') && args.includes('--slurp')) console.log(JSON.stringify([state.releases]));
-else if (args[0] === 'pr' && args[1] === 'list') console.log(JSON.stringify(state.prs));
-else if (args[0] === 'pr' && args[1] === 'create') state.prs.push({number:1,base:args[args.indexOf('--base')+1],head:args[args.indexOf('--head')+1]});
+else if (args[0] === 'pr' && args[1] === 'list') {
+ const head = args[args.indexOf('--head')+1];
+ console.log(JSON.stringify(state.prs.filter(pr => pr.head === head)));
+}
+else if (args[0] === 'pr' && args[1] === 'create') {
+ const head = args[args.indexOf('--head')+1];
+ if (process.env.GH_FAIL_PR_HEAD === head) process.exit(17);
+ const number = state.prs.length + 1;
+ const url = 'https://example.test/pr/' + number;
+ state.prs.push({number, url, base:args[args.indexOf('--base')+1], head});
+ console.log(url);
+}
 else if (args[0] === 'release' && args[1] === 'create') state.releases.push({tag_name: args[2], draft: true, prerelease: args.includes('--prerelease')});
 else if (args[0] === 'release' && args[1] === 'upload') state.uploads.push(args[2]);
 else { console.error('Unexpected GitHub operation: ' + args.join(' ')); process.exit(19); }
@@ -211,12 +224,11 @@ function built(f, mode = "rc") {
   succeeds(f.seal());
 }
 
-test("first RC commits and creates its branch before building without touching main", (t) => {
+test("first RC retries the same version and publishes only after building", (t) => {
   const f = fixture(t);
+  const refs = f.refs();
   succeeds(f.prepare());
-  const commit = f.git("rev-parse", "HEAD");
-  assert.equal(head(f), commit);
-  assert.equal(head(f, "main"), f.start);
+  assert.equal(f.refs(), refs);
   assert.equal(f.git("rev-parse", "HEAD^"), f.start);
   assert.equal(
     JSON.parse(f.git("show", "HEAD:package.json")).version,
@@ -224,34 +236,60 @@ test("first RC commits and creates its branch before building without touching m
   );
   assert.equal(f.git("status", "--porcelain"), "");
   assert.equal(f.git("ls-remote", "origin", "refs/tags/*"), "");
-  assert.equal(github(f).prs.length, 0);
   fails(f.seal());
-  assert.equal(head(f), commit);
+  assert.equal(f.refs(), refs);
+  f.git("checkout", "--detach", f.start);
+  succeeds(f.prepare("rc", { GITHUB_RUN_ATTEMPT: "2" }));
+  const commit = f.git("rev-parse", "HEAD");
+  assert.equal(
+    JSON.parse(f.git("show", "HEAD:package.json")).version,
+    "0.17.3-rc.1"
+  );
   f.build();
   succeeds(f.seal());
+  assert.equal(f.refs(), refs);
+  f.git("checkout", "--detach", f.start);
   succeeds(f.publish());
-  assert.equal(f.git("rev-parse", "HEAD"), commit);
+  assert.equal(head(f), commit);
+  assert.equal(head(f, "main"), f.start);
   assert.equal(
     f.git("ls-remote", "origin", "refs/tags/v0.17.3-rc.1^{}").split(/\s+/)[0],
     commit
   );
-  assert.equal(github(f).prs.length, 1);
-  assert.equal(github(f).prs[0].base, "main");
-  assert.equal(github(f).prs[0].head, "release/0.17.3");
+  assert.deepEqual(
+    github(f).prs.map(({ base, head }) => [base, head]),
+    [
+      ["main", "version/0.17.4-dev"],
+      ["main", "release/0.17.3"],
+    ]
+  );
+  f.git("fetch", "origin", "refs/heads/version/0.17.4-dev");
+  assert.equal(f.git("rev-parse", "FETCH_HEAD^"), f.start);
+  assert.equal(
+    JSON.parse(f.git("show", "FETCH_HEAD:package.json")).version,
+    "0.17.4-dev"
+  );
   assert.equal(github(f).releases[0].prerelease, true);
 });
 
-test("next RC commits and pushes its increment before the build", (t) => {
+test("next RC retries without advancing the release branch before publication", (t) => {
   const f = fixture(t, "0.17.3-rc.1");
+  const refs = f.refs();
   succeeds(f.prepare());
-  assert.equal(head(f), f.git("rev-parse", "HEAD"));
+  fails(f.seal());
+  assert.equal(f.refs(), refs);
+  f.git("checkout", "--detach", f.start);
+  succeeds(f.prepare("rc", { GITHUB_RUN_ATTEMPT: "2" }));
   assert.equal(
     JSON.parse(f.git("show", "HEAD:src-tauri/tauri.conf.json")).version,
     "0.17.3-rc.2"
   );
-  fails(f.seal());
-  assert.equal(f.git("ls-remote", "origin", "refs/tags/*"), "");
-  assert.equal(github(f).prs.length, 0);
+  f.build();
+  succeeds(f.seal());
+  assert.equal(f.refs(), refs);
+  succeeds(f.publish());
+  assert.equal(head(f), f.manifest().commit);
+  assert.equal(f.git("ls-remote", "origin", "refs/heads/version/*"), "");
 });
 
 test("RC publication reuses its existing open PR and never requests auto-merge", (t) => {
@@ -316,6 +354,31 @@ test("main may advance independently while a captured RC builds", (t) => {
   succeeds(f.publish());
   assert.equal(head(f), candidate);
   assert.equal(head(f, "main"), main);
+  f.git("fetch", "origin", "refs/heads/version/0.17.4-dev");
+  assert.equal(f.git("rev-parse", "FETCH_HEAD^"), main);
+});
+
+test("first RC publication retries bump PR creation using the same refs", (t) => {
+  const f = fixture(t);
+  built(f);
+  fails(f.publish({ GH_FAIL_PR_HEAD: "version/0.17.4-dev" }));
+  assert.equal(head(f), f.manifest().commit);
+  assert.deepEqual(
+    github(f).prs.map(({ head }) => head),
+    ["release/0.17.3"]
+  );
+  assert.equal(github(f).releases[0].tag_name, f.manifest().tag);
+  f.git("checkout", "--detach", f.start);
+  f.git("commit", "--allow-empty", "-m", "Advance main during recovery");
+  f.git("push", "origin", "HEAD:main");
+  const refs = f.refs();
+  succeeds(f.publish());
+  succeeds(f.publish());
+  assert.equal(f.refs(), refs);
+  assert.deepEqual(
+    github(f).prs.map(({ head }) => head),
+    ["release/0.17.3", "version/0.17.4-dev"]
+  );
 });
 
 for (const [version, mode, ref] of [
@@ -460,25 +523,18 @@ test("a concurrent branch push during final publication rejects the atomic updat
   assert.equal(f.git("ls-remote", "origin", "refs/tags/*"), "");
 });
 
-test("Release build status follows the prepared RC commit through failure and success", (t) => {
+test("RC status starts at publication on the prepared commit", (t) => {
   const f = fixture(t);
   succeeds(f.prepare());
-  const commit = head(f);
-  assert.notEqual(commit, f.start);
-  assert.deepEqual(github(f).statuses, [
-    { sha: commit, state: "pending", context: "Release build" },
-  ]);
   succeeds(f.status("failure"));
-  assert.equal(github(f).statuses.at(-1).state, "failure");
   f.build();
   succeeds(f.seal());
+  const commit = f.manifest().commit;
   succeeds(f.publish());
-  assert.equal(github(f).statuses.at(-1).state, "success");
-  assert.ok(github(f).statuses.every((status) => status.sha === commit));
-  succeeds(f.prepare("rc", { GITHUB_REF: "refs/heads/release/0.17.3" }));
-  assert.equal(github(f).statuses.at(-1).state, "pending");
-  assert.equal(github(f).statuses.at(-1).sha, head(f));
-  assert.notEqual(head(f), commit);
+  assert.deepEqual(github(f).statuses, [
+    { sha: commit, state: "pending", context: "Release build" },
+    { sha: commit, state: "success", context: "Release build" },
+  ]);
 });
 
 test("a local final commit does not alter its successful RC status", (t) => {

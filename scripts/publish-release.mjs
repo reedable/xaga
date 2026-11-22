@@ -1,7 +1,8 @@
 // Push the verified source and finish its draft. Retrying uses the same package.
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { releaseTagName } from "./release-tag.mjs";
@@ -18,6 +19,31 @@ function report(message) {
   console.log(message);
   if (process.env.GITHUB_STEP_SUMMARY)
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, message + "\n");
+}
+function openNextDevelopmentPR(version) {
+  const main = "refs/heads/main";
+  git("fetch", "--no-tags", "origin", main);
+  const temporary = mkdtempSync(join(tmpdir(), "xaga-release-main-"));
+  const directory = join(temporary, "main");
+  try {
+    git("worktree", "add", "--detach", directory, "FETCH_HEAD");
+    try {
+      const summary = execFileSync(
+        process.execPath,
+        ["scripts/prepare-version-bump.mjs", "patch", version],
+        {
+          cwd: directory,
+          env: { ...process.env, GITHUB_REF: main },
+          encoding: "utf8",
+        }
+      );
+      console.log(summary.trim());
+    } finally {
+      git("worktree", "remove", "--force", directory);
+    }
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
 }
 function main() {
   const directory = resolve(process.env.RELEASE_PACKAGE);
@@ -51,10 +77,11 @@ function main() {
     )
       throw new Error("Invalid branch");
     git("check-ref-format", state.branch);
-    if (
-      state.expectedBranch !==
-      (state.mode === "rc" ? state.commit : state.start)
-    )
+    const expectedBranch =
+      state.mode === "rc" && state.sourceRef === "refs/heads/main"
+        ? ""
+        : state.start;
+    if (state.expectedBranch !== expectedBranch)
       throw new Error("Invalid release branch update expectation");
     git("fetch", join(directory, "release.bundle"), tagRef);
     if (
@@ -122,6 +149,16 @@ function main() {
   report(
     `Remote ${state.tag} exists at ${state.commit}. If draft upload fails, re-run only the failed publication job; do not start another preparation run.`
   );
+  let bumpError;
+  if (state.mode === "rc" && state.expectedBranch === "") {
+    try {
+      openNextDevelopmentPR(state.version.replace(/-rc\.[0-9]+$/, ""));
+    } catch (error) {
+      bumpError = new Error(
+        `Could not open the next development version PR. Rerun publication to retry. ${error.message}`
+      );
+    }
+  }
   const repo = process.env.GITHUB_REPOSITORY;
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo || ""))
     throw new Error("GITHUB_REPOSITORY is required");
@@ -207,10 +244,11 @@ function main() {
       `Release PR targets main from ${branch}. Merging remains a separate action subject to branch protection.`
     );
   }
-  reportReleaseStatus(state, "success");
   report(
     `Draft ${state.tag} contains the verified artifacts. Inspect it before publishing.`
   );
+  if (bumpError) throw bumpError;
+  reportReleaseStatus(state, "success");
 }
 try {
   main();
