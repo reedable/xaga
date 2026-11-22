@@ -8,8 +8,8 @@ use thiserror::Error;
 
 use crate::{
     atom::{
-        Atom, AtomEntry, apply_incoming_xml, atom_to_entry, atom_to_feed, atom_to_xml, entry_ids,
-        feed_to_atom, parse_atom, self_link_url, set_title,
+        Atom, AtomEntry, apply_incoming_xml, atom_to_entry, atom_to_feed, atom_to_xml,
+        count_unread_feed_entries, entry_ids, feed_to_atom, parse_atom, self_link_url, set_title,
     },
     library_writer::{LibraryWriter, Tier as WriteTier, WriteToken},
     types::{Article, Feed},
@@ -117,7 +117,7 @@ pub async fn add_feed(
     writer: &LibraryWriter,
     url: &str,
     unread: &HashSet<String>,
-    bookmarked: &HashSet<String>,
+    _bookmarked: &HashSet<String>,
     timeout_secs: u64,
     max_body_bytes: u64,
 ) -> Result<(Feed, Vec<Article>)> {
@@ -138,7 +138,6 @@ pub async fn add_feed(
             &id,
             &url,
             unread,
-            bookmarked,
             timeout_secs,
             max_body_bytes,
         )
@@ -166,7 +165,7 @@ pub async fn add_feed(
 
     match commit_via_writer(writer, &id, &atom, new_entries, false).await {
         Ok(created) => Ok((
-            project_pin(library_dir, atom_to_feed(&id, &atom, unread, bookmarked)).await?,
+            project_pin(library_dir, atom_to_feed_with_unread(&id, &atom, unread)).await?,
             created,
         )),
         Err(e) => {
@@ -211,7 +210,6 @@ async fn refresh_feed(
     id: &str,
     url: &str,
     unread: &HashSet<String>,
-    bookmarked: &HashSet<String>,
     timeout_secs: u64,
     max_body_bytes: u64,
 ) -> Result<(Feed, Vec<Article>)> {
@@ -230,7 +228,7 @@ async fn refresh_feed(
     let created = commit_via_writer(writer, id, &existing, new_entries, true).await?;
 
     Ok((
-        project_pin(library_dir, atom_to_feed(id, &existing, unread, bookmarked)).await?,
+        project_pin(library_dir, atom_to_feed_with_unread(id, &existing, unread)).await?,
         created,
     ))
 }
@@ -324,7 +322,7 @@ pub async fn refresh_all_feeds(
     library_dir: &Path,
     writer: &LibraryWriter,
     unread: &HashSet<String>,
-    bookmarked: &HashSet<String>,
+    _bookmarked: &HashSet<String>,
     timeout_secs: u64,
     max_body_bytes: u64,
 ) -> Vec<(String, String, Result<(Feed, Vec<Article>)>)> {
@@ -353,7 +351,7 @@ pub async fn refresh_all_feeds(
             Ok((
                 project_pin(
                     library_dir,
-                    atom_to_feed(&id, &existing, unread, bookmarked),
+                    atom_to_feed_with_unread(&id, &existing, unread),
                 )
                 .await?,
                 created,
@@ -367,29 +365,30 @@ pub async fn refresh_all_feeds(
 }
 
 /// List all feeds on disk, parsed from their Atom XML.
-pub async fn list_feeds(
-    library_dir: &Path,
-    unread: &HashSet<String>,
-    bookmarked: &HashSet<String>,
-) -> Result<Vec<Feed>> {
-    list_feeds_with_writer(library_dir, unread, bookmarked, None).await
+pub async fn list_feeds(library_dir: &Path, unread: &HashSet<String>) -> Result<Vec<Feed>> {
+    list_feeds_with_writer(library_dir, unread, None).await
 }
 
 pub async fn list_feeds_with_writer(
     library_dir: &Path,
     unread: &HashSet<String>,
-    bookmarked: &HashSet<String>,
     writer: Option<&LibraryWriter>,
 ) -> Result<Vec<Feed>> {
-    Ok(discover_feeds(library_dir, unread, bookmarked, writer)
+    let summarize_unread = |entries: &[AtomEntry]| count_unread_feed_entries(entries, unread);
+    Ok(discover_feeds(library_dir, Some(&summarize_unread), writer)
         .await?
         .0)
 }
 
+fn atom_to_feed_with_unread(id: &str, atom: &Atom, unread: &HashSet<String>) -> Feed {
+    atom_to_feed(id, atom, count_unread_feed_entries(atom.entries(), unread))
+}
+
+type FeedUnreadVisitor<'a> = dyn Fn(&[AtomEntry]) -> usize + Sync + 'a;
+
 pub(crate) async fn discover_feeds(
     library_dir: &Path,
-    unread: &HashSet<String>,
-    bookmarked: &HashSet<String>,
+    summarize_unread: Option<&FeedUnreadVisitor<'_>>,
     writer: Option<&LibraryWriter>,
 ) -> Result<(Vec<Feed>, crate::fs::WalkOutcome)> {
     let mut feeds: Vec<Feed> = Vec::new();
@@ -399,7 +398,8 @@ pub(crate) async fn discover_feeds(
         &parse_atom,
         |path, atom_feed| {
             let id = crate::util::entity_id(&path);
-            feeds.push(atom_to_feed(&id, &atom_feed, unread, bookmarked));
+            let unread_count = summarize_unread.map_or(0, |visit| visit(atom_feed.entries()));
+            feeds.push(atom_to_feed(&id, &atom_feed, unread_count));
         },
         writer,
     )
@@ -424,14 +424,14 @@ pub(crate) async fn read_feed(
     library_dir: &Path,
     id: &str,
     unread: &HashSet<String>,
-    bookmarked: &HashSet<String>,
+    _bookmarked: &HashSet<String>,
 ) -> Result<Feed> {
     validate_lookup(id)?;
     let xml = tokio::fs::read_to_string(crate::library::feed_path(library_dir, id)).await?;
     let feed = parse_atom(&xml).map_err(FeedError::AtomParse)?;
     crate::atom::resolve_local_id(&feed, &crate::library::feed_path(library_dir, id))
         .map_err(FeedError::AtomParse)?;
-    project_pin(library_dir, atom_to_feed(id, &feed, unread, bookmarked)).await
+    project_pin(library_dir, atom_to_feed_with_unread(id, &feed, unread)).await
 }
 
 /// Rename a feed by updating its `<title>` in the stored Atom file.
@@ -440,7 +440,7 @@ pub(crate) async fn rename_feed(
     id: &str,
     new_title: &str,
     unread: &HashSet<String>,
-    bookmarked: &HashSet<String>,
+    _bookmarked: &HashSet<String>,
     _token: WriteToken,
 ) -> Result<Feed> {
     validate_lookup(id)?;
@@ -453,7 +453,7 @@ pub(crate) async fn rename_feed(
     crate::atom::resolve_local_id(&feed, &path).map_err(FeedError::AtomParse)?;
     set_title(&mut feed, new_title);
     write_atom_atomic(library_dir, id, &feed).await?;
-    project_pin(library_dir, atom_to_feed(id, &feed, unread, bookmarked)).await
+    project_pin(library_dir, atom_to_feed_with_unread(id, &feed, unread)).await
 }
 
 /// Remove a feed (deletes `{id}.atom`).
@@ -601,6 +601,60 @@ mod tests {
     use super::*;
     use std::io::{Read as _, Write as _};
     use std::net::TcpListener;
+
+    #[tokio::test]
+    async fn feed_discovery_summarizes_unread_only_for_the_feed_list() {
+        use crate::{fs::WalkOutcome, library, pins::PinTarget};
+
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path();
+        let id = "saved-feed";
+        let path = library::feed_path(lib, id);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            path,
+            r#"<feed xmlns="http://www.w3.org/2005/Atom" xmlns:xaga="urn:xaga:atom">
+                <id>publisher</id><xaga:id>saved-feed</xaga:id><title>Feed title</title>
+                <subtitle>Feed description</subtitle><updated>2026-01-01T00:00:00Z</updated>
+                <link rel="self" href="https://example.com/feed"/>
+                <entry><id>publisher-entry</id><title>Unread</title>
+                    <link href="https://example.com/other" rel="related"/>
+                    <link href="http://www.example.com/unread/#fragment" rel="alternate"/>
+                </entry>
+                <entry><id>other-entry</id><title>Read</title>
+                    <link href="https://example.com/read" rel="alternate"/>
+                </entry>
+            </feed>"#,
+        )
+        .unwrap();
+        let writer = LibraryWriter::start(lib.into(), library::acquire_lock(lib).unwrap());
+        writer
+            .set_pin(PinTarget::Feed { id: id.into() }, true)
+            .await
+            .unwrap();
+
+        let unread = HashSet::from([url_hash12("https://example.com/unread")]);
+        let listed = list_feeds_with_writer(lib, &unread, Some(&writer))
+            .await
+            .unwrap();
+        let (recovered, outcome) = discover_feeds(lib, None, Some(&writer)).await.unwrap();
+        assert_eq!(outcome, WalkOutcome::Enumerated);
+        let [listed] = listed.as_slice() else {
+            panic!("expected one listed feed")
+        };
+        let [recovered] = recovered.as_slice() else {
+            panic!("expected one recovered feed")
+        };
+        assert_eq!(listed.unread_count, 1);
+        assert_eq!(recovered.unread_count, 0);
+        assert_eq!(listed.entry_count, 2);
+        assert_eq!(recovered.id, id);
+        assert_eq!(recovered.title, listed.title);
+        assert_eq!(recovered.description, listed.description);
+        assert_eq!(recovered.url, listed.url);
+        assert!(listed.is_pinned && recovered.is_pinned);
+        writer.shutdown().await;
+    }
 
     #[test]
     fn fetch_address_preserves_host_and_path_without_changing_identity() {
