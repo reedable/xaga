@@ -1,17 +1,19 @@
 import {
+  Alert,
   Button,
-  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
   TextField,
 } from "@mui/material";
-import { useEffect, useState, type SubmitEvent } from "react";
-import { usePins } from "../../providers/PinsContext";
+import { useEffect, useRef, useState, type SubmitEvent } from "react";
+import ShortcutDestination, {
+  useShortcutSelection,
+} from "./ShortcutDestination";
 import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import { useErrorSink } from "../../hooks/useErrorSink";
+import { errorMessage } from "../../platform/errors";
 import type { Site } from "../../types";
 
 export default function EditSiteDialog({
@@ -21,27 +23,34 @@ export default function EditSiteDialog({
   site: Site | null;
   onClose: () => void;
 }) {
-  const { pins, setPin } = usePins();
   const readOnly = useLibraryReadOnly();
   const { pushError } = useErrorSink();
-  const [pinned, setPinned] = useState(false);
+  const hostname = site?.id;
+  const target =
+    hostname === undefined ? undefined : ({ type: "site", hostname } as const);
+  const shortcut = useShortcutSelection(target);
+  const resetShortcut = shortcut.reset;
+  const [saveError, setSaveError] = useState<string>();
   const [saving, setSaving] = useState(false);
+  const inFlight = useRef(false);
   useEffect(() => {
-    setPinned(
-      !!site &&
-        pins.some((pin) => pin.type === "site" && pin.hostname === site.id)
-    );
-  }, [site, pins]);
+    resetShortcut();
+    setSaveError(undefined);
+  }, [hostname, resetShortcut]);
   const submit = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!site || readOnly || saving) return;
+    if (!target || readOnly || inFlight.current) return;
+    inFlight.current = true;
     setSaving(true);
+    setSaveError(undefined);
     try {
-      await setPin({ type: "site", hostname: site.id }, pinned);
+      await shortcut.save(target);
       onClose();
     } catch (error) {
+      setSaveError(errorMessage(error));
       pushError(error);
     } finally {
+      inFlight.current = false;
       setSaving(false);
     }
   };
@@ -70,16 +79,11 @@ export default function EditSiteDialog({
             fullWidth
             slotProps={{ input: { readOnly: true } }}
           />
-          <FormControlLabel
-            data-testid="pin-toggle"
-            label="Add to Shortcuts"
-            control={
-              <Checkbox
-                checked={pinned}
-                onChange={(event) => setPinned(event.target.checked)}
-                disabled={readOnly || saving}
-              />
-            }
+          {saveError && <Alert severity="error">{saveError}</Alert>}
+          <ShortcutDestination
+            value={shortcut.value}
+            onChange={shortcut.change}
+            disabled={readOnly || saving}
           />
         </DialogContent>
         <DialogActions>

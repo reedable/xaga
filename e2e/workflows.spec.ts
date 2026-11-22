@@ -6,6 +6,7 @@ import {
   articleButton,
   openArticle,
   reader,
+  addArticleShortcut,
   shareAction,
 } from "./fixtures";
 
@@ -266,7 +267,7 @@ test("pinning and unpinning updates Shortcuts without clearing the reading conte
   page,
 }) => {
   await openArticle(page, garden);
-  await shareAction(page, "pin-toggle");
+  await addArticleShortcut(page);
   await expect(
     control(page, "button", "sidebar-shortcuts-toggle")
   ).toBeVisible();
@@ -303,7 +304,7 @@ test("capture reset clears edits, navigation, filters, and expansion", async ({
     "filter-unread"
   ).getAttribute("aria-pressed");
   await openArticle(page, garden);
-  await shareAction(page, "pin-toggle");
+  await addArticleShortcut(page);
   await control(page, "button", "bookmark-toggle").click();
   await control(page, "dialog", "bookmark-palette")
     .locator('[data-color="blue"]')

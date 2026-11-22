@@ -32,8 +32,8 @@ The examples below use a small fictional library: **Field notes** is a feed,
 1. Click **Add feed**, the **+** beside **Feeds** in the sidebar.
 2. Enter the feed's address in **URL**. Use the RSS or Atom feed address supplied
    by the website.
-3. Optionally enter **Name (optional)** and select **Add to Shortcuts** if you
-   want quick access to the feed.
+3. Optionally enter **Name (optional)**. To keep a shortcut, choose **Top level**
+   or a folder in **Shortcut destination**.
 4. Click **Add**, then select the feed to browse its articles.
 
 If feeds fail to refresh, a notification shows the number of failures. Choose
@@ -209,9 +209,15 @@ name. Sorting is also available when your library is read-only.
 
 ## Keep a shortcut
 
-For an open article, choose **Share → Add to Shortcuts**. For a feed or Topic,
-select **Add to Shortcuts** when adding or editing it. Your shortcut appears
-under **Shortcuts** in the sidebar.
+For an open article, choose **Share → Add to Shortcuts**, select **Top level**
+or a folder in **Shortcut destination**, and click **Add**. The shortcut
+appears under **Shortcuts** in the sidebar.
+
+Use the same dropdown when adding or editing a feed or Topic, creating a Topic
+in Inspector, or opening **Site Settings**. The edit form shows the current
+shortcut location. Choose another location and save to move the shortcut, or
+choose **No shortcut** and save to remove it. **Cancel** leaves Shortcuts as
+they were when you opened the form.
 
 Choose **Share → Remove from Shortcuts** to unpin an article. Removing a shortcut
 keeps its destination and your current reading context.

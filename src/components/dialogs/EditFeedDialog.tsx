@@ -1,13 +1,12 @@
 import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import { useErrorSink } from "../../hooks/useErrorSink";
 import {
+  Alert,
   Button,
-  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
   TextField,
 } from "@mui/material";
 import {
@@ -15,18 +14,23 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
   type SubmitEvent,
 } from "react";
-import useAbortController from "../../hooks/useAbortController";
-import { useFeeds } from "../../hooks/useFeeds";
+import ShortcutDestination, {
+  shortcutSaveError,
+  useShortcutSelection,
+} from "./ShortcutDestination";
+import { errorMessage } from "../../platform/errors";
 import type { Feed } from "../../types";
 
 type EditFeedDialogProps = {
   open: boolean;
   feed: Feed | null;
   onClose: () => void;
-  onAdd: (url: string, title: string, pinned: boolean) => Promise<void>;
-  onSave: (title: string, pinned: boolean) => Promise<void>;
+  onAdd: (url: string, savedId?: string) => Promise<Feed>;
+  onRename: (id: string, title: string) => Promise<Feed>;
+  onSaved: (feed: Feed, added: boolean) => Promise<void>;
   onDelete: (feed: Feed) => Promise<void>;
 };
 
@@ -35,62 +39,111 @@ export default function EditFeedDialog({
   feed,
   onClose,
   onAdd,
-  onSave,
+  onRename,
+  onSaved,
   onDelete,
 }: EditFeedDialogProps) {
   const readOnly = useLibraryReadOnly();
   const { pushError } = useErrorSink();
-  const [, abortControllerRef] = useAbortController();
-  const { pinnedFeedIds } = useFeeds(abortControllerRef);
+  const shortcut = useShortcutSelection(
+    feed ? { type: "feed", id: feed.id } : undefined
+  );
+  const resetShortcut = shortcut.reset;
+  const inFlight = useRef(false);
+  const saved = useRef<Feed | null>(null);
+  const [saveError, setSaveError] = useState<string>();
+  const [refreshId, setRefreshId] = useState<string>();
+  const [entitySaved, setEntitySaved] = useState(false);
+  const [feedAdded, setFeedAdded] = useState(false);
 
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
-  const [pinnedState, setPinnedState] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const isAdding = feed === null;
 
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpen.current) {
+      saved.current = null;
+      setRefreshId(undefined);
+      setSaveError(undefined);
+      setEntitySaved(false);
+      setFeedAdded(false);
+      resetShortcut();
       setTitle(feed?.title ?? "");
       setUrl(feed?.url ?? "");
-      setPinnedState(pinnedFeedIds.includes(feed?.id ?? ""));
     }
-  }, [open, feed, pinnedFeedIds]);
+    wasOpen.current = open;
+  }, [open, feed, resetShortcut]);
 
-  const handleSubmit = useCallback(
-    async (e: SubmitEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      if (readOnly) return;
-      setSaving(true);
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (readOnly || inFlight.current || deleting) return;
+    if (isAdding ? !url.trim() : !title.trim()) return;
+    inFlight.current = true;
+    setSaving(true);
+    setSaveError(undefined);
 
-      try {
-        if (isAdding) {
-          await onAdd(url.trim(), title.trim(), pinnedState);
-        } else {
-          if (!title.trim()) return;
-          await onSave(title.trim(), pinnedState);
+    try {
+      let result = saved.current ?? feed;
+      if (!result) {
+        try {
+          result = await onAdd(url.trim(), refreshId);
+          saved.current = result;
+          setFeedAdded(true);
+          setRefreshId(undefined);
+        } catch (error) {
+          if (
+            typeof error === "object" &&
+            error &&
+            "savedFeedId" in error &&
+            typeof error.savedFeedId === "string"
+          ) {
+            setRefreshId(error.savedFeedId);
+            throw {
+              code: "feed:saved-refresh",
+              message:
+                "The Feed was saved, but its articles couldn't be refreshed. Retry to refresh it.",
+              detail: "",
+            };
+          }
+          throw error;
         }
-        onClose();
-      } catch (error) {
-        pushError(error);
-      } finally {
-        setSaving(false);
       }
-    },
-    [
-      isAdding,
-      onAdd,
-      onClose,
-      onSave,
-      pinnedState,
-      title,
-      url,
-      readOnly,
-      pushError,
-    ]
-  );
+
+      if (!entitySaved && title.trim() && title.trim() !== result.title) {
+        try {
+          result = await onRename(result.id, title.trim());
+          saved.current = result;
+        } catch (cause) {
+          if (isAdding)
+            throw {
+              code: "app:error",
+              message:
+                "The Feed was saved, but its name couldn't be saved. Retry to save the name.",
+              detail: "",
+            };
+          throw cause;
+        }
+      }
+      setEntitySaved(true);
+      try {
+        await shortcut.save({ type: "feed", id: result.id });
+      } catch (cause) {
+        throw shortcutSaveError("Feed", cause);
+      }
+      await onSaved(result, isAdding);
+      onClose();
+    } catch (error) {
+      setSaveError(errorMessage(error));
+      pushError(error);
+    } finally {
+      inFlight.current = false;
+      setSaving(false);
+    }
+  }
 
   const handleDelete = useCallback(async () => {
     if (!feed || readOnly) return;
@@ -114,7 +167,14 @@ export default function EditFeedDialog({
   );
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog
+      open={open}
+      onClose={() => {
+        if (!inFlight.current && !deleting) onClose();
+      }}
+      fullWidth
+      maxWidth="sm"
+    >
       <form onSubmit={handleSubmit}>
         <DialogTitle>{isAdding ? "Add Feed" : "Edit Feed"}</DialogTitle>
 
@@ -135,7 +195,9 @@ export default function EditFeedDialog({
             <>
               <TextField
                 data-testid="feed-url"
-                disabled={readOnly || saving || deleting}
+                disabled={
+                  busy || readOnly || refreshId !== undefined || feedAdded
+                }
                 label="URL"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
@@ -147,7 +209,7 @@ export default function EditFeedDialog({
 
               <TextField
                 data-testid="collection-name"
-                disabled={readOnly || saving || deleting}
+                disabled={busy || readOnly || entitySaved}
                 label="Name (optional)"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -157,7 +219,7 @@ export default function EditFeedDialog({
           ) : (
             <>
               <TextField
-                disabled={readOnly || saving || deleting}
+                disabled={busy || readOnly || entitySaved}
                 label="Name"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
@@ -177,16 +239,11 @@ export default function EditFeedDialog({
             </>
           )}
 
-          <FormControlLabel
-            data-testid="pin-toggle"
-            control={
-              <Checkbox
-                checked={pinnedState}
-                onChange={(e) => setPinnedState(e.target.checked)}
-                disabled={busy || readOnly}
-              />
-            }
-            label="Add to Shortcuts"
+          {saveError && <Alert severity="error">{saveError}</Alert>}
+          <ShortcutDestination
+            value={shortcut.value}
+            onChange={shortcut.change}
+            disabled={busy || readOnly}
           />
         </DialogContent>
 

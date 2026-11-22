@@ -37,6 +37,7 @@ import { SearchResultList } from "./components/search/SearchResultList";
 import { Sidebar } from "./components/sidebar/Sidebar";
 import { TitleBar } from "./components/titlebar/TitleBar";
 import ShortcutsMenu from "./components/ShortcutsMenu";
+import { useErrorSink } from "./hooks/useErrorSink";
 import useAbortController from "./hooks/useAbortController";
 import { useAppearance } from "./hooks/useAppearance";
 import { useFeeds } from "./hooks/useFeeds";
@@ -103,6 +104,7 @@ export function AppLayout({
   const [clearHistoryOpen, setClearHistoryOpen] = useState(false);
 
   const [, abortControllerRef] = useAbortController();
+  const { pushError } = useErrorSink();
   const [editingTopic, setEditingTopic] = useState<Topic | null>(null);
   const [isAddingTopic, setIsAddingTopic] = useState(false);
   const [addTopicTitle, setAddTopicTitle] = useState("");
@@ -110,10 +112,10 @@ export function AppLayout({
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
   const [isAddingFeed, setIsAddingFeed] = useState(false);
 
-  const { requestTopics, createTopic, saveTopic, deleteTopic, setTopicPinned } =
+  const { requestTopics, createTopic, saveTopic, deleteTopic } =
     useTopics(abortControllerRef);
 
-  const { requestFeeds, addFeed, renameFeed, deleteFeed, setFeedPinned } =
+  const { requestFeeds, addFeed, renameFeed, deleteFeed } =
     useFeeds(abortControllerRef);
 
   const closeEditTopic = useCallback(() => {
@@ -128,42 +130,20 @@ export function AppLayout({
   }, []);
 
   const handleSaveTopic = useCallback(
-    async (
-      title: string,
-      description: string,
-      threshold: number,
-      pinned: boolean
-    ) => {
-      let topic: Topic | undefined;
+    (title: string, description: string, threshold: number) =>
+      editingTopic
+        ? saveTopic({ ...editingTopic, title, description, threshold })
+        : createTopic({ title, description, threshold }),
+    [editingTopic, saveTopic, createTopic]
+  );
 
-      if (editingTopic) {
-        topic = await saveTopic({
-          ...editingTopic,
-          title,
-          description,
-          threshold,
-        });
-      } else {
-        topic = await createTopic({ title, description, threshold });
-      }
-
-      if (topic) {
-        setTopicPinned(topic.id, pinned);
-
-        await requestTopics();
-        setListFilter("unread");
-        selectTopic(topic);
-      }
-      return topic !== undefined;
+  const handleTopicSaved = useCallback(
+    async (topic: Topic) => {
+      await requestTopics().catch(pushError);
+      setListFilter("unread");
+      selectTopic(topic);
     },
-    [
-      editingTopic,
-      saveTopic,
-      createTopic,
-      setTopicPinned,
-      requestTopics,
-      selectTopic,
-    ]
+    [requestTopics, selectTopic, pushError]
   );
 
   const handleDeleteTopic = useCallback(
@@ -180,30 +160,12 @@ export function AppLayout({
     setIsAddingFeed(false);
   }, []);
 
-  const handleAddFeed = useCallback(
-    async (url: string, title: string, pinned: boolean) => {
-      const feed = await addFeed(url);
-
-      if (feed) {
-        if (title) await renameFeed(feed.id, title);
-        if (pinned) setFeedPinned(feed.id, true);
-        await requestFeeds();
-        selectFeed(feed);
-      }
+  const handleFeedSaved = useCallback(
+    async (feed: Feed, added: boolean) => {
+      await requestFeeds().catch(pushError);
+      if (added) selectFeed(feed);
     },
-    [addFeed, renameFeed, setFeedPinned, requestFeeds, selectFeed]
-  );
-
-  const handleSaveFeed = useCallback(
-    async (title: string, pinned: boolean) => {
-      if (!editingFeed) return;
-      await renameFeed(editingFeed.id, title);
-
-      setFeedPinned(editingFeed.id, pinned);
-
-      await requestFeeds();
-    },
-    [editingFeed, renameFeed, setFeedPinned, requestFeeds]
+    [requestFeeds, selectFeed, pushError]
   );
 
   const handleDeleteFeed = useCallback(
@@ -398,6 +360,7 @@ export function AppLayout({
           initialTitle={addTopicTitle}
           onClose={closeEditTopic}
           onSave={handleSaveTopic}
+          onSaved={handleTopicSaved}
           onOpenTopic={selectTopic}
           onDelete={handleDeleteTopic}
         />
@@ -411,8 +374,9 @@ export function AppLayout({
           open={editingFeed !== null || isAddingFeed}
           feed={editingFeed}
           onClose={closeEditFeed}
-          onAdd={handleAddFeed}
-          onSave={handleSaveFeed}
+          onAdd={addFeed}
+          onRename={renameFeed}
+          onSaved={handleFeedSaved}
           onDelete={handleDeleteFeed}
         />
 

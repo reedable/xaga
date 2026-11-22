@@ -74,11 +74,11 @@ export function useFeeds(abortControllerRef: RefObject<AbortController>) {
   );
 
   const addFeed = useCallback(
-    async (feedUrl: string) => {
+    async (feedUrl: string, savedId?: string) => {
       const signal = abortControllerRef.current.signal;
       setError(null);
       try {
-        return await platform.addFeed(signal, feedUrl);
+        return await platform.addFeed(signal, feedUrl, savedId);
       } catch (e) {
         setError(e);
         throw e;

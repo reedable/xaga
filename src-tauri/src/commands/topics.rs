@@ -99,7 +99,14 @@ pub async fn set_topic_pinned(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    super::pins::set_pin(xaga_core::pins::PinTarget::Topic { id }, pinned, app, state).await
+    super::pins::set_pin(
+        xaga_core::pins::PinTarget::Topic { id },
+        pinned,
+        None,
+        app,
+        state,
+    )
+    .await
 }
 
 #[tauri::command]

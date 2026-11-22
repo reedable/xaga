@@ -34,10 +34,6 @@ jobs:
       - name: Verify source
         uses: ./.github/actions/verify
 
-      - name: Run headless tests
-        timeout-minutes: 30
-        run: npm run test:headless
-
       - name: Run browser tests
         timeout-minutes: 30
         run: npm run test:browser
@@ -52,3 +48,10 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Check Rust workspace
+        run: npm run check:rust
+
+      - name: Run headless tests
+        timeout-minutes: 30
+        run: npm run test:headless

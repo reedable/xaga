@@ -49,6 +49,8 @@ pub enum FeedError {
     BodyTooLarge { url: String, max_bytes: u64 },
     #[error("plaintext HTTP fetch blocked by the \"HTTP allowed\" setting: {url}")]
     HttpBlocked { url: String },
+    #[error("saved feed {id} could not refresh: {source}")]
+    SavedRefresh { id: String, source: Box<FeedError> },
     #[error("library writer: {0}")]
     Writer(String),
 }
@@ -67,6 +69,7 @@ impl FeedError {
             FeedError::BodyTooLarge { .. } => "feed:body-too-large",
             FeedError::HttpBlocked { .. } => "feed:http-blocked",
             FeedError::Writer(_) => "feed:writer",
+            FeedError::SavedRefresh { .. } => "feed:saved-refresh",
         }
     }
 
@@ -82,6 +85,9 @@ impl FeedError {
             FeedError::BodyTooLarge { .. } => "This feed's response was too large.",
             FeedError::HttpBlocked { .. } => "This feed uses insecure HTTP, which is turned off.",
             FeedError::Writer(_) => "Couldn't save feed changes.",
+            FeedError::SavedRefresh { .. } => {
+                "The Feed was saved, but its articles couldn't be refreshed. Retry to refresh it."
+            }
         }
     }
 }
@@ -136,7 +142,7 @@ pub async fn add_feed(
             library_dir,
             writer,
             &id,
-            &url,
+            Some(&url),
             unread,
             timeout_secs,
             max_body_bytes,
@@ -159,18 +165,24 @@ pub async fn add_feed(
             Ok(entries) => entries,
             Err(e) => {
                 commit_via_writer(writer, &id, &empty_atom, Vec::new(), false).await?;
-                return Err(e);
+                return Err(FeedError::SavedRefresh {
+                    id,
+                    source: Box::new(e),
+                });
             }
         };
 
     match commit_via_writer(writer, &id, &atom, new_entries, false).await {
         Ok(created) => Ok((
-            project_pin(library_dir, atom_to_feed_with_unread(&id, &atom, unread)).await?,
+            project_saved_feed(library_dir, atom_to_feed_with_unread(&id, &atom, unread)).await,
             created,
         )),
         Err(e) => {
             commit_via_writer(writer, &id, &empty_atom, Vec::new(), false).await?;
-            Err(e)
+            Err(FeedError::SavedRefresh {
+                id,
+                source: Box::new(e),
+            })
         }
     }
 }
@@ -208,7 +220,7 @@ async fn refresh_feed(
     library_dir: &Path,
     writer: &LibraryWriter,
     id: &str,
-    url: &str,
+    url: Option<&str>,
     unread: &HashSet<String>,
     timeout_secs: u64,
     max_body_bytes: u64,
@@ -221,16 +233,48 @@ async fn refresh_feed(
     }
 
     let mut existing = super::identity::read_atom(&path, Some(writer)).await?;
-    crate::atom::set_self_link_url(&mut existing, url);
+    if let Some(url) = url {
+        crate::atom::set_self_link_url(&mut existing, url);
+    }
 
-    let new_entries =
-        fetch_and_merge(client, &mut existing, id, timeout_secs, max_body_bytes).await?;
-    let created = commit_via_writer(writer, id, &existing, new_entries, true).await?;
+    let saved_refresh_error = |source| FeedError::SavedRefresh {
+        id: id.to_owned(),
+        source: Box::new(source),
+    };
+    let new_entries = fetch_and_merge(client, &mut existing, id, timeout_secs, max_body_bytes)
+        .await
+        .map_err(saved_refresh_error)?;
+    let created = commit_via_writer(writer, id, &existing, new_entries, true)
+        .await
+        .map_err(saved_refresh_error)?;
 
     Ok((
-        project_pin(library_dir, atom_to_feed_with_unread(id, &existing, unread)).await?,
+        project_saved_feed(library_dir, atom_to_feed_with_unread(id, &existing, unread)).await,
         created,
     ))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn refresh_saved_feed(
+    client: &reqwest::Client,
+    library_dir: &Path,
+    writer: &LibraryWriter,
+    id: &str,
+    unread: &HashSet<String>,
+    timeout_secs: u64,
+    max_body_bytes: u64,
+) -> Result<(Feed, Vec<Article>)> {
+    refresh_feed(
+        client,
+        library_dir,
+        writer,
+        id,
+        None,
+        unread,
+        timeout_secs,
+        max_body_bytes,
+    )
+    .await
 }
 
 /// Fetch a feed's live XML from its self-link and merge new entries into `existing` in memory.
@@ -453,7 +497,7 @@ pub(crate) async fn rename_feed(
     crate::atom::resolve_local_id(&feed, &path).map_err(FeedError::AtomParse)?;
     set_title(&mut feed, new_title);
     write_atom_atomic(library_dir, id, &feed).await?;
-    project_pin(library_dir, atom_to_feed_with_unread(id, &feed, unread)).await
+    Ok(project_saved_feed(library_dir, atom_to_feed_with_unread(id, &feed, unread)).await)
 }
 
 /// Remove a feed (deletes `{id}.atom`).
@@ -601,6 +645,41 @@ mod tests {
     use super::*;
     use std::io::{Read as _, Write as _};
     use std::net::TcpListener;
+
+    #[tokio::test]
+    async fn failed_initial_refresh_reports_the_saved_subscription_for_retry() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock = crate::library::acquire_lock(dir.path()).unwrap();
+        let writer = LibraryWriter::start(dir.path().into(), lock);
+        let client = reqwest::Client::new();
+        let url = "ftp://example.test/feed";
+        let unread = HashSet::new();
+        let result = add_feed(
+            &client,
+            dir.path(),
+            &writer,
+            url,
+            &unread,
+            &HashSet::new(),
+            1,
+            1024,
+        )
+        .await;
+        let Err(FeedError::SavedRefresh { id, .. }) = result else {
+            panic!("expected a saved Feed ID after the refresh failed: {result:?}");
+        };
+        let saved = read_feed(dir.path(), &id, &unread, &HashSet::new())
+            .await
+            .unwrap();
+        assert_eq!(saved.url, url);
+        assert!(
+            refresh_saved_feed(&client, dir.path(), &writer, &id, &unread, 1, 1024)
+                .await
+                .is_err()
+        );
+        assert_eq!(list_feeds(dir.path(), &unread).await.unwrap().len(), 1);
+        writer.shutdown().await;
+    }
 
     #[tokio::test]
     async fn feed_discovery_summarizes_unread_only_for_the_feed_list() {
@@ -874,6 +953,20 @@ mod tests {
             .await
             .unwrap();
         assert!(tokio::fs::try_exists(&path).await.unwrap());
+    }
+}
+
+// A projection error cannot roll back a committed Feed or its created Articles.
+async fn project_saved_feed(library_dir: &Path, feed: Feed) -> Feed {
+    match project_pin(library_dir, feed.clone()).await {
+        Ok(projected) => projected,
+        Err(error) => {
+            log::warn!(
+                "Couldn't project shortcut state for Feed {}: {error}",
+                feed.id
+            );
+            feed
+        }
     }
 }
 

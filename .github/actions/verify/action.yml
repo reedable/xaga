@@ -45,10 +45,6 @@ runs:
       run: brew install protobuf && protoc --version
       shell: bash
 
-    - name: Check Rust workspace
-      run: cargo check --workspace --all-targets --locked
-      shell: bash
-
     - name: Install Chromium for browser tests
       run: npx playwright install chromium
       shell: bash

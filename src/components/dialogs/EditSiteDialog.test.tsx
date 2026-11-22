@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import EditSiteDialog from "./EditSiteDialog";
 const mocks = vi.hoisted(() => ({
-  pins: [] as import("../../pins").PinTarget[],
+  tree: [] as import("../../pins").PinNode[],
   setPin: vi.fn().mockResolvedValue(undefined),
   readOnly: false,
   pushError: vi.fn(),
@@ -19,7 +19,7 @@ afterEach(async () => {
   if (root) await act(async () => root.unmount());
   document.body.innerHTML = "";
   mocks.readOnly = false;
-  mocks.pins = [];
+  mocks.tree = [];
   vi.clearAllMocks();
 });
 const site = {
@@ -35,21 +35,28 @@ it("restores persisted membership on reopen, saves the typed Site reference, and
   const render = (open: boolean) => (
     <EditSiteDialog site={open ? site : null} onClose={onClose} />
   );
-  mocks.pins = [{ type: "site", hostname: site.id }];
+  mocks.tree = [{ type: "site", hostname: site.id }];
   await act(async () => root.render(render(true)));
-  const checkbox = () =>
-    document.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-  expect(checkbox().checked).toBe(true);
+  const destination = () =>
+    document.querySelector<HTMLSelectElement>(
+      '[data-testid="shortcut-location"]'
+    )!;
+  const choose = (value: string) =>
+    act(() => {
+      destination().value = value;
+      destination().dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  expect(destination().value).toBe("root");
   const hostname = document.querySelector<HTMLInputElement>(
     'input[value="example.com"]'
   )!;
   expect(hostname.readOnly).toBe(true);
-  await act(async () => checkbox().click());
-  expect(checkbox().checked).toBe(false);
+  await choose("none");
+  expect(destination().value).toBe("none");
   await act(async () => root.render(render(false)));
   await act(async () => root.render(render(true)));
-  expect(checkbox().checked).toBe(true);
-  await act(async () => checkbox().click());
+  expect(destination().value).toBe("root");
+  await choose("none");
   await act(async () =>
     document
       .querySelector("form")!
@@ -68,7 +75,9 @@ it("disables pin changes and submission in read-only mode", async () => {
     root.render(<EditSiteDialog site={site} onClose={vi.fn()} />)
   );
   expect(
-    document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled
+    document.querySelector<HTMLSelectElement>(
+      '[data-testid="shortcut-location"]'
+    )!.disabled
   ).toBe(true);
   await act(async () =>
     document

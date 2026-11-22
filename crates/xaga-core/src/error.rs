@@ -106,6 +106,7 @@ mod tests {
         "tags:deleting",
         "pins:invalid-store",
         "pins:duplicate-group-path",
+        "pins:destination-unavailable",
         // EntryError
         "entry:io",
         "entry:invalid-url",
@@ -125,6 +126,7 @@ mod tests {
         "feed:body-too-large",
         "feed:http-blocked",
         "feed:writer",
+        "feed:saved-refresh",
         // EmbeddingsError
         "embeddings:io",
         "embeddings:model-download",

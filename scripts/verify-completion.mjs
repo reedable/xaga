@@ -8,8 +8,10 @@ export const checks = [
   ["npm", ["run", "typecheck"]],
   ["node", ["scripts/csp-hash.mjs", "--check"]],
   ["cargo", ["fmt", "--all", "--check"]],
-  ["cargo", ["check", "--workspace", "--all-targets", "--locked"]],
-  ["npm", ["test"]],
+  ["npm", ["run", "test:browser"]],
+  ["npm", ["run", "check:rust"]],
+  ["npm", ["run", "test:headless"]],
+  ["npm", ["run", "test:gui"]],
 ];
 
 export function verify(run = spawnSync) {
