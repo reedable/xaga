@@ -12,11 +12,11 @@ subsequent candidates.
   select it to run the same workflow at `x.y.z-rc.N` for the next candidate.
 - Commit the RC version locally before verification and building. After a
   successful build, push the release branch and tag atomically, upload the draft
-  prerelease, and create or reuse a pull request into `main`.
+  prerelease, and leave the release-to-main PR to the final Release workflow.
 - A failed build leaves remote refs unchanged so rerunning the build prepares
   the same RC version from the original source.
 - First RC publication opens a separate patch-bump PR against current `main`
-  after pushing the release branch. Verify recovery of both PRs on GitHub.
+  after pushing the release branch.
 
 ## Remaining work
 
