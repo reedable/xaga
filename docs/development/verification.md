@@ -41,8 +41,8 @@ when the affected scope warrants the full repository suite or another applicable
 requirement explicitly calls for it.
 
 The full command runs lint with warnings rejected, repository formatting,
-TypeScript, reader CSP verification, Rust formatting, all-target workspace
-compilation, and the headless, browser, and native test suites. Rust compiler and
+TypeScript, reader CSP verification, Rust formatting, browser tests, all-target
+workspace compilation, headless tests, and native tests. Rust compiler and
 documentation warnings are errors throughout the command. It stops at the first
 failure and requires the documented macOS desktop test environment.
 

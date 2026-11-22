@@ -254,13 +254,16 @@ Every PR into `main`, including a release-branch PR, runs **Pull request
 verification** (`.github/workflows/development-pr.yml`). Its **Verification** job
 checks the proposed merge on macOS Apple Silicon with Rust compiler and
 documentation warnings treated as errors. It runs lint, repository formatting,
-TypeScript, reader CSP, Rust formatting, all-target workspace compilation,
-headless tests, and browser tests. It does not prepare versions, package the
+TypeScript, reader CSP, Rust formatting, browser tests, all-target workspace
+compilation, and headless tests. It does not prepare versions, package the
 application, push refs, or create releases. Native WebKit and bundled macOS smoke
 checks remain separate desktop verification.
 
 PR and release workflows use `.github/actions/verify/action.yml` for shared
-setup and static checks. Headless and browser test steps remain in both
+setup, lint, formatting, frontend type checks, and reader CSP verification.
+Order verification by running cheap checks first, then unstable tests, then
+stable checks and tests. Browser tests and their diagnostics upload precede
+the Rust workspace check and headless tests. The test steps remain in both
 `.github/workflows/development-pr.yml` and
 `.github/workflows/release-pipeline.yml` because composite actions do not support
 per-step timeouts; both call the same npm test scripts with 30-minute limits.
@@ -333,10 +336,8 @@ when someone pushes a final `vX.Y.Z` or RC `vX.Y.Z-rc.N` tag. It is a tag-push
 trigger, not a Run workflow control. The tag must match the checked-out
 application version; development tags are rejected.
 
-It calls `.github/workflows/release-pipeline.yml`, which uses the shared verification
-action to run lint, formatting,
-TypeScript, CSP, Rust formatting and all-target workspace checks, then runs
-browser tests followed by headless tests. Each test step has a 30-minute timeout. It then builds the
+It calls `.github/workflows/release-pipeline.yml`, which runs the same checks in
+the same order as pull request verification. It then builds the
 Apple Silicon distributable with the committed standard icons, verifies its
 ad-hoc signature, and retains the artifacts, checksums, and Git identity in a
 workflow package for 14 days. The publication job uploads these to a draft
