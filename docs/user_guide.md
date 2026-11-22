@@ -122,6 +122,13 @@ from different feeds.
 4. Expand **Topics** in the sidebar and select the Topic to browse its members.
    Choose **All** if you also want to see read articles.
 
+When you create a Topic from the sidebar or from the **Topics** view in
+**Article details**, Xaga checks for similar Topics. You can open a match,
+choose **Revise draft** to return to your form, or choose **Create anyway**.
+Recently created or changed Topics can be missing while their search index
+updates. If Xaga cannot complete the check, choose **Create anyway** to save
+your draft or dismiss the notice to return to it.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/user-guide/topics-dark.png">
   <img src="images/user-guide/topics.png" alt="Following the water open with Everyday discoveries selected in the Topics view.">

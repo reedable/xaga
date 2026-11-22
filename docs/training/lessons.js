@@ -84,6 +84,7 @@ const TRAINING = {
           "Distinguish the source of an article, a Topic, and browsing by website.",
         paragraphs: [
           "A Feed brings articles into your library. A Topic lets you group material that belongs together. You add Feeds and create Topics; each has its own saved record.",
+          "When you create a Topic, Xaga may show similar Topics from the search index. You can open a match, revise your draft, or create a separate Topic. A Topic can be missing from the suggestions while indexing is pending. If the check is unavailable, you can still choose Create anyway.",
           "A website can publish several feeds. Suppose example.com publishes one feed called “Arts” and another called “Entertainment”. A user can subscribe to either feed or both. Each Feed shows its own articles. Choosing example.com in Xaga’s Sites section brings together the saved articles from that website, regardless of which feed supplied them.",
           "These are different ways to browse the same library. Use a Feed to follow a particular subscription, a Topic to group related material, or the Sites section to browse by website. Xaga groups articles using their web addresses. This shows articles already in the library; it does not fetch every article on the website or subscribe the user to its other feeds.",
         ],

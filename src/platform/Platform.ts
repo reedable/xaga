@@ -305,6 +305,12 @@ export interface Platform {
     limit?: number | null
   ): Promise<Ranked<ManagedEntity>[]>;
 
+  searchSimilarTopics(
+    signal: AbortSignal,
+    title: string,
+    description: string
+  ): Promise<Topic[]>;
+
   // Theme
   getTheme(): Promise<string>;
   setTheme(theme: string): Promise<void>;

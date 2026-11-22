@@ -14,6 +14,9 @@ const mocks = vi.hoisted(() => ({
   addTopicEntity: vi.fn(),
   removeTopicEntity: vi.fn(),
   rankTopicsRelatedToEntity: vi.fn(),
+  searchSimilarTopics: vi.fn(async () => [] as Topic[]),
+  selectTopic: vi.fn(),
+  pushError: vi.fn(),
 }));
 
 vi.mock("../../hooks/useLibraryReadOnly", () => ({
@@ -24,6 +27,15 @@ vi.mock("../../hooks/useTopics", () => ({
 }));
 vi.mock("../../hooks/useEmbeddingStartupState", () => ({
   useEmbeddingStartupState: () => "unavailable",
+}));
+vi.mock("../../platform/Platform", () => ({
+  usePlatform: () => mocks,
+}));
+vi.mock("../../hooks/useRouter", () => ({
+  default: () => ({ selectTopic: mocks.selectTopic }),
+}));
+vi.mock("../../hooks/useErrorSink", () => ({
+  useErrorSink: () => ({ pushError: mocks.pushError }),
 }));
 vi.mock("framer-motion", () => ({
   motion: (Component: React.ElementType) =>
