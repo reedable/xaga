@@ -32,6 +32,7 @@ pub(super) enum Op {
     SetPin {
         target: crate::pins::PinTarget,
         pinned: bool,
+        placement: Option<crate::pins::PinPlacement>,
         resp: oneshot::Sender<Result<crate::pins::Pins, WriterError>>,
     },
     RecoverImages {
@@ -447,9 +448,10 @@ impl Op {
             Op::SetPin {
                 target,
                 pinned,
+                placement,
                 resp,
             } => {
-                let result = crate::pins::Pins::set(library_dir, target, pinned, token)
+                let result = crate::pins::Pins::set(library_dir, target, pinned, placement, token)
                     .await
                     .map_err(WriterError::from);
                 let _ = resp.send(result);

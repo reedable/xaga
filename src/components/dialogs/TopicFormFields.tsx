@@ -1,29 +1,22 @@
 /* oxlint-disable react/only-export-components -- the form hook and fields are one shared unit */
 import { Add, Remove } from "@mui/icons-material";
-import {
-  Box,
-  Checkbox,
-  FormControlLabel,
-  IconButton,
-  TextField,
-  Tooltip,
-  Typography,
-} from "@mui/material";
+import { Box, IconButton, TextField, Tooltip, Typography } from "@mui/material";
 import { useCallback, useState } from "react";
+import ShortcutDestination, {
+  useShortcutSelection,
+} from "./ShortcutDestination";
 import { TOPIC_THRESHOLD } from "../../consts";
 
 export interface TopicFormValues {
   title: string;
   description: string;
   threshold: number;
-  pinned: boolean;
 }
 
 interface TopicFormInitialValues {
   title?: string;
   description?: string;
   threshold?: number;
-  pinned?: boolean;
 }
 
 export function useTopicForm(initial: TopicFormInitialValues = {}) {
@@ -32,7 +25,6 @@ export function useTopicForm(initial: TopicFormInitialValues = {}) {
   const [thresholdString, setThresholdString] = useState(
     (initial.threshold ?? TOPIC_THRESHOLD).toFixed(2)
   );
-  const [pinned, setPinned] = useState(initial.pinned ?? false);
 
   const parseThreshold = useCallback(() => {
     const value = parseFloat(thresholdString);
@@ -44,7 +36,6 @@ export function useTopicForm(initial: TopicFormInitialValues = {}) {
     setTitle(values.title ?? "");
     setDescription(values.description ?? "");
     setThresholdString((values.threshold ?? TOPIC_THRESHOLD).toFixed(2));
-    setPinned(values.pinned ?? false);
   }, []);
 
   return {
@@ -54,15 +45,12 @@ export function useTopicForm(initial: TopicFormInitialValues = {}) {
     setDescription,
     thresholdString,
     setThresholdString,
-    pinned,
-    setPinned,
     parseThreshold,
     reset,
     values: {
       title: title.trim(),
       description,
       threshold: parseThreshold(),
-      pinned,
     } satisfies TopicFormValues,
   };
 }
@@ -71,11 +59,15 @@ type TopicForm = ReturnType<typeof useTopicForm>;
 
 export function TopicFormFields({
   form,
+  shortcut,
   busy,
+  entitySaved = false,
   autoFocus = false,
 }: {
   form: TopicForm;
+  shortcut: ReturnType<typeof useShortcutSelection>;
   busy: boolean;
+  entitySaved?: boolean;
   autoFocus?: boolean;
 }) {
   const decrement = () =>
@@ -102,7 +94,7 @@ export function TopicFormFields({
         onChange={(event) => form.setTitle(event.target.value)}
         required
         autoFocus={autoFocus}
-        disabled={busy}
+        disabled={busy || entitySaved}
         fullWidth
       />
       <TextField
@@ -112,19 +104,13 @@ export function TopicFormFields({
         onChange={(event) => form.setDescription(event.target.value)}
         multiline
         minRows={4}
-        disabled={busy}
+        disabled={busy || entitySaved}
         fullWidth
       />
-      <FormControlLabel
-        data-testid="pin-toggle"
-        control={
-          <Checkbox
-            checked={form.pinned}
-            onChange={(event) => form.setPinned(event.target.checked)}
-            disabled={busy}
-          />
-        }
-        label="Add to Shortcuts"
+      <ShortcutDestination
+        value={shortcut.value}
+        onChange={shortcut.change}
+        disabled={busy}
       />
       <Box>
         <Typography
@@ -141,7 +127,7 @@ export function TopicFormFields({
             <IconButton
               size="small"
               onClick={decrement}
-              disabled={busy}
+              disabled={busy || entitySaved}
               aria-label="Decrease threshold"
             >
               <Remove fontSize="small" />
@@ -154,7 +140,7 @@ export function TopicFormFields({
               form.setThresholdString(form.parseThreshold().toFixed(2))
             }
             size="small"
-            disabled={busy}
+            disabled={busy || entitySaved}
             sx={{ width: 80 }}
             slotProps={{ htmlInput: { style: { textAlign: "center" } } }}
           />
@@ -162,7 +148,7 @@ export function TopicFormFields({
             <IconButton
               size="small"
               onClick={increment}
-              disabled={busy}
+              disabled={busy || entitySaved}
               aria-label="Increase threshold"
             >
               <Add fontSize="small" />

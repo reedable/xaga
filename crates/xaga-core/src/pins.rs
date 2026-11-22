@@ -83,6 +83,13 @@ pub enum PinEdit {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PinPlacement {
+    pub parent: Option<String>,
+    pub move_existing: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum PinNodeRef {
     Group {
@@ -154,6 +161,8 @@ pub enum PinsError {
     Format(String),
     #[error("invalid pin target")]
     InvalidTarget,
+    #[error("shortcut destination unavailable")]
+    DestinationUnavailable,
     #[error("duplicate shortcut group path")]
     DuplicateGroupPath(Vec<String>),
 }
@@ -161,11 +170,17 @@ impl PinsError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::DuplicateGroupPath(_) => "pins:duplicate-group-path",
+            Self::DestinationUnavailable => "pins:destination-unavailable",
             _ => "pins:invalid-store",
         }
     }
     pub fn user_message(&self) -> &'static str {
-        "Couldn't read or save Shortcuts."
+        match self {
+            Self::DestinationUnavailable => {
+                "This shortcut folder is no longer available. Choose another location."
+            }
+            _ => "Couldn't read or save Shortcuts.",
+        }
     }
 }
 
@@ -443,17 +458,37 @@ impl Pins {
         dir: &Path,
         target: PinTarget,
         pinned: bool,
+        placement: Option<PinPlacement>,
         _token: crate::library_writer::WriteToken,
     ) -> Result<Self, PinsError> {
         let target = target.normalized()?;
         let mut store = Self::read(dir).await?;
-        if store.contains(&target) == pinned {
-            return Ok(store);
-        }
+        let reference = PinNodeRef::Target(target.clone());
         if pinned {
-            store.pins.push(target.into());
-        } else {
-            take_node(&mut store.pins, &PinNodeRef::Target(target), false);
+            let parent = placement
+                .as_ref()
+                .and_then(|placement| placement.parent.as_deref());
+            if !placement
+                .as_ref()
+                .is_some_and(|placement| placement.move_existing)
+                && store.contains(&target)
+            {
+                return Ok(store);
+            }
+            let unavailable = || PinsError::DestinationUnavailable;
+            let destination = container(&mut store.pins, parent).ok_or_else(unavailable)?;
+            if destination
+                .iter()
+                .any(|node| matches_node(node, &reference))
+            {
+                return Ok(store);
+            }
+            take_node(&mut store.pins, &reference, false);
+            container(&mut store.pins, parent)
+                .ok_or_else(unavailable)?
+                .push(target.into());
+        } else if take_node(&mut store.pins, &reference, false).is_none() {
+            return Ok(store);
         }
         let yaml = store.serialize()?;
         crate::fs::write_atomic_async(crate::library::pins_path(dir), yaml.into_bytes()).await?;
@@ -602,6 +637,179 @@ mod tests {
         );
         assert_eq!(Pins::read(dir.path()).await.unwrap(), saved);
         assert_eq!(saved.pins.len(), 1);
+        writer.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn placement_appends_once_and_preserves_same_folder_order() {
+        use crate::library_writer::WriterError;
+
+        let dir = tempfile::tempdir().unwrap();
+        let writer = LibraryWriter::start(
+            dir.path().into(),
+            library::acquire_lock(dir.path()).unwrap(),
+        );
+        writer
+            .organize_pins(create_group("work", "Work", None))
+            .await
+            .unwrap();
+        writer
+            .organize_pins(create_group("drafts", "Drafts", Some("work")))
+            .await
+            .unwrap();
+
+        let first = PinTarget::Entry { id: "first".into() };
+        let second = PinTarget::Entry {
+            id: "second".into(),
+        };
+        let placement = |parent: Option<&str>, move_existing| {
+            Some(PinPlacement {
+                parent: parent.map(str::to_owned),
+                move_existing,
+            })
+        };
+        writer
+            .set_pin_with_placement(first.clone(), true, placement(Some("drafts"), false))
+            .await
+            .unwrap();
+        let initial = writer
+            .set_pin_with_placement(second.clone(), true, placement(Some("drafts"), false))
+            .await
+            .unwrap();
+        assert_eq!(
+            initial.pins,
+            vec![group(
+                "work",
+                "Work",
+                vec![group(
+                    "drafts",
+                    "Drafts",
+                    vec![first.clone().into(), second.clone().into()]
+                )]
+            )]
+        );
+
+        let path = library::pins_path(dir.path());
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(
+            writer
+                .set_pin_with_placement(first.clone(), true, placement(None, false))
+                .await
+                .unwrap(),
+            initial
+        );
+        assert_eq!(
+            writer
+                .set_pin_with_placement(first.clone(), true, placement(Some("drafts"), true))
+                .await
+                .unwrap(),
+            initial
+        );
+        assert!(matches!(
+            writer
+                .set_pin_with_placement(first.clone(), true, placement(Some("missing"), true))
+                .await,
+            Err(WriterError::Pins(PinsError::DestinationUnavailable))
+        ));
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+
+        let moved = writer
+            .set_pin_with_placement(first.clone(), true, placement(None, true))
+            .await
+            .unwrap();
+        assert_eq!(
+            moved.pins,
+            vec![
+                group(
+                    "work",
+                    "Work",
+                    vec![group("drafts", "Drafts", vec![second.into()])]
+                ),
+                first.into()
+            ]
+        );
+        writer.shutdown().await;
+        assert_eq!(Pins::read(dir.path()).await.unwrap(), moved);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn failed_placement_write_preserves_the_store() {
+        use crate::library_writer::WriterError;
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let writer = LibraryWriter::start(
+            dir.path().into(),
+            library::acquire_lock(dir.path()).unwrap(),
+        );
+        writer
+            .organize_pins(create_group("work", "Work", None))
+            .await
+            .unwrap();
+        let path = library::pins_path(dir.path());
+        let parent = path.parent().unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let permissions = std::fs::metadata(parent).unwrap().permissions();
+        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o500)).unwrap();
+
+        let result = writer
+            .set_pin_with_placement(
+                PinTarget::Entry {
+                    id: "article".into(),
+                },
+                true,
+                Some(PinPlacement {
+                    parent: Some("work".into()),
+                    move_existing: false,
+                }),
+            )
+            .await;
+
+        std::fs::set_permissions(parent, permissions).unwrap();
+        assert!(
+            matches!(result, Err(WriterError::Pins(PinsError::Io(error))) if error.kind() == std::io::ErrorKind::PermissionDenied)
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        writer.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn placement_and_destination_removal_use_the_same_writer_lane() {
+        use crate::library_writer::WriterError;
+
+        let dir = tempfile::tempdir().unwrap();
+        let writer = LibraryWriter::start(
+            dir.path().into(),
+            library::acquire_lock(dir.path()).unwrap(),
+        );
+        writer
+            .organize_pins(create_group("work", "Work", None))
+            .await
+            .unwrap();
+        let target = PinTarget::Entry {
+            id: "article".into(),
+        };
+        let (placed, removed) = tokio::join!(
+            writer.set_pin_with_placement(
+                target.clone(),
+                true,
+                Some(PinPlacement {
+                    parent: Some("work".into()),
+                    move_existing: false,
+                })
+            ),
+            writer.organize_pins(PinEdit::RemoveGroup { id: "work".into() })
+        );
+        assert!(removed.is_ok());
+        let store = Pins::read(dir.path()).await.unwrap();
+        match placed {
+            Ok(_) => assert_eq!(store.pins, vec![target.into()]),
+            Err(WriterError::Pins(PinsError::DestinationUnavailable)) => {
+                assert!(store.pins.is_empty())
+            }
+            other => panic!("unexpected placement result: {other:?}"),
+        }
         writer.shutdown().await;
     }
 

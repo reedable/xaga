@@ -10,11 +10,8 @@ vi.mock("../../hooks/useLibraryReadOnly", () => ({
 vi.mock("../../hooks/useErrorSink", () => ({
   useErrorSink: () => ({ pushError: mocks.pushError }),
 }));
-vi.mock("../../hooks/useFeeds", () => ({
-  useFeeds: () => ({ pinnedFeedIds: [] }),
-}));
-vi.mock("../../hooks/useTopics", () => ({
-  useTopics: () => ({ pinnedTopicIds: [] }),
+vi.mock("../../providers/PinsContext", () => ({
+  usePins: () => ({ tree: [], setPin: vi.fn() }),
 }));
 vi.mock("../../platform/Platform", () => ({
   usePlatform: () => ({ searchSimilarTopics: vi.fn() }),
@@ -44,7 +41,8 @@ it.each(["Feed", "Topic"])(
                 url: "https://example.org",
               } as never
             }
-            onSave={save}
+            onRename={save}
+            onSaved={vi.fn()}
             onAdd={save}
             onDelete={save}
             onClose={close}
@@ -53,6 +51,7 @@ it.each(["Feed", "Topic"])(
           <EditTopicDialog
             open
             onOpenTopic={vi.fn()}
+            onSaved={vi.fn()}
             topic={{ id: "topic", title: "Notes" } as never}
             onSave={save}
             onDelete={save}
@@ -100,7 +99,8 @@ it.each(["Feed", "Topic"])(
                 url: "https://example.org",
               } as never
             }
-            onSave={save}
+            onRename={save}
+            onSaved={vi.fn()}
             onAdd={save}
             onDelete={save}
             onClose={close}
@@ -109,6 +109,7 @@ it.each(["Feed", "Topic"])(
           <EditTopicDialog
             open
             onOpenTopic={vi.fn()}
+            onSaved={vi.fn()}
             topic={{ id: "topic", title: "Notes" } as never}
             onSave={save}
             onDelete={save}
@@ -117,6 +118,16 @@ it.each(["Feed", "Topic"])(
         )
       )
     );
+    if (kind === "Feed") {
+      await act(async () => {
+        const input = document.querySelector("input[required]")!;
+        Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value"
+        )!.set!.call(input, "Revised notes");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
     await act(async () => {
       document
         .querySelector("form")!

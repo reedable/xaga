@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   hasLoaded: true,
   topics: [] as Topic[],
   createTopicWithMember: vi.fn(),
-  setTopicPinned: vi.fn(),
+  setPin: vi.fn(),
   listEntryTopics: vi.fn(async () => [] as string[]),
   addTopicEntity: vi.fn(),
   removeTopicEntity: vi.fn(),
@@ -21,6 +21,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../../hooks/useLibraryReadOnly", () => ({
   useLibraryReadOnly: () => mocks.readOnly,
+}));
+vi.mock("../../providers/PinsContext", () => ({
+  usePins: () => ({ tree: [], setPin: mocks.setPin }),
 }));
 vi.mock("../../hooks/useTopics", () => ({
   useTopics: () => mocks,
@@ -110,12 +113,18 @@ it("offers inline topic creation when no topics exist", async () => {
   expect(
     document.querySelector('[data-testid="topic-similarity"]')
   ).not.toBeNull();
-  expect(document.querySelector('input[type="checkbox"]')).not.toBeNull();
+  const destination = document.querySelector<HTMLSelectElement>(
+    '[data-testid="shortcut-location"]'
+  )!;
+  expect(destination).not.toBeNull();
 
   const created = topic("new", "First topic");
   mocks.createTopicWithMember.mockResolvedValueOnce(created);
   await setInput(title, "First topic");
-  await click(document.body.querySelector('input[type="checkbox"]')!);
+  await act(() => {
+    destination.value = "root";
+    destination.dispatchEvent(new Event("change", { bubbles: true }));
+  });
   await click(
     [...document.body.querySelectorAll("button")].find(
       (button) => button.getAttribute("data-testid") === "confirm-create-topic"
@@ -129,7 +138,11 @@ it("offers inline topic creation when no topics exist", async () => {
     },
     article
   );
-  expect(mocks.setTopicPinned).toHaveBeenCalledWith("new", true);
+  expect(mocks.setPin).toHaveBeenCalledWith(
+    { type: "topic", id: "new" },
+    true,
+    { parent: null, moveExisting: true }
+  );
 
   mocks.listEntryTopics.mockResolvedValueOnce(["new"]);
   mocks.topics = [created];
