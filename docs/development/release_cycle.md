@@ -198,14 +198,14 @@ select `release/x.y.z` at `x.y.z-rc.N` to prepare the next candidate.
 
 The workflow commits the RC version locally before verification and building.
 After a successful build, publication atomically pushes the release branch and
-RC tag, uploads the draft prerelease, and creates or reuses the PR to `main`.
+RC tag and uploads the draft prerelease.
 Immediately after the first push of the release branch, publication uses the
 current `main` to open a separate patch-bump PR. It reuses an existing bump PR
 and skips the bump if `main` already has a different major, minor, or patch version.
-Both PRs may merge in either order under normal review and baseline checks.
 Later RCs leave the bump PR alone. If opening the bump PR fails, publication
-still attempts the draft and release PR. Rerun the publication job to retry
-the bump using the retained package.
+still attempts the draft. Rerun the publication job to retry the bump using the
+retained package.
+
 If verification or building fails, **Re-run failed jobs** prepares the same RC
 version from the original source. The failed build leaves the remote branch and
 tag untouched. If another run publishes in the meantime, the branch and tag
@@ -216,16 +216,17 @@ checks protect the published candidate.
 Run **Release** (`.github/workflows/prepare-release.yml`) only on
 `release/x.y.z` at an RC version. It removes the RC suffix and commits `x.y.z`
 locally before verification and building. After success, it atomically pushes
-that commit and the final tag, updating the release branch's PR, and uploads a
-final draft release. A failure before the atomic push leaves the remote branch
-and PR on the RC with no final tag. A fresh run starts from that same remote RC.
+that commit and the final tag, uploads a final draft release, and opens or reuses
+the release-to-main PR. A failure before the atomic push leaves the remote branch
+on the RC. A fresh run starts from that same remote RC.
 No separate RC build-record or workflow-success gate is required: Release checks
 and builds its own final commit.
 
-Merging the PR and publishing the draft remain manual. Required reviews and
-checks on `main` still apply. With a merge commit, the tagged release commits
-become part of `main`'s history. Ongoing development may advance `main` while a
-release builds; resolve any merge conflicts through the normal PR process.
+Merging the PR and publishing the draft remain manual. The release and patch-bump
+PRs may merge in either order under normal review and baseline checks.
+With a merge commit, the tagged release commits become part of `main`'s history.
+Ongoing development may advance `main` while a release builds. Resolve any
+merge conflicts through the normal PR process.
 
 ### Workflow setup
 
@@ -242,8 +243,8 @@ bypass of `main`, auto-merge setting, or administrative-read credential is neede
 The workflows report a commit status named **Release build** on the prepared
 RC or final commit. Prepared commits remain local during building, so their
 status starts after the atomic push.
-Success is reported only after build, artifact retention, draft upload, and PR
-creation or reuse succeed. Failure/cancellation cleanup reports failure when the
+Success is reported after build, artifact retention, draft upload, and any
+applicable PR work succeed. Failure/cancellation cleanup reports failure when the
 prepared commit is available remotely. If the runner cannot execute cleanup,
 the status can remain missing or pending. Publication retries report pending
 and then success on the same prepared commit.
@@ -363,9 +364,9 @@ tag. Do not move a release tag to reuse its number after changing source.
 For failed draft uploads or PR creation, choose **Re-run failed jobs** on the original run, or
 rerun only **Push and create draft**. It reuses the successful build job's
 retained package without another build or version bump and refuses to alter a
-published release. For automated RC/Release runs, it also reuses the existing
-open PR. After a successful final push, recover publication using that retained
-package rather than starting Release again on the now-final branch.
+published release. It also reuses an existing open bump PR for the first RC or
+an existing open release PR for the final release. After a successful final
+push, use that retained package to recover publication on the now-final branch.
 Do not use **Re-run all jobs** for draft recovery. Packages and browser diagnostics
 expire after 14 days; save the package first if recovery must be delayed.
 
