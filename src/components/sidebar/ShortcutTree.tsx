@@ -25,7 +25,12 @@ import {
   type DragEvent,
   type ReactNode,
 } from "react";
-import { pinKey, type PinEdit, type PinNodeRef } from "../../pins";
+import {
+  listShortcutDestinations,
+  pinKey,
+  type PinEdit,
+  type PinNodeRef,
+} from "../../pins";
 import { usePins } from "../../providers/PinsContext";
 import { errorCode, errorMessage } from "../../platform/errors";
 import { usePlatform } from "../../platform/Platform";
@@ -53,7 +58,7 @@ export default function ShortcutTree({
   renderTarget,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const { organizePins, setPin } = usePins();
+  const { organizePins, setPin, tree } = usePins();
   const platform = usePlatform();
   const readOnly = useLibraryReadOnly();
   const animate = useMediaQuery("(prefers-reduced-motion: no-preference)");
@@ -377,24 +382,6 @@ export default function ShortcutTree({
     });
   }
 
-  function destinations(
-    nodes: ShortcutNode[],
-    prefix = ""
-  ): { id: string; title: string }[] {
-    return nodes.flatMap((node) => {
-      if (
-        node.reference.type !== "group" ||
-        (moveDialog && pinKey(node.reference) === pinKey(moveDialog.reference))
-      )
-        return [];
-      const title = `${prefix}${node.title}`;
-      return [
-        { id: node.reference.id, title },
-        ...destinations(node.children ?? [], `${title} / `),
-      ];
-    });
-  }
-
   return (
     <>
       <div
@@ -579,15 +566,21 @@ export default function ShortcutTree({
             <MenuItem data-testid="shortcuts-root" value="">
               Top level of Shortcuts
             </MenuItem>
-            {destinations(nodes).map((group) => (
-              <MenuItem
-                data-testid="shortcut-destination-group"
-                key={group.id}
-                value={group.id}
-              >
-                {group.title}
-              </MenuItem>
-            ))}
+            {moveDialog &&
+              listShortcutDestinations(
+                tree,
+                moveDialog.reference.type === "group"
+                  ? moveDialog.reference.id
+                  : undefined
+              ).map((group) => (
+                <MenuItem
+                  data-testid="shortcut-destination-group"
+                  key={group.id}
+                  value={group.id}
+                >
+                  {group.title}
+                </MenuItem>
+              ))}
           </TextField>
           {moveDialog && conflict && <Alert severity="error">{conflict}</Alert>}
         </DialogContent>

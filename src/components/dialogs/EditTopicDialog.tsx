@@ -15,10 +15,10 @@ import {
   useState,
   type SubmitEvent,
 } from "react";
-import useAbortController from "../../hooks/useAbortController";
-import { useTopics } from "../../hooks/useTopics";
+import { errorMessage } from "../../platform/errors";
 import type { Topic } from "../../types";
 import { useTopicCreationCheck } from "../../hooks/useTopicCreationCheck";
+import { shortcutSaveError, useShortcutSelection } from "./ShortcutDestination";
 import SimilarTopicsDialog from "./SimilarTopicsDialog";
 import {
   TopicFormFields,
@@ -35,9 +35,9 @@ type EditTopicDialogProps = {
   onSave: (
     title: string,
     description: string,
-    threshold: number,
-    pinned: boolean
-  ) => Promise<boolean>;
+    threshold: number
+  ) => Promise<Topic | undefined>;
+  onSaved: (topic: Topic) => Promise<void>;
   onOpenTopic: (topic: Topic) => void;
   onDelete: (topic: Topic) => Promise<void>;
 };
@@ -48,13 +48,20 @@ export default function EditTopicDialog({
   initialTitle,
   onClose,
   onSave,
+  onSaved,
   onDelete,
   onOpenTopic,
 }: EditTopicDialogProps) {
   const readOnly = useLibraryReadOnly();
   const { pushError } = useErrorSink();
-  const [, abortControllerRef] = useAbortController();
-  const { pinnedTopicIds } = useTopics(abortControllerRef);
+  const shortcut = useShortcutSelection(
+    topic ? { type: "topic", id: topic.id } : undefined
+  );
+  const resetShortcut = shortcut.reset;
+  const savedTopic = useRef<Topic | undefined>(undefined);
+  const [saveError, setSaveError] = useState<string>();
+  const [entitySaved, setEntitySaved] = useState(false);
+  const savingRef = useRef(false);
 
   const form = useTopicForm();
   const resetForm = form.reset;
@@ -67,27 +74,33 @@ export default function EditTopicDialog({
 
   useEffect(() => {
     if (open && !wasOpen.current) {
+      savedTopic.current = undefined;
+      setEntitySaved(false);
+      setSaveError(undefined);
+      resetShortcut();
       resetForm({
         title: topic?.title ?? initialTitle,
         description: topic?.description,
         threshold: topic?.threshold,
-        pinned: pinnedTopicIds.includes(topic?.id ?? ""),
       });
     }
     wasOpen.current = open;
-  }, [open, pinnedTopicIds, topic, initialTitle, resetForm]);
+  }, [open, topic, initialTitle, resetForm, resetShortcut]);
 
   async function saveDraft(draft: TopicFormValues) {
-    if (
-      await onSave(
-        draft.title,
-        draft.description,
-        draft.threshold,
-        draft.pinned
-      )
-    ) {
-      onClose();
+    const saved =
+      savedTopic.current ??
+      (await onSave(draft.title, draft.description, draft.threshold));
+    if (!saved) return;
+    savedTopic.current = saved;
+    setEntitySaved(true);
+    try {
+      await shortcut.save({ type: "topic", id: saved.id });
+    } catch (cause) {
+      throw shortcutSaveError("Topic", cause);
     }
+    await onSaved(saved);
+    onClose();
   }
 
   const creation = useTopicCreationCheck(
@@ -98,18 +111,22 @@ export default function EditTopicDialog({
 
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (readOnly || busy || !form.values.title) return;
-    if (!topic) {
+    if (readOnly || busy || savingRef.current || !form.values.title) return;
+    if (!topic && !savedTopic.current) {
       creation.submit(form.values);
       return;
     }
 
+    savingRef.current = true;
     setSaving(true);
+    setSaveError(undefined);
     try {
       await saveDraft(form.values);
     } catch (error) {
+      setSaveError(errorMessage(error));
       pushError(error);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
@@ -159,10 +176,16 @@ export default function EditTopicDialog({
               pt: "1rem !important",
             }}
           >
-            {creation.saveError && (
-              <Alert severity="error">{creation.saveError}</Alert>
+            {(saveError ?? creation.saveError) && (
+              <Alert severity="error">{saveError ?? creation.saveError}</Alert>
             )}
-            <TopicFormFields form={form} busy={busy || readOnly} autoFocus />
+            <TopicFormFields
+              form={form}
+              shortcut={shortcut}
+              entitySaved={entitySaved}
+              busy={busy || readOnly}
+              autoFocus
+            />
           </DialogContent>
 
           <DialogActions>

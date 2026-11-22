@@ -28,6 +28,7 @@ export class MockPlatform implements Platform {
   private pins: PinNode[] = [{ type: "topic", id: "observations" }];
   private sequence = 0;
   private refuseNextTopic = true;
+  private refuseNextShortcut = true;
   private upgrade: import("../Platform").LibraryUpgrade = { state: "idle" };
   private upgradeAttempts = 0;
   private upgradePolls = 0;
@@ -78,6 +79,21 @@ export class MockPlatform implements Platform {
       );
       this.data.topics.push(...fixture.topics);
       this.pins = fixture.pins;
+    }
+    if (this.scenario?.startsWith("shortcut-destination")) {
+      this.pins.push(
+        {
+          type: "group",
+          id: "work",
+          title: "Work",
+          children: [
+            { type: "group", id: "notes-one", title: "Notes", children: [] },
+            { type: "group", id: "notes-two", title: "Notes", children: [] },
+          ],
+        },
+        { type: "group", id: "personal", title: "Personal", children: [] },
+        { type: "group", id: "literal", title: "Work / Notes", children: [] }
+      );
     }
     if (["refresh-failure", "refresh-all-fail"].includes(this.scenario ?? "")) {
       this.data.feeds.push({
@@ -335,8 +351,13 @@ export class MockPlatform implements Platform {
     this.data.feeds.map((f) =>
       this.project({ ...f, ...this.counts(f.members.map((m) => m.id)) })
     );
-  addFeed: Platform["addFeed"] = async (signal, url) => {
+  addFeed: Platform["addFeed"] = async (signal, url, savedId) => {
     signal.throwIfAborted();
+    if (savedId) {
+      const saved = this.data.feeds.find((feed) => feed.id === savedId);
+      if (!saved) return this.unsupported("Unknown saved feed");
+      return this.project(saved);
+    }
     if (url !== additionalFeedUrl)
       return this.unsupported(`Adding feeds other than ${additionalFeedUrl}`);
     let feed = this.data.feeds.find((f) => f.url === url);
@@ -638,11 +659,43 @@ export class MockPlatform implements Platform {
       filter
     ) as Entry[];
   listPins: Platform["listPins"] = async () => structuredClone(this.pins);
-  setPin: Platform["setPin"] = async (target, pinned) => {
+  setPin: Platform["setPin"] = async (target, pinned, placement) => {
+    if (await this.isLibraryReadOnly()) {
+      throw {
+        code: "library:read-only",
+        message: "This library is read-only.",
+      };
+    }
+    if (
+      this.scenario === "shortcut-destination-retry" &&
+      target.type === "feed" &&
+      this.refuseNextShortcut
+    ) {
+      this.refuseNextShortcut = false;
+      throw {
+        code: "pins:invalid-store",
+        message: "Could not save Shortcuts.",
+        detail: "Capture fixture",
+      };
+    }
     const found = findPinPosition(this.pins, target);
-    if (!!found === pinned) return;
+    if (found && pinned && !placement?.moveExisting) return;
+    const parent = placement?.parent;
+    const group =
+      parent && findPinPosition(this.pins, { type: "group", id: parent });
+    const destination = group ? group.siblings[group.index] : undefined;
+    if (pinned && parent && destination?.type !== "group") {
+      throw {
+        code: "pins:destination-unavailable",
+        message:
+          "This shortcut folder is no longer available. Choose another location.",
+      };
+    }
+    const siblings =
+      destination?.type === "group" ? destination.children : this.pins;
+    if (pinned ? found?.siblings === siblings : !found) return;
     if (found) found.siblings.splice(found.index, 1);
-    if (pinned) this.pins.push(structuredClone(target));
+    if (pinned) siblings.push(structuredClone(target));
     this.emit("onPinChanged", { target, pinned });
     if (target.type === "entry")
       this.emit("onEntryPinChanged", this.project(this.article(target.id)));

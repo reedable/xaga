@@ -128,7 +128,11 @@ export interface Platform {
 
   // Feeds
   listFeeds(signal: AbortSignal): Promise<Feed[]>;
-  addFeed(signal: AbortSignal, feedUrl: string): Promise<Feed>;
+  addFeed(
+    signal: AbortSignal,
+    feedUrl: string,
+    savedId?: string
+  ): Promise<Feed>;
   refreshAllFeeds(signal: AbortSignal): Promise<FeedRefreshOutcome>;
   renameFeed(signal: AbortSignal, feedId: string, title: string): Promise<Feed>;
   removeFeed(signal: AbortSignal, feedUrl: string): Promise<string>;
@@ -466,7 +470,11 @@ export interface Platform {
   // Membership is owned by the library pin store and projected onto targets.
   listPins(signal: AbortSignal): Promise<PinNode[]>;
   organizePins(edit: PinEdit): Promise<void>;
-  setPin(target: PinTarget, pinned: boolean): Promise<void>;
+  setPin(
+    target: PinTarget,
+    pinned: boolean,
+    placement?: import("../pins").PinPlacement
+  ): Promise<void>;
   onPinChanged(callback: (change: PinChange) => void): Promise<UnlistenFn>;
   setFeedPinned(id: string, pinned: boolean): Promise<void>;
   setTopicPinned(id: string, pinned: boolean): Promise<void>;

@@ -182,3 +182,8 @@ export async function setSidebarVisible(page: Page, visible: boolean) {
     visible ? 1 : 0
   );
 }
+
+export async function addArticleShortcut(page: Page) {
+  await shareAction(page, "pin-toggle");
+  await control(page.getByRole("dialog"), "button", "add").click();
+}

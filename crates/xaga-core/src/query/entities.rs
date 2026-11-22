@@ -257,6 +257,7 @@ mod tests {
             library_dir,
             crate::pins::PinTarget::Feed { id: "feed".into() },
             true,
+            None,
             crate::library_writer::WriteToken::for_test(),
         )
         .await

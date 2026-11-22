@@ -13,6 +13,7 @@ import {
   type PinTarget,
   type PinNode,
   type PinEdit,
+  type PinPlacement,
 } from "../pins";
 import { PinsContext } from "./PinsContext";
 
@@ -54,11 +55,12 @@ export default function PinsProvider({ children }: { children: ReactNode }) {
     };
   }, [platform, refresh, pushError]);
   const setPin = useCallback(
-    async (target: PinTarget, pinned: boolean) => {
-      await platform.setPin(target, pinned);
-      await refresh();
+    async (target: PinTarget, pinned: boolean, placement?: PinPlacement) => {
+      if (placement) await platform.setPin(target, pinned, placement);
+      else await platform.setPin(target, pinned);
+      await refresh().catch(pushError);
     },
-    [platform, refresh]
+    [platform, refresh, pushError]
   );
   const organizePins = useCallback(
     async (edit: PinEdit) => {

@@ -19,7 +19,8 @@ npm run test:browser
 ```
 
 `npm test` includes this suite along with script, UI, Rust, and native GUI tests.
-`npm run test:ci` runs script, UI, Rust, and browser tests without the native GUI suite.
+`npm run test:ci` runs browser tests first, followed by the headless script, UI,
+and Rust tests. The native GUI suite is separate.
 
 On Linux, install the browser's operating-system dependencies as well:
 
@@ -212,10 +213,10 @@ The **Verify and build macOS Apple Silicon** job in
 and Release dispatches and Manual release build tag pushes. Ordinary branch pushes
 and pull requests do not trigger these workflows.
 
-After lint, formatting, frontend type/CSP checks, and Rust workspace checks pass,
-the macOS job installs Chromium and runs `npm run test:headless` followed by
-`npm run test:browser` in separate steps, each with a 30-minute timeout. Rust test
-compilation therefore does not consume the browser suite’s time allowance. These
+After lint, formatting, and frontend type/CSP checks pass, the macOS job installs
+Chromium and runs `npm run test:browser`, uploads diagnostics, checks the Rust
+workspace, and runs `npm run test:headless`. Both test steps have a 30-minute
+timeout. Pull request verification uses the same sequence. These
 commands run the same suites as `npm run test:ci`. Browser failures
 block the release build. The job uploads
 `playwright-report/` and `test-results/` as the `browser-integration-<attempt>` artifact,

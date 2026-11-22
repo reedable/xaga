@@ -70,9 +70,11 @@ become filesystem path components. Equivalent Site references cannot occur twice
 Site pin changes use the same writer lane and `pin:changed` event as other pins;
 there is no Site entity row or cache pin column to update.
 
-Site Settings shows a read-only hostname and an **Add to Shortcuts** checkbox.
-Membership comes from the shared pin store each time the dialog opens. Read-only
-libraries can navigate pinned Sites and inspect Settings, but cannot change pins.
+Site Settings shows a read-only hostname and a **Shortcut destination** dropdown.
+The dropdown shows the current location from the shared pin store, or
+**No shortcut** for an unpinned Site. Saving a different choice adds, moves, or
+removes the shortcut. In a read-only library, users can navigate pinned Sites and
+inspect Settings. Shortcut editing is disabled.
 Pinned Sites use current derived total/unread counts and existing Site navigation.
 Once the Site list has loaded, a pinned hostname absent from that computed list is
 still a valid empty Site with zero counts, not an unavailable target. Its pin
@@ -185,9 +187,24 @@ through IPC. The existing 12 MiB bound and unknown-field/anchor rejection remain
 `PinEdit` operations create, rename, remove, or move nodes through the same
 Interactive pin writer lane. A move removes and appends the node in one atomic
 store replacement; destinations inside the moved subtree are refused. New pins
-append at root; new groups and moved nodes append in their destination. Removing
-a group replaces it with its children at the same stored position, preserving
-child order and all target pins. Toolbar unpin finds its target at any depth.
+append at root by default. An explicit placement can append directly to any
+existing group. New groups and moved nodes append in their destination.
+Removing a group replaces it with its children at the same stored position,
+preserving child order and all target pins. Toolbar unpin finds its target at
+any depth.
+
+Article Share adds a shortcut only if the target is absent. Feed, Topic, and
+Site forms submit a shortcut edit when the destination selection changes.
+The pin writer applies the requested placement against the current tree and
+keeps the stored position when the target already occupies that destination.
+It resolves group IDs under the library write lock and rejects a missing
+destination before replacing the store. Successful writes use the existing
+typed pin notifications. A failed projection refresh after commit is reported
+separately from a write failure.
+
+The destination dropdown reads the full shared pin tree, including collapsed
+and filtered-out groups. Its labels show path segments and disambiguate
+identical paths with stable group IDs.
 
 The pin writer checks path conflicts against the current tree before replacing
 the file. Creating, renaming, or moving a group requires a unique path for the
