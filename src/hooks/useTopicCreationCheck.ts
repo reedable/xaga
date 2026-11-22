@@ -78,8 +78,8 @@ export function useTopicCreationCheck(
     }
   }
 
-  function submit(draft: TopicFormValues) {
-    if (!pendingWarning.current) void run(draft, false);
+  function submit(draft: TopicFormValues, alreadySaved = false) {
+    if (!pendingWarning.current) void run(draft, alreadySaved);
   }
 
   function confirm() {

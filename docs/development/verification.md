@@ -18,6 +18,12 @@ and qualify completion. Passing checks establish only what those checks cover.
 
 ## Completion gate
 
+Before the final formatting check for each story, review affected documentation
+against the implementation. Search the relevant architecture and development
+docs, User Guide, and training for names, controls, or behavior the story
+changed. Check each match in context and update descriptions that no longer
+match the implementation.
+
 For prose-only documentation changes, including ideas, task documents, and
 repository instructions, review the content against the request and applicable
 requirements and follow the shared [formatting requirements](../conventions/formatting.md).
@@ -41,8 +47,8 @@ when the affected scope warrants the full repository suite or another applicable
 requirement explicitly calls for it.
 
 The full command runs lint with warnings rejected, repository formatting,
-TypeScript, reader CSP verification, Rust formatting, all-target workspace
-compilation, and the headless, browser, and native test suites. Rust compiler and
+TypeScript, reader CSP verification, Rust formatting, browser tests, all-target
+workspace compilation, headless tests, and native tests. Rust compiler and
 documentation warnings are errors throughout the command. It stops at the first
 failure and requires the documented macOS desktop test environment.
 

@@ -19,6 +19,7 @@ export const ERROR_CODE = [
   "tags:deleting",
   "pins:invalid-store",
   "pins:duplicate-group-path",
+  "pins:destination-unavailable",
   // DomainError — EntryError
   "entry:io",
   "entry:invalid-url",
@@ -39,6 +40,7 @@ export const ERROR_CODE = [
   "feed:body-too-large",
   "feed:http-blocked",
   "feed:writer",
+  "feed:saved-refresh",
   // DomainError — EmbeddingsError
   "embeddings:io",
   "embeddings:model-download",

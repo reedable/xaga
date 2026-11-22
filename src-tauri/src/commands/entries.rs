@@ -106,6 +106,7 @@ pub async fn set_entry_pinned(
     super::pins::set_pin(
         xaga_core::pins::PinTarget::Entry { id },
         pinned,
+        None,
         app.clone(),
         state,
     )

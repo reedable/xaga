@@ -21,3 +21,10 @@ When Refresh on startup is enabled, the main layout performs one refresh after
 initial settings and writable library mode are known. Read-only startup skips
 this automatic write. Manual refresh uses the same hook and error contract;
 backend refusal remains authoritative if a residual request reaches it.
+
+Add Feed can retain a saved subscription when the first refresh fails. The
+command returns the saved Feed ID with the failure, and a retry refreshes that
+ID using its saved address. The form retains the ID across later name or
+shortcut failures so it can resume the unfinished step. Adding or renaming a
+Feed returns the committed Feed even when reading shortcut state for its
+projection fails.
