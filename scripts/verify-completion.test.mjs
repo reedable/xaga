@@ -14,9 +14,12 @@ test("completion gate runs every check and refuses Rust warnings", () => {
     0
   );
   assert.deepEqual(calls, checks);
-  assert.ok(
-    checks.some(([command, args]) => command === "npm" && args[0] === "test")
-  );
+  assert.deepEqual(calls.slice(-4), [
+    ["npm", ["run", "test:browser"]],
+    ["npm", ["run", "check:rust"]],
+    ["npm", ["run", "test:headless"]],
+    ["npm", ["run", "test:gui"]],
+  ]);
 });
 
 test("completion gate stops on a failed check or missing executable", () => {

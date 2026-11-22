@@ -145,9 +145,16 @@ it("pins and unpins through the platform using committed state", async () => {
   await render();
   await act(async () => button("share").click());
   await act(async () => menuItem("pin-toggle")!.click());
+  expect(mocks.setPin).not.toHaveBeenCalled();
+  await act(async () =>
+    document
+      .querySelector<HTMLButtonElement>('[role="dialog"] [data-testid="add"]')!
+      .click()
+  );
   expect(mocks.setPin).toHaveBeenLastCalledWith(
     { type: "entry", id: "article" },
-    true
+    true,
+    { parent: null, moveExisting: false }
   );
   await act(async () => button("share").click());
   expect(menuItem("pin-toggle")).not.toBeUndefined();
@@ -220,16 +227,19 @@ it("reports a refused pin without displaying it as persisted", async () => {
   mocks.setPin.mockRejectedValueOnce(error);
   await act(async () => button("share").click());
   await act(async () => menuItem("pin-toggle")!.click());
-  expect(mocks.sink.pushError).toHaveBeenCalledWith(error);
-  await act(async () => button("share").click());
-  expect(menuItem("pin-toggle")!.getAttribute("aria-disabled")).not.toBe(
-    "true"
+  await act(async () =>
+    document
+      .querySelector<HTMLButtonElement>('[role="dialog"] [data-testid="add"]')!
+      .click()
   );
-  expect(menuItem("pin-toggle")).toBeDefined();
+  expect(mocks.sink.pushError).toHaveBeenCalledWith(error);
+  expect(
+    document.querySelector('[role="dialog"] [data-testid="add"]')
+  ).not.toBeNull();
 });
 
 vi.mock("../../providers/PinsContext", () => ({
-  usePins: () => ({ pins: mocks.pins, setPin: mocks.setPin }),
+  usePins: () => ({ pins: mocks.pins, tree: [], setPin: mocks.setPin }),
 }));
 
 it("keeps Refresh visible before Share and focusable while reporting reload progress", async () => {

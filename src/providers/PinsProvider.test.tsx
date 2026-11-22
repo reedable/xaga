@@ -73,3 +73,16 @@ it("rereads the authority for delayed events and ignores stale snapshots", async
   await act(async () => changed({ target, pinned: true }));
   expect(current.pins).toEqual([]);
 });
+
+it("reports a projection error separately from a committed shortcut write", async () => {
+  await render();
+  const error = new Error("projection unavailable");
+  mocks.listPins.mockRejectedValueOnce(error);
+  await act(async () => {
+    await expect(
+      current.setPin(target, true, { parent: "work", moveExisting: true })
+    ).resolves.toBeUndefined();
+  });
+  expect(mocks.setPin).toHaveBeenCalledOnce();
+  expect(mocks.pushError).toHaveBeenCalledWith(error);
+});

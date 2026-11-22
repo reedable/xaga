@@ -2,10 +2,11 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import ShortcutTree from "./ShortcutTree";
-import type { PinTarget } from "../../pins";
+import type { PinNode, PinTarget } from "../../pins";
 import type { ShortcutNode } from "../../utils/projectPinTree";
 
 const mocks = vi.hoisted(() => ({
+  tree: [] as PinNode[],
   organizePins: vi.fn(),
   setPin: vi.fn(),
   readOnly: false,
@@ -46,8 +47,15 @@ let root: ReturnType<typeof createRoot>;
 let container: HTMLDivElement;
 let filter: string;
 let createRequest: number;
-const render = (items: ShortcutNode[] = nodes) =>
-  act(async () =>
+const render = (items: ShortcutNode[] = nodes) => {
+  const pinNodes = (items: ShortcutNode[]): PinNode[] =>
+    items.map(({ reference, title, children }) =>
+      reference.type === "group"
+        ? { ...reference, title, children: pinNodes(children ?? []) }
+        : reference
+    );
+  mocks.tree = pinNodes(items);
+  return act(async () =>
     root.render(
       <ShortcutTree
         nodes={items}
@@ -57,6 +65,7 @@ const render = (items: ShortcutNode[] = nodes) =>
       />
     )
   );
+};
 const button = (label: string) =>
   document.querySelector<HTMLButtonElement>(
     `[data-testid="shortcut-actions"][data-target-title="${label}"]`

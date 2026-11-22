@@ -6,7 +6,7 @@ import {
   articleButton,
   openArticle,
   reader,
-  shareAction,
+  addArticleShortcut,
 } from "./fixtures";
 
 const garden = "A garden for every season";
@@ -32,7 +32,7 @@ for (const scope of ["article", "all", "topic", "feed"] as const) {
       await control(page, "button", "close-details").click();
     }
     if (scope === "article") {
-      await shareAction(page, "pin-toggle");
+      await addArticleShortcut(page);
       await page.getByRole("button", { name: garden, exact: true }).click();
     } else if (scope === "topic") {
       await control(page, "button", "sidebar-topics-toggle").click();

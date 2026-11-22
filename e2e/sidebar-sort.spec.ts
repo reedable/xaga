@@ -45,7 +45,7 @@ test("one keyboard-accessible sidebar sort choice applies across sections and su
   const dialog = page.getByRole("dialog").filter({ hasText: "Add Feed" });
   await control(dialog, "textbox", "feed-url").fill(additionalFeedUrl);
   await control(dialog, "textbox", "collection-name").fill("A workshop");
-  await control(dialog, "checkbox", "pin-toggle").check();
+  await control(dialog, "combobox", "shortcut-location").selectOption("root");
   await control(dialog, "button", "add").click();
   await expect(dialog).not.toBeVisible();
   await control(page, "button", "sidebar-feeds-toggle").click();

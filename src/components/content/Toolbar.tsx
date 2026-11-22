@@ -15,7 +15,13 @@ import {
   Search,
 } from "@mui/icons-material";
 import {
+  Alert,
+  Button,
   Collapse,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   IconButton,
   LinearProgress,
@@ -43,8 +49,13 @@ import { useErrorSink } from "../../hooks/useErrorSink";
 import { subscribe, useEvents } from "../../hooks/useEvents";
 import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import useRouter from "../../hooks/useRouter";
+import { errorMessage } from "../../platform/errors";
 import { usePlatform } from "../../platform/Platform";
 import { usePins } from "../../providers/PinsContext";
+import ShortcutDestination, {
+  shortcutPlacement,
+  topLevel,
+} from "../dialogs/ShortcutDestination";
 import { isArticle, type Entry } from "../../types";
 import FaviconLoadError from "../../utils/FaviconLoadError";
 import { isLocalFaviconReference } from "../../utils/isLocalFaviconReference";
@@ -143,6 +154,12 @@ export function Toolbar({
   const shareButtonRef = useRef<HTMLButtonElement>(null);
   const [shareAnchor, setShareAnchor] = useState<HTMLElement | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
+  const [pinDialog, setPinDialog] = useState<{
+    id: string;
+    selection: string;
+  } | null>(null);
+  const pinInFlight = useRef(false);
+  const [pinError, setPinError] = useState<string>();
 
   const handleSearchToggle = useCallback(() => {
     if (isSearchOpen) clearSearch();
@@ -178,17 +195,27 @@ export function Toolbar({
     return () => window.removeEventListener("blur", close);
   }, []);
 
-  const togglePin = useCallback(async () => {
-    if (!entry || pinning) return;
-    setPinning(true);
-    try {
-      await setPin({ type: "entry", id: entry.id }, !entry.isPinned);
-    } catch (error) {
-      pushError(error);
-    } finally {
-      setPinning(false);
-    }
-  }, [entry, pinning, setPin, pushError]);
+  const savePin = useCallback(
+    async (id: string, selection?: string) => {
+      if (isLibraryReadOnly || pinInFlight.current) return;
+      pinInFlight.current = true;
+      setPinning(true);
+      setPinError(undefined);
+      try {
+        const target = { type: "entry", id } as const;
+        if (selection === undefined) await setPin(target, false);
+        else await setPin(target, true, shortcutPlacement(selection, false));
+        setPinDialog(null);
+      } catch (error) {
+        if (selection !== undefined) setPinError(errorMessage(error));
+        pushError(error);
+      } finally {
+        pinInFlight.current = false;
+        setPinning(false);
+      }
+    },
+    [isLibraryReadOnly, setPin, pushError]
+  );
 
   useEffect(
     () =>
@@ -424,7 +451,12 @@ export function Toolbar({
                 disabled={!entry || isLibraryReadOnly || pinning}
                 onClick={() => {
                   setShareAnchor(null);
-                  void togglePin();
+                  if (!entry) return;
+                  if (entry.isPinned) void savePin(entry.id);
+                  else {
+                    setPinError(undefined);
+                    setPinDialog({ id: entry.id, selection: topLevel });
+                  }
                 }}
               >
                 {entry?.isPinned ? (
@@ -520,6 +552,60 @@ export function Toolbar({
             )}
           </div>
 
+          <Dialog
+            open={pinDialog !== null}
+            onClose={() => {
+              if (!pinInFlight.current) setPinDialog(null);
+            }}
+            fullWidth
+            maxWidth="xs"
+            aria-labelledby="article-shortcut-title"
+            transitionDuration={0}
+            slotProps={{
+              transition: { onExited: () => shareButtonRef.current?.focus() },
+            }}
+          >
+            {pinDialog && (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void savePin(pinDialog.id, pinDialog.selection);
+                }}
+              >
+                <DialogTitle id="article-shortcut-title">
+                  Add to Shortcuts
+                </DialogTitle>
+                <DialogContent>
+                  {pinError && <Alert severity="error">{pinError}</Alert>}
+                  <ShortcutDestination
+                    value={pinDialog.selection}
+                    onChange={(selection) =>
+                      setPinDialog({ ...pinDialog, selection })
+                    }
+                    allowNone={false}
+                    autoFocus
+                    disabled={pinning || isLibraryReadOnly}
+                  />
+                </DialogContent>
+                <DialogActions>
+                  <Button
+                    data-testid="cancel"
+                    disabled={pinning}
+                    onClick={() => setPinDialog(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    data-testid="add"
+                    type="submit"
+                    disabled={pinning || isLibraryReadOnly}
+                  >
+                    Add
+                  </Button>
+                </DialogActions>
+              </form>
+            )}
+          </Dialog>
           <Popover
             transitionDuration={0}
             open={qrOpen}
