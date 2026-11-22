@@ -87,9 +87,7 @@ export type Feed = ManagedCollection<Entry> &
   WebResource &
   Pinnable & {
     readonly __kind: "feed"; // description? (from ManagedEntity) = the .atom subtitle
-    // createdAt (from ManagedEntity) is NOT a real creation time for a Feed: Atom has no feed-level creation
-    // field (`atom:feed` has `<updated>`, no `<published>`), so the backend mirrors `<updated>` into
-    // it for now. Tech debt — don't rely on Feed.createdAt as a true creation timestamp.
+    // createdAt is the preserved creation time of the local .atom file.
   };
 
 export type Topic = ManagedCollection<Entry | Annotation | Note> &

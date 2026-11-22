@@ -46,6 +46,11 @@ pub(crate) fn feed_embed_text(feed: &Feed) -> &str {
     feed.description.as_deref().unwrap_or("")
 }
 
+/// An absent publisher date needs an index-write timestamp on reconciliation.
+pub(crate) fn feed_dates_match(feed: &Feed, created_at: &str, updated_at: &str) -> bool {
+    feed.created_at == created_at && feed.updated_at.as_deref() == Some(updated_at)
+}
+
 impl EmbeddingEntry {
     /// Builds an entry row from an `Article` and resolved tag IDs. `topics`/`items` are reconcile-managed (written empty
     /// here, carried forward by the sync/embed paths). For entry rows `items` holds the annotation
@@ -78,7 +83,7 @@ impl EmbeddingEntry {
         }
     }
 
-    /// Builds a feed row from a domain `Feed`. Feed rows carry no created/updated timestamps.
+    /// Builds a feed row, using the current index-write time when the source has no publisher date.
     pub(crate) fn from_feed(feed: &Feed, vector: Option<Vec<f32>>) -> EmbeddingEntry {
         let tags = Vec::new();
         EmbeddingEntry {
@@ -86,9 +91,12 @@ impl EmbeddingEntry {
             kind: Kind::Feed,
             source: feed.url.clone(),
             title: feed.title.clone(),
-            created_at: String::new(),
+            created_at: feed.created_at.clone(),
             published_at: String::new(),
-            updated_at: String::new(),
+            updated_at: feed
+                .updated_at
+                .clone()
+                .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
             checksum: checksum(&feed.title, feed_embed_text(feed)),
             reference: String::new(),
             color: String::new(),

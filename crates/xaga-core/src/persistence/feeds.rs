@@ -9,7 +9,8 @@ use thiserror::Error;
 use crate::{
     atom::{
         Atom, AtomEntry, apply_incoming_xml, atom_to_entry, atom_to_feed, atom_to_xml,
-        count_unread_feed_entries, entry_ids, feed_to_atom, parse_atom, self_link_url, set_title,
+        count_unread_feed_entries, entry_ids, feed_created_at, feed_to_atom, parse_atom,
+        self_link_url, set_feed_created_at, set_title,
     },
     library_writer::{LibraryWriter, Tier as WriteTier, WriteToken},
     types::{Article, Feed},
@@ -165,7 +166,11 @@ pub async fn add_feed(
 
     match commit_via_writer(writer, &id, &atom, new_entries, false).await {
         Ok(created) => Ok((
-            project_pin(library_dir, atom_to_feed_with_unread(&id, &atom, unread)).await?,
+            project_pin(
+                library_dir,
+                atom_to_feed_with_unread(&id, &atom, unread, created_at(&path, &atom)),
+            )
+            .await?,
             created,
         )),
         Err(e) => {
@@ -221,6 +226,7 @@ async fn refresh_feed(
     }
 
     let mut existing = super::identity::read_atom(&path, Some(writer)).await?;
+    let created_at = created_at(&path, &existing);
     crate::atom::set_self_link_url(&mut existing, url);
 
     let new_entries =
@@ -228,7 +234,11 @@ async fn refresh_feed(
     let created = commit_via_writer(writer, id, &existing, new_entries, true).await?;
 
     Ok((
-        project_pin(library_dir, atom_to_feed_with_unread(id, &existing, unread)).await?,
+        project_pin(
+            library_dir,
+            atom_to_feed_with_unread(id, &existing, unread, created_at),
+        )
+        .await?,
         created,
     ))
 }
@@ -328,13 +338,17 @@ pub async fn refresh_all_feeds(
 ) -> Vec<(String, String, Result<(Feed, Vec<Article>)>)> {
     // Walk + parse each `.atom` once; the parsed feed flows straight into the refresh, so we
     // never re-read the file it was just walked from.
-    let mut feeds: Vec<(String, Atom)> = Vec::new();
+    let mut feeds: Vec<(String, String, Atom)> = Vec::new();
 
     super::walk::for_each_atom_with_writer(
         &crate::library::feeds_dir(library_dir),
         &parse_atom,
         |path, feed| {
-            feeds.push((crate::util::entity_id(&path), feed));
+            feeds.push((
+                crate::util::entity_id(&path),
+                created_at(&path, &feed),
+                feed,
+            ));
         },
         Some(writer),
     )
@@ -342,7 +356,7 @@ pub async fn refresh_all_feeds(
 
     let mut results = Vec::with_capacity(feeds.len());
 
-    for (id, mut existing) in feeds {
+    for (id, created_at, mut existing) in feeds {
         let title = existing.title().value.clone();
         let result: Result<(Feed, Vec<Article>)> = async {
             let new_entries =
@@ -351,7 +365,7 @@ pub async fn refresh_all_feeds(
             Ok((
                 project_pin(
                     library_dir,
-                    atom_to_feed_with_unread(&id, &existing, unread),
+                    atom_to_feed_with_unread(&id, &existing, unread, created_at),
                 )
                 .await?,
                 created,
@@ -380,8 +394,46 @@ pub async fn list_feeds_with_writer(
         .0)
 }
 
-fn atom_to_feed_with_unread(id: &str, atom: &Atom, unread: &HashSet<String>) -> Feed {
-    atom_to_feed(id, atom, count_unread_feed_entries(atom.entries(), unread))
+fn atom_to_feed_with_unread(
+    id: &str,
+    atom: &Atom,
+    unread: &HashSet<String>,
+    created_at: String,
+) -> Feed {
+    atom_to_feed(
+        id,
+        atom,
+        count_unread_feed_entries(atom.entries(), unread),
+        created_at,
+    )
+}
+
+fn file_created_at(path: &Path) -> std::io::Result<String> {
+    let created = std::fs::metadata(path)?.created()?;
+    Ok(chrono::DateTime::<chrono::Utc>::from(created).to_rfc3339())
+}
+
+fn created_at(path: &Path, atom: &Atom) -> String {
+    feed_created_at(atom)
+        .map(str::to_owned)
+        .unwrap_or_else(|| file_created_at(path).unwrap_or_default())
+}
+
+pub(super) fn preserve_created_at(
+    path: &Path,
+    saved_created_at: Option<&str>,
+    replacement: &mut Atom,
+) -> Result<()> {
+    let created_at = match saved_created_at {
+        Some(date) => date.to_owned(),
+        None => match file_created_at(path) {
+            Ok(date) => date,
+            Err(error) if error.kind() == std::io::ErrorKind::Unsupported => return Ok(()),
+            Err(error) => return Err(error.into()),
+        },
+    };
+    set_feed_created_at(replacement, &created_at);
+    Ok(())
 }
 
 type FeedUnreadVisitor<'a> = dyn Fn(&[AtomEntry]) -> usize + Sync + 'a;
@@ -399,7 +451,12 @@ pub(crate) async fn discover_feeds(
         |path, atom_feed| {
             let id = crate::util::entity_id(&path);
             let unread_count = summarize_unread.map_or(0, |visit| visit(atom_feed.entries()));
-            feeds.push(atom_to_feed(&id, &atom_feed, unread_count));
+            feeds.push(atom_to_feed(
+                &id,
+                &atom_feed,
+                unread_count,
+                created_at(&path, &atom_feed),
+            ));
         },
         writer,
     )
@@ -427,11 +484,15 @@ pub(crate) async fn read_feed(
     _bookmarked: &HashSet<String>,
 ) -> Result<Feed> {
     validate_lookup(id)?;
-    let xml = tokio::fs::read_to_string(crate::library::feed_path(library_dir, id)).await?;
+    let path = crate::library::feed_path(library_dir, id);
+    let xml = tokio::fs::read_to_string(&path).await?;
     let feed = parse_atom(&xml).map_err(FeedError::AtomParse)?;
-    crate::atom::resolve_local_id(&feed, &crate::library::feed_path(library_dir, id))
-        .map_err(FeedError::AtomParse)?;
-    project_pin(library_dir, atom_to_feed_with_unread(id, &feed, unread)).await
+    crate::atom::resolve_local_id(&feed, &path).map_err(FeedError::AtomParse)?;
+    project_pin(
+        library_dir,
+        atom_to_feed_with_unread(id, &feed, unread, created_at(&path, &feed)),
+    )
+    .await
 }
 
 /// Rename a feed by updating its `<title>` in the stored Atom file.
@@ -451,9 +512,14 @@ pub(crate) async fn rename_feed(
     let xml = tokio::fs::read_to_string(&path).await?;
     let mut feed = parse_atom(&xml).map_err(FeedError::AtomParse)?;
     crate::atom::resolve_local_id(&feed, &path).map_err(FeedError::AtomParse)?;
+    let created_at = created_at(&path, &feed);
     set_title(&mut feed, new_title);
     write_atom_atomic(library_dir, id, &feed).await?;
-    project_pin(library_dir, atom_to_feed_with_unread(id, &feed, unread)).await
+    project_pin(
+        library_dir,
+        atom_to_feed_with_unread(id, &feed, unread, created_at),
+    )
+    .await
 }
 
 /// Remove a feed (deletes `{id}.atom`).
@@ -581,15 +647,16 @@ async fn fetch_xml(
 async fn write_atom_atomic(library_dir: &Path, id: &str, atom: &Atom) -> Result<()> {
     validate_lookup(id)?;
     let path = crate::library::feed_path(library_dir, id);
+    let mut atom = atom.clone();
     match tokio::fs::read_to_string(&path).await {
         Ok(raw) => {
             let saved = parse_atom(&raw).map_err(FeedError::AtomParse)?;
             crate::atom::resolve_local_id(&saved, &path).map_err(FeedError::AtomParse)?;
+            preserve_created_at(&path, feed_created_at(&saved), &mut atom)?;
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.into()),
     }
-    let mut atom = atom.clone();
     crate::atom::ensure_local_id(&mut atom, &path).map_err(FeedError::AtomParse)?;
     let buf = atom_to_xml(&atom).map_err(FeedError::AtomParse)?;
     crate::fs::write_atomic_async(crate::library::feed_path(library_dir, id), buf).await?;
@@ -824,6 +891,67 @@ mod tests {
         assert_eq!(failure.1, "Unavailable feed");
         assert!(failure.2.is_err());
         writer.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn feed_dates_preserve_creation_time_and_track_the_publisher() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = dir.path();
+        let id = "feed";
+        let path = crate::library::feed_path(library, id);
+        let unread = HashSet::new();
+        let mut atom = seed_atom(id.into(), "https://example.org/feed".into());
+        write_feed_atom(library, id, &atom, false, WriteToken::for_test())
+            .await
+            .unwrap();
+        let initial_creation = file_created_at(&path).unwrap();
+
+        let rss = r#"<rss version="2.0"><channel><title>Feed</title>
+            <link>https://example.org/</link><description>Example feed</description>
+            <pubDate>Thu, 01 Jan 2026 00:00:00 GMT</pubDate>
+            <lastBuildDate>Fri, 02 Jan 2026 00:00:00 GMT</lastBuildDate>
+            </channel></rss>"#;
+        apply_incoming_xml(&mut atom, rss, id).unwrap();
+        write_feed_atom(library, id, &atom, true, WriteToken::for_test())
+            .await
+            .unwrap();
+
+        let saved = parse_atom(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(feed_created_at(&saved), Some(initial_creation.as_str()));
+        let feed = rename_feed(
+            library,
+            id,
+            "Renamed",
+            &unread,
+            &unread,
+            WriteToken::for_test(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(feed.created_at, initial_creation);
+        assert_eq!(
+            feed.updated_at.as_deref(),
+            Some("2026-01-01T00:00:00+00:00")
+        );
+
+        let atom_xml = r#"<feed xmlns="http://www.w3.org/2005/Atom">
+            <id>publisher</id><title>Feed</title><updated>2026-03-01T12:00:00Z</updated>
+            </feed>"#;
+        apply_incoming_xml(&mut atom, atom_xml, id).unwrap();
+        assert_eq!(
+            atom_to_feed(id, &atom, 0, initial_creation.clone())
+                .updated_at
+                .as_deref(),
+            Some("2026-03-01T12:00:00+00:00")
+        );
+
+        let rss_without_pub_date =
+            rss.replace("<pubDate>Thu, 01 Jan 2026 00:00:00 GMT</pubDate>", "");
+        apply_incoming_xml(&mut atom, &rss_without_pub_date, id).unwrap();
+        assert_eq!(
+            atom_to_feed(id, &atom, 0, initial_creation).updated_at,
+            None
+        );
     }
 
     /// A refresh commit (`require_exists = true`) must NOT recreate a feed the user removed

@@ -21,3 +21,22 @@ When Refresh on startup is enabled, the main layout performs one refresh after
 initial settings and writable library mode are known. Read-only startup skips
 this automatic write. Manual refresh uses the same hook and error contract;
 backend refusal remains authoritative if a residual request reaches it.
+
+## Feed timestamps
+
+`Feed.created_at` records the saved `.atom` file's creation time. Before the first
+replacement, the writer copies that time into `<xaga:created_at>` in the
+`urn:xaga:atom` namespace and preserves it on subsequent writes. Existing files
+without the extension use their current filesystem creation time.
+
+The local Atom `<updated>` carries the publisher's Atom `<updated>` or RSS
+`<pubDate>` when available. The local `<xaga:publisher_updated>` flag distinguishes
+that value from the local time required in the Atom document when the publisher
+omits a date. Files written before 0.18 lack this flag and gain a publisher
+timestamp on their next dated refresh.
+
+Semantic search reads both timestamps from the Feed's LanceDB row. Feed indexing
+uses the current time for the row's `updated_at` when the publisher date is
+missing. Recovery reconciles Feed dates independently of vector inputs and
+regenerates fallback timestamps for undated feeds. Date and pin metadata changes
+reuse the existing vector when the title and description are unchanged.
