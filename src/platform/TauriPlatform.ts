@@ -922,6 +922,21 @@ export class TauriPlatform implements Platform {
       .map((e) => e.data);
   }
 
+  async searchSimilarTopics(
+    signal: AbortSignal,
+    title: string,
+    description: string
+  ): Promise<Topic[]> {
+    const invokeSearch = decorate(invoke).with(abortable, { signal });
+    const results = await invokeSearch<unknown[]>("search_similar_topics", {
+      title,
+      description,
+    });
+    return results.map((result) =>
+      TopicSchema.transform(toTopic).parse(result)
+    );
+  }
+
   // Events --------------------------------------------------------------------
 
   onOpenLibrary(callback: () => void): Promise<UnlistenFn> {
