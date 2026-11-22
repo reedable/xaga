@@ -100,6 +100,7 @@ export function Toolbar({
   const { loadArticleByUrl, loading } = useArticles(abortControllerRef);
 
   const { url, entryId } = state;
+  const [pendingRemovalEntryId, setPendingRemovalEntryId] = useState<string>();
   const [latestEntry, setLatestEntry] = useState<Entry | null>(null);
   const [favicon, setFavicon] = useState<{
     reference: string;
@@ -113,6 +114,7 @@ export function Toolbar({
   if (lastEntryId !== entryId) {
     setLastEntryId(entryId);
     setLatestEntry(null);
+    setPendingRemovalEntryId(undefined);
     setFavicon(null);
   }
 
@@ -155,7 +157,10 @@ export function Toolbar({
           ? await removeBookmark(entry)
           : await addBookmark(entry, color);
       if (updated) {
-        setLatestEntry(updated);
+        setLatestEntry(updated.entry);
+        setPendingRemovalEntryId(
+          !updated.indexUpdated && color === null ? updated.entry.id : undefined
+        );
         setBookmarkAnchor(null);
       }
     },
@@ -492,6 +497,7 @@ export function Toolbar({
                   color={entry?.color ?? null}
                   onChange={changeBookmark}
                   disabled={marking || isLibraryReadOnly}
+                  allowRemove={pendingRemovalEntryId === entryId && !!entryId}
                   autoFocus
                 />
               </div>

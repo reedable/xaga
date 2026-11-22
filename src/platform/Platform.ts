@@ -169,7 +169,7 @@ export interface Platform {
   readStoredPdf(
     signal: AbortSignal,
     url: string
-  ): Promise<{ pdfBase64?: string | null } | null>;
+  ): Promise<{ pdfBase64?: string | null; pdfEntryId?: string } | null>;
   loadArticle(
     signal: AbortSignal,
     url: string,
@@ -179,6 +179,7 @@ export interface Platform {
     mimeType: string;
     html: string;
     pdfBase64?: string | null;
+    pdfEntryId?: string;
     // The favicon the loader resolved and fetched for this page. Fetched there
     // so the main window never issues the request itself.
     favicon?: string | null;
@@ -283,8 +284,15 @@ export interface Platform {
   ): Promise<RankedEntity[]>;
 
   // Bookmarks
-  addBookmark(signal: AbortSignal, id: string, color: string): Promise<Entry>;
-  removeBookmark(signal: AbortSignal, id: string): Promise<Entry>;
+  addBookmark(
+    signal: AbortSignal,
+    id: string,
+    color: string
+  ): Promise<{ entry: Entry; indexUpdated: boolean }>;
+  removeBookmark(
+    signal: AbortSignal,
+    id: string
+  ): Promise<{ entry: Entry; indexUpdated: boolean }>;
 
   // Embedding queries
   queryByEntity(

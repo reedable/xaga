@@ -19,6 +19,8 @@ pub struct LoadArticleResult {
     /// Base64-encoded validated PDF bytes for inline viewing.
     #[serde(rename = "pdfBase64")]
     pub pdf_base64: Option<String>,
+    #[serde(rename = "pdfEntryId", skip_serializing_if = "Option::is_none")]
+    pub pdf_entry_id: Option<String>,
     /// The favicon URL the loader resolved for this page, and its bytes as a
     /// `data:` URI. Fetched inside the loader so the main window never has to.
     pub favicon: Option<String>,
@@ -58,10 +60,14 @@ async fn stored_pdf_result(
     else {
         return Ok(None);
     };
+    let pdf_entry_id = articles::find_article_with_writer(library, url, writer)
+        .await?
+        .map(|article| article.meta.id);
     Ok(Some(LoadArticleResult {
         mime_type: "application/pdf".into(),
         html: String::new(),
         pdf_base64: Some(base64::engine::general_purpose::STANDARD.encode(bytes)),
+        pdf_entry_id,
         favicon: None,
         favicon_data: None,
     }))
@@ -212,6 +218,7 @@ pub async fn load_article(
             mime_type: capture.mime_type,
             html: capture.html,
             pdf_base64: None,
+            pdf_entry_id: None,
             favicon: capture.favicon,
             favicon_data: capture.favicon_data,
         })

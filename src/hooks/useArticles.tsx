@@ -99,6 +99,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
           mimeType,
           html,
           pdfBase64,
+          pdfEntryId,
           favicon: faviconUrl,
           faviconData,
         } = await attempt.runStep("fetch", () =>
@@ -112,7 +113,7 @@ export function useArticles(abortControllerRef: RefObject<AbortController>) {
                 base64ToBytes(pdfBase64)
               )
             : null;
-          return { article: null, mimeType, pdfBytes };
+          return { article: null, mimeType, pdfBytes, pdfEntryId };
         }
 
         const { title, markdown, favicon, imageData } = await attempt.runStep(

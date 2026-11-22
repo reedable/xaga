@@ -76,12 +76,12 @@ opens in a drawer on the right. Resizing the window or columns preserves your
 query, results, and open article. Press **Escape**, use the Search clear button,
 or click outside the drawer to close it and continue reading.
 
-## Bookmark an article
+## Bookmark an article or PDF
 
-1. With an article open, click **Add bookmark** in the reading pane's toolbar.
+1. Open an article or stored PDF and click **Add bookmark** in Xaga's toolbar.
 2. Choose a color. For example, choose blue for something you want to revisit.
-3. Choose **All items**, then **Saved**, to find your bookmarked articles and
-   annotations together.
+3. Choose **All items**, then **Saved**, to find your bookmarked articles, PDFs,
+   and annotations.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/user-guide/bookmark-dark.png">
@@ -89,7 +89,10 @@ or click outside the drawer to close it and continue reading.
 </picture>
 
 To change the color, click **Change bookmark color**. To remove the bookmark,
-click **Remove marking**, then **Remove**. This keeps the article in your library.
+click **Remove marking**, then **Remove**. This keeps the article or PDF in your library.
+The color applies to the whole PDF. Use Xaga’s toolbar to change it while the
+PDF is open in your default viewer. Some legacy PDFs can be opened with
+bookmarking unavailable.
 
 ## Keep a passage and a comment
 

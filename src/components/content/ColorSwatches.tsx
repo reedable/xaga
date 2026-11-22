@@ -19,11 +19,13 @@ export function ColorSwatches({
   onChange,
   disabled = false,
   autoFocus = false,
+  allowRemove = false,
 }: {
   color: string | null;
   onChange: (color: string | null) => void;
   disabled?: boolean;
   autoFocus?: boolean;
+  allowRemove?: boolean;
 }) {
   const [pendingRemove, setPendingRemove] = useState(false);
   const animate = useMediaQuery("(prefers-reduced-motion: no-preference)");
@@ -44,7 +46,7 @@ export function ColorSwatches({
               disableRipple
               className={css.RemoveButton}
               aria-label="Remove marking"
-              disabled={disabled || color === null}
+              disabled={disabled || (color === null && !allowRemove)}
               onClick={() =>
                 pendingRemove ? remove() : setPendingRemove(true)
               }

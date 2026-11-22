@@ -272,11 +272,11 @@ export default function useRouter() {
   );
 
   const replaceMimeType = useCallback(
-    (mimeType: string) => {
-      if (mimeType === state.mimeType && !state.entryId) return;
+    (mimeType: string, entryId?: string) => {
+      if (mimeType === state.mimeType && entryId === state.entryId) return;
       logged_navigate(`/?${searchParams.toString()}`, {
         replace: true,
-        state: { ...state, mimeType, entryId: undefined },
+        state: { ...state, mimeType, entryId, annotationId: undefined },
       });
     },
     [logged_navigate, searchParams, state]

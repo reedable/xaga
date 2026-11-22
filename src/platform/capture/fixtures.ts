@@ -11,6 +11,43 @@ import type { PinNode } from "../../pins";
 import type { Article, Feed, Topic, Tag } from "../../types";
 
 export const captureDate = "2026-01-15T12:00:00.000Z";
+export const capturePdf: Article = {
+  __kind: "entry",
+  id: "capture-pdf",
+  title: "Field notes PDF",
+  url: "https://fieldnotes.example/field-notes.pdf",
+  createdAt: captureDate,
+  isPinned: false,
+  isUnread: false,
+  content: "",
+  annotations: [],
+};
+
+export const captureLegacyPdfUrl = "https://fieldnotes.example/legacy.pdf";
+
+// One blank page, with offsets computed from the ASCII document.
+export function capturePdfBase64() {
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 400] >>",
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = objects.map((object, index) => {
+    const offset = pdf.length;
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return offset;
+  });
+  const xref = pdf.length;
+  pdf += "xref\n0 4\n0000000000 65535 f \n";
+  for (const offset of offsets) {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  }
+  return btoa(
+    pdf + `trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  );
+}
+
 const captureFeedUrl = "https://fieldnotes.example/feed.xml";
 export const additionalFeedUrl = "https://workshop.example/feed.xml";
 

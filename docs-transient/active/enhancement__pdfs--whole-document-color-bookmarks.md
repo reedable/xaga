@@ -12,6 +12,8 @@ are outside this story.
   to find the writable Entry for each supported stored PDF. Store
   color on that Entry through the existing bookmark API, without a separate PDF
   bookmark store or a text-extraction requirement.
+- Legacy stored PDFs without an Entry remain viewable with marking unavailable.
+  Creating Entries for those files belongs to the separate PDF migration.
 - Enable the existing toolbar color palette for the selected PDF. Use the same
   colors, recoloring, and Remove marking behavior as article bookmarks. The
   bookmark applies to the whole document and does not modify PDF bytes.
@@ -20,25 +22,31 @@ are outside this story.
   presentation preference. Changing or removing a bookmark preserves the
   current list, PDF selection, and reading position; explicit navigation or
   filter changes refresh membership under the existing ListView contract.
+- The first successful marking on a newly downloaded standalone PDF appears
+  in Saved on the next explicit navigation or filter change in the same
+  session when the index service is available. Publish the saved marking to
+  the index before reporting completion, without waiting for recovery, text
+  extraction, or a vector. Saved keeps its existing availability during index
+  startup or failure.
+- Keep the palette available in Xaga for inline and external PDF presentation.
+  Changing the marking leaves the open viewer and its reading position intact.
 - Preserve title, tags, read state, annotations, and other saved Entry fields.
   Color survives reopening, PDF refresh, and cache recovery, including PDFs
   without extracted text or embeddings.
-- Update visible state after a successful save. Failed saves preserve the last
-  saved color and permit retry. Read-only libraries display bookmarks and Saved
-  results but disable changes.
+- Update the visible color from the committed Entry. A failed Entry write
+  preserves the last saved color and permits retry. If index publication fails
+  after the write, show the committed color and report that Saved could not be
+  updated. Reapplying the same color or removal can retry publication.
+  Read-only libraries display bookmarks and Saved results but disable changes.
 
 ## Remaining work
 
-- Verify shared Entry resolution, discovery, color mutation, and
-  recovery paths support both feed-backed PDFs and activated PDF companions.
-- Connect the PDF toolbar to existing color-bookmark operations and verify
-  Saved queries, list indicators, and PDF navigation; extend capture fixtures.
-- Add backend coverage for color persistence, recoloring/removal, preservation
-  of other fields, refresh, and recovery. Add browser coverage for palette
-  actions, Saved browsing, retained list context, failed writes, and read-only
-  behavior. Verify inline/external PDF presentation and reading-position
-  preservation natively where browser fixtures cannot establish them.
-- Update the organization contract, User Guide, and affected training.
+- In the macOS app with a disposable library, open a multipage PDF and advance
+  past the first page. Apply, change, and remove the bookmark from Xaga’s
+  toolbar. Verify that the viewer stays open on the same page. Repeat with
+  **Show PDFs in the reading pane** disabled and verify the same behavior in
+  the default PDF viewer. Select the marked PDF from Saved in both modes to
+  verify that Xaga opens the stored PDF using the selected presentation.
 
 ## References
 

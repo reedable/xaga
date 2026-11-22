@@ -160,9 +160,9 @@ const TRAINING = {
         title: "Read status, bookmarks, and tags",
         objective: "Distinguish read status, bookmark color, and tags.",
         paragraphs: [
-          "Read status, bookmarks, and tags answer different questions about an article. Read or unread records read status. A bookmark marks an article with a color. Tags are labels you choose to organize it.",
+          "Read status, bookmarks, and tags answer different questions about an article. Read or unread records read status. A bookmark marks a whole article or stored PDF with a color. Tags are labels you choose to organize it.",
           "Bookmark colors are Red, Orange, Yellow, Green, Blue, and Violet. Changing the color keeps the article bookmarked; removing the color removes the bookmark. Xaga uses the color itself to record the bookmark rather than saving an extra yes/no value.",
-          "Articles and annotations can each have several tags. Open a highlighted passage’s Annotation details and select Tags to assign labels directly to that annotation. Its parent and siblings keep their own assignments. Removing Research from one target leaves the Research tag available elsewhere. Saved includes bookmarked articles and annotations—highlighted passages with optional comments—so Saved is broader than a list of bookmarked articles.",
+          "Articles and annotations can each have several tags. Open a highlighted passage’s Annotation details and select Tags to assign labels directly to that annotation. Its parent and siblings keep their own assignments. Removing Research from one target leaves the Research tag available elsewhere. Saved includes bookmarked articles, bookmarked PDFs, and annotations—highlighted passages with optional comments—so Saved is broader than a list of bookmarked articles.",
         ],
         example:
           "An unread article can be bookmarked Violet and have a tag named Research at the same time. In Tags browsing, each article or annotation must directly have every selected tag; assignments split across targets do not combine. Marking it as read should remove neither the bookmark nor the tag.",
