@@ -36,14 +36,15 @@ mod lifecycle {
             Option<tauri::async_runtime::JoinHandle<Result<article_loader::LoaderCapture, String>>>,
     }
     async fn start(app: &tauri::AppHandle, server: &Server, name: &str, timeout: u64) -> Load {
-        start_with_images(app, server, name, timeout, false).await
+        start_with_options(app, server, name, timeout, false, false).await
     }
-    async fn start_with_images(
+    async fn start_with_options(
         app: &tauri::AppHandle,
         server: &Server,
         name: &str,
         timeout: u64,
         images: bool,
+        publisher_javascript_allowed: bool,
     ) -> Load {
         let proxy = Arc::new(
             network_proxy::start_scoped(
@@ -75,6 +76,7 @@ mod lifecycle {
                 false,
                 article_loader::LoaderPurpose::Article,
                 images,
+                publisher_javascript_allowed,
                 &[],
                 true,
                 proxy,
@@ -285,7 +287,8 @@ mod lifecycle {
           </article>"#.to_vec(), "text/html", None, None);
         for enabled in [false, true] {
             let before = selected.requests.load(Ordering::SeqCst);
-            let mut load = start_with_images(&app, &server, "responsive", 15, enabled).await;
+            let mut load =
+                start_with_options(&app, &server, "responsive", 15, enabled, false).await;
             let capture = load.result.take().unwrap().await.unwrap().unwrap();
             let marker = format!("data-xaga-selected-src=\"{origin}/responsive-selected.png\"");
             if !enabled {
@@ -315,6 +318,24 @@ mod lifecycle {
             }
             assert_cleanup(&app, &load).await;
             println!("PASS: responsive URLs retained with image capture enabled={enabled}");
+        }
+        server.add_response(
+            "/publisher-scripts",
+            br#"<!doctype html><title>Publisher scripts</title>
+                <article id="article"><p>Article text</p></article>
+                <script>document.getElementById("article").dataset.executed = "yes";</script>"#
+                .to_vec(),
+            "text/html",
+            None,
+            None,
+        );
+        for allowed in [false, true] {
+            let mut load =
+                start_with_options(&app, &server, "publisher-scripts", 15, false, allowed).await;
+            let capture = load.result.take().unwrap().await.unwrap().unwrap();
+            assert!(capture.html.contains("<p>Article text</p>"));
+            assert_eq!(capture.html.contains("data-executed=\"yes\""), allowed);
+            assert_cleanup(&app, &load).await;
         }
         gate.release();
         until("all loader windows closed", || {

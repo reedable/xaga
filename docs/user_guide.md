@@ -279,6 +279,12 @@ in exchange for potentially smaller transfers. The feed size limit still counts
 decompressed bytes. Both changes apply to the next feed add, refresh, or import;
 they do not change article-loader headers or compression.
 
+**Allow publisher JavaScript** is off by default. Enable it if an article
+needs scripts to display its content. This also lets publishers run tracking
+scripts. The choice applies app-wide to newly opened article loader windows.
+Reopen a loader window to use the new preference. Image saving has its own
+control.
+
 **Keep website sessions** lets listed websites retain cookies and site data in
 isolated sessions, for example to stay logged in. Persistent sessions require
 macOS 14 or later. Reopen existing loader windows after changing this list.

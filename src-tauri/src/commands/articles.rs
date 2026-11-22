@@ -173,6 +173,7 @@ pub async fn load_article(
         let allowed_domains = state.allowed_domains.read().unwrap().clone();
         let load_remote_image = *state.load_remote_image.read().unwrap();
         let named_stores_supported = state.named_stores_supported;
+        let publisher_javascript_allowed = *state.publisher_javascript_allowed.read().unwrap();
         let capture = article_loader::load_via_webview(
             &app,
             &pending,
@@ -181,6 +182,7 @@ pub async fn load_article(
             keep_open,
             article_loader::LoaderPurpose::Article,
             load_remote_image,
+            publisher_javascript_allowed,
             &allowed_domains,
             named_stores_supported,
             proxy,

@@ -17,15 +17,14 @@ Consider a user option to disable publisher JavaScript in the article loader.
 
 ## Remaining work
 
-- Use WebKit's `WKWebpagePreferences.allowsContentJavaScript` control to disable
-  publisher scripts while retaining Xaga's `WKUserScript` injection. The local
-  Wry implementation already uses this control for `javascript_disabled`.
-  Verify capture, image readback, deadlines, and IPC in the native loader with
-  publisher JavaScript disabled.
-- Explain the setting's scope, default, and when changes apply in Settings.
+- From a macOS desktop session, run
+  `cargo test -p xaga --test loader_lifecycle_webview --test persisted_resources_webview --locked`.
+  Verify publisher script execution matches the preference and that the native
+  loader still delivers article capture, image readback, deadline results, and
+  loader IPC with publisher JavaScript disabled.
 
 ## References
 
 - [Article loader privacy controls](compliance__article-loader-script-policy.md)
 - [WebKit content JavaScript control](https://developer.apple.com/documentation/webkit/wkwebpagepreferences/allowscontentjavascript)
-- [Local Wry WebKit implementation](../../../wry/src/wkwebview/mod.rs)
+- [Native loader policy](../../docs/architecture/security/handling_remote_content.md#publisher-javascript)

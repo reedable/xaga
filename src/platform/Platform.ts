@@ -475,6 +475,8 @@ export interface Platform {
   onEntryPinChanged(callback: (entry: Entry) => void): Promise<UnlistenFn>;
 
   // Persisted preferences
+  getPublisherJavascriptAllowed(): Promise<boolean>;
+  setPublisherJavascriptAllowed(value: boolean): Promise<void>;
   getLoadRemoteImage(): Promise<boolean>;
   setLoadRemoteImage(value: boolean): Promise<void>;
   getInlinePdfReader(): Promise<boolean>;
