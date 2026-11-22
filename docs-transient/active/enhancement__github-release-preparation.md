@@ -1,39 +1,25 @@
-# Promote verified release candidates in GitHub Actions
+# Verify final release preparation in GitHub Actions
 
 ## Summary
 
-Promote a verified RC on its retained release branch, then request a protected
-PR auto-merge into `main`. Main receives only verified final releases.
+Verify the final **Release** workflow from GitHub Mobile, including access to
+the draft and the release-to-main PR.
 
 ## Requirements
 
-- Support GitHub Mobile branch selection. Accept only `release/x.y.z` whose HEAD
-  matches an RC tag and evidence from a successful RC workflow in this repository.
-  Reject arbitrary branches, development versions, and source changes after RC.
-- Prepare the final version and verify/build before committing and atomically
-  pushing the release branch and immutable final tag. Reject concurrent changes.
-- Create the final draft from retained artifacts, create/reuse a PR to `main`, and
-  request auto-merge for the exact built commit. Respect required checks/reviews;
-  require the proposed merge tree to match the successful final build. Never
-  execute candidate code in the privileged PR verification workflow.
-- Keep the release branch after merging. Final tags stay on that branch's verified
-  commits. Final draft publication remains manual after merge and inspection.
-- Preserve retry of interrupted publication/PR creation without another version
-  bump. Share preparation/build logic and retain Manual release build as the
-  supplemental tag-triggered path.
-- Update durable documentation with this primary flow, evidence requirements,
-  GitHub settings, retained branches, and recovery limitations.
+- Follow the [Release workflow contract](../../docs/development/release_cycle.md#release).
+- Verify publication recovery with the original retained package, including
+  reuse of an existing open release PR.
 
 ## Remaining work
 
-- User verification on GitHub: Mobile promotion, evidence checks, protection
-  settings, PR auto-merge, branch retention, and recovery after publication errors.
-- Resolve reported failures and obtain a passing final completion gate.
+- Verify release branch selection on GitHub Mobile, final tag and draft
+  creation, and the release-to-main PR under the repository's branch protection.
+- Verify that retrying interrupted publication reuses the retained package and
+  that the final tag still identifies the built commit after the PR is merged.
 
 ## References
 
-- [RC preparation](enhancement__github-rc-preparation.md)
-- [Release lifecycle](../../docs/development/release_cycle.md)
+- [Release workflow](../../.github/workflows/prepare-release.yml)
 - [Shared pipeline](../../.github/workflows/release-pipeline.yml)
-- [PR verification](../../scripts/verify-release-pr.mjs)
-- [Build evidence](../../scripts/release-evidence.mjs)
+- [Publication recovery](../../docs/development/release_cycle.md#failures-and-recovery)
