@@ -1180,6 +1180,48 @@ async fn reconcile_chunked_resumes_from_partial_state() {
     assert_eq!(base, members, "base converges to the full membership");
 }
 
+#[tokio::test]
+async fn topic_vector_search_filters_before_ranking_and_limiting() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+    let vector = |first, second| {
+        let mut vector = vec![0.0; EMBEDDING_DIM as usize];
+        vector[0] = first;
+        vector[1] = second;
+        vector
+    };
+    for i in 0..6 {
+        db.upsert(sample(
+            &format!("entry-{i}"),
+            "entry",
+            Some(vector(1.0, 0.0)),
+        ))
+        .await
+        .unwrap();
+        db.upsert(sample(
+            &format!("topic-{i}"),
+            "topic",
+            Some(vector(1.0, 0.1 + 0.1 * i as f32)),
+        ))
+        .await
+        .unwrap();
+    }
+    db.upsert(sample("pending", "topic", None)).await.unwrap();
+    db.upsert(sample("below-cutoff", "topic", Some(vector(0.0, 1.0))))
+        .await
+        .unwrap();
+
+    for limit in [5, 10] {
+        let results = db
+            .search_by_vector(vector(1.0, 0.0), Some(limit), None, None, Some(Kind::Topic))
+            .await
+            .unwrap();
+        let ids: Vec<_> = results.into_iter().map(|result| result.entry.id).collect();
+        let expected: Vec<_> = (0..limit.min(6)).map(|i| format!("topic-{i}")).collect();
+        assert_eq!(ids, expected);
+    }
+}
+
 /// Null-vector rows must be excluded from both similarity paths: the `nearest_to`
 /// ANN branch (via `vector IS NOT NULL`) and the full-scan branch (via `is_null`).
 /// Also verifies lancedb 0.33 accepts `vector IS NOT NULL` on a FixedSizeList column.
@@ -1199,7 +1241,7 @@ async fn null_vector_rows_excluded_from_similarity() {
 
     // ANN path: nearest_to + `vector IS NOT NULL`.
     let ann = db
-        .search_by_vector(vec![1.0f32; EMBEDDING_DIM as usize], None, None, None)
+        .search_by_vector(vec![1.0f32; EMBEDDING_DIM as usize], None, None, None, None)
         .await
         .unwrap();
     let ann_ids: Vec<&str> = ann.iter().map(|e| e.entry.id.as_str()).collect();
@@ -1216,6 +1258,7 @@ async fn null_vector_rows_excluded_from_similarity() {
             None,
             Some(-1.0),
             Some(1.0),
+            None,
         )
         .await
         .unwrap();
@@ -1253,7 +1296,7 @@ async fn ensure_indexes_idempotent_and_queryable() {
 
     assert!(db.get_entry("a").await.unwrap().is_some());
     let related = db
-        .search_by_vector(vec![1.0f32; EMBEDDING_DIM as usize], None, None, None)
+        .search_by_vector(vec![1.0f32; EMBEDDING_DIM as usize], None, None, None, None)
         .await
         .unwrap();
     assert!(related.iter().any(|e| e.entry.id == "a"));
@@ -1382,7 +1425,7 @@ async fn add_batch_inserts_many_rows_with_mixed_vectors() {
     assert_eq!(db.get_entry("c").await.unwrap().unwrap().kind, Kind::Topic);
 
     let related = db
-        .search_by_vector(vec![0.1f32; EMBEDDING_DIM as usize], None, None, None)
+        .search_by_vector(vec![0.1f32; EMBEDDING_DIM as usize], None, None, None, None)
         .await
         .unwrap();
     assert!(related.iter().any(|e| e.entry.id == "a"));

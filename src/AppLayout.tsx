@@ -154,6 +154,7 @@ export function AppLayout({
         setListFilter("unread");
         selectTopic(topic);
       }
+      return topic !== undefined;
     },
     [
       editingTopic,
@@ -397,6 +398,7 @@ export function AppLayout({
           initialTitle={addTopicTitle}
           onClose={closeEditTopic}
           onSave={handleSaveTopic}
+          onOpenTopic={selectTopic}
           onDelete={handleDeleteTopic}
         />
 

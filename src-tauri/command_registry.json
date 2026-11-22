@@ -94,6 +94,7 @@
     "commands::topics::rank_topics_by_entity",
     "commands::embeddings::search_by_entity",
     "commands::embeddings::search_by_text",
+    "commands::embeddings::search_similar_topics",
     "commands::embeddings::reset_embeddings",
     "commands::entries::set_entry_pinned",
     "commands::entries::list_pinned_entries",

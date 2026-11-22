@@ -96,6 +96,7 @@ export function TopicFormFields({
   return (
     <>
       <TextField
+        name="topic-title"
         label="Title"
         value={form.title}
         onChange={(event) => form.setTitle(event.target.value)}

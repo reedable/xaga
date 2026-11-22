@@ -222,6 +222,16 @@ export function createStickyShortcutFixtures(legacyGroupPaths = false) {
           title: "Methods",
           children: targets.slice(20, 40),
         },
+        ...(legacyGroupPaths
+          ? [
+              {
+                type: "group" as const,
+                id: "research-notes",
+                title: "Notes",
+                children: [],
+              },
+            ]
+          : []),
       ],
     },
     {

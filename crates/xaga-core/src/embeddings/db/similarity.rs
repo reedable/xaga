@@ -411,6 +411,7 @@ impl EmbeddingsDb {
         limit: Option<usize>,
         min_similarity: Option<f32>,
         max_similarity: Option<f32>,
+        row_kind: Option<Kind>,
     ) -> Result<Vec<EmbeddedEntry>, EmbeddingsError> {
         if max_similarity.is_some() {
             let exclude = HashSet::new();
@@ -422,7 +423,7 @@ impl EmbeddingsDb {
                     min_similarity.unwrap_or(f32::NEG_INFINITY),
                     max_similarity.unwrap(),
                     limit,
-                    None,
+                    row_kind.as_ref(),
                 )
                 .await;
         }
@@ -442,7 +443,10 @@ impl EmbeddingsDb {
             .bypass_vector_index()
             .distance_type(DistanceType::Cosine)
             .distance_range(None, upper_distance)
-            .only_if("vector IS NOT NULL")
+            .only_if(match row_kind {
+                Some(kind) => format!("{} AND vector IS NOT NULL", kind.predicate()),
+                None => "vector IS NOT NULL".into(),
+            })
             .limit(effective_limit)
             .execute()
             .await?
