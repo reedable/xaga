@@ -12,8 +12,9 @@ for (const height of [900, 480]) {
       "data-capture-ready",
       "true"
     );
+    const compactSelector = control(page, "combobox", "sidebar-list-selector");
     if (height === 480) {
-      await control(page, "combobox", "sidebar-list-selector").click();
+      await compactSelector.click();
       await page
         .getByRole("option")
         .and(page.locator('[data-value="TOPICS"]'))
@@ -44,8 +45,17 @@ for (const height of [900, 480]) {
       width: 1440,
       height: height === 480 ? 900 : 480,
     });
-    await scrollSidebarList(page, "topics", "bottom");
-    await expect(last).toBeInViewport();
+    if (height === 480) {
+      await expect(compactSelector).toBeHidden();
+    } else {
+      await expect(compactSelector).toBeVisible();
+    }
+    // The virtual list can still be measuring rows after the sidebar changes
+    // layout. Scroll again if its first measurement moved the bottom edge.
+    await expect(async () => {
+      await scrollSidebarList(page, "topics", "bottom");
+      await expect(last).toBeInViewport({ timeout: 500 });
+    }).toPass({ timeout: 5_000 });
     await expect(last).toHaveClass(/Mui-selected/);
 
     await control(page, "button", "sidebar-sort-trigger").click();
