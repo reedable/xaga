@@ -10,11 +10,11 @@ subsequent candidates.
 - Run **Release Candidate** on `main` at `x.y.z-dev` to create
   `release/x.y.z` with `x.y.z-rc.1`. If that release branch already exists,
   select it to run the same workflow at `x.y.z-rc.N` for the next candidate.
-- Commit and push the RC version to the release branch before verification and
-  building. A successful build creates the RC tag and draft prerelease and
-  creates or reuses a pull request into `main`.
-- A failed build leaves the RC commit on the release branch. Any existing pull
-  request already reflects that commit.
+- Commit the RC version locally before verification and building. After a
+  successful build, push the release branch and tag atomically, upload the draft
+  prerelease, and create or reuse a pull request into `main`.
+- A failed build leaves remote refs unchanged so rerunning the build prepares
+  the same RC version from the original source.
 
 ## Remaining work
 

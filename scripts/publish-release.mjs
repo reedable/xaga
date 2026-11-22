@@ -51,10 +51,11 @@ function main() {
     )
       throw new Error("Invalid branch");
     git("check-ref-format", state.branch);
-    if (
-      state.expectedBranch !==
-      (state.mode === "rc" ? state.commit : state.start)
-    )
+    const expectedBranch =
+      state.mode === "rc" && state.sourceRef === "refs/heads/main"
+        ? ""
+        : state.start;
+    if (state.expectedBranch !== expectedBranch)
       throw new Error("Invalid release branch update expectation");
     git("fetch", join(directory, "release.bundle"), tagRef);
     if (

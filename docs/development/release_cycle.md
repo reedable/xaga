@@ -192,15 +192,16 @@ or inspect administrative branch-protection settings.
 ### Release Candidate
 
 Run **Release Candidate** (`.github/workflows/prepare-rc.yml`) on `main` at
-`x.y.z-dev` to immediately commit `x.y.z-rc.1` and create `release/x.y.z` on the
-remote, before verification and building. If the release branch already exists,
-select that branch instead. On `release/x.y.z` at `x.y.z-rc.N`, the workflow
-commits and pushes the next RC version before verification and building.
+`x.y.z-dev` to prepare `x.y.z-rc.1`. If the release branch already exists,
+select `release/x.y.z` at `x.y.z-rc.N` to prepare the next candidate.
 
-A successful build creates the RC tag, draft prerelease, and a PR from the release
-branch to `main`, reusing an existing open PR. A failed build leaves the RC commit
-on the release branch without a tag or a new PR. An existing PR updates as soon
-as the RC commit is pushed, even if that build later fails.
+The workflow commits the RC version locally before verification and building.
+After a successful build, publication atomically pushes the release branch and
+RC tag, uploads the draft prerelease, and creates or reuses the PR to `main`.
+If verification or building fails, **Re-run failed jobs** prepares the same RC
+version from the original source. The failed build leaves the remote branch and
+tag untouched. If another run publishes in the meantime, the branch and tag
+checks protect the published candidate.
 
 ### Release
 
@@ -231,9 +232,8 @@ bypass of `main`, auto-merge setting, or administrative-read credential is neede
 ### Release status
 
 The workflows report a commit status named **Release build** on the prepared
-RC or final commit, rather than on the commit selected for workflow dispatch.
-RC preparation reports pending after pushing the version commit. A final commit
-remains local during building, so its status starts after the atomic push.
+RC or final commit. Prepared commits remain local during building, so their
+status starts after the atomic push.
 Success is reported only after build, artifact retention, draft upload, and PR
 creation or reuse succeed. Failure/cancellation cleanup reports failure when the
 prepared commit is available remotely. If the runner cannot execute cleanup,
@@ -327,8 +327,8 @@ application version; development tags are rejected.
 
 It calls `.github/workflows/release-pipeline.yml`, which uses the shared verification
 action to run lint, formatting,
-TypeScript, CSP, Rust formatting and all-target workspace checks, headless tests,
-and browser tests. Each test step has a 30-minute timeout. It then builds the
+TypeScript, CSP, Rust formatting and all-target workspace checks, then runs
+browser tests followed by headless tests. Each test step has a 30-minute timeout. It then builds the
 Apple Silicon distributable with the committed standard icons, verifies its
 ad-hoc signature, and retains the artifacts, checksums, and Git identity in a
 workflow package for 14 days. The publication job uploads these to a draft
