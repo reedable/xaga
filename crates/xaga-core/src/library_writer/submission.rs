@@ -543,12 +543,22 @@ impl LibraryWriter {
         target: crate::pins::PinTarget,
         pinned: bool,
     ) -> Result<crate::pins::Pins, WriterError> {
+        self.set_pin_with_placement(target, pinned, None).await
+    }
+
+    pub async fn set_pin_with_placement(
+        &self,
+        target: crate::pins::PinTarget,
+        pinned: bool,
+        placement: Option<crate::pins::PinPlacement>,
+    ) -> Result<crate::pins::Pins, WriterError> {
         let (resp, rx) = oneshot::channel();
         self.submit(
             Tier::Interactive,
             Op::SetPin {
                 target,
                 pinned,
+                placement,
                 resp,
             },
             rx,

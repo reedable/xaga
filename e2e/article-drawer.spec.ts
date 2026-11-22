@@ -7,7 +7,7 @@ import {
   articleButton,
   reader,
   control,
-  shareAction,
+  addArticleShortcut,
 } from "./fixtures";
 
 const garden = "A garden for every season";
@@ -264,7 +264,7 @@ test("annotation and article-shortcut activation reopen content in the current p
 }) => {
   await startCapture(page);
   await openArticle(page, garden);
-  await shareAction(page, "pin-toggle");
+  await addArticleShortcut(page);
   await control(page, "button", "filter-all").click();
   const annotation = page.getByRole("button", {
     name: /^Begin with one question/,
