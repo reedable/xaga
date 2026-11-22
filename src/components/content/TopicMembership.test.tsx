@@ -140,6 +140,32 @@ it("offers inline topic creation when no topics exist", async () => {
   ).toBe(true);
 });
 
+it("saves once when inline creation is confirmed twice", async () => {
+  const existing = topic("existing", "First topic");
+  const created = topic("new", existing.title);
+  mocks.searchSimilarTopics.mockResolvedValueOnce([existing]);
+  mocks.createTopicWithMember.mockResolvedValueOnce(created);
+  await act(async () => root.render(<TopicMembership entity={article} />));
+  await click(container.querySelector('[data-testid="create-topic"]')!);
+  await setInput(
+    container.querySelector('[name="topic-title"]')!,
+    existing.title
+  );
+  await click(container.querySelector('[data-testid="confirm-create-topic"]')!);
+  expect(mocks.createTopicWithMember).not.toHaveBeenCalled();
+
+  const confirmation = document.querySelector<HTMLButtonElement>(
+    '[data-testid="create-topic-anyway"]'
+  )!;
+  await act(async () => {
+    confirmation.click();
+    confirmation.click();
+  });
+
+  expect(mocks.createTopicWithMember).toHaveBeenCalledOnce();
+  expect(container.querySelector('[name="topic-title"]')).toBeNull();
+});
+
 it("prefills an inline topic title from a trimmed no-match filter", async () => {
   mocks.topics = [topic("existing", "Existing")];
   await act(async () => root.render(<TopicMembership entity={article} />));

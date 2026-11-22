@@ -113,12 +113,9 @@ test("inline confirmation creates a separate Topic with the requested member and
   await expect(
     control(warning(page), "button", "open-similar-topic")
   ).toHaveCount(1);
-  await control(warning(page), "button", "create-topic-anyway").evaluate(
-    (button) => {
-      (button as HTMLButtonElement).click();
-      (button as HTMLButtonElement).click();
-    }
-  );
+  await control(warning(page), "button", "create-topic-anyway").click();
+  await expect(warning(page)).toBeHidden();
+  await expect(title(page)).toBeHidden();
   await control(page, "textbox", "filter-topics").fill("");
   const memberships = page.getByRole("checkbox", {
     name: existing,
