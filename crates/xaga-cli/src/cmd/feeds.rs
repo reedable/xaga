@@ -23,8 +23,8 @@ pub enum FeedsCommand {
 pub async fn handle(cmd: FeedsCommand, data_dir: &PathBuf) {
     match cmd {
         FeedsCommand::List => {
-            let (unread, bookmarked) = read_state_sets(data_dir).await;
-            match feeds::list_feeds(data_dir, &unread, &bookmarked).await {
+            let unread = read_unread_ids(data_dir).await;
+            match feeds::list_feeds(data_dir, &unread).await {
                 Ok(feeds) if feeds.is_empty() => {
                     println!("No feeds saved.");
                 }
@@ -45,14 +45,11 @@ pub async fn handle(cmd: FeedsCommand, data_dir: &PathBuf) {
     }
 }
 
-/// Reads the unread and bookmarked entry-id sets from LanceDB — the same source the UI uses
-/// (`db.unread_ids()` / `db.get_bookmarked_ids()` via the read handle). Dies on db open/read error.
-async fn read_state_sets(data_dir: &Path) -> (HashSet<String>, HashSet<String>) {
+/// Reads unread entry IDs from LanceDB. Dies on database open or read error.
+async fn read_unread_ids(data_dir: &Path) -> HashSet<String> {
     let db = match EmbeddingsDb::open_readonly(data_dir).await {
         Ok(db) => db,
         Err(e) => die(e),
     };
-    let unread = db.unread_ids().await.unwrap_or_else(|e| die(e));
-    let bookmarked = db.get_bookmarked_ids().await.unwrap_or_else(|e| die(e));
-    (unread, bookmarked)
+    db.unread_ids().await.unwrap_or_else(|e| die(e))
 }
