@@ -211,12 +211,11 @@ function built(f, mode = "rc") {
   succeeds(f.seal());
 }
 
-test("first RC commits and creates its branch before building without touching main", (t) => {
+test("first RC retries the same version and publishes only after building", (t) => {
   const f = fixture(t);
+  const refs = f.refs();
   succeeds(f.prepare());
-  const commit = f.git("rev-parse", "HEAD");
-  assert.equal(head(f), commit);
-  assert.equal(head(f, "main"), f.start);
+  assert.equal(f.refs(), refs);
   assert.equal(f.git("rev-parse", "HEAD^"), f.start);
   assert.equal(
     JSON.parse(f.git("show", "HEAD:package.json")).version,
@@ -224,13 +223,22 @@ test("first RC commits and creates its branch before building without touching m
   );
   assert.equal(f.git("status", "--porcelain"), "");
   assert.equal(f.git("ls-remote", "origin", "refs/tags/*"), "");
-  assert.equal(github(f).prs.length, 0);
   fails(f.seal());
-  assert.equal(head(f), commit);
+  assert.equal(f.refs(), refs);
+  f.git("checkout", "--detach", f.start);
+  succeeds(f.prepare("rc", { GITHUB_RUN_ATTEMPT: "2" }));
+  const commit = f.git("rev-parse", "HEAD");
+  assert.equal(
+    JSON.parse(f.git("show", "HEAD:package.json")).version,
+    "0.17.3-rc.1"
+  );
   f.build();
   succeeds(f.seal());
+  assert.equal(f.refs(), refs);
+  f.git("checkout", "--detach", f.start);
   succeeds(f.publish());
-  assert.equal(f.git("rev-parse", "HEAD"), commit);
+  assert.equal(head(f), commit);
+  assert.equal(head(f, "main"), f.start);
   assert.equal(
     f.git("ls-remote", "origin", "refs/tags/v0.17.3-rc.1^{}").split(/\s+/)[0],
     commit
@@ -241,17 +249,23 @@ test("first RC commits and creates its branch before building without touching m
   assert.equal(github(f).releases[0].prerelease, true);
 });
 
-test("next RC commits and pushes its increment before the build", (t) => {
+test("next RC retries without advancing the release branch before publication", (t) => {
   const f = fixture(t, "0.17.3-rc.1");
+  const refs = f.refs();
   succeeds(f.prepare());
-  assert.equal(head(f), f.git("rev-parse", "HEAD"));
+  fails(f.seal());
+  assert.equal(f.refs(), refs);
+  f.git("checkout", "--detach", f.start);
+  succeeds(f.prepare("rc", { GITHUB_RUN_ATTEMPT: "2" }));
   assert.equal(
     JSON.parse(f.git("show", "HEAD:src-tauri/tauri.conf.json")).version,
     "0.17.3-rc.2"
   );
-  fails(f.seal());
-  assert.equal(f.git("ls-remote", "origin", "refs/tags/*"), "");
-  assert.equal(github(f).prs.length, 0);
+  f.build();
+  succeeds(f.seal());
+  assert.equal(f.refs(), refs);
+  succeeds(f.publish());
+  assert.equal(head(f), f.manifest().commit);
 });
 
 test("RC publication reuses its existing open PR and never requests auto-merge", (t) => {
@@ -460,25 +474,18 @@ test("a concurrent branch push during final publication rejects the atomic updat
   assert.equal(f.git("ls-remote", "origin", "refs/tags/*"), "");
 });
 
-test("Release build status follows the prepared RC commit through failure and success", (t) => {
+test("RC status starts at publication on the prepared commit", (t) => {
   const f = fixture(t);
   succeeds(f.prepare());
-  const commit = head(f);
-  assert.notEqual(commit, f.start);
-  assert.deepEqual(github(f).statuses, [
-    { sha: commit, state: "pending", context: "Release build" },
-  ]);
   succeeds(f.status("failure"));
-  assert.equal(github(f).statuses.at(-1).state, "failure");
   f.build();
   succeeds(f.seal());
+  const commit = f.manifest().commit;
   succeeds(f.publish());
-  assert.equal(github(f).statuses.at(-1).state, "success");
-  assert.ok(github(f).statuses.every((status) => status.sha === commit));
-  succeeds(f.prepare("rc", { GITHUB_REF: "refs/heads/release/0.17.3" }));
-  assert.equal(github(f).statuses.at(-1).state, "pending");
-  assert.equal(github(f).statuses.at(-1).sha, head(f));
-  assert.notEqual(head(f), commit);
+  assert.deepEqual(github(f).statuses, [
+    { sha: commit, state: "pending", context: "Release build" },
+    { sha: commit, state: "success", context: "Release build" },
+  ]);
 });
 
 test("a local final commit does not alter its successful RC status", (t) => {
