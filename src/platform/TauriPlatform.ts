@@ -9,6 +9,7 @@ import {
   FeedSchema,
   toFeed,
   EntrySchema,
+  BookmarkResultSchema,
   ReadEntryImagesSchema,
   AllEntitiesCountsSchema,
   SitesSchema,
@@ -398,9 +399,10 @@ export class TauriPlatform implements Platform {
   async readStoredPdf(
     signal: AbortSignal,
     url: string
-  ): Promise<{ pdfBase64?: string | null } | null> {
+  ): Promise<{ pdfBase64?: string | null; pdfEntryId?: string } | null> {
     return decorate(invoke).with(abortable, { signal })<{
       pdfBase64?: string | null;
+      pdfEntryId?: string;
     } | null>("read_stored_pdf", { url });
   }
 
@@ -413,6 +415,7 @@ export class TauriPlatform implements Platform {
     mimeType: string;
     html: string;
     pdfBase64?: string | null;
+    pdfEntryId?: string;
     favicon?: string | null;
     faviconData?: string | null;
   }> {
@@ -431,6 +434,7 @@ export class TauriPlatform implements Platform {
         mimeType: string;
         html: string;
         pdfBase64?: string | null;
+        pdfEntryId?: string;
         favicon?: string | null;
         faviconData?: string | null;
       }>("load_article", {
@@ -839,22 +843,25 @@ export class TauriPlatform implements Platform {
     signal: AbortSignal,
     id: string,
     color: string
-  ): Promise<Entry> {
+  ): Promise<{ entry: Entry; indexUpdated: boolean }> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "add_bookmark" });
 
     const result = await invoker<unknown>("add_bookmark", { id, color });
-    return EntrySchema.transform(toEntry).parse(result);
+    return BookmarkResultSchema.parse(result);
   }
 
-  async removeBookmark(signal: AbortSignal, id: string): Promise<Entry> {
+  async removeBookmark(
+    signal: AbortSignal,
+    id: string
+  ): Promise<{ entry: Entry; indexUpdated: boolean }> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "remove_bookmark" });
 
     const result = await invoker<unknown>("remove_bookmark", { id });
-    return EntrySchema.transform(toEntry).parse(result);
+    return BookmarkResultSchema.parse(result);
   }
 
   // Embedding queries ---------------------------------------------------------

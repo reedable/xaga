@@ -82,7 +82,7 @@ and storage are described in [the library upgrade guide](../library_upgrade.md).
 Feed, Topic, and Site unread counts summarize member Entries rather than express
 reading state on those collections.
 
-Bookmarking an article assigns a color from the annotation swatch palette.
+Bookmarking an article or a stored PDF assigns a color from the annotation swatch palette.
 Color is optional; removal of the color removes the bookmark. There is no separate
 stored or derived bookmark boolean. Article frontmatter stores optional `color`;
 LanceDB carries the color, using an empty string for an unmarked Entry. Existing
@@ -91,15 +91,26 @@ are `red`, `orange`, `yellow`, `green`, `blue`, and `violet`. Article marking
 commands carry optional color through the writer and cache; `bookmark:changed`
 announces assignment, removal, and recoloring even when membership stays marked.
 
+For a stored PDF, the selected Entry owns the whole-document color. Xaga displays
+the same palette for inline and external presentation and keeps the current
+viewer open during a marking change. Legacy PDFs without an Entry are viewable
+with the palette disabled.
+
+The bookmark command publishes the committed color through the indexing service
+before returning. If the Entry row is missing, the service builds it from the
+saved Entry before responding, without computing a vector. If publication fails,
+the UI displays the committed color and reports the Saved update failure.
+Repeating the marking action retries publication.
+
 In the ListView, articles show their bookmark color as a full-height
 `0.25rem` left border with no top or bottom inset. Unmarked articles reserve the same horizontal space.
 Screen readers receive “Bookmarked, [color]” alongside the title. Assignment,
 recoloring, and removal update the indicator while preserving open-list membership
 under the [ListView contract](list_view.md). Annotation presentation is unchanged.
 
-Every color-marked article is a bookmarked Entry eligible for bookmark export,
-including formats unable to carry color. Saved includes marked articles and
-annotations. Article marking uses swatch interaction without comment input;
+Every color-marked Entry is eligible for bookmark export,
+including formats unable to carry color. Saved includes marked articles, stored PDFs,
+and annotations. Article marking uses swatch interaction without comment input;
 whole-article comments remain a separate idea. Annotation color retains its
 existing passage and comment context.
 

@@ -257,12 +257,12 @@ const paletteButton = (label: string) =>
   )!;
 it("assigns, recolors, and removes a bookmark without losing article context", async () => {
   mocks.bookmarks.addBookmark.mockImplementation(async (entry, color) => ({
-    ...entry,
-    color,
+    entry: { ...entry, color },
+    indexUpdated: true,
   }));
   mocks.bookmarks.removeBookmark.mockImplementation(async (entry) => ({
-    ...entry,
-    color: undefined,
+    entry: { ...entry, color: undefined },
+    indexUpdated: true,
   }));
   await render();
   await act(async () => button("bookmark-toggle").click());

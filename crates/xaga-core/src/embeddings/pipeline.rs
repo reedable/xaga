@@ -694,7 +694,7 @@ fn entry_from_row(row: &EmbeddingEntry) -> Entry {
 /// to the cached row's reading state, color, and derived pin columns and emits the UI change event,
 /// without reading the `.md`. `get_entry` is still required because `upsert` replaces the
 /// whole row (preserving vector/topics/items/content). A `None` field is left unchanged; a
-/// missing row is a no-op (recovery will create it).
+/// missing row returns false without writing.
 pub(crate) async fn apply_state(
     db: &EmbeddingsDb,
     id: &str,
@@ -703,10 +703,9 @@ pub(crate) async fn apply_state(
     is_pinned: Option<bool>,
     unread_tx: &flume::Sender<Entry>,
     bookmarked_tx: &flume::Sender<Entry>,
-) -> Result<(), EmbeddingsError> {
+) -> Result<bool, EmbeddingsError> {
     let Some(mut row) = db.get_entry(id).await? else {
-        log::warn!("apply_state: row not found id={id} (recovery will create it)");
-        return Ok(());
+        return Ok(false);
     };
 
     let old_unread = row.is_unread;
@@ -733,7 +732,7 @@ pub(crate) async fn apply_state(
     if new_color != old_color {
         let _ = bookmarked_tx.send(entry);
     }
-    Ok(())
+    Ok(true)
 }
 
 /// Apply the carried assignment delta without replacing content or other state.

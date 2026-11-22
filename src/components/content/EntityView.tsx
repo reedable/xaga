@@ -258,7 +258,9 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
               </Typography>
             </div>
           ) : isPdf ? (
-            <PdfReader src={pdfBlobUrl} />
+            pdfBlobUrl ? (
+              <PdfReader src={pdfBlobUrl} />
+            ) : null
           ) : entryId ? (
             <ArticleReader
               key={readerRevision}

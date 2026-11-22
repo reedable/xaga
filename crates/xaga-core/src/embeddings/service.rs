@@ -77,6 +77,12 @@ pub enum Job {
         entity: EntityRef,
         state: StatePatch,
     },
+    /// Publish a saved bookmark, creating the Entry row when needed, before replying.
+    SyncBookmark {
+        id: String,
+        color: Option<String>,
+        response: tokio::sync::oneshot::Sender<Result<(), EmbeddingsError>>,
+    },
     /// Entry created/edited: sync the row from the carried `Article`, then defer an
     /// `EmbedEntry` follow-up (carrying the same object) if the checksum changed.
     /// The producer holds the domain object; merged tag identities may require
@@ -716,6 +722,42 @@ async fn prepare_annotation_tags(
     Ok(())
 }
 
+async fn sync_bookmark(
+    library: &std::path::Path,
+    db: &EmbeddingsDb,
+    events: &Events,
+    id: &str,
+    color: Option<String>,
+) -> Result<(), EmbeddingsError> {
+    if apply_state(
+        db,
+        id,
+        None,
+        Some(color),
+        None,
+        &events.unread,
+        &events.bookmarked,
+    )
+    .await?
+    {
+        return Ok(());
+    }
+
+    // A freshly persisted PDF may have no row. Project its saved fields
+    // without queuing vector work.
+    let article = crate::persistence::articles::read_article(library, id)
+        .await
+        .map_err(std::io::Error::other)?;
+    super::pipeline::sync_entry_row(
+        &article,
+        db,
+        &events.unread,
+        &events.bookmarked,
+        &events.annotation,
+    )
+    .await
+}
+
 /// Executes a single work `Job`. The control-flow variants (Shutdown / Reset /
 /// StartRecovery) are handled by the loop's control arm, not here. `arrival` is the tier
 /// the job was dequeued from; deferred embeddings follow the existing tier policy,
@@ -822,6 +864,14 @@ async fn handle_job(
             {
                 log::error!("sync_state failed id={}: {e}", entity.id);
             }
+        }
+        Job::SyncBookmark {
+            id,
+            color,
+            response,
+        } => {
+            let result = sync_bookmark(writer.library_dir(), db, events, &id, color).await;
+            let _ = response.send(result);
         }
         Job::UpsertEntry {
             mut article,
@@ -1002,6 +1052,136 @@ async fn handle_job(
         // Control variants never reach the work dispatcher (handled by the control arm).
         Job::Shutdown | Job::Reset { .. } | Job::StartRecovery { .. } => {
             log::warn!("handle_job: control job reached work dispatcher (ignored)");
+        }
+    }
+}
+
+#[cfg(test)]
+mod bookmark_tests {
+    use super::*;
+    use crate::{library_writer::WriteToken, persistence::pdfs, types::EntityFilter};
+
+    #[derive(Default)]
+    struct RecoveryEntries(Vec<Article>);
+
+    impl crate::recovery::RepairSink for RecoveryEntries {
+        fn topic(&mut self, _: Topic) {}
+
+        fn article(&mut self, article: Article, _: Vec<String>, _: crate::tags::AnnotationTagIds) {
+            self.0.push(article);
+        }
+    }
+
+    #[tokio::test]
+    async fn pdf_bookmarks_are_saved_and_indexed_without_a_vector() {
+        for has_feed_entry in [false, true] {
+            verify_pdf_bookmarks(has_feed_entry).await;
+        }
+    }
+
+    async fn verify_pdf_bookmarks(has_feed_entry: bool) {
+        let directory = tempfile::tempdir().unwrap();
+        let library = directory.path();
+        let url = "https://example.org/paper";
+        let id = crate::util::url_hash12(url);
+        let token = WriteToken::for_test();
+        if has_feed_entry {
+            crate::persistence::entries::write_entry(
+                library,
+                url,
+                "Feed title",
+                None,
+                None,
+                Some("Feed summary"),
+                token,
+            )
+            .await
+            .unwrap();
+        }
+        let mut bytes = b"%PDF-original".as_slice();
+        pdfs::save(library, url, Some(bytes.to_vec()), token)
+            .await
+            .unwrap();
+        let original = crate::persistence::entries::read_entry(library, &id)
+            .await
+            .unwrap();
+        let db = EmbeddingsDb::open(library).await.unwrap();
+        assert!(db.get_entry(&id).await.unwrap().is_none());
+
+        let (bookmarked, changes) = flume::unbounded();
+        let events = Events {
+            unread: flume::unbounded().0,
+            bookmarked,
+            annotation: flume::unbounded().0,
+        };
+
+        for color in [Some("blue"), Some("red"), None] {
+            let entry = crate::persistence::entries::set_entry_color(
+                library,
+                &id,
+                color.map(str::to_owned),
+                token,
+            )
+            .await
+            .unwrap();
+            sync_bookmark(library, &db, &events, &id, entry.color)
+                .await
+                .unwrap();
+            let saved = db.filter_entities(EntityFilter::Saved).await.unwrap();
+            assert_eq!(
+                saved.first().and_then(|entry| entry.color.as_deref()),
+                color
+            );
+            assert_eq!(changes.try_recv().unwrap().color.as_deref(), color);
+            assert!(db.get_entry(&id).await.unwrap().unwrap().vector.is_none());
+            assert_eq!(
+                crate::persistence::entries::read_entry(library, &id)
+                    .await
+                    .unwrap()
+                    .color
+                    .as_deref(),
+                color
+            );
+            assert_eq!(pdfs::read(library, url).unwrap().unwrap().1, bytes);
+            if color == Some("blue") {
+                bytes = b"%PDF-refreshed";
+                pdfs::save(library, url, Some(bytes.to_vec()), token)
+                    .await
+                    .unwrap();
+                let updated = crate::persistence::entries::read_entry(library, &id)
+                    .await
+                    .unwrap();
+                assert_eq!(updated.color.as_deref(), color);
+                assert_eq!(updated.title, original.title);
+                assert_eq!(updated.description, original.description);
+                assert_eq!(updated.is_unread, original.is_unread);
+
+                db.delete_by_id(&id).await.unwrap();
+                let mut recovery = RecoveryEntries::default();
+                crate::recovery::embeddings::repair_entity_embeddings(
+                    library,
+                    &db,
+                    &mut recovery,
+                    None,
+                )
+                .await
+                .unwrap();
+                let [recovered] = recovery.0.as_slice() else {
+                    panic!("expected recovery to discover the PDF Entry");
+                };
+                assert_eq!(recovered.meta.id, id);
+                super::super::pipeline::sync_entry_row(
+                    recovered,
+                    &db,
+                    &events.unread,
+                    &events.bookmarked,
+                    &events.annotation,
+                )
+                .await
+                .unwrap();
+                assert_eq!(changes.try_recv().unwrap().color.as_deref(), color);
+                assert_eq!(db.get_entry(&id).await.unwrap().unwrap().color, "blue");
+            }
         }
     }
 }
