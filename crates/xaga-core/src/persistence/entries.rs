@@ -312,8 +312,20 @@ pub(crate) async fn set_entry_color(
     let path = find_entry_path(library_dir, id)
         .await?
         .ok_or(EntryError::NotFound)?;
-    super::documents::upsert(&path, &[("color", serde_json::json!(color))], None, token).await?;
-    read_entry(library_dir, id).await
+    let pins = crate::pins::Pins::read(library_dir)
+        .await
+        .map_err(std::io::Error::other)?;
+    let rendered =
+        super::documents::upsert(&path, &[("color", serde_json::json!(color))], None, token)
+            .await?;
+    let fm = crate::md::parse_indexed(&rendered, &path)?.0;
+    let mut entry = md_to_entry(Markdown {
+        id: id.to_owned(),
+        fm,
+        body: String::new(),
+    });
+    entry.is_pinned = pins.contains(&crate::pins::PinTarget::Entry { id: id.into() });
+    Ok(entry)
 }
 
 /// Reading state is independent of tags. Call inside the entry lane.

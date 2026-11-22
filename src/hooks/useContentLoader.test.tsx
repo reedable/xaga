@@ -58,12 +58,18 @@ afterEach(async () => {
   await act(() => root.unmount());
 });
 it("reuses the stored PDF without article lookup or network loading", async () => {
-  mocks.platform.readStoredPdf.mockResolvedValue({ pdfBase64: "JVBERi0=" });
+  mocks.platform.readStoredPdf.mockResolvedValue({
+    pdfBase64: "JVBERi0=",
+    pdfEntryId: "saved",
+  });
   await act(() => hook.resolve("https://example.org/paper"));
   expect(mocks.articles.findArticleByUrl).not.toHaveBeenCalled();
   expect(mocks.articles.loadArticleByUrl).not.toHaveBeenCalled();
   expect(hook.pdfBlobUrl).toBe("blob:pdf-test");
-  expect(mocks.router.replaceMimeType).toHaveBeenCalledWith("application/pdf");
+  expect(mocks.router.replaceMimeType).toHaveBeenCalledWith(
+    "application/pdf",
+    "saved"
+  );
 });
 it("opens the persisted PDF in the default app after ingestion", async () => {
   mocks.settings.inlinePdfReader = false;
@@ -74,6 +80,10 @@ it("opens the persisted PDF in the default app after ingestion", async () => {
     "https://example.org/paper"
   );
   expect(URL.createObjectURL).not.toHaveBeenCalled();
+  expect(mocks.router.replaceMimeType).toHaveBeenCalledWith(
+    "application/pdf",
+    undefined
+  );
 });
 it("refresh bypasses local PDF and article lookups", async () => {
   await act(() => hook.resolve("https://example.org/paper", true));
@@ -108,7 +118,10 @@ it("ingests a saved entry without article content through URL resolution", async
   });
   await act(() => hook.resolve("https://example.org/paper"));
   expect(mocks.articles.loadArticleByUrl).toHaveBeenCalled();
-  expect(mocks.router.replaceMimeType).toHaveBeenCalledWith("application/pdf");
+  expect(mocks.router.replaceMimeType).toHaveBeenCalledWith(
+    "application/pdf",
+    undefined
+  );
 });
 it("uses saved Markdown without network loading", async () => {
   const article = { id: "saved", content: "saved body" };

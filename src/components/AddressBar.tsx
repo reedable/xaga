@@ -44,6 +44,7 @@ export function AddressBar({ url, onNavigate }: AddressBarProps) {
   return (
     <input
       className={css.AddressBarInput}
+      name="article-url"
       value={displayValue}
       placeholder="Enter URL…"
       onChange={handleChange}

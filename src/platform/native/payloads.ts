@@ -437,3 +437,8 @@ export function isNativeAppError(error: unknown): error is AppError {
     (error.diagnosticId === undefined || typeof error.diagnosticId === "string")
   );
 }
+
+export const BookmarkResultSchema = z.object({
+  entry: EntrySchema.transform(toEntry),
+  indexUpdated: z.boolean(),
+});

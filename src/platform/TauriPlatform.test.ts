@@ -275,7 +275,7 @@ it("carries bookmark colors through commands, list payloads, and events", async 
     color: "violet",
   };
   const platform = new TauriPlatform();
-  invokeMock.mockResolvedValueOnce(payload);
+  invokeMock.mockResolvedValueOnce({ entry: payload, indexUpdated: true });
   const updated = await platform.addBookmark(
     new AbortController().signal,
     "marked",
@@ -285,8 +285,8 @@ it("carries bookmark colors through commands, list payloads, and events", async 
     id: "marked",
     color: "violet",
   });
-  expect(updated.color).toBe("violet");
-  expect(updated).not.toHaveProperty("isBookmarked");
+  expect(updated.entry.color).toBe("violet");
+  expect(updated.entry).not.toHaveProperty("isBookmarked");
   invokeMock.mockResolvedValueOnce([payload]);
   const entities = await platform.listAllEntities(
     new AbortController().signal,

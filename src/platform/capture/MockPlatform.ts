@@ -9,6 +9,9 @@ import {
   createSidebarHeightFixtures,
   createStickyShortcutFixtures,
   captureDate,
+  capturePdf,
+  capturePdfBase64,
+  captureLegacyPdfUrl,
   additionalFeedUrl,
   captureImages,
 } from "./fixtures";
@@ -29,6 +32,8 @@ export class MockPlatform implements Platform {
   private upgradeAttempts = 0;
   private upgradePolls = 0;
   private refreshAttempts = 0;
+  private failPdfBookmarkWrite = true;
+  private failPdfBookmarkRemovalIndex = true;
   private scenario = new URLSearchParams(location.search).get("scenario");
   private listeners = new Map<EventName, Set<(value: never) => void>>();
   private fetchSettings: FetchSettings = {
@@ -49,6 +54,12 @@ export class MockPlatform implements Platform {
 
   constructor(theme: "light" | "dark" = "light") {
     this.theme = theme;
+    if (this.scenario === "pdf-bookmarks-read-only") {
+      this.data.articles.push({
+        ...structuredClone(capturePdf),
+        color: "blue",
+      });
+    }
     if (this.scenario === "reader-overflow") {
       this.data.articles.push(...createReaderOverflowFixtures());
     }
@@ -297,6 +308,7 @@ export class MockPlatform implements Platform {
     return (
       this.scenario === "read-only" ||
       this.scenario === "read-only-delayed" ||
+      this.scenario === "pdf-bookmarks-read-only" ||
       !!this.scenario?.startsWith("upgrade-")
     );
   };
@@ -384,6 +396,7 @@ export class MockPlatform implements Platform {
   readArticle: Platform["readArticle"] = async (_signal, id) =>
     this.scenario === "read-only" ||
     this.scenario === "read-only-delayed" ||
+    this.scenario === "pdf-bookmarks-read-only" ||
     !!this.scenario?.startsWith("upgrade-")
       ? this.project(this.article(id))
       : this.entryChange(id, { isUnread: false }, "onUnreadChanged");
@@ -395,10 +408,41 @@ export class MockPlatform implements Platform {
     this.entryChange(id, { isUnread: false }, "onUnreadChanged");
   markEntryUnread: Platform["markEntryUnread"] = async (_signal, id) =>
     this.entryChange(id, { isUnread: true }, "onUnreadChanged");
-  addBookmark: Platform["addBookmark"] = async (_signal, id, color) =>
-    this.entryChange(id, { color }, "onBookmarkChanged");
-  removeBookmark: Platform["removeBookmark"] = async (_signal, id) =>
-    this.entryChange(id, { color: undefined }, "onBookmarkChanged");
+  addBookmark: Platform["addBookmark"] = async (_signal, id, color) => {
+    if (
+      id === capturePdf.id &&
+      this.scenario === "pdf-bookmarks" &&
+      this.failPdfBookmarkWrite
+    ) {
+      this.failPdfBookmarkWrite = false;
+      throw { code: "entry:io", message: "Could not save fixture bookmark." };
+    }
+    return {
+      entry: this.entryChange(id, { color }, "onBookmarkChanged"),
+      indexUpdated: true,
+    };
+  };
+  removeBookmark: Platform["removeBookmark"] = async (_signal, id) => {
+    const entry = this.entryChange(
+      id,
+      { color: undefined },
+      "onBookmarkChanged"
+    );
+    if (
+      id === capturePdf.id &&
+      this.scenario === "pdf-bookmarks" &&
+      this.failPdfBookmarkRemovalIndex
+    ) {
+      this.failPdfBookmarkRemovalIndex = false;
+      this.emit("onError", {
+        code: "app:error",
+        message: "Could not update fixture Saved index.",
+        detail: "",
+      });
+      return { entry, indexUpdated: false };
+    }
+    return { entry, indexUpdated: true };
+  };
   saveArticle: Platform["saveArticle"] = async (_signal, article) => {
     Object.assign(this.article(article.id), structuredClone(article));
     this.changed();
@@ -782,7 +826,9 @@ export class MockPlatform implements Platform {
   };
   getRefreshOnStartup: Platform["getRefreshOnStartup"] = async () =>
     this.refreshOnStartup || this.scenario === "startup-refresh-failure";
-  getInlinePdfReader: Platform["getInlinePdfReader"] = async () => false;
+  getInlinePdfReader: Platform["getInlinePdfReader"] = async () =>
+    !!this.scenario?.startsWith("pdf-bookmarks") &&
+    this.scenario !== "pdf-bookmarks-external";
   getLoadRemoteImage: Platform["getLoadRemoteImage"] = async () => false;
   getFetchSettings: Platform["getFetchSettings"] = async () =>
     structuredClone(this.fetchSettings);
@@ -855,11 +901,34 @@ export class MockPlatform implements Platform {
     this.emit("onFeedsRefreshed", undefined);
     return { feeds, failures };
   };
-  openStoredPdf: Platform["openStoredPdf"] = async () =>
-    this.unsupported("Opening PDFs");
-  readStoredPdf: Platform["readStoredPdf"] = async () => null;
-  loadArticle: Platform["loadArticle"] = async () =>
-    this.unsupported("Downloading articles");
+  openStoredPdf: Platform["openStoredPdf"] = async (url) => {
+    if (!(await this.readStoredPdf(new AbortController().signal, url))) {
+      this.unsupported("Opening PDFs");
+    }
+  };
+  readStoredPdf: Platform["readStoredPdf"] = async (_signal, url) => {
+    if (!this.scenario?.startsWith("pdf-bookmarks")) return null;
+    if (url === captureLegacyPdfUrl) return { pdfBase64: capturePdfBase64() };
+    if (
+      url === capturePdf.url &&
+      this.data.articles.some((entry) => entry.id === capturePdf.id)
+    ) {
+      return { pdfBase64: capturePdfBase64(), pdfEntryId: capturePdf.id };
+    }
+    return null;
+  };
+  loadArticle: Platform["loadArticle"] = async (_signal, url) => {
+    if (!this.scenario?.startsWith("pdf-bookmarks") || url !== capturePdf.url)
+      return this.unsupported("Downloading articles");
+    if (!this.data.articles.some((entry) => entry.id === capturePdf.id))
+      this.data.articles.push(structuredClone(capturePdf));
+    return {
+      mimeType: "application/pdf",
+      html: "",
+      pdfBase64: capturePdfBase64(),
+      pdfEntryId: capturePdf.id,
+    };
+  };
   createArticle: Platform["createArticle"] = async () =>
     this.unsupported("Creating articles from URLs");
   // Deterministic related results exercise populated Inspector layout without a model.

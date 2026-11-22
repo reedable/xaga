@@ -67,11 +67,7 @@ export function useContentLoader(
                 )
               );
             }
-            replaceMimeType(
-              inlinePdfReader && stored.pdfBase64
-                ? "application/pdf"
-                : "text/html"
-            );
+            replaceMimeType("application/pdf", stored.pdfEntryId);
             return true;
           }
           const existing = await findArticleByUrl(url, attempt);
@@ -105,13 +101,13 @@ export function useContentLoader(
                 )
               )
             );
-            replaceMimeType("application/pdf");
           } else {
             // Open only the native URL-derived, validated local PDF.
             await platform.openStoredPdf(url);
             signal.throwIfAborted();
-            replaceMimeType("text/html");
+            setPdfBlobUrl(null);
           }
+          replaceMimeType("application/pdf", result.pdfEntryId);
           setBlockedUrl(null);
           return true;
         }

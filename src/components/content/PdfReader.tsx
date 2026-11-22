@@ -25,7 +25,7 @@ export function PdfReader({ src, className }: PdfReaderProps) {
 
   return (
     <div className={cx(css.PdfReader, className)}>
-      <iframe ref={iframeRef} title="PDF viewer" />
+      <iframe ref={iframeRef} title="PDF viewer" data-testid="pdf-reader" />
     </div>
   );
 }

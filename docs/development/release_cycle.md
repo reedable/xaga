@@ -117,6 +117,23 @@ triggering. Verify those when installing the workflows.
 
 ## Development and local builds
 
+### Start a story
+
+Before starting work on a story, switch to `main` and pull its latest changes.
+Once the pull succeeds, create and switch to a new branch from the updated
+`main`. Use the story Markdown filename exactly as written, dropping only the
+`.md` extension and retaining the category and separators.
+
+For `enhancement__pdfs--whole-document-color-bookmarks.md`, run:
+
+```sh
+git switch main &&
+  git pull --ff-only &&
+  git switch -c enhancement__pdfs--whole-document-color-bookmarks
+```
+
+### Run the application locally
+
 Use the normal development command while changing the application:
 
 ```sh
