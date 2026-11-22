@@ -7,6 +7,7 @@ use crate::{
     query::filter,
     types::{
         EmbeddedEntity, EmbeddedEntry, EmbeddedFeed, EmbeddedTopic, EntityFilter, Kind, ListEntity,
+        Topic,
     },
 };
 
@@ -99,7 +100,7 @@ pub async fn list_embedded_entities(
         } => {
             let db = EmbeddingsDb::open_readonly(library_dir).await?;
             let entries = db
-                .search_by_vector(vector, limit, min_similarity, max_similarity)
+                .search_by_vector(vector, limit, min_similarity, max_similarity, None)
                 .await?;
             filter::filter_entities(entries, &entity_filter)
                 .await
@@ -116,6 +117,23 @@ pub async fn list_embedded_entities(
                 .map_err(EntityError::Embeddings)
         }
     }
+}
+
+/// Search indexed Topics by draft similarity, using the default cutoff.
+pub async fn search_similar_topics(library_dir: &Path, vector: Vec<f32>) -> Result<Vec<Topic>> {
+    let db = EmbeddingsDb::open_readonly(library_dir).await?;
+    let entries = db
+        .search_by_vector(vector, Some(5), None, None, Some(Kind::Topic))
+        .await?;
+    let mut topics = Vec::with_capacity(entries.len());
+    for entry in entries {
+        if let Ok(topic) =
+            crate::persistence::topics::read_topic(library_dir, &entry.entry.id).await
+        {
+            topics.push(topic);
+        }
+    }
+    Ok(topics)
 }
 
 /// Lists every entity in the library — entry rows and annotation rows — read entirely from

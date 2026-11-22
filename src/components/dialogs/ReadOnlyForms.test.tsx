@@ -16,6 +16,9 @@ vi.mock("../../hooks/useFeeds", () => ({
 vi.mock("../../hooks/useTopics", () => ({
   useTopics: () => ({ pinnedTopicIds: [] }),
 }));
+vi.mock("../../platform/Platform", () => ({
+  usePlatform: () => ({ searchSimilarTopics: vi.fn() }),
+}));
 vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
 let root: ReturnType<typeof createRoot>;
 afterEach(async () => {
@@ -49,6 +52,7 @@ it.each(["Feed", "Topic"])(
         ) : (
           <EditTopicDialog
             open
+            onOpenTopic={vi.fn()}
             topic={{ id: "topic", title: "Notes" } as never}
             onSave={save}
             onDelete={save}
@@ -104,6 +108,7 @@ it.each(["Feed", "Topic"])(
         ) : (
           <EditTopicDialog
             open
+            onOpenTopic={vi.fn()}
             topic={{ id: "topic", title: "Notes" } as never}
             onSave={save}
             onDelete={save}

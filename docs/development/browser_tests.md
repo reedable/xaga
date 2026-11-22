@@ -50,7 +50,7 @@ npm run test:browser -- --grep "Topic membership"
 npm run test:browser -- --repeat-each=2
 ```
 
-The suite runs Chromium with two workers and no automatic retries. Update the
+The suite runs Chromium with one worker on CI and two locally, with no automatic retries. Update the
 installed browser with `npx playwright install chromium` after upgrading the
 locked Playwright dependency. `npm run typecheck` includes the browser tests and
 runner configuration.

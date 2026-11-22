@@ -1,6 +1,6 @@
 use tauri::State;
 use xaga_core::query::entities::{self, EmbeddedEntitySource};
-use xaga_core::types::{EmbeddedEntity, EmbeddedEntry};
+use xaga_core::types::{EmbeddedEntity, EmbeddedEntry, Topic};
 
 use super::parse_entity_filter;
 use crate::error::AppError;
@@ -48,19 +48,7 @@ pub async fn search_by_text(
     let library = state.library_path();
     let entity_filter = parse_entity_filter(entity_filter)?;
 
-    let embedder = {
-        let guard = state.embedding_query_model.lock().unwrap();
-        guard
-            .as_ref()
-            .ok_or_else(|| "embedding model unavailable".to_string())?
-            .clone()
-    };
-
-    let text_clone = text.clone();
-    let vector = tokio::task::spawn_blocking(move || embedder.embed("", &text_clone))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(AppError::from)?;
+    let vector = embed_search_text(&state, String::new(), text).await?;
 
     let entries = entities::list_embedded_entities(
         &library,
@@ -79,6 +67,36 @@ pub async fn search_by_text(
     let result = entities::enrich_embedded(&library, entries, &unread?, &bookmarked?).await;
     log::debug!("search_by_text: ok ({} entries)", result.len());
     Ok(result)
+}
+
+#[tauri::command]
+pub async fn search_similar_topics(
+    title: String,
+    description: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<Topic>, AppError> {
+    let library = state.library_path();
+    let vector = embed_search_text(&state, title, description).await?;
+    Ok(entities::search_similar_topics(&library, vector).await?)
+}
+
+async fn embed_search_text(
+    state: &AppState,
+    title: String,
+    text: String,
+) -> Result<Vec<f32>, AppError> {
+    let embedder = {
+        let guard = state.embedding_query_model.lock().unwrap();
+        guard
+            .as_ref()
+            .ok_or_else(|| "embedding model unavailable".to_string())?
+            .clone()
+    };
+
+    tokio::task::spawn_blocking(move || embedder.embed(&title, &text))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(AppError::from)
 }
 
 #[tauri::command]

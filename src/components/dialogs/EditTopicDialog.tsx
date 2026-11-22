@@ -1,6 +1,7 @@
 import { useLibraryReadOnly } from "../../hooks/useLibraryReadOnly";
 import { useErrorSink } from "../../hooks/useErrorSink";
 import {
+  Alert,
   Button,
   Dialog,
   DialogActions,
@@ -17,7 +18,13 @@ import {
 import useAbortController from "../../hooks/useAbortController";
 import { useTopics } from "../../hooks/useTopics";
 import type { Topic } from "../../types";
-import { TopicFormFields, useTopicForm } from "./TopicFormFields";
+import { useTopicCreationCheck } from "../../hooks/useTopicCreationCheck";
+import SimilarTopicsDialog from "./SimilarTopicsDialog";
+import {
+  TopicFormFields,
+  useTopicForm,
+  type TopicFormValues,
+} from "./TopicFormFields";
 
 type EditTopicDialogProps = {
   open: boolean;
@@ -30,7 +37,8 @@ type EditTopicDialogProps = {
     description: string,
     threshold: number,
     pinned: boolean
-  ) => Promise<void>;
+  ) => Promise<boolean>;
+  onOpenTopic: (topic: Topic) => void;
   onDelete: (topic: Topic) => Promise<void>;
 };
 
@@ -41,6 +49,7 @@ export default function EditTopicDialog({
   onClose,
   onSave,
   onDelete,
+  onOpenTopic,
 }: EditTopicDialogProps) {
   const readOnly = useLibraryReadOnly();
   const { pushError } = useErrorSink();
@@ -68,29 +77,42 @@ export default function EditTopicDialog({
     wasOpen.current = open;
   }, [open, pinnedTopicIds, topic, initialTitle, resetForm]);
 
-  const handleSubmit = useCallback(
-    async (e: SubmitEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      if (readOnly) return;
-      if (!form.values.title) return;
+  async function saveDraft(draft: TopicFormValues) {
+    if (
+      await onSave(
+        draft.title,
+        draft.description,
+        draft.threshold,
+        draft.pinned
+      )
+    ) {
+      onClose();
+    }
+  }
 
-      setSaving(true);
-      try {
-        await onSave(
-          form.values.title,
-          form.values.description,
-          form.values.threshold,
-          form.values.pinned
-        );
-        onClose();
-      } catch (error) {
-        pushError(error);
-      } finally {
-        setSaving(false);
-      }
-    },
-    [form.values, onClose, onSave, readOnly, pushError]
+  const creation = useTopicCreationCheck(
+    open && !topic && !readOnly,
+    saveDraft
   );
+  const busy = saving || deleting || creation.busy;
+
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (readOnly || busy || !form.values.title) return;
+    if (!topic) {
+      creation.submit(form.values);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await saveDraft(form.values);
+    } catch (error) {
+      pushError(error);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const handleDelete = useCallback(async () => {
     if (!topic || readOnly) return;
@@ -106,54 +128,81 @@ export default function EditTopicDialog({
     }
   }, [onClose, onDelete, topic, readOnly, pushError]);
 
-  const busy = saving || deleting;
-
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <form onSubmit={handleSubmit}>
-        <DialogTitle>{topic ? "Edit Topic" : "Add Topic"}</DialogTitle>
+    <>
+      <Dialog
+        open={open}
+        onClose={() => !busy && onClose()}
+        fullWidth
+        maxWidth="sm"
+      >
+        <form onSubmit={handleSubmit}>
+          <DialogTitle>{topic ? "Edit Topic" : "Add Topic"}</DialogTitle>
 
-        {readOnly && (
-          <p role="status">
-            This library is read-only. Changes are unavailable.
-          </p>
-        )}
-        <DialogContent
-          sx={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 2,
-            pt: "1rem !important",
-          }}
-        >
-          <TopicFormFields form={form} busy={busy || readOnly} autoFocus />
-        </DialogContent>
-
-        <DialogActions>
-          {topic && (
-            <Button
-              data-testid="delete"
-              onClick={handleDelete}
-              color="error"
-              disabled={busy || readOnly}
-              sx={{ mr: "auto" }}
-            >
-              Delete
-            </Button>
+          {creation.busy && (
+            <p role="status">
+              {creation.phase === "checking"
+                ? "Checking for similar Topics…"
+                : "Saving Topic…"}
+            </p>
           )}
-          <Button data-testid="cancel" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button
-            data-testid="save"
-            type="submit"
-            variant="contained"
-            disabled={!form.values.title || busy || readOnly}
+          {readOnly && (
+            <p role="status">
+              This library is read-only. Changes are unavailable.
+            </p>
+          )}
+          <DialogContent
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              pt: "1rem !important",
+            }}
           >
-            Save
-          </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
+            {creation.saveError && (
+              <Alert severity="error">{creation.saveError}</Alert>
+            )}
+            <TopicFormFields form={form} busy={busy || readOnly} autoFocus />
+          </DialogContent>
+
+          <DialogActions>
+            {topic && (
+              <Button
+                data-testid="delete"
+                onClick={handleDelete}
+                color="error"
+                disabled={busy || readOnly}
+                sx={{ mr: "auto" }}
+              >
+                Delete
+              </Button>
+            )}
+            <Button data-testid="cancel" onClick={onClose} disabled={busy}>
+              Cancel
+            </Button>
+            <Button
+              data-testid="save"
+              type="submit"
+              variant="contained"
+              disabled={!form.values.title || busy || readOnly}
+            >
+              Save
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+      {open && creation.warning && (
+        <SimilarTopicsDialog
+          matches={creation.warning.matches}
+          onDismiss={creation.dismiss}
+          onConfirm={creation.confirm}
+          onOpenTopic={(match) => {
+            creation.dismiss();
+            onClose();
+            onOpenTopic(match);
+          }}
+        />
+      )}
+    </>
   );
 }
