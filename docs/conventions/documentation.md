@@ -56,6 +56,8 @@ before declaring a task actionable, declaring grooming complete, or moving it to
 Before reporting a story complete or deleting its resolved task document,
 complete the shared [formatting checks](formatting.md) after the final edits.
 These checks apply to every story without needing to be copied into each task.
+Follow the [verification handoff](../development/verification.md#verification-handoff)
+when required checks need a separate test story.
 
 ## Writing style
 
@@ -84,8 +86,12 @@ minor-version increment while the app remains at major version 0.
 
 ## Transient task filenames
 
-Every transient task file uses a BEM-like name. The category is the block and the
-story slug is the element:
+Use `test_<story-slug>.md` for a verification handoff story, with a kebab-case
+slug. The [verification handoff](../development/verification.md#verification-handoff)
+defines when to create one and what it must contain.
+
+Other transient task files use a BEM-like name. The category is the block and
+the story slug is the element:
 
 `<category>__<story-slug>.md`
 

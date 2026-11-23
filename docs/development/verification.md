@@ -13,8 +13,9 @@ shared [formatting requirements](../conventions/formatting.md) for every edit,
 and run behavior checks appropriate to the change.
 
 Base completion on check results obtained after the final relevant edits. If a
-required check fails or cannot run, resolve it or report the specific blocker
-and qualify completion. Passing checks establish only what those checks cover.
+required check fails, resolve the failure before closing the story. If a
+required check cannot run, follow the [verification handoff](#verification-handoff).
+Passing checks establish only what those checks cover.
 
 ## Completion gate
 
@@ -57,8 +58,28 @@ completion or deleting a resolved task. Verify each task's acceptance criteria,
 documentation, applicable native smoke procedures, and the
 [least-visibility checklist](../principles/least_visibility_principle.md#operating-checklist).
 Compiler success alone cannot establish that a public symbol needs its visibility.
-Report what was verified and any unmet requirement or unavailable check; do not
-claim completion when required verification fails or remains outstanding.
+Report what was verified and any unmet requirement or unavailable check.
+
+### Verification handoff
+
+Verification accompanies implementation. Run every applicable check that can
+run in the available environment. When a required check depends on unavailable
+access, hardware, or a desktop session, move the outstanding verification to
+a [test story](../conventions/documentation.md#transient-task-filenames).
+
+- Identify the exact commit to verify and the branch or other published location
+  where the tester can obtain it. State the required environment, setup, and
+  fixtures. Give the human tester exact steps or a runnable script, expected
+  results, and the evidence to record for each outstanding check.
+- Push the implementation and the test story so the tester can access both.
+  Delete the implementation story as part of the handoff once its work and
+  runnable checks are complete. Keep the outstanding procedure in the test
+  story alone. In the work report, state what passed, what prevented the
+  remaining checks, and where the test story lives.
+- The change remains pending verification until the outstanding checks pass.
+  Report the observed results in the work report. If a check fails, report the
+  evidence and track the remaining work. Delete the test story once its work is
+  resolved.
 
 ## Story readiness
 
