@@ -1522,6 +1522,14 @@ export class TauriPlatform implements Platform {
     })<void>("set_topic_pinned", { id, pinned });
   }
 
+  getPublisherJavascriptAllowed(): Promise<boolean> {
+    return invoke<boolean>("get_publisher_javascript_allowed");
+  }
+
+  setPublisherJavascriptAllowed(value: boolean): Promise<void> {
+    return invoke<void>("set_publisher_javascript_allowed", { value });
+  }
+
   setLoadRemoteImage(value: boolean): Promise<void> {
     return invoke<void>("set_load_remote_image", { value });
   }

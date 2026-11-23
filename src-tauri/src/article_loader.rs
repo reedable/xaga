@@ -100,6 +100,7 @@ pub async fn load_via_webview(
     keep_open: bool,
     purpose: LoaderPurpose,
     load_remote_image: bool,
+    publisher_javascript_allowed: bool,
     allowed_domains: &[String],
     named_stores_supported: bool,
     proxy: Arc<xaga_core::network_proxy::ScopedProxy>,
@@ -310,6 +311,10 @@ pub async fn load_via_webview(
             #[cfg(target_os = "macos")]
             {
                 build_attempt.add_started_event("webview_policy");
+                // On WebKit this controls publisher scripts and preserves user scripts.
+                if !publisher_javascript_allowed {
+                    builder = builder.disable_javascript();
+                }
                 builder = builder.with_webview_configuration(
                     crate::webview_policy::loader_configuration(identifier)?,
                 );
@@ -317,6 +322,8 @@ pub async fn load_via_webview(
             }
             #[cfg(not(target_os = "macos"))]
             {
+                // Other webview engines have different JavaScript controls.
+                let _ = publisher_javascript_allowed;
                 builder = match identifier {
                     Some(id) => builder.data_store_identifier(id),
                     None => builder.incognito(true),

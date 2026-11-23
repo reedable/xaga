@@ -68,6 +68,39 @@ test("Settings exposes fetch controls, preserves exact values, and retains panel
   await expect(timeout).toHaveValue("10");
 });
 
+test("Publisher JavaScript starts disabled and saves both choices", async ({
+  page,
+}) => {
+  await page.goto("/?window=settings");
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-capture-ready",
+    "true"
+  );
+  const privacy = control(page, "button", "settings-privacy");
+  const general = control(page, "button", "settings-general");
+  await privacy.click();
+
+  const scripts = control(page, "switch", "publisherJavascriptAllowed");
+  const images = control(page, "switch", "loadRemoteImage");
+  await expect(scripts).toBeEnabled();
+  await expect(scripts).toHaveAccessibleName(/\S/);
+  await expect(scripts).toHaveAccessibleDescription(/\S/);
+  await expect(scripts).not.toBeChecked();
+  await scripts.check();
+  await expect(scripts).toBeChecked();
+  await expect(images).not.toBeChecked();
+
+  await general.click();
+  await privacy.click();
+  await expect(scripts).toBeChecked();
+  await scripts.uncheck();
+  await expect(scripts).not.toBeChecked();
+  await general.click();
+  await privacy.click();
+  await expect(scripts).toBeEnabled();
+  await expect(scripts).not.toBeChecked();
+});
+
 test("Settings retains refused numeric edits for retry", async ({ page }) => {
   await page.goto("/?window=settings&scenario=settings-save-failure");
   await expect(page.locator("html")).toHaveAttribute(

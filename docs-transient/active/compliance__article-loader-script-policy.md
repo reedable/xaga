@@ -51,6 +51,6 @@ sticks across articles. The privacy controls govern what the loader can do.
 ## References
 
 - [Current privacy settings](../../src/components/settings/PrivacySettings.tsx)
-- [Publisher JavaScript control](compliance__article-loader-publisher-javascript.md)
+- [Publisher JavaScript control](../../docs/architecture/security/handling_remote_content.md#publisher-javascript)
 - [WebKit content rule lists](https://developer.apple.com/documentation/webkit/wkcontentrulelist)
 - [WebKit resource classifications](https://webkit.org/blog/3476/content-blockers-first-look/)

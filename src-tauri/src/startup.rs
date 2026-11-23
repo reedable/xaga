@@ -154,6 +154,7 @@ pub(super) fn prepare() -> Startup {
     let embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>> = Arc::new(Mutex::new(None));
     let allowed_domains: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
     let load_remote_image = Arc::new(RwLock::new(DEFAULT_LOAD_REMOTE_IMAGE));
+    let publisher_javascript_allowed = Arc::new(RwLock::new(DEFAULT_PUBLISHER_JAVASCRIPT_ALLOWED));
     let inline_pdf_reader: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
     let html_reader_view: Arc<RwLock<String>> = Arc::new(RwLock::new("reader".to_string()));
     let settings_baseline: Arc<RwLock<Option<std::time::SystemTime>>> = Arc::new(RwLock::new(None));
@@ -185,6 +186,7 @@ pub(super) fn prepare() -> Startup {
         named_stores_supported,
         inline_pdf_reader,
         load_remote_image,
+        publisher_javascript_allowed,
         html_reader_view,
         network_proxy_port,
         http_allowed,
@@ -212,6 +214,7 @@ pub(super) fn initialize(
     let setup_embeddings_read = Arc::clone(&state.embeddings_read);
     let setup_allowed_domains = Arc::clone(&state.allowed_domains);
     let setup_load_remote_image = Arc::clone(&state.load_remote_image);
+    let setup_publisher_javascript_allowed = Arc::clone(&state.publisher_javascript_allowed);
     let setup_inline_pdf_reader = Arc::clone(&state.inline_pdf_reader);
     let setup_html_reader_view = Arc::clone(&state.html_reader_view);
     let setup_show_sidebar = Arc::clone(&state.show_sidebar);
@@ -341,6 +344,7 @@ pub(super) fn initialize(
     let window = builder.build()?;
     ui_network::retain_for_window(&window, proxy);
     *setup_load_remote_image.write().unwrap() = settings.load_remote_image();
+    *setup_publisher_javascript_allowed.write().unwrap() = settings.publisher_javascript_allowed();
     let refresh = settings.refresh_on_startup.unwrap_or(false);
     let timeout = settings
         .loader_timeout_secs

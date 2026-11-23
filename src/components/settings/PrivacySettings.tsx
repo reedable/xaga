@@ -11,7 +11,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useSettings } from "../../hooks/useSettings";
 import { useErrorSink } from "../../hooks/useErrorSink";
 import { usePlatform } from "../../platform/Platform";
@@ -26,10 +26,6 @@ export function PrivacySettings() {
   const platform = usePlatform();
   const { saveSettings, refreshVersion } = useSettings();
   const { pushError } = useErrorSink();
-  const [captureImages, setCaptureImages] = useState(false);
-  const [captureLoaded, setCaptureLoaded] = useState(false);
-  const [captureSaving, setCaptureSaving] = useState(false);
-  const [captureError, setCaptureError] = useState<string | null>(null);
   const [domains, setDomains] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [inputError, setInputError] = useState(false);
@@ -37,45 +33,6 @@ export function PrivacySettings() {
   useEffect(() => {
     platform.getAllowedDomains().then(setDomains).catch(pushError);
   }, [platform, pushError, refreshVersion]);
-
-  useEffect(() => {
-    let active = true;
-    platform
-      .getLoadRemoteImage()
-      .then((value) => {
-        if (active) {
-          setCaptureImages(value);
-          setCaptureLoaded(true);
-          setCaptureError(null);
-        }
-      })
-      .catch(() => {
-        if (active)
-          setCaptureError(
-            "Could not load the image capture preference. Reopen Settings to retry."
-          );
-      });
-    return () => {
-      active = false;
-    };
-  }, [platform, pushError, refreshVersion]);
-
-  async function handleCaptureChange(value: boolean) {
-    setCaptureSaving(true);
-    setCaptureError(null);
-    try {
-      const saved = await saveSettings(() =>
-        platform.setLoadRemoteImage(value)
-      );
-      if (saved) setCaptureImages(value);
-    } catch {
-      setCaptureError(
-        "Could not save the image capture preference. Please try again."
-      );
-    } finally {
-      setCaptureSaving(false);
-    }
-  }
 
   async function handleAdd() {
     const trimmed = input.trim().toLowerCase();
@@ -114,39 +71,20 @@ export function PrivacySettings() {
         description="Off by default. Advertises gzip support to feed websites, revealing another client capability in exchange for potentially smaller transfers. The feed size limit still counts decompressed bytes. Applies to the next feed add, refresh, or import; does not change article-loader compression."
       />
 
-      <div className={css.Section}>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={captureImages}
-              disabled={!captureLoaded || captureSaving}
-              onChange={(_, checked) => void handleCaptureChange(checked)}
-              slotProps={{
-                input: {
-                  "aria-labelledby": "image-capture-description-label",
-                  "aria-describedby": "image-capture-description",
-                },
-              }}
-            />
-          }
-          disableTypography
-          sx={{ alignItems: "flex-start" }}
-          label={
-            <SettingsControlLabel
-              id="image-capture-description"
-              label="Save article images for offline viewing"
-            >
-              Off by default. Enabling this allows additional network requests
-              to save images when loading articles and recover unavailable
-              images when opening saved articles. Changes apply to new loads;
-              reopen existing loader windows to use the new preference. Saved
-              images remain available when this is off. Original pages can still
-              display images in the loader window.
-            </SettingsControlLabel>
-          }
-        />
-        {captureError && <Alert severity="error">{captureError}</Alert>}
-      </div>
+      <PrivacySwitch
+        name="publisherJavascriptAllowed"
+        label="Allow publisher JavaScript"
+        get="getPublisherJavascriptAllowed"
+        set="setPublisherJavascriptAllowed"
+        description="Off by default. Enabling this lets websites run their own scripts in the article loader. It can help display articles that need JavaScript and lets publishers run tracking scripts. Changes apply to newly opened loader windows."
+      />
+      <PrivacySwitch
+        name="loadRemoteImage"
+        label="Save article images for offline viewing"
+        get="getLoadRemoteImage"
+        set="setLoadRemoteImage"
+        description="Off by default. Enabling this allows additional network requests to save images when loading articles and recover unavailable images when opening saved articles. Changes apply to new loads. Reopen existing loader windows to use the new preference. Saved images remain available when this is off. Original pages can still display images in the loader window."
+      />
 
       <div className={css.Section}>
         <Typography
@@ -215,6 +153,89 @@ export function PrivacySettings() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function PrivacySwitch({
+  name,
+  label,
+  description,
+  get,
+  set,
+}: {
+  name: string;
+  label: string;
+  description: string;
+  get: "getLoadRemoteImage" | "getPublisherJavascriptAllowed";
+  set: "setLoadRemoteImage" | "setPublisherJavascriptAllowed";
+}) {
+  const platform = usePlatform();
+  const { saveSettings, refreshVersion } = useSettings();
+  const id = useId();
+  const [value, setValue] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    platform[get]()
+      .then((saved) => {
+        if (active) {
+          setValue(saved);
+          setLoadFailed(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setValue(null);
+          setLoadFailed(true);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [get, platform, refreshVersion]);
+
+  async function handleChange(checked: boolean) {
+    setSaving(true);
+    try {
+      if (await saveSettings(() => platform[set](checked))) setValue(checked);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className={css.Section}>
+      <FormControlLabel
+        control={
+          <Switch
+            checked={value ?? false}
+            disabled={value === null || saving}
+            onChange={(_, checked) => void handleChange(checked)}
+            slotProps={{
+              input: {
+                name,
+                "aria-labelledby": `${id}-label`,
+                "aria-describedby": id,
+              },
+            }}
+          />
+        }
+        disableTypography
+        sx={{ alignItems: "flex-start" }}
+        label={
+          <SettingsControlLabel id={id} label={label}>
+            {description}
+          </SettingsControlLabel>
+        }
+      />
+      {loadFailed && (
+        <Alert severity="error">
+          Could not load this preference. Reopen Settings to retry.
+        </Alert>
+      )}
     </div>
   );
 }
