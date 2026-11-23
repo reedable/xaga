@@ -52,7 +52,8 @@ The Article Inspector's Tags view provides searchable toggle chips and creation
 with immediate assignment. Assigned chips are filled, carry a check mark, and
 expose `aria-pressed`; unassigned chips are outlined. Chip buttons support keyboard
 activation. There is no Save action. Read-only inspection shows assignments while
-disabling assignment and creation. Annotation inspection shares this picker through its own assignment API.
+disabling assignment and creation. A stored PDF uses the same picker and assignment
+API with its resolved Entry. Annotation inspection shares this picker through its own assignment API.
 
 `readEntryTags(signal, id)` reads assignments from the Entry file and resolves
 them to registry IDs, independently of index readiness. `setEntryTag(id, tagId,
@@ -67,8 +68,9 @@ After a successful file write, the command carries `EntryTagChange` (`entryId`,
 `tagId`, `assigned`) to an Interactive indexing job and the typed
 `entry-tags:changed` event. Failed writes emit no assignment event. The index
 applies that delta to the existing row without changing content, vectors,
-reading/color state, or other assignments. Missing rows remain recovery's
-responsibility. The service remembers the latest saved assignment change for each affected
+reading/color state, or other assignments. If the row is missing, the service
+indexes the saved Entry without computing a vector, so the next Tags query after
+indexing can find it. The service remembers the latest saved assignment change for each affected
 Entry/tag pair and applies it instead of older queued article values, including when such a
 snapshot first creates the row. Starting recovery clears ordinary in-memory assignment changes before reading
 the source again. Entries affected by a merge retain their markers so older

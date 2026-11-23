@@ -739,15 +739,16 @@ pub(crate) async fn apply_state(
 pub(crate) async fn apply_entry_tag(
     db: &EmbeddingsDb,
     change: &crate::tags::EntryTagChange,
-) -> Result<(), EmbeddingsError> {
+) -> Result<bool, EmbeddingsError> {
     let Some(mut row) = db.get_entry(&change.entry_id).await? else {
-        return Ok(()); // Recovery reconstructs missing rows from source files.
+        return Ok(false);
     };
     row.tags.retain(|id| id != &change.tag_id);
     if change.assigned {
         row.tags.push(change.tag_id.clone());
     }
-    db.upsert(row).await
+    db.upsert(row).await?;
+    Ok(true)
 }
 
 /// Precise single-member reverse-index add: sets `topic_id` on `member_id`'s `topics`
