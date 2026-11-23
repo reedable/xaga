@@ -37,6 +37,7 @@ The rendering path applies its own controls and does not depend on ingest-time s
 - **`postMessage` traffic is source-checked.** The parent only accepts messages whose `source` is the reading pane iframe's own `contentWindow` (`HtmlReader.tsx:273-276`), so a sibling frame (e.g. the PDF viewer) or any window holding a reference cannot spoof reading pane events such as link opens.
 - **No raw-HTML sinks in the app UI.** The React tree contains no `dangerouslySetInnerHTML` and no `srcdoc`; feed titles/summaries render as React text nodes, which are escaped by construction.
 - The app shell CSP also sets `object-src 'none'`, `base-uri 'self'`, `form-action 'none'`, and restricts `connect-src` to the IPC endpoints.
+- The bundled main and Settings windows allow frames from the app origin and Blob URLs through `frame-src 'self' blob:`. The article reader and inline PDF viewer use Blob URLs. Live publisher pages open in the article loader.
 
 ## Images in summaries and bodies
 
