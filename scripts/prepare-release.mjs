@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { nextVersion } from "./bump-version.mjs";
 import { reportReleaseStatus } from "./release-status.mjs";
 import {
   releaseTagName,
@@ -66,31 +67,48 @@ function prepare(mode, statePath) {
   const start = git("rev-parse", "HEAD");
   const ref = process.env.GITHUB_REF || "";
   const current = validateVersionRecords(readVersionRecords());
-  const base = current.replace(/-(?:dev|rc\.[0-9]+)$/, "");
+  const nextPatch =
+    mode === "rc" &&
+    ref === "refs/heads/main" &&
+    /^\d+\.\d+\.\d+$/.test(current);
+  const versionForBranch = nextPatch
+    ? nextVersion(current, "rc-next-patch")
+    : current;
+  const base = versionForBranch.replace(/-(?:dev|rc\.[0-9]+)$/, "");
   const branch = mode === "tag" ? null : `refs/heads/release/${base}`;
   let expectedBranch = start;
   if (mode === "tag") {
     if (!ref.startsWith("refs/tags/"))
       throw new Error("Manual release builds require a tag");
   } else {
-    const first = mode === "rc" && current.endsWith("-dev");
-    if (first) {
+    const first = mode === "rc" && (current.endsWith("-dev") || nextPatch);
+    const candidate = /-rc\.[1-9][0-9]*$/.test(current);
+    const restoreBranch =
+      mode === "rc" && ref === "refs/heads/main" && candidate;
+    if (first || restoreBranch) {
       if (ref !== "refs/heads/main")
         throw new Error("Start an RC from main with a development version");
-      if (git("ls-remote", "origin", branch))
+      if (git("ls-remote", "origin", branch)) {
+        if (restoreBranch)
+          throw new Error(
+            `The RC is in an inconsistent state: main has ${current} and release/${base} already exists. This RC must be abandoned. See docs/development/release_cycle.md#abandon-an-inconsistent-rc.`
+          );
         throw new Error(
           `Release branch already exists; select release/${base}`
         );
+      }
       expectedBranch = "";
     } else {
-      if (ref !== branch || !/-rc\.[1-9][0-9]*$/.test(current))
+      if (ref !== branch || !candidate)
         throw new Error(
           "Select the matching release/x.y.z branch with an RC version"
         );
       if (git("ls-remote", "origin", branch).split(/\s+/)[0] !== start)
         throw new Error("Release branch moved; start a fresh run");
     }
-    run("npm", ["run", `version:${mode}`]);
+    if (nextPatch)
+      run(process.execPath, ["scripts/bump-version.mjs", "rc-next-patch"]);
+    else run("npm", ["run", `version:${mode}`]);
   }
   const version = validateVersionRecords(readVersionRecords());
   const tag = releaseTagName(version);

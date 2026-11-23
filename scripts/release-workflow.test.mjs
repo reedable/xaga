@@ -97,9 +97,9 @@ function fixture(t, version = "0.17.3-dev") {
   git("remote", "add", "origin", remote);
   git("push", "origin", "main");
   const start = git("rev-parse", "HEAD");
-  const branch = version.endsWith("-dev")
-    ? "main"
-    : `release/${version.replace(/-rc\.[0-9]+$/, "")}`;
+  const branch = /-rc\.[0-9]+$/.test(version)
+    ? `release/${version.replace(/-rc\.[0-9]+$/, "")}`
+    : "main";
   if (branch !== "main") {
     git("switch", "-c", branch);
     git("push", "origin", branch);
@@ -269,6 +269,71 @@ test("first RC retries the same version and publishes only after building", (t) 
   assert.equal(github(f).releases[0].prerelease, true);
 });
 
+test("first patch RC starts directly from a final version on main", (t) => {
+  const f = fixture(t, "0.17.2");
+  f.git("push", "origin", "HEAD:refs/heads/release/0.17.2");
+  const refs = f.refs();
+  succeeds(f.prepare());
+  assert.equal(f.refs(), refs);
+  fails(f.seal());
+  assert.equal(f.refs(), refs);
+  f.git("checkout", "--detach", f.start);
+  succeeds(f.prepare("rc", { GITHUB_RUN_ATTEMPT: "2" }));
+  const commit = f.git("rev-parse", "HEAD");
+  assert.equal(f.git("rev-parse", "HEAD^"), f.start);
+  assert.equal(
+    JSON.parse(f.git("show", "HEAD:package.json")).version,
+    "0.17.3-rc.1"
+  );
+  f.build();
+  succeeds(f.seal());
+  f.git("checkout", "--detach", f.start);
+  succeeds(f.publish());
+  assert.equal(head(f), commit);
+  assert.equal(head(f, "main"), f.start);
+  assert.equal(github(f).releases[0].tag_name, "v0.17.3-rc.1");
+  const publishedRefs = f.refs();
+  const duplicate = f.prepare();
+  fails(duplicate);
+  assert.match(
+    duplicate.stderr,
+    /Release branch already exists; select release\/0\.17\.3/
+  );
+  assert.equal(f.refs(), publishedRefs);
+});
+
+test("an RC on main can recreate a missing release branch after building", (t) => {
+  const f = fixture(t, "0.17.3-rc.3");
+  const dispatch = { GITHUB_REF: "refs/heads/main" };
+  f.git("switch", "main");
+  const existingRefs = f.refs();
+  const conflict = f.prepare("rc", dispatch);
+  fails(conflict);
+  assert.match(conflict.stderr, /RC is in an inconsistent state/);
+  assert.match(conflict.stderr, /This RC must be abandoned/);
+  assert.match(
+    conflict.stderr,
+    /docs\/development\/release_cycle\.md#abandon-an-inconsistent-rc/
+  );
+  assert.equal(f.refs(), existingRefs);
+  assert.equal(f.git("rev-parse", "HEAD"), f.start);
+  f.git("push", "origin", "--delete", f.branch);
+  const refs = f.refs();
+  succeeds(f.prepare("rc", dispatch));
+  assert.equal(f.refs(), refs);
+  const commit = f.git("rev-parse", "HEAD");
+  assert.equal(f.git("rev-parse", "HEAD^"), f.start);
+  f.build();
+  succeeds(f.seal());
+  assert.equal(f.refs(), refs);
+  f.git("checkout", "--detach", f.start);
+  succeeds(f.publish());
+  assert.equal(head(f), commit);
+  assert.equal(head(f, "main"), f.start);
+  assert.equal(github(f).releases[0].tag_name, "v0.17.3-rc.4");
+  assert.deepEqual(github(f).prs, []);
+});
+
 test("next RC retries without advancing the release branch before publication", (t) => {
   const f = fixture(t, "0.17.3-rc.1");
   const refs = f.refs();
@@ -393,6 +458,7 @@ for (const [version, mode, ref] of [
   ["0.17.3-dev", "release", "refs/heads/main"],
   ["0.17.3-rc.1", "release", "refs/heads/main"],
   ["0.17.3-rc.1", "rc", "refs/heads/release/0.17.4"],
+  ["0.17.3", "rc", "refs/heads/release/0.17.3"],
   ["0.17.3", "release", "refs/heads/release/0.17.3"],
 ]) {
   test(`rejects ${mode} of ${version} on ${ref} without changes`, (t) => {

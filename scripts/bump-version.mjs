@@ -17,7 +17,7 @@ const CARGO_FILES = [
 
 const VERSION_PATTERN = /^(\d+)\.(\d+)\.(\d+)(?:-(dev|rc\.(\d+)))?$/;
 const VERSION_IN_FILE = "\\d+\\.\\d+\\.\\d+(?:-(?:dev|rc\\.\\d+))?";
-const COMMANDS = ["patch", "minor", "major", "rc", "release"];
+const COMMANDS = ["patch", "minor", "major", "rc", "rc-next-patch", "release"];
 const WORKSPACE_PACKAGES = ["xaga", "xaga-core", "xaga-cli"];
 
 export function nextVersion(current, command) {
@@ -47,6 +47,13 @@ export function nextVersion(current, command) {
   }
 
   const base = parts.join(".");
+  if (command === "rc-next-patch") {
+    if (stage)
+      throw new Error(
+        `Expected a final version before starting a patch RC: ${current}`
+      );
+    return nextVersion(nextVersion(current, "patch"), "rc");
+  }
   if (command === "rc") {
     if (stage === "dev") return `${base}-rc.1`;
     if (stage?.startsWith("rc.")) {
