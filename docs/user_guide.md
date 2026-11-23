@@ -118,10 +118,10 @@ from different feeds.
 
 1. To create a Topic, click **Add topic**, the **+** beside **Topics** in the
    sidebar. Enter a **Title**, optionally add a **Description**, and click **Save**.
-2. Open an article and choose **Topics** in **Article details**. If the details
+2. Open an article or stored PDF and choose **Topics** in **Article details**. If the details
    panel is hidden, click **Show article details** in the toolbar first.
-3. Select a Topic, such as **Everyday discoveries**, to add the article. Clear
-   its checkbox to remove the article from that Topic.
+3. Select a Topic, such as **Everyday discoveries**, to add the document. Clear
+   its checkbox to remove the document from that Topic.
 4. Expand **Topics** in the sidebar and select the Topic to browse its members.
    Choose **All** if you also want to see read articles.
 
@@ -146,14 +146,14 @@ Expand **Sites** and select a website to see articles you already have from
 that website. Sites groups saved material; selecting a website does not subscribe
 you to its feeds or fetch all its pages.
 
-Tags give articles and annotations labels you choose:
+Tags give articles, stored PDFs, and annotations labels you choose:
 
-1. Open an article and select **Tags** in **Article details**. To tag an
+1. Open an article or stored PDF and select **Tags** in **Article details**. To tag an
    annotation, click its highlighted passage, choose **Show annotation details**,
    and select **Tags** in **Annotation details**.
 2. Click a tag to assign it; click it again to remove that assignment. For a new
    tag, type its name in **Find or create a tag**, then click **Create “name”**.
-3. Expand **Tags** in the sidebar and select tags to browse matching articles and annotations.
+3. Expand **Tags** in the sidebar and select tags to browse matching articles, PDFs, and annotations.
    Each result must have every selected tag itself; tags on an article and its
    annotations are not combined. Selecting an annotation opens its passage.
 
@@ -167,7 +167,7 @@ annotation keeps the tag available elsewhere. Tagging an annotation does not tag
 its article or other annotations. Recoloring keeps its tags.
 
 With tags selected, **Saved** includes matching annotations and bookmarked
-articles. Clear the selection to return to All items under your current filters.
+articles and PDFs. Clear the selection to return to All items under your current filters.
 Deleting a tag removes its assignments from articles and annotations while
 retaining that content; removing one chip assignment only affects its target.
 

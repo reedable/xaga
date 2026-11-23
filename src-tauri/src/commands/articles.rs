@@ -54,15 +54,18 @@ async fn stored_pdf_result(
     library: &std::path::Path,
     url: &str,
     writer: Option<&xaga_core::library_writer::LibraryWriter>,
+    index_saved_entry: Option<&AppState>,
 ) -> Result<Option<LoadArticleResult>, AppError> {
     let Some((_, bytes)) =
         xaga_core::persistence::pdfs::read_with_writer(library, url, writer).await?
     else {
         return Ok(None);
     };
-    let pdf_entry_id = articles::find_article_with_writer(library, url, writer)
-        .await?
-        .map(|article| article.meta.id);
+    let article = articles::find_article_with_writer(library, url, writer).await?;
+    let pdf_entry_id = article.as_ref().map(|article| article.meta.id.clone());
+    if let (Some(state), Some(article)) = (index_saved_entry, article) {
+        state.enqueue_entry(Tier::Interactive, article).await;
+    }
     Ok(Some(LoadArticleResult {
         mime_type: "application/pdf".into(),
         html: String::new(),
@@ -79,7 +82,7 @@ pub async fn read_stored_pdf(
     state: State<'_, AppState>,
 ) -> Result<Option<LoadArticleResult>, AppError> {
     let library = state.library_path();
-    stored_pdf_result(&library, &url, state.writer().as_ref()).await
+    stored_pdf_result(&library, &url, state.writer().as_ref(), None).await
 }
 
 /// The renderer supplies a source URL, never a local path. Revalidate at opening.
@@ -207,7 +210,7 @@ pub async fn load_article(
                 .save_pdf(url.clone(), Some(bytes))
                 .await?;
             attempt.add_succeeded_event("pdf_persist");
-            return stored_pdf_result(&library, &url, writer.as_ref())
+            return stored_pdf_result(&library, &url, writer.as_ref(), Some(&state))
                 .await?
                 .ok_or_else(|| AppError::Message("saved PDF is missing".into()));
         }

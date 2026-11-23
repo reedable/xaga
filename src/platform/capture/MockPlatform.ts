@@ -35,6 +35,7 @@ export class MockPlatform implements Platform {
   private refreshAttempts = 0;
   private failPdfBookmarkWrite = true;
   private failPdfBookmarkRemovalIndex = true;
+  private failPdfTagWrite = true;
   private scenario = new URLSearchParams(location.search).get("scenario");
   private listeners = new Map<EventName, Set<(value: never) => void>>();
   private publisherJavascriptAllowed = false;
@@ -61,6 +62,7 @@ export class MockPlatform implements Platform {
         ...structuredClone(capturePdf),
         color: "blue",
       });
+      this.data.assignments[capturePdf.id] = ["projects"];
     }
     if (this.scenario === "reader-overflow") {
       this.data.articles.push(...createReaderOverflowFixtures());
@@ -760,6 +762,14 @@ export class MockPlatform implements Platform {
   ];
   setEntryTag: Platform["setEntryTag"] = async (entryId, tagId, assigned) => {
     this.article(entryId);
+    if (
+      entryId === capturePdf.id &&
+      this.scenario === "pdf-bookmarks" &&
+      this.failPdfTagWrite
+    ) {
+      this.failPdfTagWrite = false;
+      throw new Error("Fixture could not save the tag assignment");
+    }
     const ids = (this.data.assignments[entryId] ?? []).filter(
       (id) => id !== tagId
     );

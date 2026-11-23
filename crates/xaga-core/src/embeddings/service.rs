@@ -743,8 +743,16 @@ async fn sync_bookmark(
         return Ok(());
     }
 
-    // A freshly persisted PDF may have no row. Project its saved fields
-    // without queuing vector work.
+    sync_saved_entry(library, db, events, id).await
+}
+
+// A newly stored PDF may have no row. Publish its saved fields without vector work.
+async fn sync_saved_entry(
+    library: &std::path::Path,
+    db: &EmbeddingsDb,
+    events: &Events,
+    id: &str,
+) -> Result<(), EmbeddingsError> {
     let article = crate::persistence::articles::read_article(library, id)
         .await
         .map_err(std::io::Error::other)?;
@@ -756,6 +764,18 @@ async fn sync_bookmark(
         &events.annotation,
     )
     .await
+}
+
+async fn sync_entry_tag(
+    library: &std::path::Path,
+    db: &EmbeddingsDb,
+    events: &Events,
+    change: &crate::tags::EntryTagChange,
+) -> Result<(), EmbeddingsError> {
+    if !super::pipeline::apply_entry_tag(db, change).await? {
+        sync_saved_entry(library, db, events, &change.entry_id).await?;
+    }
+    Ok(())
 }
 
 /// Executes a single work `Job`. The control-flow variants (Shutdown / Reset /
@@ -822,7 +842,15 @@ async fn handle_job(
                     .insert(change.tag_id.clone(), change.assigned);
                 let result = async {
                     let (_, ids) = writer.resolve_entry_tags(change.entry_id.clone()).await?;
-                    db.set_entry_tag_ids(&change.entry_id, &ids)
+                    let reconcile = async {
+                        if db.get_entry(&change.entry_id).await?.is_some() {
+                            db.set_entry_tag_ids(&change.entry_id, &ids).await
+                        } else {
+                            sync_saved_entry(writer.library_dir(), db, events, &change.entry_id)
+                                .await
+                        }
+                    };
+                    reconcile
                         .await
                         .map_err(|error| crate::tags::TagsError::Invalid(error.to_string()))?;
                     Ok::<_, crate::library_writer::WriterError>(())
@@ -846,7 +874,7 @@ async fn handle_job(
                 .entry(change.entry_id.clone())
                 .or_default()
                 .insert(change.tag_id.clone(), change.assigned);
-            if let Err(e) = super::pipeline::apply_entry_tag(db, &change).await {
+            if let Err(e) = sync_entry_tag(writer.library_dir(), db, events, &change).await {
                 log::error!("set_entry_tag failed id={}: {e}", change.entry_id);
             }
         }
@@ -1057,7 +1085,7 @@ async fn handle_job(
 }
 
 #[cfg(test)]
-mod bookmark_tests {
+mod pdf_entry_tests {
     use super::*;
     use crate::{library_writer::WriteToken, persistence::pdfs, types::EntityFilter};
 
@@ -1069,6 +1097,158 @@ mod bookmark_tests {
 
         fn article(&mut self, article: Article, _: Vec<String>, _: crate::tags::AnnotationTagIds) {
             self.0.push(article);
+        }
+    }
+
+    #[tokio::test]
+    async fn pdf_tags_publish_a_missing_row_and_survive_refresh_and_recovery() {
+        for has_feed_entry in [false, true] {
+            let directory = tempfile::tempdir().unwrap();
+            let library = directory.path();
+            let url = "https://example.org/paper";
+            let id = crate::util::url_hash12(url);
+            let token = WriteToken::for_test();
+            if has_feed_entry {
+                crate::persistence::entries::write_entry(
+                    library,
+                    url,
+                    "Feed title",
+                    None,
+                    None,
+                    Some("Feed summary"),
+                    token,
+                )
+                .await
+                .unwrap();
+            }
+            let writer = crate::library_writer::LibraryWriter::start(
+                library.into(),
+                crate::library::acquire_lock(library).unwrap(),
+            );
+            writer
+                .save_pdf(url.into(), Some(b"%PDF-original".to_vec()))
+                .await
+                .unwrap();
+            let original = crate::persistence::entries::read_entry(library, &id)
+                .await
+                .unwrap();
+            writer
+                .set_entry_unread(crate::library_writer::Tier::Interactive, id.clone(), true)
+                .await
+                .unwrap();
+            crate::persistence::entries::set_entry_color(library, &id, Some("blue".into()), token)
+                .await
+                .unwrap();
+            let db = EmbeddingsDb::open_writer(library, &writer.lock())
+                .await
+                .unwrap();
+            assert!(db.get_entry(&id).await.unwrap().is_none());
+            let events = Events {
+                unread: flume::unbounded().0,
+                bookmarked: flume::unbounded().0,
+                annotation: flume::unbounded().0,
+            };
+            let first = writer.create_tag("Research".into()).await.unwrap().tag.id;
+            let second = writer.create_tag("Work".into()).await.unwrap().tag.id;
+            let ids = [first.clone(), second.clone()];
+            for tag in &ids {
+                let change = writer
+                    .set_entry_tag(id.clone(), tag.clone(), true)
+                    .await
+                    .unwrap();
+                sync_entry_tag(library, &db, &events, &change)
+                    .await
+                    .unwrap();
+            }
+            for filter in [EntityFilter::All, EntityFilter::Saved] {
+                let rows = db.list_tag_entities(&ids, filter).await.unwrap();
+                assert_eq!(
+                    rows.iter().map(|row| &row.id).collect::<Vec<_>>(),
+                    vec![&id]
+                );
+            }
+            assert_eq!(db.count_tag_unread(&ids).await.unwrap(), 1);
+            assert!(db.get_entry(&id).await.unwrap().unwrap().vector.is_none());
+            assert_eq!(
+                pdfs::read(library, url).unwrap().unwrap().1,
+                b"%PDF-original"
+            );
+
+            writer
+                .save_pdf(url.into(), Some(b"%PDF-refreshed".to_vec()))
+                .await
+                .unwrap();
+            db.delete_by_id(&id).await.unwrap();
+            let mut recovery = RecoveryEntries::default();
+            crate::recovery::embeddings::repair_entity_embeddings(
+                library,
+                &db,
+                &mut recovery,
+                Some(&writer),
+            )
+            .await
+            .unwrap();
+            let [recovered] = recovery.0.as_slice() else {
+                panic!("expected recovery to discover the PDF Entry");
+            };
+            assert_eq!(recovered.meta.id, id);
+            assert_eq!(recovered.meta.title, original.title);
+            assert_eq!(recovered.meta.description, original.description);
+            assert_eq!(recovered.meta.color.as_deref(), Some("blue"));
+            sync_saved_entry(library, &db, &events, &id).await.unwrap();
+            assert_eq!(db.count_tag_unread(&ids).await.unwrap(), 1);
+
+            let updates = writer.subscribe_to_tag_updates();
+            writer
+                .rename_tag(first.clone(), "Field research".into())
+                .await
+                .unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(20), async {
+                while !updates
+                    .recv_async()
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .renaming
+                    .is_empty()
+                {}
+            })
+            .await
+            .unwrap();
+            let names = crate::persistence::entries::read_entry_tags(library, &id)
+                .await
+                .unwrap();
+            assert!(names.iter().any(|name| name == "Field research"));
+            let snapshot = crate::tags::merge::begin(&writer, &db, first, second)
+                .await
+                .unwrap();
+            let merge = &snapshot.merging[0];
+            while crate::tags::conversion::step(&writer, &db, merge.losing_id())
+                .await
+                .unwrap()
+            {}
+            assert_eq!(
+                crate::persistence::entries::read_entry_tags(library, &id)
+                    .await
+                    .unwrap(),
+                vec!["Work"]
+            );
+            writer.delete_tag(merge.survivor_id.clone()).await.unwrap();
+            while crate::tags::conversion::step(&writer, &db, &merge.survivor_id)
+                .await
+                .unwrap()
+            {}
+            assert!(
+                crate::persistence::entries::read_entry_tags(library, &id)
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(db.get_entry(&id).await.unwrap().unwrap().tags.is_empty());
+            assert_eq!(
+                pdfs::read(library, url).unwrap().unwrap().1,
+                b"%PDF-refreshed"
+            );
         }
     }
 
