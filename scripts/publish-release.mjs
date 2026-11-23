@@ -150,7 +150,11 @@ function main() {
     `Remote ${state.tag} exists at ${state.commit}. If draft upload fails, re-run only the failed publication job; do not start another preparation run.`
   );
   let bumpError;
-  if (state.mode === "rc" && state.expectedBranch === "") {
+  if (
+    state.mode === "rc" &&
+    state.expectedBranch === "" &&
+    state.version.endsWith("-rc.1")
+  ) {
     try {
       openNextDevelopmentPR(state.version.replace(/-rc\.[0-9]+$/, ""));
     } catch (error) {

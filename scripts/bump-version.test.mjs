@@ -20,6 +20,12 @@ test("release candidates start at one and increment", () => {
   assert.equal(nextVersion("0.8.5-rc.9", "rc"), "0.8.5-rc.10");
 });
 
+test("a final version starts the next patch at RC 1", () => {
+  assert.equal(nextVersion("0.17.6", "rc-next-patch"), "0.17.7-rc.1");
+  assert.throws(() => nextVersion("0.17.6-dev", "rc-next-patch"));
+  assert.throws(() => nextVersion("0.17.6-rc.3", "rc-next-patch"));
+});
+
 test("release removes either development suffix", () => {
   assert.equal(nextVersion("0.8.5-dev", "release"), "0.8.5");
   assert.equal(nextVersion("0.8.5-rc.2", "release"), "0.8.5");
