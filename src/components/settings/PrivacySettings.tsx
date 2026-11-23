@@ -72,18 +72,25 @@ export function PrivacySettings() {
       />
 
       <PrivacySwitch
-        name="publisherJavascriptAllowed"
-        label="Allow publisher JavaScript"
-        get="getPublisherJavascriptAllowed"
-        set="setPublisherJavascriptAllowed"
-        description="Off by default. Enabling this lets websites run their own scripts in the article loader. It can help display articles that need JavaScript and lets publishers run tracking scripts. Changes apply to newly opened loader windows."
+        name="remoteImagesAllowed"
+        label="Load remote images"
+        get="getRemoteImagesAllowed"
+        set="setRemoteImagesAllowed"
+        description="Off by default. Leave this off to read the text without loading remote images through WebKit. Image hosts can use requests to track your visits. If publisher JavaScript is allowed, its network requests can still retrieve image data. Changes apply to newly opened loader windows."
       />
       <PrivacySwitch
         name="loadRemoteImage"
         label="Save article images for offline viewing"
         get="getLoadRemoteImage"
         set="setLoadRemoteImage"
-        description="Off by default. Enabling this allows additional network requests to save images when loading articles and recover unavailable images when opening saved articles. Changes apply to new loads. Reopen existing loader windows to use the new preference. Saved images remain available when this is off. Original pages can still display images in the loader window."
+        description="Requires Load remote images. Xaga can make additional requests to save article images and site icons or recover missing article images. Image hosts can recognize the resulting request pattern. Reopening an article displays images already saved in your library without requesting them again."
+      />
+      <PrivacySwitch
+        name="publisherJavascriptAllowed"
+        label="Allow publisher JavaScript"
+        get="getPublisherJavascriptAllowed"
+        set="setPublisherJavascriptAllowed"
+        description="Off by default. Enabling this lets websites run their own scripts in the article loader. It can help display articles that need JavaScript and lets publishers run tracking scripts. Changes apply to newly opened loader windows."
       />
 
       <div className={css.Section}>
@@ -167,8 +174,14 @@ function PrivacySwitch({
   name: string;
   label: string;
   description: string;
-  get: "getLoadRemoteImage" | "getPublisherJavascriptAllowed";
-  set: "setLoadRemoteImage" | "setPublisherJavascriptAllowed";
+  get:
+    | "getLoadRemoteImage"
+    | "getRemoteImagesAllowed"
+    | "getPublisherJavascriptAllowed";
+  set:
+    | "setLoadRemoteImage"
+    | "setRemoteImagesAllowed"
+    | "setPublisherJavascriptAllowed";
 }) {
   const platform = usePlatform();
   const { saveSettings, refreshVersion } = useSettings();

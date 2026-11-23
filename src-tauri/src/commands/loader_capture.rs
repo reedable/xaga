@@ -136,7 +136,7 @@ pub(crate) async fn receive_html(
         mime_type,
         html,
         favicon,
-        favicon_data,
+        favicon_data: favicon_data.filter(|_| request.acquire_images),
         ..Default::default()
     };
 
@@ -146,15 +146,16 @@ pub(crate) async fn receive_html(
     // `receive_favicon`, which then completes this capture and closes the
     // window. Only on the hidden single-shot path: a `keep_open` window is
     // visible and may be in use.
-    let favicon_target = if !request.keep_open && capture.mime_type != "application/pdf" {
-        capture
-            .favicon
-            .as_deref()
-            .and_then(|url| url.parse::<tauri::Url>().ok())
-            .filter(|url| matches!(url.scheme(), "http" | "https"))
-    } else {
-        None
-    };
+    let favicon_target =
+        if request.acquire_images && !request.keep_open && capture.mime_type != "application/pdf" {
+            capture
+                .favicon
+                .as_deref()
+                .and_then(|url| url.parse::<tauri::Url>().ok())
+                .filter(|url| matches!(url.scheme(), "http" | "https"))
+        } else {
+            None
+        };
 
     if let Some(favicon_url) = favicon_target {
         request.attempt.add_started_event("favicon");
@@ -568,10 +569,7 @@ pub(crate) async fn recover_entry_images(
     } else {
         &current.content
     };
-    if expected != recovery.expected
-        || !*state.load_remote_image.read().unwrap()
-        || writer.is_none()
-    {
+    if expected != recovery.expected || !state.can_acquire_article_images() || writer.is_none() {
         return Ok(current);
     }
     let writer = writer.unwrap();
@@ -621,6 +619,7 @@ pub(crate) async fn recover_entry_images(
             remaining,
             false,
             article_loader::LoaderPurpose::Image,
+            true,
             true,
             publisher_javascript_allowed,
             &allowed_domains,

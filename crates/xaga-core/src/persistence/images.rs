@@ -630,6 +630,40 @@ fn media_type_for_bytes(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
+/// Restore local references for images this article already saved from the same URL.
+pub(crate) async fn reuse_entry_image_refs(
+    library_dir: &Path,
+    id: &str,
+    markdown: String,
+) -> String {
+    if !markdown.contains("![") {
+        return markdown;
+    }
+    let files = list_entry_image_files(library_dir, id).await;
+    if files.is_empty() {
+        return markdown;
+    }
+
+    let mut output = String::with_capacity(markdown.len());
+    let mut cursor = 0;
+    let mut copied = 0;
+    while let Some(image) = next_image(&markdown, cursor) {
+        cursor = image.span.end;
+        if !is_remote(image.url_raw) {
+            continue;
+        }
+        let hash = image_url_hash(&markdown_unescape(image.url_raw));
+        if files.contains_key(&hash) {
+            let start = image.url_raw.as_ptr() as usize - markdown.as_ptr() as usize;
+            output.push_str(&markdown[copied..start]);
+            output.push_str(&crate::library::entry_image_ref(id, &hash));
+            copied = start + image.url_raw.len();
+        }
+    }
+    output.push_str(&markdown[copied..]);
+    output
+}
+
 /// Reuse already-persisted bytes for another reference to the same remote URL.
 /// This performs only local reads; the URL chooses a hash, never a filesystem path.
 pub async fn read_entry_image_url(library_dir: &Path, id: &str, url: &str) -> Option<String> {

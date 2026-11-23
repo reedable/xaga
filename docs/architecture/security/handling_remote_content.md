@@ -47,6 +47,17 @@ publisher JavaScript and preserves Xaga's injected capture scripts and IPC.
 Changing the preference applies to newly opened loader windows. Image capture
 and recovery use a separate setting.
 
+### Remote image requests
+
+The loader attaches a WebKit content rule before construction when
+`remote_images_allowed` is off. The rule blocks HTTP(S) resources WebKit
+classifies as images, including CSS image requests. Publisher JavaScript can
+still retrieve image bytes through general network requests when allowed.
+
+The current image permissions apply to newly opened loaders and new recovery
+attempts. Xaga's capture, separate favicon navigation, and image recovery all
+require both remote image loading and offline saving.
+
 ### Processing (capture → markdown)
 
 The loader webview returns a serialized snapshot of the page's DOM HTML. `processEntry` (`entryWorker.ts`) then:

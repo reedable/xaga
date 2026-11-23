@@ -9,10 +9,11 @@ pub(crate) fn settings_path() -> Result<PathBuf, String> {
         .join("settings.json"))
 }
 
-// Temporary default for the future Load remote image control. All consumers
-// use the resolved setting; change this one value when the product default changes.
+pub(crate) const DEFAULT_REMOTE_IMAGES_ALLOWED: bool = false;
+// The existing load_remote_image key stores the offline-saving preference.
 pub(crate) const DEFAULT_LOAD_REMOTE_IMAGE: bool = false;
 pub(crate) const DEFAULT_PUBLISHER_JAVASCRIPT_ALLOWED: bool = false;
+pub(crate) const DEFAULT_HTML_READER_VIEW: &str = "summary";
 
 pub(crate) const DEFAULT_LOADER_TIMEOUT_SECS: u64 = 10;
 pub(crate) const DEFAULT_FEED_TIMEOUT_SECS: u64 = 10;
@@ -53,6 +54,7 @@ pub(crate) struct UserSettings {
     pub(crate) allowed_domains: Option<Vec<String>>,
     pub(crate) inline_pdf_reader: Option<bool>,
     pub(crate) load_remote_image: Option<bool>,
+    pub(crate) remote_images_allowed: Option<bool>,
     pub(crate) publisher_javascript_allowed: Option<bool>,
     pub(crate) html_reader_view: Option<String>,
     /// Allow plaintext `http://` fetches (feeds, article loader and downloads).
@@ -82,6 +84,11 @@ pub(crate) struct UserSettings {
 }
 
 impl UserSettings {
+    pub(super) fn remote_images_allowed(&self) -> bool {
+        self.remote_images_allowed
+            .unwrap_or(DEFAULT_REMOTE_IMAGES_ALLOWED)
+    }
+
     pub(super) fn publisher_javascript_allowed(&self) -> bool {
         self.publisher_javascript_allowed
             .unwrap_or(DEFAULT_PUBLISHER_JAVASCRIPT_ALLOWED)
@@ -292,6 +299,7 @@ pub(crate) fn update_settings(
 /// job, not a side effect of a refused preference write.
 pub(crate) fn refresh_state_from_settings(state: &AppState, s: &UserSettings) {
     *state.load_remote_image.write().unwrap() = s.load_remote_image();
+    *state.remote_images_allowed.write().unwrap() = s.remote_images_allowed();
     *state.publisher_javascript_allowed.write().unwrap() = s.publisher_javascript_allowed();
     let s = s.clone();
     *state.theme.write().unwrap() = s.theme.unwrap_or_else(|| "auto".to_string());
@@ -319,8 +327,9 @@ pub(crate) fn refresh_state_from_settings(state: &AppState, s: &UserSettings) {
     *state.sidebar_sort.write().unwrap() = s.sidebar_sort.unwrap_or_default();
     *state.allowed_domains.write().unwrap() = s.allowed_domains.unwrap_or_default();
     *state.inline_pdf_reader.write().unwrap() = s.inline_pdf_reader.unwrap_or(false);
-    *state.html_reader_view.write().unwrap() =
-        s.html_reader_view.unwrap_or_else(|| "reader".to_string());
+    *state.html_reader_view.write().unwrap() = s
+        .html_reader_view
+        .unwrap_or_else(|| DEFAULT_HTML_READER_VIEW.to_owned());
 }
 
 /// The uniform caller-side handling of a [`SettingsOutcome::StaleView`]:

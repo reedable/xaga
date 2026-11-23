@@ -174,7 +174,8 @@ pub async fn load_article(
         attempt.add_succeeded_event("proxy_start");
         let timeout_secs = *state.loader_timeout_secs.read().unwrap();
         let allowed_domains = state.allowed_domains.read().unwrap().clone();
-        let load_remote_image = *state.load_remote_image.read().unwrap();
+        let remote_images_allowed = *state.remote_images_allowed.read().unwrap();
+        let load_remote_image = remote_images_allowed && *state.load_remote_image.read().unwrap();
         let named_stores_supported = state.named_stores_supported;
         let publisher_javascript_allowed = *state.publisher_javascript_allowed.read().unwrap();
         let capture = article_loader::load_via_webview(
@@ -184,6 +185,7 @@ pub async fn load_article(
             timeout_secs,
             keep_open,
             article_loader::LoaderPurpose::Article,
+            remote_images_allowed,
             load_remote_image,
             publisher_javascript_allowed,
             &allowed_domains,
@@ -256,6 +258,11 @@ pub async fn save_article(
 ) -> Result<Article, AppError> {
     let result: Result<_, AppError> = async {
         let writer = crate::commands::require_writer(&state)?;
+        let image_data = if state.can_acquire_article_images() {
+            image_data
+        } else {
+            Default::default()
+        };
         let article = writer
             .save_article(
                 WriteTier::Interactive,
@@ -310,6 +317,11 @@ pub async fn create_article(
 ) -> Result<Article, AppError> {
     let result: Result<_, AppError> = async {
         let writer = crate::commands::require_writer(&state)?;
+        let image_data = if state.can_acquire_article_images() {
+            image_data
+        } else {
+            Default::default()
+        };
         let article = writer
             .create_article(
                 WriteTier::Interactive,

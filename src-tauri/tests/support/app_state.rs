@@ -30,6 +30,7 @@ pub(super) fn test_state(path: PathBuf) -> AppState {
         named_stores_supported: true,
         inline_pdf_reader: shared(false),
         load_remote_image: shared(true),
+        remote_images_allowed: shared(true),
         publisher_javascript_allowed: shared(false),
         html_reader_view: shared("summary".into()),
         network_proxy_port: 0,

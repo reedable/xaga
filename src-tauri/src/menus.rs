@@ -54,7 +54,7 @@ pub(crate) fn set_find_enabled(app: tauri::AppHandle, enabled: bool) {
 pub(super) fn build(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // Defaults corrected by setup() once settings are loaded.
     let initial_theme = "auto";
-    let initial_html_reader_view = "reader";
+    let initial_html_reader_view = crate::settings::DEFAULT_HTML_READER_VIEW;
 
     let app_menu = Submenu::with_items(
         app,
