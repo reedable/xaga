@@ -192,16 +192,29 @@ Branch protection governs both PRs.
 
 ### Release Candidate
 
-Run **Release Candidate** (`.github/workflows/prepare-rc.yml`) on `main` at
-`x.y.z-dev` to prepare `x.y.z-rc.1`. If the release branch already exists,
-select `release/x.y.z` at `x.y.z-rc.N` to prepare the next candidate.
+Choose the branch for **Release Candidate** (`.github/workflows/prepare-rc.yml`)
+using the version on `main` and the target release branch.
+
+| Version on `main` | Target release branch                      | Valid action                                                  |
+| ----------------- | ------------------------------------------ | ------------------------------------------------------------- |
+| `x.y.z-dev`       | `release/x.y.z` is missing                 | Run on `main` to prepare `x.y.z-rc.1`.                        |
+| `x.y.z-dev`       | `release/x.y.z` exists                     | Run on the release branch if it carries an RC version.        |
+| `x.y.z-rc.N`      | `release/x.y.z` is missing                 | Run on `main` to recreate the branch with the next candidate. |
+| `x.y.z-rc.N`      | `release/x.y.z` exists                     | [Abandon the inconsistent RC](#abandon-an-inconsistent-rc).   |
+| Final `x.y.z`     | The next patch's release branch is missing | Run on `main` to prepare the next patch's `rc.1`.             |
+| Final `x.y.z`     | The next patch's release branch exists     | Run on that branch if it carries an RC version.               |
+
+A run on a release branch advances that branch's RC version by one. To target
+a minor or major release, merge the corresponding development version before dispatch.
 
 The workflow commits the RC version locally before verification and building.
 After a successful build, publication atomically pushes the release branch and
 RC tag and uploads the draft prerelease.
-Immediately after the first push of the release branch, publication uses the
+Immediately after pushing the first candidate, publication uses the
 current `main` to open a separate patch-bump PR. It reuses an existing bump PR
-and skips the bump if `main` already has a different major, minor, or patch version.
+and skips the bump if `main` has a different major, minor, or patch version
+from the candidate. This includes a candidate started from the preceding final
+version when `main` still has that version.
 Later RCs leave the bump PR alone. If opening the bump PR fails, publication
 still attempts the draft. Rerun the publication job to retry the bump using the
 retained package.
@@ -210,6 +223,18 @@ If verification or building fails, **Re-run failed jobs** prepares the same RC
 version from the original source. The failed build leaves the remote branch and
 tag untouched. If another run publishes in the meantime, the branch and tag
 checks protect the published candidate.
+
+#### Abandon an inconsistent RC
+
+If `main` carries `x.y.z-rc.N` and `release/x.y.z` already exists, abandon
+that release cycle and leave its tags intact.
+
+1. Open a corrective PR to replace the RC version on `main` with an unused
+   `-dev` version. Synchronize all application version files and `Cargo.lock`.
+   The version-bump workflows reject RC versions, so prepare this PR manually.
+2. Merge the corrective PR into `main`.
+3. Run **Release Candidate** on `main` to prepare `rc.1` for the new version.
+   See the [branch and version table](#release-candidate) for other valid runs.
 
 ### Release
 
