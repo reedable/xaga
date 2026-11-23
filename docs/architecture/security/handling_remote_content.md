@@ -37,6 +37,16 @@ identity and must agree with it; see [persisted entity identity](../persisted_en
 
 Code: `src/text/entryWorker.ts`, `src/text/markdownPipeline.ts`, `src/text/buildEntryHtml.ts`, `src/components/content/HtmlReader.tsx`, `src-tauri/tauri.conf.json`.
 
+### Publisher JavaScript
+
+On macOS, the app-wide `publisher_javascript_allowed` setting defaults to
+`false`, including for settings files that predate it. Before creating each
+loader window, Xaga reads the saved preference and configures WebKit's
+`WKWebpagePreferences.allowsContentJavaScript` through Wry. This controls
+publisher JavaScript and preserves Xaga's injected capture scripts and IPC.
+Changing the preference applies to newly opened loader windows. Image capture
+and recovery use a separate setting.
+
 ### Processing (capture → markdown)
 
 The loader webview returns a serialized snapshot of the page's DOM HTML. `processEntry` (`entryWorker.ts`) then:

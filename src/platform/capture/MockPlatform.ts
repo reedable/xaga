@@ -38,6 +38,7 @@ export class MockPlatform implements Platform {
   private failPdfTagWrite = true;
   private scenario = new URLSearchParams(location.search).get("scenario");
   private listeners = new Map<EventName, Set<(value: never) => void>>();
+  private publisherJavascriptAllowed = false;
   private fetchSettings: FetchSettings = {
     refererAllowed: false,
     gzipAllowed: false,
@@ -892,6 +893,12 @@ export class MockPlatform implements Platform {
   getInlinePdfReader: Platform["getInlinePdfReader"] = async () =>
     !!this.scenario?.startsWith("pdf-bookmarks") &&
     this.scenario !== "pdf-bookmarks-external";
+  getPublisherJavascriptAllowed: Platform["getPublisherJavascriptAllowed"] =
+    async () => this.publisherJavascriptAllowed;
+  setPublisherJavascriptAllowed: Platform["setPublisherJavascriptAllowed"] =
+    async (value) => {
+      this.publisherJavascriptAllowed = value;
+    };
   getLoadRemoteImage: Platform["getLoadRemoteImage"] = async () => false;
   getFetchSettings: Platform["getFetchSettings"] = async () =>
     structuredClone(this.fetchSettings);

@@ -613,6 +613,7 @@ pub(crate) async fn recover_entry_images(
                 .await
                 .map_err(|e| AppError::Message(e.to_string()))?,
         );
+        let publisher_javascript_allowed = *state.publisher_javascript_allowed.read().unwrap();
         let capture = article_loader::load_via_webview(
             &app,
             &pending,
@@ -621,6 +622,7 @@ pub(crate) async fn recover_entry_images(
             false,
             article_loader::LoaderPurpose::Image,
             true,
+            publisher_javascript_allowed,
             &allowed_domains,
             state.named_stores_supported,
             proxy,
