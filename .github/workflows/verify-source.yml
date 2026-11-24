@@ -74,7 +74,7 @@ jobs:
 
       - name: Run browser tests
         timeout-minutes: 30
-        run: npm run test:browser
+        run: npm run test:browser -- --max-failures=1
 
       - name: Upload browser report and failure diagnostics
         if: ${{ !cancelled() }}

@@ -56,6 +56,9 @@ installed browser with `npx playwright install chromium` after upgrading the
 locked Playwright dependency. `npm run typecheck` includes the browser tests and
 runner configuration.
 
+Local runs continue after a failed case by default. To stop after the first
+failure, run `npm run test:browser -- --max-failures=1`.
+
 ## Coverage
 
 `e2e/article-drawer.spec.ts` checks narrow and wide navigation, Entry reselection,
@@ -212,7 +215,8 @@ The shared **Browser tests** job runs for pull request verification, Release
 Candidate and Release dispatches, and Manual release build tag pushes. It runs
 after **Source checks** and before **Rust and headless checks**. After checkout
 and dependency installation, it installs Chromium and runs
-`npm run test:browser` with a 30-minute limit.
+`npm run test:browser -- --max-failures=1` with a 30-minute limit, so it stops
+after the first failed case.
 
 Use **Re-run failed jobs** to retry the browser job and continue with its
 dependents while keeping successful source checks. A failed browser job blocks
