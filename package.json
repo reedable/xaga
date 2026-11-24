@@ -1,6 +1,6 @@
 {
   "name": "xaga",
-  "version": "0.17.7",
+  "version": "0.17.8-dev",
   "private": true,
   "type": "module",
   "scripts": {
