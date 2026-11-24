@@ -1,0 +1,32 @@
+name: Restore prepared release source
+description: Check out the exact commit retained by release preparation
+inputs:
+  artifact:
+    description: Prepared source artifact name
+    required: true
+  commit:
+    description: Prepared source commit SHA
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Download prepared release source
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ inputs.artifact }}
+        path: ${{ runner.temp }}/prepared-release
+
+    - name: Check out prepared commit
+      shell: bash
+      env:
+        PREPARED_COMMIT: ${{ inputs.commit }}
+      run: |
+        bundle="$RUNNER_TEMP/prepared-release/source.bundle"
+        if [[ -f "$bundle" ]]; then
+          git fetch --no-tags "$bundle" HEAD
+          git switch --detach FETCH_HEAD
+        fi
+        if [[ "$(git rev-parse HEAD)" != "$PREPARED_COMMIT" ]]; then
+          echo "Checkout does not match the prepared release commit"
+          exit 1
+        fi
