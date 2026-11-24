@@ -1530,6 +1530,14 @@ export class TauriPlatform implements Platform {
     return invoke<void>("set_publisher_javascript_allowed", { value });
   }
 
+  getRemoteImagesAllowed(): Promise<boolean> {
+    return invoke<boolean>("get_remote_images_allowed");
+  }
+
+  setRemoteImagesAllowed(value: boolean): Promise<void> {
+    return invoke<void>("set_remote_images_allowed", { value });
+  }
+
   setLoadRemoteImage(value: boolean): Promise<void> {
     return invoke<void>("set_load_remote_image", { value });
   }

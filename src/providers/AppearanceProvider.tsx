@@ -32,7 +32,8 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     useState<ThemeSetting>(initialThemeSetting);
 
   const [htmlReaderView, setHtmlReaderView] =
-    useState<HtmlReaderView>("reader");
+    useState<HtmlReaderView>("summary");
+  const [htmlReaderViewReady, setHtmlReaderViewReady] = useState(false);
 
   const [htmlReaderFontFamily, setHtmlReaderFontFamilyState] =
     useState<FontFamily>("system");
@@ -132,7 +133,8 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     platform
       .getHtmlReaderView()
       .then((v) => setHtmlReaderView(v as HtmlReaderView))
-      .catch(pushError);
+      .catch(pushError)
+      .finally(() => setHtmlReaderViewReady(true));
   }, [platform, pushError, refreshVersion]);
 
   // Load persisted html reader prefs on startup.
@@ -198,6 +200,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       htmlReaderView,
+      htmlReaderViewReady,
       setHtmlReaderView,
       changeHtmlReaderView,
       themeSetting,
@@ -214,6 +217,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     }),
     [
       htmlReaderView,
+      htmlReaderViewReady,
       changeHtmlReaderView,
       themeSetting,
       changeThemeSetting,

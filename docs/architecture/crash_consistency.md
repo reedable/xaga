@@ -61,7 +61,8 @@ the next run.
   bytes. A crash before Markdown can leave unused resources; per-entry image
   cleanup runs on the next save, while shared favicon cleanup is a separate
   library-wide operation. Local reads do not fetch resources. Remote article
-  loads reacquire favicons; read-only instances cannot replace them. Delete the
+  loads reacquire favicons for offline use when both image permissions are on.
+  Read-only instances cannot replace them. Delete the
   Entry `.md` before its image directory (`save_article` and `persistence::images`).
 - **External changes:** startup recovery reconciles external edits and migrations
   from files. They are not synchronized live.

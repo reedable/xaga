@@ -88,7 +88,8 @@ bytes as a top-level document has the same protections.
 Favicons are shared, extensionless resources keyed by normalized source URL under
 `metadata/favicons/`. The toolbar renders them as local image data, never as inline markup
 or a remote URL. Opening a cached article performs no favicon request. A remote
-load of a new or refreshed article reacquires its current icon; successful
+load of a new or refreshed article reacquires its current icon when both image
+permissions are enabled. Successful
 validation atomically replaces the shared resource, while failure preserves the
 cached bytes. Read-only instances can display but not replace shared resources.
 
@@ -99,22 +100,12 @@ is possible, but no recurring duplicate-fetch cost has been established for
 that workflow. Shared favicon writes are atomic. Add request coalescing only if
 observed duplicate acquisition warrants its cancellation and lifecycle complexity.
 
-The account setting `load_remote_image` controls recovery and the article loader's
-additional body-image capture fetches. The absent-value default is defined once
-as `DEFAULT_LOAD_REMOTE_IMAGE`, currently `false`, for both new and existing
-installations without a stored value; explicit values take precedence.
-Settings → Privacy exposes “Save article images for offline viewing.” Changes
-are persisted before the switch updates; failed writes display an error.
-There is no eager default write. The preference applies to subsequent ingestion,
-article reloads and reading pane recovery attempts. Loader windows snapshot the value
-when created, including visible loaders; reopen existing windows after changing it.
-Changing the default later does not override a stored preference. Disabling it
-leaves already-stored local images usable and does not control a publisher page's
-normal resource loading in an opened loader window. Opening the original page
-in a loader window remains available without opting in. Enabling this setting
-allows additional network requests; it does not grant network access to the main
-or settings UI. Favicon acquisition is a separate phase and is not gated by this
-body-image preference.
+The existing account setting `load_remote_image` stores **Save article images for
+offline viewing**. The separate `remote_images_allowed` setting stores **Load
+remote images**. Both default to off when absent. An existing offline-saving
+value retains its meaning. Recovery and saving new remote image bytes require
+both settings. Saved local images remain visible, and refreshed Markdown reuses
+previously saved image files for matching URLs.
 
 Capture diagnostics distinguish the preference from actual fetch attempts and
 explain skipped capture, including when the page exhausts the loader deadline
@@ -243,8 +234,9 @@ removed before rendering. Today's URL-span `ImagePatch` cannot insert a missing
 `src` or replace a whole responsive structure without an extended, validated
 patch contract.
 
-Any implementation must keep **Save article images for offline viewing** as the
-acquisition gate, display available local content first, and use isolated native
+Any implementation must require both **Load remote images** and **Save article
+images for offline viewing** for remote acquisition, display available local
+content first, and use isolated native
 acquisition with existing validation and budgets. Failed acquisitions must leave
 stored source unchanged. A stale summary must refuse rewriting under the writer
 lane; unrelated summary text, article body, annotations and tags stay intact.

@@ -327,7 +327,11 @@ function __xagaCaptureFavicon() {
   return __xagaCaptureImage();
 }
 
-if (__xagaIsImageDocument() && !window.__LOADER_IMAGE_ONLY__) {
+if (
+  __XAGA_FETCH_IMAGES__ &&
+  __xagaIsImageDocument() &&
+  !window.__LOADER_IMAGE_ONLY__
+) {
   if (document.readyState === "complete") __xagaCaptureFavicon();
   else window.addEventListener("load", __xagaCaptureFavicon);
 }

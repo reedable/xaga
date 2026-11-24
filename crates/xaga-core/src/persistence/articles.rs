@@ -113,6 +113,11 @@ pub(crate) async fn save_article(
             .await;
 
     let body = extraction.persisted_body(&landed);
+    let body = if file_exists {
+        crate::persistence::images::reuse_entry_image_refs(library_dir, id, body).await
+    } else {
+        body
+    };
     let mut updates = vec![
         ("source", serde_json::json!(normalized)),
         ("title", serde_json::json!(title)),
@@ -643,6 +648,36 @@ Original body
     }
 
     const PNG_DATA: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+
+    #[tokio::test]
+    async fn refresh_without_new_image_bytes_reuses_existing_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = "abcdef123456";
+        let image_url = "https://example.com/image.png";
+        for bytes in [data(image_url, PNG_DATA), no_data()] {
+            let article = save_article(
+                dir.path(),
+                id,
+                "https://example.com/article",
+                "Article",
+                None,
+                None,
+                None,
+                None,
+                &format!("![illustration]({image_url})"),
+                &bytes,
+                WriteToken::for_test(),
+            )
+            .await
+            .unwrap();
+            assert!(article.content.contains("../images/abcdef123456/"));
+            assert!(
+                crate::persistence::images::read_entry_image_url(dir.path(), id, image_url)
+                    .await
+                    .is_some()
+            );
+        }
+    }
 
     fn no_data() -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()

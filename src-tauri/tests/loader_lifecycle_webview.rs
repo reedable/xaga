@@ -36,13 +36,14 @@ mod lifecycle {
             Option<tauri::async_runtime::JoinHandle<Result<article_loader::LoaderCapture, String>>>,
     }
     async fn start(app: &tauri::AppHandle, server: &Server, name: &str, timeout: u64) -> Load {
-        start_with_options(app, server, name, timeout, false, false).await
+        start_with_options(app, server, name, timeout, true, true, false).await
     }
     async fn start_with_options(
         app: &tauri::AppHandle,
         server: &Server,
         name: &str,
         timeout: u64,
+        remote_images_allowed: bool,
         images: bool,
         publisher_javascript_allowed: bool,
     ) -> Load {
@@ -75,6 +76,7 @@ mod lifecycle {
                 timeout,
                 false,
                 article_loader::LoaderPurpose::Article,
+                remote_images_allowed,
                 images,
                 publisher_javascript_allowed,
                 &[],
@@ -288,7 +290,7 @@ mod lifecycle {
         for enabled in [false, true] {
             let before = selected.requests.load(Ordering::SeqCst);
             let mut load =
-                start_with_options(&app, &server, "responsive", 15, enabled, false).await;
+                start_with_options(&app, &server, "responsive", 15, true, enabled, false).await;
             let capture = load.result.take().unwrap().await.unwrap().unwrap();
             let marker = format!("data-xaga-selected-src=\"{origin}/responsive-selected.png\"");
             if !enabled {
@@ -331,12 +333,62 @@ mod lifecycle {
         );
         for allowed in [false, true] {
             let mut load =
-                start_with_options(&app, &server, "publisher-scripts", 15, false, allowed).await;
+                start_with_options(&app, &server, "publisher-scripts", 15, true, false, allowed)
+                    .await;
             let capture = load.result.take().unwrap().await.unwrap().unwrap();
             assert!(capture.html.contains("<p>Article text</p>"));
             assert_eq!(capture.html.contains("data-executed=\"yes\""), allowed);
             assert_cleanup(&app, &load).await;
         }
+        let element =
+            server.add_response("/blocked-element.png", Vec::new(), "image/png", None, None);
+        let css = server.add_response("/blocked-css.png", Vec::new(), "image/png", None, None);
+        let icon = server.add_response("/blocked-icon.png", Vec::new(), "image/png", None, None);
+        let fallback = server.add_response("/favicon.ico", Vec::new(), "image/x-icon", None, None);
+        for (name, icon_link) in [
+            (
+                "blocked-explicit-icon",
+                "<link rel=icon href=/blocked-icon.png>",
+            ),
+            ("blocked-fallback-icon", ""),
+        ] {
+            server.add_response(
+                &format!("/{name}"),
+                format!("<!doctype html>{icon_link}<style>p {{ background-image: url(/blocked-css.png) }}</style><p>Article text</p><img src=/blocked-element.png>").into_bytes(),
+                "text/html", None, None,
+            );
+            let mut load = start_with_options(&app, &server, name, 15, false, false, false).await;
+            let capture = load.result.take().unwrap().await.unwrap().unwrap();
+            assert!(capture.html.contains("<p>Article text</p>"));
+            assert!(capture.favicon_data.is_none());
+            assert_cleanup(&app, &load).await;
+        }
+        for resource in [&element, &css, &icon, &fallback] {
+            assert_eq!(resource.requests.load(Ordering::SeqCst), 0);
+        }
+        let mut load = start_with_options(
+            &app,
+            &server,
+            "blocked-explicit-icon",
+            15,
+            true,
+            false,
+            false,
+        )
+        .await;
+        let capture = load.result.take().unwrap().await.unwrap().unwrap();
+        assert!(element.requests.load(Ordering::SeqCst) > 0);
+        assert!(css.requests.load(Ordering::SeqCst) > 0);
+        assert!(capture.favicon_data.is_none());
+        let diagnostic = serde_json::to_value(load.attempt.get_diagnostic()).unwrap();
+        assert!(
+            diagnostic["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|event| event["step"] != "favicon")
+        );
+        assert_cleanup(&app, &load).await;
         gate.release();
         until("all loader windows closed", || {
             app.webview_windows().is_empty()

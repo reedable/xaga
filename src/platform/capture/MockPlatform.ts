@@ -899,7 +899,17 @@ export class MockPlatform implements Platform {
     async (value) => {
       this.publisherJavascriptAllowed = value;
     };
-  getLoadRemoteImage: Platform["getLoadRemoteImage"] = async () => false;
+  private remoteImagesAllowed = false;
+  private saveArticleImages = false;
+  getRemoteImagesAllowed: Platform["getRemoteImagesAllowed"] = async () =>
+    this.remoteImagesAllowed;
+  setRemoteImagesAllowed: Platform["setRemoteImagesAllowed"] = async (
+    value
+  ) => {
+    this.remoteImagesAllowed = value;
+  };
+  getLoadRemoteImage: Platform["getLoadRemoteImage"] = async () =>
+    this.saveArticleImages;
   getFetchSettings: Platform["getFetchSettings"] = async () =>
     structuredClone(this.fetchSettings);
   setFetchSetting: Platform["setFetchSetting"] = async (change) => {
@@ -1265,8 +1275,9 @@ export class MockPlatform implements Platform {
     this.subscribe("onPinChanged", callback);
   onEntryPinChanged: Platform["onEntryPinChanged"] = (callback) =>
     this.subscribe("onEntryPinChanged", callback);
-  setLoadRemoteImage: Platform["setLoadRemoteImage"] = async () =>
-    this.unsupported("Remote image settings");
+  setLoadRemoteImage: Platform["setLoadRemoteImage"] = async (value) => {
+    this.saveArticleImages = value;
+  };
   setInlinePdfReader: Platform["setInlinePdfReader"] = async () =>
     this.unsupported("PDF settings");
   onInlinePdfReaderChanged: Platform["onInlinePdfReaderChanged"] = (callback) =>

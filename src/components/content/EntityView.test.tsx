@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   },
   resolve: vi.fn(),
   readerMounted: vi.fn(),
+  appearance: { htmlReaderView: "reader", htmlReaderViewReady: true },
+}));
+vi.mock("../../hooks/useAppearance", () => ({
+  useAppearance: () => mocks.appearance,
 }));
 vi.mock("../../hooks/useRouter", () => ({
   default: () => ({ state: mocks.state }),
@@ -76,6 +80,7 @@ let container: HTMLDivElement;
 let finish: (result?: boolean) => void;
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.appearance = { htmlReaderView: "reader", htmlReaderViewReady: true };
   mocks.state = {
     url: "https://example.org/document",
     entryId: "entry",
@@ -107,7 +112,7 @@ it("waits for URL classification before mounting a saved entry's HTML reader", a
 it("resolves a history selection even when its route already carries PDF MIME", async () => {
   mocks.state.mimeType = "application/pdf";
   await act(() => root.render(<EntityView />));
-  expect(mocks.resolve).toHaveBeenCalledWith(mocks.state.url);
+  expect(mocks.resolve).toHaveBeenCalledWith(mocks.state.url, false, true);
   expect(container.querySelector('[role="status"]')).not.toBeNull();
   await act(async () => {
     finish();
@@ -181,4 +186,20 @@ it("updates the reader only after a successful reload and permits a later retry"
     finish(false);
   });
   expect(mocks.readerMounted).toHaveBeenCalledTimes(2);
+});
+
+it("waits for the saved view and starts a deferred live load when switching to Reader", async () => {
+  mocks.appearance = { htmlReaderView: "summary", htmlReaderViewReady: false };
+  mocks.resolve.mockResolvedValueOnce(null).mockResolvedValueOnce(true);
+  await act(async () => root.render(<EntityView />));
+  expect(mocks.resolve).not.toHaveBeenCalled();
+
+  mocks.appearance.htmlReaderViewReady = true;
+  await act(async () => root.render(<EntityView />));
+  expect(mocks.resolve).toHaveBeenLastCalledWith(mocks.state.url, false, false);
+
+  mocks.appearance.htmlReaderView = "reader";
+  await act(async () => root.render(<EntityView />));
+  expect(mocks.resolve).toHaveBeenLastCalledWith(mocks.state.url, false, true);
+  expect(mocks.readerMounted).toHaveBeenCalledOnce();
 });

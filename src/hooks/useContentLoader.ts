@@ -35,7 +35,7 @@ export function useContentLoader(
   const [blockedUrl, setBlockedUrl] = useState<string | null>(null);
 
   const resolve = useCallback(
-    async (url: string, refresh = false) => {
+    async (url: string, refresh = false, allowLiveLoad = true) => {
       const { signal } = abortControllerRef.current;
       if (!refresh) {
         setPdfBlobUrl(null);
@@ -72,10 +72,11 @@ export function useContentLoader(
           }
           const existing = await findArticleByUrl(url, attempt);
           signal.throwIfAborted();
-          if (existing?.content) {
+          if (existing && (existing.content || !allowLiveLoad)) {
             replaceEntry(existing);
-            return true;
+            if (existing.content) return true;
           }
+          if (!allowLiveLoad) return null;
         }
 
         const result = await loadArticleByUrl(url, false, attempt);

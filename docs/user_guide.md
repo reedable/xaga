@@ -273,6 +273,9 @@ MiB that equal a whole number of bytes; timeouts accept whole seconds.
 ### Appearance
 
 Under **Reading**, **Default article view** selects **Summary** or **Reader**.
+Xaga starts in **Summary** and remembers your choice. **Summary** shows saved
+content. **Reader** fetches the publisher page if the body is missing. You can
+also request the page with **Refresh** or **Show Original Site**.
 The font, font size, and line height controls adjust the reading presentation.
 
 ### Privacy
@@ -285,6 +288,17 @@ in exchange for potentially smaller transfers. The feed size limit still counts
 decompressed bytes. Both changes apply to the next feed add, refresh, or import;
 they do not change article-loader headers or compression.
 
+**Load remote images** is off by default. Leave it off to read text without
+browser image requests. Image hosts can use these requests to track visits.
+Publisher JavaScript can still request image data if you allow it.
+
+**Save article images for offline viewing** works when **Load remote images**
+is also on. Xaga can make additional requests to save article images and site
+icons, or recover missing article images. Those requests can form a pattern
+specific to Xaga. Reopening a saved article displays images already in your
+library without requesting them again. The image controls apply to new loader
+windows and new recovery attempts.
+
 **Allow publisher JavaScript** is off by default. Enable it if an article
 needs scripts to display its content. This also lets publishers run tracking
 scripts. The choice applies app-wide to newly opened article loader windows.
@@ -294,9 +308,6 @@ control.
 **Keep website sessions** lets listed websites retain cookies and site data in
 isolated sessions, for example to stay logged in. Persistent sessions require
 macOS 14 or later. Reopen existing loader windows after changing this list.
-**Save article images for offline viewing** allows additional image requests;
-its description explains when the change takes effect and which images remain
-available when it is off.
 
 ### Security
 

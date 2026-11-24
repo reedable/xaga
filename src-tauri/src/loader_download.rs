@@ -243,6 +243,7 @@ mod tests {
             PendingRequest {
                 tx,
                 keep_open: false,
+                acquire_images: true,
                 purpose: crate::article_loader::LoaderPurpose::Article,
                 attempt: attempt.clone(),
                 diagnostic_event_count: 0,

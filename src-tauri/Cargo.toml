@@ -48,14 +48,14 @@ quick-xml = "0.37"
 [target.'cfg(target_os = "macos")'.dependencies]
 wry = { version = "=0.57.0", default-features = false }
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSObject", "NSUUID"] }
-objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "WKPreferences", "WKWebViewConfiguration", "WKWebsiteDataStore"] }
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSError", "NSObject", "NSString", "NSUUID"] }
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "block2", "WKContentRuleList", "WKContentRuleListStore", "WKPreferences", "WKUserContentController", "WKWebViewConfiguration", "WKWebsiteDataStore"] }
 
 [dev-dependencies]
 tauri = { version = "2.12.1", features = ["test"] }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
-block2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["NSApplication", "NSResponder"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["NSDate", "NSError", "NSGeometry", "NSRunLoop", "NSString", "NSURL"] }
 objc2-web-kit = { version = "0.3", default-features = false, features = ["WKWebView", "WKNavigation", "block2", "objc2-app-kit", "objc2-core-foundation"] }

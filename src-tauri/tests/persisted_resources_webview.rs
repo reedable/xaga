@@ -141,6 +141,18 @@ async fn verify(app: tauri::AppHandle) {
     println!("PASS: disabled recovery performs no acquisition or writes");
 
     *app.state::<AppState>().load_remote_image.write().unwrap() = true;
+    *app.state::<AppState>()
+        .remote_images_allowed
+        .write()
+        .unwrap() = false;
+    let blocked = recover(&app, recovery()).await;
+    assert_eq!(blocked.meta.description.as_deref(), Some(source.as_str()));
+    assert_eq!(snapshot(&library), before);
+    assert_eq!(response.requests.load(Ordering::SeqCst), 0);
+    *app.state::<AppState>()
+        .remote_images_allowed
+        .write()
+        .unwrap() = true;
     let saved = recover(&app, recovery()).await;
     assert_eq!(saved.content, "unchanged body");
     let local_summary = saved.meta.description.unwrap();

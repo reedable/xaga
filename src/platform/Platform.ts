@@ -485,6 +485,8 @@ export interface Platform {
   // Persisted preferences
   getPublisherJavascriptAllowed(): Promise<boolean>;
   setPublisherJavascriptAllowed(value: boolean): Promise<void>;
+  getRemoteImagesAllowed(): Promise<boolean>;
+  setRemoteImagesAllowed(value: boolean): Promise<void>;
   getLoadRemoteImage(): Promise<boolean>;
   setLoadRemoteImage(value: boolean): Promise<void>;
   getInlinePdfReader(): Promise<boolean>;
