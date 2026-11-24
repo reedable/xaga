@@ -1,5 +1,5 @@
 name: Verify source
-description: Run the shared release and pull request verification checks
+description: Install JavaScript dependencies and run source checks
 runs:
   using: composite
   steps:
@@ -27,24 +27,7 @@ runs:
       uses: dtolnay/rust-toolchain@stable
       with:
         components: rustfmt
-        targets: aarch64-apple-darwin
 
     - name: Check Rust formatting
       run: cargo fmt --all --check
-      shell: bash
-
-    - name: Cache Rust dependencies and build output
-      uses: Swatinem/rust-cache@v2
-      with:
-        workspaces: . -> target
-        key: aarch64-apple-darwin
-
-    - name: Install Protocol Buffers compiler
-      env:
-        HOMEBREW_NO_AUTO_UPDATE: "1"
-      run: brew install protobuf && protoc --version
-      shell: bash
-
-    - name: Install Chromium for browser tests
-      run: npx playwright install chromium
       shell: bash

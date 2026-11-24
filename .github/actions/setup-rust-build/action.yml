@@ -1,0 +1,21 @@
+name: Set up Rust build dependencies
+description: Prepare Rust and Protocol Buffers for macOS Apple Silicon builds
+runs:
+  using: composite
+  steps:
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: aarch64-apple-darwin
+
+    - name: Cache Rust dependencies and build output
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: . -> target
+        key: aarch64-apple-darwin
+
+    - name: Install Protocol Buffers compiler
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: "1"
+      run: brew install protobuf && protoc --version
+      shell: bash

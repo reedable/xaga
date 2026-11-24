@@ -220,9 +220,9 @@ Later RCs leave the bump PR alone. If opening the bump PR fails, publication
 still attempts the draft. Rerun the publication job to retry the bump using the
 retained package.
 
-If verification or building fails, **Re-run failed jobs** prepares the same RC
-version from the original source. The failed build leaves the remote branch and
-tag untouched. If another run publishes in the meantime, the branch and tag
+If verification or building fails, use **Re-run failed jobs**. A successful
+preparation job retains the exact RC commit for the retry. The failed build
+leaves the remote branch and tag untouched. If another run publishes in the meantime, the branch and tag
 checks protect the published candidate.
 
 #### Abandon an inconsistent RC
@@ -284,24 +284,28 @@ resulting Git tree with the proposed merge. If the trees match, the required
 **Verification** job is skipped. A mismatch or an unsuccessful comparison
 leaves full verification in effect.
 
-For other PRs, including release-branch PRs, the **Verification** job
-checks the proposed merge on macOS Apple Silicon with Rust compiler and
-documentation warnings treated as errors. It runs lint, repository formatting,
-TypeScript, reader CSP, Rust formatting, browser tests, all-target workspace
-compilation, and headless tests. It does not prepare versions, package the
-application, push refs, or create releases. Native WebKit and bundled macOS smoke
-checks remain separate desktop verification.
+For other PRs, including release-branch PRs, GitHub verifies the proposed merge
+in three sequential macOS Apple Silicon jobs:
 
-PR and release workflows use `.github/actions/verify/action.yml` for shared
-setup, lint, formatting, frontend type checks, and reader CSP verification.
-Order verification by running cheap checks first, then unstable tests, then
-stable checks and tests. Browser tests and their diagnostics upload precede
-the Rust workspace check and headless tests. The test steps remain in both
-`.github/workflows/development-pr.yml` and
-`.github/workflows/release-pipeline.yml` because composite actions do not support
-per-step timeouts; both call the same npm test scripts with 30-minute limits.
-Keep these test invocations and diagnostic upload settings synchronized. Releases
-verify after preparing the release commit and before packaging.
+- **Source checks** runs lint, repository formatting, TypeScript, reader CSP,
+  and Rust formatting.
+- **Browser tests** runs the Playwright suite and uploads its diagnostics.
+- **Rust and headless checks** runs all-target workspace compilation and the
+  headless suite with Rust compiler and documentation warnings treated as errors.
+
+The required **Verification** result succeeds only when all three jobs pass.
+Use **Re-run failed jobs** to retry a failed job and continue with its
+dependents. Earlier successful jobs are reused. Browser tests still run as a
+single suite. Native WebKit and bundled macOS smoke checks remain separate
+desktop verification.
+
+PR verification, Release Candidate, Release, and Manual release build call the
+same reusable verification workflow. The browser and headless test steps each
+have a 30-minute limit. Releases prepare source in a separate job, then each
+verification job and the packaging job restore the same prepared commit. The
+preparation artifact retains that commit and its release identity for 14 days.
+The packaging job depends on successful verification, and publication depends
+on successful packaging.
 
 The PR workflow uses `pull_request` with `contents: read` and
 does not persist checkout credentials. It also runs for fork PRs, subject to
@@ -391,7 +395,9 @@ workflow file does not update GitHub repository settings.
 ### Failures and recovery
 
 Failed verification, build, or signature checking does not change the existing
-tag. Do not move a release tag to reuse its number after changing source.
+tag. Use **Re-run failed jobs** to retry from the failed verification or
+packaging job. If preparation succeeded, subsequent jobs reuse its retained
+source. Do not move a release tag to reuse its number after changing source.
 
 For failed draft uploads or PR creation, choose **Re-run failed jobs** on the original run, or
 rerun only **Push and create draft**. It reuses the successful build job's
