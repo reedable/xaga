@@ -46,8 +46,20 @@ pub(crate) async fn read_markdown(
     writer: Option<&LibraryWriter>,
     kind: Record,
 ) -> Result<String, EntryError> {
+    read_markdown_with(path, writer, kind, |raw| {
+        crate::md::parse_indexed(raw, path)
+    })
+    .await
+}
+
+pub(super) async fn read_markdown_with(
+    path: &Path,
+    writer: Option<&LibraryWriter>,
+    kind: Record,
+    parse: impl Fn(&str) -> Result<(crate::md::Frontmatter, String), crate::md::MdError>,
+) -> Result<String, EntryError> {
     let raw = crate::fs::read_md_capped(path).await?;
-    let (fm, _) = crate::md::parse_indexed(&raw, path)?;
+    let (fm, _) = parse(&raw)?;
     if fm.id.is_none() {
         if let Some(writer) = writer {
             if let Err(error) = writer.repair_identity(path.to_owned(), kind).await {
@@ -58,12 +70,12 @@ pub(crate) async fn read_markdown(
                 );
                 // A stale read must not hide a subsequently conflicting identity.
                 if let Ok(current) = crate::fs::read_md_capped(path).await {
-                    crate::md::parse_indexed(&current, path)?;
+                    parse(&current)?;
                 }
                 return Ok(raw);
             }
             let current = crate::fs::read_md_capped(path).await?;
-            crate::md::parse_indexed(&current, path)?;
+            parse(&current)?;
             return Ok(current);
         }
     }
@@ -74,9 +86,17 @@ pub(crate) async fn read_atom(
     path: &Path,
     writer: Option<&LibraryWriter>,
 ) -> Result<crate::atom::Atom, super::feeds::FeedError> {
+    read_atom_with(path, writer, crate::atom::parse_atom).await
+}
+
+pub(super) async fn read_atom_with(
+    path: &Path,
+    writer: Option<&LibraryWriter>,
+    parse: impl Fn(&str) -> Result<crate::atom::Atom, String>,
+) -> Result<crate::atom::Atom, super::feeds::FeedError> {
     use super::feeds::FeedError;
     let raw = tokio::fs::read_to_string(path).await?;
-    let mut atom = crate::atom::parse_atom(&raw).map_err(FeedError::AtomParse)?;
+    let mut atom = parse(&raw).map_err(FeedError::AtomParse)?;
     let missing = crate::atom::ensure_local_id(&mut atom, path).map_err(FeedError::AtomParse)?;
     if missing {
         if let Some(writer) = writer {
@@ -89,7 +109,7 @@ pub(crate) async fn read_atom(
             }
             // Observe any concurrent rename/refresh without restoring the old snapshot.
             if let Ok(raw) = tokio::fs::read_to_string(path).await {
-                atom = crate::atom::parse_atom(&raw).map_err(FeedError::AtomParse)?;
+                atom = parse(&raw).map_err(FeedError::AtomParse)?;
                 crate::atom::ensure_local_id(&mut atom, path).map_err(FeedError::AtomParse)?;
             }
         }

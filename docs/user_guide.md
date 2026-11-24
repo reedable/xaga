@@ -32,8 +32,8 @@ The examples below use a small fictional library: **Field notes** is a feed,
 1. Click **Add feed**, the **+** beside **Feeds** in the sidebar.
 2. Enter the feed's address in **URL**. Use the RSS or Atom feed address supplied
    by the website.
-3. Optionally enter **Name (optional)** and select **Add to Shortcuts** if you
-   want quick access to the feed.
+3. Optionally enter **Name (optional)**. To keep a shortcut, choose **Top level**
+   or a folder in **Shortcut destination**.
 4. Click **Add**, then select the feed to browse its articles.
 
 If feeds fail to refresh, a notification shows the number of failures. Choose
@@ -118,10 +118,10 @@ from different feeds.
 
 1. To create a Topic, click **Add topic**, the **+** beside **Topics** in the
    sidebar. Enter a **Title**, optionally add a **Description**, and click **Save**.
-2. Open an article and choose **Topics** in **Article details**. If the details
+2. Open an article or stored PDF and choose **Topics** in **Article details**. If the details
    panel is hidden, click **Show article details** in the toolbar first.
-3. Select a Topic, such as **Everyday discoveries**, to add the article. Clear
-   its checkbox to remove the article from that Topic.
+3. Select a Topic, such as **Everyday discoveries**, to add the document. Clear
+   its checkbox to remove the document from that Topic.
 4. Expand **Topics** in the sidebar and select the Topic to browse its members.
    Choose **All** if you also want to see read articles.
 
@@ -146,14 +146,14 @@ Expand **Sites** and select a website to see articles you already have from
 that website. Sites groups saved material; selecting a website does not subscribe
 you to its feeds or fetch all its pages.
 
-Tags give articles and annotations labels you choose:
+Tags give articles, stored PDFs, and annotations labels you choose:
 
-1. Open an article and select **Tags** in **Article details**. To tag an
+1. Open an article or stored PDF and select **Tags** in **Article details**. To tag an
    annotation, click its highlighted passage, choose **Show annotation details**,
    and select **Tags** in **Annotation details**.
 2. Click a tag to assign it; click it again to remove that assignment. For a new
    tag, type its name in **Find or create a tag**, then click **Create “name”**.
-3. Expand **Tags** in the sidebar and select tags to browse matching articles and annotations.
+3. Expand **Tags** in the sidebar and select tags to browse matching articles, PDFs, and annotations.
    Each result must have every selected tag itself; tags on an article and its
    annotations are not combined. Selecting an annotation opens its passage.
 
@@ -167,7 +167,7 @@ annotation keeps the tag available elsewhere. Tagging an annotation does not tag
 its article or other annotations. Recoloring keeps its tags.
 
 With tags selected, **Saved** includes matching annotations and bookmarked
-articles. Clear the selection to return to All items under your current filters.
+articles and PDFs. Clear the selection to return to All items under your current filters.
 Deleting a tag removes its assignments from articles and annotations while
 retaining that content; removing one chip assignment only affects its target.
 
@@ -209,9 +209,15 @@ name. Sorting is also available when your library is read-only.
 
 ## Keep a shortcut
 
-For an open article, choose **Share → Add to Shortcuts**. For a feed or Topic,
-select **Add to Shortcuts** when adding or editing it. Your shortcut appears
-under **Shortcuts** in the sidebar.
+For an open article, choose **Share → Add to Shortcuts**, select **Top level**
+or a folder in **Shortcut destination**, and click **Add**. The shortcut
+appears under **Shortcuts** in the sidebar.
+
+Use the same dropdown when adding or editing a feed or Topic, creating a Topic
+in Inspector, or opening **Site Settings**. The edit form shows the current
+shortcut location. Choose another location and save to move the shortcut, or
+choose **No shortcut** and save to remove it. **Cancel** leaves Shortcuts as
+they were when you opened the form.
 
 Choose **Share → Remove from Shortcuts** to unpin an article. Removing a shortcut
 keeps its destination and your current reading context.
@@ -267,6 +273,9 @@ MiB that equal a whole number of bytes; timeouts accept whole seconds.
 ### Appearance
 
 Under **Reading**, **Default article view** selects **Summary** or **Reader**.
+Xaga starts in **Summary** and remembers your choice. **Summary** shows saved
+content. **Reader** fetches the publisher page if the body is missing. You can
+also request the page with **Refresh** or **Show Original Site**.
 The font, font size, and line height controls adjust the reading presentation.
 
 ### Privacy
@@ -279,12 +288,26 @@ in exchange for potentially smaller transfers. The feed size limit still counts
 decompressed bytes. Both changes apply to the next feed add, refresh, or import;
 they do not change article-loader headers or compression.
 
+**Load remote images** is off by default. Leave it off to read text without
+browser image requests. Image hosts can use these requests to track visits.
+Publisher JavaScript can still request image data if you allow it.
+
+**Save article images for offline viewing** works when **Load remote images**
+is also on. Xaga can make additional requests to save article images and site
+icons, or recover missing article images. Those requests can form a pattern
+specific to Xaga. Reopening a saved article displays images already in your
+library without requesting them again. The image controls apply to new loader
+windows and new recovery attempts.
+
+**Allow publisher JavaScript** is off by default. Enable it if an article
+needs scripts to display its content. This also lets publishers run tracking
+scripts. The choice applies app-wide to newly opened article loader windows.
+Reopen a loader window to use the new preference. Image saving has its own
+control.
+
 **Keep website sessions** lets listed websites retain cookies and site data in
 isolated sessions, for example to stay logged in. Persistent sessions require
 macOS 14 or later. Reopen existing loader windows after changing this list.
-**Save article images for offline viewing** allows additional image requests;
-its description explains when the change takes effect and which images remain
-available when it is off.
 
 ### Security
 

@@ -131,6 +131,19 @@ it("uses saved Markdown without network loading", async () => {
   expect(mocks.router.replaceEntry).toHaveBeenCalledWith(article);
 });
 
+it("shows a stored summary before Reader permits live loading", async () => {
+  const url = "https://example.org/article";
+  const article = { id: "saved", content: "", description: "Feed excerpt" };
+  mocks.articles.findArticleByUrl.mockResolvedValue(article);
+
+  await act(() => hook.resolve(url, false, false));
+  expect(mocks.router.replaceEntry).toHaveBeenCalledWith(article);
+  expect(mocks.articles.loadArticleByUrl).not.toHaveBeenCalled();
+
+  await act(() => hook.resolve(url, false, true));
+  expect(mocks.articles.loadArticleByUrl).toHaveBeenCalledOnce();
+});
+
 it.each(["failure", "unsupported"])(
   "retains the displayed PDF after refresh %s",
   async (outcome) => {

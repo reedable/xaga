@@ -1,6 +1,6 @@
 use crate::{AppState, error::AppError};
 use tauri::State;
-use xaga_core::pins::{PinTarget, Pins};
+use xaga_core::pins::{PinPlacement, PinTarget, Pins};
 
 #[tauri::command]
 pub async fn list_pins(state: State<'_, AppState>) -> Result<Pins, AppError> {
@@ -11,13 +11,19 @@ pub async fn list_pins(state: State<'_, AppState>) -> Result<Pins, AppError> {
 pub async fn set_pin(
     target: PinTarget,
     pinned: bool,
+    placement: Option<PinPlacement>,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let target = target.normalized()?;
-    super::require_writer(&state)?
-        .set_pin(target.clone(), pinned)
-        .await?;
+    let writer = super::require_writer(&state)?;
+    if let Some(placement) = placement {
+        writer
+            .set_pin_with_placement(target.clone(), pinned, Some(placement))
+            .await?;
+    } else {
+        writer.set_pin(target.clone(), pinned).await?;
+    }
     let entity = match &target {
         PinTarget::Entry { id } => Some((id.clone(), xaga_core::types::Kind::Entry)),
         PinTarget::Feed { id } => Some((id.clone(), xaga_core::types::Kind::Feed)),

@@ -35,6 +35,7 @@ pub struct PendingRequest {
     /// Delivers the finished capture back to `load_via_webview`.
     pub tx: oneshot::Sender<LoaderCapture>,
     pub keep_open: bool,
+    pub(crate) acquire_images: bool,
     pub purpose: LoaderPurpose,
     pub attempt: ArticleLoadAttempt,
     pub diagnostic_event_count: usize,
@@ -99,7 +100,9 @@ pub async fn load_via_webview(
     timeout_secs: u64,
     keep_open: bool,
     purpose: LoaderPurpose,
+    remote_images_allowed: bool,
     load_remote_image: bool,
+    publisher_javascript_allowed: bool,
     allowed_domains: &[String],
     named_stores_supported: bool,
     proxy: Arc<xaga_core::network_proxy::ScopedProxy>,
@@ -152,6 +155,7 @@ pub async fn load_via_webview(
         PendingRequest {
             tx,
             keep_open,
+            acquire_images: load_remote_image,
             purpose,
             attempt: attempt.clone(),
             diagnostic_event_count: 0,
@@ -205,7 +209,7 @@ pub async fn load_via_webview(
     let download_handler = downloads.clone();
     let download_cleanup = downloads.clone();
     let build_attempt = attempt.clone();
-    let scheduled = app.run_on_main_thread(move || {
+    let build = move |configuration: Result<_, String>| {
         if build_attempt.is_cancelled() {
             build_pending
                 .lock()
@@ -222,6 +226,7 @@ pub async fn load_via_webview(
             return;
         }
         let result = (|| {
+            let configuration = configuration?;
             let mut builder =
                 WebviewWindowBuilder::new(&build_app, &build_label, WebviewUrl::External(parsed))
                     .initialization_script(&init_script)
@@ -310,13 +315,17 @@ pub async fn load_via_webview(
             #[cfg(target_os = "macos")]
             {
                 build_attempt.add_started_event("webview_policy");
-                builder = builder.with_webview_configuration(
-                    crate::webview_policy::loader_configuration(identifier)?,
-                );
+                // On WebKit this controls publisher scripts and preserves user scripts.
+                if !publisher_javascript_allowed {
+                    builder = builder.disable_javascript();
+                }
+                builder = builder.with_webview_configuration(configuration);
                 build_attempt.add_succeeded_event("webview_policy");
             }
             #[cfg(not(target_os = "macos"))]
             {
+                // Other webview engines have different JavaScript controls.
+                let _ = (configuration, publisher_javascript_allowed);
                 builder = match identifier {
                     Some(id) => builder.data_store_identifier(id),
                     None => builder.incognito(true),
@@ -353,6 +362,20 @@ pub async fn load_via_webview(
             // The deadline may expire while native construction is running.
             let _ = window.destroy();
         }
+    };
+    let scheduled = app.run_on_main_thread(move || {
+        #[cfg(target_os = "macos")]
+        crate::loader_image_policy::configure_article_loader(
+            identifier,
+            remote_images_allowed,
+            build,
+        );
+        #[cfg(not(target_os = "macos"))]
+        build(if remote_images_allowed {
+            Ok(())
+        } else {
+            Err("remote image blocking is unavailable".into())
+        });
     });
     let built = match scheduled {
         Ok(()) => match tokio::time::timeout_at(deadline, built_rx).await {
@@ -507,6 +530,7 @@ mod diagnostic_tests {
         let request = PendingRequest {
             tx,
             keep_open: false,
+            acquire_images: true,
             purpose: LoaderPurpose::Article,
             attempt: attempt.clone(),
             diagnostic_event_count: 0,

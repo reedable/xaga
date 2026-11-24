@@ -17,8 +17,29 @@ pub async fn list_feeds(state: State<'_, AppState>) -> Result<Vec<Feed>, AppErro
         .map_err(AppError::from)
 }
 
+#[derive(serde::Serialize)]
+pub struct AddFeedError {
+    #[serde(flatten)]
+    error: crate::error::SerializedError,
+    #[serde(rename = "savedFeedId", skip_serializing_if = "Option::is_none")]
+    saved_feed_id: Option<String>,
+}
+
+impl From<AppError> for AddFeedError {
+    fn from(error: AppError) -> Self {
+        Self {
+            error: error.serialized(),
+            saved_feed_id: None,
+        }
+    }
+}
+
 #[tauri::command]
-pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, AppError> {
+pub async fn add_feed(
+    url: String,
+    saved_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Feed, AddFeedError> {
     let library = state.library_path();
     let writer = crate::commands::require_writer(&state)?;
     let timeout_secs = *state.feed_timeout_secs.read().unwrap();
@@ -33,18 +54,40 @@ pub async fn add_feed(url: String, state: State<'_, AppState>) -> Result<Feed, A
         get_unread_ids(&state).await?,
         get_bookmarked_ids(&state).await?,
     );
-    let (feed, created) = feeds::add_feed(
-        &client,
-        &library,
-        &writer,
-        &url,
-        &unread,
-        &bookmarked,
-        timeout_secs,
-        max_body_bytes,
-    )
-    .await
-    .map_err(AppError::from)?;
+    let result = if let Some(id) = &saved_id {
+        feeds::refresh_saved_feed(
+            &client,
+            &library,
+            &writer,
+            id,
+            &unread,
+            timeout_secs,
+            max_body_bytes,
+        )
+        .await
+    } else {
+        feeds::add_feed(
+            &client,
+            &library,
+            &writer,
+            &url,
+            &unread,
+            &bookmarked,
+            timeout_secs,
+            max_body_bytes,
+        )
+        .await
+    };
+    let (feed, created) = result.map_err(|error| {
+        let saved_feed_id = match &error {
+            feeds::FeedError::SavedRefresh { id, .. } => Some(id.clone()),
+            _ => saved_id,
+        };
+        AddFeedError {
+            error: AppError::from(error).serialized(),
+            saved_feed_id,
+        }
+    })?;
     // User-initiated CRUD: the user invoked add_feed and is waiting on the result, so the
     // entry upsert rides Interactive (T1). Its entry embedding then follows to Regular via
     // `embed_follow`, per the priority definitions in the embedding service's `run_loop`.
@@ -149,7 +192,14 @@ pub async fn set_feed_pinned(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    super::pins::set_pin(xaga_core::pins::PinTarget::Feed { id }, pinned, app, state).await
+    super::pins::set_pin(
+        xaga_core::pins::PinTarget::Feed { id },
+        pinned,
+        None,
+        app,
+        state,
+    )
+    .await
 }
 
 #[tauri::command]

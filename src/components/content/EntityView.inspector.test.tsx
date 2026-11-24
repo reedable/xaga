@@ -36,6 +36,12 @@ vi.mock("../../hooks/useEvents", () => ({
     },
   }),
 }));
+vi.mock("../../hooks/useAppearance", () => ({
+  useAppearance: () => ({
+    htmlReaderView: "reader",
+    htmlReaderViewReady: true,
+  }),
+}));
 vi.mock("../../hooks/useRouter", () => ({
   default: () => ({ state: mocks.state, search: mocks.search }),
 }));

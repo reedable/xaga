@@ -7,8 +7,9 @@ mod theme;
 use menus::{set_find_enabled, update_show_sidebar_checkmark, update_view_checkmarks};
 use settings::{
     AccountLock, DEFAULT_FEED_MAX_BODY_BYTES, DEFAULT_FEED_TIMEOUT_SECS, DEFAULT_IMPORT_MAX_BYTES,
-    DEFAULT_LOAD_REMOTE_IMAGE, DEFAULT_LOADER_TIMEOUT_SECS, SettingsOutcome, UserSettings,
-    account_lease, load_settings, settings_mtime, settings_path, stale_view_error, update_settings,
+    DEFAULT_LOAD_REMOTE_IMAGE, DEFAULT_LOADER_TIMEOUT_SECS, DEFAULT_PUBLISHER_JAVASCRIPT_ALLOWED,
+    SettingsOutcome, UserSettings, account_lease, load_settings, settings_mtime, settings_path,
+    stale_view_error, update_settings,
 };
 use shutdown::{
     begin_shutdown, drain_and_release_writer, handle_run_event, install_signal_handler,
@@ -26,6 +27,8 @@ mod fetch_client;
 mod library_menu;
 mod loader_download;
 mod loader_identity;
+#[cfg(target_os = "macos")]
+mod loader_image_policy;
 mod native;
 mod resource_download;
 mod shortcuts_menu;
@@ -93,6 +96,8 @@ pub(crate) struct AppState {
     pub(crate) named_stores_supported: bool,
     pub(crate) inline_pdf_reader: Arc<RwLock<bool>>,
     pub(crate) load_remote_image: Arc<RwLock<bool>>,
+    pub(crate) remote_images_allowed: Arc<RwLock<bool>>,
+    pub(crate) publisher_javascript_allowed: Arc<RwLock<bool>>,
     pub(crate) html_reader_view: Arc<RwLock<String>>,
     /// Port of the local SSRF-filtering proxy that loader webviews and the
     /// per-invocation fetch clients (see [`fetch_client`]) are routed through.
@@ -119,6 +124,10 @@ pub(crate) struct AppState {
 }
 
 impl AppState {
+    pub(crate) fn can_acquire_article_images(&self) -> bool {
+        *self.remote_images_allowed.read().unwrap() && *self.load_remote_image.read().unwrap()
+    }
+
     /// Enqueues a job onto the embedding service if it is running. No-op when the
     /// service isn't present (e.g. another instance holds the library lock). The
     /// `flume` send is non-blocking and is never held across an `.await`.

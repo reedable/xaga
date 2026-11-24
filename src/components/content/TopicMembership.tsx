@@ -27,6 +27,10 @@ import { useTopics } from "../../hooks/useTopics";
 import { useEmbeddingStartupState } from "../../hooks/useEmbeddingStartupState";
 import { useTopicCreationCheck } from "../../hooks/useTopicCreationCheck";
 import useRouter from "../../hooks/useRouter";
+import {
+  shortcutSaveError,
+  useShortcutSelection,
+} from "../dialogs/ShortcutDestination";
 import SimilarTopicsDialog from "../dialogs/SimilarTopicsDialog";
 import type { Annotation, Entry, Topic } from "../../types";
 import { TopicFormFields, useTopicForm } from "../dialogs/TopicFormFields";
@@ -47,16 +51,29 @@ function InlineTopicForm({
   onOpenTopic: (topic: Topic) => void;
   onCreate: (
     values: ReturnType<typeof useTopicForm>["values"]
-  ) => Promise<boolean>;
+  ) => Promise<Topic | undefined>;
 }) {
   const form = useTopicForm({ title: initialTitle });
+  const shortcut = useShortcutSelection();
+  const savedTopic = useRef<Topic | undefined>(undefined);
+  const [entitySaved, setEntitySaved] = useState(false);
   const creation = useTopicCreationCheck(!readOnly, async (draft) => {
-    if (await onCreate(draft)) onCancel();
+    const saved = savedTopic.current ?? (await onCreate(draft));
+    if (!saved) return;
+    savedTopic.current = saved;
+    setEntitySaved(true);
+    try {
+      await shortcut.save({ type: "topic", id: saved.id });
+    } catch (cause) {
+      throw shortcutSaveError("Topic", cause);
+    }
+    onCancel();
   });
 
   const handleSubmit = (event: React.SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (form.values.title && !readOnly) creation.submit(form.values);
+    if (form.values.title && !readOnly)
+      creation.submit(form.values, savedTopic.current !== undefined);
   };
 
   return (
@@ -74,6 +91,8 @@ function InlineTopicForm({
         )}
         <TopicFormFields
           form={form}
+          shortcut={shortcut}
+          entitySaved={entitySaved}
           busy={creation.busy || readOnly}
           autoFocus
         />
@@ -127,7 +146,6 @@ export function TopicMembership({ entity }: { entity: Entry | Annotation }) {
     topics,
     hasLoaded,
     createTopicWithMember,
-    setTopicPinned,
     listEntryTopics,
     addTopicEntity,
     removeTopicEntity,
@@ -212,20 +230,19 @@ export function TopicMembership({ entity }: { entity: Entry | Annotation }) {
 
   const handleCreate = useCallback(
     async (values: ReturnType<typeof useTopicForm>["values"]) => {
-      if (readOnly) return false;
+      if (readOnly) return;
       const input = {
         title: values.title,
         description: values.description,
         threshold: values.threshold,
       };
       const topic = await createTopicWithMember(input, entity);
-      if (!topic) return false;
-      setTopicPinned(topic.id, values.pinned);
-      if (currentEntityId.current !== entity.id) return true;
-      setMemberIds((previous) => new Set([...previous, topic.id]));
-      return true;
+      if (topic && currentEntityId.current === entity.id) {
+        setMemberIds((previous) => new Set([...previous, topic.id]));
+      }
+      return topic;
     },
-    [createTopicWithMember, entity, setTopicPinned, readOnly]
+    [createTopicWithMember, entity, readOnly]
   );
 
   const handleSortByChange = (event: SelectChangeEvent) => {

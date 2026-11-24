@@ -154,8 +154,13 @@ pub(super) fn prepare() -> Startup {
     let embeddings_read: Arc<Mutex<Option<EmbeddingsDb>>> = Arc::new(Mutex::new(None));
     let allowed_domains: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new()));
     let load_remote_image = Arc::new(RwLock::new(DEFAULT_LOAD_REMOTE_IMAGE));
+    let remote_images_allowed =
+        Arc::new(RwLock::new(crate::settings::DEFAULT_REMOTE_IMAGES_ALLOWED));
+    let publisher_javascript_allowed = Arc::new(RwLock::new(DEFAULT_PUBLISHER_JAVASCRIPT_ALLOWED));
     let inline_pdf_reader: Arc<RwLock<bool>> = Arc::new(RwLock::new(false));
-    let html_reader_view: Arc<RwLock<String>> = Arc::new(RwLock::new("reader".to_string()));
+    let html_reader_view: Arc<RwLock<String>> = Arc::new(RwLock::new(
+        crate::settings::DEFAULT_HTML_READER_VIEW.to_owned(),
+    ));
     let settings_baseline: Arc<RwLock<Option<std::time::SystemTime>>> = Arc::new(RwLock::new(None));
 
     let read_only_startup = Arc::new(tokio::sync::Notify::new());
@@ -185,6 +190,8 @@ pub(super) fn prepare() -> Startup {
         named_stores_supported,
         inline_pdf_reader,
         load_remote_image,
+        remote_images_allowed,
+        publisher_javascript_allowed,
         html_reader_view,
         network_proxy_port,
         http_allowed,
@@ -212,6 +219,8 @@ pub(super) fn initialize(
     let setup_embeddings_read = Arc::clone(&state.embeddings_read);
     let setup_allowed_domains = Arc::clone(&state.allowed_domains);
     let setup_load_remote_image = Arc::clone(&state.load_remote_image);
+    let setup_remote_images_allowed = Arc::clone(&state.remote_images_allowed);
+    let setup_publisher_javascript_allowed = Arc::clone(&state.publisher_javascript_allowed);
     let setup_inline_pdf_reader = Arc::clone(&state.inline_pdf_reader);
     let setup_html_reader_view = Arc::clone(&state.html_reader_view);
     let setup_show_sidebar = Arc::clone(&state.show_sidebar);
@@ -338,9 +347,16 @@ pub(super) fn initialize(
     let builder = builder.with_webview_configuration(
         webview_policy::ui_configuration().map_err(std::io::Error::other)?,
     );
+    let html_reader_view_str = settings
+        .html_reader_view
+        .as_deref()
+        .unwrap_or(crate::settings::DEFAULT_HTML_READER_VIEW);
+    *setup_html_reader_view.write().unwrap() = html_reader_view_str.to_owned();
+    *setup_load_remote_image.write().unwrap() = settings.load_remote_image();
+    *setup_remote_images_allowed.write().unwrap() = settings.remote_images_allowed();
+    *setup_publisher_javascript_allowed.write().unwrap() = settings.publisher_javascript_allowed();
     let window = builder.build()?;
     ui_network::retain_for_window(&window, proxy);
-    *setup_load_remote_image.write().unwrap() = settings.load_remote_image();
     let refresh = settings.refresh_on_startup.unwrap_or(false);
     let timeout = settings
         .loader_timeout_secs
@@ -396,16 +412,12 @@ pub(super) fn initialize(
     *setup_sidebar_sort.write().unwrap() = sidebar_sort;
     *setup_allowed_domains.write().unwrap() = settings.allowed_domains.unwrap_or_default();
     *setup_inline_pdf_reader.write().unwrap() = settings.inline_pdf_reader.unwrap_or(false);
-    let html_reader_view_str = settings
-        .html_reader_view
-        .unwrap_or_else(|| "reader".to_string());
-    *setup_html_reader_view.write().unwrap() = html_reader_view_str.clone();
 
     // Correct the menu checkmarks now that we know the persisted values.
     update_theme_checkmarks(app.handle(), &theme);
     update_show_sidebar_checkmark(app.handle(), show_sidebar);
     sidebar_sort::update(app.handle(), sidebar_sort);
-    update_view_checkmarks(app.handle(), &html_reader_view_str);
+    update_view_checkmarks(app.handle(), html_reader_view_str);
 
     // The main window is created hidden ("visible": false in
     // tauri.conf.json). Paint it the theme color, then reveal it, so it

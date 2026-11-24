@@ -232,11 +232,18 @@ export class TauriPlatform implements Platform {
       .map((e) => e.data);
   }
 
-  async addFeed(signal: AbortSignal, feedUrl: string): Promise<Feed> {
+  async addFeed(
+    signal: AbortSignal,
+    feedUrl: string,
+    savedId?: string
+  ): Promise<Feed> {
     const invoker = decorate(invoke)
       .with(abortable, { signal })
       .with(logged, { logger, name: "add_feed" });
-    const result = await invoker("add_feed", { url: feedUrl });
+    const result = await invoker("add_feed", {
+      url: feedUrl,
+      ...(savedId && { savedId }),
+    });
     return FeedSchema.transform(toFeed).parse(result);
   }
 
@@ -1469,8 +1476,16 @@ export class TauriPlatform implements Platform {
     return invoke("organize_pins", { edit });
   }
 
-  setPin(target: PinTarget, pinned: boolean): Promise<void> {
-    return invoke("set_pin", { target, pinned });
+  setPin(
+    target: PinTarget,
+    pinned: boolean,
+    placement?: import("../pins").PinPlacement
+  ): Promise<void> {
+    return invoke("set_pin", {
+      target,
+      pinned,
+      ...(placement && { placement }),
+    });
   }
 
   async onPinChanged(
@@ -1505,6 +1520,22 @@ export class TauriPlatform implements Platform {
       logger,
       name: "set_topic_pinned",
     })<void>("set_topic_pinned", { id, pinned });
+  }
+
+  getPublisherJavascriptAllowed(): Promise<boolean> {
+    return invoke<boolean>("get_publisher_javascript_allowed");
+  }
+
+  setPublisherJavascriptAllowed(value: boolean): Promise<void> {
+    return invoke<void>("set_publisher_javascript_allowed", { value });
+  }
+
+  getRemoteImagesAllowed(): Promise<boolean> {
+    return invoke<boolean>("get_remote_images_allowed");
+  }
+
+  setRemoteImagesAllowed(value: boolean): Promise<void> {
+    return invoke<void>("set_remote_images_allowed", { value });
   }
 
   setLoadRemoteImage(value: boolean): Promise<void> {

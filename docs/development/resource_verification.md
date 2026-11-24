@@ -25,7 +25,11 @@ Both require a macOS desktop session.
 `loader_lifecycle_webview` also exercises WebKit-selected `srcset` and `<picture>`
 URLs with offline image capture disabled and enabled. It checks serialized
 selection metadata, successful capture pairings, alternative/title preservation,
-and that disabled capture's HTML snapshot adds no image request. Conversion and
+and that disabled capture's HTML snapshot adds no image request. A separate
+case turns off remote image loading and checks that WebKit makes no image-element,
+CSS image, or favicon requests while article text still reaches Xaga. The
+persisted resources fixture checks that turning off either image control prevents
+recovery. Conversion and
 presentation regressions in `article_loader.images.test.ts` cover failed capture,
 missing browser selection, relative fallback sources, all HTML delivery paths,
 and unavailable-image rendering. Browser capture-mode workflows do not run the
@@ -76,4 +80,5 @@ For each of **undecided** and **denied** Downloads access:
 
 Automatic repair of missing hash-only resources is not provided. Their source
 URLs are not retained. Cached reads present an unavailable image or absent
-favicon; explicit article refresh may reacquire resources supplied by the page.
+favicon. Explicit article refresh may reacquire resources supplied by the page
+when both image permissions are on.

@@ -19,7 +19,8 @@ npm run test:browser
 ```
 
 `npm test` includes this suite along with script, UI, Rust, and native GUI tests.
-`npm run test:ci` runs script, UI, Rust, and browser tests without the native GUI suite.
+`npm run test:ci` runs browser tests first, followed by the headless script, UI,
+and Rust tests. The native GUI suite is separate.
 
 On Linux, install the browser's operating-system dependencies as well:
 
@@ -207,20 +208,17 @@ implemented. Native WebKit rendering and focus require separate checks.
 
 ## Failures and CI
 
-The **Verify and build macOS Apple Silicon** job in
-`.github/workflows/release-pipeline.yml` runs browser tests for Release Candidate
-and Release dispatches and Manual release build tag pushes. Ordinary branch pushes
-and pull requests do not trigger these workflows.
+The shared **Browser tests** job runs for pull request verification, Release
+Candidate and Release dispatches, and Manual release build tag pushes. It runs
+after **Source checks** and before **Rust and headless checks**. After checkout
+and dependency installation, it installs Chromium and runs
+`npm run test:browser` with a 30-minute limit.
 
-After lint, formatting, frontend type/CSP checks, and Rust workspace checks pass,
-the macOS job installs Chromium and runs `npm run test:headless` followed by
-`npm run test:browser` in separate steps, each with a 30-minute timeout. Rust test
-compilation therefore does not consume the browser suite’s time allowance. These
-commands run the same suites as `npm run test:ci`. Browser failures
-block the release build. The job uploads
-`playwright-report/` and `test-results/` as the `browser-integration-<attempt>` artifact,
-retained for 14 days, including when browser tests fail. Artifact upload does not
-clear the failure.
+Use **Re-run failed jobs** to retry the browser job and continue with its
+dependents while keeping successful source checks. A failed browser job blocks
+PR verification and release packaging. The job uploads `playwright-report/`
+and `test-results/` as the `browser-integration-<attempt>` artifact, retained for
+14 days, including when browser tests fail.
 
 For a failed browser test, `test-results/` contains screenshots, a trace, browser
 console/error/request diagnostics in `browser-log.json`, and Playwright's error

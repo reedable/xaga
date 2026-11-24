@@ -97,9 +97,9 @@ function fixture(t, version = "0.17.3-dev") {
   git("remote", "add", "origin", remote);
   git("push", "origin", "main");
   const start = git("rev-parse", "HEAD");
-  const branch = version.endsWith("-dev")
-    ? "main"
-    : `release/${version.replace(/-rc\.[0-9]+$/, "")}`;
+  const branch = /-rc\.[0-9]+$/.test(version)
+    ? `release/${version.replace(/-rc\.[0-9]+$/, "")}`
+    : "main";
   if (branch !== "main") {
     git("switch", "-c", branch);
     git("push", "origin", branch);
@@ -258,10 +258,7 @@ test("first RC retries the same version and publishes only after building", (t) 
   );
   assert.deepEqual(
     github(f).prs.map(({ base, head }) => [base, head]),
-    [
-      ["main", "version/0.17.4-dev"],
-      ["main", "release/0.17.3"],
-    ]
+    [["main", "version/0.17.4-dev"]]
   );
   f.git("fetch", "origin", "refs/heads/version/0.17.4-dev");
   assert.equal(f.git("rev-parse", "FETCH_HEAD^"), f.start);
@@ -270,6 +267,71 @@ test("first RC retries the same version and publishes only after building", (t) 
     "0.17.4-dev"
   );
   assert.equal(github(f).releases[0].prerelease, true);
+});
+
+test("first patch RC starts directly from a final version on main", (t) => {
+  const f = fixture(t, "0.17.2");
+  f.git("push", "origin", "HEAD:refs/heads/release/0.17.2");
+  const refs = f.refs();
+  succeeds(f.prepare());
+  assert.equal(f.refs(), refs);
+  fails(f.seal());
+  assert.equal(f.refs(), refs);
+  f.git("checkout", "--detach", f.start);
+  succeeds(f.prepare("rc", { GITHUB_RUN_ATTEMPT: "2" }));
+  const commit = f.git("rev-parse", "HEAD");
+  assert.equal(f.git("rev-parse", "HEAD^"), f.start);
+  assert.equal(
+    JSON.parse(f.git("show", "HEAD:package.json")).version,
+    "0.17.3-rc.1"
+  );
+  f.build();
+  succeeds(f.seal());
+  f.git("checkout", "--detach", f.start);
+  succeeds(f.publish());
+  assert.equal(head(f), commit);
+  assert.equal(head(f, "main"), f.start);
+  assert.equal(github(f).releases[0].tag_name, "v0.17.3-rc.1");
+  const publishedRefs = f.refs();
+  const duplicate = f.prepare();
+  fails(duplicate);
+  assert.match(
+    duplicate.stderr,
+    /Release branch already exists; select release\/0\.17\.3/
+  );
+  assert.equal(f.refs(), publishedRefs);
+});
+
+test("an RC on main can recreate a missing release branch after building", (t) => {
+  const f = fixture(t, "0.17.3-rc.3");
+  const dispatch = { GITHUB_REF: "refs/heads/main" };
+  f.git("switch", "main");
+  const existingRefs = f.refs();
+  const conflict = f.prepare("rc", dispatch);
+  fails(conflict);
+  assert.match(conflict.stderr, /RC is in an inconsistent state/);
+  assert.match(conflict.stderr, /This RC must be abandoned/);
+  assert.match(
+    conflict.stderr,
+    /docs\/development\/release_cycle\.md#abandon-an-inconsistent-rc/
+  );
+  assert.equal(f.refs(), existingRefs);
+  assert.equal(f.git("rev-parse", "HEAD"), f.start);
+  f.git("push", "origin", "--delete", f.branch);
+  const refs = f.refs();
+  succeeds(f.prepare("rc", dispatch));
+  assert.equal(f.refs(), refs);
+  const commit = f.git("rev-parse", "HEAD");
+  assert.equal(f.git("rev-parse", "HEAD^"), f.start);
+  f.build();
+  succeeds(f.seal());
+  assert.equal(f.refs(), refs);
+  f.git("checkout", "--detach", f.start);
+  succeeds(f.publish());
+  assert.equal(head(f), commit);
+  assert.equal(head(f, "main"), f.start);
+  assert.equal(github(f).releases[0].tag_name, "v0.17.3-rc.4");
+  assert.deepEqual(github(f).prs, []);
 });
 
 test("next RC retries without advancing the release branch before publication", (t) => {
@@ -290,16 +352,29 @@ test("next RC retries without advancing the release branch before publication", 
   succeeds(f.publish());
   assert.equal(head(f), f.manifest().commit);
   assert.equal(f.git("ls-remote", "origin", "refs/heads/version/*"), "");
+  assert.deepEqual(github(f).prs, []);
 });
 
-test("RC publication reuses its existing open PR and never requests auto-merge", (t) => {
-  const f = fixture(t, "0.17.3-rc.1");
+test("the final publication opens and reuses the release PR after RC publication", (t) => {
+  const f = fixture(t);
   built(f);
   succeeds(f.publish());
-  assert.equal(github(f).prs.length, 1);
-  built(f);
+  assert.deepEqual(
+    github(f).prs.map(({ head }) => head),
+    ["version/0.17.4-dev"]
+  );
+  succeeds(f.prepare("release", { GITHUB_REF: "refs/heads/release/0.17.3" }));
+  f.build();
+  succeeds(f.seal());
   succeeds(f.publish());
-  assert.equal(github(f).prs.length, 1);
+  succeeds(f.publish());
+  assert.deepEqual(
+    github(f).prs.map(({ base, head }) => [base, head]),
+    [
+      ["main", "version/0.17.4-dev"],
+      ["main", "release/0.17.3"],
+    ]
+  );
   assert.equal(github(f).merges.length, 0);
 });
 
@@ -363,10 +438,7 @@ test("first RC publication retries bump PR creation using the same refs", (t) =>
   built(f);
   fails(f.publish({ GH_FAIL_PR_HEAD: "version/0.17.4-dev" }));
   assert.equal(head(f), f.manifest().commit);
-  assert.deepEqual(
-    github(f).prs.map(({ head }) => head),
-    ["release/0.17.3"]
-  );
+  assert.deepEqual(github(f).prs, []);
   assert.equal(github(f).releases[0].tag_name, f.manifest().tag);
   f.git("checkout", "--detach", f.start);
   f.git("commit", "--allow-empty", "-m", "Advance main during recovery");
@@ -377,7 +449,7 @@ test("first RC publication retries bump PR creation using the same refs", (t) =>
   assert.equal(f.refs(), refs);
   assert.deepEqual(
     github(f).prs.map(({ head }) => head),
-    ["release/0.17.3", "version/0.17.4-dev"]
+    ["version/0.17.4-dev"]
   );
 });
 
@@ -386,6 +458,7 @@ for (const [version, mode, ref] of [
   ["0.17.3-dev", "release", "refs/heads/main"],
   ["0.17.3-rc.1", "release", "refs/heads/main"],
   ["0.17.3-rc.1", "rc", "refs/heads/release/0.17.4"],
+  ["0.17.3", "rc", "refs/heads/release/0.17.3"],
   ["0.17.3", "release", "refs/heads/release/0.17.3"],
 ]) {
   test(`rejects ${mode} of ${version} on ${ref} without changes`, (t) => {

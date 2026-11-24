@@ -260,6 +260,48 @@ pub async fn set_load_remote_image(
 }
 
 #[tauri::command]
+pub(crate) async fn get_remote_images_allowed(
+    state: State<'_, AppState>,
+) -> Result<bool, AppError> {
+    Ok(*state.remote_images_allowed.read().unwrap())
+}
+
+#[tauri::command]
+pub(crate) async fn set_remote_images_allowed(
+    value: bool,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    match update_settings(&state, |s| s.remote_images_allowed = Some(value))? {
+        SettingsOutcome::StaleView(fresh) => Err(stale_view_error(&state, &fresh)),
+        SettingsOutcome::Written(_) => {
+            *state.remote_images_allowed.write().unwrap() = value;
+            Ok(())
+        }
+    }
+}
+
+#[tauri::command]
+pub(crate) async fn get_publisher_javascript_allowed(
+    state: State<'_, AppState>,
+) -> Result<bool, AppError> {
+    Ok(*state.publisher_javascript_allowed.read().unwrap())
+}
+
+#[tauri::command]
+pub(crate) async fn set_publisher_javascript_allowed(
+    value: bool,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    match update_settings(&state, |s| s.publisher_javascript_allowed = Some(value))? {
+        SettingsOutcome::StaleView(fresh) => Err(stale_view_error(&state, &fresh)),
+        SettingsOutcome::Written(_) => {
+            *state.publisher_javascript_allowed.write().unwrap() = value;
+            Ok(())
+        }
+    }
+}
+
+#[tauri::command]
 pub async fn get_import_max_bytes(state: State<'_, AppState>) -> Result<u64, AppError> {
     Ok(*state.import_max_bytes.read().unwrap())
 }

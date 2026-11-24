@@ -25,6 +25,9 @@ const platform = vi.hoisted(() => ({
   onInlinePdfReaderChanged: vi.fn().mockResolvedValue(() => {}),
   setAllowedDomains: vi.fn().mockResolvedValue(undefined),
   getAllowedDomains: vi.fn().mockResolvedValue([]),
+  getPublisherJavascriptAllowed: vi.fn().mockResolvedValue(false),
+  getRemoteImagesAllowed: vi.fn().mockResolvedValue(false),
+  setRemoteImagesAllowed: vi.fn(),
   getLoadRemoteImage: vi.fn(),
   setLoadRemoteImage: vi.fn(),
 }));
@@ -47,9 +50,7 @@ afterEach(async () => {
   container.remove();
 });
 const toggle = () =>
-  Array.from(
-    container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-  )[2]!;
+  container.querySelector<HTMLInputElement>('input[name="loadRemoteImage"]')!;
 it("loads the saved opt-in and persists disabling it", async () => {
   platform.getLoadRemoteImage.mockResolvedValue(true);
   await act(async () =>

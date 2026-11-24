@@ -98,7 +98,8 @@ execution is available. Enable **Allow GitHub Actions to create and approve pull
 requests** in repository Actions settings; the workflow creates PRs but does not
 approve or merge them. Branch rules must permit creation of `version/*`.
 
-Review the generated PR and let its required checks pass before merging. GitHub
+Review the generated PR before merging. An exact generated version bump skips
+the full verification suite as described below. GitHub
 may show **Approve workflows to run** for a PR created by `GITHUB_TOKEN`; approve
 those runs when prompted. If required checks do not start, close and reopen the
 PR manually. See [GitHub's workflow-trigger behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
@@ -192,40 +193,66 @@ Branch protection governs both PRs.
 
 ### Release Candidate
 
-Run **Release Candidate** (`.github/workflows/prepare-rc.yml`) on `main` at
-`x.y.z-dev` to prepare `x.y.z-rc.1`. If the release branch already exists,
-select `release/x.y.z` at `x.y.z-rc.N` to prepare the next candidate.
+Choose the branch for **Release Candidate** (`.github/workflows/prepare-rc.yml`)
+using the version on `main` and the target release branch.
+
+| Version on `main` | Target release branch                      | Valid action                                                  |
+| ----------------- | ------------------------------------------ | ------------------------------------------------------------- |
+| `x.y.z-dev`       | `release/x.y.z` is missing                 | Run on `main` to prepare `x.y.z-rc.1`.                        |
+| `x.y.z-dev`       | `release/x.y.z` exists                     | Run on the release branch if it carries an RC version.        |
+| `x.y.z-rc.N`      | `release/x.y.z` is missing                 | Run on `main` to recreate the branch with the next candidate. |
+| `x.y.z-rc.N`      | `release/x.y.z` exists                     | [Abandon the inconsistent RC](#abandon-an-inconsistent-rc).   |
+| Final `x.y.z`     | The next patch's release branch is missing | Run on `main` to prepare the next patch's `rc.1`.             |
+| Final `x.y.z`     | The next patch's release branch exists     | Run on that branch if it carries an RC version.               |
+
+A run on a release branch advances that branch's RC version by one. To target
+a minor or major release, merge the corresponding development version before dispatch.
 
 The workflow commits the RC version locally before verification and building.
 After a successful build, publication atomically pushes the release branch and
-RC tag, uploads the draft prerelease, and creates or reuses the PR to `main`.
-Immediately after the first push of the release branch, publication uses the
+RC tag and uploads the draft prerelease.
+Immediately after pushing the first candidate, publication uses the
 current `main` to open a separate patch-bump PR. It reuses an existing bump PR
-and skips the bump if `main` already has a different major, minor, or patch version.
-Both PRs may merge in either order under normal review and baseline checks.
+and skips the bump if `main` has a different major, minor, or patch version
+from the candidate. This includes a candidate started from the preceding final
+version when `main` still has that version.
 Later RCs leave the bump PR alone. If opening the bump PR fails, publication
-still attempts the draft and release PR. Rerun the publication job to retry
-the bump using the retained package.
-If verification or building fails, **Re-run failed jobs** prepares the same RC
-version from the original source. The failed build leaves the remote branch and
-tag untouched. If another run publishes in the meantime, the branch and tag
+still attempts the draft. Rerun the publication job to retry the bump using the
+retained package.
+
+If verification or building fails, use **Re-run failed jobs**. A successful
+preparation job retains the exact RC commit for the retry. The failed build
+leaves the remote branch and tag untouched. If another run publishes in the meantime, the branch and tag
 checks protect the published candidate.
+
+#### Abandon an inconsistent RC
+
+If `main` carries `x.y.z-rc.N` and `release/x.y.z` already exists, abandon
+that release cycle and leave its tags intact.
+
+1. Open a corrective PR to replace the RC version on `main` with an unused
+   `-dev` version. Synchronize all application version files and `Cargo.lock`.
+   The version-bump workflows reject RC versions, so prepare this PR manually.
+2. Merge the corrective PR into `main`.
+3. Run **Release Candidate** on `main` to prepare `rc.1` for the new version.
+   See the [branch and version table](#release-candidate) for other valid runs.
 
 ### Release
 
 Run **Release** (`.github/workflows/prepare-release.yml`) only on
 `release/x.y.z` at an RC version. It removes the RC suffix and commits `x.y.z`
 locally before verification and building. After success, it atomically pushes
-that commit and the final tag, updating the release branch's PR, and uploads a
-final draft release. A failure before the atomic push leaves the remote branch
-and PR on the RC with no final tag. A fresh run starts from that same remote RC.
+that commit and the final tag, uploads a final draft release, and opens or reuses
+the release-to-main PR. A failure before the atomic push leaves the remote branch
+on the RC. A fresh run starts from that same remote RC.
 No separate RC build-record or workflow-success gate is required: Release checks
 and builds its own final commit.
 
-Merging the PR and publishing the draft remain manual. Required reviews and
-checks on `main` still apply. With a merge commit, the tagged release commits
-become part of `main`'s history. Ongoing development may advance `main` while a
-release builds; resolve any merge conflicts through the normal PR process.
+Merging the PR and publishing the draft remain manual. The release and patch-bump
+PRs may merge in either order under normal review and baseline checks.
+With a merge commit, the tagged release commits become part of `main`'s history.
+Ongoing development may advance `main` while a release builds. Resolve any
+merge conflicts through the normal PR process.
 
 ### Workflow setup
 
@@ -242,30 +269,43 @@ bypass of `main`, auto-merge setting, or administrative-read credential is neede
 The workflows report a commit status named **Release build** on the prepared
 RC or final commit. Prepared commits remain local during building, so their
 status starts after the atomic push.
-Success is reported only after build, artifact retention, draft upload, and PR
-creation or reuse succeed. Failure/cancellation cleanup reports failure when the
+Success is reported after build, artifact retention, draft upload, and any
+applicable PR work succeed. Failure/cancellation cleanup reports failure when the
 prepared commit is available remotely. If the runner cannot execute cleanup,
 the status can remain missing or pending. Publication retries report pending
 and then success on the same prepared commit.
 
 ### Required pull request verification
 
-Every PR into `main`, including a release-branch PR, runs **Pull request
-verification** (`.github/workflows/development-pr.yml`). Its **Verification** job
-checks the proposed merge on macOS Apple Silicon with Rust compiler and
-documentation warnings treated as errors. It runs lint, repository formatting,
-TypeScript, reader CSP, Rust formatting, all-target workspace compilation,
-headless tests, and browser tests. It does not prepare versions, package the
-application, push refs, or create releases. Native WebKit and bundled macOS smoke
-checks remain separate desktop verification.
+**Pull request verification** (`.github/workflows/development-pr.yml`) runs for
+PRs into `main`. For same-repository version PRs opened by GitHub Actions, an
+Ubuntu job runs the existing bump command from the PR base and compares the
+resulting Git tree with the proposed merge. If the trees match, the required
+**Verification** job is skipped. A mismatch or an unsuccessful comparison
+leaves full verification in effect.
 
-PR and release workflows use `.github/actions/verify/action.yml` for shared
-setup and static checks. Headless and browser test steps remain in both
-`.github/workflows/development-pr.yml` and
-`.github/workflows/release-pipeline.yml` because composite actions do not support
-per-step timeouts; both call the same npm test scripts with 30-minute limits.
-Keep these test invocations and diagnostic upload settings synchronized. Releases
-verify after preparing the release commit and before packaging.
+For other PRs, including release-branch PRs, GitHub verifies the proposed merge
+in three sequential macOS Apple Silicon jobs:
+
+- **Source checks** runs lint, repository formatting, TypeScript, reader CSP,
+  and Rust formatting.
+- **Browser tests** runs the Playwright suite and uploads its diagnostics.
+- **Rust and headless checks** runs all-target workspace compilation and the
+  headless suite with Rust compiler and documentation warnings treated as errors.
+
+The required **Verification** result succeeds only when all three jobs pass.
+Use **Re-run failed jobs** to retry a failed job and continue with its
+dependents. Earlier successful jobs are reused. Browser tests still run as a
+single suite. Native WebKit and bundled macOS smoke checks remain separate
+desktop verification.
+
+PR verification, Release Candidate, Release, and Manual release build call the
+same reusable verification workflow. The browser and headless test steps each
+have a 30-minute limit. Releases prepare source in a separate job, then each
+verification job and the packaging job restore the same prepared commit. The
+preparation artifact retains that commit and its release identity for 14 days.
+The packaging job depends on successful verification, and publication depends
+on successful packaging.
 
 The PR workflow uses `pull_request` with `contents: read` and
 does not persist checkout credentials. It also runs for fork PRs, subject to
@@ -333,10 +373,8 @@ when someone pushes a final `vX.Y.Z` or RC `vX.Y.Z-rc.N` tag. It is a tag-push
 trigger, not a Run workflow control. The tag must match the checked-out
 application version; development tags are rejected.
 
-It calls `.github/workflows/release-pipeline.yml`, which uses the shared verification
-action to run lint, formatting,
-TypeScript, CSP, Rust formatting and all-target workspace checks, then runs
-browser tests followed by headless tests. Each test step has a 30-minute timeout. It then builds the
+It calls `.github/workflows/release-pipeline.yml`, which runs the same checks in
+the same order as pull request verification. It then builds the
 Apple Silicon distributable with the committed standard icons, verifies its
 ad-hoc signature, and retains the artifacts, checksums, and Git identity in a
 workflow package for 14 days. The publication job uploads these to a draft
@@ -357,14 +395,16 @@ workflow file does not update GitHub repository settings.
 ### Failures and recovery
 
 Failed verification, build, or signature checking does not change the existing
-tag. Do not move a release tag to reuse its number after changing source.
+tag. Use **Re-run failed jobs** to retry from the failed verification or
+packaging job. If preparation succeeded, subsequent jobs reuse its retained
+source. Do not move a release tag to reuse its number after changing source.
 
 For failed draft uploads or PR creation, choose **Re-run failed jobs** on the original run, or
 rerun only **Push and create draft**. It reuses the successful build job's
 retained package without another build or version bump and refuses to alter a
-published release. For automated RC/Release runs, it also reuses the existing
-open PR. After a successful final push, recover publication using that retained
-package rather than starting Release again on the now-final branch.
+published release. It also reuses an existing open bump PR for the first RC or
+an existing open release PR for the final release. After a successful final
+push, use that retained package to recover publication on the now-final branch.
 Do not use **Re-run all jobs** for draft recovery. Packages and browser diagnostics
 expire after 14 days; save the package first if recovery must be delayed.
 

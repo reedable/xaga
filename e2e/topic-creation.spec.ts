@@ -108,7 +108,7 @@ test("inline confirmation creates a separate Topic with the requested member and
 }) => {
   await start(page);
   await startInline(page, water, existing);
-  await control(page, "checkbox", "pin-toggle").check();
+  await control(page, "combobox", "shortcut-location").selectOption("root");
   await control(page, "button", "confirm-create-topic").click();
   await expect(
     control(warning(page), "button", "open-similar-topic")

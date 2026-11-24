@@ -1,5 +1,11 @@
 import type { Page } from "@playwright/test";
-import { articleButton, control, expect, test } from "./fixtures";
+import {
+  articleButton,
+  control,
+  expect,
+  setSidebarVisible,
+  test,
+} from "./fixtures";
 
 const title = "Field notes PDF";
 const url = "https://fieldnotes.example/field-notes.pdf";
@@ -108,4 +114,93 @@ test("read-only and legacy PDFs remain viewable with marking unavailable", async
   await openPdf(page, "https://fieldnotes.example/legacy.pdf");
   await expect(page.getByTestId("pdf-reader")).toBeVisible();
   await expect(toggle).toBeDisabled();
+});
+
+test("tags a PDF and reopens it from Tags without replacing the current viewer on save", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await start(page, "pdf-bookmarks");
+  await openPdf(page);
+  const viewer = page.getByTestId("pdf-reader");
+  await expect(viewer).toBeVisible();
+  await viewer.evaluate((frame) => (frame.dataset.testViewer = "original"));
+  await expect(control(page, "tab", "inspector-related")).toBeVisible();
+  await control(page, "tab", "inspector-topics").click();
+  const topic = page.getByRole("checkbox", {
+    name: "Everyday discoveries",
+    exact: true,
+  });
+  await topic.check();
+  await expect(topic).toBeChecked();
+  await control(page, "tab", "inspector-tags").click();
+  const projects = page.getByRole("button", { name: "Projects", exact: true });
+  await projects.click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(projects).toHaveAttribute("aria-pressed", "false");
+  await projects.click();
+  await expect(projects).toHaveAttribute("aria-pressed", "true");
+  await control(page, "textbox", "tag-search").fill("Field research");
+  await control(page, "button", "create-tag").click();
+  const research = page.getByRole("button", {
+    name: "Field research",
+    exact: true,
+  });
+  await expect(research).toHaveAttribute("aria-pressed", "true");
+  await expect(viewer).toHaveAttribute("data-test-viewer", "original");
+
+  await openPdf(page, "https://fieldnotes.example/legacy.pdf");
+  await expect(control(page, "tab", "inspector-tags")).toHaveCount(0);
+  await control(page, "button", "sidebar-tags-toggle").click();
+  await page
+    .getByRole("checkbox", { name: "Field research", exact: true })
+    .click();
+  const result = articleButton(page, title);
+  await result.click();
+  await expect(viewer).toBeVisible();
+  await expect(page.locator('input[name="article-url"]')).toHaveValue(url);
+  await research.click();
+  await expect(research).toHaveAttribute("aria-pressed", "false");
+  await expect(result).toBeVisible();
+});
+
+test("assigns and removes PDF tags in the narrow Inspector", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 700, height: 900 });
+  await start(page, "pdf-bookmarks-external");
+  await setSidebarVisible(page, false);
+  await openPdf(page);
+  const opener = control(page, "button", "article-details");
+  await opener.click();
+  const drawer = page.getByRole("dialog");
+  await control(drawer, "tab", "inspector-tags").click();
+  const projects = drawer.getByRole("button", {
+    name: "Projects",
+    exact: true,
+  });
+  await projects.click();
+  await expect(projects).toHaveAttribute("aria-pressed", "true");
+  await projects.click();
+  await expect(projects).toHaveAttribute("aria-pressed", "false");
+  await page.keyboard.press("Escape");
+  await expect(opener).toBeFocused();
+});
+
+test("shows PDF tags in a read-only library", async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 900 });
+  await start(page, "pdf-bookmarks-read-only");
+  await setSidebarVisible(page, false);
+  await openPdf(page);
+  await control(page, "button", "article-details").click();
+  const drawer = page.getByRole("dialog");
+  await control(drawer, "tab", "inspector-tags").click();
+  const projects = drawer.getByRole("button", {
+    name: "Projects",
+    exact: true,
+  });
+  await expect(projects).toHaveAttribute("aria-pressed", "true");
+  await expect(projects).toBeDisabled();
+  await control(drawer, "textbox", "tag-search").fill("New tag");
+  await expect(control(drawer, "button", "create-tag")).toBeDisabled();
 });

@@ -33,7 +33,7 @@ pub(crate) struct Markdown {
 
 /// Parses both the header fields and the markdown body from a `---`-delimited document.
 pub fn parse_document(raw: &str) -> Result<(Frontmatter, String), MdError> {
-    split_document(raw)
+    parse_document_with_diagnostic(raw).map_err(|(error, _)| error)
 }
 
 /// Presence differs from an explicitly stored null or empty string.
@@ -224,7 +224,7 @@ pub struct Frontmatter {
 /// Parses only the header fields from a `---`-delimited document.
 #[cfg(test)]
 pub(crate) fn parse_frontmatter(raw: &str) -> Result<Frontmatter, MdError> {
-    Ok(split_document(raw)?.0)
+    Ok(parse_document(raw)?.0)
 }
 
 /// The `.md` frontmatter storage shape for an annotation. Storage keeps `note`; the domain
@@ -404,24 +404,36 @@ pub(crate) fn serialize_references(references: &[Reference]) -> Result<serde_jso
         .map(serde_json::Value::Array)
 }
 
-pub(crate) fn split_document(raw: &str) -> Result<(Frontmatter, String), MdError> {
+/// The second error field contains only parser categories and numeric locations.
+pub(crate) fn parse_document_with_diagnostic(
+    raw: &str,
+) -> Result<(Frontmatter, String), (MdError, String)> {
+    let delimiter = || (MdError::Delimiter, MdError::Delimiter.to_string());
     let raw = raw.trim_start();
-    let rest = raw.strip_prefix("---\n").ok_or(MdError::Delimiter)?;
-    let end = rest.find("\n---\n").ok_or(MdError::Delimiter)?;
+    let rest = raw.strip_prefix("---\n").ok_or_else(delimiter)?;
+    let end = rest.find("\n---\n").ok_or_else(delimiter)?;
     let yaml = &rest[..end];
     let body = rest[end + 5..].trim_matches('\n').to_string();
 
-    let fm: FrontmatterRaw = noyalib::from_str_with_config(yaml, &FM_PARSER)
-        .map_err(|e| MdError::Frontmatter(e.to_string()))?;
+    let fm: FrontmatterRaw = noyalib::from_str_with_config(yaml, &FM_PARSER).map_err(|error| {
+        let mut diagnostic = format!("invalid YAML frontmatter ({:?})", error.kind());
+        if let Some(location) = error.location() {
+            diagnostic.push_str(&format!(
+                " at frontmatter line {}, column {}",
+                location.line(),
+                location.column()
+            ));
+        }
+        (MdError::Frontmatter(error.to_string()), diagnostic)
+    })?;
 
     if fm
         .color
         .as_deref()
         .is_some_and(|color| !crate::domain::COLOR_NAMES.contains(&color))
     {
-        return Err(MdError::Frontmatter(
-            "color must be a palette identifier".into(),
-        ));
+        let diagnostic = "color must be a palette identifier";
+        return Err((MdError::Frontmatter(diagnostic.into()), diagnostic.into()));
     }
 
     Ok((
@@ -624,7 +636,7 @@ mod tests {
              annotations:\n  - id: a1\n    text:\n      - hi\n    \
              occurrence:\n      - 0\n    color: red\n    created_at: '2026-01-01'",
         );
-        let (fm, body) = split_document(&raw).expect("valid frontmatter parses");
+        let (fm, body) = parse_document(&raw).expect("valid frontmatter parses");
         assert_eq!(fm.title, "T");
         assert_eq!(fm.annotations.len(), 1);
         assert_eq!(body, "body");
@@ -633,7 +645,7 @@ mod tests {
     #[test]
     fn rejects_anchors_and_aliases() {
         let raw = doc("title: &a hello\nsource: *a");
-        assert!(matches!(split_document(&raw), Err(MdError::Frontmatter(_))));
+        assert!(matches!(parse_document(&raw), Err(MdError::Frontmatter(_))));
     }
 
     #[test]
@@ -647,7 +659,7 @@ mod tests {
             ));
         }
         fm.push_str("title: last");
-        assert!(split_document(&doc(&fm)).is_err());
+        assert!(parse_document(&doc(&fm)).is_err());
     }
 
     #[test]
@@ -658,7 +670,7 @@ mod tests {
         // parser errors early; an unbounded one would recurse (and could overflow).
         let depth = 50_000;
         let nested = format!("title: {}{}", "[".repeat(depth), "]".repeat(depth));
-        assert!(split_document(&doc(&nested)).is_err());
+        assert!(parse_document(&doc(&nested)).is_err());
     }
 
     #[test]
@@ -677,7 +689,7 @@ mod tests {
             tags:\n- unread\n\
             ---\n\n\
             body\n";
-        let (fm, _body) = split_document(raw).expect("real serde_yaml file parses");
+        let (fm, _body) = parse_document(raw).expect("real serde_yaml file parses");
         assert_eq!(fm.created_at, "2026-07-16T11:31:50.924447+00:00");
         assert_eq!(fm.tags, vec!["unread".to_string()]);
         assert!(fm.summary.unwrap().contains("Spinning off"));
@@ -686,7 +698,7 @@ mod tests {
     #[test]
     fn missing_delimiters_is_a_delimiter_error() {
         assert!(matches!(
-            split_document("no frontmatter here"),
+            parse_document("no frontmatter here"),
             Err(MdError::Delimiter)
         ));
     }

@@ -15,6 +15,7 @@ import {
   type RefObject,
 } from "react";
 import useAbortController from "../../hooks/useAbortController";
+import { useAppearance } from "../../hooks/useAppearance";
 import { useContentLoader } from "../../hooks/useContentLoader";
 import useRouter from "../../hooks/useRouter";
 import cx from "../../utils/cx";
@@ -40,6 +41,7 @@ const logger = Logger.getLogger("EntityView");
 
 export function EntityView({ className, searchPanelRef }: EntityViewProps) {
   const { state } = useRouter();
+  const { htmlReaderView, htmlReaderViewReady } = useAppearance();
   const { entryId, annotationId, url, mimeType } = state;
 
   const currentRouteTarget = useRef({ entryId, annotationId });
@@ -176,15 +178,23 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
     resolveRef.current = resolve;
   }, [resolve]);
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
+  const completedLookup = useRef<string | null>(null);
   useEffect(() => {
+    if (!htmlReaderViewReady) return;
+    if (completedLookup.current === url) return;
+    completedLookup.current = null;
     abort();
     if (!url) return;
     const signal = abortControllerRef.current.signal;
-    void resolveRef.current(url).finally(() => {
-      if (!signal.aborted) setResolvedUrl(url);
-    });
+    void resolveRef
+      .current(url, false, htmlReaderView === "reader")
+      .then((result) => {
+        if (signal.aborted) return;
+        if (result === true) completedLookup.current = url;
+        setResolvedUrl(url);
+      });
     return abort;
-  }, [url, abort, abortControllerRef]);
+  }, [url, htmlReaderView, htmlReaderViewReady, abort, abortControllerRef]);
 
   const [readerRevision, setReaderRevision] = useState(0);
   const articleReaderRef = useRef<ArticleReaderHandle>(null);
@@ -210,8 +220,10 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
         abort();
         const signal = abortControllerRef.current.signal;
         const succeeded = await resolve(url, true);
-        if (succeeded && !signal.aborted && reloadAttempt.current === attempt)
+        if (succeeded && !signal.aborted && reloadAttempt.current === attempt) {
+          completedLookup.current = url;
           setReaderRevision((value) => value + 1);
+        }
       } else await articleReaderRef.current?.reload();
     } finally {
       if (reloadAttempt.current === attempt) {
@@ -235,7 +247,7 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
           reloading={reloading}
           inspectorOpener={inspectorOpener}
           onOpenInspector={
-            inspectorHidden && entryId && !isPdf
+            inspectorHidden && entryId && !blocked
               ? () => {
                   inspectorReturnFocus.current = inspectorOpener.current;
                   setInspectorOpen(true);
@@ -278,11 +290,13 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
                 variant="body2"
                 color="text.disabled"
               >
-                {isResolving ? "Loading…" : "Select an article"}
+                {url && htmlReaderView === "summary"
+                  ? "No saved summary. Choose Reader to load this page."
+                  : "Select an article"}
               </Typography>
             </div>
           )}
-          {entryId && !isPdf && !blocked && (
+          {entryId && !blocked && (
             <aside
               ref={inspectorPanel}
               inert={inspectorHidden}
@@ -307,13 +321,7 @@ export function EntityView({ className, searchPanelRef }: EntityViewProps) {
           data-inspector-drawer
           disableRestoreFocus
           anchor="right"
-          open={
-            useInspectorDrawer &&
-            inspectorOpen &&
-            !!entryId &&
-            !isPdf &&
-            !blocked
-          }
+          open={useInspectorDrawer && inspectorOpen && !!entryId && !blocked}
           onClose={closeInspector}
           transitionDuration={animate ? undefined : 0}
           slotProps={{
