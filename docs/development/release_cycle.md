@@ -98,7 +98,8 @@ execution is available. Enable **Allow GitHub Actions to create and approve pull
 requests** in repository Actions settings; the workflow creates PRs but does not
 approve or merge them. Branch rules must permit creation of `version/*`.
 
-Review the generated PR and let its required checks pass before merging. GitHub
+Review the generated PR before merging. An exact generated version bump skips
+the full verification suite as described below. GitHub
 may show **Approve workflows to run** for a PR created by `GITHUB_TOKEN`; approve
 those runs when prompted. If required checks do not start, close and reopen the
 PR manually. See [GitHub's workflow-trigger behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
@@ -276,8 +277,14 @@ and then success on the same prepared commit.
 
 ### Required pull request verification
 
-Every PR into `main`, including a release-branch PR, runs **Pull request
-verification** (`.github/workflows/development-pr.yml`). Its **Verification** job
+**Pull request verification** (`.github/workflows/development-pr.yml`) runs for
+PRs into `main`. For same-repository version PRs opened by GitHub Actions, an
+Ubuntu job runs the existing bump command from the PR base and compares the
+resulting Git tree with the proposed merge. If the trees match, the required
+**Verification** job is skipped. A mismatch or an unsuccessful comparison
+leaves full verification in effect.
+
+For other PRs, including release-branch PRs, the **Verification** job
 checks the proposed merge on macOS Apple Silicon with Rust compiler and
 documentation warnings treated as errors. It runs lint, repository formatting,
 TypeScript, reader CSP, Rust formatting, browser tests, all-target workspace
