@@ -52,7 +52,7 @@ function main() {
   );
   if (
     releaseTagName(state.version) !== state.tag ||
-    !["rc", "release", "tag"].includes(state.mode)
+    !["rc", "release"].includes(state.mode)
   )
     throw new Error("Invalid release identity");
   for (const value of [state.start, state.commit, state.tree, state.tagObject])
@@ -70,37 +70,29 @@ function main() {
       throw new Error(`Artifact checksum mismatch: ${asset.name}`);
   }
   const tagRef = `refs/tags/${state.tag}`;
-  if (state.mode !== "tag") {
-    if (
-      state.branch !==
-      `refs/heads/release/${state.version.replace(/-rc\.[0-9]+$/, "")}`
-    )
-      throw new Error("Invalid branch");
-    git("check-ref-format", state.branch);
-    const expectedBranch =
-      state.mode === "rc" && state.sourceRef === "refs/heads/main"
-        ? ""
-        : state.start;
-    if (state.expectedBranch !== expectedBranch)
-      throw new Error("Invalid release branch update expectation");
-    git("fetch", join(directory, "release.bundle"), tagRef);
-    if (
-      git("rev-parse", "FETCH_HEAD") !== state.tagObject ||
-      git("rev-parse", "FETCH_HEAD^{commit}") !== state.commit ||
-      git("rev-parse", `${state.commit}^`) !== state.start
-    )
-      throw new Error("Prepared commit or tag mismatch");
-  }
+  if (
+    state.branch !==
+    `refs/heads/release/${state.version.replace(/-rc\.[0-9]+$/, "")}`
+  )
+    throw new Error("Invalid branch");
+  git("check-ref-format", state.branch);
+  const expectedBranch =
+    state.mode === "rc" && state.sourceRef === "refs/heads/main"
+      ? ""
+      : state.start;
+  if (state.expectedBranch !== expectedBranch)
+    throw new Error("Invalid release branch update expectation");
+  git("fetch", join(directory, "release.bundle"), tagRef);
+  if (
+    git("rev-parse", "FETCH_HEAD") !== state.tagObject ||
+    git("rev-parse", "FETCH_HEAD^{commit}") !== state.commit ||
+    git("rev-parse", `${state.commit}^`) !== state.start
+  )
+    throw new Error("Prepared commit or tag mismatch");
   if (git("rev-parse", `${state.commit}^{tree}`) !== state.tree)
     throw new Error("Prepared source tree mismatch");
   const remote = new Map(
-    git(
-      "ls-remote",
-      "origin",
-      tagRef,
-      `${tagRef}^{}`,
-      ...(state.branch ? [state.branch] : [])
-    )
+    git("ls-remote", "origin", tagRef, `${tagRef}^{}`, state.branch)
       .split("\n")
       .filter(Boolean)
       .map((line) => {
@@ -111,7 +103,7 @@ function main() {
   const tagMatches =
     remote.get(tagRef) === state.tagObject &&
     (remote.get(`${tagRef}^{}`) || remote.get(tagRef)) === state.commit;
-  if (tagMatches && state.mode !== "tag") {
+  if (tagMatches) {
     // A matching tag alone does not establish that the atomic push succeeded.
     // Allow later branch commits, but never treat a tag-only push as recovery.
     git("fetch", "--no-tags", "origin", state.branch);
@@ -119,7 +111,6 @@ function main() {
   }
   if (!tagMatches) {
     if (
-      state.mode === "tag" ||
       remote.has(tagRef) ||
       (remote.get(state.branch) || "") !== state.expectedBranch
     )

@@ -491,17 +491,15 @@ test("dirty source and source changes during building are rejected", (t) => {
   fails(f.seal());
 });
 
-test("manual tag builds preserve refs and publish using the shared pipeline", (t) => {
+test("release preparation rejects the retired tag mode", (t) => {
   const f = fixture(t, "0.17.3");
   f.git("tag", "-a", "v0.17.3", "-m", "Release");
   f.git("push", "origin", "v0.17.3");
   const refs = f.refs();
-  succeeds(f.prepare("tag", { GITHUB_REF: "refs/tags/v0.17.3" }));
-  f.build();
-  succeeds(f.seal());
-  succeeds(f.publish());
+  const result = f.prepare("tag", { GITHUB_REF: "refs/tags/v0.17.3" });
+  fails(result);
+  assert.match(result.stderr, /Expected rc or release mode/);
   assert.equal(f.refs(), refs);
-  assert.equal(github(f).prs.length, 0);
 });
 
 for (const failure of ["upload", "pr-create"]) {

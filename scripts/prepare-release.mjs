@@ -60,8 +60,8 @@ function validatePreparedSource(state) {
   git("diff", "--exit-code");
 }
 function prepare(mode, statePath) {
-  if (!["rc", "release", "tag"].includes(mode))
-    throw new Error("Expected rc, release, or tag mode");
+  if (!["rc", "release"].includes(mode))
+    throw new Error("Expected rc or release mode");
   if (git("status", "--porcelain=v1", "--untracked-files=all"))
     throw new Error("Release preparation requires a clean checkout");
   const start = git("rev-parse", "HEAD");
@@ -75,61 +75,49 @@ function prepare(mode, statePath) {
     ? nextVersion(current, "rc-next-patch")
     : current;
   const base = versionForBranch.replace(/-(?:dev|rc\.[0-9]+)$/, "");
-  const branch = mode === "tag" ? null : `refs/heads/release/${base}`;
+  const branch = `refs/heads/release/${base}`;
   let expectedBranch = start;
-  if (mode === "tag") {
-    if (!ref.startsWith("refs/tags/"))
-      throw new Error("Manual release builds require a tag");
-  } else {
-    const first = mode === "rc" && (current.endsWith("-dev") || nextPatch);
-    const candidate = /-rc\.[1-9][0-9]*$/.test(current);
-    const restoreBranch =
-      mode === "rc" && ref === "refs/heads/main" && candidate;
-    if (first || restoreBranch) {
-      if (ref !== "refs/heads/main")
-        throw new Error("Start an RC from main with a development version");
-      if (git("ls-remote", "origin", branch)) {
-        if (restoreBranch)
-          throw new Error(
-            `The RC is in an inconsistent state: main has ${current} and release/${base} already exists. This RC must be abandoned. See docs/development/release_cycle.md#abandon-an-inconsistent-rc.`
-          );
+  const first = mode === "rc" && (current.endsWith("-dev") || nextPatch);
+  const candidate = /-rc\.[1-9][0-9]*$/.test(current);
+  const restoreBranch = mode === "rc" && ref === "refs/heads/main" && candidate;
+  if (first || restoreBranch) {
+    if (ref !== "refs/heads/main")
+      throw new Error("Start an RC from main with a development version");
+    if (git("ls-remote", "origin", branch)) {
+      if (restoreBranch)
         throw new Error(
-          `Release branch already exists; select release/${base}`
+          `The RC is in an inconsistent state: main has ${current} and release/${base} already exists. This RC must be abandoned. See docs/development/release_cycle.md#abandon-an-inconsistent-rc.`
         );
-      }
-      expectedBranch = "";
-    } else {
-      if (ref !== branch || !candidate)
-        throw new Error(
-          "Select the matching release/x.y.z branch with an RC version"
-        );
-      if (git("ls-remote", "origin", branch).split(/\s+/)[0] !== start)
-        throw new Error("Release branch moved; start a fresh run");
+      throw new Error(`Release branch already exists; select release/${base}`);
     }
-    if (nextPatch)
-      run(process.execPath, ["scripts/bump-version.mjs", "rc-next-patch"]);
-    else run("npm", ["run", `version:${mode}`]);
+    expectedBranch = "";
+  } else {
+    if (ref !== branch || !candidate)
+      throw new Error(
+        "Select the matching release/x.y.z branch with an RC version"
+      );
+    if (git("ls-remote", "origin", branch).split(/\s+/)[0] !== start)
+      throw new Error("Release branch moved; start a fresh run");
   }
+  if (nextPatch)
+    run(process.execPath, ["scripts/bump-version.mjs", "rc-next-patch"]);
+  else run("npm", ["run", `version:${mode}`]);
   const version = validateVersionRecords(readVersionRecords());
   const tag = releaseTagName(version);
-  if (mode === "tag" && ref !== `refs/tags/${tag}`)
-    throw new Error("Tag does not match application version");
-  if (mode !== "tag") {
-    const changed = git("diff", "--name-only").split("\n");
-    if (
-      changed.length !== versionFiles.length ||
-      changed.some((path) => !versionFiles.includes(path))
-    )
-      throw new Error("Unexpected version preparation changes");
-    git("add", "--", ...versionFiles);
-    git("config", "user.name", "github-actions[bot]");
-    git(
-      "config",
-      "user.email",
-      "41898282+github-actions[bot]@users.noreply.github.com"
-    );
-    git("commit", "-m", `Prepare ${tag}`);
-  }
+  const changed = git("diff", "--name-only").split("\n");
+  if (
+    changed.length !== versionFiles.length ||
+    changed.some((path) => !versionFiles.includes(path))
+  )
+    throw new Error("Unexpected version preparation changes");
+  git("add", "--", ...versionFiles);
+  git("config", "user.name", "github-actions[bot]");
+  git(
+    "config",
+    "user.email",
+    "41898282+github-actions[bot]@users.noreply.github.com"
+  );
+  git("commit", "-m", `Prepare ${tag}`);
   const identity = {
     mode,
     start,
@@ -173,17 +161,15 @@ function seal(statePath, directory) {
     throw new Error("Expected exactly one macOS disk image");
   copyFileSync(join(bundle, "dmg", dmgs[0]), join(directory, dmgs[0]));
   validatePreparedSource(state);
-  if (state.mode !== "tag") {
-    // The existing tag command rechecks clean status and every version record.
-    run("npm", ["run", "release:tag"]);
-    git(
-      "bundle",
-      "create",
-      join(directory, "release.bundle"),
-      `refs/tags/${state.tag}`,
-      `^${state.start}`
-    );
-  }
+  // The existing tag command rechecks clean status and every version record.
+  run("npm", ["run", "release:tag"]);
+  git(
+    "bundle",
+    "create",
+    join(directory, "release.bundle"),
+    `refs/tags/${state.tag}`,
+    `^${state.start}`
+  );
   const commit = git("rev-parse", "HEAD");
   if (git("rev-parse", `${commit}^{tree}`) !== state.tree)
     throw new Error("Release commit does not match the built source tree");

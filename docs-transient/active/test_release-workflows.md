@@ -59,4 +59,4 @@ Verify live RC and final publication from GitHub Mobile using
 ## References
 
 - [Release lifecycle and repository settings](../../docs/development/release_cycle.md#prepare-releases-with-github-actions)
-- [Publication recovery](../../docs/development/release_cycle.md#failures-and-recovery)
+- [Publication recovery](../../docs/development/release_cycle.md#release-failures-and-recovery)

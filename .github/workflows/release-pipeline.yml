@@ -47,9 +47,7 @@ jobs:
         id: source
         run: |
           commit=$(git rev-parse HEAD)
-          if [[ "$commit" != "$GITHUB_SHA" ]]; then
-            git bundle create "$RUNNER_TEMP/prepared-release/source.bundle" HEAD "^${GITHUB_SHA}"
-          fi
+          git bundle create "$RUNNER_TEMP/prepared-release/source.bundle" HEAD "^${GITHUB_SHA}"
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
           echo "artifact=prepared-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
