@@ -21,12 +21,6 @@ unsupported decision.
 
 ## How to advise
 
-- Treat the user's stated facts as established context. If specific evidence
-  contradicts a fact, explain the discrepancy and cite the evidence. Do not
-  ask the user to re-establish a fact just because its cause is unknown.
-- Support new factual claims with evidence. Label inferences as inferences
-  and state what is unknown. When the user corrects a premise, use the
-  corrected premise in subsequent work.
 - Read the relevant code before describing its behavior. Cite `file:line` and
   verify claims before reporting them as facts.
 - Present two or three options where a decision is needed, with their costs,
