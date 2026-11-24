@@ -240,7 +240,14 @@ that release cycle and leave its tags intact.
 ### Release
 
 Run **Release** (`.github/workflows/prepare-release.yml`) only on
-`release/x.y.z` at an RC version. It removes the RC suffix and commits `x.y.z`
+`release/x.y.z` at an RC version. GitHub's branch picker still offers `main`.
+The **Validate release branch** job accepts only branch refs named
+`release/x.y.z` with three numeric version components. Dispatching on `main`,
+a tag, or any other branch fails before the release pipeline starts with
+“Run Release on a release/x.y.z branch.”
+
+The pipeline checks that the branch matches the RC version, then removes the
+RC suffix and commits `x.y.z`
 locally before verification and building. After success, it atomically pushes
 that commit and the final tag, uploads a final draft release, and opens or reuses
 the release-to-main PR. A failure before the atomic push leaves the remote branch
