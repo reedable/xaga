@@ -22,10 +22,8 @@ runs:
         PREPARED_COMMIT: ${{ inputs.commit }}
       run: |
         bundle="$RUNNER_TEMP/prepared-release/source.bundle"
-        if [[ -f "$bundle" ]]; then
-          git fetch --no-tags "$bundle" HEAD
-          git switch --detach FETCH_HEAD
-        fi
+        git fetch --no-tags "$bundle" HEAD
+        git switch --detach FETCH_HEAD
         if [[ "$(git rev-parse HEAD)" != "$PREPARED_COMMIT" ]]; then
           echo "Checkout does not match the prepared release commit"
           exit 1

@@ -10,7 +10,21 @@ permissions:
   statuses: write
 
 jobs:
+  validate-branch:
+    name: Validate release branch
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require release/x.y.z
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF" =~ ^refs/heads/release/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Run Release on a release/x.y.z branch."
+            exit 1
+          fi
+
   release:
+    needs: validate-branch
     uses: ./.github/workflows/release-pipeline.yml
     with:
       mode: release
