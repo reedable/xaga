@@ -41,8 +41,49 @@ jobs:
       - name: Verify source
         uses: ./.github/actions/verify
 
-  browser:
+  rust:
     needs: source
+    name: Rust and headless checks
+    runs-on: macos-26
+    env:
+      RUSTFLAGS: -D warnings
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - name: Check out workflow source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: ${{ inputs.prepared-artifact != '' && '0' || '1' }}
+          persist-credentials: false
+
+      - name: Restore prepared release source
+        if: ${{ inputs.prepared-artifact != '' }}
+        uses: ./.github/actions/restore-release-source
+        with:
+          artifact: ${{ inputs.prepared-artifact }}
+          commit: ${{ inputs.prepared-commit }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Set up Rust build dependencies
+        uses: ./.github/actions/setup-rust-build
+
+      - name: Check Rust workspace
+        run: npm run check:rust
+
+      - name: Run headless tests
+        timeout-minutes: 30
+        run: npm run test:headless
+
+  browser:
+    needs: rust
     name: Browser tests
     runs-on: macos-26
     steps:
@@ -86,44 +127,3 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 14
-
-  rust:
-    needs: browser
-    name: Rust and headless checks
-    runs-on: macos-26
-    env:
-      RUSTFLAGS: -D warnings
-      RUSTDOCFLAGS: -D warnings
-    steps:
-      - name: Check out workflow source
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: ${{ inputs.prepared-artifact != '' && '0' || '1' }}
-          persist-credentials: false
-
-      - name: Restore prepared release source
-        if: ${{ inputs.prepared-artifact != '' }}
-        uses: ./.github/actions/restore-release-source
-        with:
-          artifact: ${{ inputs.prepared-artifact }}
-          commit: ${{ inputs.prepared-commit }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install JavaScript dependencies
-        run: npm ci
-
-      - name: Set up Rust build dependencies
-        uses: ./.github/actions/setup-rust-build
-
-      - name: Check Rust workspace
-        run: npm run check:rust
-
-      - name: Run headless tests
-        timeout-minutes: 30
-        run: npm run test:headless

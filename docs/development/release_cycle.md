@@ -296,9 +296,9 @@ in three sequential macOS Apple Silicon jobs:
 
 - **Source checks** runs lint, repository formatting, TypeScript, reader CSP,
   and Rust formatting.
-- **Browser tests** runs the Playwright suite and uploads its diagnostics.
 - **Rust and headless checks** runs all-target workspace compilation and the
   headless suite with Rust compiler and documentation warnings treated as errors.
+- **Browser tests** runs the Playwright suite and uploads its diagnostics.
 
 The required **Verification** result succeeds only when all three jobs pass.
 Use **Re-run failed jobs** to retry a failed job and continue with its

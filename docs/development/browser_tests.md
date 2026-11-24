@@ -213,13 +213,13 @@ implemented. Native WebKit rendering and focus require separate checks.
 
 The shared **Browser tests** job runs for pull request verification, Release
 Candidate and Release dispatches, and Manual release build tag pushes. It runs
-after **Source checks** and before **Rust and headless checks**. After checkout
+after **Source checks** and **Rust and headless checks** pass. After checkout
 and dependency installation, it installs Chromium and runs
 `npm run test:browser -- --max-failures=1` with a 30-minute limit, so it stops
 after the first failed case.
 
 Use **Re-run failed jobs** to retry the browser job and continue with its
-dependents while keeping successful source checks. A failed browser job blocks
+dependents while reusing successful source, Rust, and headless checks. A failed browser job blocks
 PR verification and release packaging. The job uploads `playwright-report/`
 and `test-results/` as the `browser-integration-<attempt>` artifact, retained for
 14 days, including when browser tests fail.
