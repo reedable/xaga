@@ -44,7 +44,8 @@
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "github:login": "gh auth login -h github.com -p https -w"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
