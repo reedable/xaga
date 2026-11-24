@@ -211,9 +211,9 @@ implemented. Native WebKit rendering and focus require separate checks.
 
 ## Failures and CI
 
-The shared **Browser tests** job runs for pull request verification, Release
-Candidate and Release dispatches, and Manual release build tag pushes. It runs
-after **Source checks** and **Rust and headless checks** pass. After checkout
+The shared **Browser tests** job runs for pull request verification,
+**Release Candidate**, and **Release**. It runs after **Source checks** and
+**Rust and headless checks** pass. After checkout
 and dependency installation, it installs Chromium and runs
 `npm run test:browser -- --max-failures=1` with a 30-minute limit, so it stops
 after the first failed case.

@@ -4,7 +4,7 @@
 
 The release DMG built on CI does not display the configured background in
 Finder, while a locally built DMG does. Diagnose and fix the shared packaging
-job used by Release Candidate, Release, and Manual release build.
+job used by Release Candidate and Release.
 
 ## Requirements
 

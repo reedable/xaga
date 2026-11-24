@@ -306,13 +306,15 @@ dependents. Earlier successful jobs are reused. Browser tests still run as a
 single suite. Native WebKit and bundled macOS smoke checks remain separate
 desktop verification.
 
-PR verification, Release Candidate, Release, and Manual release build call the
+PR verification, Release Candidate, and Release call the
 same reusable verification workflow. The browser and headless test steps each
 have a 30-minute limit. Releases prepare source in a separate job, then each
 verification job and the packaging job restore the same prepared commit. The
 preparation artifact retains that commit and its release identity for 14 days.
 The packaging job depends on successful verification, and publication depends
-on successful packaging.
+on successful packaging. Packaging uses the committed release icons, verifies
+the app signature, and retains the app archive, disk image, checksums, and Git
+identity for 14 days.
 
 The PR workflow uses `pull_request` with `contents: read` and
 does not persist checkout credentials. It also runs for fork PRs, subject to
@@ -340,23 +342,21 @@ check blocks merging when configured as required.
 
 ## Prepare releases locally
 
-Prepare and commit the release version locally, then push its annotated tag to
-trigger **Manual release build**. The workflow builds the tagged commit while
-other development can continue. It does not create branches, advance versions,
-merge branches, or open pull requests.
+Use local preparation to validate an RC or final version before publication.
+Use **Release Candidate** or **Release** to create release artifacts and drafts.
 
 ### Release candidates
 
 Run `npm run version:rc` from a clean working tree, review and commit the
 synchronized version files and `Cargo.lock`, then run `npm run build:beta` for
-local validation before tagging. The version command advances development to
+local validation. The version command advances development to
 RC 1 or increments an existing RC; it never commits, tags, pushes, or builds.
 
 ### Finalizing a release
 
 Run `npm run version:release` from a clean working tree to remove `-dev` or
 `-rc.N`. It rejects an already-final version. Review and commit the synchronized
-version files and `Cargo.lock` before tagging.
+version files and `Cargo.lock` before building locally.
 
 ### Local beta builds
 
@@ -366,40 +366,7 @@ an entirely clean tree, rejects development versions, and refuses an existing
 matching local release tag. It does not fetch remote tags, edit version files,
 commit, tag, push, or publish. Published tags remain immutable.
 
-### Tagging a release
-
-Run `npm run release:tag` from the clean committed tree, then push the commit
-and annotated tag with `git push origin <branch> --follow-tags`. The command
-checks all source versions and Xaga lockfile entries, rejects development
-versions, and refuses an existing local tag. It never commits or pushes.
-
-### GitHub release automation
-
-**Manual release build** (`.github/workflows/release.yml`) starts automatically
-when someone pushes a final `vX.Y.Z` or RC `vX.Y.Z-rc.N` tag. It is a tag-push
-trigger, not a Run workflow control. The tag must match the checked-out
-application version; development tags are rejected.
-
-It calls `.github/workflows/release-pipeline.yml`, which runs the same checks in
-the same order as pull request verification. It then builds the
-Apple Silicon distributable with the committed standard icons, verifies its
-ad-hoc signature, and retains the artifacts, checksums, and Git identity in a
-workflow package for 14 days. The publication job uploads these to a draft
-GitHub release; RC drafts are prereleases. Inspect the artifacts before manually
-publishing the draft. Native WebKit and bundled macOS smoke checks remain
-separate desktop verification; see [verification](verification.md) and
-[resource verification](resource_verification.md).
-
-Manual release build uses `GITHUB_TOKEN` with write access to release contents.
-It does not need automatic PR creation or auto-merge. A tag pushed by another workflow
-using `GITHUB_TOKEN` does not trigger the tag-push workflow.
-
-The former **Release PR verification** status is no longer produced. If it is
-still configured as a required check in GitHub branch protection or a ruleset,
-remove that required check so it does not block PRs indefinitely. Removing the
-workflow file does not update GitHub repository settings.
-
-### Failures and recovery
+## Release failures and recovery
 
 Failed verification, build, or signature checking does not change the existing
 tag. Use **Re-run failed jobs** to retry from the failed verification or
@@ -421,7 +388,7 @@ source checkout with `RELEASE_PACKAGE` set to its absolute directory and
 CLI access. Without the package, exact-artifact recovery is unavailable.
 
 Local tests use isolated repositories and simulated GitHub responses. They do
-not establish live GitHub dispatch/tag triggering, repository permissions, PR
+not establish live GitHub dispatch, repository permissions, PR
 creation, draft uploads, or failed-job recovery. Verify these against the
 repository settings when installing the workflows.
 
