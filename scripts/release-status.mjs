@@ -4,8 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 export function reportReleaseStatus(identity, state) {
-  // Prepared commits stay local until publication pushes the branch and tag.
-  // Report only when the prepared commit is available remotely.
+  // Report only after the prepared commit reaches the release branch or tag.
   const refs = execFileSync(
     "git",
     [

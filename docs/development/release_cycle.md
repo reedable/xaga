@@ -95,7 +95,7 @@ the release branch.
 
 The workflows and scripts must be on the default branch before manual execution
 is available. Configure the [version-bump GitHub App](#version-bump-github-app)
-before running a manual bump or preparing a first RC on `main`. Branch rules
+before running a manual bump or preparing a release. Branch rules
 must permit the App to create and update `version/*`.
 
 The App opens the PR and GitHub starts **Pull request verification**
@@ -117,17 +117,19 @@ workflow refuses to overwrite other branch work.
 1. Register a GitHub App owned by the repository owner. Disable webhooks and
    grant **Contents** and **Pull requests** read and write repository permissions.
 2. Install the App on the repository. Keep the existing branch protections in
-   effect and check that they permit the App to create and update `version/*`.
+   effect. Permit the App to create and update `version/*` and to create,
+   update, and delete `release-preparation/*`.
 3. In the repository's Actions settings, create the variable
    `VERSION_BUMP_APP_CLIENT_ID` with the App's client ID and the variable
    `VERSION_BUMP_APP_BOT` with its bot login, such as
    `xaga-version-bump[bot]`. Generate a private key for the App and store the
    PEM contents in the Actions secret `VERSION_BUMP_APP_PRIVATE_KEY`.
 
-The manual and first-RC workflows request short-lived installation tokens for the
-current repository. GitHub signs newly created bump commits through
+The manual bump and release workflows request short-lived installation tokens for
+the current repository. GitHub signs new bump and release preparation commits through
 [`createCommitOnBranch`](https://docs.github.com/en/graphql/reference/commits#createcommitonbranch).
-The first-RC publication job uses its regular workflow token for release refs and
+Release preparation requests Contents write for signing. The first-RC
+publication job uses its regular workflow token for release refs and
 drafts and passes the installation token to the development bump script.
 
 Local tests use temporary Git repositories and simulated GitHub responses. They
@@ -226,7 +228,7 @@ using the version on `main` and the target release branch.
 A run on a release branch advances that branch's RC version by one. To target
 a minor or major release, merge the corresponding development version before dispatch.
 
-The workflow commits the RC version locally before verification and building.
+The workflow prepares a GitHub-signed RC commit before verification and building.
 After a successful build, publication atomically pushes the release branch and
 RC tag and uploads the draft prerelease.
 Immediately after pushing the first candidate, publication uses the
@@ -265,8 +267,8 @@ a tag, or any other branch fails before the release pipeline starts with
 “Run Release on a release/x.y.z branch.”
 
 The pipeline checks that the branch matches the RC version, then removes the
-RC suffix and commits `x.y.z`
-locally before verification and building. After success, it atomically pushes
+RC suffix and prepares a GitHub-signed `x.y.z` commit before verification and
+building. After success, it atomically pushes
 that commit and the final tag, uploads a final draft release, and opens or reuses
 the release-to-main PR. A failure before the atomic push leaves the remote branch
 on the RC. A fresh run starts from that same remote RC.
@@ -289,11 +291,30 @@ approve them. Branch and tag rules must permit the bot to create/update
 `release/*` and create release tags. Protect `main` by requiring PRs. No bot
 bypass of `main`, auto-merge setting, or administrative-read credential is needed.
 
+### Signed preparation commits
+
+The preparation job creates a unique `release-preparation/*` branch from the
+selected source and asks GitHub to commit the synchronized version files as the
+configured App bot. It checks GitHub's signature verification and author login,
+then fetches the returned commit and compares its sole parent and tree with the
+selected source and staged version files. Missing credentials, API errors, or a
+mismatch fail preparation. The source artifact carries that exact commit to all
+verification and packaging jobs.
+
+The temporary branch can expose its source and prepared commit to anyone with
+repository read access before release publication. The preparation script
+deletes its temporary branch after success or a handled failure. If the runner
+is interrupted or the API cannot complete deletion, use the temporary ref
+printed in the preparation log to locate it. After confirming that the owning
+run has ended, delete only that ref and retry preparation. Each attempt uses
+a fresh ref. GitHub commit signing is independent of the macOS app signature
+verified during packaging.
+
 ### Release status
 
 The workflows report a commit status named **Release build** on the prepared
-RC or final commit. Prepared commits remain local during building, so their
-status starts after the atomic push.
+RC or final commit. Reporting starts when the release branch or tag points to
+the prepared commit after atomic publication.
 Success is reported after build, artifact retention, draft upload, and any
 applicable PR work succeed. Failure/cancellation cleanup reports failure when the
 prepared commit is available remotely. If the runner cannot execute cleanup,

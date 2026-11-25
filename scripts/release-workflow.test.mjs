@@ -33,6 +33,7 @@ function fixture(t, version = "0.17.3-dev") {
     "release-status.mjs",
     "prepare-release.mjs",
     "prepare-version-bump.mjs",
+    "signed-commit.mjs",
     "publish-release.mjs",
   ]) {
     mkdirSync(join(root, "scripts"), { recursive: true });
@@ -120,15 +121,33 @@ if (process.env.GH_FAIL === args[1] || process.env.GH_FAIL === args.slice(0,2).j
 if (args[0] === 'api' && args[1] === 'graphql') {
  assert.equal(process.env.GH_TOKEN, 'fixture-app-token');
  const { variables } = JSON.parse(fs.readFileSync(0, 'utf8'));
- const { branch, expectedHeadOid, message } = variables.input;
+ const { branch, expectedHeadOid, message, fileChanges } = variables.input;
+ assert.equal(branch.repositoryNameWithOwner, 'fixture/xaga');
+ assert.deepEqual(fileChanges.additions.map(({path}) => path),
+   git('diff', '--cached', '--name-only').split('\\n'));
+ for (const {path, contents} of fileChanges.additions)
+   assert.equal(contents, fs.readFileSync(path).toString('base64'));
  const ref = "refs/heads/" + branch.branchName;
- const oid = git('commit-tree', git('write-tree'), '-p', expectedHeadOid, '-m', message.headline);
+ const tree = process.env.WRONG_TREE ? git('rev-parse', expectedHeadOid + '^{tree}') : git('write-tree');
+ const oid = git('commit-tree', tree, '-p', expectedHeadOid, '-m', message.headline);
  git('push', '--force-with-lease=' + ref + ':' + expectedHeadOid,
    'origin', oid + ':' + ref);
+ console.log(JSON.stringify({data:{createCommitOnBranch:{commit:{oid: process.env.WRONG_OID ? expectedHeadOid : oid}}}}));
 } else if (args[0] === 'api' && args[3] === 'repos/fixture/xaga/git/refs') {
  assert.equal(process.env.GH_TOKEN, 'fixture-app-token');
  const ref = args[5].slice(4);
  git('push', '--force-with-lease=' + ref + ':', 'origin', args[7].slice(4) + ':' + ref);
+ } else if (args[0] === 'api' && args[1] === '--method' && args[2] === 'DELETE') {
+ assert.equal(process.env.GH_TOKEN, 'fixture-app-token');
+ const ref = args[3].replace('repos/fixture/xaga/git/refs/', 'refs/');
+ assert.ok(ref.startsWith('refs/heads/release-preparation/'));
+ if (process.env.FAIL_TEMP_DELETE) process.exit(17);
+ git('push', 'origin', ':' + ref);
+} else if (args[0] === 'api' && args[1]?.startsWith('repos/fixture/xaga/commits/')) {
+ assert.equal(process.env.GH_TOKEN, 'fixture-app-token');
+ if (process.env.FAIL_COMMIT_LOOKUP) process.exit(17);
+ const sha = args[1].split('/').at(-1);
+ console.log(JSON.stringify({sha, author: {login: process.env.WRONG_AUTHOR ? 'other[bot]' : 'xaga-version-bump[bot]'}, commit: {verification: {verified: !process.env.UNVERIFIED_COMMIT}}}));
 } else if (args[0] === 'api' && args.some(arg => arg.includes('/statuses/'))) {
  assert.equal(process.env.GH_TOKEN, 'fixture-workflow-token');
  state.statuses ||= []; state.statuses.push({sha:args.find(arg=>arg.includes('/statuses/')).split('/').at(-1),state:args.find(arg=>arg.startsWith('state=')).slice(6),context:args.find(arg=>arg.startsWith('context=')).slice(8)});
@@ -174,6 +193,7 @@ fs.writeFileSync(path, JSON.stringify(state));
     RELEASE_PACKAGE: join(directory, "package"),
     GH_STATE: join(directory, "gh.json"),
     GH_TOKEN: "fixture-workflow-token",
+    VERSION_BUMP_APP_BOT: "xaga-version-bump[bot]",
     VERSION_BUMP_APP_TOKEN: "fixture-app-token",
   };
   delete env.GITHUB_STEP_SUMMARY;
@@ -242,6 +262,64 @@ function built(f, mode = "rc") {
   f.build();
   succeeds(f.seal());
 }
+
+for (const [name, extra, message] of [
+  [
+    "missing App credentials",
+    { VERSION_BUMP_APP_TOKEN: "" },
+    /requires the GitHub App/,
+  ],
+  [
+    "ref creation failure",
+    { GH_FAIL: "api---method" },
+    /GitHub App API failed/,
+  ],
+  ["commit creation failure", { GH_FAIL: "graphql" }, /create signed commit/],
+  [
+    "verification API failure",
+    { FAIL_COMMIT_LOOKUP: "1" },
+    /GitHub App API failed/,
+  ],
+  ["unverified signature", { UNVERIFIED_COMMIT: "1" }, /did not verify/],
+  ["unexpected author", { WRONG_AUTHOR: "1" }, /expected App author/],
+  ["unexpected commit ID", { WRONG_OID: "1" }, /does not match/],
+  ["unexpected tree", { WRONG_TREE: "1" }, /does not match/],
+]) {
+  test(`release preparation refuses ${name} and leaves release refs alone`, (t) => {
+    const f = fixture(t);
+    const refs = f.refs();
+    const result = f.prepare("rc", extra);
+    fails(result);
+    assert.match(result.stderr, message);
+    assert.equal(f.refs(), refs);
+    assert.equal(f.git("rev-parse", "HEAD"), f.start);
+  });
+}
+
+test("temporary ref deletion failure prevents retaining prepared source", (t) => {
+  const f = fixture(t);
+  const refs = f.refs();
+  const result = f.prepare("rc", { FAIL_TEMP_DELETE: "1" });
+  fails(result);
+  const temporary = f.git(
+    "ls-remote",
+    "origin",
+    "refs/heads/release-preparation/*"
+  );
+  const ref = temporary.split("\t")[1];
+  assert.ok(ref);
+  assert.match(result.stderr, /GitHub App API failed: --method DELETE/);
+  assert.ok(result.stdout.includes(ref));
+  assert.equal(
+    f
+      .refs()
+      .split("\n")
+      .filter((line) => line !== temporary)
+      .join("\n"),
+    refs
+  );
+  fails(f.seal());
+});
 
 test("first RC retries the same version and publishes only after building", (t) => {
   const f = fixture(t);
@@ -397,7 +475,7 @@ test("the final publication opens and reuses the release PR after RC publication
   assert.equal(github(f).merges.length, 0);
 });
 
-test("Release commits locally before building and pushes branch and tag only on success", (t) => {
+test("Release checks out the prepared commit and pushes branch and tag only on success", (t) => {
   const f = fixture(t, "0.17.3-rc.1");
   const refs = f.refs();
   succeeds(f.prepare("release"));
