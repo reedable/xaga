@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createSignedCommit } from "./signed-commit.mjs";
 import { nextVersion } from "./bump-version.mjs";
 import { readVersionRecords, validateVersionRecords } from "./release-tag.mjs";
 
@@ -16,33 +17,6 @@ function run(command, args, input) {
 }
 function git(...args) {
   return run("git", args);
-}
-function commitBump(repository, branchName, start, title) {
-  const additions = git("diff", "--cached", "--name-only")
-    .split("\n")
-    .map((path) => ({
-      path,
-      contents: execFileSync("git", ["show", `:${path}`], {
-        cwd: root,
-      }).toString("base64"),
-    }));
-  run(
-    "gh",
-    ["api", "graphql", "--method", "POST", "--input", "-"],
-    JSON.stringify({
-      query: `mutation ($input: CreateCommitOnBranchInput!) {
-      createCommitOnBranch(input: $input) { commit { oid } }
-    }`,
-      variables: {
-        input: {
-          branch: { repositoryNameWithOwner: repository, branchName },
-          expectedHeadOid: start,
-          message: { headline: title },
-          fileChanges: { additions },
-        },
-      },
-    })
-  );
 }
 function main() {
   const [bump, releaseVersion] = process.argv.slice(2);
@@ -150,7 +124,14 @@ function main() {
         "-f",
         `sha=${start}`,
       ]);
-    commitBump(repository, branch, start, title);
+    createSignedCommit(
+      root,
+      repository,
+      branch,
+      start,
+      title,
+      process.env.GH_TOKEN
+    );
   }
   const prs = listPRs();
   const body = `Advance the development version from ${current} to ${next} using npm run version:${bump}.\n\nReview and merge after the required checks pass.`;

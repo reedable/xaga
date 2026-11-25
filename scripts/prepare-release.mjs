@@ -1,6 +1,6 @@
 // Shared GitHub release preparation. State and packages live outside the checkout.
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   appendFileSync,
   copyFileSync,
@@ -12,6 +12,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { nextVersion } from "./bump-version.mjs";
+import { createSignedCommit, githubAppApi } from "./signed-commit.mjs";
 import { reportReleaseStatus } from "./release-status.mjs";
 import {
   releaseTagName,
@@ -59,6 +60,58 @@ function validatePreparedSource(state) {
   }
   git("diff", "--exit-code");
 }
+function prepareSignedCommit(start, tree, tag, repository, token, bot) {
+  const branch = `release-preparation/${randomUUID()}`;
+  const ref = `refs/heads/${branch}`;
+  const refs = `repos/${repository}/git/refs`;
+  console.log(`Preparing signed release on temporary ref ${ref}`);
+  githubAppApi(root, token, [
+    "--method",
+    "POST",
+    refs,
+    "-f",
+    `ref=${ref}`,
+    "-f",
+    `sha=${start}`,
+  ]);
+  try {
+    const commit = createSignedCommit(
+      root,
+      repository,
+      branch,
+      start,
+      `Prepare ${tag}`,
+      token
+    );
+    const info = JSON.parse(
+      githubAppApi(root, token, [`repos/${repository}/commits/${commit}`])
+    );
+    if (
+      info.sha !== commit ||
+      info.author?.login !== bot ||
+      info.commit?.verification?.verified !== true
+    )
+      throw new Error(
+        "GitHub did not verify the release commit and expected App author"
+      );
+    git("fetch", "--no-tags", "origin", ref);
+    if (
+      git("rev-parse", "FETCH_HEAD") !== commit ||
+      git("show", "-s", "--format=%P%n%T", commit) !== `${start}\n${tree}`
+    )
+      throw new Error(
+        "Signed release commit does not match the selected source and prepared tree"
+      );
+    git("switch", "--detach", commit);
+    return commit;
+  } finally {
+    githubAppApi(root, token, [
+      "--method",
+      "DELETE",
+      `${refs}/heads/${branch}`,
+    ]);
+  }
+}
 function prepare(mode, statePath) {
   if (!["rc", "release"].includes(mode))
     throw new Error("Expected rc or release mode");
@@ -99,6 +152,17 @@ function prepare(mode, statePath) {
     if (git("ls-remote", "origin", branch).split(/\s+/)[0] !== start)
       throw new Error("Release branch moved; start a fresh run");
   }
+  const repository = process.env.GITHUB_REPOSITORY;
+  const token = process.env.VERSION_BUMP_APP_TOKEN;
+  const bot = process.env.VERSION_BUMP_APP_BOT;
+  if (
+    !/^[\w.-]+\/[\w.-]+$/.test(repository || "") ||
+    !token ||
+    !/^[\w-]+\[bot\]$/.test(bot || "")
+  )
+    throw new Error(
+      "Release preparation requires the GitHub App token, bot login, and repository"
+    );
   if (nextPatch)
     run(process.execPath, ["scripts/bump-version.mjs", "rc-next-patch"]);
   else run("npm", ["run", `version:${mode}`]);
@@ -111,17 +175,12 @@ function prepare(mode, statePath) {
   )
     throw new Error("Unexpected version preparation changes");
   git("add", "--", ...versionFiles);
-  git("config", "user.name", "github-actions[bot]");
-  git(
-    "config",
-    "user.email",
-    "41898282+github-actions[bot]@users.noreply.github.com"
-  );
-  git("commit", "-m", `Prepare ${tag}`);
+  const tree = git("write-tree");
+  const commit = prepareSignedCommit(start, tree, tag, repository, token, bot);
   const identity = {
     mode,
     start,
-    commit: git("rev-parse", "HEAD"),
+    commit,
     branch,
     expectedBranch,
     sourceRef: ref,
@@ -129,7 +188,7 @@ function prepare(mode, statePath) {
     runAttempt: process.env.GITHUB_RUN_ATTEMPT,
     version,
     tag,
-    tree: git("write-tree"),
+    tree,
   };
   write(statePath, identity);
   reportReleaseStatus(identity, "pending");

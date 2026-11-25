@@ -60,6 +60,7 @@ function fixture(t, version = "0.17.6") {
   mkdirSync(join(root, "scripts"));
   for (const name of [
     "prepare-version-bump.mjs",
+    "signed-commit.mjs",
     "bump-version.mjs",
     "release-tag.mjs",
   ])
@@ -109,6 +110,7 @@ if (args[0] === 'api' && args[1] === 'graphql') {
  const oid = git('commit-tree', git('write-tree'), '-p', expectedHeadOid, '-m', message.headline);
  git('push', '--force-with-lease=' + ref + ':' + expectedHeadOid,
    'origin', oid + ':' + ref);
+ console.log(JSON.stringify({data:{createCommitOnBranch:{commit:{oid}}}}));
 } else if (args[0] === 'api') {
  assert.deepEqual(args.slice(1, 4), ['--method', 'POST', 'repos/fixture/xaga/git/refs']);
  const ref = args[5].slice(4);
@@ -287,7 +289,10 @@ for (const release of [[], ["0.17.6"]]) {
   test(`retries after branch creation (${release.length ? "first RC" : "manual"})`, (t) => {
     const f = fixture(t);
     const ref = "refs/heads/version/0.17.7-dev";
-    fails(f.run("patch", { FAIL_COMMIT: "1" }, release), /Command failed/);
+    fails(
+      f.run("patch", { FAIL_COMMIT: "1" }, release),
+      /create signed commit/
+    );
     assert.equal(f.git("ls-remote", "origin", ref).split(/\s+/)[0], f.start);
     f.git("checkout", "--force", "main");
     f.write("unrelated.txt", "Work merged after branch creation");
