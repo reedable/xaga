@@ -330,8 +330,11 @@ have a 30-minute limit. Releases prepare source in a separate job, then each
 verification job and the packaging job restore the same prepared commit. The
 preparation artifact retains that commit and its release identity for 14 days.
 The packaging job depends on successful verification, and publication depends
-on successful packaging. Packaging uses the committed release icons, verifies
-the app signature, and retains the app archive, disk image, checksums, and Git
+on successful packaging. The **Build distributable** step uses the committed
+release icons and enables Tauri's Finder automation to apply the configured DMG
+background and icon positions. The step has a 30-minute limit to bound a stalled
+build or Finder operation. After a successful build, the packaging job verifies
+the app signature and retains the app archive, disk image, checksums, and Git
 identity for 14 days.
 
 The PR workflow uses `pull_request` with `contents: read` and
