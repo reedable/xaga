@@ -30,5 +30,15 @@ job used by Release Candidate and Release.
 
 - [Shared release pipeline](../../.github/workflows/release-pipeline.yml)
 - [Tauri DMG configuration](../../src-tauri/tauri.conf.json)
-- [Tauri's CI override for DMG bundling](https://github.com/tauri-apps/tauri/pull/11799)
-- [Hosted runner Finder automation timeout report](https://github.com/tauri-apps/tauri-action/issues/1091)
+- Tauri introduced the CI skip after Finder AppleEvents timed out and failed
+  DMG builds. Xaga's shared packaging command inherits that default. The
+  pinned Tauri bundler passes `--skip-jenkins` when `CI=true`, which skips the
+  AppleScript that sets the background and icon positions.
+  [Original Tauri issue](https://github.com/tauri-apps/tauri/issues/592) ·
+  [Pinned bundler source](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/macos/dmg/mod.rs#L183-L191)
+- Tauri later added `TAURI_BUNDLER_DMG_IGNORE_CI=true` to opt back into Finder
+  automation for DMG packaging. A 2025 report documented a hang at the
+  AppleScript step on some GitHub-hosted macOS runners. The report does not
+  establish how Xaga's current runner behaves.
+  [Tauri override](https://github.com/tauri-apps/tauri/pull/11799) ·
+  [Hosted runner report](https://github.com/tauri-apps/tauri-action/issues/1091)
