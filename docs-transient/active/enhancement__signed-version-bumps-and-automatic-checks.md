@@ -40,10 +40,11 @@ share the version-bump script. The scope is the development-version bump PR.
   installation token.
 - Update PR verification to recognize the configured App and update the release
   guide and workflow summaries for the new behavior.
-- Cover the branch and PR recovery paths with automated tests. In a disposable
-  repository with the App installed, verify a manual bump and a first-RC bump.
-  Record the commit's **Verified** badge and check run showing that verification
-  started without approval. Verify that a modified bump takes the full path.
+- Cover the branch and PR recovery paths with automated tests. With the App
+  installed in `reedable/xaga`, verify the next real manual bump and first-RC
+  bump. For each PR, record the commit's **Verified** badge and the check run
+  showing that verification started without approval. Use a separate modified
+  bump PR to verify that the full suite runs, then close it without merging.
 
 ## References
 

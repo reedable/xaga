@@ -16,7 +16,8 @@ jobs:
   version-bump:
     name: Identify generated version bump
     if: >-
-      github.event.pull_request.user.login == 'github-actions[bot]' &&
+      vars.VERSION_BUMP_APP_BOT != '' &&
+      github.event.pull_request.user.login == vars.VERSION_BUMP_APP_BOT &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       startsWith(github.head_ref, 'version/')
     runs-on: ubuntu-latest
