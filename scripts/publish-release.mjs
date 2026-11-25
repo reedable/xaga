@@ -33,7 +33,11 @@ function openNextDevelopmentPR(version) {
         ["scripts/prepare-version-bump.mjs", "patch", version],
         {
           cwd: directory,
-          env: { ...process.env, GITHUB_REF: main },
+          env: {
+            ...process.env,
+            GITHUB_REF: main,
+            GH_TOKEN: process.env.VERSION_BUMP_APP_TOKEN || "",
+          },
           encoding: "utf8",
         }
       );

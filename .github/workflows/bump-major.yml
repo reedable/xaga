@@ -4,11 +4,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   bump:
     uses: ./.github/workflows/version-bump.yml
     with:
       bump: major
+    secrets:
+      version-bump-app-key: ${{ secrets.VERSION_BUMP_APP_PRIVATE_KEY }}

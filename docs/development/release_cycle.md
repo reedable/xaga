@@ -93,24 +93,42 @@ CLI lifecycle rules. It does not push to `main`, merge PRs, create tags, or buil
 packages. First RC publication also uses the patch-bump script after pushing
 the release branch.
 
-The workflows and scripts must be installed on the default branch before manual
-execution is available. Enable **Allow GitHub Actions to create and approve pull
-requests** in repository Actions settings; the workflow creates PRs but does not
-approve or merge them. Branch rules must permit creation of `version/*`.
+The workflows and scripts must be on the default branch before manual execution
+is available. Configure the [version-bump GitHub App](#version-bump-github-app)
+before running a manual bump or preparing a first RC on `main`. Branch rules
+must permit the App to create and update `version/*`.
 
-Review the generated PR before merging. An exact generated version bump skips
-the full verification suite as described below. GitHub
-may show **Approve workflows to run** for a PR created by `GITHUB_TOKEN`; approve
-those runs when prompted. If required checks do not start, close and reopen the
-PR manually. See [GitHub's workflow-trigger behavior](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
-When entering `x.y.0-dev`, the run summary reminds you to review and select
-recurring maintenance work.
+The App opens the PR and GitHub starts **Pull request verification**
+automatically. Review the PR and confirm that GitHub marks the commit
+**Verified**. An exact generated bump receives a **Skipped** result for
+**Verification**. When entering `x.y.0-dev`, the run summary reminds you to review
+and select recurring maintenance work.
 
-If PR creation fails after the branch push, rerun the original workflow while
-`main` is unchanged. It reuses an existing branch only when its parent and source
-tree match the prepared bump, and reuses an open PR. It refuses to overwrite
-additional branch work. If `main` has moved or the branch differs, inspect the
-existing version PR before starting fresh work.
+If publication stops after branch creation or after commit creation, rerun the
+workflow. If the branch still points to its source commit, a fresh run on
+`main` can resume it when that commit is an ancestor of current `main` and both
+have the same application version. A retry reuses an exact existing bump
+commit, including an unsigned commit from the previous workflow, and reuses an
+open PR. Existing PRs retain their original author and check history. The
+workflow refuses to overwrite other branch work.
+
+#### Version-bump GitHub App
+
+1. Register a GitHub App owned by the repository owner. Disable webhooks and
+   grant **Contents** and **Pull requests** read and write repository permissions.
+2. Install the App on the repository. Keep the existing branch protections in
+   effect and check that they permit the App to create and update `version/*`.
+3. In the repository's Actions settings, create the variable
+   `VERSION_BUMP_APP_CLIENT_ID` with the App's client ID and the variable
+   `VERSION_BUMP_APP_BOT` with its bot login, such as
+   `xaga-version-bump[bot]`. Generate a private key for the App and store the
+   PEM contents in the Actions secret `VERSION_BUMP_APP_PRIVATE_KEY`.
+
+The manual and first-RC workflows request short-lived installation tokens for the
+current repository. GitHub signs newly created bump commits through
+[`createCommitOnBranch`](https://docs.github.com/en/graphql/reference/commits#createcommitonbranch).
+The first-RC publication job uses its regular workflow token for release refs and
+drafts and passes the installation token to the development bump script.
 
 Local tests use temporary Git repositories and simulated GitHub responses. They
 verify version synchronization, branch isolation, rejection paths, and PR
@@ -285,7 +303,7 @@ and then success on the same prepared commit.
 ### Required pull request verification
 
 **Pull request verification** (`.github/workflows/development-pr.yml`) runs for
-PRs into `main`. For same-repository version PRs opened by GitHub Actions, an
+PRs into `main`. For same-repository version PRs opened by the configured GitHub App, an
 Ubuntu job runs the existing bump command from the PR base and compares the
 resulting Git tree with the proposed merge. If the trees match, the required
 **Verification** job is skipped. A mismatch or an unsuccessful comparison

@@ -109,12 +109,28 @@ function fixture(t, version = "0.17.3-dev") {
   writeFileSync(
     mockPath,
     `
+const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
+const git = (...args) => execFileSync('git', args, {encoding:'utf8'}).trim();
 const path = process.env.GH_STATE;
 const state = fs.existsSync(path) ? JSON.parse(fs.readFileSync(path)) : { releases: [], uploads: [], prs: [], merges: [] };
 const args = process.argv.slice(2);
 if (process.env.GH_FAIL === args[1] || process.env.GH_FAIL === args.slice(0,2).join('-')) process.exit(17);
-if (args[0] === 'api' && args.some(arg => arg.includes('/statuses/'))) {
+if (args[0] === 'api' && args[1] === 'graphql') {
+ assert.equal(process.env.GH_TOKEN, 'fixture-app-token');
+ const { variables } = JSON.parse(fs.readFileSync(0, 'utf8'));
+ const { branch, expectedHeadOid, message } = variables.input;
+ const ref = "refs/heads/" + branch.branchName;
+ const oid = git('commit-tree', git('write-tree'), '-p', expectedHeadOid, '-m', message.headline);
+ git('push', '--force-with-lease=' + ref + ':' + expectedHeadOid,
+   'origin', oid + ':' + ref);
+} else if (args[0] === 'api' && args[3] === 'repos/fixture/xaga/git/refs') {
+ assert.equal(process.env.GH_TOKEN, 'fixture-app-token');
+ const ref = args[5].slice(4);
+ git('push', '--force-with-lease=' + ref + ':', 'origin', args[7].slice(4) + ':' + ref);
+} else if (args[0] === 'api' && args.some(arg => arg.includes('/statuses/'))) {
+ assert.equal(process.env.GH_TOKEN, 'fixture-workflow-token');
  state.statuses ||= []; state.statuses.push({sha:args.find(arg=>arg.includes('/statuses/')).split('/').at(-1),state:args.find(arg=>arg.startsWith('state=')).slice(6),context:args.find(arg=>arg.startsWith('context=')).slice(8)});
 }
 else if (args[0] === 'api' && args.includes('--paginate') && args.includes('--slurp')) console.log(JSON.stringify([state.releases]));
@@ -124,6 +140,7 @@ else if (args[0] === 'pr' && args[1] === 'list') {
 }
 else if (args[0] === 'pr' && args[1] === 'create') {
  const head = args[args.indexOf('--head')+1];
+ assert.equal(process.env.GH_TOKEN, head.startsWith('version/') ? 'fixture-app-token' : 'fixture-workflow-token');
  if (process.env.GH_FAIL_PR_HEAD === head) process.exit(17);
  const number = state.prs.length + 1;
  const url = 'https://example.test/pr/' + number;
@@ -156,6 +173,8 @@ fs.writeFileSync(path, JSON.stringify(state));
     RELEASE_STATE: join(directory, "state.json"),
     RELEASE_PACKAGE: join(directory, "package"),
     GH_STATE: join(directory, "gh.json"),
+    GH_TOKEN: "fixture-workflow-token",
+    VERSION_BUMP_APP_TOKEN: "fixture-app-token",
   };
   delete env.GITHUB_STEP_SUMMARY;
   const command = (script, args = [], extra = {}) =>
@@ -431,6 +450,17 @@ test("main may advance independently while a captured RC builds", (t) => {
   assert.equal(head(f, "main"), main);
   f.git("fetch", "origin", "refs/heads/version/0.17.4-dev");
   assert.equal(f.git("rev-parse", "FETCH_HEAD^"), main);
+});
+
+test("first RC still publishes its draft when the bump App token is unavailable", (t) => {
+  const f = fixture(t);
+  built(f);
+  const result = f.publish({ VERSION_BUMP_APP_TOKEN: "" });
+  fails(result);
+  assert.match(result.stderr, /Version bumps require .*GitHub App token/);
+  assert.equal(head(f), f.manifest().commit);
+  assert.equal(github(f).releases[0].tag_name, f.manifest().tag);
+  assert.deepEqual(github(f).prs, []);
 });
 
 test("first RC publication retries bump PR creation using the same refs", (t) => {

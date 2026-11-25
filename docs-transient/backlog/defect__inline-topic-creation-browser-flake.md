@@ -1,23 +1,24 @@
-# Restore the inline Topic creation browser test
+# Restore the inline Topic creation browser tests
 
 ## Summary
 
-The inline Topic confirmation case intermittently fails on CI and is
-temporarily disabled. It passed five local runs with CI settings.
+Two inline Topic creation cases are temporarily disabled after CI failures.
+Both passed five local runs with CI settings.
 
 ## Requirements
 
 - Restore coverage that inline confirmation creates a separate Topic with the
   requested article membership and top-level shortcut.
-- Verify the restored case in repeated runs on hosted CI.
+- Restore coverage that changing articles discards a pending inline similarity
+  check and that repeated submissions while the check is pending are ignored.
+- Verify both restored cases in repeated runs on hosted CI.
 
 ## Remaining work
 
-- Inspect a failing CI assertion and its Playwright trace to identify where
-  the flow stalls. If a trace is unavailable, reproduce the failure on hosted
-  CI with the case enabled on an investigation branch.
-- Fix the cause and re-enable the case with its membership and shortcut
-  assertions intact.
+- Inspect each failing CI assertion and its Playwright trace. If a trace is
+  unavailable, reproduce the failure on hosted CI with the affected case
+  enabled on an investigation branch.
+- Fix the causes and re-enable both cases with their behavior assertions intact.
 
 ## References
 

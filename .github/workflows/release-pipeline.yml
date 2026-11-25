@@ -7,6 +7,10 @@ on:
         required: true
         type: string
 
+    secrets:
+      version-bump-app-key:
+        required: false
+
 permissions:
   contents: read
   actions: read
@@ -202,9 +206,21 @@ jobs:
           name: ${{ needs.build.outputs.artifact }}
           path: ${{ runner.temp }}/release-package
 
+      - name: Create version bump App token
+        id: bump-app
+        if: inputs.mode == 'rc' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.VERSION_BUMP_APP_CLIENT_ID }}
+          private-key: ${{ secrets.version-bump-app-key }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Push verified refs and finish draft
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION_BUMP_APP_TOKEN: ${{ steps.bump-app.outputs.token }}
           RELEASE_PACKAGE: ${{ runner.temp }}/release-package
         run: node scripts/publish-release.mjs
 
