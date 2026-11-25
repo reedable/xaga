@@ -26,14 +26,6 @@ async function startDraft(page: Page, draft: string) {
   await title(page).fill(draft);
 }
 
-async function startInline(page: Page, article: string, draft: string) {
-  await openArticle(page, article);
-  await control(page, "tab", "inspector-topics").click();
-  await control(page, "textbox", "filter-topics").fill("New draft");
-  await control(page, "button", "create-topic").click();
-  await title(page).fill(draft);
-}
-
 test("a similar Topic can be opened without saving or changing it", async ({
   page,
 }) => {
@@ -105,6 +97,14 @@ test("an unavailable similarity check requires explicit confirmation", async ({
 
 // Temporarily disabled because this case fails intermittently on CI.
 /*
+async function startInline(page: Page, article: string, draft: string) {
+  await openArticle(page, article);
+  await control(page, "tab", "inspector-topics").click();
+  await control(page, "textbox", "filter-topics").fill("New draft");
+  await control(page, "button", "create-topic").click();
+  await title(page).fill(draft);
+}
+
 test("inline confirmation creates a separate Topic with the requested member and pin", async ({
   page,
 }) => {
