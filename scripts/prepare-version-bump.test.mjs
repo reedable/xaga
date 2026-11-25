@@ -96,16 +96,19 @@ if (args[0] === 'api' && args[1] === 'graphql') {
  const { query, variables } = JSON.parse(fs.readFileSync(0, 'utf8'));
  assert.match(query, /createCommitOnBranch/);
  const { branch, expectedHeadOid, message, fileChanges } = variables.input;
+ assert.deepEqual(Object.keys(branch).sort(), ["branchName", "repositoryNameWithOwner"]);
+ assert.match(branch.branchName, /^version\\//);
+ const ref = "refs/heads/" + branch.branchName;
  assert.equal(branch.repositoryNameWithOwner, 'fixture/xaga');
- assert.equal(git('ls-remote', 'origin', branch.refName).split(/\\s+/)[0], expectedHeadOid);
+ assert.equal(git('ls-remote', 'origin', ref).split(/\\s+/)[0], expectedHeadOid);
  if (process.env.FAIL_COMMIT) process.exit(18);
  assert.deepEqual(fileChanges.additions.map(({path}) => path),
    git('diff', '--cached', '--name-only').split('\\n'));
  for (const {path, contents} of fileChanges.additions)
    assert.equal(contents, fs.readFileSync(path).toString('base64'));
  const oid = git('commit-tree', git('write-tree'), '-p', expectedHeadOid, '-m', message.headline);
- git('push', '--force-with-lease=' + branch.refName + ':' + expectedHeadOid,
-   'origin', oid + ':' + branch.refName);
+ git('push', '--force-with-lease=' + ref + ':' + expectedHeadOid,
+   'origin', oid + ':' + ref);
 } else if (args[0] === 'api') {
  assert.deepEqual(args.slice(1, 4), ['--method', 'POST', 'repos/fixture/xaga/git/refs']);
  const ref = args[5].slice(4);
@@ -287,15 +290,10 @@ for (const release of [[], ["0.17.6"]]) {
     fails(f.run("patch", { FAIL_COMMIT: "1" }, release), /Command failed/);
     assert.equal(f.git("ls-remote", "origin", ref).split(/\s+/)[0], f.start);
     f.git("checkout", "--force", "main");
-    if (release.length) {
-      f.git(
-        "commit",
-        "--allow-empty",
-        "-m",
-        "Advance main without changing the version"
-      );
-      f.git("push", "origin", "main");
-    }
+    f.write("unrelated.txt", "Work merged after branch creation");
+    f.git("add", "unrelated.txt");
+    f.git("commit", "-m", "Advance main without changing the version");
+    f.git("push", "origin", "main");
     succeeds(f.run("patch", {}, release));
     f.git("fetch", "origin", ref);
     assert.equal(f.git("rev-parse", "FETCH_HEAD^"), f.start);

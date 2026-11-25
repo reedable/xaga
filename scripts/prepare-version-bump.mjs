@@ -17,7 +17,7 @@ function run(command, args, input) {
 function git(...args) {
   return run("git", args);
 }
-function commitBump(repository, ref, start, title) {
+function commitBump(repository, branchName, start, title) {
   const additions = git("diff", "--cached", "--name-only")
     .split("\n")
     .map((path) => ({
@@ -35,7 +35,7 @@ function commitBump(repository, ref, start, title) {
     }`,
       variables: {
         input: {
-          branch: { repositoryNameWithOwner: repository, refName: ref },
+          branch: { repositoryNameWithOwner: repository, branchName },
           expectedHeadOid: start,
           message: { headline: title },
           fileChanges: { additions },
@@ -100,11 +100,8 @@ function main() {
   const existing = git("ls-remote", "origin", ref);
   if (existing) git("fetch", "--no-tags", "origin", ref);
   const head = existing ? git("rev-parse", "FETCH_HEAD") : "";
-  // First-RC retries can resume from an earlier main commit.
-  const preparedSource =
-    head &&
-    (head === main ||
-      (releaseVersion && git("merge-base", head, main) === head));
+  // A run interrupted before committing can resume after main advances.
+  const preparedSource = head && git("merge-base", head, main) === head;
   const start = preparedSource
     ? head
     : releaseVersion && head
@@ -112,6 +109,13 @@ function main() {
       : main;
   if (start !== main) git("merge-base", "--is-ancestor", start, main);
   git("switch", "--detach", start);
+  if (
+    preparedSource &&
+    validateVersionRecords(readVersionRecords()) !== current
+  )
+    throw new Error(
+      "Version branch already exists with a different source version"
+    );
   run("npm", ["run", `version:${bump}`]);
   if (validateVersionRecords(readVersionRecords()) !== next)
     throw new Error(`Version bump did not produce ${next}`);
@@ -146,7 +150,7 @@ function main() {
         "-f",
         `sha=${start}`,
       ]);
-    commitBump(repository, ref, start, title);
+    commitBump(repository, branch, start, title);
   }
   const prs = listPRs();
   const body = `Advance the development version from ${current} to ${next} using npm run version:${bump}.\n\nReview and merge after the required checks pass.`;
