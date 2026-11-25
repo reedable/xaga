@@ -8,9 +8,12 @@ on:
         required: true
         type: string
 
+    secrets:
+      version-bump-app-key:
+        required: true
+
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: version-bump-main
@@ -32,8 +35,17 @@ jobs:
         with:
           node-version: 24
 
+      - name: Create version bump App token
+        id: bump-app
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.VERSION_BUMP_APP_CLIENT_ID }}
+          private-key: ${{ secrets.version-bump-app-key }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Prepare version bump PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.bump-app.outputs.token }}
           VERSION_BUMP: ${{ inputs.bump }}
         run: node scripts/prepare-version-bump.mjs "$VERSION_BUMP"
