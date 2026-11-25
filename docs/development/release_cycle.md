@@ -105,12 +105,12 @@ automatically. Review the PR and confirm that GitHub marks the commit
 and select recurring maintenance work.
 
 If publication stops after branch creation or after commit creation, rerun the
-workflow. A manual retry requires the original `main` commit. A first-RC retry
-can resume from an earlier source commit on `main` if it still yields the same
-development version. A retry reuses an exact existing bump commit, including an
-unsigned commit from the previous workflow, and reuses an open PR. Existing
-PRs retain their original author and check history. The workflow refuses to
-overwrite other branch work.
+workflow. If the branch still points to its source commit, a fresh run on
+`main` can resume it when that commit is an ancestor of current `main` and both
+have the same application version. A retry reuses an exact existing bump
+commit, including an unsigned commit from the previous workflow, and reuses an
+open PR. Existing PRs retain their original author and check history. The
+workflow refuses to overwrite other branch work.
 
 #### Version-bump GitHub App
 

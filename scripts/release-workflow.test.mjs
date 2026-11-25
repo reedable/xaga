@@ -121,9 +121,10 @@ if (args[0] === 'api' && args[1] === 'graphql') {
  assert.equal(process.env.GH_TOKEN, 'fixture-app-token');
  const { variables } = JSON.parse(fs.readFileSync(0, 'utf8'));
  const { branch, expectedHeadOid, message } = variables.input;
+ const ref = "refs/heads/" + branch.branchName;
  const oid = git('commit-tree', git('write-tree'), '-p', expectedHeadOid, '-m', message.headline);
- git('push', '--force-with-lease=' + branch.refName + ':' + expectedHeadOid,
-   'origin', oid + ':' + branch.refName);
+ git('push', '--force-with-lease=' + ref + ':' + expectedHeadOid,
+   'origin', oid + ':' + ref);
 } else if (args[0] === 'api' && args[3] === 'repos/fixture/xaga/git/refs') {
  assert.equal(process.env.GH_TOKEN, 'fixture-app-token');
  const ref = args[5].slice(4);
