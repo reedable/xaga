@@ -47,6 +47,24 @@ Local-only WebKit presentation under the exact configured app CSP is separately
 covered by the SVG probe in `test:gui`; component tests alone cannot establish
 that browser policy.
 
+## Native image attachment smoke cases
+
+The opt-in `image-attachment` and `malformed-image-attachment` cases of
+`resource_download_webview` serve an `image/png` attachment after a redirect.
+Their assertions require WebKit to deliver a download, the image validator to
+accept the complete PNG and reject the truncated PNG, and staging to be removed
+after either result.
+
+To run one case in a macOS desktop session:
+
+```sh
+XAGA_DOWNLOAD_SMOKE_CASE=image-attachment cargo test -p xaga --test resource_download_webview --locked
+```
+
+Set `XAGA_DOWNLOAD_SMOKE_CASE=malformed-image-attachment` for the rejection
+case. The fixture uses the loader WebKit configuration, a controlled proxy,
+and a fixture download callback that calls the production validator.
+
 ## Bundled macOS Downloads authorization check
 
 Verification under independently established **undecided** and **denied**

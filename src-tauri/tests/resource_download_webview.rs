@@ -34,6 +34,8 @@ fn main() {
         [
             "icon",
             "image",
+            "image-attachment",
+            "malformed-image-attachment",
             "image-document",
             "svg",
             "svg-document",
@@ -51,8 +53,17 @@ fn main() {
     );
     let content_image = matches!(
         scenario.as_str(),
-        "image" | "image-document" | "svg" | "svg-document" | "avif" | "avif-document"
+        "image"
+            | "image-attachment"
+            | "malformed-image-attachment"
+            | "image-document"
+            | "svg"
+            | "svg-document"
+            | "avif"
+            | "avif-document"
     );
+    let attachment = scenario.ends_with("-attachment");
+    let malformed_image = scenario == "malformed-image-attachment";
     let svg = scenario.starts_with("svg");
     let avif = scenario.starts_with("avif");
     let image_document = scenario.ends_with("-document");
@@ -98,6 +109,8 @@ fn main() {
         br#"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" fill="red"/></svg>"#.to_vec()
     } else if avif {
         include_bytes!("fixtures/color-profile.avif").to_vec()
+    } else if malformed_image {
+        b"\x89PNG\r\n\x1a\n".to_vec()
     } else if content_image {
         let mut data = Cursor::new(Vec::new());
         image::DynamicImage::new_rgba8(1200, 300)
@@ -119,7 +132,7 @@ fn main() {
     } else {
         "image/png"
     };
-    let mime = if image_document {
+    let mime = if image_document || attachment {
         image_mime
     } else if rendering {
         "text/html"
@@ -170,7 +183,12 @@ fn main() {
                 || text.starts_with("GET http://download.example.invalid/icon-bytes ")
             {
                 seen_server.fetch_add(1, Ordering::SeqCst);
-                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
+                let disposition = if attachment {
+                    "Content-Disposition: attachment\r\n"
+                } else {
+                    ""
+                };
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: {mime}\r\n{disposition}Content-Length: {}\r\nConnection: close\r\n\r\n", body.len()).unwrap();
                 stream.write_all(&body).unwrap();
             } else {
                 let _ = stream.write_all(
@@ -258,7 +276,9 @@ fn main() {
                         let assigned = job.path().to_owned();
                         assert!(success, "transport must succeed before testing byte validation");
                         let result = job.finish(success);
-                        if favicon_pdf {
+                        if malformed_image {
+                            assert!(result.is_err(), "truncated PNG must fail image validation");
+                        } else if favicon_pdf {
                             assert!(result.is_err(), "favicon PDF must fail image validation");
                         } else if !valid {
                             assert_eq!(result.unwrap_err(), "unsupported download format");
