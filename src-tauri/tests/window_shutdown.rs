@@ -64,6 +64,16 @@ fn main() {
 fn fixture(directory: PathBuf) {
     let mode = std::env::var("XAGA_SHUTDOWN_MODE").unwrap();
     let state = app_state::test_state(directory.clone());
+    let retained_command_handle = if mode == "readonly" {
+        None
+    } else {
+        state.library.write().unwrap().writer =
+            Some(xaga_core::library_writer::LibraryWriter::start(
+                directory.clone(),
+                xaga_core::library::acquire_lock(&directory).unwrap(),
+            ));
+        Some(commands::require_writer(&state).unwrap())
+    };
     tauri::Builder::default()
         .manage(state)
         .setup(move |app| {
@@ -76,11 +86,7 @@ fn fixture(directory: PathBuf) {
             let state = app.state::<AppState>();
             let (release, pending) = tokio::sync::oneshot::channel();
             if mode != "readonly" {
-                let writer = xaga_core::library_writer::LibraryWriter::start(
-                    directory.clone(),
-                    xaga_core::library::acquire_lock(&directory).unwrap(),
-                );
-                state.library.write().unwrap().writer = Some(writer.clone());
+                let writer = commands::require_writer(&state).unwrap();
                 *state.embedding_initialization.lock().unwrap() =
                     Some(tauri::async_runtime::spawn(async move {
                         pending.await.unwrap();
@@ -131,4 +137,6 @@ fn fixture(directory: PathBuf) {
         .build(app_context())
         .unwrap()
         .run(handle_run_event);
+    // Keep a command handle alive even after startup finishes and shutdown drains the writer.
+    drop(retained_command_handle);
 }
