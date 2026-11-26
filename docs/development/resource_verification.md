@@ -65,6 +65,18 @@ Set `XAGA_DOWNLOAD_SMOKE_CASE=malformed-image-attachment` for the rejection
 case. The fixture uses the loader WebKit configuration, a controlled proxy,
 and a fixture download callback that calls the production validator.
 
+## Native image rendering smoke cases
+
+The opt-in `relative-image` and `cross-origin-image` cases load an HTML
+document after a redirect. The document refers to a PNG by a root-relative
+URL or by a URL on a second origin. The fixture serves both origins through
+its controlled proxy and supplies no CORS headers. Each case checks that
+WebKit reports a successful image load and the proxy sees one image request
+to the expected origin. The test rejects download callbacks received before
+the image-load signal ends the run. The cases use a hidden fixture window
+with the loader WebKit configuration. Production capture, destination
+refusal, and main/settings window policy require their own evidence.
+
 ## Bundled macOS Downloads authorization check
 
 Verification under independently established **undecided** and **denied**

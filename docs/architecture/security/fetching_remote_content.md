@@ -344,11 +344,11 @@ only that local reference in the article. A successful later remote load
 atomically replaces the same identity; acquisition failure preserves the cached
 resource. PDF validation remains separate.
 
-Tests verify validator selection in both Rust and native WebKit: the ordinary Rust suite
-injects PDF bytes into a production favicon download and asserts that article
-capture survives without favicon or PDF output; the macOS native-download smoke
-case `favicon-pdf` verifies the same image-validator selection for a real
-`application/pdf` WebKit response. Run both with
+The ordinary Rust suite injects PDF bytes into a production favicon download
+and asserts that article capture survives without favicon or PDF output.
+The macOS `favicon-pdf` smoke case checks that a real `application/pdf` WebKit
+response reaches the download callback and that the image validator rejects its
+bytes. That fixture supplies the validator itself. Run both with
 `sh scripts/test-favicon-pdf-consumer-isolation.sh` in a macOS GUI session.
 
 Standalone SVG image documents are recognized by their image content type;
