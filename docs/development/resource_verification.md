@@ -101,8 +101,35 @@ rendering and attachment cases passed in each visibility mode. The separate
 `ui_network_webview` fixture observed main and Settings proxy refusals for
 the tested remote images, stylesheet, frame, fetch, and WebSocket requests,
 with only the loader reaching the upstream fixture. Those UI windows use a
-custom fixture page. Bundled UI response routing and loader refusal of
-policy-forbidden redirects still require direct evidence.
+custom fixture page. The bundled UI probe below exercises the production
+window constructors with compiled assets. Loader refusal of policy-forbidden
+redirects still requires direct evidence.
+
+## Bundled UI download refusal
+
+Build the frontend before running the native test in a macOS desktop session.
+
+```sh
+npm run ui:build
+XAGA_VERIFY_BUNDLED_UI_ROUTING=1 cargo test -p xaga --features tauri/custom-protocol --test ui_network_webview --locked
+```
+
+The test opens main through the startup window constructor and Settings through
+its menu handler. Both load the bundled asset page and call the production theme
+command. Each then attempts a local blob download from its top frame and from a
+same-origin blob child frame. On macOS 27.2.1 (26B131), both windows refused both
+downloads and left staging unchanged. The fixture-page mode independently verifies
+that closing both windows releases their proxy listeners.
+
+Set `XAGA_VERIFY_BUNDLED_UI_ROUTING=data-top` or `data-child` to exercise
+the equivalent data URL link from one frame at a time. Both windows sent
+top-frame data URLs to the native refusal callback. The child-frame attempts
+produced no native download callback during the observation window. Staging
+stayed unchanged in both cases.
+
+The bundled probe runs inside the native test executable with a temporary
+library path and the theme command registered. The earlier desktop smoke covers
+ordinary application startup and reader rendering.
 
 ## Native HTTPS routing smoke cases
 

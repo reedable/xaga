@@ -417,11 +417,12 @@ endpoint to a second controlled listener. The proxy reported the refusal and
 the destination accepted zero connections. This result covers the explicit
 proxy path. WebKit redirect containment still requires direct evidence.
 
-The `ui_network_webview` fixture uses the native UI configuration and
-fixture pages for main and Settings. Both windows received and cancelled a
-local blob download request while continuing to render. The production
-bundled window setup, HTTPS loader responses, every callback interleaving,
-and cleanup after a process crash remain outside this evidence.
+The `ui_network_webview` test checks UI proxy cleanup with fixture pages
+and download refusal with the production window constructors and bundled
+assets. The [bundled UI procedure](../../development/resource_verification.md#bundled-ui-download-refusal)
+records which response cases it covers. HTTPS loader responses, every
+callback interleaving, and cleanup after a process crash remain outside
+the lifecycle evidence above.
 
 ## Direct content-image recovery
 
