@@ -409,13 +409,23 @@ HTML, delivered the validated icon, and released staging. The
 recovery, stored the validated bytes, preserved the article body, and reused the
 local image without requesting either redirect hop again.
 
+When the production loader's favicon request redirected to a reserved
+hostname, the scoped proxy recorded the refusal and the loader returned
+the captured article HTML without a favicon. The cleanup assertions verified
+that the window, session, proxy listener, and staging were released.
+
 The server uses a random localhost port. The harness grants only that exact
 origin the existing loader callback permission and configures a deny-all proxy
 with that local endpoint exception. Production permissions are unchanged.
 A separate proxy-routed HTTP client followed a redirect from the allowed
 endpoint to a second controlled listener. The proxy reported the refusal and
 the destination accepted zero connections. This result covers the explicit
-proxy path. WebKit redirect containment still requires direct evidence.
+proxy path. The [reachable-destination WebKit check](../../development/resource_verification.md#reachable-destination-redirect-refusal)
+also exercised the production loader against a private IPv4 guest. The proxy
+recorded private-address refusal in hidden and visible top-frame and child-frame
+cases. Independent destination logs showed zero connections during the four
+WebKit runs and one for each direct reachability control. The result covers
+that private IPv4 fixture and leaves the separate loopback gap unchanged.
 
 The `ui_network_webview` test checks UI proxy cleanup with fixture pages
 and download refusal with the production window constructors and bundled

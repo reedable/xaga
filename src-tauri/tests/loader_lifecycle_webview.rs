@@ -38,6 +38,13 @@ mod lifecycle {
         result:
             Option<tauri::async_runtime::JoinHandle<Result<article_loader::LoaderCapture, String>>>,
     }
+    struct ViewOptions {
+        keep_open: bool,
+        remote_images_allowed: bool,
+        save_images: bool,
+        publisher_javascript_allowed: bool,
+    }
+
     async fn start(app: &tauri::AppHandle, server: &Server, name: &str, timeout: u64) -> Load {
         start_with_options(app, server, name, timeout, true, true, false).await
     }
@@ -50,11 +57,48 @@ mod lifecycle {
         images: bool,
         publisher_javascript_allowed: bool,
     ) -> Load {
+        start_with_proxy(
+            app,
+            server,
+            name,
+            timeout,
+            ViewOptions {
+                keep_open: false,
+                remote_images_allowed,
+                save_images: images,
+                publisher_javascript_allowed,
+            },
+            network_proxy::ProxyConfig::deny_all(),
+        )
+        .await
+    }
+
+    async fn start_with_proxy(
+        app: &tauri::AppHandle,
+        server: &Server,
+        name: &str,
+        timeout: u64,
+        options: ViewOptions,
+        config: network_proxy::ProxyConfig,
+    ) -> Load {
+        let attempt = app
+            .state::<article_diagnostics::ArticleDiagnostics>()
+            .create_attempt("load");
+        let proxy_attempt = attempt.clone();
         let proxy = Arc::new(
             network_proxy::start_scoped(
-                network_proxy::ProxyConfig::deny_all()
+                config
                     .with_local_endpoint("localhost".into(), server.address)
-                    .unwrap(),
+                    .unwrap()
+                    .with_observer(Arc::new(move |code, detail| {
+                        proxy_attempt.add_event(
+                            "proxy",
+                            "network",
+                            article_diagnostics::ArticleDiagnosticOutcome::Warning,
+                            code,
+                            detail,
+                        );
+                    })),
             )
             .await
             .unwrap(),
@@ -66,9 +110,6 @@ mod lifecycle {
             .state::<article_loader::PendingRequests>()
             .inner()
             .clone();
-        let attempt = app
-            .state::<article_diagnostics::ArticleDiagnostics>()
-            .create_attempt("load");
         let load_attempt = attempt.clone();
         let url = format!("http://localhost:{}/{name}", server.address.port());
         let result = tauri::async_runtime::spawn(async move {
@@ -77,11 +118,11 @@ mod lifecycle {
                 &pending,
                 &url,
                 timeout,
-                false,
+                options.keep_open,
                 article_loader::LoaderPurpose::Article,
-                remote_images_allowed,
-                images,
-                publisher_javascript_allowed,
+                options.remote_images_allowed,
+                options.save_images,
+                options.publisher_javascript_allowed,
                 &[],
                 true,
                 proxy,
@@ -148,6 +189,110 @@ mod lifecycle {
         );
     }
 
+    async fn verify_reachable_redirect(
+        app: &tauri::AppHandle,
+        server: &Server,
+        endpoint: std::net::SocketAddrV4,
+        keep_open: bool,
+        child_frame: bool,
+    ) {
+        assert!(
+            endpoint.ip().is_private(),
+            "use the isolated fixture's private IPv4 address"
+        );
+        let staging_before = list_staging_directories();
+        let visibility = if keep_open { "visible" } else { "hidden" };
+        let frame = if child_frame {
+            "child-frame"
+        } else {
+            "top-frame"
+        };
+        let name = format!("reachable-refusal-{visibility}-{frame}");
+        let redirect_path = if keep_open || child_frame {
+            let path = format!("/{name}/image");
+            let image = format!(r#"<img src="{path}">"#);
+            let content = if child_frame {
+                let frame = format!("/{name}/frame");
+                server.add_response(
+                    &frame,
+                    format!("<!doctype html>{image}").into_bytes(),
+                    "text/html",
+                    None,
+                    None,
+                );
+                format!(r#"<iframe src="{frame}"></iframe>"#)
+            } else {
+                image
+            };
+            server.add_response(
+                &format!("/{name}"),
+                format!(
+                    "<!doctype html><title>Routing fixture</title><p>article-{name}</p>{content}"
+                )
+                .into_bytes(),
+                "text/html",
+                None,
+                None,
+            );
+            path
+        } else {
+            server.add_article(&name, None, None, None, true);
+            format!("/{name}/icon")
+        };
+        let redirect = server.add_redirect(
+            &redirect_path,
+            &format!("http://{endpoint}/routing-fixture.png"),
+        );
+        let mut load = start_with_proxy(
+            app,
+            server,
+            &name,
+            7,
+            ViewOptions {
+                keep_open,
+                remote_images_allowed: true,
+                save_images: !keep_open && !child_frame,
+                publisher_javascript_allowed: false,
+            },
+            // Allow HTTP and nonstandard CONNECT ports in this fixture so
+            // the application must enforce its private-address policy.
+            network_proxy::ProxyConfig::new(
+                Arc::new(RwLock::new(true)),
+                Arc::new(RwLock::new(true)),
+            ),
+        )
+        .await;
+        let capture = load.result.take().unwrap().await.unwrap().unwrap();
+        assert!(redirect.seen.load(Ordering::SeqCst));
+        assert!(capture.html.contains(&format!("article-{name}")));
+        assert!(capture.favicon_data.is_none());
+        assert!(capture.pdf_bytes.is_none());
+        assert!(capture.download_error.is_none());
+        until("private-address refusal in the loader diagnostics", || {
+            let report = serde_json::to_value(load.attempt.get_diagnostic()).unwrap();
+            report["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|event| event["source"] == "proxy" && event["code"] == "proxy:address-blocked")
+        })
+        .await;
+        if keep_open {
+            app.get_webview_window(&load.label)
+                .expect("visible loader remains open after capture")
+                .close()
+                .unwrap();
+        }
+        assert_cleanup(app, &load).await;
+        until("reachable redirect leaves staging unchanged", || {
+            list_staging_directories() == staging_before
+        })
+        .await;
+        println!(
+            "PASS: {visibility} {frame} production WebKit loader records private-address refusal and preserves capture"
+        );
+    }
+
     async fn verify_proxy_redirect_refusal(server: &Server) {
         let destination = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
             .await
@@ -194,7 +339,6 @@ mod lifecycle {
 
     pub(super) async fn verify(app: tauri::AppHandle) {
         let server = Server::new().await;
-        verify_proxy_redirect_refusal(&server).await;
         // Production's remote URL patterns cover default ports. Grant only
         // this fixture's random local origin the existing loader callbacks.
         app.add_capability(
@@ -205,6 +349,17 @@ mod lifecycle {
                 .permission("allow-loader-callbacks"),
         )
         .unwrap();
+        if let Ok(endpoint) = std::env::var("XAGA_LOADER_ROUTING_DESTINATION") {
+            let endpoint = endpoint.parse().unwrap();
+            for keep_open in [false, true] {
+                for child_frame in [false, true] {
+                    verify_reachable_redirect(&app, &server, endpoint, keep_open, child_frame)
+                        .await;
+                }
+            }
+            return;
+        }
+        verify_proxy_redirect_refusal(&server).await;
         let baseline = list_staging_directories();
         let origin = format!("http://localhost:{}", server.address.port());
         let pdf = pdf_fixture::pdf_fixture();
@@ -268,6 +423,38 @@ mod lifecycle {
         })
         .await;
         println!("PASS: redirected favicon preserves the production article capture");
+
+        server.add_article("refused-favicon", None, None, None, true);
+        let refusal = server.add_redirect(
+            "/refused-favicon/icon",
+            "https://routing-refusal.example.invalid/icon.png",
+        );
+        let mut load = start(&app, &server, "refused-favicon", 7).await;
+        let capture = load.result.take().unwrap().await.unwrap().unwrap();
+        assert!(capture.html.contains("article-refused-favicon"));
+        assert!(capture.favicon_data.is_none());
+        assert!(capture.pdf_bytes.is_none());
+        assert!(capture.download_error.is_none());
+        assert_eq!(refusal.requests.load(Ordering::SeqCst), 1);
+        let report = serde_json::to_value(load.attempt.get_diagnostic()).unwrap();
+        assert!(
+            report["events"].as_array().unwrap().iter().any(|event| {
+                event["source"] == "proxy"
+                    && event["code"] == "proxy:blocked"
+                    && event["detail"].as_str().is_some_and(|detail| {
+                        detail.contains("destination=routing-refusal.example.invalid:443")
+                    })
+            }),
+            "missing refusal diagnostics: {report}"
+        );
+        assert_cleanup(&app, &load).await;
+        until("refused favicon releases staging", || {
+            list_staging_directories() == baseline
+        })
+        .await;
+        println!(
+            "PASS: refused favicon redirect preserves captured HTML and releases the production loader"
+        );
 
         for stage in ["before-capture", "after-capture", "during-download"] {
             let gate = Arc::new(Gate::default());
@@ -529,6 +716,7 @@ fn main() {
         .manage(loader_identity::LoaderSessions::default())
         .invoke_handler(tauri::generate_handler![
             commands::loader_capture::receive_html,
+            commands::loader_capture::capture_and_close_loader,
             commands::loader_capture::receive_favicon,
             commands::loader_capture::receive_image,
             commands::loader_capture::add_loader_diagnostic_event,
