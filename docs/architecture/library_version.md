@@ -80,6 +80,8 @@ webview or starting a writer or embedding service:
 - A completed version matching the app's major/minor may acquire the library
   write lock. Lock contention still produces a read-only instance.
 - An empty directory is initialized at the app version and may open writable.
+  On first launch, the app creates the default directory if it is missing.
+  An explicitly configured library path must already exist at startup.
 - A different version, missing manifest in a nonempty directory, or incomplete
   migration opens read-only.
 - Malformed or unreadable metadata also opens read-only; startup reports the
