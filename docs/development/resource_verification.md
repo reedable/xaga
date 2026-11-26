@@ -71,19 +71,11 @@ The opt-in `relative-image` and `cross-origin-image` cases load an HTML
 document after a redirect. The document refers to a PNG by a root-relative
 URL or by a URL on a second origin. The fixture serves both origins through
 its controlled proxy and supplies no CORS headers. Each case checks that
-WebKit decodes the image, the proxy sees one image request to the expected
-origin, and the download callback stays unused.
-
-```sh
-XAGA_DOWNLOAD_SMOKE_CASE=relative-image cargo test -p xaga --test resource_download_webview --locked
-XAGA_DOWNLOAD_SMOKE_CASE=cross-origin-image cargo test -p xaga --test resource_download_webview --locked
-```
-
-Run each case in a logged-in macOS desktop session for the account running
-Cargo. The cases use a hidden fixture window with the loader WebKit
-configuration and observe image decoding through the document title. They
-cover ordinary image rendering under the fixture proxy. Production capture,
-destination refusal, and main/settings window policy require their own evidence.
+WebKit reports a successful image load and the proxy sees one image request
+to the expected origin. The test rejects download callbacks received before
+the image-load signal ends the run. The cases use a hidden fixture window
+with the loader WebKit configuration. Production capture, destination
+refusal, and main/settings window policy require their own evidence.
 
 ## Bundled macOS Downloads authorization check
 
