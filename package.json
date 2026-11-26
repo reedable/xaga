@@ -1,6 +1,6 @@
 {
   "name": "xaga",
-  "version": "0.17.13-rc.1",
+  "version": "0.17.13",
   "private": true,
   "type": "module",
   "scripts": {
