@@ -1,8 +1,8 @@
-# Wry PDF response routing
+# Wry download response routing
 
 Xaga's workspace pins its Wry override to revision
-`566f7b984147d58e05e69c8dcf8cf6336cc465bb` of the `reedable/wry` fork. The
-package version is `0.57.0+patch.1`.
+`343436e2f856f941fb311cde9299fbc95a372901` of the `reedable/wry` fork. The
+package version is `0.57.0+patch.2`.
 
 ## Build features
 
@@ -60,18 +60,26 @@ WebKit navigation; the proxy still enforces destination policy on each connectio
 
 ## Policy
 
-When enabled on macOS, the policy chooses download if a handler exists and either
-WebKit cannot display the response or all of these conditions hold:
+On macOS, an HTTP response with `Content-Disposition: attachment` is routed to
+the download handler even if WebKit reports that its MIME type is displayable.
+The disposition token is case-insensitive; a filename is optional and never
+selects Xaga's staging path. Missing headers, `inline`, and other disposition
+tokens do not force downloads. This rule does not require the PDF feature.
+It still requires a download handler, and the consumer validates the bytes.
+
+Responses WebKit cannot display are downloaded when a handler exists. With
+`macos-download-pdf` enabled on macOS, a displayable response also becomes a
+download when a handler exists and all of these conditions hold:
 
 - Main-frame response.
 - HTTP or HTTPS response URL.
 - MIME type `application/pdf`, case-insensitive, ignoring MIME parameters.
 
 The PDF predicate does not use URL extensions. Missing MIME or URL does not
-match. Local Blob/file URLs and displayable subframes retain their normal
-policy. The feature is build-wide and includes visible loaders; it does not
-select windows by label. Applications must reject downloads where they have
-no resource consumer.
+match. Local Blob/file URLs and displayable subframes without an attachment
+header retain their normal policy. The feature is build-wide and includes
+visible loaders; it does not select windows by label. Applications must reject
+downloads where they have no resource consumer.
 
 MIME is only a routing hint. Wry does not validate PDF bytes or choose Xaga's
 storage layout. The consumer assigns temporary storage, validates the bytes,
@@ -95,6 +103,13 @@ PDF but fails the signature validator. The test uses the production validator wi
 `%PDF-` signature check; it does not establish parser safety.
 The `favicon-pdf` case assigns that PDF response to the favicon consumer and
 verifies rejection by image validation rather than acceptance by the PDF consumer.
+
+The `image-attachment` and `malformed-image-attachment` cases serve complete
+and truncated PNG bytes with `Content-Disposition: attachment` after a redirect.
+Both must reach the image validator and remove staging; only the complete PNG
+is accepted. The native suite includes both cases. WebKit on macOS 27.2.1
+reports these responses as displayable and renders them if the response policy
+uses only `canShowMIMEType`; the explicit attachment check prevents that route.
 
 The rendering cases check HTML document and local PDF iframe load signals with
 no download callback. They do not visually inspect PDF pixels or establish
