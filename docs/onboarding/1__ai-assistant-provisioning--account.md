@@ -30,6 +30,12 @@ set -o vi
 PS1='%n$ '
 export PATH="/opt/homebrew/bin:${PATH}"
 export GPG_TTY=$(tty)
+
+if ! cargo --version >/dev/null 2>&1; then
+  rustup default stable
+fi
+
+export PATH="$(brew --prefix rustup)/bin:$PATH"
 EOF
 ```
 
