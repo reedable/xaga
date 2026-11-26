@@ -47,6 +47,7 @@ fn main() {
             "avif-document",
             "avif-icon-document",
             "pdf",
+            "pdf-attachment",
             "invalid-pdf",
             "favicon-pdf",
             "html",
@@ -80,7 +81,7 @@ fn main() {
     let svg = scenario.starts_with("svg");
     let avif = scenario.starts_with("avif");
     let image_document = scenario.ends_with("-document");
-    let pdf = matches!(scenario.as_str(), "pdf" | "invalid-pdf");
+    let pdf = matches!(scenario.as_str(), "pdf" | "pdf-attachment" | "invalid-pdf");
     let favicon_pdf = scenario == "favicon-pdf";
     let pdf_response = pdf || favicon_pdf;
     let rendered_image_url = match scenario.as_str() {
@@ -97,8 +98,8 @@ fn main() {
         || file_image
         || unsupported_image_scheme;
     assert!(
-        !subframe || rendering,
-        "subframe mode requires a rendering case"
+        !subframe || rendering || attachment,
+        "subframe mode requires a rendering or attachment case"
     );
     let valid = scenario != "invalid-pdf";
     if pdf_response {
@@ -202,12 +203,12 @@ fn main() {
     } else {
         "image/png"
     };
-    let mime = if image_document || attachment {
+    let mime = if pdf_response {
+        "application/pdf"
+    } else if image_document || attachment {
         image_mime
     } else if rendering {
         "text/html"
-    } else if pdf_response {
-        "application/pdf"
     } else {
         "application/octet-stream"
     };
@@ -275,7 +276,11 @@ fn main() {
                 && (text.starts_with("GET /frame ")
                     || text.starts_with("GET http://download.example.invalid/frame "))
             {
-                let page = br#"<!doctype html><iframe src="/frame-content" onload="if (this.contentDocument.title === 'SMOKE-PASS') document.title='SMOKE-PASS';"></iframe>"#;
+                let page: &[u8] = if rendering {
+                    br#"<!doctype html><iframe src="/frame-content" onload="if (this.contentDocument.title === 'SMOKE-PASS') document.title='SMOKE-PASS';"></iframe>"#
+                } else {
+                    br#"<!doctype html><p>Article text</p><iframe id="download-frame"></iframe>"#
+                };
                 write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", page.len()).unwrap();
                 stream.write_all(page).unwrap();
                 continue;
@@ -316,6 +321,8 @@ fn main() {
     let render_seen = seen.clone();
     let render_passed = completed.clone();
     let render_scenario = scenario.clone();
+    let parent_loaded = Arc::new(AtomicBool::new(false));
+    let download_parent_loaded = parent_loaded.clone();
     let staging = Arc::new(Mutex::new(None::<StagedDownload<Validator>>));
     let mut context = tauri::generate_context!();
     context.config_mut().app.windows.clear();
@@ -359,6 +366,15 @@ fn main() {
             .visible(visible)
             .with_webview_configuration(webview_policy::loader_configuration(None).unwrap())
             .proxy_url(format!("http://{address}").parse().unwrap())
+            .on_page_load(move |webview, payload| {
+                if subframe && !rendering
+                    && matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
+                    && payload.url().path() == "/frame"
+                {
+                    parent_loaded.store(true, Ordering::SeqCst);
+                    webview.eval("document.getElementById('download-frame').src='/frame-content'").unwrap();
+                }
+            })
             .on_document_title_changed(move |_, title| {
                 if rendering && title == "SMOKE-PASS" {
                     assert_eq!(render_seen.load(Ordering::SeqCst), 1);
@@ -373,13 +389,17 @@ fn main() {
             .on_download(move |webview, event| {
                 match event {
                     DownloadEvent::Requested { url, destination } => {
-                        // A first navigation can become a download before any page
-                        // URL exists. Exercise the production diagnostic collector.
+                        // Exercise the production collector without asking Wry for
+                        // the current URL during its download callback.
                         let evidence = article_diagnostics::DownloadDiagnostic::from_download(
-                            &webview, "http://download.example.invalid/start", &url,
+                            &webview, if subframe { "http://download.example.invalid/frame" } else { "http://download.example.invalid/start" }, &url,
                             Some(destination.to_string_lossy().into_owned()), None,
                         );
                         assert!(evidence.current_url.is_none());
+                        if subframe {
+                            assert!(download_parent_loaded.load(Ordering::SeqCst));
+                            assert_eq!(evidence.source_url, "http://download.example.invalid/frame");
+                        }
                         assert_eq!(evidence.download_url, url.as_str());
                         assert!(!rendering, "renderable scenario incorrectly converted to download");
                         assert_eq!(url.as_str(), "http://download.example.invalid/icon-bytes", "callback reports redirected resource");

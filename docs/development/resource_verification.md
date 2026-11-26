@@ -92,9 +92,12 @@ and an unsupported scheme, respectively.
 Set `XAGA_DOWNLOAD_SMOKE_VISIBLE=1` to run a case with a visible loader
 fixture window. For rendering cases, set `XAGA_DOWNLOAD_SMOKE_SUBFRAME=1`
 to load the case in a same-origin child frame of the fixture window.
+The same option supports attachment cases, including `pdf-attachment`.
+Those cases start the child navigation after the parent document loads
+and check the redirected download URL, validation result, and staging cleanup.
 
-On macOS 27.2.1 (26B131), all 24 top-frame cases and nine child-frame
-rendering cases passed in each visibility mode. The separate
+On macOS 27.2.1 (26B131), 25 top-frame cases and 13 child-frame
+rendering and attachment cases passed in each visibility mode. The separate
 `ui_network_webview` fixture observed main and Settings proxy refusals for
 the tested remote images, stylesheet, frame, fetch, and WebSocket requests,
 with only the loader reaching the upstream fixture. Those UI windows use a

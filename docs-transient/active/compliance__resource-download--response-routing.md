@@ -31,7 +31,8 @@ and consumer under the existing network policy. Remediation is follow-up work.
 
 - Extend the native harness for the remaining matrix cells, including HTTPS
   loader requests, policy-forbidden redirects with destination observations,
-  child-frame download responses, and production main and Settings windows.
+  remaining child-frame response variants, and production main and Settings
+  windows.
 - Verify production capture, consumer selection, and cleanup where the existing
   smoke cases exercise only the fixture download callback or rendering.
 - Record expected and observed outcomes, inapplicable combinations, and
