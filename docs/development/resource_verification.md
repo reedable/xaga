@@ -102,8 +102,8 @@ rendering and attachment cases passed in each visibility mode. The separate
 the tested remote images, stylesheet, frame, fetch, and WebSocket requests,
 with only the loader reaching the upstream fixture. Those UI windows use a
 custom fixture page. The bundled UI probe below exercises the production
-window constructors with compiled assets. Loader refusal of policy-forbidden
-redirects still requires direct evidence.
+window constructors with compiled assets. The reachable-destination check
+below verifies private-address redirect refusal in the production loader.
 
 ## Bundled UI download refusal
 
@@ -126,6 +126,23 @@ the equivalent data URL link from one frame at a time. Both windows sent
 top-frame data URLs to the native refusal callback. The child-frame attempts
 produced no native download callback during the observation window. Staging
 stayed unchanged in both cases.
+
+Set `XAGA_VERIFY_BUNDLED_UI_ROUTING=blocked-remote` to check ordinary
+HTTP and HTTPS image and frame loads from both frame positions. Both windows
+reported enforced `img-src` or `frame-src` violations for the relevant requests,
+and the controlled listener accepted no connections. Response classification
+is inapplicable because these loads were blocked before an HTTP response.
+
+Set `XAGA_VERIFY_BUNDLED_UI_ROUTING=blocked-local` to check a fixture-owned
+file URL and an unsupported scheme as image sources. Both produced image
+load errors from both frame positions in main and Settings, with zero
+native download callbacks and no staging files.
+
+Set `XAGA_VERIFY_BUNDLED_UI_ROUTING=bundled-images` to exercise relative
+image references in both windows and in their same-origin bundled child
+frames. The packaged favicon rendered. Bundled HTML used as an image,
+a missing asset, and a truncated inline PNG each produced an image load
+error. There were no native download callbacks or staging files.
 
 The bundled probe runs inside the native test executable with a temporary
 library path and the theme command registered. The earlier desktop smoke covers
@@ -157,6 +174,49 @@ Both wrong-pin controls cancelled the TLS challenge before the server saw an
 HTTP request. The fixture exercises the native loader configuration and Wry
 response handling. Default certificate trust, proxy containment, and the
 production capture and persistence paths require separate evidence.
+
+Run the reserved-destination redirect check with:
+
+```sh
+XAGA_DOWNLOAD_SMOKE_HTTPS=1 XAGA_DOWNLOAD_SMOKE_REFUSED_REDIRECT=1 XAGA_DOWNLOAD_SMOKE_CASE=html cargo test -p xaga --test resource_download_webview --locked
+```
+
+The pinned HTTPS fixture serves a top-frame redirect to a reserved hostname.
+WebKit sent the redirected request to the scoped proxy, which refused it before
+DNS or connection. No final fixture response or staged download was observed.
+This destination has no independent listener. The result establishes the
+proxied WebKit path for that hostname.
+
+## Reachable-destination redirect refusal
+
+Use a disposable endpoint on a private, isolated network. Its listener must
+log every accepted TCP connection before reading any application data. Confirm
+the endpoint is reachable and logs a direct HTTP request before and after
+the WebKit test. The fixture accepts the endpoint's private IPv4 address and
+port. It uses the production private-address rule with HTTP and nonstandard
+CONNECT ports enabled, so a port or scheme restriction cannot satisfy the test.
+
+```sh
+XAGA_LOADER_ROUTING_DESTINATION="$fixture_address" cargo test -p xaga --test loader_lifecycle_webview --locked
+```
+
+On macOS 27.2.1 (26B131), the listener ran in a disposable VM on a host-only
+network with no shared folders. Each direct control added one accepted TCP
+connection. The listener accepted zero connections during all four WebKit
+runs. Each loader recorded a private-address refusal, retained the captured
+article, and passed window, session, proxy, and staging cleanup checks.
+
+| Loader               | Response path exercised        | Expected and observed                                                           |
+| -------------------- | ------------------------------ | ------------------------------------------------------------------------------- |
+| Hidden, top frame    | Favicon redirect after capture | Target refused. HTML retained without a favicon.                                |
+| Visible, top frame   | Image subresource redirect     | Target refused. HTML retained and the test closed the visible loader.           |
+| Hidden, child frame  | Image subresource redirect     | Target refused. Parent article retained and the loader closed.                  |
+| Visible, child frame | Image subresource redirect     | Target refused. Parent article retained and the test closed the visible loader. |
+
+Visible article loaders do not navigate the main document to acquire a favicon
+after capture. The visible case uses an ordinary image request for that reason.
+The destination was a private IPv4 guest, so the results leave the documented
+loopback bypass and other platforms outside the verified scope.
 
 ## Bundled macOS Downloads authorization check
 

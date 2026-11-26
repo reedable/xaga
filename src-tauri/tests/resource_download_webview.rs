@@ -40,7 +40,11 @@ fn main() {
     let subframe = std::env::var("XAGA_DOWNLOAD_SMOKE_SUBFRAME").as_deref() == Ok("1");
     let https = std::env::var("XAGA_DOWNLOAD_SMOKE_HTTPS").as_deref() == Ok("1");
     let wrong_pin = std::env::var("XAGA_DOWNLOAD_SMOKE_WRONG_PIN").as_deref() == Ok("1");
+    let refused_redirect =
+        std::env::var("XAGA_DOWNLOAD_SMOKE_REFUSED_REDIRECT").as_deref() == Ok("1");
+    const REFUSED_HOST: &str = "routing-refusal.example.invalid";
     assert!(!wrong_pin || (https && scenario == "html"));
+    assert!(!refused_redirect || (https && scenario == "html" && !wrong_pin && !subframe));
     assert!(
         !https
             || matches!(
@@ -240,14 +244,21 @@ fn main() {
     let proxy = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = proxy.local_addr().unwrap();
     let tls = https.then(|| https_fixture::server_config(address.port(), wrong_pin));
+    let refusal = Arc::new(AtomicBool::new(false));
+    let observed_refusal = refusal.clone();
     let https_proxy = https.then(|| {
         use xaga_core::network_proxy::{self, ProxyConfig};
         tauri::async_runtime::block_on(network_proxy::start_scoped(
             ProxyConfig::deny_all()
                 .with_local_endpoint("localhost".into(), address)
                 .unwrap()
-                .with_observer(Arc::new(|code, detail| {
-                    eprintln!("fixture proxy: {code}: {detail}")
+                .with_observer(Arc::new(move |code, detail| {
+                    if code == "proxy:blocked"
+                        && detail.contains(&format!("destination={REFUSED_HOST}:443"))
+                    {
+                        observed_refusal.store(true, Ordering::SeqCst);
+                    }
+                    eprintln!("fixture proxy: {code}: {detail}");
                 })),
         ))
         .unwrap()
@@ -261,7 +272,11 @@ fn main() {
     } else {
         "http://download.example.invalid".into()
     };
-    let redirect_origin = origin.clone();
+    let redirect_destination = if refused_redirect {
+        format!("https://{REFUSED_HOST}/routing-fixture")
+    } else {
+        format!("{origin}/icon-bytes")
+    };
     let relative_image_host = origin.split_once("://").unwrap().1.to_owned();
     let start_path = if subframe { "/frame" } else { "/favicon.ico" };
     let image_requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -270,6 +285,8 @@ fn main() {
     let seen_server = seen.clone();
     let received_http = Arc::new(AtomicBool::new(false));
     let server_received_http = received_http.clone();
+    let redirect_sent = Arc::new(AtomicBool::new(false));
+    let server_redirect_sent = redirect_sent.clone();
     trait FixtureStream: Read + Write {}
     impl<T: Read + Write> FixtureStream for T {}
     std::thread::spawn(move || {
@@ -359,7 +376,8 @@ fn main() {
                     "GET http://download.example.invalid{redirect_path} "
                 ))
             {
-                write!(stream, "HTTP/1.1 302 Found\r\nLocation: {redirect_origin}/icon-bytes\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                write!(stream, "HTTP/1.1 302 Found\r\nLocation: {redirect_destination}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                server_redirect_sent.store(true, Ordering::SeqCst);
                 continue;
             }
             if text.starts_with("GET /icon-bytes ")
@@ -417,6 +435,23 @@ fn main() {
         let handle = app.handle().clone();
         let watchdog = handle.clone();
         let render_handle = handle.clone();
+        if refused_redirect {
+            let handle = handle.clone();
+            let passed = completed.clone();
+            let completed_responses = seen.clone();
+            let staged_download = staging.clone();
+            tauri::async_runtime::spawn(async move {
+                while !redirect_sent.load(Ordering::SeqCst) || !refusal.load(Ordering::SeqCst) {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                assert!(https_fixture::ACCEPTED.load(Ordering::SeqCst));
+                assert_eq!(completed_responses.load(Ordering::SeqCst), 0);
+                assert!(staged_download.lock().unwrap().is_none());
+                println!("PASS: a native WebKit HTTPS redirect reached the scoped proxy and was refused before DNS");
+                passed.store(true, Ordering::SeqCst);
+                handle.exit(0);
+            });
+        }
         if wrong_pin {
             let handle = handle.clone();
             let passed = completed.clone();

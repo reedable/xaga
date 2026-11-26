@@ -95,6 +95,9 @@ fn main() {
             "1" | "blob" => ("blob", "both", 2),
             "data-top" => ("data", "top", 1),
             "data-child" => ("data", "child", 0),
+            "blocked-remote" => ("blocked-remote", "both", 0),
+            "blocked-local" => ("blocked-local", "both", 0),
+            "bundled-images" => ("bundled-images", "both", 0),
             _ => panic!("unsupported bundled UI routing case: {case}"),
         };
         verify_bundled_windows(&DOWNLOADS.0, staging_before, scheme, frame, expected);
@@ -216,18 +219,84 @@ fn verify_bundled_windows(
         "build with --features tauri/custom-protocol"
     );
     let directory = tempfile::tempdir().unwrap();
+    let file_url = if scheme == "blocked-local" {
+        let path = directory.path().join("routing-fixture.png");
+        image::DynamicImage::new_rgba8(1, 1).save(&path).unwrap();
+        tauri::Url::from_file_path(path).unwrap().to_string()
+    } else {
+        String::new()
+    };
     let passed = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let completed = passed.clone();
+    let remote_destination = (scheme == "blocked-remote").then(|| {
+        let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        listener
+    });
+    let remote_port = remote_destination
+        .as_ref()
+        .map(|listener| listener.local_addr().unwrap().port())
+        .unwrap_or_default();
     // Evaluate only after the compiled asset page is loaded and the real
     // theme command responds. The child frame inherits the bundled origin.
-    let script = r#"((scheme, scope) => {
+    let script = r#"((scheme, scope, remotePort, fileURL) => {
         if (!window.__xagaRoutingProbe
             && document.readyState === 'complete'
             && document.querySelector('script[type="module"][src*="/assets/"]')) {
           window.__xagaRoutingProbe = true;
           window.__TAURI_INTERNALS__.invoke('get_theme').then(theme => {
             if (theme !== 'light') return;
-            const download = (target) => {
+            const exercise = (target) => {
+              if (scheme === 'bundled-images') {
+                for (const [url, event] of [
+                  ['./favicon.svg', 'load'],
+                  ['./index.html', 'error'],
+                  ['./xaga-routing-fixture-missing.png', 'error'],
+                  ['data:image/png;base64,iVBORw0KGgo=', 'error'],
+                ]) {
+                  const image = target.createElement('img');
+                  image.addEventListener(event, () => {
+                    window.__TAURI_INTERNALS__.invoke('get_theme', {routingProbeAttempt: true});
+                  }, {once: true});
+                  image.src = url;
+                  target.body.append(image);
+                }
+                return;
+              }
+              if (scheme === 'blocked-local') {
+                for (const url of [fileURL, 'xaga-routing-fixture:unsupported']) {
+                  const image = target.createElement('img');
+                  image.addEventListener('error', () => {
+                    window.__TAURI_INTERNALS__.invoke('get_theme', {routingProbeAttempt: true});
+                  }, {once: true});
+                  image.src = url;
+                  target.body.append(image);
+                }
+                return;
+              }
+              if (scheme === 'blocked-remote') {
+                const endpoints = ['http', 'https'].map(scheme => `${scheme}://127.0.0.1:${remotePort}`);
+                const observed = new Set();
+                target.addEventListener('securitypolicyviolation', event => {
+                  if (event.disposition !== 'enforce'
+                      || !['img-src', 'frame-src'].includes(event.effectiveDirective)) return;
+                  const endpoint = endpoints.find(endpoint =>
+                    event.blockedURI === endpoint || event.blockedURI.startsWith(endpoint + '/'));
+                  const key = event.effectiveDirective + ' ' + endpoint;
+                  if (endpoint && !observed.has(key)) {
+                    observed.add(key);
+                    window.__TAURI_INTERNALS__.invoke('get_theme', {routingProbeAttempt: true});
+                  }
+                });
+                for (const endpoint of endpoints) {
+                  for (const tag of ['img', 'iframe']) {
+                    const element = target.createElement(tag);
+                    element.src = endpoint + '/routing-fixture-' + tag;
+                    target.body.append(element);
+                  }
+                }
+                return;
+              }
               const owner = target.defaultView;
               const link = target.createElement('a');
               link.download = 'xaga-bundled-routing-fixture.txt';
@@ -240,15 +309,18 @@ fn verify_bundled_windows(
             };
             if (scope !== 'top') {
               const frame = document.createElement('iframe');
-              frame.addEventListener('load', () => download(frame.contentDocument), {once: true});
-              frame.src = URL.createObjectURL(new Blob(['<!doctype html><body></body>'], {type:'text/html'}));
+              frame.addEventListener('load', () => exercise(frame.contentDocument), {once: true});
+              frame.src = scheme === 'bundled-images'
+                ? './index.html'
+                : URL.createObjectURL(new Blob(['<!doctype html><body></body>'], {type:'text/html'}));
               document.body.append(frame);
             }
-            if (scope !== 'child') download(document);
+            if (scope !== 'child') exercise(document);
           });
         }
     })"#;
-    let probe = format!("{script}({scheme:?}, {frame:?})");
+    let file_url = serde_json::to_string(&file_url).unwrap();
+    let probe = format!("{script}({scheme:?}, {frame:?}, {remote_port}, {file_url})");
     let theme_handler: fn(tauri::ipc::Invoke) -> bool =
         tauri::generate_handler![commands::settings::get_theme];
     let app = tauri::Builder::default()
@@ -279,7 +351,12 @@ fn verify_bundled_windows(
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let attempts = handle.state::<RoutingAttempts>();
-                let expected_attempts = if frame == "both" { 2 } else { 1 };
+                let expected_attempts = match scheme {
+                    "blocked-remote" | "bundled-images" => 8,
+                    "blocked-local" => 4,
+                    _ if frame == "both" => 2,
+                    _ => 1,
+                };
                 let result = tokio::time::timeout(Duration::from_secs(12), async {
                     loop {
                         main.eval(&probe).unwrap();
@@ -302,6 +379,13 @@ fn verify_bundled_windows(
                 }
                 let observed = downloads.each_ref().map(|count| count.load(Ordering::SeqCst));
                 assert_eq!(observed, [expected; 2], "native refusals for {frame} {scheme}");
+                if let Some(destination) = remote_destination {
+                    match destination.accept() {
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                        result => panic!("a bundled remote request reached the controlled destination: {result:?}"),
+                    }
+                    println!("PASS: bundled main and Settings enforce img-src and frame-src for HTTP(S) resources in both frame positions; no destination connection");
+                }
                 main.close().unwrap();
                 settings.close().unwrap();
                 assert_eq!(resource_server::list_staging_directories(), staging_before);
