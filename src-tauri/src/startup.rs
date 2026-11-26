@@ -1,5 +1,46 @@
 use super::*;
 
+fn select_library_path(default: PathBuf, configured: Option<&str>) -> std::io::Result<PathBuf> {
+    if let Some(path) = configured {
+        return Ok(PathBuf::from(path));
+    }
+    std::fs::create_dir_all(&default)?;
+    Ok(default)
+}
+
+#[cfg(test)]
+mod library_path_tests {
+    use super::*;
+    use xaga_core::library::{self, LibraryManifest, LibraryVersion};
+
+    #[test]
+    fn first_launch_initializes_a_missing_default_library() {
+        let directory = tempfile::tempdir().unwrap();
+        let default = directory.path().join("xaga");
+        assert!(!default.exists());
+
+        let path = select_library_path(default.clone(), None).unwrap();
+        assert_eq!(path, default);
+        let version = LibraryVersion::new(0, 18);
+        let _lock = library::open(&path, version).unwrap().unwrap();
+        let manifest = LibraryManifest::read(&path).unwrap().unwrap();
+        assert!(manifest.matches_version(version));
+    }
+
+    #[test]
+    fn a_missing_configured_library_is_not_created_at_startup() {
+        let directory = tempfile::tempdir().unwrap();
+        let default = directory.path().join("xaga");
+        let configured = directory.path().join("configured");
+
+        let path =
+            select_library_path(default.clone(), Some(configured.to_str().unwrap())).unwrap();
+        assert_eq!(path, configured);
+        assert!(!path.exists());
+        assert!(!default.exists());
+    }
+}
+
 /// Library mode is decided independently for each runtime path. Metadata errors
 /// select read-only mode and are returned for the startup UI to report.
 pub(super) fn library_writer_for_startup(
@@ -255,11 +296,7 @@ pub(super) fn initialize(
     *setup_settings_baseline.write().unwrap() = settings_mtime(&settings_path);
     let default_library =
         xaga_core::fs::data_root().ok_or("cannot determine platform data directory")?;
-    let lib_path = settings
-        .library
-        .as_ref()
-        .map(PathBuf::from)
-        .unwrap_or(default_library);
+    let lib_path = select_library_path(default_library, settings.library.as_deref())?;
     // Acquire the library lock (or learn we are read-only) BEFORE any command can
     // run, and — if we won it — start the LibraryWriter that takes ownership of the
     // lock. The writer's presence is the single source of truth for the runtime
