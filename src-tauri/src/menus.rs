@@ -258,19 +258,11 @@ pub(super) fn on_event(app: &tauri::AppHandle, event: tauri::menu::MenuEvent) {
                     "settings",
                     WebviewUrl::App("index.html".into()),
                 )
-                .on_download(|_, _| false)
-                .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-                .proxy_url(
-                    network_proxy::proxy_url(proxy.port)
-                        .parse()
-                        .expect("local proxy URL"),
-                )
                 .title("Settings")
                 .inner_size(680.0, 520.0)
                 .visible(false);
-                #[cfg(target_os = "macos")]
-                let builder = match webview_policy::ui_configuration() {
-                    Ok(config) => builder.with_webview_configuration(config),
+                let builder = match ui_network::configure_window(builder, proxy.port) {
+                    Ok(builder) => builder,
                     Err(error) => {
                         log::error!("settings WebView policy: {error}");
                         return;

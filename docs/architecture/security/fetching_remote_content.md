@@ -400,13 +400,29 @@ completion. Cleanup assertions check pending requests, native windows, session
 registrations, scoped-proxy ownership and listener closure, and temporary staging
 directories. Held responses are released after cancellation or timeout.
 
+On macOS 27.2.1 (26B131), the production loader followed same-origin HTTP
+redirects to valid PDF bytes, invalid PDF bytes, and a valid favicon. The PDF
+cases recorded the original and redirected URLs, delivered accepted bytes or a
+validation error, and released staging. The favicon case preserved the article
+HTML, delivered the validated icon, and released staging. The
+`persisted_resources_webview` fixture also followed a redirect during image
+recovery, stored the validated bytes, preserved the article body, and reused the
+local image without requesting either redirect hop again.
+
 The server uses a random localhost port. The harness grants only that exact
 origin the existing loader callback permission and configures a deny-all proxy
 with that local endpoint exception. Production permissions are unchanged.
-These tests establish lifecycle behavior, not proxy enforcement: WebKit can
-bypass its proxy for loopback destinations. They do not establish bundled UI
-CSP behavior, every possible callback interleaving, or cleanup after a process
-crash. Ordinary adapter tests separately verify rejection of late completion.
+A separate proxy-routed HTTP client followed a redirect from the allowed
+endpoint to a second controlled listener. The proxy reported the refusal and
+the destination accepted zero connections. This result covers the explicit
+proxy path. WebKit redirect containment still requires direct evidence.
+
+The `ui_network_webview` test checks UI proxy cleanup with fixture pages
+and download refusal with the production window constructors and bundled
+assets. The [bundled UI procedure](../../development/resource_verification.md#bundled-ui-download-refusal)
+records which response cases it covers. HTTPS loader responses, every
+callback interleaving, and cleanup after a process crash remain outside
+the lifecycle evidence above.
 
 ## Direct content-image recovery
 

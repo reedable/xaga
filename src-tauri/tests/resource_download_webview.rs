@@ -5,6 +5,12 @@
 #[allow(dead_code, unused_imports)]
 mod article_diagnostics;
 #[cfg(target_os = "macos")]
+#[path = "support/https_fixture.rs"]
+mod https_fixture;
+#[cfg(target_os = "macos")]
+#[path = "support/pdf_fixture.rs"]
+mod pdf_fixture;
+#[cfg(target_os = "macos")]
 #[path = "../src/resource_download.rs"]
 #[allow(dead_code)]
 mod resource_download;
@@ -30,12 +36,34 @@ fn main() {
     };
     use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, webview::DownloadEvent};
     let scenario = std::env::var("XAGA_DOWNLOAD_SMOKE_CASE").unwrap_or_else(|_| "icon".into());
+    let visible = std::env::var("XAGA_DOWNLOAD_SMOKE_VISIBLE").as_deref() == Ok("1");
+    let subframe = std::env::var("XAGA_DOWNLOAD_SMOKE_SUBFRAME").as_deref() == Ok("1");
+    let https = std::env::var("XAGA_DOWNLOAD_SMOKE_HTTPS").as_deref() == Ok("1");
+    let wrong_pin = std::env::var("XAGA_DOWNLOAD_SMOKE_WRONG_PIN").as_deref() == Ok("1");
+    assert!(!wrong_pin || (https && scenario == "html"));
+    assert!(
+        !https
+            || matches!(
+                scenario.as_str(),
+                "html"
+                    | "relative-image"
+                    | "missing-image"
+                    | "image-attachment"
+                    | "malformed-image-attachment"
+                    | "html-as-image-attachment"
+                    | "pdf"
+                    | "invalid-pdf"
+                    | "pdf-attachment"
+            ),
+        "case is not configured for the localhost HTTPS origin"
+    );
     assert!(
         [
             "icon",
             "image",
             "image-attachment",
             "malformed-image-attachment",
+            "html-as-image-attachment",
             "image-document",
             "svg",
             "svg-document",
@@ -44,12 +72,18 @@ fn main() {
             "avif-document",
             "avif-icon-document",
             "pdf",
+            "pdf-attachment",
             "invalid-pdf",
             "favicon-pdf",
             "html",
             "blob-pdf",
             "relative-image",
             "cross-origin-image",
+            "missing-image",
+            "data-image",
+            "blob-image",
+            "file-image",
+            "unsupported-image-scheme",
         ]
         .contains(&scenario.as_str())
     );
@@ -58,6 +92,7 @@ fn main() {
         "image"
             | "image-attachment"
             | "malformed-image-attachment"
+            | "html-as-image-attachment"
             | "image-document"
             | "svg"
             | "svg-document"
@@ -66,19 +101,31 @@ fn main() {
     );
     let attachment = scenario.ends_with("-attachment");
     let malformed_image = scenario == "malformed-image-attachment";
+    let html_as_image = scenario == "html-as-image-attachment";
+    let missing_image = scenario == "missing-image";
     let svg = scenario.starts_with("svg");
     let avif = scenario.starts_with("avif");
     let image_document = scenario.ends_with("-document");
-    let pdf = matches!(scenario.as_str(), "pdf" | "invalid-pdf");
+    let pdf = matches!(scenario.as_str(), "pdf" | "pdf-attachment" | "invalid-pdf");
     let favicon_pdf = scenario == "favicon-pdf";
     let pdf_response = pdf || favicon_pdf;
     let rendered_image_url = match scenario.as_str() {
-        "relative-image" => Some("/rendered.png"),
+        "relative-image" | "missing-image" => Some("/rendered.png"),
         "cross-origin-image" => Some("http://images.example.invalid/rendered.png"),
         _ => None,
     };
-    let rendering =
-        matches!(scenario.as_str(), "html" | "blob-pdf") || rendered_image_url.is_some();
+    let inline_image = matches!(scenario.as_str(), "data-image" | "blob-image");
+    let file_image = scenario == "file-image";
+    let unsupported_image_scheme = scenario == "unsupported-image-scheme";
+    let rendering = matches!(scenario.as_str(), "html" | "blob-pdf")
+        || rendered_image_url.is_some()
+        || inline_image
+        || file_image
+        || unsupported_image_scheme;
+    assert!(
+        !subframe || rendering || attachment,
+        "subframe mode requires a rendering or attachment case"
+    );
     let valid = scenario != "invalid-pdf";
     if pdf_response {
         assert!(
@@ -101,7 +148,41 @@ fn main() {
             }
         }
     }
-    let body = if let Some(url) = rendered_image_url {
+    let rendered_image = (rendered_image_url.is_some() || inline_image || file_image).then(|| {
+        let mut data = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(16, 16)
+            .write_to(&mut data, image::ImageFormat::Png)
+            .unwrap();
+        data.into_inner()
+    });
+    let file_fixture = file_image.then(|| tempfile::tempdir().unwrap());
+    let file_url = file_fixture.as_ref().map(|directory| {
+        let path = directory.path().join("fixture.png");
+        std::fs::write(&path, rendered_image.as_ref().unwrap()).unwrap();
+        tauri::Url::from_file_path(path).unwrap().to_string()
+    });
+    let broken_image_url = if missing_image {
+        Some("/rendered.png")
+    } else if unsupported_image_scheme {
+        Some("xaga-smoke-unsupported:image.png")
+    } else {
+        file_url.as_deref()
+    };
+    let body = if inline_image {
+        use base64::Engine;
+        let encoded =
+            base64::engine::general_purpose::STANDARD.encode(rendered_image.as_ref().unwrap());
+        let source = if scenario == "data-image" {
+            format!("'data:image/png;base64,{encoded}'")
+        } else {
+            format!(
+                "URL.createObjectURL(new Blob([Uint8Array.from(atob('{encoded}'), c => c.charCodeAt(0))], {{type:'image/png'}}))"
+            )
+        };
+        format!("<!doctype html><p>Article text</p><img id=image><script>const image = document.getElementById('image'); image.onload = () => {{ if (image.naturalWidth === 16) document.title='SMOKE-PASS'; }}; image.src = {source};</script>").into_bytes()
+    } else if let Some(url) = broken_image_url {
+        format!(r#"<!doctype html><p>Article text</p><img src="{url}" onerror="if (document.querySelector('p').textContent === 'Article text') document.title='SMOKE-PASS';">"#).into_bytes()
+    } else if let Some(url) = rendered_image_url {
         format!(
             "<!doctype html><p>Article text</p><img src=\"{url}\" onload=\"if (this.naturalWidth === 16) document.title='SMOKE-PASS';\">"
         )
@@ -110,11 +191,11 @@ fn main() {
         b"<!doctype html><title>SMOKE-PASS</title><p>HTML remains renderable</p>".to_vec()
     } else if scenario == "blob-pdf" {
         use base64::Engine;
-        let encoded = base64::engine::general_purpose::STANDARD.encode(pdf_fixture());
+        let encoded = base64::engine::general_purpose::STANDARD.encode(pdf_fixture::pdf_fixture());
         format!("<!doctype html><script>const b=Uint8Array.from(atob('{encoded}'),c=>c.charCodeAt(0)); const f=document.createElement('iframe'); f.onload=()=>document.title='SMOKE-PASS'; f.src=URL.createObjectURL(new Blob([b],{{type:'application/pdf'}})); document.documentElement.append(f);</script>").into_bytes()
     } else if pdf_response {
         if valid {
-            pdf_fixture()
+            pdf_fixture::pdf_fixture()
         } else {
             b"not a PDF".to_vec()
         }
@@ -124,6 +205,8 @@ fn main() {
         include_bytes!("fixtures/color-profile.avif").to_vec()
     } else if malformed_image {
         b"\x89PNG\r\n\x1a\n".to_vec()
+    } else if html_as_image {
+        b"<!doctype html><title>Not image bytes</title>".to_vec()
     } else if content_image {
         let mut data = Cursor::new(Vec::new());
         image::DynamicImage::new_rgba8(1200, 300)
@@ -145,34 +228,63 @@ fn main() {
     } else {
         "image/png"
     };
-    let mime = if image_document || attachment {
+    let mime = if pdf_response {
+        "application/pdf"
+    } else if image_document || attachment {
         image_mime
     } else if rendering {
         "text/html"
-    } else if pdf_response {
-        "application/pdf"
     } else {
         "application/octet-stream"
     };
     let proxy = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = proxy.local_addr().unwrap();
-    let rendered_image = rendered_image_url.map(|_| {
-        let mut data = Cursor::new(Vec::new());
-        image::DynamicImage::new_rgba8(16, 16)
-            .write_to(&mut data, image::ImageFormat::Png)
-            .unwrap();
-        data.into_inner()
+    let tls = https.then(|| https_fixture::server_config(address.port(), wrong_pin));
+    let https_proxy = https.then(|| {
+        use xaga_core::network_proxy::{self, ProxyConfig};
+        tauri::async_runtime::block_on(network_proxy::start_scoped(
+            ProxyConfig::deny_all()
+                .with_local_endpoint("localhost".into(), address)
+                .unwrap()
+                .with_observer(Arc::new(|code, detail| {
+                    eprintln!("fixture proxy: {code}: {detail}")
+                })),
+        ))
+        .unwrap()
     });
+    let proxy_url = https_proxy.as_ref().map_or_else(
+        || format!("http://{address}"),
+        |proxy| xaga_core::network_proxy::proxy_url(proxy.port),
+    );
+    let origin = if https {
+        format!("https://localhost:{}", address.port())
+    } else {
+        "http://download.example.invalid".into()
+    };
+    let redirect_origin = origin.clone();
+    let relative_image_host = origin.split_once("://").unwrap().1.to_owned();
+    let start_path = if subframe { "/frame" } else { "/favicon.ico" };
     let image_requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let image_requests_server = image_requests.clone();
     let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let seen_server = seen.clone();
+    let received_http = Arc::new(AtomicBool::new(false));
+    let server_received_http = received_http.clone();
+    trait FixtureStream: Read + Write {}
+    impl<T: Read + Write> FixtureStream for T {}
     std::thread::spawn(move || {
         for connection in proxy.incoming() {
-            let mut stream = connection.unwrap();
+            let stream = connection.unwrap();
             stream
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
+            let mut stream: Box<dyn FixtureStream> = match &tls {
+                Some(config) => Box::new(rustls::StreamOwned::new(
+                    rustls::ServerConnection::new(config.clone()).unwrap(),
+                    stream,
+                )),
+                None => Box::new(stream),
+            };
             let mut header = Vec::new();
             let mut byte = [0];
             while !header.ends_with(b"\r\n\r\n") && header.len() < 8192 {
@@ -181,6 +293,10 @@ fn main() {
                 }
                 header.push(byte[0]);
             }
+            if header.is_empty() {
+                continue;
+            }
+            server_received_http.store(true, Ordering::SeqCst);
             let request = String::from_utf8_lossy(&header);
             if request.starts_with("CONNECT download.example.invalid:80 ")
                 || (rendered_image_url.is_some()
@@ -198,9 +314,9 @@ fn main() {
                 }
             }
             let text = String::from_utf8_lossy(&header);
-            if let Some(bytes) = &rendered_image {
-                let host = if rendered_image_url == Some("/rendered.png") {
-                    "download.example.invalid"
+            if let (Some(url), Some(bytes)) = (rendered_image_url, &rendered_image) {
+                let host = if url.starts_with('/') {
+                    &relative_image_host
                 } else {
                     "images.example.invalid"
                 };
@@ -211,15 +327,39 @@ fn main() {
                             .any(|line| line.eq_ignore_ascii_case(&format!("Host: {host}"))))
                 {
                     image_requests_server.fetch_add(1, Ordering::SeqCst);
+                    if missing_image {
+                        stream.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                        continue;
+                    }
                     write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", bytes.len()).unwrap();
                     stream.write_all(bytes).unwrap();
                     continue;
                 }
             }
-            if text.starts_with("GET /favicon.ico ")
-                || text.starts_with("GET http://download.example.invalid/favicon.ico ")
+            if subframe
+                && (text.starts_with("GET /frame ")
+                    || text.starts_with("GET http://download.example.invalid/frame "))
             {
-                stream.write_all(b"HTTP/1.1 302 Found\r\nLocation: http://download.example.invalid/icon-bytes\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                let page: &[u8] = if rendering {
+                    br#"<!doctype html><iframe src="/frame-content" onload="if (this.contentDocument.title === 'SMOKE-PASS') document.title='SMOKE-PASS';"></iframe>"#
+                } else {
+                    br#"<!doctype html><p>Article text</p><iframe id="download-frame"></iframe>"#
+                };
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", page.len()).unwrap();
+                stream.write_all(page).unwrap();
+                continue;
+            }
+            let redirect_path = if subframe {
+                "/frame-content"
+            } else {
+                "/favicon.ico"
+            };
+            if text.starts_with(&format!("GET {redirect_path} "))
+                || text.starts_with(&format!(
+                    "GET http://download.example.invalid{redirect_path} "
+                ))
+            {
+                write!(stream, "HTTP/1.1 302 Found\r\nLocation: {redirect_origin}/icon-bytes\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
                 continue;
             }
             if text.starts_with("GET /icon-bytes ")
@@ -245,6 +385,8 @@ fn main() {
     let render_seen = seen.clone();
     let render_passed = completed.clone();
     let render_scenario = scenario.clone();
+    let parent_loaded = Arc::new(AtomicBool::new(false));
+    let download_parent_loaded = parent_loaded.clone();
     let staging = Arc::new(Mutex::new(None::<StagedDownload<Validator>>));
     let mut context = tauri::generate_context!();
     context.config_mut().app.windows.clear();
@@ -275,21 +417,50 @@ fn main() {
         let handle = app.handle().clone();
         let watchdog = handle.clone();
         let render_handle = handle.clone();
+        if wrong_pin {
+            let handle = handle.clone();
+            let passed = completed.clone();
+            tauri::async_runtime::spawn(async move {
+                while !https_fixture::REJECTED.load(Ordering::SeqCst) {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                assert!(!https_fixture::ACCEPTED.load(Ordering::SeqCst));
+                assert!(!received_http.load(Ordering::SeqCst));
+                println!("PASS: wrong fixture pin rejected before an HTTP request");
+                passed.store(true, Ordering::SeqCst);
+                handle.exit(0);
+            });
+        }
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(Duration::from_secs(20)).await;
             eprintln!("native download timed out");
                 watchdog.exit(1);
         });
-        WebviewWindowBuilder::new(app, "loader-smoke", WebviewUrl::External("http://download.example.invalid/favicon.ico".parse().unwrap()))
+        let test_url: tauri::Url = format!("{origin}{start_path}").parse().unwrap();
+        let initial_url = if https { "about:blank".parse().unwrap() } else { test_url.clone() };
+        let expected_source = format!("{origin}{}", if subframe { "/frame" } else { "/start" });
+        let expected_download = format!("{origin}/icon-bytes");
+        let window = WebviewWindowBuilder::new(app, "loader-smoke", WebviewUrl::External(initial_url))
             .initialization_script(if image_document { format!(
                 "window.__LOADER_IMAGE_ONLY__={content_image};window.__LOAD_REMOTE_IMAGE__=true;window.__LOADER_ID__='smoke';\n{}",
                 include_str!("../src/article_loader.js")
             ) } else { String::new() })
-            .visible(false)
+            .visible(visible)
             .with_webview_configuration(webview_policy::loader_configuration(None).unwrap())
-            .proxy_url(format!("http://{address}").parse().unwrap())
+            .proxy_url(proxy_url.parse().unwrap())
+            .on_page_load(move |webview, payload| {
+                if subframe && !rendering
+                    && matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
+                    && payload.url().path() == "/frame"
+                {
+                    parent_loaded.store(true, Ordering::SeqCst);
+                    webview.eval("document.getElementById('download-frame').src='/frame-content'").unwrap();
+                }
+            })
             .on_document_title_changed(move |_, title| {
                 if rendering && title == "SMOKE-PASS" {
+                    assert!(!wrong_pin);
+                    assert!(!https || https_fixture::ACCEPTED.load(Ordering::SeqCst));
                     assert_eq!(render_seen.load(Ordering::SeqCst), 1);
                     if rendered_image_url.is_some() {
                         assert_eq!(image_requests.load(Ordering::SeqCst), 1);
@@ -302,16 +473,20 @@ fn main() {
             .on_download(move |webview, event| {
                 match event {
                     DownloadEvent::Requested { url, destination } => {
-                        // A first navigation can become a download before any page
-                        // URL exists. Exercise the production diagnostic collector.
+                        // Exercise the production collector without asking Wry for
+                        // the current URL during its download callback.
                         let evidence = article_diagnostics::DownloadDiagnostic::from_download(
-                            &webview, "http://download.example.invalid/start", &url,
+                            &webview, &expected_source, &url,
                             Some(destination.to_string_lossy().into_owned()), None,
                         );
                         assert!(evidence.current_url.is_none());
+                        if subframe {
+                            assert!(download_parent_loaded.load(Ordering::SeqCst));
+                            assert_eq!(evidence.source_url, expected_source);
+                        }
                         assert_eq!(evidence.download_url, url.as_str());
                         assert!(!rendering, "renderable scenario incorrectly converted to download");
-                        assert_eq!(url.as_str(), "http://download.example.invalid/icon-bytes", "callback reports redirected resource");
+                        assert_eq!(url.as_str(), expected_download, "callback reports redirected resource");
                         let job = StagedDownload::new(if pdf { Validator::Pdf } else if content_image { Validator::Image } else { Validator::Icon }, IMAGE_MAX_BYTES).unwrap();
                         *destination = job.path().to_owned();
                         *staging.lock().unwrap() = Some(job);
@@ -324,6 +499,8 @@ fn main() {
                         let result = job.finish(success);
                         if malformed_image {
                             assert!(result.is_err(), "truncated PNG must fail image validation");
+                        } else if html_as_image {
+                            assert!(result.is_err(), "HTML bytes must fail image validation");
                         } else if favicon_pdf {
                             assert!(result.is_err(), "favicon PDF must fail image validation");
                         } else if !valid {
@@ -334,8 +511,9 @@ fn main() {
                             assert!(result.unwrap().starts_with(&format!("data:{image_mime};base64,")));
                         }
                         assert!(!assigned.parent().unwrap().exists());
-                        assert_eq!(seen.load(Ordering::SeqCst), 1, "exactly one final resource retrieval through proxy");
-                        println!("PASS: {scenario}, native download and redirect through proxy, callback path={path:?}, request-purpose validation checked, staging cleaned");
+                        assert!(!https || https_fixture::ACCEPTED.load(Ordering::SeqCst));
+                        assert_eq!(seen.load(Ordering::SeqCst), 1, "exactly one final fixture resource retrieval");
+                        println!("PASS: {scenario}, native download and redirect, callback path={path:?}, request-purpose validation checked, staging cleaned");
                         completed.store(true, Ordering::SeqCst);
                         handle.exit(0);
                         false
@@ -343,6 +521,21 @@ fn main() {
                     _ => false,
                 }
             }).build()?;
+        if https {
+            window.with_webview(move |native| {
+                // Tauri hands out a borrowed WKWebView on the main thread.
+                let webview = unsafe { &*native.inner().cast::<objc2::runtime::AnyObject>() };
+                https_fixture::install_challenge_callback(webview);
+                unsafe {
+                    use objc2::{class, msg_send, rc::Retained, runtime::AnyObject};
+                    let url: Retained<AnyObject> = msg_send![
+                        class!(NSURL), URLWithString: &*objc2_foundation::NSString::from_str(test_url.as_str())
+                    ];
+                    let request: Retained<AnyObject> = msg_send![class!(NSURLRequest), requestWithURL: &*url];
+                    let _: Option<Retained<AnyObject>> = msg_send![webview, loadRequest: &*request];
+                }
+            })?;
+        }
         Ok(())
     }).build(context).unwrap();
     app.run(|_, _| {});
@@ -350,33 +543,4 @@ fn main() {
         passed.load(Ordering::SeqCst),
         "native download never completed"
     );
-}
-
-#[cfg(target_os = "macos")]
-fn pdf_fixture() -> Vec<u8> {
-    use std::io::Write;
-    let mut bytes = b"%PDF-1.4\n".to_vec();
-    let mut offsets = vec![0];
-    for (index, object) in [
-        "<< /Type /Catalog /Pages 2 0 R >>",
-        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] >>",
-    ]
-    .iter()
-    .enumerate()
-    {
-        offsets.push(bytes.len());
-        write!(bytes, "{} 0 obj\n{object}\nendobj\n", index + 1).unwrap();
-    }
-    let xref = bytes.len();
-    write!(bytes, "xref\n0 4\n0000000000 65535 f \n").unwrap();
-    for offset in offsets.iter().skip(1) {
-        writeln!(bytes, "{offset:010} 00000 n ").unwrap();
-    }
-    write!(
-        bytes,
-        "trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"
-    )
-    .unwrap();
-    bytes
 }

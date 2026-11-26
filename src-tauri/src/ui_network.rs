@@ -8,8 +8,29 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager, State, WebviewWindowBuilder, webview::DownloadEvent};
 use xaga_core::network_proxy::{ProxyConfig, ScopedProxy};
+
+/// Apply the native UI policy before the first document can load.
+pub(crate) fn configure_window<'a, M: Manager<tauri::Wry>>(
+    builder: WebviewWindowBuilder<'a, tauri::Wry, M>,
+    proxy_port: u16,
+) -> Result<WebviewWindowBuilder<'a, tauri::Wry, M>, Box<dyn std::error::Error>> {
+    let builder = builder
+        .on_download(|webview, event| {
+            if matches!(event, DownloadEvent::Requested { .. }) {
+                log::debug!("{}: UI download refused", webview.label());
+            }
+            false
+        })
+        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+        .proxy_url(xaga_core::network_proxy::proxy_url(proxy_port).parse()?);
+    #[cfg(target_os = "macos")]
+    let builder = builder.with_webview_configuration(
+        crate::webview_policy::ui_configuration().map_err(std::io::Error::other)?,
+    );
+    Ok(builder)
+}
 
 /// Retain bounded notifications so listener installation cannot lose early errors.
 #[derive(Default)]

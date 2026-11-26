@@ -62,7 +62,9 @@ XAGA_DOWNLOAD_SMOKE_CASE=image-attachment cargo test -p xaga --test resource_dow
 ```
 
 Set `XAGA_DOWNLOAD_SMOKE_CASE=malformed-image-attachment` for the rejection
-case. The fixture uses the loader WebKit configuration, a controlled proxy,
+case. The opt-in `html-as-image-attachment` case serves HTML with the same
+declared image type and checks that the validator rejects the bytes and
+removes staging. The fixture uses the loader WebKit configuration, a controlled proxy,
 and a fixture download callback that calls the production validator.
 Image-document cases explicitly enable offline image capture, matching the
 production loader's enabled-capture initialization without reading user settings.
@@ -75,9 +77,86 @@ URL or by a URL on a second origin. The fixture serves both origins through
 its controlled proxy and supplies no CORS headers. Each case checks that
 WebKit reports a successful image load and the proxy sees one image request
 to the expected origin. The test rejects download callbacks received before
-the image-load signal ends the run. The cases use a hidden fixture window
-with the loader WebKit configuration. Production capture, destination
+the image-load signal ends the run. By default, the cases use a hidden
+fixture window with the loader WebKit configuration. Production capture, destination
 refusal, and main/settings window policy require their own evidence.
+
+The opt-in `missing-image` case returns HTTP 404 for the image. It checks
+that WebKit reports an image loading error, the surrounding article text
+remains visible to the document, and no download callback fires before the
+test exits. The opt-in `data-image` and `blob-image` cases embed the same
+PNG in the document and check that it loads without a download callback.
+The `file-image` and `unsupported-image-scheme` cases check that the
+HTTP document reports an image loading error for a fixture-owned file URL
+and an unsupported scheme, respectively.
+Set `XAGA_DOWNLOAD_SMOKE_VISIBLE=1` to run a case with a visible loader
+fixture window. For rendering cases, set `XAGA_DOWNLOAD_SMOKE_SUBFRAME=1`
+to load the case in a same-origin child frame of the fixture window.
+The same option supports attachment cases, including `pdf-attachment`.
+Those cases start the child navigation after the parent document loads
+and check the redirected download URL, validation result, and staging cleanup.
+
+On macOS 27.2.1 (26B131), 25 top-frame cases and 13 child-frame
+rendering and attachment cases passed in each visibility mode. The separate
+`ui_network_webview` fixture observed main and Settings proxy refusals for
+the tested remote images, stylesheet, frame, fetch, and WebSocket requests,
+with only the loader reaching the upstream fixture. Those UI windows use a
+custom fixture page. The bundled UI probe below exercises the production
+window constructors with compiled assets. Loader refusal of policy-forbidden
+redirects still requires direct evidence.
+
+## Bundled UI download refusal
+
+Build the frontend before running the native test in a macOS desktop session.
+
+```sh
+npm run ui:build
+XAGA_VERIFY_BUNDLED_UI_ROUTING=1 cargo test -p xaga --features tauri/custom-protocol --test ui_network_webview --locked
+```
+
+The test opens main through the startup window constructor and Settings through
+its menu handler. Both load the bundled asset page and call the production theme
+command. Each then attempts a local blob download from its top frame and from a
+same-origin blob child frame. On macOS 27.2.1 (26B131), both windows refused both
+downloads and left staging unchanged. The fixture-page mode independently verifies
+that closing both windows releases their proxy listeners.
+
+Set `XAGA_VERIFY_BUNDLED_UI_ROUTING=data-top` or `data-child` to exercise
+the equivalent data URL link from one frame at a time. Both windows sent
+top-frame data URLs to the native refusal callback. The child-frame attempts
+produced no native download callback during the observation window. Staging
+stayed unchanged in both cases.
+
+The bundled probe runs inside the native test executable with a temporary
+library path and the theme command registered. The earlier desktop smoke covers
+ordinary application startup and reader rendering.
+
+## Native HTTPS routing smoke cases
+
+Run the native resource fixture in a macOS desktop session. The HTTPS mode
+uses the system OpenSSL executable to generate a certificate and key in a
+temporary directory. The test callback accepts only the exact certificate
+for the fixture's localhost port. The callback is part of the test executable.
+
+```sh
+XAGA_DOWNLOAD_SMOKE_HTTPS=1 XAGA_DOWNLOAD_SMOKE_CASE=pdf cargo test -p xaga --test resource_download_webview --locked
+```
+
+HTTPS mode supports `html`, `relative-image`, `missing-image`,
+`image-attachment`, `malformed-image-attachment`, `html-as-image-attachment`,
+`pdf-attachment`, `pdf`, and `invalid-pdf`. Use the same visibility and
+child-frame options as the HTTP fixture. The inline `pdf` and `invalid-pdf`
+cases are top-frame cases because Wry's inline PDF download override only
+applies to top frames. To check pin rejection, use `html` with both
+`XAGA_DOWNLOAD_SMOKE_HTTPS=1` and `XAGA_DOWNLOAD_SMOKE_WRONG_PIN=1`.
+
+On macOS 27.2.1 (26B131), all 34 HTTPS runs passed. In each visibility
+mode, nine top-frame cases and seven child-frame cases exercised rendering,
+redirected attachment routing, validation, and the applicable staging checks.
+Both wrong-pin controls cancelled the TLS challenge before the server saw an
+HTTP request. The fixture exercises the native loader configuration and Wry
+response handling. Default certificate trust, proxy containment, and the
+production capture and persistence paths require separate evidence.
 
 ## Bundled macOS Downloads authorization check
 

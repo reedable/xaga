@@ -250,6 +250,22 @@ pub(super) fn prepare() -> Startup {
     }
 }
 
+pub(super) fn open_main_window(
+    app: &tauri::App,
+    theme: &str,
+) -> Result<tauri::WebviewWindow, Box<dyn std::error::Error>> {
+    // The config's `create: false` lets native policy precede navigation.
+    let proxy = ui_network::start(app.handle(), "main")?;
+    let builder = ui_network::configure_window(
+        WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
+            .initialization_script(theme_bootstrap_script(theme)),
+        proxy.port,
+    )?;
+    let window = builder.build()?;
+    ui_network::retain_for_window(&window, proxy);
+    Ok(window)
+}
+
 pub(super) fn initialize(
     app: &tauri::App,
     state: &AppState,
@@ -372,18 +388,6 @@ pub(super) fn initialize(
         writer,
     };
 
-    // Build explicitly so the native WebRTC policy precedes even the
-    // first document. The config's `create: false` prevents auto-build.
-    let proxy = ui_network::start(app.handle(), "main")?;
-    let builder = WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
-        .initialization_script(theme_bootstrap_script(&theme))
-        .on_download(|_, _| false)
-        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
-        .proxy_url(network_proxy::proxy_url(proxy.port).parse()?);
-    #[cfg(target_os = "macos")]
-    let builder = builder.with_webview_configuration(
-        webview_policy::ui_configuration().map_err(std::io::Error::other)?,
-    );
     let html_reader_view_str = settings
         .html_reader_view
         .as_deref()
@@ -392,8 +396,7 @@ pub(super) fn initialize(
     *setup_load_remote_image.write().unwrap() = settings.load_remote_image();
     *setup_remote_images_allowed.write().unwrap() = settings.remote_images_allowed();
     *setup_publisher_javascript_allowed.write().unwrap() = settings.publisher_javascript_allowed();
-    let window = builder.build()?;
-    ui_network::retain_for_window(&window, proxy);
+    open_main_window(app, &theme)?;
     let refresh = settings.refresh_on_startup.unwrap_or(false);
     let timeout = settings
         .loader_timeout_secs

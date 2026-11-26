@@ -33,6 +33,7 @@ impl Gate {
 pub(super) struct Response {
     body: Vec<u8>,
     mime: &'static str,
+    redirect: Option<String>,
     before_headers: Option<Arc<Gate>>,
     after_first_byte: Option<Arc<Gate>>,
     pub(super) seen: AtomicBool,
@@ -78,6 +79,11 @@ impl Server {
                             response.seen.store(true, Ordering::SeqCst);
                             response.requests.fetch_add(1, Ordering::SeqCst);
                             if let Some(gate) = &response.before_headers { gate.wait().await; }
+                            if let Some(location) = &response.redirect {
+                                let headers = format!("HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+                                let _ = stream.write_all(headers.as_bytes()).await;
+                                return;
+                            }
                             let headers = format!("HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", response.mime, response.body.len());
                             if stream.write_all(headers.as_bytes()).await.is_err() { return; }
                             if let Some(gate) = &response.after_first_byte {
@@ -107,14 +113,35 @@ impl Server {
         before_headers: Option<Arc<Gate>>,
         after_first_byte: Option<Arc<Gate>>,
     ) -> Arc<Response> {
-        let response = Arc::new(Response {
-            body,
-            mime,
-            before_headers,
-            after_first_byte,
-            seen: AtomicBool::new(false),
-            requests: std::sync::atomic::AtomicUsize::new(0),
-        });
+        self.add_route(
+            path,
+            Response {
+                body,
+                mime,
+                redirect: None,
+                before_headers,
+                after_first_byte,
+                seen: AtomicBool::new(false),
+                requests: std::sync::atomic::AtomicUsize::new(0),
+            },
+        )
+    }
+    pub(super) fn add_redirect(&self, path: &str, location: &str) -> Arc<Response> {
+        self.add_route(
+            path,
+            Response {
+                body: Vec::new(),
+                mime: "text/plain",
+                redirect: Some(location.into()),
+                before_headers: None,
+                after_first_byte: None,
+                seen: AtomicBool::new(false),
+                requests: std::sync::atomic::AtomicUsize::new(0),
+            },
+        )
+    }
+    fn add_route(&self, path: &str, response: Response) -> Arc<Response> {
+        let response = Arc::new(response);
         self.responses
             .lock()
             .unwrap()
