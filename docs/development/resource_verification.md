@@ -49,11 +49,11 @@ that browser policy.
 
 ## Native image attachment smoke cases
 
-The opt-in `image-attachment` and `malformed-image-attachment` cases of
+The `image-attachment` and `malformed-image-attachment` cases of
 `resource_download_webview` serve an `image/png` attachment after a redirect.
 Their assertions require WebKit to deliver a download, the image validator to
 accept the complete PNG and reject the truncated PNG, and staging to be removed
-after either result.
+after either result. Both cases run in `npm run test:gui`.
 
 To run one case in a macOS desktop session:
 
@@ -64,6 +64,20 @@ XAGA_DOWNLOAD_SMOKE_CASE=image-attachment cargo test -p xaga --test resource_dow
 Set `XAGA_DOWNLOAD_SMOKE_CASE=malformed-image-attachment` for the rejection
 case. The fixture uses the loader WebKit configuration, a controlled proxy,
 and a fixture download callback that calls the production validator.
+Image-document cases explicitly enable offline image capture, matching the
+production loader's enabled-capture initialization without reading user settings.
+
+## Native image rendering smoke cases
+
+The opt-in `relative-image` and `cross-origin-image` cases load an HTML
+document after a redirect. The document refers to a PNG by a root-relative
+URL or by a URL on a second origin. The fixture serves both origins through
+its controlled proxy and supplies no CORS headers. Each case checks that
+WebKit reports a successful image load and the proxy sees one image request
+to the expected origin. The test rejects download callbacks received before
+the image-load signal ends the run. The cases use a hidden fixture window
+with the loader WebKit configuration. Production capture, destination
+refusal, and main/settings window policy require their own evidence.
 
 ## Bundled macOS Downloads authorization check
 

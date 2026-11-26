@@ -10392,8 +10392,8 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "wry"
-version = "0.57.0+patch.1"
-source = "git+https://github.com/reedable/wry.git?rev=566f7b984147d58e05e69c8dcf8cf6336cc465bb#566f7b984147d58e05e69c8dcf8cf6336cc465bb"
+version = "0.57.0+patch.2"
+source = "git+https://github.com/reedable/wry.git?rev=343436e2f856f941fb311cde9299fbc95a372901#343436e2f856f941fb311cde9299fbc95a372901"
 dependencies = [
  "base64 0.22.1",
  "block2",
@@ -10465,7 +10465,7 @@ dependencies = [
 
 [[package]]
 name = "xaga"
-version = "0.17.13"
+version = "0.17.14-dev"
 dependencies = [
  "avif-parse",
  "base64 0.22.1",
@@ -10500,7 +10500,7 @@ dependencies = [
 
 [[package]]
 name = "xaga-cli"
-version = "0.17.13"
+version = "0.17.14-dev"
 dependencies = [
  "chrono",
  "clap",
@@ -10517,7 +10517,7 @@ dependencies = [
 
 [[package]]
 name = "xaga-core"
-version = "0.17.13"
+version = "0.17.14-dev"
 dependencies = [
  "arrow-array",
  "arrow-buffer",

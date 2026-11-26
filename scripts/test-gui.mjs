@@ -42,6 +42,8 @@ run(process.execPath, ["scripts/verify-svg-webview.mjs"]);
 for (const scenario of [
   "icon",
   "image",
+  "image-attachment",
+  "malformed-image-attachment",
   "image-document",
   "svg",
   "svg-document",
