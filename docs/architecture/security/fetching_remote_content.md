@@ -372,6 +372,9 @@ load has ended are discarded rather than persisted.
 The PDF consumer uses the shared validator interface to enforce a `%PDF-` prefix
 and a 64 MiB limit, then commits accepted bytes through the library writer.
 Xaga enables the local Wry PDF response-routing feature by default on macOS.
+The Wry override also routes HTTP attachment responses through download handlers
+when their MIME types are displayable. Attachment headers select routing only;
+the assigned consumer still validates the bytes before persistence.
 Local reuse, presentation, and the patch policy are described in
 `docs/architecture/wry_pdf_routing.md`. The PDF reqwest probe is removed.
 WebKit navigation does not use the reqwest redirect-count setting; destination

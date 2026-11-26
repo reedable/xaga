@@ -282,7 +282,7 @@ fn main() {
         });
         WebviewWindowBuilder::new(app, "loader-smoke", WebviewUrl::External("http://download.example.invalid/favicon.ico".parse().unwrap()))
             .initialization_script(if image_document { format!(
-                "window.__LOADER_IMAGE_ONLY__={content_image};window.__LOADER_ID__='smoke';\n{}",
+                "window.__LOADER_IMAGE_ONLY__={content_image};window.__LOAD_REMOTE_IMAGE__=true;window.__LOADER_ID__='smoke';\n{}",
                 include_str!("../src/article_loader.js")
             ) } else { String::new() })
             .visible(false)
