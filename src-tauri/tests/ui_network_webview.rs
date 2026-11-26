@@ -17,7 +17,7 @@ fn main() {
         },
         time::Duration,
     };
-    use tauri::{WebviewUrl, WebviewWindowBuilder};
+    use tauri::{WebviewUrl, WebviewWindowBuilder, webview::DownloadEvent};
     use xaga_core::network_proxy::{self, ProxyConfig};
     let check_loopback = std::env::var_os("XAGA_VERIFY_LOOPBACK_ISOLATION").is_some();
     let upstream = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -66,6 +66,7 @@ fn main() {
         }
     });
     let done = Arc::new(AtomicUsize::new(0));
+    let downloads = Arc::new([AtomicUsize::new(0), AtomicUsize::new(0)]);
     let blocked = Arc::new([
         std::sync::Mutex::new(std::collections::HashSet::new()),
         std::sync::Mutex::new(std::collections::HashSet::new()),
@@ -87,6 +88,11 @@ fn main() {
                 const frame=document.createElement('iframe'); frame.src='http://frame.invalid/a'; document.body.append(frame);
                 fetch('http://fetch.invalid/a').catch(()=>{{}});
                 new WebSocket('wss://socket.invalid/a');
+                const attachment = document.createElement('a');
+                attachment.download = 'xaga-routing-fixture.txt';
+                attachment.href = URL.createObjectURL(new Blob(['fixture'], {{type:'text/plain'}}));
+                document.body.append(attachment);
+                attachment.click();
                 setTimeout(()=>document.title=window.localImage?'ui-ok':'local-image-failed', 2000);
             </script>"#
     );
@@ -99,13 +105,21 @@ fn main() {
             }));
             let proxy = tauri::async_runtime::block_on(network_proxy::start_scoped(config))?;
             let completed = done.clone();
+            let download_requests = downloads.clone();
             // Hidden fixture views timed out before image/timer completion on
             // the test host. This probe requires actual foreground rendering.
             let window = WebviewWindowBuilder::new(app, label, WebviewUrl::External("fixture://localhost/test".parse()?))
                 .visible(true)
                 .with_webview_configuration(webview_policy::ui_configuration().unwrap())
                 .proxy_url(network_proxy::proxy_url(proxy.port).parse()?)
-                .on_download(|_, _| false)
+                .on_download(move |webview, event| {
+                    if let DownloadEvent::Requested { url, .. } = event {
+                        assert_eq!(webview.label(), label);
+                        assert_eq!(url.scheme(), "blob");
+                        download_requests[index].fetch_add(1, Ordering::SeqCst);
+                    }
+                    false
+                })
                 .on_document_title_changed(move |_, title| { if title == "ui-ok" { completed.fetch_add(1, Ordering::SeqCst); } })
                 .build()?;
             // Keep each proxy alive for its window lifetime.
@@ -125,14 +139,17 @@ fn main() {
         tauri::async_runtime::spawn(async move {
             for _ in 0..100 {
                 tokio::time::sleep(Duration::from_millis(100)).await;
-                if done.load(Ordering::SeqCst) >= 3 && blocked.iter().all(|v| v.lock().unwrap().len() >= if check_loopback { 7 } else { 6 }) {
+                if done.load(Ordering::SeqCst) >= 3
+                    && downloads.iter().all(|count| count.load(Ordering::SeqCst) == 1)
+                    && blocked.iter().all(|v| v.lock().unwrap().len() >= if check_loopback { 7 } else { 6 }) {
                     if reached.load(Ordering::SeqCst) != 1 { eprintln!("FAIL: UI reached upstream"); handle.exit(1); return; }
                     println!("PASS: main/settings block HTTP, HTTPS, CSS, iframe, fetch and WebSocket; local image and isolated loader work");
+                    println!("PASS: each fixture UI window refuses its local blob download");
                     handle.exit(0);
                     return;
                 }
             }
-            eprintln!("FAIL: completed={}, blocked=[{}, {}], upstream={}", done.load(Ordering::SeqCst), blocked[0].lock().unwrap().len(), blocked[1].lock().unwrap().len(), reached.load(Ordering::SeqCst));
+            eprintln!("FAIL: completed={}, blocked=[{}, {}], downloads=[{}, {}], upstream={}", done.load(Ordering::SeqCst), blocked[0].lock().unwrap().len(), blocked[1].lock().unwrap().len(), downloads[0].load(Ordering::SeqCst), downloads[1].load(Ordering::SeqCst), reached.load(Ordering::SeqCst));
             handle.exit(1);
         });
         Ok(())

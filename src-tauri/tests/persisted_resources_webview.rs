@@ -38,8 +38,9 @@ async fn verify(app: tauri::AppHandle) {
         "data:image/png;base64,{}",
         base64::engine::general_purpose::STANDARD.encode(&bytes)
     );
+    let redirect = server.add_redirect("/image", "/image-bytes");
     let response = server.add_response(
-        "/image",
+        "/image-bytes",
         bytes.clone(),
         "application/octet-stream",
         None,
@@ -137,6 +138,7 @@ async fn verify(app: tauri::AppHandle) {
     let disabled = recover(&app, recovery()).await;
     assert_eq!(disabled.meta.description.as_deref(), Some(source.as_str()));
     assert_eq!(snapshot(&library), before);
+    assert_eq!(redirect.requests.load(Ordering::SeqCst), 0);
     assert_eq!(response.requests.load(Ordering::SeqCst), 0);
     println!("PASS: disabled recovery performs no acquisition or writes");
 
@@ -148,6 +150,7 @@ async fn verify(app: tauri::AppHandle) {
     let blocked = recover(&app, recovery()).await;
     assert_eq!(blocked.meta.description.as_deref(), Some(source.as_str()));
     assert_eq!(snapshot(&library), before);
+    assert_eq!(redirect.requests.load(Ordering::SeqCst), 0);
     assert_eq!(response.requests.load(Ordering::SeqCst), 0);
     *app.state::<AppState>()
         .remote_images_allowed
@@ -157,6 +160,7 @@ async fn verify(app: tauri::AppHandle) {
     assert_eq!(saved.content, "unchanged body");
     let local_summary = saved.meta.description.unwrap();
     assert!(local_summary.contains("../images/article/"));
+    assert_eq!(redirect.requests.load(Ordering::SeqCst), 1);
     assert_eq!(response.requests.load(Ordering::SeqCst), 1);
     let local = local_summary
         .strip_prefix("![image](")
@@ -168,7 +172,7 @@ async fn verify(app: tauri::AppHandle) {
         Some(expected_image.as_str())
     );
     println!(
-        "PASS: enabled recovery acquires, validates, persists and rewrites through production command"
+        "PASS: enabled recovery follows a redirect, validates, persists and rewrites through production command"
     );
 
     // Keep the asset referenced from the body while presenting the same remote
@@ -180,6 +184,7 @@ async fn verify(app: tauri::AppHandle) {
         Some(local_summary.as_str())
     );
     assert_eq!(response.requests.load(Ordering::SeqCst), 1);
+    assert_eq!(redirect.requests.load(Ordering::SeqCst), 1);
     println!("PASS: known remote URL reuses local bytes without acquisition");
 
     let gate = Arc::new(resource_server::Gate::default());

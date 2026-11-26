@@ -5,6 +5,9 @@
 #[allow(dead_code, unused_imports)]
 mod article_diagnostics;
 #[cfg(target_os = "macos")]
+#[path = "support/pdf_fixture.rs"]
+mod pdf_fixture;
+#[cfg(target_os = "macos")]
 #[path = "../src/resource_download.rs"]
 #[allow(dead_code)]
 mod resource_download;
@@ -166,11 +169,11 @@ fn main() {
         b"<!doctype html><title>SMOKE-PASS</title><p>HTML remains renderable</p>".to_vec()
     } else if scenario == "blob-pdf" {
         use base64::Engine;
-        let encoded = base64::engine::general_purpose::STANDARD.encode(pdf_fixture());
+        let encoded = base64::engine::general_purpose::STANDARD.encode(pdf_fixture::pdf_fixture());
         format!("<!doctype html><script>const b=Uint8Array.from(atob('{encoded}'),c=>c.charCodeAt(0)); const f=document.createElement('iframe'); f.onload=()=>document.title='SMOKE-PASS'; f.src=URL.createObjectURL(new Blob([b],{{type:'application/pdf'}})); document.documentElement.append(f);</script>").into_bytes()
     } else if pdf_response {
         if valid {
-            pdf_fixture()
+            pdf_fixture::pdf_fixture()
         } else {
             b"not a PDF".to_vec()
         }
@@ -443,33 +446,4 @@ fn main() {
         passed.load(Ordering::SeqCst),
         "native download never completed"
     );
-}
-
-#[cfg(target_os = "macos")]
-fn pdf_fixture() -> Vec<u8> {
-    use std::io::Write;
-    let mut bytes = b"%PDF-1.4\n".to_vec();
-    let mut offsets = vec![0];
-    for (index, object) in [
-        "<< /Type /Catalog /Pages 2 0 R >>",
-        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] >>",
-    ]
-    .iter()
-    .enumerate()
-    {
-        offsets.push(bytes.len());
-        write!(bytes, "{} 0 obj\n{object}\nendobj\n", index + 1).unwrap();
-    }
-    let xref = bytes.len();
-    write!(bytes, "xref\n0 4\n0000000000 65535 f \n").unwrap();
-    for offset in offsets.iter().skip(1) {
-        writeln!(bytes, "{offset:010} 00000 n ").unwrap();
-    }
-    write!(
-        bytes,
-        "trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"
-    )
-    .unwrap();
-    bytes
 }

@@ -8,6 +8,9 @@ include!("../src/lib.rs");
 fn main() {}
 
 #[cfg(target_os = "macos")]
+#[path = "support/pdf_fixture.rs"]
+mod pdf_fixture;
+#[cfg(target_os = "macos")]
 #[path = "support/resource_server.rs"]
 mod resource_server;
 
@@ -145,8 +148,53 @@ mod lifecycle {
         );
     }
 
+    async fn verify_proxy_redirect_refusal(server: &Server) {
+        let destination = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let destination_port = destination.local_addr().unwrap().port();
+        let refused = format!("http://localhost:{destination_port}/refused");
+        let redirect = server.add_redirect("/proxy-refusal", &refused);
+        let reports = Arc::new(Mutex::new(Vec::new()));
+        let observed = reports.clone();
+        let config = network_proxy::ProxyConfig::deny_all()
+            .with_local_endpoint("localhost".into(), server.address)
+            .unwrap()
+            .with_observer(Arc::new(move |code, detail| {
+                observed
+                    .lock()
+                    .unwrap()
+                    .push((code.to_owned(), detail.to_owned()));
+            }));
+        let proxy = network_proxy::start_scoped(config).await.unwrap();
+        let response = network_proxy::proxied_client(proxy.port)
+            .unwrap()
+            .get(format!(
+                "http://localhost:{}/proxy-refusal",
+                server.address.port()
+            ))
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::FORBIDDEN);
+        assert_eq!(response.url().as_str(), refused);
+        assert_eq!(redirect.requests.load(Ordering::SeqCst), 1);
+        assert!(reports.lock().unwrap().iter().any(|(code, detail)| {
+            code == "proxy:blocked"
+                && detail.contains(&format!("destination=localhost:{destination_port}"))
+        }));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), destination.accept())
+                .await
+                .is_err()
+        );
+        println!("PASS: proxy-routed client refuses redirect before connecting to the destination");
+    }
+
     pub(super) async fn verify(app: tauri::AppHandle) {
         let server = Server::new().await;
+        verify_proxy_redirect_refusal(&server).await;
         // Production's remote URL patterns cover default ports. Grant only
         // this fixture's random local origin the existing loader callbacks.
         app.add_capability(
@@ -158,6 +206,69 @@ mod lifecycle {
         )
         .unwrap();
         let baseline = list_staging_directories();
+        let origin = format!("http://localhost:{}", server.address.port());
+        let pdf = pdf_fixture::pdf_fixture();
+        for (route, destination, bytes) in [
+            ("redirected-pdf", "/paper", pdf.clone()),
+            (
+                "redirected-invalid-pdf",
+                "/invalid-paper",
+                b"not a PDF".to_vec(),
+            ),
+        ] {
+            let redirect = server.add_redirect(&format!("/{route}"), destination);
+            let ready = Arc::new(Gate::default());
+            let resource = server.add_response(
+                destination,
+                bytes,
+                "application/pdf",
+                Some(ready.clone()),
+                None,
+            );
+            let mut load = start(&app, &server, route, 15).await;
+            ready.release();
+            let capture = load.result.take().unwrap().await.unwrap().unwrap();
+            if route == "redirected-pdf" {
+                assert_eq!(capture.pdf_bytes.as_deref(), Some(pdf.as_slice()));
+                assert!(capture.download_error.is_none());
+            } else {
+                assert!(capture.pdf_bytes.is_none());
+                assert!(capture.download_error.is_some());
+            }
+            assert_eq!(redirect.requests.load(Ordering::SeqCst), 1);
+            assert_eq!(resource.requests.load(Ordering::SeqCst), 1);
+            let report = serde_json::to_value(load.attempt.get_diagnostic()).unwrap();
+            assert!(report["events"].as_array().unwrap().iter().any(|event| {
+                event["step"] == "download_requested"
+                    && event["download"]["sourceUrl"] == format!("{origin}/{route}")
+                    && event["download"]["downloadUrl"] == format!("{origin}{destination}")
+            }));
+            assert_cleanup(&app, &load).await;
+            until("PDF staging removed", || {
+                list_staging_directories() == baseline
+            })
+            .await;
+            println!("PASS: {route} reaches the production PDF consumer and releases staging");
+        }
+        server.add_article("redirected-favicon", None, None, None, true);
+        let icon = server.add_article("favicon-destination", None, None, None, true);
+        let icon_redirect =
+            server.add_redirect("/redirected-favicon/icon", "/favicon-destination/icon");
+        let mut load = start(&app, &server, "redirected-favicon", 15).await;
+        let capture = load.result.take().unwrap().await.unwrap().unwrap();
+        assert!(capture.html.contains("article-redirected-favicon"));
+        assert!(capture.favicon_data.is_some());
+        assert!(capture.pdf_bytes.is_none());
+        assert!(capture.download_error.is_none());
+        assert_eq!(icon_redirect.requests.load(Ordering::SeqCst), 1);
+        assert_eq!(icon.requests.load(Ordering::SeqCst), 1);
+        assert_cleanup(&app, &load).await;
+        until("favicon staging removed", || {
+            list_staging_directories() == baseline
+        })
+        .await;
+        println!("PASS: redirected favicon preserves the production article capture");
+
         for stage in ["before-capture", "after-capture", "during-download"] {
             let gate = Arc::new(Gate::default());
             let icon = server.add_article(
@@ -280,7 +391,6 @@ mod lifecycle {
             None,
             None,
         );
-        let origin = format!("http://localhost:{}", server.address.port());
         server.add_response("/responsive", br#"<!doctype html><title>Responsive images</title>
           <article><p>Responsive image selection</p>
           <img srcset="/responsive-selected.png 1x" alt="srcset only" title="selected image">
