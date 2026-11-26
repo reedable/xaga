@@ -29,8 +29,13 @@ and consumer under the existing network policy. Remediation is follow-up work.
 
 ## Remaining work
 
-- Extend the native harness and run the matrix, retaining reproducible commands
-  and evidence for passes, failures, and unverified behavior.
+- Extend the native harness for the remaining matrix cells, including HTTPS
+  loader requests, policy-forbidden redirects with destination observations,
+  child-frame download responses, and production main and Settings windows.
+- Verify production capture, consumer selection, and cleanup where the existing
+  smoke cases exercise only the fixture download callback or rendering.
+- Record expected and observed outcomes, inapplicable combinations, and
+  reproducible commands for the full matrix.
 - Record findings and limits in durable security documentation, create warranted
   follow-up stories, then delete this task.
 
@@ -41,5 +46,6 @@ and consumer under the existing network policy. Remediation is follow-up work.
 - [Download consumers](../../src-tauri/src/loader_download.rs)
 - [Validators](../../src-tauri/src/resource_download.rs)
 - [Native tests](../../src-tauri/tests/resource_download_webview.rs)
+- [Existing native smoke cases](../../docs/development/resource_verification.md#native-image-rendering-smoke-cases)
 - [Wry response policy](https://github.com/reedable/wry/blob/566f7b984147d58e05e69c8dcf8cf6336cc465bb/src/wkwebview/response_policy.rs)
 - [Remote content policy](../../docs/architecture/security/fetching_remote_content.md)

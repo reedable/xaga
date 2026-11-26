@@ -30,12 +30,15 @@ fn main() {
     };
     use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, webview::DownloadEvent};
     let scenario = std::env::var("XAGA_DOWNLOAD_SMOKE_CASE").unwrap_or_else(|_| "icon".into());
+    let visible = std::env::var("XAGA_DOWNLOAD_SMOKE_VISIBLE").as_deref() == Ok("1");
+    let subframe = std::env::var("XAGA_DOWNLOAD_SMOKE_SUBFRAME").as_deref() == Ok("1");
     assert!(
         [
             "icon",
             "image",
             "image-attachment",
             "malformed-image-attachment",
+            "html-as-image-attachment",
             "image-document",
             "svg",
             "svg-document",
@@ -50,6 +53,11 @@ fn main() {
             "blob-pdf",
             "relative-image",
             "cross-origin-image",
+            "missing-image",
+            "data-image",
+            "blob-image",
+            "file-image",
+            "unsupported-image-scheme",
         ]
         .contains(&scenario.as_str())
     );
@@ -58,6 +66,7 @@ fn main() {
         "image"
             | "image-attachment"
             | "malformed-image-attachment"
+            | "html-as-image-attachment"
             | "image-document"
             | "svg"
             | "svg-document"
@@ -66,6 +75,8 @@ fn main() {
     );
     let attachment = scenario.ends_with("-attachment");
     let malformed_image = scenario == "malformed-image-attachment";
+    let html_as_image = scenario == "html-as-image-attachment";
+    let missing_image = scenario == "missing-image";
     let svg = scenario.starts_with("svg");
     let avif = scenario.starts_with("avif");
     let image_document = scenario.ends_with("-document");
@@ -73,12 +84,22 @@ fn main() {
     let favicon_pdf = scenario == "favicon-pdf";
     let pdf_response = pdf || favicon_pdf;
     let rendered_image_url = match scenario.as_str() {
-        "relative-image" => Some("/rendered.png"),
+        "relative-image" | "missing-image" => Some("/rendered.png"),
         "cross-origin-image" => Some("http://images.example.invalid/rendered.png"),
         _ => None,
     };
-    let rendering =
-        matches!(scenario.as_str(), "html" | "blob-pdf") || rendered_image_url.is_some();
+    let inline_image = matches!(scenario.as_str(), "data-image" | "blob-image");
+    let file_image = scenario == "file-image";
+    let unsupported_image_scheme = scenario == "unsupported-image-scheme";
+    let rendering = matches!(scenario.as_str(), "html" | "blob-pdf")
+        || rendered_image_url.is_some()
+        || inline_image
+        || file_image
+        || unsupported_image_scheme;
+    assert!(
+        !subframe || rendering,
+        "subframe mode requires a rendering case"
+    );
     let valid = scenario != "invalid-pdf";
     if pdf_response {
         assert!(
@@ -101,7 +122,41 @@ fn main() {
             }
         }
     }
-    let body = if let Some(url) = rendered_image_url {
+    let rendered_image = (rendered_image_url.is_some() || inline_image || file_image).then(|| {
+        let mut data = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(16, 16)
+            .write_to(&mut data, image::ImageFormat::Png)
+            .unwrap();
+        data.into_inner()
+    });
+    let file_fixture = file_image.then(|| tempfile::tempdir().unwrap());
+    let file_url = file_fixture.as_ref().map(|directory| {
+        let path = directory.path().join("fixture.png");
+        std::fs::write(&path, rendered_image.as_ref().unwrap()).unwrap();
+        tauri::Url::from_file_path(path).unwrap().to_string()
+    });
+    let broken_image_url = if missing_image {
+        Some("/rendered.png")
+    } else if unsupported_image_scheme {
+        Some("xaga-smoke-unsupported:image.png")
+    } else {
+        file_url.as_deref()
+    };
+    let body = if inline_image {
+        use base64::Engine;
+        let encoded =
+            base64::engine::general_purpose::STANDARD.encode(rendered_image.as_ref().unwrap());
+        let source = if scenario == "data-image" {
+            format!("'data:image/png;base64,{encoded}'")
+        } else {
+            format!(
+                "URL.createObjectURL(new Blob([Uint8Array.from(atob('{encoded}'), c => c.charCodeAt(0))], {{type:'image/png'}}))"
+            )
+        };
+        format!("<!doctype html><p>Article text</p><img id=image><script>const image = document.getElementById('image'); image.onload = () => {{ if (image.naturalWidth === 16) document.title='SMOKE-PASS'; }}; image.src = {source};</script>").into_bytes()
+    } else if let Some(url) = broken_image_url {
+        format!(r#"<!doctype html><p>Article text</p><img src="{url}" onerror="if (document.querySelector('p').textContent === 'Article text') document.title='SMOKE-PASS';">"#).into_bytes()
+    } else if let Some(url) = rendered_image_url {
         format!(
             "<!doctype html><p>Article text</p><img src=\"{url}\" onload=\"if (this.naturalWidth === 16) document.title='SMOKE-PASS';\">"
         )
@@ -124,6 +179,8 @@ fn main() {
         include_bytes!("fixtures/color-profile.avif").to_vec()
     } else if malformed_image {
         b"\x89PNG\r\n\x1a\n".to_vec()
+    } else if html_as_image {
+        b"<!doctype html><title>Not image bytes</title>".to_vec()
     } else if content_image {
         let mut data = Cursor::new(Vec::new());
         image::DynamicImage::new_rgba8(1200, 300)
@@ -156,13 +213,7 @@ fn main() {
     };
     let proxy = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = proxy.local_addr().unwrap();
-    let rendered_image = rendered_image_url.map(|_| {
-        let mut data = Cursor::new(Vec::new());
-        image::DynamicImage::new_rgba8(16, 16)
-            .write_to(&mut data, image::ImageFormat::Png)
-            .unwrap();
-        data.into_inner()
-    });
+    let start_path = if subframe { "/frame" } else { "/favicon.ico" };
     let image_requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let image_requests_server = image_requests.clone();
     let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -198,8 +249,8 @@ fn main() {
                 }
             }
             let text = String::from_utf8_lossy(&header);
-            if let Some(bytes) = &rendered_image {
-                let host = if rendered_image_url == Some("/rendered.png") {
+            if let (Some(url), Some(bytes)) = (rendered_image_url, &rendered_image) {
+                let host = if url.starts_with('/') {
                     "download.example.invalid"
                 } else {
                     "images.example.invalid"
@@ -211,13 +262,33 @@ fn main() {
                             .any(|line| line.eq_ignore_ascii_case(&format!("Host: {host}"))))
                 {
                     image_requests_server.fetch_add(1, Ordering::SeqCst);
+                    if missing_image {
+                        stream.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                        continue;
+                    }
                     write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", bytes.len()).unwrap();
                     stream.write_all(bytes).unwrap();
                     continue;
                 }
             }
-            if text.starts_with("GET /favicon.ico ")
-                || text.starts_with("GET http://download.example.invalid/favicon.ico ")
+            if subframe
+                && (text.starts_with("GET /frame ")
+                    || text.starts_with("GET http://download.example.invalid/frame "))
+            {
+                let page = br#"<!doctype html><iframe src="/frame-content" onload="if (this.contentDocument.title === 'SMOKE-PASS') document.title='SMOKE-PASS';"></iframe>"#;
+                write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", page.len()).unwrap();
+                stream.write_all(page).unwrap();
+                continue;
+            }
+            let redirect_path = if subframe {
+                "/frame-content"
+            } else {
+                "/favicon.ico"
+            };
+            if text.starts_with(&format!("GET {redirect_path} "))
+                || text.starts_with(&format!(
+                    "GET http://download.example.invalid{redirect_path} "
+                ))
             {
                 stream.write_all(b"HTTP/1.1 302 Found\r\nLocation: http://download.example.invalid/icon-bytes\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
                 continue;
@@ -280,12 +351,12 @@ fn main() {
             eprintln!("native download timed out");
                 watchdog.exit(1);
         });
-        WebviewWindowBuilder::new(app, "loader-smoke", WebviewUrl::External("http://download.example.invalid/favicon.ico".parse().unwrap()))
+        WebviewWindowBuilder::new(app, "loader-smoke", WebviewUrl::External(format!("http://download.example.invalid{start_path}").parse().unwrap()))
             .initialization_script(if image_document { format!(
                 "window.__LOADER_IMAGE_ONLY__={content_image};window.__LOAD_REMOTE_IMAGE__=true;window.__LOADER_ID__='smoke';\n{}",
                 include_str!("../src/article_loader.js")
             ) } else { String::new() })
-            .visible(false)
+            .visible(visible)
             .with_webview_configuration(webview_policy::loader_configuration(None).unwrap())
             .proxy_url(format!("http://{address}").parse().unwrap())
             .on_document_title_changed(move |_, title| {
@@ -324,6 +395,8 @@ fn main() {
                         let result = job.finish(success);
                         if malformed_image {
                             assert!(result.is_err(), "truncated PNG must fail image validation");
+                        } else if html_as_image {
+                            assert!(result.is_err(), "HTML bytes must fail image validation");
                         } else if favicon_pdf {
                             assert!(result.is_err(), "favicon PDF must fail image validation");
                         } else if !valid {

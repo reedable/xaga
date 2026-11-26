@@ -62,7 +62,9 @@ XAGA_DOWNLOAD_SMOKE_CASE=image-attachment cargo test -p xaga --test resource_dow
 ```
 
 Set `XAGA_DOWNLOAD_SMOKE_CASE=malformed-image-attachment` for the rejection
-case. The fixture uses the loader WebKit configuration, a controlled proxy,
+case. The opt-in `html-as-image-attachment` case serves HTML with the same
+declared image type and checks that the validator rejects the bytes and
+removes staging. The fixture uses the loader WebKit configuration, a controlled proxy,
 and a fixture download callback that calls the production validator.
 Image-document cases explicitly enable offline image capture, matching the
 production loader's enabled-capture initialization without reading user settings.
@@ -75,9 +77,29 @@ URL or by a URL on a second origin. The fixture serves both origins through
 its controlled proxy and supplies no CORS headers. Each case checks that
 WebKit reports a successful image load and the proxy sees one image request
 to the expected origin. The test rejects download callbacks received before
-the image-load signal ends the run. The cases use a hidden fixture window
-with the loader WebKit configuration. Production capture, destination
+the image-load signal ends the run. By default, the cases use a hidden
+fixture window with the loader WebKit configuration. Production capture, destination
 refusal, and main/settings window policy require their own evidence.
+
+The opt-in `missing-image` case returns HTTP 404 for the image. It checks
+that WebKit reports an image loading error, the surrounding article text
+remains visible to the document, and no download callback fires before the
+test exits. The opt-in `data-image` and `blob-image` cases embed the same
+PNG in the document and check that it loads without a download callback.
+The `file-image` and `unsupported-image-scheme` cases check that the
+HTTP document reports an image loading error for a fixture-owned file URL
+and an unsupported scheme, respectively.
+Set `XAGA_DOWNLOAD_SMOKE_VISIBLE=1` to run a case with a visible loader
+fixture window. For rendering cases, set `XAGA_DOWNLOAD_SMOKE_SUBFRAME=1`
+to load the case in a same-origin child frame of the fixture window.
+
+On macOS 27.2.1 (26B131), all 24 top-frame cases and nine child-frame
+rendering cases passed in each visibility mode. The separate
+`ui_network_webview` fixture observed main and Settings proxy refusals for
+the tested remote images, stylesheet, frame, fetch, and WebSocket requests,
+with only the loader reaching the upstream fixture. Those UI windows use a
+custom fixture page. Bundled UI response routing and loader refusal of
+policy-forbidden redirects still require direct evidence.
 
 ## Bundled macOS Downloads authorization check
 
