@@ -152,7 +152,8 @@ pub async fn list_all_entities(
 }
 
 /// Enriches raw LanceDB results from their authoritative files while preserving rank.
-/// Feed rows whose source `.atom` file cannot be read are omitted. Rows with no URL are
+/// Feed dates come from the index. Feed rows whose source `.atom` file cannot be read are
+/// omitted. Rows with no URL are
 /// resolved as topics and fall back to entries when they cannot be resolved.
 pub async fn enrich_embedded(
     library_dir: &Path,
@@ -163,7 +164,7 @@ pub async fn enrich_embedded(
     let mut result = Vec::with_capacity(entries.len());
     for entry in entries {
         if entry.kind == Kind::Feed {
-            if let Ok(feed) = crate::persistence::feeds::read_feed(
+            if let Ok(mut feed) = crate::persistence::feeds::read_feed(
                 library_dir,
                 &entry.entry.id,
                 unread,
@@ -171,6 +172,8 @@ pub async fn enrich_embedded(
             )
             .await
             {
+                feed.created_at = entry.entry.created_at;
+                feed.updated_at = entry.entry.updated_at;
                 result.push(EmbeddedEntity::Feed(EmbeddedFeed {
                     feed,
                     kind: entry.kind,
@@ -264,9 +267,14 @@ mod tests {
         .unwrap();
         let unread = HashSet::from([crate::util::url_hash12("https://example.com/one")]);
         let bookmarked = HashSet::from([crate::util::url_hash12("https://example.com/two")]);
+        let mut feed_result = embedded_entry("feed", Kind::Feed, 0.8);
+        let indexed_created_at = "2026-01-02T00:00:00Z".to_owned();
+        let indexed_updated_at = Some("2026-10-24T00:00:00Z".to_owned());
+        feed_result.entry.created_at = indexed_created_at.clone();
+        feed_result.entry.updated_at = indexed_updated_at.clone();
         let entries = vec![
             embedded_entry("first", Kind::Entry, 0.9),
-            embedded_entry("feed", Kind::Feed, 0.8),
+            feed_result,
             embedded_entry("missing", Kind::Feed, 0.7),
             embedded_entry("last", Kind::Entry, 0.6),
         ];
@@ -282,6 +290,8 @@ mod tests {
             EmbeddedEntity::Feed(feed) => {
                 assert_eq!(feed.feed.id, "feed");
                 assert_eq!(feed.feed.title, "Authoritative feed");
+                assert_eq!(feed.feed.created_at, indexed_created_at);
+                assert_eq!(feed.feed.updated_at, indexed_updated_at);
                 assert_eq!(feed.feed.url, "https://example.com/feed.xml");
                 assert_eq!(feed.feed.entry_count, 2);
                 assert_eq!(feed.feed.unread_count, 1);

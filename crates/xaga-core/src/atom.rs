@@ -26,15 +26,7 @@ pub(crate) use atom_persistence::Feed as Atom;
 pub(crate) const XAGA_NAMESPACE: &str = "urn:xaga:atom";
 
 fn get_local_id(atom: &Atom) -> Result<Option<&str>, String> {
-    let mut ids = atom
-        .extensions
-        .iter()
-        .filter(|(prefix, _)| {
-            atom.namespaces
-                .get(*prefix)
-                .is_some_and(|uri| uri == XAGA_NAMESPACE)
-        })
-        .flat_map(|(_, fields)| fields.get("id").into_iter().flatten());
+    let mut ids = local_fields(atom, "id");
     let Some(field) = ids.next() else {
         return Ok(None);
     };
@@ -46,6 +38,20 @@ fn get_local_id(atom: &Atom) -> Result<Option<&str>, String> {
         return Err("invalid local Feed identity".into());
     }
     Ok(Some(id))
+}
+
+fn local_fields<'a>(
+    atom: &'a Atom,
+    name: &'a str,
+) -> impl Iterator<Item = &'a atom_persistence::extension::Extension> {
+    atom.extensions
+        .iter()
+        .filter(|(prefix, _)| {
+            atom.namespaces
+                .get(*prefix)
+                .is_some_and(|uri| uri == XAGA_NAMESPACE)
+        })
+        .flat_map(move |(_, fields)| fields.get(name).into_iter().flatten())
 }
 
 pub(crate) fn resolve_local_id(atom: &Atom, path: &std::path::Path) -> Result<String, String> {
@@ -62,6 +68,18 @@ pub(crate) fn ensure_local_id(atom: &mut Atom, path: &std::path::Path) -> Result
 }
 
 fn set_local_id(atom: &mut Atom, id: &str) {
+    set_local_field(atom, "id", id);
+}
+
+pub(crate) fn feed_created_at(atom: &Atom) -> Option<&str> {
+    local_fields(atom, "created_at").next()?.value.as_deref()
+}
+
+pub(crate) fn set_feed_created_at(atom: &mut Atom, created_at: &str) {
+    set_local_field(atom, "created_at", created_at);
+}
+
+fn set_local_field(atom: &mut Atom, name: &str, value: &str) {
     let prefix = atom
         .namespaces
         .iter()
@@ -77,14 +95,14 @@ fn set_local_id(atom: &mut Atom, id: &str) {
             prefix
         });
     let field = atom_persistence::extension::Extension {
-        name: format!("{prefix}:id"),
-        value: Some(id.into()),
+        name: format!("{prefix}:{name}"),
+        value: Some(value.into()),
         ..Default::default()
     };
     atom.extensions
         .entry(prefix)
         .or_default()
-        .insert("id".into(), vec![field]);
+        .insert(name.into(), vec![field]);
 }
 
 // ── raw → Atom (parse) ─────────────────────────────────────────────────────────
@@ -534,7 +552,20 @@ pub(crate) fn apply_incoming_xml(
 
     let new_entries: Vec<AtomEntry> = incoming_atom.entries.iter().map(to_atom_entry).collect();
     let added = merge_entries(atom, new_entries);
-    atom.set_updated(now_fixed());
+    let publisher_updated = match incoming_atom.feed_type {
+        atom_parser::model::FeedType::Atom => incoming_atom.updated,
+        _ => incoming_atom.published,
+    };
+    set_local_field(
+        atom,
+        "publisher_updated",
+        if publisher_updated.is_some() {
+            "true"
+        } else {
+            "false"
+        },
+    );
+    atom.set_updated(publisher_updated.map_or_else(now_fixed, to_fixed));
 
     Ok(added)
 }
@@ -588,7 +619,7 @@ pub(crate) fn count_unread_feed_entries(
         .count()
 }
 
-pub(crate) fn atom_to_feed(id: &str, feed: &Atom, unread_count: usize) -> Feed {
+pub(crate) fn atom_to_feed(id: &str, feed: &Atom, unread_count: usize, created_at: String) -> Feed {
     Feed {
         id: get_local_id(feed)
             .expect("validated local Feed identity")
@@ -599,10 +630,10 @@ pub(crate) fn atom_to_feed(id: &str, feed: &Atom, unread_count: usize) -> Feed {
         description: feed.subtitle().map(|s| s.value.clone()),
         entry_count: feed.entries().len(),
         unread_count,
-        // Atom has no feed-level creation time (`atom:feed` has `<updated>`, no `<published>`), so
-        // created_at reuses `<updated>` for now — tech debt.
-        created_at: feed.updated().to_rfc3339(),
-        updated_at: Some(feed.updated().to_rfc3339()),
+        created_at,
+        updated_at: local_fields(feed, "publisher_updated")
+            .any(|field| field.value.as_deref() == Some("true"))
+            .then(|| feed.updated().to_rfc3339()),
         is_pinned: false,
         members: vec![],
     }

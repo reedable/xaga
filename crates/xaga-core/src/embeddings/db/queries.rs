@@ -34,6 +34,45 @@ impl EmbeddingsDb {
             .await
     }
 
+    pub(crate) async fn feed_dates(
+        &self,
+    ) -> Result<HashMap<String, (String, String)>, EmbeddingsError> {
+        let batches: Vec<RecordBatch> = self
+            .table
+            .query()
+            .only_if(Kind::Feed.predicate())
+            .select(Select::columns(&["id", "created_at", "updated_at"]))
+            .execute()
+            .await?
+            .try_collect()
+            .await
+            .map_err(|e| EmbeddingsError::LanceDb(e.to_string()))?;
+
+        let mut dates = HashMap::new();
+        for batch in &batches {
+            let column = |name| {
+                batch
+                    .column_by_name(name)
+                    .and_then(|array| array.as_any().downcast_ref::<StringArray>())
+                    .ok_or_else(|| {
+                        EmbeddingsError::LanceDb(format!("invalid feed date column: {name}"))
+                    })
+            };
+            let (ids, created, updated) =
+                (column("id")?, column("created_at")?, column("updated_at")?);
+            for index in 0..batch.num_rows() {
+                dates.insert(
+                    ids.value(index).to_owned(),
+                    (
+                        created.value(index).to_owned(),
+                        updated.value(index).to_owned(),
+                    ),
+                );
+            }
+        }
+        Ok(dates)
+    }
+
     /// Pinned article summaries, without reading vectors.
     #[cfg(test)]
     pub(crate) async fn filter_pinned_entries(&self) -> Result<Vec<Entry>, EmbeddingsError> {

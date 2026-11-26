@@ -148,9 +148,11 @@ pub(crate) async fn repair(
                 .map_err(super::feeds::FeedError::from)?;
             let mut atom =
                 crate::atom::parse_atom(&raw).map_err(super::feeds::FeedError::AtomParse)?;
+            let created_at = crate::atom::feed_created_at(&atom).map(str::to_owned);
             if crate::atom::ensure_local_id(&mut atom, path)
                 .map_err(super::feeds::FeedError::AtomParse)?
             {
+                super::feeds::preserve_created_at(path, created_at.as_deref(), &mut atom)?;
                 let bytes =
                     crate::atom::atom_to_xml(&atom).map_err(super::feeds::FeedError::AtomParse)?;
                 crate::fs::write_atomic_async(path.to_owned(), bytes)

@@ -7,7 +7,9 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use crate::embeddings::pipeline::annotation_checksum;
-use crate::embeddings::row::{article_embed_text, checksum, feed_embed_text, topic_embed_text};
+use crate::embeddings::row::{
+    article_embed_text, checksum, feed_dates_match, feed_embed_text, topic_embed_text,
+};
 use crate::embeddings::{EmbeddingsDb, EmbeddingsError};
 use crate::fs::WalkOutcome;
 use crate::library;
@@ -231,8 +233,9 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
         }
     }
 
-    // Feeds: diff like entities — re-embed a feed only when its row is absent, its checksum changed,
-    // or its vector is pending. A feed row is stale when its feed is gone from disk.
+    // Feed dates are independent of vector inputs. Reconcile a missing publisher
+    // date during recovery as well, since the source cannot restore a prior index time.
+    let feed_dates = db.feed_dates().await?;
 
     let (all_feeds, feeds_outcome) =
         match crate::persistence::feeds::discover_feeds(library_dir, None, writer, "Feed recovery")
@@ -252,6 +255,11 @@ pub(crate) async fn repair_entity_embeddings<S: RepairSink>(
         .filter(|f| {
             needs_embedding(&f.id, &checksum(&f.title, feed_embed_text(f)))
                 || pinned_feeds.contains(&f.id) != f.is_pinned
+                || feed_dates
+                    .get(&f.id)
+                    .is_none_or(|(created_at, updated_at)| {
+                        !feed_dates_match(f, created_at, updated_at)
+                    })
         })
         .collect();
 
@@ -337,6 +345,54 @@ mod tests {
             is_pinned: false,
             vector: Some(vec![0.5f32; 384]),
         }
+    }
+
+    #[tokio::test]
+    async fn recovery_reconciles_feed_dates_independently_of_the_vector() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = library::feed_path(dir.path(), "feed");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            r#"<feed xmlns="http://www.w3.org/2005/Atom" xmlns:xaga="urn:xaga:atom">
+                <id>publisher</id><title>Feed</title><updated>2026-02-01T00:00:00Z</updated>
+                <xaga:id>feed</xaga:id><xaga:created_at>2026-01-01T00:00:00Z</xaga:created_at>
+                <xaga:publisher_updated>true</xaga:publisher_updated>
+                </feed>"#,
+        )
+        .unwrap();
+        let (feeds, _) =
+            crate::persistence::feeds::discover_feeds(dir.path(), None, None, "Feed recovery")
+                .await
+                .unwrap();
+        let feed = &feeds[0];
+
+        let db = EmbeddingsDb::open(dir.path()).await.unwrap();
+        let mut row = EmbeddingEntry::from_feed(feed, Some(vec![0.5; 384]));
+        row.created_at.clear();
+        row.updated_at.clear();
+        db.upsert(row).await.unwrap();
+
+        let mut sink = CollectingSink { articles: vec![] };
+        let residue = repair_entity_embeddings(dir.path(), &db, &mut sink, None)
+            .await
+            .unwrap();
+        assert_eq!(residue.to_embed_feeds.len(), 1);
+        let row = EmbeddingEntry::from_feed(&residue.to_embed_feeds[0], Some(vec![0.5; 384]));
+        assert_eq!(row.created_at, feed.created_at);
+        assert_eq!(Some(row.updated_at.as_str()), feed.updated_at.as_deref());
+        db.upsert(row).await.unwrap();
+        let residue = repair_entity_embeddings(dir.path(), &db, &mut sink, None)
+            .await
+            .unwrap();
+        assert!(residue.to_embed_feeds.is_empty());
+
+        let mut undated = feed.clone();
+        undated.updated_at = None;
+        let before = chrono::Utc::now();
+        let row = EmbeddingEntry::from_feed(&undated, None);
+        let indexed_at = chrono::DateTime::parse_from_rfc3339(&row.updated_at).unwrap();
+        assert!(indexed_at >= before && indexed_at <= chrono::Utc::now());
     }
 
     #[tokio::test]

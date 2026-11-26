@@ -51,8 +51,11 @@ conversion because the measurements come from separate executions.
 
 Recovery and the feed embedding pipeline need the local ID, title, description,
 and pin state to reconcile rows. The row projection also uses the feed URL as
-its source. Counts, timestamps, and members from the `Feed` value do not contribute
-to the row. Pin state still comes from the library pin store.
+its source. Counts and members from the `Feed` value do not contribute to the row.
+Pin state comes from the library pin store. Since 0.18, recovery also compares
+Feed timestamps. The projected date lookup and index writes for Feeds without
+publisher dates are outside the measurements above and have not been measured at
+the design target. See [Feed timestamps](feed_refresh.md#feed-timestamps).
 [Pipeline](../../crates/xaga-core/src/embeddings/pipeline.rs) ·
 [Row projection](../../crates/xaga-core/src/embeddings/row.rs)
 

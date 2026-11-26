@@ -113,3 +113,11 @@ source version remains authoritative across partial moves. Startup blocks
 library IPC and model startup until conversion and restart complete. A completed
 new-layout library retains the usual compatibility and read-only rules. See
 [Library directory layout](library_layout.md).
+
+## Feed timestamps
+
+Version 0.18 adds local Atom timestamp metadata. The explicit upgrade advances
+the library version and leaves existing Feed files readable. Feed writes preserve
+the current file creation time in the local Atom extension before replacing the
+file. Ordinary recovery fills missing indexed dates using the saved Feed and the
+index-write time fallback. See [Feed refresh](feed_refresh.md#feed-timestamps).

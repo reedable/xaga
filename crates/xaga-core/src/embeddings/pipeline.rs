@@ -5,7 +5,9 @@ use sha2::Digest;
 
 use super::db::EmbeddingEntry;
 use super::model::Embedder;
-use super::row::{article_embed_text, checksum, feed_embed_text, topic_embed_text};
+use super::row::{
+    article_embed_text, checksum, feed_dates_match, feed_embed_text, topic_embed_text,
+};
 use super::{EmbeddingsDb, EmbeddingsError};
 use crate::types::{Annotation, Article, Entry, Feed, Kind, ListEntity, Topic};
 
@@ -790,9 +792,7 @@ pub(crate) async fn remove_topic_member(
     Ok(())
 }
 
-/// Embeds (or refreshes) one feed's row from the domain [`Feed`] carried to it — no file read.
-/// Checksum-gated: a no-op when the row already has a vector and its title/description checksum and
-/// `is_pinned` are unchanged. The `.atom` read and stale-row cleanup live in recovery (the bridge).
+/// Upsert a Feed row from the saved snapshot, reusing its vector when the title and description match.
 pub(crate) async fn embed_feed(
     feed: &Feed,
     embedder: &Arc<Embedder>,
@@ -800,25 +800,27 @@ pub(crate) async fn embed_feed(
 ) -> Result<(), EmbeddingsError> {
     let new_checksum = checksum(&feed.title, feed_embed_text(feed));
     let existing = db.get_entry(&feed.id).await?;
-    let up_to_date = matches!(
-        &existing,
-        Some(e) if e.vector.is_some() && e.checksum == new_checksum && e.is_pinned == feed.is_pinned
-    );
-    if up_to_date {
-        return Ok(());
+    let existing = existing.filter(|row| row.kind == Kind::Feed && row.checksum == new_checksum);
+    if let Some(row) = &existing {
+        if row.vector.is_some()
+            && row.is_pinned == feed.is_pinned
+            && feed_dates_match(feed, &row.created_at, &row.updated_at)
+        {
+            return Ok(());
+        }
     }
 
-    log::debug!(
-        "embed_feed: embedding feed id={} title={:?}",
-        feed.id,
-        feed.title
-    );
-    let vector = compute_vector(
-        embedder,
-        feed.title.clone(),
-        feed_embed_text(feed).to_string(),
-    )
-    .await?;
+    let vector = match existing.and_then(|row| row.vector) {
+        Some(vector) => vector,
+        None => {
+            compute_vector(
+                embedder,
+                feed.title.clone(),
+                feed_embed_text(feed).to_string(),
+            )
+            .await?
+        }
+    };
     db.upsert(EmbeddingEntry::from_feed(feed, Some(vector)))
         .await?;
     Ok(())

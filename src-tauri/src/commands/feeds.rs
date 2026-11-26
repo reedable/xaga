@@ -94,6 +94,7 @@ pub async fn add_feed(
     for article in created {
         state.enqueue_entry(Tier::Interactive, article).await;
     }
+    state.enqueue(Tier::Regular, Job::EmbedFeed { feed: feed.clone() });
     Ok(feed)
 }
 
@@ -159,6 +160,7 @@ pub async fn refresh_all_feeds(
                     state.enqueue_entry(Tier::Interactive, article).await;
                 }
 
+                state.enqueue(Tier::Regular, Job::EmbedFeed { feed: feed.clone() });
                 crate::events::emit_domain(
                     &window,
                     xaga_core::events::DomainEvent::FeedRefreshed(feed.clone()),
