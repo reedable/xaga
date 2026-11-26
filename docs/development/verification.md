@@ -153,6 +153,8 @@ from speculation about internal motives.
 main-window close and Quit handlers in isolated native child processes. It holds
 startup open while a write is pending, repeats close and Quit, verifies the saved
 article, and checks that a restarted successor acquires the library lock.
+The fixture keeps a command's writer handle alive through close, Quit, and
+restart.
 Read-only close must leave the fixture directory untouched. The test uses blank
 webviews and temporary libraries, without opening account settings or user data.
 It is included in `npm run test:gui` and requires a macOS desktop session.
