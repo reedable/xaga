@@ -56,6 +56,7 @@ objc2-web-kit = { version = "0.3", default-features = false, features = ["std", 
 tauri = { version = "2.12.1", features = ["test"] }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = ["NSApplication", "NSResponder"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["NSDate", "NSError", "NSGeometry", "NSRunLoop", "NSString", "NSURL"] }
 objc2-web-kit = { version = "0.3", default-features = false, features = ["WKWebView", "WKNavigation", "block2", "objc2-app-kit", "objc2-core-foundation"] }

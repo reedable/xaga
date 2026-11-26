@@ -104,6 +104,33 @@ with only the loader reaching the upstream fixture. Those UI windows use a
 custom fixture page. Bundled UI response routing and loader refusal of
 policy-forbidden redirects still require direct evidence.
 
+## Native HTTPS routing smoke cases
+
+Run the native resource fixture in a macOS desktop session. The HTTPS mode
+uses the system OpenSSL executable to generate a certificate and key in a
+temporary directory. The test callback accepts only the exact certificate
+for the fixture's localhost port. The callback is part of the test executable.
+
+```sh
+XAGA_DOWNLOAD_SMOKE_HTTPS=1 XAGA_DOWNLOAD_SMOKE_CASE=pdf cargo test -p xaga --test resource_download_webview --locked
+```
+
+HTTPS mode supports `html`, `relative-image`, `missing-image`,
+`image-attachment`, `malformed-image-attachment`, `html-as-image-attachment`,
+`pdf-attachment`, `pdf`, and `invalid-pdf`. Use the same visibility and
+child-frame options as the HTTP fixture. The inline `pdf` and `invalid-pdf`
+cases are top-frame cases because Wry's inline PDF download override only
+applies to top frames. To check pin rejection, use `html` with both
+`XAGA_DOWNLOAD_SMOKE_HTTPS=1` and `XAGA_DOWNLOAD_SMOKE_WRONG_PIN=1`.
+
+On macOS 27.2.1 (26B131), all 34 HTTPS runs passed. In each visibility
+mode, nine top-frame cases and seven child-frame cases exercised rendering,
+redirected attachment routing, validation, and the applicable staging checks.
+Both wrong-pin controls cancelled the TLS challenge before the server saw an
+HTTP request. The fixture exercises the native loader configuration and Wry
+response handling. Default certificate trust, proxy containment, and the
+production capture and persistence paths require separate evidence.
+
 ## Bundled macOS Downloads authorization check
 
 Verification under independently established **undecided** and **denied**

@@ -5,6 +5,9 @@
 #[allow(dead_code, unused_imports)]
 mod article_diagnostics;
 #[cfg(target_os = "macos")]
+#[path = "support/https_fixture.rs"]
+mod https_fixture;
+#[cfg(target_os = "macos")]
 #[path = "support/pdf_fixture.rs"]
 mod pdf_fixture;
 #[cfg(target_os = "macos")]
@@ -35,6 +38,25 @@ fn main() {
     let scenario = std::env::var("XAGA_DOWNLOAD_SMOKE_CASE").unwrap_or_else(|_| "icon".into());
     let visible = std::env::var("XAGA_DOWNLOAD_SMOKE_VISIBLE").as_deref() == Ok("1");
     let subframe = std::env::var("XAGA_DOWNLOAD_SMOKE_SUBFRAME").as_deref() == Ok("1");
+    let https = std::env::var("XAGA_DOWNLOAD_SMOKE_HTTPS").as_deref() == Ok("1");
+    let wrong_pin = std::env::var("XAGA_DOWNLOAD_SMOKE_WRONG_PIN").as_deref() == Ok("1");
+    assert!(!wrong_pin || (https && scenario == "html"));
+    assert!(
+        !https
+            || matches!(
+                scenario.as_str(),
+                "html"
+                    | "relative-image"
+                    | "missing-image"
+                    | "image-attachment"
+                    | "malformed-image-attachment"
+                    | "html-as-image-attachment"
+                    | "pdf"
+                    | "invalid-pdf"
+                    | "pdf-attachment"
+            ),
+        "case is not configured for the localhost HTTPS origin"
+    );
     assert!(
         [
             "icon",
@@ -217,17 +239,52 @@ fn main() {
     };
     let proxy = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = proxy.local_addr().unwrap();
+    let tls = https.then(|| https_fixture::server_config(address.port(), wrong_pin));
+    let https_proxy = https.then(|| {
+        use xaga_core::network_proxy::{self, ProxyConfig};
+        tauri::async_runtime::block_on(network_proxy::start_scoped(
+            ProxyConfig::deny_all()
+                .with_local_endpoint("localhost".into(), address)
+                .unwrap()
+                .with_observer(Arc::new(|code, detail| {
+                    eprintln!("fixture proxy: {code}: {detail}")
+                })),
+        ))
+        .unwrap()
+    });
+    let proxy_url = https_proxy.as_ref().map_or_else(
+        || format!("http://{address}"),
+        |proxy| xaga_core::network_proxy::proxy_url(proxy.port),
+    );
+    let origin = if https {
+        format!("https://localhost:{}", address.port())
+    } else {
+        "http://download.example.invalid".into()
+    };
+    let redirect_origin = origin.clone();
+    let relative_image_host = origin.split_once("://").unwrap().1.to_owned();
     let start_path = if subframe { "/frame" } else { "/favicon.ico" };
     let image_requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let image_requests_server = image_requests.clone();
     let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let seen_server = seen.clone();
+    let received_http = Arc::new(AtomicBool::new(false));
+    let server_received_http = received_http.clone();
+    trait FixtureStream: Read + Write {}
+    impl<T: Read + Write> FixtureStream for T {}
     std::thread::spawn(move || {
         for connection in proxy.incoming() {
-            let mut stream = connection.unwrap();
+            let stream = connection.unwrap();
             stream
                 .set_read_timeout(Some(Duration::from_secs(5)))
                 .unwrap();
+            let mut stream: Box<dyn FixtureStream> = match &tls {
+                Some(config) => Box::new(rustls::StreamOwned::new(
+                    rustls::ServerConnection::new(config.clone()).unwrap(),
+                    stream,
+                )),
+                None => Box::new(stream),
+            };
             let mut header = Vec::new();
             let mut byte = [0];
             while !header.ends_with(b"\r\n\r\n") && header.len() < 8192 {
@@ -236,6 +293,10 @@ fn main() {
                 }
                 header.push(byte[0]);
             }
+            if header.is_empty() {
+                continue;
+            }
+            server_received_http.store(true, Ordering::SeqCst);
             let request = String::from_utf8_lossy(&header);
             if request.starts_with("CONNECT download.example.invalid:80 ")
                 || (rendered_image_url.is_some()
@@ -255,7 +316,7 @@ fn main() {
             let text = String::from_utf8_lossy(&header);
             if let (Some(url), Some(bytes)) = (rendered_image_url, &rendered_image) {
                 let host = if url.starts_with('/') {
-                    "download.example.invalid"
+                    &relative_image_host
                 } else {
                     "images.example.invalid"
                 };
@@ -298,7 +359,7 @@ fn main() {
                     "GET http://download.example.invalid{redirect_path} "
                 ))
             {
-                stream.write_all(b"HTTP/1.1 302 Found\r\nLocation: http://download.example.invalid/icon-bytes\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                write!(stream, "HTTP/1.1 302 Found\r\nLocation: {redirect_origin}/icon-bytes\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
                 continue;
             }
             if text.starts_with("GET /icon-bytes ")
@@ -356,19 +417,37 @@ fn main() {
         let handle = app.handle().clone();
         let watchdog = handle.clone();
         let render_handle = handle.clone();
+        if wrong_pin {
+            let handle = handle.clone();
+            let passed = completed.clone();
+            tauri::async_runtime::spawn(async move {
+                while !https_fixture::REJECTED.load(Ordering::SeqCst) {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+                assert!(!https_fixture::ACCEPTED.load(Ordering::SeqCst));
+                assert!(!received_http.load(Ordering::SeqCst));
+                println!("PASS: wrong fixture pin rejected before an HTTP request");
+                passed.store(true, Ordering::SeqCst);
+                handle.exit(0);
+            });
+        }
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(Duration::from_secs(20)).await;
             eprintln!("native download timed out");
                 watchdog.exit(1);
         });
-        WebviewWindowBuilder::new(app, "loader-smoke", WebviewUrl::External(format!("http://download.example.invalid{start_path}").parse().unwrap()))
+        let test_url: tauri::Url = format!("{origin}{start_path}").parse().unwrap();
+        let initial_url = if https { "about:blank".parse().unwrap() } else { test_url.clone() };
+        let expected_source = format!("{origin}{}", if subframe { "/frame" } else { "/start" });
+        let expected_download = format!("{origin}/icon-bytes");
+        let window = WebviewWindowBuilder::new(app, "loader-smoke", WebviewUrl::External(initial_url))
             .initialization_script(if image_document { format!(
                 "window.__LOADER_IMAGE_ONLY__={content_image};window.__LOAD_REMOTE_IMAGE__=true;window.__LOADER_ID__='smoke';\n{}",
                 include_str!("../src/article_loader.js")
             ) } else { String::new() })
             .visible(visible)
             .with_webview_configuration(webview_policy::loader_configuration(None).unwrap())
-            .proxy_url(format!("http://{address}").parse().unwrap())
+            .proxy_url(proxy_url.parse().unwrap())
             .on_page_load(move |webview, payload| {
                 if subframe && !rendering
                     && matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
@@ -380,6 +459,8 @@ fn main() {
             })
             .on_document_title_changed(move |_, title| {
                 if rendering && title == "SMOKE-PASS" {
+                    assert!(!wrong_pin);
+                    assert!(!https || https_fixture::ACCEPTED.load(Ordering::SeqCst));
                     assert_eq!(render_seen.load(Ordering::SeqCst), 1);
                     if rendered_image_url.is_some() {
                         assert_eq!(image_requests.load(Ordering::SeqCst), 1);
@@ -395,17 +476,17 @@ fn main() {
                         // Exercise the production collector without asking Wry for
                         // the current URL during its download callback.
                         let evidence = article_diagnostics::DownloadDiagnostic::from_download(
-                            &webview, if subframe { "http://download.example.invalid/frame" } else { "http://download.example.invalid/start" }, &url,
+                            &webview, &expected_source, &url,
                             Some(destination.to_string_lossy().into_owned()), None,
                         );
                         assert!(evidence.current_url.is_none());
                         if subframe {
                             assert!(download_parent_loaded.load(Ordering::SeqCst));
-                            assert_eq!(evidence.source_url, "http://download.example.invalid/frame");
+                            assert_eq!(evidence.source_url, expected_source);
                         }
                         assert_eq!(evidence.download_url, url.as_str());
                         assert!(!rendering, "renderable scenario incorrectly converted to download");
-                        assert_eq!(url.as_str(), "http://download.example.invalid/icon-bytes", "callback reports redirected resource");
+                        assert_eq!(url.as_str(), expected_download, "callback reports redirected resource");
                         let job = StagedDownload::new(if pdf { Validator::Pdf } else if content_image { Validator::Image } else { Validator::Icon }, IMAGE_MAX_BYTES).unwrap();
                         *destination = job.path().to_owned();
                         *staging.lock().unwrap() = Some(job);
@@ -430,8 +511,9 @@ fn main() {
                             assert!(result.unwrap().starts_with(&format!("data:{image_mime};base64,")));
                         }
                         assert!(!assigned.parent().unwrap().exists());
-                        assert_eq!(seen.load(Ordering::SeqCst), 1, "exactly one final resource retrieval through proxy");
-                        println!("PASS: {scenario}, native download and redirect through proxy, callback path={path:?}, request-purpose validation checked, staging cleaned");
+                        assert!(!https || https_fixture::ACCEPTED.load(Ordering::SeqCst));
+                        assert_eq!(seen.load(Ordering::SeqCst), 1, "exactly one final fixture resource retrieval");
+                        println!("PASS: {scenario}, native download and redirect, callback path={path:?}, request-purpose validation checked, staging cleaned");
                         completed.store(true, Ordering::SeqCst);
                         handle.exit(0);
                         false
@@ -439,6 +521,21 @@ fn main() {
                     _ => false,
                 }
             }).build()?;
+        if https {
+            window.with_webview(move |native| {
+                // Tauri hands out a borrowed WKWebView on the main thread.
+                let webview = unsafe { &*native.inner().cast::<objc2::runtime::AnyObject>() };
+                https_fixture::install_challenge_callback(webview);
+                unsafe {
+                    use objc2::{class, msg_send, rc::Retained, runtime::AnyObject};
+                    let url: Retained<AnyObject> = msg_send![
+                        class!(NSURL), URLWithString: &*objc2_foundation::NSString::from_str(test_url.as_str())
+                    ];
+                    let request: Retained<AnyObject> = msg_send![class!(NSURLRequest), requestWithURL: &*url];
+                    let _: Option<Retained<AnyObject>> = msg_send![webview, loadRequest: &*request];
+                }
+            })?;
+        }
         Ok(())
     }).build(context).unwrap();
     app.run(|_, _| {});
