@@ -44,4 +44,4 @@ Retain this procedure for subsequent runs without accumulating run history here.
 
 - [Decision ownership](../principles/decision_ownership.md)
 - [Layer ownership](../architecture/layer_ownership.md)
-- [Documentation lifecycle](../conventions/documentation.md)
+- [Story organization and lifecycle](https://github.com/reedable/xaga-stories#organization)

@@ -141,6 +141,10 @@ triggering. Verify those when installing the workflows.
 
 ### Start a story
 
+Before creating the implementation branch, follow the
+[story claiming workflow](https://github.com/reedable/xaga-stories#claim-a-story)
+in `xaga-stories`.
+
 Before starting work on a story, switch to `main` and pull its latest changes.
 Once the pull succeeds, create and switch to a new branch from the updated
 `main`. Use the story Markdown filename exactly as written, dropping only the
