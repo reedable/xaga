@@ -77,6 +77,22 @@ selecting another library. A crash between writes can leave valid list bytes
 with missing or stale metadata. The list header identifies the installed
 revision independently of the metadata.
 
+### Launch refresh
+
+When EasyPrivacy is enabled, Xaga checks once at launch. A matching metadata
+revision and its latest successful check or installation time determine whether
+the configured interval has elapsed. The default and minimum are four days.
+Missing or mismatched metadata makes an existing list due. If the list is
+missing, the installer restores the bundled snapshot and starts a new interval.
+
+Refresh holds an account lease across the check, proxied download, and write.
+A due check fetches the official list with the feed transfer time and body
+limits and the configured redirect cap. Only a valid newer version replaces the
+list. A successful check with an unchanged or older version records the check
+time and preserves any known installation time. Failures leave the check due
+on the next enabled launch. If list replacement succeeds and metadata recording
+fails, the revision mismatch makes the next check due.
+
 ## Stale-view check
 
 Each process records the file’s modification time when reading its settings

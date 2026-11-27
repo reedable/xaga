@@ -42,6 +42,7 @@ beforeEach(async () => {
     loaderTimeoutSecs: "10",
     feedTimeoutSecs: "10",
     feedMaxBodyBytes: "10485760",
+    easyPrivacyRefreshDays: "4",
   };
   platform.getFetchSettings
     .mockReset()

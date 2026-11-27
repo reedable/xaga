@@ -124,6 +124,27 @@ test("EasyPrivacy defaults to enabled and saves both choices", async ({
   await expect(easyPrivacy).toBeChecked();
 });
 
+test("EasyPrivacy refresh interval has a minimum and saves longer values", async ({
+  page,
+}) => {
+  await page.goto("/?window=settings");
+  const privacy = control(page, "button", "settings-privacy");
+  const general = control(page, "button", "settings-general");
+  await privacy.click();
+  const interval = control(page, "textbox", "easyPrivacyRefreshDays");
+  await expect(interval).toHaveValue("4");
+  await interval.fill("3");
+  await interval.press("Enter");
+  await expect(interval).toHaveAttribute("aria-invalid", "true");
+  await interval.fill("7");
+  await interval.press("Enter");
+  await expect(interval).toHaveAttribute("aria-invalid", "false");
+  await expect(interval).toBeEnabled();
+  await general.click();
+  await privacy.click();
+  await expect(interval).toHaveValue("7");
+});
+
 test("live image permission is independent of offline saving", async ({
   page,
 }) => {

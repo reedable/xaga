@@ -17,7 +17,7 @@ import { useErrorSink } from "../../hooks/useErrorSink";
 import { usePlatform } from "../../platform/Platform";
 import css from "./PrivacySettings.module.css";
 
-import { FetchSwitch } from "./FetchSettingControls";
+import { FetchNumber, FetchSwitch } from "./FetchSettingControls";
 
 const DOMAIN_RE =
   /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
@@ -66,6 +66,14 @@ export function PrivacySettings() {
         get="getEasyPrivacyEnabled"
         set="setEasyPrivacyEnabled"
         description="On by default. Keeps a local copy of the EasyPrivacy tracking filter list for this macOS account. Article loading does not yet use the list."
+      />
+
+      <FetchNumber
+        setting="easyPrivacyRefreshDays"
+        label="EasyPrivacy update interval"
+        unit="days"
+        minimum={4n}
+        description="Xaga checks for a new list at launch when EasyPrivacy is enabled and the interval has elapsed. The default and minimum are four days."
       />
 
       <FetchSwitch

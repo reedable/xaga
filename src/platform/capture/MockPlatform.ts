@@ -41,6 +41,7 @@ export class MockPlatform implements Platform {
   private publisherJavascriptAllowed = false;
   private easyPrivacyEnabled = true;
   private fetchSettings: FetchSettings = {
+    easyPrivacyRefreshDays: "4",
     refererAllowed: false,
     gzipAllowed: false,
     httpAllowed: false,

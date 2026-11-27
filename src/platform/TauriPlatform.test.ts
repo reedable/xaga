@@ -576,6 +576,7 @@ it("transports fetch limits as exact decimal strings without numeric conversion"
     loaderTimeoutSecs: "18446744073709551615",
     feedTimeoutSecs: "0",
     feedMaxBodyBytes: "9007199254740993",
+    easyPrivacyRefreshDays: "4",
   };
   invokeMock.mockResolvedValueOnce(settings);
   expect(await platform.getFetchSettings()).toEqual(settings);

@@ -1,4 +1,5 @@
 import { FetchSettingsProvider } from "./FetchSettingsProvider";
+import { SettingsSaveProvider } from "./SettingsSaveProvider";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -15,11 +16,13 @@ const platform = vi.hoisted(() => ({
     loaderTimeoutSecs: "10",
     feedTimeoutSecs: "10",
     feedMaxBodyBytes: "10485760",
+    easyPrivacyRefreshDays: "4",
   }),
   setFetchSetting: vi.fn().mockResolvedValue(undefined),
   getLibrary: vi.fn().mockResolvedValue("library"),
   getRefreshOnStartup: vi.fn().mockResolvedValue(false),
   getInlinePdfReader: vi.fn().mockResolvedValue(false),
+  onWindowCloseRequested: vi.fn().mockResolvedValue(() => {}),
   onOpenLibrary: vi.fn().mockResolvedValue(() => {}),
   onRefreshOnStartupChanged: vi.fn().mockResolvedValue(() => {}),
   onInlinePdfReaderChanged: vi.fn().mockResolvedValue(() => {}),
@@ -57,9 +60,11 @@ it("loads the saved opt-in and persists disabling it", async () => {
   await act(async () =>
     root.render(
       <SettingsProvider>
-        <FetchSettingsProvider>
-          <PrivacySettings />
-        </FetchSettingsProvider>
+        <SettingsSaveProvider>
+          <FetchSettingsProvider>
+            <PrivacySettings />
+          </FetchSettingsProvider>
+        </SettingsSaveProvider>
       </SettingsProvider>
     )
   );
@@ -78,9 +83,11 @@ it("waits for persistence before showing opt-in as enabled", async () => {
   await act(async () =>
     root.render(
       <SettingsProvider>
-        <FetchSettingsProvider>
-          <PrivacySettings />
-        </FetchSettingsProvider>
+        <SettingsSaveProvider>
+          <FetchSettingsProvider>
+            <PrivacySettings />
+          </FetchSettingsProvider>
+        </SettingsSaveProvider>
       </SettingsProvider>
     )
   );
@@ -96,9 +103,11 @@ it("keeps the previous choice and reports failed persistence", async () => {
   await act(async () =>
     root.render(
       <SettingsProvider>
-        <FetchSettingsProvider>
-          <PrivacySettings />
-        </FetchSettingsProvider>
+        <SettingsSaveProvider>
+          <FetchSettingsProvider>
+            <PrivacySettings />
+          </FetchSettingsProvider>
+        </SettingsSaveProvider>
       </SettingsProvider>
     )
   );
@@ -112,9 +121,11 @@ it("disables the switch when the saved preference cannot be read", async () => {
   await act(async () =>
     root.render(
       <SettingsProvider>
-        <FetchSettingsProvider>
-          <PrivacySettings />
-        </FetchSettingsProvider>
+        <SettingsSaveProvider>
+          <FetchSettingsProvider>
+            <PrivacySettings />
+          </FetchSettingsProvider>
+        </SettingsSaveProvider>
       </SettingsProvider>
     )
   );

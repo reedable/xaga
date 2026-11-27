@@ -68,6 +68,7 @@ export function FetchNumber({
   label: string;
   description: string;
   unit: string;
+  minimum?: bigint;
   maximum?: bigint;
 }) {
   const { settings, save } = useFetchSettings();

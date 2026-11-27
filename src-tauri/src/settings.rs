@@ -57,6 +57,7 @@ pub(crate) struct UserSettings {
     pub(crate) remote_images_allowed: Option<bool>,
     pub(crate) publisher_javascript_allowed: Option<bool>,
     easyprivacy_enabled: Option<bool>,
+    pub(crate) easyprivacy_refresh_days: Option<u64>,
     pub(crate) html_reader_view: Option<String>,
     /// Allow plaintext `http://` fetches (feeds, article loader and downloads).
     /// Enforced by the network proxy. Defaults to false if absent.
@@ -87,6 +88,12 @@ pub(crate) struct UserSettings {
 impl UserSettings {
     pub(super) fn easyprivacy_enabled(&self) -> bool {
         self.easyprivacy_enabled.unwrap_or(true)
+    }
+
+    pub(super) fn easyprivacy_refresh_days(&self) -> u64 {
+        self.easyprivacy_refresh_days
+            .unwrap_or(easyprivacy::MIN_REFRESH_DAYS)
+            .max(easyprivacy::MIN_REFRESH_DAYS)
     }
 
     fn set_easyprivacy_enabled(
@@ -374,6 +381,7 @@ pub(crate) fn refresh_state_from_settings(state: &AppState, s: &UserSettings) {
     *state.remote_images_allowed.write().unwrap() = s.remote_images_allowed();
     *state.publisher_javascript_allowed.write().unwrap() = s.publisher_javascript_allowed();
     *state.easyprivacy_enabled.write().unwrap() = s.easyprivacy_enabled();
+    *state.easyprivacy_refresh_days.write().unwrap() = s.easyprivacy_refresh_days();
     let s = s.clone();
     *state.theme.write().unwrap() = s.theme.unwrap_or_else(|| "auto".to_string());
     *state.refresh_on_startup.write().unwrap() = s.refresh_on_startup.unwrap_or(false);

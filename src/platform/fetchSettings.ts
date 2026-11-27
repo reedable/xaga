@@ -7,6 +7,7 @@ export interface FetchSettings {
   loaderTimeoutSecs: string;
   feedTimeoutSecs: string;
   feedMaxBodyBytes: string;
+  easyPrivacyRefreshDays: string;
 }
 
 export type FetchSettingChange = {
