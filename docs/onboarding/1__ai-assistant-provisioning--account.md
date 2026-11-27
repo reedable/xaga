@@ -27,7 +27,8 @@ cd Development
 ```
 cat > ~/.zshrc <<'EOF'
 set -o vi
-PS1='%n$ '
+PS1='[%n] %c $ '
+setopt interactive_comments
 export PATH="/opt/homebrew/bin:${PATH}"
 export GPG_TTY=$(tty)
 
