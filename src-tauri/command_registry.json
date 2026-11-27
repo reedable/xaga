@@ -18,6 +18,8 @@
     "commands::settings::set_remote_images_allowed",
     "commands::settings::get_publisher_javascript_allowed",
     "commands::settings::set_publisher_javascript_allowed",
+    "commands::settings::get_easyprivacy_enabled",
+    "commands::settings::set_easyprivacy_enabled",
     "commands::articles::load_article",
     "commands::articles::cancel_article_load",
     "commands::articles::read_stored_pdf",

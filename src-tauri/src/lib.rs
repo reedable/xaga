@@ -1,3 +1,4 @@
+mod easyprivacy;
 mod menus;
 mod settings;
 mod shutdown;
@@ -95,6 +96,7 @@ pub(crate) struct AppState {
     pub(crate) allowed_domains: Arc<RwLock<Vec<String>>>,
     pub(crate) named_stores_supported: bool,
     pub(crate) inline_pdf_reader: Arc<RwLock<bool>>,
+    pub(crate) easyprivacy_enabled: Arc<RwLock<bool>>,
     pub(crate) load_remote_image: Arc<RwLock<bool>>,
     pub(crate) remote_images_allowed: Arc<RwLock<bool>>,
     pub(crate) publisher_javascript_allowed: Arc<RwLock<bool>>,

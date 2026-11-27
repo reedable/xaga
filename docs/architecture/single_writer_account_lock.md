@@ -7,9 +7,9 @@ separate account lock file is used.**
 ## Scope
 
 Account resources live under `xaga_core::fs::data_root()` independently of any
-library. They include `settings.json` and the model directory. The
-[library lock](single_writer_library_lock.md) protects one library’s files and
-LanceDB; neither lock replaces the other.
+library. They include `settings.json`, the EasyPrivacy files, and the model
+directory. The [library lock](single_writer_library_lock.md) protects one
+library’s files and LanceDB; neither lock replaces the other.
 
 Settings writes replace the whole file after reading it. Using `settings.json`
 as the lock file coordinates those writes and other account operations through
@@ -62,6 +62,21 @@ not from a snapshot read before acquisition. `fs::write_locked` then:
 After a crash, the next writer can lock and truncate a leftover temporary file.
 Process exit releases its flocks; no stale-lock cleanup is needed.
 
+## EasyPrivacy installation
+
+The account-wide EasyPrivacy preference defaults to enabled. At startup, an
+enabled preference with a missing list triggers installation under the account
+lock. A Settings enable runs the same installer within the locked settings
+write, before saving the preference. Both paths install from the bundled
+snapshot without network access.
+
+The installer atomically writes `easyprivacy.txt` and then records the version,
+commit, and installation time (Unix seconds) in `easyprivacy.json`. An existing
+list is reused without rewriting metadata, including after reinstalling Xaga or
+selecting another library. A crash between writes can leave valid list bytes
+with missing or stale metadata. The list header identifies the installed
+revision independently of the metadata.
+
 ## Stale-view check
 
 Each process records the file’s modification time when reading its settings
@@ -86,6 +101,7 @@ also detects changes by external programs that did not acquire the lock.
 ## Who takes it
 
 - Every app settings write through `update_settings`.
+- EasyPrivacy installation on launch or when enabling the preference.
 - Model download from app startup and `xaga-cli embeddings download-model`.
 - Future operations on account resources, using this same lock.
 

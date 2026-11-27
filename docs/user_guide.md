@@ -280,6 +280,10 @@ The font, font size, and line height controls adjust the reading presentation.
 
 ### Privacy
 
+**Enable EasyPrivacy** is on by default and keeps a local copy of the EasyPrivacy
+tracking filter list for your macOS account. Xaga uses the same copy across
+libraries. Article loading does not yet use the list.
+
 **Send referring URLs for feed redirects** is off by default. Enabling it lets
 redirect destinations learn the previous feed URL and may help feeds that
 require it. **Allow compressed feed transfers** is also off by default. Enabling
