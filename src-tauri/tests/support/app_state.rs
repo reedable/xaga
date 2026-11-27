@@ -29,6 +29,7 @@ pub(super) fn test_state(path: PathBuf) -> AppState {
         allowed_domains: shared(Vec::new()),
         named_stores_supported: true,
         inline_pdf_reader: shared(false),
+        easyprivacy_enabled: shared(true),
         load_remote_image: shared(true),
         remote_images_allowed: shared(true),
         publisher_javascript_allowed: shared(false),

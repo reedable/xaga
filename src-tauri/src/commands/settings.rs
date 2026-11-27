@@ -18,6 +18,20 @@ pub struct HtmlReaderPrefs {
 }
 
 #[tauri::command]
+pub(crate) fn get_easyprivacy_enabled(state: State<'_, AppState>) -> bool {
+    *state.easyprivacy_enabled.read().unwrap()
+}
+
+#[tauri::command]
+pub(crate) async fn set_easyprivacy_enabled(
+    value: bool,
+    state: State<'_, AppState>,
+    app: AppHandle,
+) -> Result<(), AppError> {
+    crate::settings::update_easyprivacy_enabled(&app, &state, value)
+}
+
+#[tauri::command]
 pub async fn get_theme(state: State<'_, AppState>) -> Result<String, AppError> {
     Ok(state.theme.read().unwrap().clone())
 }

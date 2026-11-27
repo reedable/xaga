@@ -39,6 +39,7 @@ export class MockPlatform implements Platform {
   private scenario = new URLSearchParams(location.search).get("scenario");
   private listeners = new Map<EventName, Set<(value: never) => void>>();
   private publisherJavascriptAllowed = false;
+  private easyPrivacyEnabled = true;
   private fetchSettings: FetchSettings = {
     refererAllowed: false,
     gzipAllowed: false,
@@ -899,6 +900,13 @@ export class MockPlatform implements Platform {
     async (value) => {
       this.publisherJavascriptAllowed = value;
     };
+
+  getEasyPrivacyEnabled: Platform["getEasyPrivacyEnabled"] = async () =>
+    this.easyPrivacyEnabled;
+
+  setEasyPrivacyEnabled: Platform["setEasyPrivacyEnabled"] = async (value) => {
+    this.easyPrivacyEnabled = value;
+  };
   private remoteImagesAllowed = false;
   private saveArticleImages = false;
   getRemoteImagesAllowed: Platform["getRemoteImagesAllowed"] = async () =>
