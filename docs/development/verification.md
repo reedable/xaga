@@ -64,22 +64,20 @@ Report what was verified and any unmet requirement or unavailable check.
 
 Verification accompanies implementation. Run every applicable check that can
 run in the available environment. When a required check depends on unavailable
-access, hardware, or a desktop session, move the outstanding verification to
-a [test story](../conventions/documentation.md#transient-task-filenames).
+access, hardware, or a desktop session, record the outstanding verification in a
+**Verification handoff** subsection under **Remaining work** in the original story.
 
 - Identify the exact commit to verify and the branch or other published location
   where the tester can obtain it. State the required environment, setup, and
   fixtures. Give the human tester exact steps or a runnable script, expected
   results, and the evidence to record for each outstanding check.
-- Push the implementation and the test story so the tester can access both.
-  Delete the implementation story as part of the handoff once its work and
-  runnable checks are complete. Keep the outstanding procedure in the test
-  story alone. In the work report, state what passed, what prevented the
-  remaining checks, and where the test story lives.
-- The change remains pending verification until the outstanding checks pass.
-  Report the observed results in the work report. If a check fails, report the
-  evidence and track the remaining work. Delete the test story once its work is
-  resolved.
+- Push the implementation and the updated story so the tester can access both.
+  In the work report, state what passed, what prevented the remaining checks,
+  and where to find the handoff subsection.
+- Keep the story open until the outstanding checks pass and the completion gate
+  is satisfied. Report the observed results in the work report. If a check fails,
+  report the evidence and track the remaining work in the story. Delete the story
+  when its remaining work is resolved.
 
 ## Story readiness
 
