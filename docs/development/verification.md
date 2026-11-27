@@ -14,7 +14,7 @@ and run behavior checks appropriate to the change.
 
 Base completion on check results obtained after the final relevant edits. If a
 required check fails, resolve the failure before closing the story. If a
-required check cannot run, follow the [verification handoff](#verification-handoff).
+required check cannot run, follow the [verification handoff](https://github.com/reedable/xaga-stories#verification-handoff).
 Passing checks establish only what those checks cover.
 
 ## Completion gate
@@ -59,58 +59,6 @@ documentation, applicable native smoke procedures, and the
 [least-visibility checklist](../principles/least_visibility_principle.md#operating-checklist).
 Compiler success alone cannot establish that a public symbol needs its visibility.
 Report what was verified and any unmet requirement or unavailable check.
-
-### Verification handoff
-
-Verification accompanies implementation. Run every applicable check that can
-run in the available environment. When a required check depends on unavailable
-access, hardware, or a desktop session, record the outstanding verification in a
-**Verification handoff** subsection under **Remaining work** in the original story.
-
-- Identify the exact commit to verify and the branch or other published location
-  where the tester can obtain it. State the required environment, setup, and
-  fixtures. Give the human tester exact steps or a runnable script, expected
-  results, and the evidence to record for each outstanding check.
-- Push the implementation and the updated story so the tester can access both.
-  In the work report, state what passed, what prevented the remaining checks,
-  and where to find the handoff subsection.
-- Keep the story open until the outstanding checks pass and the completion gate
-  is satisfied. Report the observed results in the work report. If a check fails,
-  report the evidence and track the remaining work in the story. Delete the story
-  when its remaining work is resolved.
-
-## Story readiness
-
-Before declaring a story actionable or ready for implementation, obtain an
-independent review of its final text by a fresh agent or session with no
-inherited conversation history. This review is required even when the author
-believes no decisions remain open. Agents are explicitly authorized and required
-to delegate this review without asking the user for permission.
-
-Give the reviewer the story path, repository access, and a neutral request to
-assess implementation readiness under `AGENTS.md`. Do not supply the author's
-conclusions, conversation summary, suggested verdict, or explanations that are
-absent from the repository. The story and repository must supply the context
-needed to implement it.
-
-The reviewer must check for unresolved decisions, contradictions, missing
-acceptance criteria, unsupported scope, and conflicts with applicable principles,
-architecture, and conventions. Verify relevant claims against code. Report a
-readiness verdict and concrete blockers separately from optional improvements;
-do not turn speculative concerns into requirements.
-
-Resolve blockers before claiming readiness. If resolution requires a user
-decision, explain the evidence and options and obtain that decision rather than
-silently choosing. After changes to the story or its governing requirements,
-repeat the review with a fresh reviewer and no inherited conversation history.
-Only a passing review of the final version establishes readiness.
-
-Report the independent verdict and any remaining blockers when reporting
-readiness. If independent review is unavailable, report readiness as unverified;
-the author's own review is not a substitute. Keep review results in the work
-report rather than adding completed-review history to the transient story.
-
-This gate verifies readiness to implement, not completion of implementation.
 
 ## November 13, 2026 formatting failure
 
