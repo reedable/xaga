@@ -4,13 +4,13 @@
 
 Durable documentation records the system’s rules, design, terminology, and behavior. It remains useful after a task is complete and may be cited by code and other durable documents.
 
-Ideas live under `docs-transient/ideas/`. The directory is a place to hold ideas,
+Ideas live under `ideas/` in the sibling `xaga-stories` repository. The directory is a place to hold ideas,
 not a document format: an idea may be prose, a drawing, a poem, a code snippet, a
 runnable experiment, another kind of artifact, or a directory containing several
 of these. Ideas have no required structure, metadata, template, status, or
 expectation that they become tasks or durable documentation.
 
-Transient tasks live under `docs-transient/`, contain only remaining work, and
+Transient tasks live in the sibling `xaga-stories` repository, contain only remaining work, and
 occupy one of four directories:
 
 - **`backlog/`** — items needing review, grooming, splitting, or prerequisite decisions before they can be selected.
@@ -41,8 +41,8 @@ states. There is no `done` state: delete the task when its remaining work is
 resolved rather than retaining a completion report or task history. Code and
 durable documentation must not cite transient tasks in any state.
 
-Each durable documentation directory has an index. Transient directories under
-`docs-transient/` do not require indexes. Keep indexes terse and focused on
+Each durable documentation directory has an index. Transient directories in
+`xaga-stories` do not require indexes. Keep indexes terse and focused on
 navigation; detailed guidance belongs in the linked documents.
 
 ## Story readiness

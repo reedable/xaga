@@ -26,4 +26,4 @@ The map of `docs/`.
 
 ## Transient
 
-Transient tasks live in `../docs-transient/`. See [documentation conventions](conventions/documentation.md) for their lifecycle, organization, and structure.
+Transient tasks and ideas live in the sibling [xaga-stories repository](https://github.com/reedable/xaga-stories). See [documentation conventions](conventions/documentation.md) for their lifecycle, organization, and structure.
