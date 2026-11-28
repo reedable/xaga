@@ -230,6 +230,7 @@ pub(super) fn prepare() -> Startup {
         allowed_domains,
         named_stores_supported,
         inline_pdf_reader,
+        easyprivacy_enabled: Arc::new(RwLock::new(true)),
         load_remote_image,
         remote_images_allowed,
         publisher_javascript_allowed,
@@ -308,8 +309,18 @@ pub(super) fn initialize(
     // the persisted theme before the first page paint.
     let settings_path = settings_path()?;
     let settings = load_settings(&settings_path);
-    let theme = settings.theme.clone().unwrap_or_else(|| "auto".to_string());
     *setup_settings_baseline.write().unwrap() = settings_mtime(&settings_path);
+    if settings.easyprivacy_enabled() {
+        if let Err(error) = settings::install_easyprivacy_at_startup(
+            app.handle(),
+            &state.account_lock,
+            &settings_path,
+        ) {
+            log::error!("startup: EasyPrivacy installation failed: {error}");
+        }
+    }
+    *state.easyprivacy_enabled.write().unwrap() = settings.easyprivacy_enabled();
+    let theme = settings.theme.clone().unwrap_or_else(|| "auto".to_string());
     let default_library =
         xaga_core::fs::data_root().ok_or("cannot determine platform data directory")?;
     let lib_path = select_library_path(default_library, settings.library.as_deref())?;

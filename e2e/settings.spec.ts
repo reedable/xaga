@@ -101,6 +101,29 @@ test("Publisher JavaScript starts disabled and saves both choices", async ({
   await expect(scripts).not.toBeChecked();
 });
 
+test("EasyPrivacy defaults to enabled and saves both choices", async ({
+  page,
+}) => {
+  await page.goto("/?window=settings");
+  const privacy = control(page, "button", "settings-privacy");
+  const general = control(page, "button", "settings-general");
+  await privacy.click();
+  const easyPrivacy = control(page, "switch", "easyPrivacyEnabled");
+  await expect(easyPrivacy).toBeEnabled();
+  await expect(easyPrivacy).toBeChecked();
+  await expect(easyPrivacy).toHaveAccessibleDescription(/\S/);
+
+  await easyPrivacy.uncheck();
+  await general.click();
+  await privacy.click();
+  await expect(easyPrivacy).toBeEnabled();
+  await expect(easyPrivacy).not.toBeChecked();
+  await easyPrivacy.check();
+  await general.click();
+  await privacy.click();
+  await expect(easyPrivacy).toBeChecked();
+});
+
 test("live image permission is independent of offline saving", async ({
   page,
 }) => {

@@ -60,6 +60,14 @@ export function PrivacySettings() {
         Privacy
       </Typography>
 
+      <PrivacySwitch
+        name="easyPrivacyEnabled"
+        label="Enable EasyPrivacy"
+        get="getEasyPrivacyEnabled"
+        set="setEasyPrivacyEnabled"
+        description="On by default. Keeps a local copy of the EasyPrivacy tracking filter list for this macOS account. Article loading does not yet use the list."
+      />
+
       <FetchSwitch
         setting="refererAllowed"
         label="Send referring URLs for feed redirects"
@@ -175,10 +183,12 @@ function PrivacySwitch({
   label: string;
   description: string;
   get:
+    | "getEasyPrivacyEnabled"
     | "getLoadRemoteImage"
     | "getRemoteImagesAllowed"
     | "getPublisherJavascriptAllowed";
   set:
+    | "setEasyPrivacyEnabled"
     | "setLoadRemoteImage"
     | "setRemoteImagesAllowed"
     | "setPublisherJavascriptAllowed";

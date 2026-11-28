@@ -35,7 +35,7 @@
   },
   "bundle": {
     "active": true,
-    "resources": ["Assets.car"],
+    "resources": ["Assets.car", "resources/easyprivacy/"],
     "targets": "all",
     "icon": [
       "icons/32x32.png",

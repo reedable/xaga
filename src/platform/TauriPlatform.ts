@@ -1530,6 +1530,14 @@ export class TauriPlatform implements Platform {
     return invoke<void>("set_publisher_javascript_allowed", { value });
   }
 
+  getEasyPrivacyEnabled(): Promise<boolean> {
+    return invoke<boolean>("get_easyprivacy_enabled");
+  }
+
+  setEasyPrivacyEnabled(value: boolean): Promise<void> {
+    return invoke<void>("set_easyprivacy_enabled", { value });
+  }
+
   getRemoteImagesAllowed(): Promise<boolean> {
     return invoke<boolean>("get_remote_images_allowed");
   }

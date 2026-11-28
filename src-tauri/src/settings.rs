@@ -56,6 +56,7 @@ pub(crate) struct UserSettings {
     pub(crate) load_remote_image: Option<bool>,
     pub(crate) remote_images_allowed: Option<bool>,
     pub(crate) publisher_javascript_allowed: Option<bool>,
+    easyprivacy_enabled: Option<bool>,
     pub(crate) html_reader_view: Option<String>,
     /// Allow plaintext `http://` fetches (feeds, article loader and downloads).
     /// Enforced by the network proxy. Defaults to false if absent.
@@ -84,6 +85,22 @@ pub(crate) struct UserSettings {
 }
 
 impl UserSettings {
+    pub(super) fn easyprivacy_enabled(&self) -> bool {
+        self.easyprivacy_enabled.unwrap_or(true)
+    }
+
+    fn set_easyprivacy_enabled(
+        &mut self,
+        value: bool,
+        install: impl FnOnce() -> Result<(), crate::error::AppError>,
+    ) -> Result<(), crate::error::AppError> {
+        if value {
+            install()?;
+        }
+        self.easyprivacy_enabled = Some(value);
+        Ok(())
+    }
+
     pub(super) fn remote_images_allowed(&self) -> bool {
         self.remote_images_allowed
             .unwrap_or(DEFAULT_REMOTE_IMAGES_ALLOWED)
@@ -199,7 +216,7 @@ impl AccountLock {
         &mut self,
         path: &Path,
         baseline: Option<std::time::SystemTime>,
-        delta: impl FnOnce(&mut UserSettings),
+        delta: impl FnOnce(&mut UserSettings) -> Result<(), crate::error::AppError>,
     ) -> Result<(SettingsOutcome, Option<std::time::SystemTime>), crate::error::AppError> {
         self.ensure_handle(path)?;
 
@@ -213,11 +230,18 @@ impl AccountLock {
         }
 
         let mut settings = load_settings(path);
-        delta(&mut settings);
-        let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+        let json = match delta(&mut settings)
+            .and_then(|()| serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string().into()))
+        {
+            Ok(json) => json,
+            Err(error) => {
+                self.release_if_idle();
+                return Err(error);
+            }
+        };
 
         let held = self.handle.take().expect("handle ensured above");
-        match xaga_core::fs::write_locked(held, path, json.as_bytes()) {
+        match xaga_core::fs::write_locked(held, path, &json) {
             Ok(new_handle) => self.handle = Some(new_handle),
             Err((e, held)) => {
                 // Hand-back: keep the still-valid lock (a lease may need it), then release
@@ -275,7 +299,55 @@ pub(super) fn update_settings_file(
     registry
         .lock()
         .unwrap()
-        .write_settings(path, baseline, delta)
+        .write_settings(path, baseline, |settings| {
+            delta(settings);
+            Ok(())
+        })
+}
+
+pub(super) fn install_easyprivacy_at_startup<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    account_lock: &Mutex<AccountLock>,
+    path: &Path,
+) -> Result<(), crate::error::AppError> {
+    let root = path.parent().expect("account directory");
+    if easyprivacy::installed(root).map_err(|error| error.to_string())? {
+        return Ok(());
+    }
+    std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+    let mut registry = account_lock.lock().unwrap();
+    registry.ensure_handle(path)?;
+    let result = if load_settings(path).easyprivacy_enabled() {
+        easyprivacy::install_if_missing(app, root)
+    } else {
+        Ok(())
+    };
+    registry.release_if_idle();
+    result.map_err(Into::into)
+}
+
+pub(super) fn update_easyprivacy_enabled(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    value: bool,
+) -> Result<(), crate::error::AppError> {
+    let path = settings_path()?;
+    let mut registry = state.account_lock.lock().unwrap();
+    let baseline = *state.settings_baseline.read().unwrap();
+    let (outcome, new_baseline) = registry.write_settings(&path, baseline, |settings| {
+        settings.set_easyprivacy_enabled(value, || {
+            easyprivacy::install_if_missing(app, path.parent().expect("account directory"))
+                .map_err(Into::into)
+        })
+    })?;
+    *state.settings_baseline.write().unwrap() = new_baseline;
+    match outcome {
+        SettingsOutcome::StaleView(fresh) => Err(stale_view_error(state, &fresh)),
+        SettingsOutcome::Written(_) => {
+            *state.easyprivacy_enabled.write().unwrap() = value;
+            Ok(())
+        }
+    }
 }
 
 /// The settings write funnel: applies `delta` under the account lock with the
@@ -301,6 +373,7 @@ pub(crate) fn refresh_state_from_settings(state: &AppState, s: &UserSettings) {
     *state.load_remote_image.write().unwrap() = s.load_remote_image();
     *state.remote_images_allowed.write().unwrap() = s.remote_images_allowed();
     *state.publisher_javascript_allowed.write().unwrap() = s.publisher_javascript_allowed();
+    *state.easyprivacy_enabled.write().unwrap() = s.easyprivacy_enabled();
     let s = s.clone();
     *state.theme.write().unwrap() = s.theme.unwrap_or_else(|| "auto".to_string());
     *state.refresh_on_startup.write().unwrap() = s.refresh_on_startup.unwrap_or(false);
@@ -342,6 +415,69 @@ pub(crate) fn stale_view_error(state: &AppState, fresh: &UserSettings) -> crate:
 #[cfg(test)]
 mod settings_funnel_tests {
     use super::*;
+
+    #[test]
+    fn easyprivacy_startup_installs_for_enabled_account_only() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("account/settings.json");
+        let root = path.parent().unwrap();
+        let registry = Mutex::new(AccountLock::default());
+        let app = tauri::test::mock_app();
+
+        install_easyprivacy_at_startup(app.handle(), &registry, &path).unwrap();
+        assert!(easyprivacy::installed(root).unwrap());
+        let metadata = std::fs::read(root.join("easyprivacy.json")).unwrap();
+
+        let (_, baseline) =
+            update_settings_file(&registry, &path, settings_mtime(&path), |settings| {
+                settings.library = Some("another-library".into());
+            })
+            .unwrap();
+        install_easyprivacy_at_startup(app.handle(), &registry, &path).unwrap();
+        assert_eq!(
+            std::fs::read(root.join("easyprivacy.json")).unwrap(),
+            metadata
+        );
+
+        std::fs::remove_file(root.join("easyprivacy.txt")).unwrap();
+        update_settings_file(&registry, &path, baseline, |settings| {
+            settings.easyprivacy_enabled = Some(false);
+        })
+        .unwrap();
+        install_easyprivacy_at_startup(app.handle(), &registry, &path).unwrap();
+        assert!(!easyprivacy::installed(root).unwrap());
+    }
+
+    #[test]
+    fn easyprivacy_enable_requires_installation_before_writing_settings() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("settings.json");
+        let mut account = AccountLock::default();
+        assert!(load_settings(&path).easyprivacy_enabled());
+        let (_, baseline) = account
+            .write_settings(&path, None, |settings| {
+                settings.set_easyprivacy_enabled(false, || panic!("Disabled must skip install"))
+            })
+            .unwrap();
+        let previous = std::fs::read(&path).unwrap();
+
+        let failed = account.write_settings(&path, baseline, |settings| {
+            settings.set_easyprivacy_enabled(true, || Err("Installation failed".into()))
+        });
+        assert!(failed.is_err());
+        assert!(account.handle.is_none());
+        assert_eq!(std::fs::read(&path).unwrap(), previous);
+
+        account
+            .write_settings(&path, baseline, |settings| {
+                settings.set_easyprivacy_enabled(true, || {
+                    assert!(!load_settings(&path).easyprivacy_enabled());
+                    Ok(())
+                })
+            })
+            .unwrap();
+        assert!(load_settings(&path).easyprivacy_enabled());
+    }
 
     #[test]
     fn failed_replacement_retains_download_lease_and_original_settings() {

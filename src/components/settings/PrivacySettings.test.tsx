@@ -26,6 +26,7 @@ const platform = vi.hoisted(() => ({
   setAllowedDomains: vi.fn().mockResolvedValue(undefined),
   getAllowedDomains: vi.fn().mockResolvedValue([]),
   getPublisherJavascriptAllowed: vi.fn().mockResolvedValue(false),
+  getEasyPrivacyEnabled: vi.fn().mockResolvedValue(true),
   getRemoteImagesAllowed: vi.fn().mockResolvedValue(false),
   setRemoteImagesAllowed: vi.fn(),
   getLoadRemoteImage: vi.fn(),
