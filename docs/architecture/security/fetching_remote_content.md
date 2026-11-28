@@ -159,6 +159,14 @@ Every outbound consumer:
    - **Feed XML** — all feed commands (`add_feed`, `refresh_all_feeds`, `import_feeds`) fetch through it (`commands/feeds.rs`). Feed URLs are normalized to https, so they use the CONNECT path.
 3. **The embedding model download** (`download_model`, `crates/xaga-core/src/embeddings/model.rs`). Its URL is a compile-time constant, but its redirect chain is server-controlled (`resolve/main` redirects to HF's CDN), so it dials through the proxy like everything else: the app passes a client built by `network_proxy::proxied_client` (`lib.rs`); the CLI's `download-model` command starts its own proxy instance with both settings at their secure defaults. Download verifies every streamed file against the pinned manifest before installation. Each later load re-verifies the already-read installed bytes before fastembed or ONNX Runtime receives them; mismatch fails locally without deleting files or initiating network recovery.
 
+**Atom retrieval stays on reqwest.** A feed publisher can observe repeated
+requests for the same feed URL and the network client's request signature.
+Polling an Atom feed with a WebKit signature could make Xaga stand out among
+feed readers, independently of cookies and conditional cache validators.
+Xaga retains separate clients for feed polling and article loading to avoid
+introducing that signal. Both clients use the shared destination-filtering proxy
+for requests it receives.
+
 ## What a fetch discloses
 
 On the reqwest fetch paths, a request carries nothing about the app or the user beyond what the connection itself requires. By default a request sends:
