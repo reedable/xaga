@@ -255,6 +255,7 @@ mod tests {
                     favicon_data: None,
                     ..Default::default()
                 }),
+                favicon_source: None,
             },
         );
         (LoaderDownloads::new(pending, "1".into(), attempt), rx)

@@ -1,4 +1,6 @@
 mod easyprivacy;
+#[cfg(target_os = "macos")]
+mod easyprivacy_rules;
 mod menus;
 mod settings;
 mod shutdown;
@@ -30,6 +32,8 @@ mod loader_download;
 mod loader_identity;
 #[cfg(target_os = "macos")]
 mod loader_image_policy;
+#[cfg(target_os = "macos")]
+mod loader_rule_store;
 mod native;
 mod resource_download;
 mod shortcuts_menu;

@@ -65,7 +65,7 @@ export function PrivacySettings() {
         label="Enable EasyPrivacy"
         get="getEasyPrivacyEnabled"
         set="setEasyPrivacyEnabled"
-        description="On by default. Keeps a local copy of the EasyPrivacy tracking filter list for this macOS account. Article loading does not yet use the list."
+        description="On by default. Blocks tracking requests matched by supported EasyPrivacy rules in new article loads. Turning it off allows those requests under the other loader settings."
       />
 
       <FetchNumber

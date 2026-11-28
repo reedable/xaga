@@ -285,7 +285,8 @@ tracking filter list for your macOS account. Xaga uses the same copy across
 libraries. **EasyPrivacy update interval** controls how many days Xaga waits
 between checks for a new list. The default and minimum are four days. Xaga
 checks at launch when EasyPrivacy is enabled and the interval has elapsed.
-Article loading does not yet use the list.
+New article loads use supported rules to block tracking requests. Turning it off
+allows those requests to proceed under the other loader settings.
 
 **Send referring URLs for feed redirects** is off by default. Enabling it lets
 redirect destinations learn the previous feed URL and may help feeds that

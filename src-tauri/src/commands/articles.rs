@@ -178,6 +178,8 @@ pub async fn load_article(
         let load_remote_image = remote_images_allowed && *state.load_remote_image.read().unwrap();
         let named_stores_supported = state.named_stores_supported;
         let publisher_javascript_allowed = *state.publisher_javascript_allowed.read().unwrap();
+        let easyprivacy_enabled = *state.easyprivacy_enabled.read().unwrap();
+        let easyprivacy_rules = article_loader::easyprivacy_rules(easyprivacy_enabled);
         let capture = article_loader::load_via_webview(
             &app,
             &pending,
@@ -188,6 +190,7 @@ pub async fn load_article(
             remote_images_allowed,
             load_remote_image,
             publisher_javascript_allowed,
+            easyprivacy_rules,
             &allowed_domains,
             named_stores_supported,
             proxy,

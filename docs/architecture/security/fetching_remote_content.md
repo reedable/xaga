@@ -246,6 +246,25 @@ The proxy controls _where_ requests can go; the loader adds controls on _what_ g
 - **Per-request timeout**: the whole load is bounded by the configurable `loader_timeout_secs`.
 - **PDF format validation**: the article download consumer requires a `%PDF-` prefix before persistence or presentation. Other formats produce `article:unsupported-download`; rejection does not imply a deceptive server.
 
+### EasyPrivacy
+
+With EasyPrivacy enabled, the loader reads the installed revision before
+creating its WebKit view. The same policy covers article navigation, page
+resources, favicon acquisition, and direct image recovery. WebKit retains the
+rule list for that view, while subsequent loads read the current installed file.
+The WebKit store reuses compiled lists keyed by the snapshot hash and translator
+version. Preparation errors use the existing webview setup failure path.
+
+The translator uses unqualified `||host^` rules for exact HTTP(S) hostnames.
+It omits subdomain expansion, path rules, modifier-bearing and conditional blocks,
+scripts, cosmetic filtering, and scriptlets. It honors host-scoped filter
+disables. Host-scoped exceptions exclude potentially
+overlapping host rules regardless of their modifiers. A host-independent
+subdocument exception limits filtering to the top frame. Script exceptions
+remain outside the translated coverage. An unrecognized host-independent
+exception prevents preparation because its scope cannot be established.
+The separate image policy and existing network controls still apply.
+
 ## Loader fingerprint exposure
 
 Ephemeral storage does not make the loader indistinguishable from Safari or
