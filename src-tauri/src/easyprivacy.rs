@@ -118,6 +118,30 @@ fn revision(bytes: &[u8]) -> io::Result<Revision<'_>> {
     Ok(Revision { version, commit })
 }
 
+#[cfg(target_os = "macos")]
+pub(super) struct RuleSnapshot {
+    pub(super) identifier: String,
+    pub(super) source: String,
+}
+
+#[cfg(target_os = "macos")]
+impl RuleSnapshot {
+    pub(super) fn read(root: &Path) -> Result<Self, String> {
+        use sha2::{Digest, Sha256};
+
+        let bytes = std::fs::read(root.join(LIST))
+            .map_err(|error| format!("Could not read installed EasyPrivacy: {error}"))?;
+        let revision = revision(&bytes).map_err(|error| error.to_string())?;
+        let identifier = format!(
+            "xaga-easyprivacy-v1-{}-{:x}",
+            revision.version,
+            Sha256::digest(&bytes),
+        );
+        let source = String::from_utf8(bytes).map_err(|error| error.to_string())?;
+        Ok(Self { identifier, source })
+    }
+}
+
 fn install(root: &Path, bundled: &Path) -> io::Result<()> {
     if installed(root)? {
         return Ok(());
@@ -243,6 +267,25 @@ mod tests {
             "a".repeat(40),
         )
         .into_bytes()
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn in_flight_rule_snapshot_keeps_its_revision_across_replacement() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        let initial = snapshot("202611270000");
+        let next = snapshot("202611280000");
+        xaga_core::fs::write_atomic(&root.join(LIST), &initial).unwrap();
+        let in_flight = RuleSnapshot::read(root).unwrap();
+        let concurrent = RuleSnapshot::read(root).unwrap();
+        assert_eq!(concurrent.identifier, in_flight.identifier);
+
+        xaga_core::fs::write_atomic(&root.join(LIST), &next).unwrap();
+        let new_load = RuleSnapshot::read(root).unwrap();
+        assert_ne!(new_load.identifier, in_flight.identifier);
+        assert_eq!(in_flight.source.as_bytes(), initial);
+        assert_eq!(new_load.source.as_bytes(), next);
     }
 
     #[test]

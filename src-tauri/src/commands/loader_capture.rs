@@ -612,6 +612,8 @@ pub(crate) async fn recover_entry_images(
                 .map_err(|e| AppError::Message(e.to_string()))?,
         );
         let publisher_javascript_allowed = *state.publisher_javascript_allowed.read().unwrap();
+        let easyprivacy_enabled = *state.easyprivacy_enabled.read().unwrap();
+        let easyprivacy_rules = article_loader::easyprivacy_rules(easyprivacy_enabled);
         let capture = article_loader::load_via_webview(
             &app,
             &pending,
@@ -622,6 +624,7 @@ pub(crate) async fn recover_entry_images(
             true,
             true,
             publisher_javascript_allowed,
+            easyprivacy_rules,
             &allowed_domains,
             state.named_stores_supported,
             proxy,

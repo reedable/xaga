@@ -39,6 +39,8 @@ mod lifecycle {
             Option<tauri::async_runtime::JoinHandle<Result<article_loader::LoaderCapture, String>>>,
     }
     struct ViewOptions {
+        purpose: article_loader::LoaderPurpose,
+        easyprivacy_rules: Option<article_loader::RuleList>,
         keep_open: bool,
         remote_images_allowed: bool,
         save_images: bool,
@@ -63,6 +65,8 @@ mod lifecycle {
             name,
             timeout,
             ViewOptions {
+                purpose: article_loader::LoaderPurpose::Article,
+                easyprivacy_rules: None,
                 keep_open: false,
                 remote_images_allowed,
                 save_images: images,
@@ -119,10 +123,11 @@ mod lifecycle {
                 &url,
                 timeout,
                 options.keep_open,
-                article_loader::LoaderPurpose::Article,
+                options.purpose,
                 options.remote_images_allowed,
                 options.save_images,
                 options.publisher_javascript_allowed,
+                Ok(options.easyprivacy_rules),
                 &[],
                 true,
                 proxy,
@@ -189,6 +194,205 @@ mod lifecycle {
         );
     }
 
+    async fn verify_rule_attachment(app: &tauri::AppHandle, server: &Server) {
+        let routes = [
+            "easyprivacy-filtered",
+            "easyprivacy-off",
+            "easyprivacy-installed",
+        ];
+        for name in routes {
+            server.add_article(name, None, None, None, false);
+            let image = server.add_response(
+                &format!("/{name}/blocked-image"),
+                Vec::new(),
+                "image/png",
+                None,
+                None,
+            );
+            let redirect = server.add_redirect(
+                &format!("/{name}/redirect-image"),
+                &format!("/{name}/blocked-image"),
+            );
+            server.add_response(
+                &format!("/{name}"),
+                format!(
+                    r#"<!doctype html><title>Policy fixture</title><p>article-{name}</p><img src="/{name}/redirect-image">"#
+                )
+                .into_bytes(),
+                "text/html",
+                None,
+                None,
+            );
+
+            let mut load = start_with_proxy(
+                app,
+                server,
+                name,
+                8,
+                ViewOptions {
+                    purpose: article_loader::LoaderPurpose::Article,
+                    easyprivacy_rules: match name {
+                        "easyprivacy-filtered" => Some((
+                            "xaga-test-easyprivacy-image-fixture-v1".into(),
+                            Box::new(|| Ok(r#"[{"trigger":{"url-filter":"/easyprivacy-filtered/blocked-image$"},"action":{"type":"block"}}]"#.into())),
+                        )),
+                        "easyprivacy-installed" => Some((
+                            "xaga-test-easyprivacy-bundled-revision-v1".into(),
+                            Box::new(|| easyprivacy_rules::compile(include_str!("../resources/easyprivacy/easyprivacy.txt"))),
+                        )),
+                        _ => None,
+                    },
+                    keep_open: false,
+                    remote_images_allowed: true,
+                    save_images: false,
+                    publisher_javascript_allowed: false,
+                },
+                network_proxy::ProxyConfig::deny_all(),
+            )
+            .await;
+            let capture = load.result.take().unwrap().await.unwrap().unwrap();
+            assert!(capture.html.contains(&format!("article-{name}")));
+            assert_eq!(
+                image.requests.load(Ordering::SeqCst),
+                usize::from(name != routes[0])
+            );
+            assert_eq!(redirect.requests.load(Ordering::SeqCst), 1);
+            assert_cleanup(app, &load).await;
+        }
+    }
+
+    async fn verify_easyprivacy_navigation_redirects(app: &tauri::AppHandle, server: &Server) {
+        for (kind, purpose) in [
+            ("article", article_loader::LoaderPurpose::Article),
+            ("image", article_loader::LoaderPurpose::Image),
+            ("favicon", article_loader::LoaderPurpose::Article),
+        ] {
+            for filtered in [true, false] {
+                let name = format!("easyprivacy-{kind}-{filtered}");
+                let redirect_source = if kind == "favicon" {
+                    server.add_article(&name, None, None, None, true);
+                    format!("/{name}/icon")
+                } else {
+                    format!("/{name}")
+                };
+                let destination_path = format!("/{name}/target");
+                let target = if kind == "article" {
+                    server.add_response(
+                        &destination_path,
+                        b"<!doctype html><p>Redirected article</p>".to_vec(),
+                        "text/html",
+                        None,
+                        None,
+                    )
+                } else {
+                    server.add_article(&format!("{name}-icon"), None, None, None, true)
+                };
+                let destination_path = if kind == "article" {
+                    destination_path
+                } else {
+                    format!("/{name}-icon/icon")
+                };
+                let redirect = server.add_redirect(&redirect_source, &destination_path);
+                let mut load = start_with_proxy(
+                    app,
+                    server,
+                    &name,
+                    if kind == "favicon" { 15 } else { 5 },
+                    ViewOptions {
+                        purpose,
+                        easyprivacy_rules: filtered.then(|| {
+                            let rules = serde_json::json!([{
+                                "trigger": { "url-filter": format!("{destination_path}$") },
+                                "action": { "type": "block" }
+                            }])
+                            .to_string();
+                            (
+                                format!("xaga-test-{name}-v1"),
+                                Box::new(move || Ok(rules)) as _,
+                            )
+                        }),
+                        keep_open: false,
+                        remote_images_allowed: true,
+                        save_images: kind == "favicon",
+                        publisher_javascript_allowed: false,
+                    },
+                    network_proxy::ProxyConfig::deny_all(),
+                )
+                .await;
+                let result = load.result.take().unwrap().await.unwrap();
+                assert!(
+                    redirect.seen.load(Ordering::SeqCst),
+                    "{name} did not reach first hop: {:?}; {}",
+                    result.as_ref().err(),
+                    serde_json::to_string(&load.attempt.get_diagnostic()).unwrap()
+                );
+                assert_eq!(
+                    target.seen.load(Ordering::SeqCst),
+                    !filtered,
+                    "{name} target"
+                );
+                if kind == "favicon" {
+                    let capture = result.unwrap();
+                    assert!(capture.html.contains(&format!("article-{name}")));
+                    assert_eq!(capture.favicon_data.is_some(), !filtered);
+                }
+                assert_cleanup(app, &load).await;
+            }
+        }
+    }
+
+    async fn verify_rule_preparation_failure(app: &tauri::AppHandle, server: &Server) {
+        let page = server.add_response(
+            "/easyprivacy-setup-failure",
+            b"<!doctype html><p>Setup should fail before navigation</p>".to_vec(),
+            "text/html",
+            None,
+            None,
+        );
+        let proxy = Arc::new(
+            network_proxy::start_scoped(
+                network_proxy::ProxyConfig::deny_all()
+                    .with_local_endpoint("localhost".into(), server.address)
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+        );
+        let attempt = app
+            .state::<article_diagnostics::ArticleDiagnostics>()
+            .create_attempt("load");
+        let result = article_loader::load_via_webview(
+            app,
+            &app.state::<article_loader::PendingRequests>(),
+            &format!(
+                "http://localhost:{}/easyprivacy-setup-failure",
+                server.address.port()
+            ),
+            5,
+            false,
+            article_loader::LoaderPurpose::Article,
+            true,
+            false,
+            false,
+            Err("fixture preparation error".into()),
+            &[],
+            true,
+            proxy,
+            attempt.clone(),
+        )
+        .await;
+        assert!(matches!(result, Err(error) if error == "fixture preparation error"));
+        assert!(!page.seen.load(Ordering::SeqCst));
+        let report = serde_json::to_value(attempt.get_diagnostic()).unwrap();
+        assert!(
+            report["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|event| event["code"] == "article:webview-create")
+        );
+    }
+
     async fn verify_reachable_redirect(
         app: &tauri::AppHandle,
         server: &Server,
@@ -249,6 +453,8 @@ mod lifecycle {
             &name,
             7,
             ViewOptions {
+                purpose: article_loader::LoaderPurpose::Article,
+                easyprivacy_rules: None,
                 keep_open,
                 remote_images_allowed: true,
                 save_images: !keep_open && !child_frame,
@@ -360,6 +566,12 @@ mod lifecycle {
             return;
         }
         verify_proxy_redirect_refusal(&server).await;
+        verify_rule_attachment(&app, &server).await;
+        verify_easyprivacy_navigation_redirects(&app, &server).await;
+        verify_rule_preparation_failure(&app, &server).await;
+        if std::env::var_os("XAGA_LOADER_EASYPRIVACY_ONLY").is_some() {
+            return;
+        }
         let baseline = list_staging_directories();
         let origin = format!("http://localhost:{}", server.address.port());
         let pdf = pdf_fixture::pdf_fixture();

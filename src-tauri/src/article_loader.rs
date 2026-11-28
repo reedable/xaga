@@ -93,6 +93,23 @@ fn find_matching_domain<'a>(host: &str, allowed: &'a [String]) -> Option<&'a str
     })
 }
 
+pub(super) type RuleList = (String, Box<dyn FnOnce() -> Result<String, String> + Send>);
+
+pub(super) fn easyprivacy_rules(enabled: bool) -> Result<Option<RuleList>, String> {
+    #[cfg(target_os = "macos")]
+    if enabled {
+        let root = xaga_core::fs::data_root().ok_or("Cannot determine EasyPrivacy directory")?;
+        let snapshot = crate::easyprivacy::RuleSnapshot::read(&root)?;
+        return Ok(Some((
+            snapshot.identifier,
+            Box::new(move || crate::easyprivacy_rules::compile(&snapshot.source)),
+        )));
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = enabled;
+    Ok(None)
+}
+
 pub async fn load_via_webview(
     app: &AppHandle,
     pending: &PendingRequests,
@@ -103,6 +120,7 @@ pub async fn load_via_webview(
     remote_images_allowed: bool,
     load_remote_image: bool,
     publisher_javascript_allowed: bool,
+    easyprivacy_rules: Result<Option<RuleList>, String>,
     allowed_domains: &[String],
     named_stores_supported: bool,
     proxy: Arc<xaga_core::network_proxy::ScopedProxy>,
@@ -364,14 +382,21 @@ pub async fn load_via_webview(
         }
     };
     let scheduled = app.run_on_main_thread(move || {
+        let easyprivacy_rules = match easyprivacy_rules {
+            Ok(rules) => rules,
+            Err(error) => return build(Err(error)),
+        };
         #[cfg(target_os = "macos")]
         crate::loader_image_policy::configure_article_loader(
             identifier,
             remote_images_allowed,
+            easyprivacy_rules,
             build,
         );
         #[cfg(not(target_os = "macos"))]
-        build(if remote_images_allowed {
+        build(if easyprivacy_rules.is_some() {
+            Err("EasyPrivacy filtering is unavailable".into())
+        } else if remote_images_allowed {
             Ok(())
         } else {
             Err("remote image blocking is unavailable".into())
