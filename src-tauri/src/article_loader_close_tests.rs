@@ -12,6 +12,7 @@ fn request(download_active: bool) -> PendingRequest {
         diagnostic_event_count: 0,
         download_active,
         partial: None,
+        favicon_source: None,
     }
 }
 

@@ -45,6 +45,8 @@ pub struct PendingRequest {
     /// arrive (or fail) before the capture is completed. `None` at every other
     /// moment.
     pub partial: Option<LoaderCapture>,
+    /// Native URL of the article whose HTML is already captured.
+    pub(super) favicon_source: Option<tauri::Url>,
 }
 
 pub type PendingRequests = Arc<Mutex<HashMap<String, PendingRequest>>>;
@@ -179,6 +181,7 @@ pub async fn load_via_webview(
             diagnostic_event_count: 0,
             download_active: false,
             partial: None,
+            favicon_source: None,
         },
     );
 
@@ -565,6 +568,7 @@ mod diagnostic_tests {
                 mime_type: "text/html".into(),
                 ..Default::default()
             }),
+            favicon_source: None,
         };
         let recovered = recover_favicon_timeout(Some(request), &attempt).unwrap();
         assert_eq!(recovered.html, "original article");

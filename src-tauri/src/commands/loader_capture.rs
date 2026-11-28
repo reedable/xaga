@@ -117,6 +117,17 @@ pub(crate) async fn receive_html(
         return Ok(true);
     }
 
+    // An article callback can still be queued while its favicon navigation
+    // starts. Ignore it while the native webview still identifies the article.
+    if request
+        .favicon_source
+        .as_ref()
+        .is_some_and(|source| window.url().is_ok_and(|current| current == *source))
+    {
+        map.insert(id, request);
+        return Ok(false);
+    }
+
     // A failed favicon navigation can load an HTML error document. Never
     // replace the already captured article with that document.
     if let Some(capture) = request.partial.take() {
@@ -159,7 +170,9 @@ pub(crate) async fn receive_html(
 
     if let Some(favicon_url) = favicon_target {
         request.attempt.add_started_event("favicon");
+        let source = window.url().ok();
         if window.navigate(favicon_url).is_ok() {
+            request.favicon_source = source;
             // Deliberately neither resolves nor closes yet. This defers the
             // "kill after capture" close (see fetching_remote_content.md,
             // "Fetch-adjacent hardening in the loader") by one IPC round trip —
