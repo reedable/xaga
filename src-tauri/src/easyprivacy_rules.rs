@@ -14,9 +14,20 @@ pub(super) fn compile(list: &str) -> Result<String, String> {
         "raw",
     ];
     let mut top_frame_only = false;
+    let mut conditional_depth = 0usize;
 
     for line in list.lines().map(str::trim) {
-        if let Some(exception) = line.strip_prefix("@@") {
+        if line.starts_with("!#if ") {
+            conditional_depth += 1;
+        } else if line == "!#endif" {
+            conditional_depth = conditional_depth.saturating_sub(1);
+        }
+        if let Some(disabled_host) = line
+            .strip_suffix("$badfilter")
+            .and_then(exception_host_prefix)
+        {
+            exceptions.insert(disabled_host);
+        } else if let Some(exception) = line.strip_prefix("@@") {
             if let Some(prefix) = exception_host_prefix(exception) {
                 exceptions.insert(prefix);
             } else {
@@ -49,7 +60,8 @@ pub(super) fn compile(list: &str) -> Result<String, String> {
             .strip_prefix("||")
             .and_then(|rule| rule.strip_suffix('^'))
         {
-            if host.contains('.')
+            if conditional_depth == 0
+                && host.contains('.')
                 && host.split('.').all(|label| {
                     !label.is_empty()
                         && label
@@ -112,7 +124,7 @@ mod tests {
 
     #[test]
     fn omits_host_rules_with_potential_exceptions() {
-        let rules = compile("||tracker.example^\n||other.example^\n||sub.wild.example^\n@@||tracker.example/allowed\n@@||wild.*$third-party\n@@/frame$subdocument").unwrap();
+        let rules = compile("||tracker.example^\n||other.example^\n||sub.wild.example^\n||disabled.example^\n||disabled.example^$badfilter\n!#if env_mobile\n||conditional.example^\n!#endif\n@@||tracker.example/allowed\n@@||wild.*$third-party\n@@/frame$subdocument").unwrap();
         let rules: Vec<serde_json::Value> = serde_json::from_str(&rules).unwrap();
         assert_eq!(rules.len(), 1);
         assert_eq!(

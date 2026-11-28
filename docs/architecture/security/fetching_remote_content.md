@@ -256,8 +256,9 @@ The WebKit store reuses compiled lists keyed by the snapshot hash and translator
 version. Preparation errors use the existing webview setup failure path.
 
 The translator uses unqualified `||host^` rules for exact HTTP(S) hostnames.
-It omits subdomain expansion, path rules, modifier-bearing blocks, scripts,
-cosmetic filtering, and scriptlets. Host-scoped exceptions exclude potentially
+It omits subdomain expansion, path rules, modifier-bearing and conditional blocks,
+scripts, cosmetic filtering, and scriptlets. It honors host-scoped filter
+disables. Host-scoped exceptions exclude potentially
 overlapping host rules regardless of their modifiers. A host-independent
 subdocument exception limits filtering to the top frame. Script exceptions
 remain outside the translated coverage. An unrecognized host-independent
