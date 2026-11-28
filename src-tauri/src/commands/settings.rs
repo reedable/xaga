@@ -414,6 +414,7 @@ pub(crate) struct FetchSettings {
     loader_timeout_secs: String,
     feed_timeout_secs: String,
     feed_max_body_bytes: String,
+    easy_privacy_refresh_days: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -427,6 +428,7 @@ pub(crate) enum FetchSetting {
     LoaderTimeoutSecs(#[serde(deserialize_with = "decimal_u64")] u64),
     FeedTimeoutSecs(#[serde(deserialize_with = "decimal_u64")] u64),
     FeedMaxBodyBytes(#[serde(deserialize_with = "decimal_u64")] u64),
+    EasyPrivacyRefreshDays(#[serde(deserialize_with = "decimal_u64")] u64),
 }
 
 fn decimal_u64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Error> {
@@ -440,6 +442,7 @@ fn decimal_u64<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Error> 
 impl FetchSetting {
     fn validate(&self) -> Result<(), AppError> {
         if matches!(self, Self::MaxRedirects(value) if *value > u64::from(crate::fetch_client::MAX_REDIRECTS_CEILING))
+            || matches!(self, Self::EasyPrivacyRefreshDays(days) if *days < crate::easyprivacy::MIN_REFRESH_DAYS)
         {
             return Err(AppError::InvalidFetchSetting);
         }
@@ -458,6 +461,7 @@ impl FetchSetting {
             Self::LoaderTimeoutSecs(v) => settings.loader_timeout_secs = Some(v),
             Self::FeedTimeoutSecs(v) => settings.feed_timeout_secs = Some(v),
             Self::FeedMaxBodyBytes(v) => settings.feed_max_body_bytes = Some(v),
+            Self::EasyPrivacyRefreshDays(v) => settings.easyprivacy_refresh_days = Some(v),
         }
     }
 
@@ -473,6 +477,7 @@ impl FetchSetting {
             Self::LoaderTimeoutSecs(v) => *state.loader_timeout_secs.write().unwrap() = v,
             Self::FeedTimeoutSecs(v) => *state.feed_timeout_secs.write().unwrap() = v,
             Self::FeedMaxBodyBytes(v) => *state.feed_max_body_bytes.write().unwrap() = v,
+            Self::EasyPrivacyRefreshDays(v) => *state.easyprivacy_refresh_days.write().unwrap() = v,
         }
     }
 }
@@ -490,6 +495,7 @@ pub(crate) async fn get_fetch_settings(
         loader_timeout_secs: state.loader_timeout_secs.read().unwrap().to_string(),
         feed_timeout_secs: state.feed_timeout_secs.read().unwrap().to_string(),
         feed_max_body_bytes: state.feed_max_body_bytes.read().unwrap().to_string(),
+        easy_privacy_refresh_days: state.easyprivacy_refresh_days.read().unwrap().to_string(),
     })
 }
 
@@ -511,6 +517,26 @@ pub(crate) async fn set_fetch_setting(
 #[cfg(test)]
 mod fetch_setting_tests {
     use super::*;
+
+    #[test]
+    fn easyprivacy_refresh_interval_enforces_the_upstream_minimum() {
+        let minimum = crate::easyprivacy::MIN_REFRESH_DAYS;
+        assert!(
+            FetchSetting::EasyPrivacyRefreshDays(minimum - 1)
+                .validate()
+                .is_err()
+        );
+        assert!(
+            FetchSetting::EasyPrivacyRefreshDays(minimum)
+                .validate()
+                .is_ok()
+        );
+
+        let mut settings = crate::UserSettings::default();
+        assert_eq!(settings.easyprivacy_refresh_days(), minimum);
+        FetchSetting::EasyPrivacyRefreshDays(minimum + 1).apply(&mut settings);
+        assert_eq!(settings.easyprivacy_refresh_days(), minimum + 1);
+    }
 
     #[test]
     fn fetch_changes_persist_and_update_the_running_handles() {

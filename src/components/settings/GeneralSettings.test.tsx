@@ -18,6 +18,7 @@ const platform = vi.hoisted(() => ({
     loaderTimeoutSecs: "10",
     feedTimeoutSecs: "10",
     feedMaxBodyBytes: "10485760",
+    easyPrivacyRefreshDays: "4",
   }),
   setFetchSetting: vi.fn().mockResolvedValue(undefined),
   getLibrary: vi.fn().mockResolvedValue("library"),

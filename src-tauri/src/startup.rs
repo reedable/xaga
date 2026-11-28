@@ -230,6 +230,7 @@ pub(super) fn prepare() -> Startup {
         allowed_domains,
         named_stores_supported,
         inline_pdf_reader,
+        easyprivacy_refresh_days: Arc::new(RwLock::new(easyprivacy::MIN_REFRESH_DAYS)),
         easyprivacy_enabled: Arc::new(RwLock::new(true)),
         load_remote_image,
         remote_images_allowed,
@@ -320,6 +321,7 @@ pub(super) fn initialize(
         }
     }
     *state.easyprivacy_enabled.write().unwrap() = settings.easyprivacy_enabled();
+    *state.easyprivacy_refresh_days.write().unwrap() = settings.easyprivacy_refresh_days();
     let theme = settings.theme.clone().unwrap_or_else(|| "auto".to_string());
     let default_library =
         xaga_core::fs::data_root().ok_or("cannot determine platform data directory")?;
@@ -463,6 +465,21 @@ pub(super) fn initialize(
     *setup_sidebar_sort.write().unwrap() = sidebar_sort;
     *setup_allowed_domains.write().unwrap() = settings.allowed_domains.unwrap_or_default();
     *setup_inline_pdf_reader.write().unwrap() = settings.inline_pdf_reader.unwrap_or(false);
+
+    if *state.easyprivacy_enabled.read().unwrap() {
+        let app_handle = app.handle().clone();
+        let account_lock = Arc::clone(&state.account_lock);
+        let settings_path = settings_path.clone();
+        let proxy_port = state.network_proxy_port;
+        tauri::async_runtime::spawn(async move {
+            if let Err(error) =
+                easyprivacy::refresh_at_launch(app_handle, account_lock, settings_path, proxy_port)
+                    .await
+            {
+                log::warn!("startup: EasyPrivacy update check failed: {error}");
+            }
+        });
+    }
 
     // Correct the menu checkmarks now that we know the persisted values.
     update_theme_checkmarks(app.handle(), &theme);
