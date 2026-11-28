@@ -939,7 +939,9 @@ fn main() {
             let app = app.handle().clone();
             let watchdog = app.clone();
             tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(std::time::Duration::from_secs(90)).await;
+                // Blocked top-level navigation and favicon cases can consume
+                // their individual loader deadlines before the lifecycle cases run.
+                tokio::time::sleep(std::time::Duration::from_secs(150)).await;
                 eprintln!("FAIL: loader lifecycle suite timed out");
                 watchdog.exit(1);
             });
